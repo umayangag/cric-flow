@@ -27,10 +27,19 @@ To produce the meta-model CSV we need: for each player in each evaluate result, 
 
 ## 3. Acceptance Criteria
 
-- [ ] **Export contributions from evaluate:** When backtest evaluate runs, optionally write one row per player to a contributions file (or accumulate in memory for a batch). Row: bat_score, bowl_score, field_score, is_keeper (0/1), format, target. Target = actual runs / bat_divisor (or similar composite from actuals). This may be a new API or a side effect of evaluate when a query param or config is set (e.g. export_contributions=true and path).
-- [ ] **Pipeline step train_combination_meta:** New step that (1) expects the contributions CSV to exist at a known path (e.g. from a previous “evaluate” batch that wrote it), or (2) triggers a batch evaluate that writes the CSV, then (3) calls the ML service or runs `make train-combination-meta` to produce combination_meta.json. Document that operators must run evaluate batch first or provide the CSV.
-- [ ] **One-command retrain + evaluate:** Make target (e.g. `make full-pipeline` or `make retrain-and-evaluate`) that: runs precompute, export, train_batting, train_bowling, train_fielding, train_extras, train_win; optionally runs train_combination_meta if CSV exists; optionally runs a fixed set of backtest evaluates and reports metrics. Does not run import (assume data already imported).
-- [ ] **Documentation:** How to generate the contributions CSV, run train_combination_meta, and set selection.meta_model_path in config.
+> **Status (2026-08): all four are met.** Verified against `main`:
+> `POST /api/backtest/export-contributions` (+ `-status`) in `router.go`;
+> the `train_combination_meta` pipeline step delegating to ml-service's
+> `POST /admin/train/combination-meta` (C5-2 — it previously returned 501);
+> `make full-pipeline` (the `retrain-and-evaluate` name below was the
+> alternative that was not taken); and `meta_model_path` in
+> `docs/ml-and-training.md`. Kept for the design reasoning.
+
+
+- [x] **Export contributions from evaluate:** When backtest evaluate runs, optionally write one row per player to a contributions file (or accumulate in memory for a batch). Row: bat_score, bowl_score, field_score, is_keeper (0/1), format, target. Target = actual runs / bat_divisor (or similar composite from actuals). This may be a new API or a side effect of evaluate when a query param or config is set (e.g. export_contributions=true and path).
+- [x] **Pipeline step train_combination_meta:** New step that (1) expects the contributions CSV to exist at a known path (e.g. from a previous “evaluate” batch that wrote it), or (2) triggers a batch evaluate that writes the CSV, then (3) calls the ML service or runs `make train-combination-meta` to produce combination_meta.json. Document that operators must run evaluate batch first or provide the CSV.
+- [x] **One-command retrain + evaluate:** Make target (e.g. `make full-pipeline` or `make retrain-and-evaluate`) that: runs precompute, export, train_batting, train_bowling, train_fielding, train_extras, train_win; optionally runs train_combination_meta if CSV exists; optionally runs a fixed set of backtest evaluates and reports metrics. Does not run import (assume data already imported).
+- [x] **Documentation:** How to generate the contributions CSV, run train_combination_meta, and set selection.meta_model_path in config.
 
 ---
 

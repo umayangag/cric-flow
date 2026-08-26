@@ -15,7 +15,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
 .PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
-.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks sync-skills sync-skills-check gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
+.PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks sync-skills sync-skills-check gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 .PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
@@ -647,6 +647,7 @@ help:
 	@echo ""
 	@echo "[Orchestration]"
 	@echo "  up-all             One-shot: docker up → migrate → import → precompute → export → train → restart ML"
+	@echo "  full-pipeline      precompute → export → train (+ combination-meta if its CSV exists)"
 	@echo "  e2e                Run pipeline for a single FORMAT (requires FORMAT)"
 	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
 	@echo
@@ -665,6 +666,9 @@ help:
 	@echo "  migrate            Run DB migrations (match + match_inning schema)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning)"
 	@echo "  precompute         [API] POST /precompute on a running stack (API_KEY?=dev-local-key)"
+	@echo "  precompute-asof    Precompute as of a date locally (ASOF=, ALPHA=, LASTN=)"
+	@echo "  migrate-local      Apply migrations from the host rather than in-container"
+	@echo "  seed-fixtures      Load test fixtures into the compose Postgres"
 	@echo "  precompute-all        Run unified precompute (as-of/replay + sequential) for FORMAT (default T20)"
 	@echo "  precompute-all-all-formats  Run unified precompute for all formats"
 	@echo "  precompute-seq     Precompute sequence features: go-app/cmd/precompute-sequence-features (FORMAT?=$(FORMAT))"
@@ -680,6 +684,9 @@ help:
 	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
 	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
 	@echo "  train-batting-bowling  Train batting + bowling"
+	@echo "  train-innings      Train innings model (used for hybrid reconciliation)"
+	@echo "  train-combination-meta  Fit bat/bowl/field weights from backtest_contributions.csv"
+	@echo "  train-batting-baseline / train-bowling-baseline  Baseline models for comparison"
 	@echo "  train-all          Train all models (batting, bowling, fielding, extras, win)"
 	@echo "  train-models       Same as train-all"
 	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
@@ -687,6 +694,14 @@ help:
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"
+	@echo "  test               Run Go and Python unit tests"
+	@echo "  frontend-test      Frontend unit tests"
+	@echo "  ml-test            Only test_seq_reader + test_baselines, not the ML suite"
+	@echo "  e2e-pytest         ML e2e tests against a running service (RUN_E2E=1)"
+	@echo "  go-app-check / ml-service-check / frontend-check  Per-component gate"
+	@echo "  frontend-backend-sync-check  Verify canonical formats and model metadata agree"
+	@echo "  e2e-backtest-smoke Containerised end-to-end backtest smoke test"
+	@echo "  mock               Regenerate mockery mocks"
 	@echo "  go-test            Run Go unit tests"
 	@echo "  go-test-int        Run Go integration tests (requires DB)"
 	@echo "  ci-go              Go CI aggregate (vet, fmt-check, coverage gate)"
@@ -695,7 +710,15 @@ help:
 	@echo
 	@echo "[Formatting & Lint]"
 	@echo "  fmt / fmt-check    Run formatters across Go and Python (no implicit installs)"
-	@echo "  lint-go / lint-py  Lint Go / Python"
+	@echo "  fmt-go / fmt-py    Format only Go / Python"
+	@echo "  lint               Lint Go, Python and the frontend"
+	@echo "  lint-go / lint-py / lint-frontend  Lint one component"
+	@echo
+	@echo "[Generated files — do not hand-edit]"
+	@echo "  gen-architecture-map        Regenerate the marked blocks of ARCHITECTURE_MAP.md"
+	@echo "  gen-architecture-map-check  Fail if those blocks are stale (runs in CI)"
+	@echo "  sync-skills                 Regenerate .junie/skills from .cursor/skills"
+	@echo "  sync-skills-check           Fail if they are out of sync (runs in CI)"
 	@echo
 	@echo "[Bootstrap]"
 	@echo "  init               Initialize both components (tools, venv, hooks)"
@@ -703,6 +726,9 @@ help:
 	@echo "  install-hooks      Install git pre-commit hooks"
 	@echo
 	@echo "[Docker compose maintenance]"
+	@echo "  build-apps         Build app images (build-apps-nocache to skip the cache)"
+	@echo "  recreate-apps      Force-recreate app containers without touching deps"
+	@echo "  dev-purge          dev-down, then delete output/ (trained models and exports)"
 	@echo "  dev-rebuild        Rebuild app images and restart services"
 	@echo "  dev-rebuild-nocache Rebuild without cache and restart services"
 	@echo

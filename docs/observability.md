@@ -68,8 +68,11 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `status` (`ok` / `warn`).
     - `models_dir` (resolved artifacts directory).
     - `loaded_batting_formats`, `loaded_bowling_formats`, `loaded_fielding_formats`, `loaded_extras_formats`, `loaded_win_formats`.
-    - `legacy_batting_available`, `legacy_bowling_available`, etc.
     - `artifacts[model_type][]` with `file`, `size_bytes`, `modified` (unix timestamp).
+    - `metadata`, `counters`.
+
+    The `legacy_*_available` fields are **gone**: they reported the `_LEGACY_` artifact
+    tier removed in C3-1. Built by `app/artifact_service.py:build_health_response`.
   - **Consumers**:
     - Frontend `HealthTab` (latency + artifacts summary).
     - Operators verifying which models are in memory.
@@ -77,7 +80,8 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
 - **`GET /artifacts/status`**
   - **Purpose**: Detailed status of model artifacts on disk vs loaded in memory.
   - **Fields**:
-    - For each model type/format: existence, size, modified time, loaded flag, legacy presence.
+    - `timestamp`, `root`, and `formats[<format>][<kind>]` carrying `exists`, `path`,
+      `modified` and `loaded`. No legacy tier — see `artifact_service.build_artifacts_status`.
   - **Consumers**: debugging model deployment / reload issues.
 
 ### 2.2. Model Stats

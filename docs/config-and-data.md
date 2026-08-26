@@ -48,7 +48,14 @@ Config file: `go-app/config.json`
 
 **Team selection** (under `team`): `min_bowlers`, `default_batters`, `default_bowlers`. Under `selection`: `default_pool_csv`, `max_pool_size_for_full_enum` (18 — above this use greedy + hill-climb instead of full enumeration), `score_weights` (bat, bowl, field, keeper_bonus), `score_normalization` (per-format divisors), `score_weights_by_format`, `meta_model_path` (optional JSON from combination-meta training), `use_optimizer` (bool, default false). When `use_optimizer` is true, team selection uses constrained optimization to maximize total score over valid XIs (size 11, ≥1 keeper, ≥5 bowlers); when false, uses greedy selection with constraint swaps. See **ml-and-training.md** for meta-model.
 
-**Future-match prediction features:** The feature map for team-selection prediction includes form, venue, opposition, season, optional weather override (`WeatherOverride`), and sequence features (bat_*, bowl_* from `configs/feature_vectors.json`). Sequence features are set to 0 until precompute/seqcalc export them per player. Opposition strength (`opposition_batting_strength`, `opposition_bowling_strength`) is computed from the opposition team’s pool when available and added to the map (training does not yet include these; when extended, accuracy can improve). Weather: training joins `weather_data` (may be empty); prediction accepts optional `Weather` in the API. When a weather source is added, use the same feature names (e.g. `batting_temp`) in training and prediction.
+**Future-match prediction features:** The feature map for team-selection prediction includes form, venue, opposition, season, optional weather override (`WeatherOverride`), and sequence features (bat_*, bowl_* from `configs/feature_vectors.json`). Sequence features are set to 0 until precompute/seqcalc export them per player. Opposition strength (`opposition_batting_strength`, `opposition_bowling_strength`) is computed from the opposition team’s pool when available and added to the map (training does not yet include these; when extended, accuracy can improve). **Weather is no longer a model input.** C2-2b removed the weather features from `configs/feature_vectors.json` and every export query, so no model consumes them — see [weather-not-implemented.md](weather-not-implemented.md).
+
+Two remnants are deliberate and coupled, so do not remove one without the other:
+
+- go-app still writes `batting_temp`, `bowling_temp` and the rest into the prediction feature map (`training_snapshot.go`), defaulting to 0 or to the `Weather` API override.
+- `backtest_service.build_batting_features_from_map` still reads them with `_get_required_int`, which **raises** when a key is absent.
+
+So the keys are inert as far as the models are concerned — not in the contract, dropped before fitting — but the backtest path still requires them to be present. The `Weather` API parameter is accepted and plumbed through, and currently changes no prediction.
 
 ---
 
