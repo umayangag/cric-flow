@@ -41,14 +41,10 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 			COALESCE(bw.wickets, 0)::int AS innings_wickets,
 			m.format_id, COALESCE(m.venue_id, 0) AS venue_id,			mi.bowling_team_opposition_id AS opposition_id,
 			COALESCE(mf.code, '') AS format_code,
-			COALESCE(w.temp, 0) AS temp, COALESCE(w.wind, 0) AS wind, COALESCE(w.rain, 0) AS rain,
-			COALESCE(w.humidity, 0) AS humidity, COALESCE(w.cloud, 0) AS cloud, COALESCE(w.pressure, 0) AS pressure,
-			CASE WHEN w.viscosity IS NULL THEN 0 WHEN lower(w.viscosity) = 'dry' THEN 0 WHEN lower(w.viscosity) = 'humid' THEN 1 WHEN lower(w.viscosity) = 'windy' THEN 2 ELSE 0 END AS viscosity,
 			m.match_date
 		FROM match_inning mi
 		JOIN match m ON m.match_id = mi.match_id
 		LEFT JOIN match_format mf ON m.format_id = mf.id
-		LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, cloud, pressure, viscosity FROM weather_data WHERE session = 'batting' ORDER BY match_id, id DESC) w ON w.match_id = m.match_id
 		LEFT JOIN (SELECT match_id, inning_number, SUM(runs)::int AS runs FROM batting_data GROUP BY match_id, inning_number) bd ON bd.match_id = mi.match_id AND bd.inning_number = mi.inning_number
 		LEFT JOIN (SELECT match_id, inning_number, SUM(wickets)::int AS wickets FROM bowling_data GROUP BY match_id, inning_number) bw ON bw.match_id = mi.match_id AND bw.inning_number = mi.inning_number
 		WHERE ` + whereClause + `

@@ -25,7 +25,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-9 | done | `cleanup/c1-9-orphaned-go-funcs` | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
-| C2-2b | todo | | Remove the 7 weather features from the contract (unblocked by C2-2b-pre) |
+| C2-2b | done | `cleanup/c2-2b-remove-weather-features` | Remove the 7 weather features from the contract |
 | C2-2b-pre | done | `test/c2-2b-header-alignment` | Export header-alignment tests — the guard C2-2b needs |
 | C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
@@ -531,6 +531,52 @@ make go-app-check
 ## Phase 2 — Weather
 
 Blocked on **C2-1**. Written below for Option B (delete).
+
+### C2-2b — done
+
+The seven weather features are gone from every model's input. **The guard from C2-2b-pre is what made this safe** — it turned the risky part into a loop of loud failures.
+
+**What changed**
+
+| layer | change |
+|---|---|
+| `configs/feature_vectors.json` | batting 42→35, bowling 42→35, fielding 17→10 |
+| `internal/features/contract.go` | same three lists |
+| `exportqueries/*.go` | 7 columns from **each** of 11 header lists (70 entries), the matching SELECT expressions, 15 now-unused `weather_data` joins, `GROUP BY` terms, scan structs and destinations |
+| `ml/train_{batting,bowling,extras,innings,fielding}.py` | `FEATURE_COLS` entries |
+| `ml/win_features.py` | `MATCH_CONTEXT_BASE_COLS` — win cols 85→78 |
+| `app/models/{features,predict}.py` | 21 request-model fields |
+| `tests/golden/expected_headers_*.json` | regenerated from a real export (they were stale — see C2-2b-pre) |
+
+**Verified against a real database, not just a build**
+
+The export was run end to end after each round of edits. It failed loudly three times, and each failure was a real gap the guard caught:
+
+1. `number of field descriptions must equal number of destinations, got 21 and 28` — composed header sources (`baseHeaders`+`AppendSeqIfEnabled`, `battingHoldoutHeaders`) that the extraction had not covered
+2. `column m.temp does not exist` — outer queries in `extras.go`/`win.go` selecting weather from a CTE whose weather columns had gone
+3. `got 12 and 19` — `fielding.go`/`extras.go`/`win.go` use explicit `rows.Scan(&a,&b,…)` rather than `ScanToStrings`, so struct fields and destinations needed removing too
+
+Final run: **zero errors, 25 CSVs written, 0 weather columns in any of them.**
+
+```
+batting_encoded_ODI.csv   34 cols   0 weather   240 rows
+bowling_encoded_ODI.csv   33 cols   0 weather   155 rows
+extras_encoded_all.csv     9 cols   0 weather    25 rows
+fielding_encoded_all.csv  12 cols   0 weather   248 rows
+win_encoded_all.csv       64 cols   0 weather    25 rows
+```
+
+**Then trained on them.** `train_batting --all-formats` and `train_bowling --all-formats` and `train_fielding` all succeeded, and the saved metadata confirms the feature set:
+
+```
+batting_metadata_ODI.json   n_features: 38   weather in trained model: NONE
+```
+
+**Not a regression:** the per-format CSVs still lack the 4 cyclical and 8 sequence features the trainer's `FEATURE_COLS` names. That predates this change — it is the same omission set `C2-2b-pre` documented — and the relationship is unchanged, just 7 smaller on both sides.
+
+**Noted, not fixed:** `train_fielding` still writes an unsuffixed `fielding_model.joblib` alongside the per-format ones. Nothing loads it since C3-2 removed the `_LEGACY_` registry, so it is now write-only dead weight. Worth a follow-up.
+
+---
 
 ### C2-2b-pre — Export header-alignment tests
 

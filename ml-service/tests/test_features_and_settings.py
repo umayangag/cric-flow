@@ -30,13 +30,6 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         batting_trend_w5=0.05,
         batting_days_since_last=7.0,
         batting_innings_in_last_90d=10.0,
-        batting_temp=30,
-        batting_wind=5,
-        batting_rain=0,
-        batting_humidity=60,
-        batting_cloud=10,
-        batting_pressure=1000,
-        batting_viscosity=1,
         batting_inning=2,
         batting_session=3,
         toss=1,
@@ -49,8 +42,8 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
     )
     bat_vec = features_mod.batting_feature_vector(bat)
     assert bat_vec[:18] == [0.5, 1.0, 1.2, 1.1, 0.3, 0.4, 2.0, 0.0, 1.0, 1.5, 1.2, 1.0, 1.1, 50.0, 0.1, 0.05, 7.0, 10.0]
-    assert bat_vec[18:32] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 0.5, 0.866]
-    assert bat_vec[32:34] == [0.0, 1.0]  # match_day_of_week_sin/cos
+    assert bat_vec[18:25] == [2, 3, 1, 7.5, 8.5, 0.5, 0.866]
+    assert bat_vec[25:27] == [0.0, 1.0]  # match_day_of_week_sin/cos
 
     bowl = SimpleNamespace(
         bowling_mean_w3=0.8,
@@ -71,13 +64,6 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         bowling_trend_w5=0.02,
         bowling_days_since_last=5.0,
         bowling_innings_in_last_90d=8.0,
-        bowling_temp=30,
-        bowling_wind=5,
-        bowling_rain=0,
-        bowling_humidity=60,
-        bowling_cloud=10,
-        bowling_pressure=1000,
-        bowling_viscosity=1,
         batting_inning=2,
         bowling_session=3,
         toss=1,
@@ -109,8 +95,8 @@ def test_batting_and_bowling_feature_vectors_content(tmp_path):
         5.0,
         8.0,
     ]
-    assert bowl_vec[18:32] == [30, 5, 0, 60, 10, 1000, 1, 2, 3, 1, 7.5, 8.5, 0.5, 0.866]
-    assert bowl_vec[32:34] == [0.0, 1.0]  # match_day_of_week_sin/cos
+    assert bowl_vec[18:25] == [2, 3, 1, 7.5, 8.5, 0.5, 0.866]
+    assert bowl_vec[25:27] == [0.0, 1.0]  # match_day_of_week_sin/cos
 
 
 def test_feature_value_handles_none_and_non_numeric(tmp_path):
@@ -141,13 +127,6 @@ def test_feature_value_via_batting_vector_with_none_and_bad_types(tmp_path):
     bat = SimpleNamespace(
         batting_mean_w5=1.0,
         batting_std_w10=0.3,
-        batting_temp=25,
-        batting_wind=0,
-        batting_rain=0,
-        batting_humidity=50,
-        batting_cloud=0,
-        batting_pressure=1013,
-        batting_viscosity=0,
         batting_inning=1,
         batting_session=1,
         toss=0,
@@ -181,13 +160,6 @@ def test_fielding_feature_vector(tmp_path):
     fld = SimpleNamespace(
         fielding_consistency=0.6,
         fielding_form=0.3,
-        fielding_temp=28,
-        fielding_wind=2,
-        fielding_rain=0,
-        fielding_humidity=55,
-        fielding_cloud=5,
-        fielding_pressure=1010,
-        fielding_viscosity=0,
         fielding_inning=1,
         fielding_toss=1,
         fielding_venue=0.4,
