@@ -13,6 +13,7 @@ import type {
   PipelineRunResponse,
   PipelineProgressPayload,
   PipelineLane,
+  DatasetRegistryResponse,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   AutoTuneRunDetailsResponse,
@@ -185,6 +186,19 @@ export const api = {
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
+  },
+  /**
+   * The dataset registry (GET /ops/data/datasets), newest first.
+   *
+   * `live` marks the dataset currently in the data directory. It is derived from that
+   * directory's manifest rather than stored, so it stays correct when someone puts
+   * files there by other means — in which case `live_sha256` is set and no entry is
+   * marked live, meaning "the box holds a dataset this registry has never seen".
+   */
+  opsDatasets(limit = 50, options?: { signal?: AbortSignal }): Promise<DatasetRegistryResponse> {
+    const u = new URL('/ops/data/datasets', BASE_API_URL);
+    u.searchParams.set('limit', String(limit));
+    return httpApi(u.toString(), { signal: options?.signal });
   },
   /**
    * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).

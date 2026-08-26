@@ -61,6 +61,7 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/data/fetch", a.dataFetchHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/data/staged", a.dataStagedHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/data/extract", a.dataExtractHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/ops/data/datasets", a.dataDatasetsHandler).Methods(http.MethodGet, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}

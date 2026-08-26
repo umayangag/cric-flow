@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
@@ -172,4 +174,71 @@ func TestExtractCommandComesFromTheRegistry(t *testing.T) {
 	assert.Equal(t, pipelinesvc.LaneData, pipelinesvc.Steps().LaneForCommand(extractCommand))
 	assert.Equal(t, pipelinesvc.SurfaceData, step.EffectiveSurface())
 	assert.NotEmpty(t, step.Prerequisite, "extract's staged-archive precondition must be stated")
+}
+
+func TestDataDatasetsHandler_ReportsTheLiveDigestEvenWithNoRows(t *testing.T) {
+	// Not parallel: t.Setenv points the dataset directory at a temp dir.
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+	db.SetDB(nil) // no registry available; the endpoint must still answer
+
+	rec := httptest.NewRecorder()
+	(&App{}).dataDatasetsHandler(rec, httptest.NewRequest(http.MethodGet, "/ops/data/datasets", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Datasets   []map[string]any `json:"datasets"`
+		DatasetDir string           `json:"dataset_dir"`
+		LiveSHA    string           `json:"live_sha256"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, dir, body.DatasetDir)
+	assert.Empty(t, body.LiveSHA, "a directory with no manifest has no known live dataset")
+}
+
+// TestDataDatasetsHandler_ReadsTheLiveDigestFromTheManifest: which dataset is live is
+// a property of the filesystem, so the handler must read it from disk rather than a
+// column that an rsync could leave lying.
+func TestDataDatasetsHandler_ReadsTheLiveDigestFromTheManifest(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+	db.SetDB(nil)
+
+	manifest := dataacquire.ExtractResult{ArchiveSHA256: "live-digest", MatchFiles: 3}
+	encoded, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), encoded, 0o600))
+
+	rec := httptest.NewRecorder()
+	(&App{}).dataDatasetsHandler(rec, httptest.NewRequest(http.MethodGet, "/ops/data/datasets", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		LiveSHA string `json:"live_sha256"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "live-digest", body.LiveSHA)
+}
+
+func TestDatasetListLimit(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, defaultDatasetListLimit, datasetListLimit(""), "absent means the default")
+	assert.Equal(t, defaultDatasetListLimit, datasetListLimit("nonsense"))
+	assert.Equal(t, defaultDatasetListLimit, datasetListLimit("0"), "zero is not a request for none")
+	assert.Equal(t, defaultDatasetListLimit, datasetListLimit("-5"))
+	assert.Equal(t, 10, datasetListLimit(" 10 "))
+	assert.Equal(t, maxDatasetListLimit, datasetListLimit("9999"), "the cap bounds an unbounded request")
+}
+
+// TestParseTimestamp: the stamps come from results this process just produced, so a
+// parse failure is a bug — but a wrong-by-seconds value beats one that renders as
+// year 1 in every UI that touches it.
+func TestParseTimestamp(t *testing.T) {
+	t.Parallel()
+	parsed := parseTimestamp("2026-08-26T12:00:00Z")
+	assert.Equal(t, 2026, parsed.Year())
+
+	fallback := parseTimestamp("not a timestamp")
+	assert.WithinDuration(t, time.Now(), fallback, time.Minute)
+	assert.NotEqual(t, 1, fallback.Year())
 }

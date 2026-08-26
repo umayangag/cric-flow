@@ -154,6 +154,19 @@ func Extract(ctx context.Context, opts ExtractOptions) (ExtractResult, error) {
 		result.ArchiveSHA256 = prev.SHA256
 		result.SourceURL = prev.SourceURL
 		result.FeedID = prev.FeedID
+	} else {
+		// No sidecar: an operator placed this archive in staging by hand. Hashing it
+		// costs one extra read of a file already on local disk, and it is the only
+		// way the dataset registry can identify what is now live. A dataset with no
+		// digest is exactly the case P-2 has to flag, so leaving it blank here would
+		// defeat the point of recording it at all.
+		digest, err := hashFile(opts.ArchivePath)
+		if err != nil {
+			slog.Warn("dataset extract: could not digest the archive; provenance will be incomplete",
+				slog.String("archive", opts.ArchivePath), slog.Any("err", err))
+		} else {
+			result.ArchiveSHA256 = digest
+		}
 	}
 	writeManifest(opts.DestDir, result)
 
