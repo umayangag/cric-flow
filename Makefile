@@ -374,14 +374,14 @@ e2e-pytest:
 
 # Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
 ml-test:
-	cd ml-service && pytest -q tests/test_seq_reader.py tests/test_baselines.py
+	cd ml-service && $(ML_VENV_BIN)/pytest -q tests/test_seq_reader.py tests/test_baselines.py
 
 # Tiny T20 baselines using new readers on small fixtures (structure only)
 train-batting-baseline:
-	cd ml-service && $(ML_VENV_BIN)/python -c "from pathlib import Path; from ml_service.baselines import train_batting_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/batting_on.csv'; res=train_batting_from_csv(str(csv)); print('batting baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
+	cd ml-service && $(ML_VENV_BIN)/python -c "from ml.baselines import train_batting_from_csv; res=train_batting_from_csv('../tests/fixtures/exporter/t20/batting_on.csv'); print('batting baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
 
 train-bowling-baseline:
-	cd ml-service && $(ML_VENV_BIN)/python -c "from pathlib import Path; from ml_service.baselines import train_bowling_from_csv; root=Path(__file__).resolve().parents[1]; csv=root/'tests/fixtures/exporter/t20/bowling_on.csv'; res=train_bowling_from_csv(str(csv)); print('bowling baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
+	cd ml-service && $(ML_VENV_BIN)/python -c "from ml.baselines import train_bowling_from_csv; res=train_bowling_from_csv('../tests/fixtures/exporter/t20/bowling_on.csv'); print('bowling baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
 
 # --- End-to-end automation (format-aware) ---
 # Usage:

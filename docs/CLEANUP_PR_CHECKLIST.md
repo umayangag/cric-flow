@@ -20,7 +20,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-4 | done | `cleanup/c1-4-generalized-pipeline` | Remove the unused generalized-pipeline experiment |
 | C1-5 | done | `cleanup/c1-5-match-harmony` | Remove the unwired match-harmony modules |
 | C1-6 | done | `cleanup/c1-6-pre-restructure-leftovers` | Remove pre-restructure ML leftovers |
-| C1-7 | todo | | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
+| C1-7 | done | `cleanup/c1-7-fold-ml-service` | Fold `ml_service/` into `ml/` (= existing **P0-5**) |
 | C1-8 | done | `cleanup/c1-8-importer-port-layer` | Remove the unused cricsheet importer port/adapter layer |
 | C1-9 | done | `cleanup/c1-9-orphaned-go-funcs` | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
@@ -396,13 +396,33 @@ make check-all
 
 **Scope**
 
-- [ ] Decide per module whether to keep it at all: `ml_service/baselines/{batting,bowling}.py` and `ml_service/datasets/seq_reader.py` are only exercised by their own tests
-- [ ] If keeping: move to `ml/baselines/` and `ml/datasets/`, update imports in `tests/test_baselines.py` and `tests/test_seq_reader.py`
-- [ ] If not: delete the package and both test files
-- [ ] Delete the now-empty `ml-service/ml_service/`
-- [ ] Update `Makefile:374` `train-batting-baseline` and `:377` `train-bowling-baseline`, plus `ml-test`
-- [ ] Update `README.md` § "ML readers and baselines"
-- [ ] Mark **P0-5** done in `ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md`
+- [x] **Decision: move, not delete.** They are not test-only — `make train-batting-baseline` / `train-bowling-baseline` import them via `python -c`, and the root README documents them as tooling.
+- [x] Moved to `ml/baselines/` and `ml/datasets/`; imports rewritten across sources, tests and the Makefile
+- [x] `ml-service/ml_service/` gone — two top-level Python packages remain, not three
+- [x] Updated the baseline Make targets (see below), `ml-service/README.md`'s layout table, and marked **P0-5** done
+
+**The move alone fixes the Docker half of P0-5.** `Dockerfile` already does `COPY ml-service/ml ./ml`, so the packages now ship. Verified in the built image rather than assumed:
+
+```
+$ docker run --rm <image> python -c "import ml.baselines, ml.datasets"
+moved packages import inside the image
+```
+
+**Three pre-existing broken targets, fixed here.** All three are documented in the root README, and all three failed before this change:
+
+| target | was | now |
+|---|---|---|
+| `train-batting-baseline` | `NameError: name '__file__' is not defined` — `python -c` has no `__file__` | `batting baseline trained: 3 rows 10 features` |
+| `train-bowling-baseline` | same | `bowling baseline trained: 3 rows 10 features` |
+| `ml-test` | `pytest: command not found` — bare `pytest`, not the venv's | `4 passed` |
+
+Confirmed against `origin/main` that this predates the move. It also mattered: the "script entrypoint" justification for keeping `ml.baselines` is only honest if the scripts actually run.
+
+**A modelling flaw in the C7-2 script, caught by the check itself.** Allowlisting a module suppresses its own error but does **not** make it a graph root, so everything it uniquely imports still reads as dead — moving `ml.baselines` in immediately produced four false positives. Fixed properly: `SCRIPT_ENTRYPOINTS` are now roots alongside `MODULE_ENTRYPOINTS`, and `ALLOWED_UNREACHABLE` is a last resort.
+
+**Result: 79 of 79 modules reachable, empty allowlist.** The reachability gate now enforces a genuinely clean baseline rather than a grandfathered one. All four failure modes re-verified after the restructure.
+
+**Tests:** 628 passing (unchanged by the move).
 
 **Verify**
 

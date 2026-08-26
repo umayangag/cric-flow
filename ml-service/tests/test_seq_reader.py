@@ -3,7 +3,7 @@ import pathlib
 
 import numpy as np
 
-from ml_service.datasets import (
+from ml.datasets import (
     BATTING_SEQ_COLUMNS,
     BOWLING_SEQ_COLUMNS,
     build_feature_matrix,
