@@ -14,6 +14,9 @@ import type {
   PipelineProgressPayload,
   PipelineLane,
   DatasetRegistryResponse,
+  DataFeedsResponse,
+  StagedResponse,
+  OpsDataStartResponse,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   AutoTuneRunDetailsResponse,
@@ -78,6 +81,34 @@ function createHttpClient(baseUrl: string) {
 
 // Specific clients
 const httpApi = createHttpClient(BASE_API_URL);
+
+/**
+ * POST a dataset job and return status alongside body.
+ *
+ * These endpoints answer 202 on success and carry a usable message on 400 (source
+ * refused, nothing staged) and 409 (a data step already running). Throwing on
+ * non-2xx would discard exactly the part the operator needs to read — including
+ * `allowed_hosts`, which is what turns "rejected" into "here is what is allowed".
+ */
+async function postDataJob(
+  path: string,
+  body: Record<string, string | undefined>,
+): Promise<{ status: number; data: OpsDataStartResponse }> {
+  const url = `${BASE_API_URL}${path}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify(body),
+  });
+  let data: OpsDataStartResponse = {};
+  try {
+    const text = await res.text();
+    if (text) data = JSON.parse(text) as OpsDataStartResponse;
+  } catch {
+    data = { error: res.statusText || 'Invalid response' };
+  }
+  return { status: res.status, data };
+}
 
 type SSECallbacks = {
   onProgress: (step: string, message: string) => void;
@@ -186,6 +217,37 @@ export const api = {
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
+  },
+  /** Named feeds and the host allowlist (GET /ops/data/feeds). */
+  opsDataFeeds(options?: { signal?: AbortSignal }): Promise<DataFeedsResponse> {
+    return httpApi('/ops/data/feeds', { signal: options?.signal });
+  },
+  /** Archives waiting to be extracted, plus the live dataset's manifest (GET /ops/data/staged). */
+  opsDataStaged(options?: { signal?: AbortSignal }): Promise<StagedResponse> {
+    return httpApi('/ops/data/staged', { signal: options?.signal });
+  },
+  /**
+   * Start a dataset download (POST /ops/data/fetch). Pass a feed id or an explicit
+   * URL, never both — the backend refuses the ambiguity rather than picking one.
+   *
+   * Returns status and body rather than throwing, so the caller can tell 202
+   * (started) from 400 (off the allowlist) from 409 (a data step already running)
+   * and say something useful about each.
+   */
+  async opsDataFetch(body: {
+    feed?: string;
+    url?: string;
+  }): Promise<{ status: number; data: OpsDataStartResponse }> {
+    return postDataJob('/ops/data/fetch', body);
+  },
+  /**
+   * Start an extraction (POST /ops/data/extract). Omit `archive` for the newest
+   * staged archive.
+   */
+  async opsDataExtract(body: {
+    archive?: string;
+  }): Promise<{ status: number; data: OpsDataStartResponse }> {
+    return postDataJob('/ops/data/extract', body);
   },
   /**
    * The dataset registry (GET /ops/data/datasets), newest first.

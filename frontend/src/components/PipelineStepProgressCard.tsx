@@ -3,6 +3,8 @@ import { Box } from '@mui/material';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import type { PipelineStepProgress } from '../types';
+import { formatBytes } from './OpsDatasetSection';
+import { formatRate } from '../utils/datasetFormat';
 
 /** Seconds as a compact "1h 5m" / "2m 10s" / "45s". */
 export function formatElapsed(sec: number): string {
@@ -135,6 +137,65 @@ const PrecomputeDetails: React.FC<{
   );
 };
 
+/** Download progress with a determinate bar when the server declared a size. */
+const FetchDetails: React.FC<{ fetch: NonNullable<PipelineStepProgress['fetch']> }> = ({
+  fetch,
+}) => {
+  const downloaded = fetch.downloaded_bytes ?? 0;
+  const total = fetch.total_bytes ?? 0;
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+        <Typography variant="caption" color="text.secondary">
+          {formatBytes(downloaded)}
+          {total > 0 ? ` of ${formatBytes(total)}` : ''} · {formatRate(fetch.bytes_per_sec)}
+        </Typography>
+        {total > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {Math.floor((downloaded / total) * 100)}%
+          </Typography>
+        )}
+      </Box>
+      {/* No Content-Length means no percentage to claim, so the bar says "working"
+          rather than inventing a fraction. */}
+      <LinearProgress
+        variant={total > 0 ? 'determinate' : 'indeterminate'}
+        value={total > 0 ? (downloaded / total) * 100 : undefined}
+        sx={{ height: 6, borderRadius: 1 }}
+      />
+    </Box>
+  );
+};
+
+/** Extraction progress by entry count. */
+const ExtractDetails: React.FC<{ extract: NonNullable<PipelineStepProgress['extract']> }> = ({
+  extract,
+}) => {
+  const entries = extract.entries ?? 0;
+  const total = extract.entries_total ?? 0;
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
+        <Typography variant="caption" color="text.secondary">
+          {entries.toLocaleString()}
+          {total > 0 ? ` of ${total.toLocaleString()}` : ''} files ·{' '}
+          {formatBytes(extract.bytes ?? 0)}
+        </Typography>
+        {total > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            {Math.floor((entries / total) * 100)}%
+          </Typography>
+        )}
+      </Box>
+      <LinearProgress
+        variant={total > 0 ? 'determinate' : 'indeterminate'}
+        value={total > 0 ? (entries / total) * 100 : undefined}
+        sx={{ height: 6, borderRadius: 1 }}
+      />
+    </Box>
+  );
+};
+
 /**
  * One running step. The panel renders one of these per in-flight step, so nothing
  * here assumes it is the only thing running.
@@ -184,6 +245,16 @@ const PipelineStepProgressCard: React.FC<{ step: PipelineStepProgress }> = ({ st
       ))}
 
     {step.precompute && <PrecomputeDetails precompute={step.precompute} />}
+    {step.fetch && <FetchDetails fetch={step.fetch} />}
+    {step.extract && <ExtractDetails extract={step.extract} />}
+
+    {/* A data step that has started but not yet published a sample has unknown
+        progress, and unknown is not zero: rendering 0 of 0 reads as a stall. */}
+    {(step.step_id === 'fetch' || step.step_id === 'extract') && !step.fetch && !step.extract && (
+      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+        Starting…
+      </Typography>
+    )}
   </Box>
 );
 

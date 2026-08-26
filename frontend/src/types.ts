@@ -346,6 +346,81 @@ export type PipelineRunResponse = {
 };
 
 /**
+ * Response from POST /ops/data/fetch and /ops/data/extract.
+ *
+ * 202 carries the started job; 400 and 409 carry `error` plus the context needed to
+ * act on it — `allowed_hosts` for a refused source, `archives` for "nothing staged".
+ */
+export type OpsDataStartResponse = {
+  status?: string;
+  step?: string;
+  feed?: string;
+  url?: string;
+  filename?: string;
+  archive?: string;
+  dest_dir?: string;
+  error?: string;
+  allowed_hosts?: string[];
+  staging_dir?: string;
+  archives?: StagedArchive[];
+};
+
+/** A named Cricsheet archive the server will fetch, from GET /ops/data/feeds. */
+export type DataFeed = {
+  id: string;
+  label: string;
+  url: string;
+  description: string;
+};
+
+/** Payload of GET /ops/data/feeds. */
+export type DataFeedsResponse = {
+  feeds: DataFeed[];
+  /**
+   * Hosts the server will fetch from. Stated in the UI so the rule is visible before
+   * a URL is typed rather than discovered by being refused.
+   */
+  allowed_hosts: string[];
+  staging_dir: string;
+};
+
+/** A downloaded archive waiting to be extracted, from GET /ops/data/staged. */
+export type StagedArchive = {
+  filename: string;
+  bytes: number;
+  modified: string;
+  /** Provenance the fetch recorded. Absent for an archive placed there by hand. */
+  sha256?: string;
+  source_url?: string;
+  feed_id?: string;
+  fetched_at?: string;
+  last_modified?: string;
+};
+
+/** The manifest an extraction leaves in the dataset directory. */
+export type DatasetManifest = {
+  archive_path?: string;
+  archive_sha256?: string;
+  source_url?: string;
+  feed_id?: string;
+  dest_dir?: string;
+  entries?: number;
+  match_files?: number;
+  bytes?: number;
+  replaced_into?: string;
+  extracted_at?: string;
+};
+
+/** Payload of GET /ops/data/staged. */
+export type StagedResponse = {
+  staging_dir: string;
+  archives: StagedArchive[] | null;
+  dataset_dir: string;
+  /** Absent when the dataset directory has no manifest — provenance genuinely unknown. */
+  live?: DatasetManifest;
+};
+
+/**
  * One acquired dataset, from GET /ops/data/datasets.
  *
  * Optional fields are genuinely unknown rather than zero: an archive placed in

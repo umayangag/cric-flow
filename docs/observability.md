@@ -147,6 +147,24 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
   - **Polling**:
     - Uses `usePolling` to track evaluate job status while a job is running.
 
+- **`DataTab`**
+  - **Endpoints**:
+    - `GET /ops/data/feeds` (named feeds, host allowlist, staging directory).
+    - `GET /ops/data/staged` (archives available to extract, plus the live manifest).
+    - `GET /ops/data/datasets` (the dataset registry, live row marked).
+    - `POST /ops/data/fetch`, `POST /ops/data/extract` (both answer 202).
+    - `GET /ops/status` (whether a data-lane step is already running).
+  - **Displays**:
+    - Feed picker or explicit URL, with the allowlist stated before submission.
+    - Live fetch (bytes, rate, ETA) and extract (entries) progress, rendered by
+      `PipelineStepProgressCard` on the shared `/ops/pipeline/stream` SSE — there is
+      no second progress channel for acquisition.
+    - Registry table with the live dataset marked, and an explicit warning when the
+      data directory holds a dataset the registry has never seen.
+  - **Polling**:
+    - Refetches staged archives, registry and busy state every 4s while a data step
+      runs, so the tab settles by itself when the job finishes.
+
 - **`WorkbenchTab`**
   - **Endpoints**:
     - `GET /api/formats` (available formats).
