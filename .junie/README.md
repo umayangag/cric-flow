@@ -2,6 +2,22 @@
 
 This directory contains **skills** — reusable automation workflows triggered by slash commands in the Junie chat.
 
+> **`skills/*/SKILL.md` are generated. Do not edit them by hand.**
+>
+> The same seven workflows exist for Cursor in `.cursor/skills/`, in a different file
+> format (YAML frontmatter vs. the trigger line Junie expects), so they cannot be one
+> file and symlinking would break one tool. `.cursor/skills/` is the source; these are
+> generated from it by `scripts/sync-junie-skills.py`.
+>
+> ```bash
+> make sync-skills          # regenerate
+> make sync-skills-check    # fail if out of date
+> ```
+>
+> They previously drifted apart by hand, and not only cosmetically: the Junie copy of
+> `/run-check-all-incremental` still described three components and omitted the
+> `frontend-backend-sync-check` step that CI enforces.
+
 ### Available Commands
 
 | Command | Description |
@@ -51,10 +67,13 @@ See each skill's `SKILL.md` for detailed prerequisites.
 
 ### Adding a New Skill
 
-1. Create a directory under `skills/` named after the command (e.g., `skills/my-command/`).
-2. Add a `SKILL.md` file starting with a trigger line:
+1. Create the skill under **`.cursor/skills/<name>/SKILL.md`**, with frontmatter:
    ```
-   When the user says "/my-command" ...
+   ---
+   name: my-command
+   description: One line; this becomes the Junie trigger line.
+   ---
    ```
-3. Document prerequisites, step-by-step instructions, and acceptance criteria.
+2. Document prerequisites, step-by-step instructions, and acceptance criteria.
+3. Run `make sync-skills` to generate the Junie copy under `skills/<name>/`.
 4. Update this README with the new command.
