@@ -40,7 +40,7 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // pipelineRunHandler handles POST /ops/pipeline/run/:step.
-// Triggers import, precompute, export, train_*, or auto_tune (train/auto_tune via ML service); returns 202 started or 501 for train_combination_meta.
+// Triggers import, precompute, export, train_*, or auto_tune (train/auto_tune via ML service); returns 202 when the step starts.
 // Next step is only runnable after the previous completed successfully (enforced here and in /ops/status runnable).
 func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

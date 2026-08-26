@@ -231,7 +231,6 @@ help:
 	@echo "[Data & CLIs]"
 	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
-	@echo "  evaluate           Compute basic metrics (scaffold)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo
