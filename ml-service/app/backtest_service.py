@@ -12,20 +12,18 @@ except Exception:
 
 from app.logging import get_struct_logger
 
-from .models import (
-    BATTING_RAW_STAT_KEYS,
-    BOWLING_RAW_STAT_KEYS,
+from .models.backtest import (
     BacktestMatchAgg,
     BacktestMetrics,
     BacktestPlayerPred,
-    BattingFeatures,
-    BowlingFeatures,
     HistoricalMatchBacktestRequest,
     HistoricalMatchBacktestResponse,
     MatchComparison,
     PlayerComparison,
     PlayerPoint,
 )
+from .models.constants import BATTING_RAW_STAT_KEYS, BOWLING_RAW_STAT_KEYS
+from .models.features import BattingFeatures, BowlingFeatures
 
 logger = get_struct_logger()
 

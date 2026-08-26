@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from app.models import MatchReconciliationInputs
+from app.models.reconciliation import MatchReconciliationInputs
 
 
 class VariableKind(str, Enum):

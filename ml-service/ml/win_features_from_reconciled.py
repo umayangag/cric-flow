@@ -17,7 +17,7 @@ canonical inputs used by the legacy (sum-only) win model:
 
 from __future__ import annotations
 
-from app.models import WinFeatures
+from app.models.predict import WinFeatures
 
 
 def build_win_features_standardized(

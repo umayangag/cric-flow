@@ -3,7 +3,7 @@ import os
 
 from app.feature_config import get_feature_names
 from app.features import batting_feature_vector, bowling_feature_vector
-from app.models import BattingFeatures, BowlingFeatures
+from app.models.features import BattingFeatures, BowlingFeatures
 
 
 def test_batting_feature_vector_length(tmp_path):

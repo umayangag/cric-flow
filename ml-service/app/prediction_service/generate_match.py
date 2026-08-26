@@ -10,7 +10,7 @@ from ml.win_coherence_metrics import win_probability_coherence_from_margin
 from ml.win_features_from_reconciled import build_win_features_standardized
 
 from ..logging import get_struct_logger
-from ..models import InningsSummary, MatchContext
+from ..models.backtest import InningsSummary, MatchContext
 from ..prediction_settings import GenerateMatchSettings
 from .endpoints import run_win_prediction, run_win_prediction_enhanced
 from .innings import sum_team_feature
@@ -62,7 +62,7 @@ def generate_match(
     if features_map:
         t1_feats = {pid: features_map.get(pid, {}) for pid in team1_ids if pid in features_map}
         t2_feats = {pid: features_map.get(pid, {}) for pid in team2_ids if pid in features_map}
-        from .models import WinFeaturesEnhanced
+        from .models.predict import WinFeaturesEnhanced
 
         match_ctx_for_win = WinFeaturesEnhanced(
             format_id=match_context.format_id,

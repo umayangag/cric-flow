@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from app.models import BatchPredictItem
-from app.prediction_service import (
+from app.models.backtest import BatchPredictItem
+from app.prediction_service.players import (
     _assemble_player_predictions,
     _resolve_prediction_model_pairs,
     predict_players_batch,

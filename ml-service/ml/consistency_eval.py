@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
-from app.models import BacktestPlayerPred
+from app.models.backtest import BacktestPlayerPred
 
 from .consistency_checker import ReconciledPlayerStats, adjustment_magnitude
 from .reconciliation_adapter import (

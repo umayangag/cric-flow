@@ -23,10 +23,9 @@ from ..artifacts import BAT_MODELS, BOWL_MODELS, EXTRAS_META, EXTRAS_MODELS, WIN
 from ..errors import error_payload
 from ..features import batting_feature_vector, bowling_feature_vector
 from ..logging import get_struct_logger
-from ..models import (
-    BattingFeatures,
+from ..models.features import BattingFeatures, BowlingFeatures
+from ..models.predict import (
     BattingPrediction,
-    BowlingFeatures,
     BowlingPrediction,
     ExtrasFeatures,
     ExtrasPrediction,

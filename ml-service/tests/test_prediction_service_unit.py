@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from app.models import MatchContext
-from app.prediction_service import _sum_team_feature, predict_match_innings
+from app.models.backtest import MatchContext
+from app.prediction_service.innings import predict_match_innings, sum_team_feature
 
 
 def test_sum_team_feature_empty_ids():
-    """_sum_team_feature with empty ids returns (0, 0)."""
+    """sum_team_feature with empty ids returns (0, 0)."""
     features_map = {"1": {"batting_std_w10": 1.0, "bowling_std_w10": 2.0}}
-    bat_sum, bowl_sum = _sum_team_feature(features_map, set(), "batting_std_w10", "bowling_std_w10")
+    bat_sum, bowl_sum = sum_team_feature(features_map, set(), "batting_std_w10", "bowling_std_w10")
     assert bat_sum == 0.0
     assert bowl_sum == 0.0
 
@@ -19,7 +19,7 @@ def test_sum_team_feature_empty_ids():
 def test_sum_team_feature_missing_player_uses_defaults():
     """Missing player id in features_map contributes 0."""
     features_map = {"1": {"batting_std_w10": 3.0, "bowling_std_w10": 4.0}}
-    bat_sum, bowl_sum = _sum_team_feature(features_map, {1, 999}, "batting_std_w10", "bowling_std_w10")
+    bat_sum, bowl_sum = sum_team_feature(features_map, {1, 999}, "batting_std_w10", "bowling_std_w10")
     assert bat_sum == 3.0
     assert bowl_sum == 4.0
 
@@ -27,18 +27,18 @@ def test_sum_team_feature_missing_player_uses_defaults():
 def test_sum_team_feature_missing_key_uses_zero():
     """Missing key in feature dict contributes 0."""
     features_map = {"1": {"batting_std_w10": 1.5}}
-    bat_sum, bowl_sum = _sum_team_feature(features_map, {1}, "batting_std_w10", "bowling_std_w10")
+    bat_sum, bowl_sum = sum_team_feature(features_map, {1}, "batting_std_w10", "bowling_std_w10")
     assert bat_sum == 1.5
     assert bowl_sum == 0.0
 
 
 def test_sum_team_feature_sums_multiple_players():
-    """_sum_team_feature sums batting and bowling keys across players."""
+    """sum_team_feature sums batting and bowling keys across players."""
     features_map = {
         "1": {"batting_std_w10": 1.0, "bowling_std_w10": 2.0},
         "2": {"batting_std_w10": 3.0, "bowling_std_w10": 4.0},
     }
-    bat_sum, bowl_sum = _sum_team_feature(features_map, {1, 2}, "batting_std_w10", "bowling_std_w10")
+    bat_sum, bowl_sum = sum_team_feature(features_map, {1, 2}, "batting_std_w10", "bowling_std_w10")
     assert bat_sum == 4.0
     assert bowl_sum == 6.0
 

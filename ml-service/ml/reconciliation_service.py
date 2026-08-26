@@ -17,7 +17,7 @@ from typing import Dict, Mapping
 
 import numpy as np
 
-from app.models import MatchReconciliationInputs
+from app.models.reconciliation import MatchReconciliationInputs
 
 from .config import get_reconciliation_config
 from .reconciliation_core import ProblemBuilder, VariableKind

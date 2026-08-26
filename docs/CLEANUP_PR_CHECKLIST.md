@@ -34,7 +34,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
 | C6-1 | done | `cleanup/c6-1-one-api-client` | Frontend: one API client |
-| C6-2 | todo | | Remove the `app/` compatibility re-export shims |
+| C6-2 | done | `cleanup/c6-2-drop-app-shims` | Remove the `app/` compatibility re-export shims |
 | C6-3 | todo | | Split the serving image from the training image |
 | C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
 | C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
@@ -870,11 +870,16 @@ make frontend-check
 
 **Scope**
 
-- [ ] Update every importer of `app.models` to import from `app.models.predict` / `.backtest` / `.features` / `.reconciliation` / `.constants`
-- [ ] Update every importer of `app.prediction_service` to import from `.endpoints` / `.players` / `.innings` / `.generate_match`
-- [ ] Reduce both `__init__.py` files to a docstring
-- [ ] Have tests import the private helpers from their real modules; drop the `_sum_team_feature` alias
-- [ ] Note the completion under P0-2/P0-3 in `ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md`
+- [x] Rewrote **35 import statements** across `app/`, `ml/` and `tests/` to target the real submodules. Done mechanically: an AST pass built a symbol→submodule map from each package's members, then regrouped every `from app.models import A, B, C` by where the symbols actually live.
+- [x] Both `__init__.py` files reduced to a 7-line docstring, **zero imports**
+- [x] `tests/test_prediction_service_unit.py` now imports `sum_team_feature` from `app.prediction_service.innings`; the `_sum_team_feature` alias is gone. `_assemble_player_predictions` / `_resolve_prediction_model_pairs` come from `app.prediction_service.players` directly.
+- [x] Marked P0-2/P0-3 complete in `ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md`
+
+**The plan undercounted the blast radius.** It listed `app/` and tests. `ml/` also imported `app.models` in five places — `reconciliation_service`, `reconciliation_core`, `reconciliation_adapter`, `consistency_eval`, `win_features_from_reconciled` — and those only surfaced when the shim was emptied and the app failed to import.
+
+That is **P0-1's `ml` ↔ `app` cycle** in concrete form: `ml/` reaching into `app.models` for Pydantic DTOs. Not fixed here (P0-1 wants a neutral `contracts` package), but the imports are now explicit about which module they cross into, which makes that refactor easier to scope.
+
+**Tests:** 628 passing, unchanged — this is a pure import rewrite.
 
 **Verify**
 

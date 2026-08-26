@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, Optional, Tuple
 
 from ..artifacts import INNINGS_MODELS
-from ..models import MatchContext
+from ..models.backtest import MatchContext
 from ..reconciliation import predict_innings
 
 
