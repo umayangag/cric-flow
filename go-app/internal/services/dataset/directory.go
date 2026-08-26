@@ -125,3 +125,18 @@ func MatchFiles(path string) ([]string, error) {
 	sort.Strings(files)
 	return files, nil
 }
+
+// StagingDirName is the subdirectory downloads land in. An archive is never written
+// straight into the live dataset directory: a half-written download the importer can
+// see is the same silent-success trap this package exists to close.
+//
+// It sits *under* the dataset directory rather than beside it for two reasons. One
+// env var still moves everything. And staging shares a filesystem with the
+// destination, so the extract-then-rename swap A-2 needs stays atomic.
+//
+// Nothing here leaks into an import: Inspect and MatchFiles skip directories, and
+// ImportDir does not recurse, so the staging directory is invisible to all three.
+const StagingDirName = "_staging"
+
+// StagingDir returns the directory acquisition downloads into.
+func StagingDir() string { return filepath.Join(Dir(), StagingDirName) }

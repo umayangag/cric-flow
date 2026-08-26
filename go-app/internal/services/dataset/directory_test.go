@@ -108,3 +108,27 @@ func TestMatchFilesOnAMissingDirectory(t *testing.T) {
 	_, err := MatchFiles(filepath.Join(t.TempDir(), "not-there"))
 	assert.Error(t, err)
 }
+
+// TestStagingDirIsInvisibleToImport is the property the staging location depends on:
+// a downloaded archive sitting under the dataset directory must never be counted as
+// match data, or the console would report files the importer will not read.
+func TestStagingDirIsInvisibleToImport(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(DirEnvVar, dir)
+
+	staging := StagingDir()
+	require.Equal(t, filepath.Join(dir, StagingDirName), staging)
+	require.NoError(t, os.MkdirAll(staging, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "all_json.zip"), []byte("PK"), 0o600))
+	// A stray .json inside staging: a partially-extracted archive, or an operator's
+	// scratch file. Import does not recurse, so neither may the inventory.
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "match.json"), []byte("{}"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.json"), []byte("{}"), 0o600))
+
+	inv := Inspect(dir)
+	assert.Equal(t, 1, inv.MatchFiles, "only the file directly in the dataset directory counts")
+
+	files, err := MatchFiles(dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Join(dir, "real.json")}, files)
+}

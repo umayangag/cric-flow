@@ -22,6 +22,48 @@ const (
 	LaneData Lane = "data"
 )
 
+// knownLanes is every lane a step may declare. Named so the stop endpoint can
+// validate ?lane= against the same list the registry uses rather than a copy.
+var knownLanes = []Lane{LaneCompute, LaneData}
+
+// IsKnownLane reports whether the lane is one the registry uses.
+func IsKnownLane(lane Lane) bool {
+	for _, l := range knownLanes {
+		if l == lane {
+			return true
+		}
+	}
+	return false
+}
+
+// LaneNames returns the lane names, for error messages and the API surface.
+func LaneNames() []string {
+	out := make([]string, 0, len(knownLanes))
+	for _, l := range knownLanes {
+		out = append(out, string(l))
+	}
+	return out
+}
+
+// Surface names where a step is offered in the UI. It exists because the registry is
+// the single list of steps (ops plan F-1) but not every step belongs on the pipeline
+// graph: acquisition is a precondition for the pipeline, not a stage of it, and it
+// has no place in an ordering that runs import through auto-tune.
+//
+// Keeping acquisition in the same registry is what stops the lane, the label and the
+// busy-check from drifting into a second table — the failure F-1 and F-2 both fixed.
+type Surface string
+
+const (
+	// SurfacePipeline is the ordered import-to-train graph. It is the zero value, so
+	// a step only names a surface when it is not an ordinary pipeline stage.
+	SurfacePipeline Surface = "pipeline"
+
+	// SurfaceData is the dataset acquisition surface: fetch and extract. These steps
+	// are triggered from /ops/data/*, not from /ops/pipeline/run/{step}.
+	SurfaceData Surface = "data"
+)
+
 // Step is the single authoritative definition of one pipeline step.
 //
 // Before this type existed the same eleven steps were spelled out in six places —
@@ -64,6 +106,9 @@ type Step struct {
 	// Lane is the resource this step contends for. The zero value means LaneCompute,
 	// so a step only names a lane when it is not the ordinary pipeline one.
 	Lane Lane
+
+	// Surface is where the step is offered. The zero value means SurfacePipeline.
+	Surface Surface
 }
 
 // EffectiveLane returns the step's lane, defaulting to LaneCompute.
@@ -72,6 +117,14 @@ func (s Step) EffectiveLane() Lane {
 		return LaneCompute
 	}
 	return s.Lane
+}
+
+// EffectiveSurface returns the step's surface, defaulting to SurfacePipeline.
+func (s Step) EffectiveSurface() Surface {
+	if s.Surface == "" {
+		return SurfacePipeline
+	}
+	return s.Surface
 }
 
 // IsTraining reports whether the step trains a model whose hyper-parameters are
@@ -155,6 +208,19 @@ func (r *Registry) CommandsInLane(lane Lane) []string {
 	for _, s := range r.steps {
 		if s.EffectiveLane() == lane {
 			out = append(out, s.Command)
+		}
+	}
+	return out
+}
+
+// OnSurface returns the steps offered on the given surface, in registry order.
+// The pipeline graph renders OnSurface(SurfacePipeline); the Data tab renders
+// OnSurface(SurfaceData).
+func (r *Registry) OnSurface(surface Surface) []Step {
+	out := make([]Step, 0, len(r.steps))
+	for _, s := range r.steps {
+		if s.EffectiveSurface() == surface {
+			out = append(out, s)
 		}
 	}
 	return out
@@ -266,6 +332,19 @@ var defaultRegistry = NewRegistry(
 		MLEndpoint: "auto-tune",
 		Requires:   []string{"train_fielding", "train_extras", "train_win"},
 		Optional:   true,
+	},
+	// Acquisition. Declared here so the lane, the label and the busy-check come from
+	// the same place as every other step, but on SurfaceData: fetching a dataset is
+	// what you do before the pipeline, not a stage within it, so it carries no
+	// Requires and never appears on the graph.
+	Step{
+		ID:      "fetch",
+		Command: "dataset-fetch",
+		Label:   "Fetch Dataset",
+		Lane:    LaneData,
+		Surface: SurfaceData,
+		Prerequisite: "Downloads from the Cricsheet host allowlist into the staging " +
+			"directory. The server needs outbound network access.",
 	},
 )
 

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
@@ -22,6 +23,7 @@ func testReporter() *progressReporter {
 		return map[string]interface{}{"phase": "fine_tuning"}
 	}
 	r.precomputeStatus = func() precompute.Status { return precompute.Status{} }
+	r.fetchStatus = func() (dataacquire.Progress, string, bool) { return dataacquire.Progress{}, "", false }
 	return r
 }
 
@@ -155,3 +157,46 @@ func TestPrecomputeETA(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// TestFetchProgressReachesTheStream keeps acquisition on the one stream the UI
+// already listens to. A second endpoint for download progress would be a second thing
+// to connect, reconnect and keep in sync — the plan's "one stream for the UI" applies
+// to fetch as much as to the trainers.
+func TestFetchProgressReachesTheStream(t *testing.T) {
+	t.Parallel()
+	eta := int64(42)
+	r := testReporter()
+	r.fetchStatus = func() (dataacquire.Progress, string, bool) {
+		return dataacquire.Progress{
+			Downloaded:  1024,
+			Total:       4096,
+			BytesPerSec: 512,
+			ETASec:      &eta,
+		}, "https://cricsheet.org/downloads/all_json.zip", true
+	}
+
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("dataset-fetch", time.Minute)})
+	require.Len(t, payload.Steps, 1)
+	step := payload.Steps[0]
+
+	require.NotNil(t, step.Fetch)
+	assert.Equal(t, int64(1024), step.Fetch.Downloaded)
+	assert.Equal(t, int64(4096), step.Fetch.Total)
+	assert.Equal(t, int64(512), step.Fetch.BytesPerSec)
+	require.NotNil(t, step.EstimatedSec)
+	assert.Equal(t, eta, *step.EstimatedSec)
+	assert.Equal(t, "data", step.Lane, "a download must not be reported in the compute lane")
+}
+
+// TestFetchWithNoLiveSampleReportsAbsence: a job that has started but not yet written
+// a sample has unknown progress, and unknown is not zero. Rendering 0 of 0 bytes reads
+// as a stalled transfer.
+func TestFetchWithNoLiveSampleReportsAbsence(t *testing.T) {
+	t.Parallel()
+	r := testReporter()
+
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("dataset-fetch", time.Second)})
+	require.Len(t, payload.Steps, 1)
+	assert.Nil(t, payload.Steps[0].Fetch)
+	assert.Nil(t, payload.Steps[0].EstimatedSec)
+}

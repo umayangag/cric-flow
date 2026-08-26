@@ -92,6 +92,19 @@
       ]
     }
   ],
+  "data_steps": [
+    {
+      "id": "fetch",
+      "label": "Fetch Dataset",
+      "optional": false,
+      "requires": [],
+      "prerequisite": "Downloads from the Cricsheet host allowlist into the staging directory. The server needs outbound network access."
+    }
+  ],
+  "lanes": [
+    "compute",
+    "data"
+  ],
   "rejected_query_params": [
     "use_unified_model",
     "model=unified"
