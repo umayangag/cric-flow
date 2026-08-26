@@ -20,6 +20,9 @@ func NewRouter(a *App) http.Handler {
 	// Admin/Ops routes (protected by auth)
 	admin := r.NewRoute().Subrouter()
 	admin.Use(authMiddleware)
+	// Retired parameters are refused here, once, rather than in each handler that
+	// used to read them. See removed_params.go.
+	admin.Use(rejectRemovedParams)
 
 	// Precompute controls
 	admin.HandleFunc("/precompute", a.precomputeHandler).Methods(http.MethodPost, http.MethodOptions)

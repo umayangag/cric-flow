@@ -44,7 +44,6 @@ type Input struct {
 	OppositionPlayerIDs    []int64       `json:"opposition_player_ids,omitempty"`    // optional; for future batter-bowler matchup features
 	MinBowlers             int           `json:"min_bowlers,omitempty"`              // default 5
 	RequireKeeper          bool          `json:"require_keeper,omitempty"`           // default true
-	UseUnifiedModel        bool          `json:"use_unified_model,omitempty"`        // when true, use legacy unified model instead of format-specific
 	UseReconciledScorecard bool          `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
 	IncludeBothScorecards  bool          `json:"include_both_scorecards,omitempty"`  // when true, return both standard and reconciled scorecards for comparison
 }
@@ -292,12 +291,6 @@ func predictTeamsWithIntermediates(
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
 
-	// When UseUnifiedModel is true, pass empty format to ML so it uses the legacy unified model.
-	formatForPrediction := format
-	if input.UseUnifiedModel {
-		formatForPrediction = ""
-	}
-
 	formatID, fmtErr := db.GetGlobalCache().GetFormatID(ctx, format)
 	if fmtErr != nil {
 		slog.Error(
@@ -426,7 +419,7 @@ func predictTeamsWithIntermediates(
 		Team1OppositionID: opp2IDVal,
 		Team2OppositionID: opp1IDVal,
 	}
-	allPreds, err := predictor.PredictPlayers(ctx, cutoff, formatForPrediction, allIDs, allFeats, matchCtx)
+	allPreds, err := predictor.PredictPlayers(ctx, cutoff, format, allIDs, allFeats, matchCtx)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams predict failed", slog.Any("err", err))
 		return nil, nil, fmt.Errorf("predict: %w", err)
@@ -635,7 +628,7 @@ func predictTeamsWithIntermediates(
 		reconciledPlayers, in1, in2, winProb, _, errGen := reconciledGen(
 			ctx,
 			cutoff,
-			formatForPrediction,
+			format,
 			selectedIDs,
 			featuresForSelected,
 			true,

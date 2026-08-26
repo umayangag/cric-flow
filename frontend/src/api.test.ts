@@ -115,7 +115,6 @@ describe('frontend api client (DB-backed)', () => {
       limit: 50,
       cache: 'read',
       metrics: 'runs_mae',
-      use_unified_model: true,
     });
 
     const url = fetchMock.mock.calls[0][0] as string;
@@ -129,7 +128,7 @@ describe('frontend api client (DB-backed)', () => {
     expect(url).toContain('limit=50');
     expect(url).toContain('cache=read');
     expect(url).toContain('metrics=runs_mae');
-    expect(url).toContain('use_unified_model=1');
+    expect(url).not.toContain('use_unified_model');
     vi.unstubAllGlobals();
   });
 
@@ -142,7 +141,6 @@ describe('frontend api client (DB-backed)', () => {
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
     const result = await api.evaluateStart('T20', 'IND', 'AUS', 789, {
-      use_unified_model: true,
       use_latest_model: true,
     });
 
@@ -153,7 +151,7 @@ describe('frontend api client (DB-backed)', () => {
     );
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toContain('match_id=789');
-    expect(url).toContain('use_unified_model=1');
+    expect(url).not.toContain('use_unified_model');
     expect(url).toContain('use_latest_model=1');
     vi.unstubAllGlobals();
   });

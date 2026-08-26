@@ -89,8 +89,6 @@ const UpcomingMatchTab: React.FC = () => {
     setVenue,
     matchDate,
     setMatchDate,
-    predictionModel,
-    setPredictionModel,
     runSimulation,
     setRunSimulation,
     availableFormats,
@@ -189,19 +187,6 @@ const UpcomingMatchTab: React.FC = () => {
           helperText={dateError}
           fullWidth
         />
-
-        <FormControl size="small" sx={{ minWidth: 260 }}>
-          <InputLabel id="upcoming-model-label">Prediction model</InputLabel>
-          <Select
-            labelId="upcoming-model-label"
-            value={predictionModel}
-            onChange={(e) => setPredictionModel(e.target.value as 'format' | 'unified')}
-            label="Prediction model"
-          >
-            <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
-            <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
-          </Select>
-        </FormControl>
 
         <FormControlLabel
           control={

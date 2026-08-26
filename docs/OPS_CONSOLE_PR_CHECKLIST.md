@@ -1,0 +1,364 @@
+# Ops Console: run the whole pipeline from the frontend
+
+**Goal.** Acquire a new Cricsheet dataset, extract it, preprocess it and train on it
+without opening a terminal — with enough visibility while it runs that the terminal is
+not missed.
+
+**Scope decisions** (agreed before planning):
+
+| Decision | Choice | Consequence |
+|---|---|---|
+| Data source | **Fetch from a Cricsheet URL** | Backend downloads and unzips. No browser upload path, no host-path picker. Server needs outbound network |
+| Deployment | **Localhost now, remote later** | Keep the API-key middleware; but no host paths in the UI, no unbounded downloads, and SSRF/zip-slip defences land now rather than as a retrofit |
+| Visibility | **Structured milestones + metrics** | Typed events (`fold 3/5`, `RMSE 24.1`), not raw stdout. Needs each trainer instrumented; renders as real progress rather than a log tail |
+
+---
+
+## What already exists
+
+Worth stating plainly, because it is more than it looks and it changes what this plan
+has to build. Verified against `main`, not assumed:
+
+- **11 steps are already API-triggerable** — `POST /ops/pipeline/run/{step}` covers
+  `import`, `precompute`, `export`, the six `train_*`, `train_combination_meta` and
+  `auto_tune`.
+- **Order is enforced server-side.** `CanRunPipelineStep` refuses a step whose
+  predecessor has not completed successfully, and refuses a step already running.
+- **A global busy-lock exists** — `HasPipelineBusy` — so two steps cannot overlap.
+- **Cancellation works**: `POST /ops/pipeline/stop`, wired to a per-job
+  `context.CancelFunc`.
+- **Progress streams over SSE** at `GET /ops/pipeline/stream`.
+- **Run history is persisted** in `data_migrations` (`command`, `args`, `started_at`,
+  `completed_at`, `status`, `metadata` jsonb, `error_message`) and exposed at
+  `/ops/migrations`.
+- **The UI is substantial already**: `OpsPipelineGraph`, `PipelineProgressPanel`,
+  `PipelineStepDialog`, `OpsMatrix`, `OpsSuggestions`, `HealthTab`.
+
+So this is not a greenfield build. It is three specific gaps.
+
+---
+
+## The three real gaps
+
+### 1. Acquisition and extraction do not exist at all
+
+`importCricSheetHandler` reads a **server-side directory**, defaulting to `../data`.
+There is no download, no upload, no unzip anywhere in `go-app` — verified by searching
+for `archive/zip`, `multipart`, `FormFile` and outbound `http.Get`: no hits.
+
+**This is the one step that genuinely cannot be done from the frontend today.** Getting
+a new dataset onto the box is a terminal task by construction.
+
+### 2. Log visibility is structurally blocked, not merely unbuilt
+
+`training_orchestrator.run_training_subprocess` calls:
+
+```python
+proc = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=timeout_sec)
+```
+
+`capture_output=True` buffers everything until exit. On success the output is
+**discarded**; on failure only a **tail** is logged. During a ten-minute training run
+there is nothing to observe, anywhere, at any fidelity.
+
+No amount of frontend work fixes this. The subprocess invocation has to change.
+
+### 3. Progress is step-level, single-slot, and manual
+
+- Only `precompute` reports real progress (formats, phase, ETA). Every other step shows
+  a label and an elapsed counter.
+- The SSE handler reports `inProgress[0]` — **one** running step, even though the
+  history table can hold several.
+- Nothing chains. `make up-all` and `make full-pipeline` have no API equivalent, so a
+  full run is eleven manual clicks with waiting in between.
+
+---
+
+## The pattern to build on
+
+`auto_tune` already solved the hard part of cross-process progress, and it is worth
+copying rather than reinventing:
+
+- `ml/auto_tune_progress.py` writes progress to a JSON file.
+- `training_orchestrator.get_auto_tune_progress()` reads that file.
+- `GET /admin/train/auto-tune/progress` serves it.
+
+A subprocess cannot push into its parent's memory, but it can write a file. Generalising
+this one module into a shared progress channel used by every trainer is the smallest
+change that delivers the agreed fidelity, and it keeps one mechanism instead of two.
+
+---
+
+## Status
+
+| ID | Status | Branch / PR | Summary |
+|----|--------|-------------|---------|
+| F-1 | done | `ops/pr1-ui-honesty` | `train_combination_meta` missing from the frontend step list |
+| F-2 | todo | | SSE reports only one in-flight step |
+| F-3 | todo | | Make the dataset directory a first-class, observable thing |
+| A-1 | todo | | `POST /ops/data/fetch` — download a Cricsheet archive |
+| A-2 | todo | | `POST /ops/data/extract` — unzip into the data directory |
+| A-3 | todo | | Dataset registry: what is on disk and where it came from |
+| A-4 | todo | | Frontend: Data tab — feeds, fetch, extract, registry |
+| O-1 | todo | | Generalise `auto_tune_progress` into a shared progress channel |
+| O-2 | todo | | Instrument the six trainers to emit milestones and metrics |
+| O-3 | todo | | Serve generalised progress; fold into the existing SSE stream |
+| O-4 | todo | | Persist final metrics to `data_migrations.metadata` |
+| O-5 | todo | | Frontend: per-step progress, metrics, run-history drill-down |
+| R-1 | todo | | Server-side run-plan executor (chaining, stop-on-failure, resume) |
+| R-2 | todo | | `POST /ops/pipeline/run-plan` and plan status |
+| R-3 | todo | | Frontend: "Run full pipeline" with per-step live state |
+| P-1 | todo | | Stamp dataset provenance into exports and model sidecars |
+| P-2 | todo | | Show which dataset produced which model |
+
+**Recommended order:** F → A → O → R → P. F is trivial and makes the UI honest. A
+removes the only impossible-from-UI step. O makes long runs tolerable to watch. R is
+convenience on top of a working system. P is the payoff that makes results explainable.
+
+---
+
+## Phase F — Foundation
+
+Small, and each makes something currently misleading correct.
+
+### F-1 · `train_combination_meta` missing from the frontend step list
+
+**Why:** C5-2 implemented the backend step and the go-app handler, but
+`frontend/src/utils/pipelineSteps.ts` was never extended. The backend accepts the step;
+the UI does not offer it. This is a gap introduced by the cleanup work, not a pre-existing one.
+
+- [x] Add the step to `pipelineSteps.ts` after `train_win`/`train_innings`
+- [x] Mark it optional — it needs `backtest_contributions.csv`, and returns
+      400 `CONTRIBUTIONS_CSV_MISSING` without it
+- [x] Surface that 400 as an actionable message naming the producing action, not a red toast
+      (`Step.Prerequisite` in the registry, shown in `PipelineStepDialog` before the run;
+      `pipelinesvc.MLError` keeps ml-service's `{code, message, hint}` intact in
+      `data_migrations.error_message` instead of flattening it)
+- [x] Reflect it in `OpsPipelineGraph` (the graph renders `derivePipelineSteps`, so
+      adding the step there is the whole change)
+
+**Done by:** a single step registry (`go-app/internal/services/pipeline/registry.go`) that
+replaces the six parallel step tables — two switches in the run handler, three maps in
+`services/pipeline`, two in `opsstatus`. `contracts/ops-console.contract.json` is generated
+from it and asserted from both sides.
+
+**Acceptance:** every step the backend accepts appears in the UI, and vice versa.
+**Verify:** a test asserting the UI step-id list matches the backend's accepted set —
+otherwise this drifts again.
+
+### F-2 · SSE reports only one in-flight step
+
+**Why:** `pipelineProgressStreamHandler` takes `inProgress[0]`. With the current global
+busy-lock that is *usually* true, but it is an assumption baked into the transport,
+and R-1 (chaining) will make it false.
+
+- [ ] Change the payload to carry a list of running steps, not a single one
+- [ ] Keep a compatible shape for the existing panel, or migrate it in the same PR
+- [ ] Decide explicitly whether `fetch`/`extract` share the training busy-lock
+      (recommendation: **no** — downloading should not block a training run)
+
+**Risk:** the payload is consumed by `PipelineProgressPanel`; change both together.
+
+### F-3 · Make the dataset directory a first-class, observable thing
+
+**Why:** the data location is a defaulted string (`"../data"`) buried in a handler.
+Nothing reports what is in it. Acquisition needs this to exist first.
+
+- [ ] Promote the data directory to config, with an env override
+- [ ] Add it to `/ops/status`: path, file count, total bytes, newest file mtime
+- [ ] Show it in the Ops UI
+
+**Acceptance:** you can tell from the browser whether there is any data on the box.
+
+---
+
+## Phase A — Acquisition
+
+The part that removes the terminal from the loop.
+
+### A-1 · `POST /ops/data/fetch`
+
+Download a Cricsheet archive to a staging directory as a tracked background job.
+
+- [ ] Background job via `pipeline.RunJob`, like every other step — returns 202, not a
+      held-open request. A large archive over a slow link must not be request-scoped
+- [ ] Named feeds (`all`, `t20s`, `odis`, `tests`, …) resolved server-side to URLs,
+      plus an optional explicit URL
+- [ ] Report bytes-downloaded / total / rate through the progress channel
+- [ ] Write to `data/_staging/`, never directly into the live data directory
+- [ ] Record source URL, HTTP `ETag`/`Last-Modified`, size and SHA-256 in job metadata
+
+**Defences that land now, not later** — because "remote later" was the answer:
+
+| Risk | Mitigation |
+|---|---|
+| **SSRF** — arbitrary server-side fetch | Host **allowlist** (`cricsheet.org` and its CDN). Reject redirects that leave it. Never fetch a bare user-supplied host |
+| **Disk exhaustion** | Check free space before starting; hard cap on `Content-Length`; abort and clean up staging on overrun |
+| **Silent truncation** | Verify the byte count and record the digest. A short read must fail loudly — this is exactly the `--fail`-less-curl bug from C1-2, in new clothes |
+| **Wasted re-download** | Send `If-None-Match`; treat 304 as success with "already current" |
+
+### A-2 · `POST /ops/data/extract`
+
+- [ ] Unzip from staging into the data directory as a tracked job with entry-count progress
+- [ ] **Zip-slip defence is mandatory.** Reject any entry whose cleaned path escapes the
+      destination root. Reject absolute paths, `..` segments and symlink entries.
+      This is the single highest-severity item in this plan
+- [ ] Cap total uncompressed bytes and entry count — a zip bomb must be refused, not survived
+- [ ] Extract to a temporary sibling and swap on success, so a failed extract cannot
+      leave the data directory half-updated
+- [ ] Write a manifest: entry count, bytes, source archive digest, completion time
+
+**Acceptance:** a malicious archive (traversal entry, symlink, bomb) is rejected with a
+clear error and leaves no files outside the destination. Write these as tests with
+crafted fixtures — do not assume the stdlib refuses on your behalf, `archive/zip` does not.
+
+### A-3 · Dataset registry
+
+- [ ] Persist one row per acquired dataset: feed, source URL, digest, fetched-at,
+      extracted-at, entry count, bytes
+- [ ] `GET /ops/data/datasets`
+- [ ] Mark which dataset is currently live in the data directory
+
+**Why it matters:** without this, P-1/P-2 have nothing to reference, and
+"which data produced this model?" stays unanswerable.
+
+### A-4 · Frontend: Data tab
+
+- [ ] Feed picker plus optional URL, with the allowlist rule stated in the UI
+- [ ] Live fetch progress (bytes, rate, ETA) and extract progress (entries)
+- [ ] Registry table with the live dataset marked
+- [ ] "Fetch → Extract → Import" offered as a sequence once R-1 exists
+
+---
+
+## Phase O — Observability
+
+Agreed fidelity: **structured milestones and metrics**, not raw stdout.
+
+### O-1 · Generalise the progress channel
+
+**Why:** `ml/auto_tune_progress.py` already does file-backed cross-process progress
+correctly. Generalise it once rather than growing a second mechanism.
+
+- [ ] Extract a shared module: `set_progress_file`, `emit(event)`, `clear`
+- [ ] One progress file **per run**, not one global file — concurrent or successive runs
+      must not overwrite each other's state
+- [ ] Typed event schema, versioned from the start:
+
+```json
+{ "v": 1, "run_id": "...", "step": "train_batting", "phase": "cv",
+  "current": 3, "total": 5, "metrics": {"rmse": 24.1}, "ts": "..." }
+```
+
+- [ ] Keep `auto_tune` working on the generalised module — do not leave two paths
+- [ ] Writes must be atomic (temp file + rename) so a reader never sees a partial JSON
+
+### O-2 · Instrument the six trainers
+
+- [ ] `train_batting`, `train_bowling`, `train_fielding`, `train_extras`, `train_win`,
+      `train_innings` emit: data loaded (rows, columns), CV fold progress, per-fold and
+      final metrics, artifact written (path, bytes)
+- [ ] Also emit the **dropped low-variance columns** — that is where a silently constant
+      feature like `weather_composite` becomes visible instead of being quietly discarded
+- [ ] Emission must never break training: wrap in try/except, log and continue
+
+**Note:** `run_training_subprocess` keeps `capture_output=True`. Raw output stays out of
+scope by the fidelity decision — the events carry the signal. Revisit only if the
+milestones prove insufficient in practice.
+
+### O-3 · Serve and stream the progress
+
+- [ ] Generalise the auto-tune progress endpoint to `GET /admin/train/progress?run_id=`
+- [ ] go-app polls it while a training step is in flight and folds the events into the
+      existing `/ops/pipeline/stream` SSE payload — **one** stream for the UI, not two
+- [ ] Handle the ml-service-unreachable case as *unknown*, not as failure
+
+### O-4 · Persist final metrics
+
+- [ ] On completion, write the final metrics into `data_migrations.metadata` (already
+      `jsonb`, already the run-history table — no new table needed)
+- [ ] Include the dataset digest from A-3 to close the provenance loop
+- [ ] Extend `/ops/migrations` to return it
+
+### O-5 · Frontend
+
+- [ ] Real per-step progress bars driven by `current`/`total`
+- [ ] Metrics panel per run; highlight change against the previous run of the same step
+- [ ] Run-history drill-down: args, metrics, error, dataset used
+- [ ] Keep the failure message actionable — the 400 `CONTRIBUTIONS_CSV_MISSING` pattern
+      from C5-2 is the model to follow
+
+---
+
+## Phase R — Run orchestration
+
+### R-1 · Run-plan executor
+
+- [ ] Server-side sequential executor over an ordered step list
+- [ ] Stop on first failure, leaving the plan resumable from the failed step
+- [ ] Reuse `CanRunPipelineStep` for ordering rather than duplicating the rules
+- [ ] Persist plan state so a page reload — or a browser closed overnight — does not
+      lose the run
+- [ ] Cancellation must stop the plan, not just the current step
+
+### R-2 · API
+
+- [ ] `POST /ops/pipeline/run-plan` accepting a named plan (`full`, `retrain-only`,
+      `data-refresh`) or an explicit step list
+- [ ] `GET /ops/pipeline/plan` for current plan state
+- [ ] `POST /ops/pipeline/stop` extended to stop the plan
+
+**This is the API equivalent of `make up-all` / `make full-pipeline`**, which C5-3
+documented as existing only in the Makefile. It closes that asymmetry.
+
+### R-3 · Frontend
+
+- [ ] One "Run full pipeline" action with per-step live state
+- [ ] Resume-from-failure without restarting from the top
+- [ ] Show the plan even when it was started from another tab
+
+---
+
+## Phase P — Provenance
+
+The payoff: results become explainable.
+
+### P-1 · Stamp provenance
+
+- [ ] Record the dataset digest in the export manifest
+- [ ] Carry it into each model's sidecar metadata alongside `feature_names`
+- [ ] Include the training cutoff, which already varies per run
+
+### P-2 · Surface it
+
+- [ ] Workbench shows, per model: dataset, cutoff, metrics, trained-at
+- [ ] Flag models trained on a dataset that is no longer the live one
+
+---
+
+## Cross-cutting risks
+
+| Risk | Why it matters here | Handling |
+|---|---|---|
+| **Zip-slip** | A crafted archive writes outside the data directory. `archive/zip` does **not** protect you | Mandatory path sanitisation + tests with crafted fixtures (A-2) |
+| **SSRF** | Server-side fetch of a user-supplied URL. Harmless on localhost, not harmless once remote | Host allowlist from day one, redirects re-checked (A-1) |
+| **Disk exhaustion** | Cricsheet archives are large and expand further | Free-space precheck, size caps, staged extract with swap |
+| **Long jobs vs. HTTP** | Downloads and training outlive any sane request timeout | Everything is a tracked background job returning 202 — the existing pattern |
+| **Progress file races** | Two runs writing one file corrupts both | One file per run, atomic temp-and-rename writes (O-1) |
+| **Partial data directory** | A failed extract leaves an inconsistent dataset that imports "successfully" | Extract to a sibling, swap on success only |
+| **Silent success** | The failure mode this repo has already been bitten by twice — `make precompute` 401ing with exit 0, `.down.sql` applied forward | Every new step verifies its own postcondition: bytes match digest, entry count matches manifest, artifact exists and is non-empty |
+
+---
+
+## What this plan deliberately does not do
+
+- **No raw log streaming.** Ruled out by the fidelity decision. If the milestones turn
+  out to be insufficient, the smallest follow-up is switching
+  `run_training_subprocess` to `Popen` with incremental reads and a per-run log sink —
+  noted, not built.
+- **No browser upload path.** Fetch-from-URL was the chosen source. The staging and
+  extraction machinery in A-2 would serve an upload later without redesign.
+- **No multi-user concurrency model.** "Localhost now" — but the global busy-lock and
+  per-run progress files mean nothing here has to be unpicked to add one.
+- **No scheduling / cron.** Once R-2 exists, a scheduled full run is a thin wrapper, and
+  it is a different problem.

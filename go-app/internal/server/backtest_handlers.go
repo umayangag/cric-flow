@@ -88,12 +88,11 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 type BacktestProgressFunc func(step, message string)
 
 // doEvaluateWork runs the default evaluate pipeline (no use_ml=1). Progress is called after each step when non-nil.
-// When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
 // When useLatestModel is true, ML uses the latest available model (may include post-cutoff training data); otherwise strict temporal cutoff.
 func doEvaluateWork(
 	ctx context.Context,
 	format, team1, team2, matchID string,
-	useUnifiedModel, useLatestModel bool,
+	useLatestModel bool,
 	progress BacktestProgressFunc,
 ) (*backtestEvaluateResponse, error) {
 	mid, err := strconv.ParseInt(matchID, 10, 64)
@@ -128,11 +127,7 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting, bowling, fielding when loaded)...")
 	}
-	formatForPrediction := format
-	if useUnifiedModel {
-		formatForPrediction = ""
-	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, formatForPrediction, squad, features, useLatestModel, nil)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features, useLatestModel, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -187,18 +182,6 @@ func doEvaluateWork(
 		progress("done", "Evaluation complete.")
 	}
 	return &resp, nil
-}
-
-// parseUseUnifiedModel reads use_unified_model or model=unified from the request (query or JSON body when applicable).
-func parseUseUnifiedModel(r *http.Request, defaultVal bool) bool {
-	q := r.URL.Query()
-	if v := strings.TrimSpace(q.Get("use_unified_model")); v == "1" || strings.EqualFold(v, "true") {
-		return true
-	}
-	if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
-		return true
-	}
-	return defaultVal
 }
 
 // parseUseLatestModel reads use_latest_model from the request (query or JSON body when applicable).
@@ -261,9 +244,8 @@ func (a *App) handleBacktestEvaluate(
 		return
 	}
 
-	useUnified := parseUseUnifiedModel(r, false)
 	useLatest := parseUseLatestModel(r, false)
-	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useUnified, useLatest, nil)
+	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useLatest, nil)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -306,7 +288,6 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 				"format": params.Format, "team1": params.Team1, "team2": params.Team2,
 				"start_date": params.RawStart, "end_date": params.RawEnd,
 				"order": params.Order, "limit": params.Limit,
-				"use_unified_model": params.UseUnifiedModel,
 			},
 			Count:       0,
 			Results:     []accuracyTrendItem{},
@@ -329,7 +310,6 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 		params.IncludePlayer,
 		params.IncludeTeam,
 		params.Cache,
-		params.UseUnifiedModel,
 		concurrency,
 	)
 
@@ -338,7 +318,6 @@ func (a *App) backtestAccuracyTrendHandler(w http.ResponseWriter, r *http.Reques
 			"format": params.Format, "team1": params.Team1, "team2": params.Team2,
 			"start_date": params.RawStart, "end_date": params.RawEnd,
 			"order": params.Order, "limit": params.Limit,
-			"use_unified_model": params.UseUnifiedModel,
 		},
 		Count:       len(results),
 		Results:     results,

@@ -22,37 +22,35 @@ type evalJobStep struct {
 
 // evalJobStatusResponse is the JSON shape for evaluate-status; no mutex so it is safe to copy.
 type evalJobStatusResponse struct {
-	JobID           string                    `json:"job_id"`
-	MatchID         string                    `json:"match_id"`
-	Format          string                    `json:"format"`
-	Team1           string                    `json:"team1"`
-	Team2           string                    `json:"team2"`
-	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
-	UseLatestModel  bool                      `json:"use_latest_model,omitempty"`
-	Status          string                    `json:"status"` // "running" | "done" | "error"
-	Steps           []evalJobStep             `json:"steps,omitempty"`
-	Result          *backtestEvaluateResponse `json:"result,omitempty"`
-	Error           string                    `json:"error,omitempty"`
-	CreatedAt       time.Time                 `json:"created_at"`
-	UpdatedAt       time.Time                 `json:"updated_at"`
+	JobID          string                    `json:"job_id"`
+	MatchID        string                    `json:"match_id"`
+	Format         string                    `json:"format"`
+	Team1          string                    `json:"team1"`
+	Team2          string                    `json:"team2"`
+	UseLatestModel bool                      `json:"use_latest_model,omitempty"`
+	Status         string                    `json:"status"` // "running" | "done" | "error"
+	Steps          []evalJobStep             `json:"steps,omitempty"`
+	Result         *backtestEvaluateResponse `json:"result,omitempty"`
+	Error          string                    `json:"error,omitempty"`
+	CreatedAt      time.Time                 `json:"created_at"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
 }
 
 // evalJobState holds the state of a single evaluate job (in-memory; survives refresh, not server restart).
 type evalJobState struct {
-	mu              sync.Mutex
-	JobID           string                    `json:"job_id"`
-	MatchID         string                    `json:"match_id"`
-	Format          string                    `json:"format"`
-	Team1           string                    `json:"team1"`
-	Team2           string                    `json:"team2"`
-	UseUnifiedModel bool                      `json:"use_unified_model,omitempty"`
-	UseLatestModel  bool                      `json:"use_latest_model,omitempty"`
-	Status          string                    `json:"status"` // "running" | "done" | "error"
-	Steps           []evalJobStep             `json:"steps,omitempty"`
-	Result          *backtestEvaluateResponse `json:"result,omitempty"`
-	Error           string                    `json:"error,omitempty"`
-	CreatedAt       time.Time                 `json:"created_at"`
-	UpdatedAt       time.Time                 `json:"updated_at"`
+	mu             sync.Mutex
+	JobID          string                    `json:"job_id"`
+	MatchID        string                    `json:"match_id"`
+	Format         string                    `json:"format"`
+	Team1          string                    `json:"team1"`
+	Team2          string                    `json:"team2"`
+	UseLatestModel bool                      `json:"use_latest_model,omitempty"`
+	Status         string                    `json:"status"` // "running" | "done" | "error"
+	Steps          []evalJobStep             `json:"steps,omitempty"`
+	Result         *backtestEvaluateResponse `json:"result,omitempty"`
+	Error          string                    `json:"error,omitempty"`
+	CreatedAt      time.Time                 `json:"created_at"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
 }
 
 func (s *evalJobState) appendStep(step, message string) {
@@ -84,19 +82,18 @@ func (s *evalJobState) snapshot() evalJobStatusResponse {
 	stepsCopy := make([]evalJobStep, len(s.Steps))
 	copy(stepsCopy, s.Steps)
 	return evalJobStatusResponse{
-		JobID:           s.JobID,
-		MatchID:         s.MatchID,
-		Format:          s.Format,
-		Team1:           s.Team1,
-		Team2:           s.Team2,
-		UseUnifiedModel: s.UseUnifiedModel,
-		UseLatestModel:  s.UseLatestModel,
-		Status:          s.Status,
-		Steps:           stepsCopy,
-		Result:          s.Result,
-		Error:           s.Error,
-		CreatedAt:       s.CreatedAt,
-		UpdatedAt:       s.UpdatedAt,
+		JobID:          s.JobID,
+		MatchID:        s.MatchID,
+		Format:         s.Format,
+		Team1:          s.Team1,
+		Team2:          s.Team2,
+		UseLatestModel: s.UseLatestModel,
+		Status:         s.Status,
+		Steps:          stepsCopy,
+		Result:         s.Result,
+		Error:          s.Error,
+		CreatedAt:      s.CreatedAt,
+		UpdatedAt:      s.UpdatedAt,
 	}
 }
 
@@ -193,7 +190,7 @@ func evalJobCleanup() {
 func startEvaluateJob(
 	ctx context.Context,
 	format, team1, team2, matchID string,
-	useUnifiedModel, useLatestModel bool,
+	useLatestModel bool,
 ) (string, error) {
 	jobID, err := generateEvalJobID()
 	if err != nil {
@@ -202,17 +199,16 @@ func startEvaluateJob(
 	}
 	now := time.Now()
 	job := &evalJobState{
-		JobID:           jobID,
-		MatchID:         matchID,
-		Format:          format,
-		Team1:           team1,
-		Team2:           team2,
-		UseUnifiedModel: useUnifiedModel,
-		UseLatestModel:  useLatestModel,
-		Status:          "running",
-		Steps:           nil,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		JobID:          jobID,
+		MatchID:        matchID,
+		Format:         format,
+		Team1:          team1,
+		Team2:          team2,
+		UseLatestModel: useLatestModel,
+		Status:         "running",
+		Steps:          nil,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	evalJobStoreMu.Lock()
 	evalJobStore[jobID] = job
@@ -229,7 +225,6 @@ func startEvaluateJob(
 			slog.String("team1", team1),
 			slog.String("team2", team2),
 			slog.String("match_id", matchID),
-			slog.Bool("use_unified_model", useUnifiedModel),
 			slog.Bool("use_latest_model", useLatestModel),
 		)
 		// Detach from request context so job is not cancelled when we return 202; use a long
@@ -245,7 +240,6 @@ func startEvaluateJob(
 			team1,
 			team2,
 			matchID,
-			job.UseUnifiedModel,
 			job.UseLatestModel,
 			progress,
 		)

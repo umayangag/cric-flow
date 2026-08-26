@@ -3,176 +3,129 @@ package opsstatus
 import (
 	"context"
 	"log/slog"
+	"strings"
 
+	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
-// Pipeline step IDs and their corresponding data_migrations command names.
-var pipelineStepCommands = map[string]string{
-	"import":                 "cricsheet-import",
-	"precompute":             "precompute-features",
-	"export":                 "export-dataset",
-	"train_batting":          "train-batting",
-	"train_bowling":          "train-bowling",
-	"train_fielding":         "train-fielding",
-	"train_extras":           "train-extras",
-	"train_win":              "train-win",
-	"train_innings":          "train-innings",
-	"train_combination_meta": "train-combination-meta",
-	"auto_tune":              "ml-auto-tune",
+// stepGate answers "may this step start, and is it finished?" for one step, using
+// the run history in data_migrations. It exists so BuildPipelineSection and
+// CanRunPipelineStep share one set of rules instead of two that drift apart.
+type stepGate struct {
+	ctx        context.Context
+	registry   *pipelinesvc.Registry
+	inProgress map[string]bool
 }
 
-// pipelineStepPreviousCommand defines the run order.
-var pipelineStepPreviousCommand = map[string]string{
-	"import":                 "",
-	"precompute":             "cricsheet-import",
-	"export":                 "precompute-features",
-	"train_batting":          "export-dataset",
-	"train_bowling":          "export-dataset",
-	"train_fielding":         "export-dataset",
-	"train_extras":           "export-dataset",
-	"train_win":              "export-dataset",
-	"train_innings":          "export-dataset",
-	"train_combination_meta": "train-win",
-	"auto_tune":              "train-fielding",
-}
-
-// BuildPipelineSection returns a map with "steps" (per-step running, runnable) for /ops/status.
-func BuildPipelineSection(ctx context.Context) map[string]any {
+// newStepGate loads the in-flight commands once so a whole-pipeline pass does not
+// re-query for every step.
+func newStepGate(ctx context.Context) *stepGate {
 	inProgress, err := tracking.InProgressByCommand(ctx)
 	if err != nil {
 		slog.Warn("pipeline: InProgressByCommand failed", "err", err)
 		inProgress = map[string]bool{}
 	}
+	return &stepGate{ctx: ctx, registry: pipelinesvc.Steps(), inProgress: inProgress}
+}
 
-	steps := map[string]any{}
-	for stepID, command := range pipelineStepCommands {
-		running := inProgress[command]
-		completed, err := tracking.HasCompletedSuccessfullyForCommand(ctx, command)
-		if err != nil {
-			slog.Warn(
-				"pipeline: HasCompletedSuccessfullyForCommand failed",
-				"step",
-				stepID,
-				"command",
-				command,
-				"err",
-				err,
-			)
-			completed = false
-		}
-		runnable := !running
-		if runnable {
-			prevCmd := pipelineStepPreviousCommand[stepID]
-			if prevCmd != "" {
-				prevDone, err := tracking.HasCompletedSuccessfullyForCommand(ctx, prevCmd)
-				if err != nil {
-					slog.Warn(
-						"pipeline: HasCompletedSuccessfullyForCommand failed",
-						"step",
-						stepID,
-						"prev",
-						prevCmd,
-						"err",
-						err,
-					)
-					runnable = false
-				} else {
-					runnable = prevDone
-				}
-			}
-		}
-		if stepID == "import" {
-			runnable = !running
-		}
-		steps[stepID] = map[string]any{"running": running, "runnable": runnable, "completed": completed}
-	}
+// running reports whether the step currently has a run in flight.
+func (g *stepGate) running(step pipelinesvc.Step) bool { return g.inProgress[step.Command] }
 
-	autoTuneRunnable := true
-	for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
-		done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, cmd)
-		if err != nil || !done {
-			autoTuneRunnable = false
-			break
-		}
-	}
-	autoTuneRunning := inProgress["ml-auto-tune"]
-	autoTuneCompleted, err := tracking.HasCompletedSuccessfullyForCommand(ctx, "ml-auto-tune")
+// completed reports whether the step has ever completed successfully.
+func (g *stepGate) completed(step pipelinesvc.Step) bool {
+	done, err := tracking.HasCompletedSuccessfullyForCommand(g.ctx, step.Command)
 	if err != nil {
-		slog.Warn(
-			"pipeline: HasCompletedSuccessfullyForCommand failed",
-			"step",
-			"auto_tune",
-			"command",
-			"ml-auto-tune",
-			"err",
-			err,
-		)
-		autoTuneCompleted = false
+		slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed",
+			"step", step.ID, "command", step.Command, "err", err)
+		return false
 	}
-	steps["auto_tune"] = map[string]any{
-		"running":   autoTuneRunning,
-		"runnable":  autoTuneRunnable && !autoTuneRunning,
-		"completed": autoTuneCompleted,
-	}
-	return map[string]any{"steps": steps}
+	return done
 }
 
-// stepLabelByCommand returns a short label for the previous step (for error messages).
-var stepLabelByCommand = map[string]string{
-	"cricsheet-import":    "Import",
-	"precompute-features": "Precompute",
-	"export-dataset":      "Export",
-	"train-fielding":      "Train Fielding",
-	"train-extras":        "Train Extras",
-	"train-win":           "Train Win",
-	"train-innings":       "Train Innings",
+// unmetRequirement returns the first prerequisite step that has not completed, if any.
+func (g *stepGate) unmetRequirement(step pipelinesvc.Step) (pipelinesvc.Step, bool) {
+	for _, id := range step.Requires {
+		req, ok := g.registry.ByID(id)
+		if !ok {
+			continue
+		}
+		if !g.completed(req) {
+			return req, true
+		}
+	}
+	return pipelinesvc.Step{}, false
 }
 
-// CanRunPipelineStep returns whether the step can be started and an error message if not.
+// runnable reports whether the step may be started right now.
+func (g *stepGate) runnable(step pipelinesvc.Step) bool {
+	if g.running(step) {
+		return false
+	}
+	_, unmet := g.unmetRequirement(step)
+	return !unmet
+}
+
+// BuildPipelineSection returns a map with "steps" (per-step running, runnable,
+// completed) for /ops/status, in pipeline order.
+func BuildPipelineSection(ctx context.Context) map[string]any {
+	gate := newStepGate(ctx)
+	all := gate.registry.All()
+	steps := make(map[string]any, len(all))
+	order := make([]string, 0, len(all))
+	for _, step := range all {
+		steps[step.ID] = map[string]any{
+			"running":   gate.running(step),
+			"runnable":  gate.runnable(step),
+			"completed": gate.completed(step),
+			"optional":  step.Optional,
+		}
+		order = append(order, step.ID)
+	}
+	// "order" lets the UI render the pipeline without hard-coding the sequence.
+	return map[string]any{"steps": steps, "order": order}
+}
+
+// CanRunPipelineStep returns whether the step can be started and, when it cannot,
+// a message an operator can act on.
 func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg string) {
-	_, hasCommand := pipelineStepCommands[stepID]
-	if !hasCommand && stepID != "auto_tune" {
+	registry := pipelinesvc.Steps()
+	step, known := registry.ByID(stepID)
+	if !known {
 		return false, "unknown step"
 	}
-	command := pipelineStepCommands[stepID]
-	running, err := tracking.HasInProgressForCommand(ctx, command)
+
+	running, err := tracking.HasInProgressForCommand(ctx, step.Command)
 	if err != nil {
 		return false, "could not verify if step is running"
 	}
 	if running {
 		return false, "this step is already running"
 	}
-	if stepID == "auto_tune" {
-		for _, cmd := range []string{"train-fielding", "train-extras", "train-win"} {
-			done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, cmd)
-			if err != nil {
-				return false, "could not verify previous step"
-			}
-			if !done {
-				label := stepLabelByCommand[cmd]
-				if label == "" {
-					label = cmd
-				}
-				return false, "complete " + label + " first (and all API-based training steps)"
-			}
+
+	unmet := make([]string, 0, len(step.Requires))
+	for _, id := range step.Requires {
+		req, found := registry.ByID(id)
+		if !found {
+			continue
 		}
-		return true, ""
-	}
-	prevCmd := pipelineStepPreviousCommand[stepID]
-	if prevCmd == "" {
-		return true, ""
-	}
-	prevDone, err := tracking.HasCompletedSuccessfullyForCommand(ctx, prevCmd)
-	if err != nil {
-		return false, "could not verify previous step"
-	}
-	if !prevDone {
-		label := stepLabelByCommand[prevCmd]
-		if label == "" {
-			label = prevCmd
+		done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, req.Command)
+		if err != nil {
+			return false, "could not verify previous step"
 		}
-		return false, "complete the previous step (" + label + ") first"
+		if !done {
+			unmet = append(unmet, req.Label)
+		}
 	}
-	return true, ""
+	switch len(unmet) {
+	case 0:
+		return true, ""
+	case 1:
+		if len(step.Requires) == 1 {
+			return false, "complete the previous step (" + unmet[0] + ") first"
+		}
+		return false, "complete " + unmet[0] + " first"
+	default:
+		return false, "complete " + strings.Join(unmet, ", ") + " first"
+	}
 }

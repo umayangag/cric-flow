@@ -106,20 +106,18 @@ func listAccuracyTrendCandidates(
 // computeAccuracyTrendForCandidates computes metrics for each candidate using a
 // batch ML prediction when possible (1 HTTP call instead of N), falling back to
 // concurrent per-candidate calls if the batch endpoint is unavailable.
-// When useUnifiedModel is true, player predictions use the unified (legacy) model instead of format-specific.
 func computeAccuracyTrendForCandidates(
 	ctx context.Context,
 	candidates []backtestCandidate,
 	includePlayer bool,
 	includeTeam bool,
 	cacheMode string,
-	useUnifiedModel bool,
 	concurrency int,
 ) ([]accuracyTrendItem, map[string]float64, []map[string]float64) {
 	results := make([]accuracyTrendItem, len(candidates))
 
 	if includePlayer {
-		computePlayerMetricsBatch(ctx, candidates, results, useUnifiedModel, concurrency)
+		computePlayerMetricsBatch(ctx, candidates, results, concurrency)
 	}
 
 	if includeTeam {
@@ -185,7 +183,6 @@ func computePlayerMetricsBatch(
 	ctx context.Context,
 	candidates []backtestCandidate,
 	results []accuracyTrendItem,
-	useUnifiedModel bool,
 	concurrency int,
 ) {
 	preps := make([]accuracyTrendCandidatePrep, len(candidates))
@@ -207,11 +204,7 @@ func computePlayerMetricsBatch(
 			if err != nil {
 				return nil
 			}
-			fmt := m.Format
-			if useUnifiedModel {
-				fmt = ""
-			}
-			preps[i] = accuracyTrendCandidatePrep{cutoff: cutoff, squad: squad, actuals: acts, format: fmt}
+			preps[i] = accuracyTrendCandidatePrep{cutoff: cutoff, squad: squad, actuals: acts, format: m.Format}
 			return nil
 		})
 	}

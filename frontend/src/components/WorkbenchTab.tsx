@@ -6,14 +6,12 @@ import WorkbenchPipelineInfoSection from './WorkbenchPipelineInfoSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
 import { useWorkbench } from '../hooks/useWorkbench';
-import { getTrainableModelKeys, hasCombinationMeta, getModelModes } from '../utils/modelMetadata';
+import { getTrainableModelKeys, hasCombinationMeta } from '../utils/modelMetadata';
 
 const WorkbenchTab: React.FC = () => {
   const {
     format,
     setFormat,
-    predictionModel,
-    setPredictionModel,
     startDate,
     setStartDate,
     endDate,
@@ -37,7 +35,6 @@ const WorkbenchTab: React.FC = () => {
 
   const trainableModelKeys = getTrainableModelKeys(modelMetadata);
   const combinationMeta = hasCombinationMeta(modelMetadata);
-  const modelModes = getModelModes(modelMetadata);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -49,9 +46,8 @@ const WorkbenchTab: React.FC = () => {
           The Workbench lets you inspect how well the ML models predict real match outcomes. Use{' '}
           <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates),
           and <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
-          (train → predict next window → score). Choose <strong>Prediction model</strong>:
-          format-specific (model for the selected format) or <strong>Unified</strong> (legacy
-          all-formats model).
+          (train → predict next window → score). Predictions always use the model trained for the
+          match&apos;s own format.
         </Typography>
       </Alert>
 
@@ -63,7 +59,6 @@ const WorkbenchTab: React.FC = () => {
       <WorkbenchAccuracyTrendSection
         format={format}
         availableFormats={availableFormats}
-        predictionModel={predictionModel}
         startDate={startDate}
         endDate={endDate}
         limit={limit}
@@ -72,12 +67,10 @@ const WorkbenchTab: React.FC = () => {
         trendError={trendError}
         trendData={trendData}
         onChangeFormat={setFormat}
-        onChangePredictionModel={(value) => setPredictionModel(value)}
         onChangeStartDate={setStartDate}
         onChangeEndDate={setEndDate}
         onChangeLimit={(value) => setLimit(value)}
         onLoad={loadAccuracyTrend}
-        modelModes={modelModes.length > 0 ? modelModes : undefined}
       />
 
       <WorkbenchRegistrySection

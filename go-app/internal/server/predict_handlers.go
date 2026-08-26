@@ -84,7 +84,6 @@ type predictTeamRequest struct {
 	Team2              string `json:"team2"`
 	Venue              string `json:"venue"`
 	MatchDate          string `json:"match_date"`
-	UseUnifiedModel    *bool  `json:"use_unified_model,omitempty"`
 	Simulate           *bool  `json:"simulate,omitempty"`
 	SimulationTopK     int    `json:"simulation_top_k,omitempty"`
 	SimulationSamples  int    `json:"simulation_samples,omitempty"`
@@ -129,14 +128,6 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 		v := strings.EqualFold(s, "true") || s == "1"
 		body.RequireKeeper = &v
 	}
-	if s := q.Get("use_unified_model"); s == "1" || strings.EqualFold(s, "true") {
-		t := true
-		body.UseUnifiedModel = &t
-	}
-	if strings.EqualFold(strings.TrimSpace(q.Get("model")), "unified") {
-		t := true
-		body.UseUnifiedModel = &t
-	}
 	if s := q.Get("simulate"); s == "1" || strings.EqualFold(s, "true") {
 		t := true
 		body.Simulate = &t
@@ -179,7 +170,6 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam
 		ExtraTeam2:             body.ExtraTeam2,
 		MinBowlers:             body.MinBowlers,
 		RequireKeeper:          true,
-		UseUnifiedModel:        body.UseUnifiedModel != nil && *body.UseUnifiedModel,
 		UseReconciledScorecard: body.UseReconciledScorecard != nil && *body.UseReconciledScorecard,
 		IncludeBothScorecards:  body.IncludeBothScorecards != nil && *body.IncludeBothScorecards,
 	}

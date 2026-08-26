@@ -1,5 +1,13 @@
 import type { OpsStatus } from '../components/OpsStatusTab';
 
+/**
+ * Every step the backend accepts at POST /ops/pipeline/run/{step}.
+ *
+ * This list is asserted against contracts/ops-console.contract.json, which is
+ * generated from the go-app step registry. Adding a step on one side without the
+ * other fails a test rather than shipping a UI that offers steps the backend
+ * refuses — or hides steps it accepts.
+ */
 export type PipelineStepId =
   | 'import'
   | 'precompute'
@@ -10,6 +18,7 @@ export type PipelineStepId =
   | 'train_extras'
   | 'train_win'
   | 'train_innings'
+  | 'train_combination_meta'
   | 'auto_tune';
 
 export type StepStatus = 'success' | 'stale' | 'pending' | 'error' | 'optional' | 'running';
@@ -22,6 +31,11 @@ export type PipelineStep = {
   description: string;
   /** Only runnable when previous step completed successfully (from backend). */
   runnable: boolean;
+  /**
+   * A precondition step ordering cannot express, phrased as something to do.
+   * Shown in the step dialog so the operator reads it before the run fails.
+   */
+  prerequisite?: string;
 };
 
 function asObj(v: unknown): Record<string, unknown> {
@@ -115,6 +129,17 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       description:
         'Train per-format innings models (innings_runs, innings_wickets) for reconciliation. Uses params from config and DB. Set CUTOFF and GO_APP_URL. Run from project root.',
       runnable: true,
+    },
+    {
+      id: 'train_combination_meta',
+      label: 'Train Combination Meta',
+      status: 'optional',
+      command: 'make train-combination-meta',
+      description:
+        'Train the score-combination meta-model that blends per-model contributions into a final score. Optional; run it after Train Win when you want blended scores rather than the default weights.',
+      runnable: true,
+      prerequisite:
+        'Needs backtest_contributions.csv. Produce it with "Export contributions" on the Evaluate tab first — without it this step fails with CONTRIBUTIONS_CSV_MISSING.',
     },
     {
       id: 'auto_tune',

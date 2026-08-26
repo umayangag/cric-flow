@@ -21,7 +21,6 @@ import {
   Typography,
 } from '@mui/material';
 import type { AccuracyTrendItem, AccuracyTrendResponse } from '../types';
-import type { ModelModeEntry } from '../types';
 import SectionCard from './common/SectionCard';
 
 const formatMetricValue = (key: string, value: number | undefined): string => {
@@ -32,12 +31,9 @@ const formatMetricValue = (key: string, value: number | undefined): string => {
   return value.toFixed(2);
 };
 
-type PredictionModel = 'format' | 'unified';
-
 type Props = {
   format: string;
   availableFormats: string[];
-  predictionModel: PredictionModel;
   startDate: string;
   endDate: string;
   limit: number;
@@ -46,19 +42,15 @@ type Props = {
   trendError: string | null;
   trendData: AccuracyTrendResponse | null;
   onChangeFormat: (value: string) => void;
-  onChangePredictionModel: (value: PredictionModel) => void;
   onChangeStartDate: (value: string) => void;
   onChangeEndDate: (value: string) => void;
   onChangeLimit: (value: number) => void;
   onLoad: () => void;
-  /** From GET /api/ml/model-metadata model_modes; when set, Prediction model options use backend labels/descriptions. */
-  modelModes?: ModelModeEntry[];
 };
 
 const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
   format,
   availableFormats,
-  predictionModel,
   startDate,
   endDate,
   limit,
@@ -67,30 +59,11 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
   trendError,
   trendData,
   onChangeFormat,
-  onChangePredictionModel,
   onChangeStartDate,
   onChangeEndDate,
   onChangeLimit,
   onLoad,
-  modelModes,
 }) => {
-  const predictionModelOptions: { value: PredictionModel; label: string; title?: string }[] =
-    modelModes && modelModes.length >= 2
-      ? modelModes.map((m) => ({
-          value: (m.name === 'per_format' ? 'format' : 'unified') as PredictionModel,
-          label:
-            m.name === 'per_format'
-              ? 'Format-specific (model for selected format)'
-              : 'Unified (all-formats / legacy model)',
-          title: m.description,
-        }))
-      : [
-          {
-            value: 'format' as PredictionModel,
-            label: 'Format-specific (model for selected format)',
-          },
-          { value: 'unified' as PredictionModel, label: 'Unified (all-formats / legacy model)' },
-        ];
   const metricKeys = React.useMemo<string[]>(() => {
     if (!trendData?.results?.length) {
       return [];
@@ -132,11 +105,10 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         <strong>How to use:</strong> Set filters below (all optional), then click &quot;Load
-        accuracy trend&quot;. Use <strong>Prediction model</strong> to compare format-specific
-        models vs the unified (legacy) model. The table shows one row per match with error metrics
-        (e.g. runs_mae, wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include
-        every format, or pick one (e.g. T20) to evaluate that format only. Prerequisites: precompute
-        and ML artifacts must be in place.
+        accuracy trend&quot;. The table shows one row per match with error metrics (e.g. runs_mae,
+        wickets_mae). Leave <strong>Format</strong> as &quot;All&quot; to include every format, or
+        pick one (e.g. T20) to evaluate that format only. Predictions always use the model for the
+        match&apos;s own format. Prerequisites: precompute and ML artifacts must be in place.
       </Typography>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
@@ -156,21 +128,6 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
             {availableFormats.map((f) => (
               <MenuItem key={f} value={f}>
                 {f}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel id="workbench-model-label">Prediction model</InputLabel>
-          <Select
-            value={predictionModel}
-            labelId="workbench-model-label"
-            label="Prediction model"
-            onChange={(e) => onChangePredictionModel(e.target.value as PredictionModel)}
-          >
-            {predictionModelOptions.map((opt) => (
-              <MenuItem key={opt.value} value={opt.value} title={opt.title}>
-                {opt.label}
               </MenuItem>
             ))}
           </Select>

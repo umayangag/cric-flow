@@ -28,8 +28,6 @@ function buildBacktestEvaluateUrl(
   team2: string,
   matchId: number | string,
   options?: {
-    /** Use unified (all-formats) model instead of per-format. Default false. */
-    use_unified_model?: boolean;
     /** Use latest model (artifacts or train-on-the-fly with "now" cutoff). When false, strict temporal - train only on data before match. Default false. */
     use_latest_model?: boolean;
   },
@@ -39,7 +37,6 @@ function buildBacktestEvaluateUrl(
   u.searchParams.set('team1', team1);
   u.searchParams.set('team2', team2);
   u.searchParams.set('match_id', String(matchId));
-  if (options?.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
   if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
   return u.toString();
 }
@@ -328,7 +325,6 @@ export const api = {
       u.searchParams.set('limit', String(filters.limit));
     if (filters.cache) u.searchParams.set('cache', filters.cache);
     if (filters.metrics) u.searchParams.set('metrics', filters.metrics);
-    if (filters.use_unified_model === true) u.searchParams.set('use_unified_model', '1');
     return httpApi(u.toString());
   },
 
@@ -346,7 +342,7 @@ export const api = {
       onResult: (result: BacktestEvaluateResponse) => void;
       onError: (err: Error) => void;
     },
-    options?: { use_unified_model?: boolean; use_latest_model?: boolean },
+    options?: { use_latest_model?: boolean },
   ): Promise<void> {
     const url = buildBacktestEvaluateUrl(
       '/api/backtest/evaluate-stream',
@@ -402,7 +398,7 @@ export const api = {
     team1: string,
     team2: string,
     matchId: number | string,
-    options?: { use_unified_model?: boolean; use_latest_model?: boolean },
+    options?: { use_latest_model?: boolean },
   ): Promise<{ job_id: string }> {
     const url = buildBacktestEvaluateUrl(
       '/api/backtest/evaluate-start',
@@ -455,7 +451,6 @@ export const api = {
     extra_team2?: number[];
     min_bowlers?: number;
     require_keeper?: boolean;
-    use_unified_model?: boolean;
     simulate?: boolean;
     simulation_top_k?: number;
     simulation_samples?: number;

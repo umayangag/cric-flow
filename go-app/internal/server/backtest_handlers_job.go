@@ -16,16 +16,15 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var format, team1, team2, matchID string
-	var useUnifiedModel, useLatestModel bool
-	useUnifiedFromBody, useLatestFromBody := false, false
+	var useLatestModel bool
+	useLatestFromBody := false
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		var body struct {
-			Format          string `json:"format"`
-			Team1           string `json:"team1"`
-			Team2           string `json:"team2"`
-			MatchID         int64  `json:"match_id"`
-			UseUnifiedModel *bool  `json:"use_unified_model,omitempty"`
-			UseLatestModel  *bool  `json:"use_latest_model,omitempty"`
+			Format         string `json:"format"`
+			Team1          string `json:"team1"`
+			Team2          string `json:"team2"`
+			MatchID        int64  `json:"match_id"`
+			UseLatestModel *bool  `json:"use_latest_model,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(
@@ -41,17 +40,10 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		if body.MatchID != 0 {
 			matchID = strconv.FormatInt(body.MatchID, 10)
 		}
-		if body.UseUnifiedModel != nil {
-			useUnifiedModel = *body.UseUnifiedModel
-			useUnifiedFromBody = true
-		}
 		if body.UseLatestModel != nil {
 			useLatestModel = *body.UseLatestModel
 			useLatestFromBody = true
 		}
-	}
-	if !useUnifiedFromBody {
-		useUnifiedModel = parseUseUnifiedModel(r, false)
 	}
 	if !useLatestFromBody {
 		useLatestModel = parseUseLatestModel(r, false)
@@ -88,7 +80,7 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useUnifiedModel, useLatestModel)
+	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useLatestModel)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -162,9 +154,8 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 		writeSSE("progress", string(data))
 	}
 
-	useUnified := parseUseUnifiedModel(r, false)
 	useLatest := parseUseLatestModel(r, false)
-	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useUnified, useLatest, progress)
+	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useLatest, progress)
 	if err != nil {
 		payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)
