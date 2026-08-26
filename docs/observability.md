@@ -20,6 +20,7 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `exports.formats[FORMAT].files[]` (per-export file presence).
     - `artifacts.formats[FORMAT].batting|bowling.exists/loaded`.
     - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
+    - `dataset.path|exists|match_files|bytes|newest_file|newest_modified` — the Cricsheet directory Import reads from, resolved by `GO_APP_CRICSHEET_DIR` → `inputs.cricsheet_dir` → built-in default.
     - Optional: `fielding`, `weather`, `hierarchy`, `suggestions`.
   - **Consumers**:
     - Frontend `OpsStatusTab` (auto-refreshing).

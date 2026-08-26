@@ -21,6 +21,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 )
 
 // healthHandler responds with liveness OK.
@@ -358,8 +359,10 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, precompute.GetStatus())
 }
 
-// importCricSheetHandler runs import of cricsheet data directory.
-// Request body: {"dir":"../data", "placeholders_weather":true, "placeholders_fielding":true}
+// importCricSheetHandler runs import of the cricsheet data directory.
+// Request body: {"dir":"<optional override>", "placeholders_fielding":true}
+// With no dir, the configured dataset directory is used — the same one /ops/status
+// reports and the CLI reads, rather than a literal that only agreed with neither.
 func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -367,10 +370,10 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, err)
 		return
 	}
-	if strings.TrimSpace(body.Dir) == "" {
-		body.Dir = "../data"
+	dir := strings.TrimSpace(body.Dir)
+	if dir == "" {
+		dir = dataset.Dir()
 	}
-	dir := body.Dir
 	opts := &cricsheet.Options{
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}

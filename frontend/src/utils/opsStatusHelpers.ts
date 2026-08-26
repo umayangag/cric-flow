@@ -1,3 +1,5 @@
+import type { DatasetStatus } from '../types';
+
 /** Format code (e.g. TEST, ODI, T20, T20I). Canonical list is fetched from API via useCanonicalFormats(). */
 export type FormatCode = string;
 
@@ -47,6 +49,7 @@ export type OpsStatus = {
   services?: ServicesStatus;
   db?: unknown;
   precompute?: { formats?: PrecomputeFormats };
+  dataset?: DatasetStatus;
   exports?: { formats?: ExportFormats };
   artifacts?: { formats?: ArtifactFormats };
   pipeline?: { steps?: Record<string, { running?: boolean }> };

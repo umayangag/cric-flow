@@ -395,6 +395,22 @@ export type PipelineProgressPayload = {
   steps: PipelineStepProgress[];
 };
 
+/** The `dataset` section of /ops/status: what is in the server's Cricsheet directory. */
+export type DatasetStatus = {
+  path: string;
+  exists: boolean;
+  readable: boolean;
+  /** Files Import will read: *.json directly in the directory, not recursive. */
+  match_files: number;
+  bytes: number;
+  newest_file?: string;
+  newest_modified?: string;
+  empty: boolean;
+  error?: string;
+  /** Name of the environment variable that overrides the directory. */
+  env_var?: string;
+};
+
 export type Migration = {
   id: number;
   command: string;

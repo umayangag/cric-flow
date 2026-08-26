@@ -15,6 +15,7 @@ func AssembleResponse(ctx context.Context, dbProbe DBProbe) Response {
 		Services:       map[string]bool{"api_health": true, "api_readiness": false, "ml_health": false},
 		DB:             map[string]any{"connected": false},
 		Precompute:     BuildPrecomputeSection(ctx, now),
+		Dataset:        BuildDatasetSection(),
 		Exports:        map[string]any{"root": config.DefaultExportDir(), "formats": map[string]any{}},
 		Artifacts:      map[string]any{"root": ArtifactsFallbackRoot(), "formats": map[string]any{}},
 		Fielding:       map[string]any{},

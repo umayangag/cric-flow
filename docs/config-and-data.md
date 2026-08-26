@@ -24,7 +24,11 @@ Config file: `go-app/config.json`
   - `http_read_timeout_sec`, `http_write_timeout_sec`, `http_idle_timeout_sec` (defaults 15, 30, 60) — HTTP server timeouts.
   - `listen_address` (default `:8080`) — overridden by `PORT` env.
 - `inputs`
-  - `cricsheet_dir` — default directory for Cricsheet JSON (used by cricsheet-importer).
+  - `cricsheet_dir` — the directory Cricsheet JSON is imported from. Used by
+    cricsheet-importer, by `POST /import/cricsheet`, and reported in `/ops/status.dataset`.
+    `GO_APP_CRICSHEET_DIR` overrides it. Import does **not** recurse: the `.json` files
+    must be directly in this directory, and an import that finds none fails rather than
+    reporting success with zero rows.
   - `etl_dir` — default directory for curated CSVs (optional etl-importer path).
 - `outputs`
   - `export_dir` — where `export-dataset` writes CSVs.

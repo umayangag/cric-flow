@@ -4,6 +4,7 @@ import PipelineProgressPanel from './PipelineProgressPanel';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsTableStats from './OpsTableStats';
 import OpsStatusDetailsGrid from './OpsStatusDetailsGrid';
+import OpsDatasetSection from './OpsDatasetSection';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
@@ -78,6 +79,8 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
             onRefresh={onRefresh}
           />
         </SectionCard>
+        <OpsDatasetSection dataset={data.dataset} />
+
         <SectionCard title="Migration History">
           <OpsMigrationsTable />
         </SectionCard>
