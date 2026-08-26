@@ -100,7 +100,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | A-2 | done | `ops/pr5-data-extract` | `POST /ops/data/extract` — unzip into the data directory |
 | A-3 | done | `ops/pr6-dataset-registry` | Dataset registry: what is on disk and where it came from |
 | A-4 | done | `ops/pr7-data-tab` | Frontend: Data tab — feeds, fetch, extract, registry |
-| O-1 | todo | | Generalise `auto_tune_progress` into a shared progress channel |
+| O-1 | done | `ops/pr8-progress-channel` | Generalise `auto_tune_progress` into a shared progress channel |
 | O-2 | todo | | Instrument the six trainers to emit milestones and metrics |
 | O-3 | todo | | Serve generalised progress; fold into the existing SSE stream |
 | O-4 | todo | | Persist final metrics to `data_migrations.metadata` |
@@ -410,18 +410,47 @@ Agreed fidelity: **structured milestones and metrics**, not raw stdout.
 **Why:** `ml/auto_tune_progress.py` already does file-backed cross-process progress
 correctly. Generalise it once rather than growing a second mechanism.
 
-- [ ] Extract a shared module: `set_progress_file`, `emit(event)`, `clear`
-- [ ] One progress file **per run**, not one global file — concurrent or successive runs
-      must not overwrite each other's state
-- [ ] Typed event schema, versioned from the start:
+- [x] Extract a shared module: `ml/run_progress.py` — `configure`, `set_progress_file`,
+      `emit(event)`, `clear`, plus the reader half (`read`, `latest_for_step`) so the
+      staleness rule lives in one place rather than in each endpoint
+- [x] One progress file **per run**, not one global file. Named
+      `<step>__<run_id>.json`; `run_id` comes from `PIPELINE_RUN_ID` or the pid, and is
+      sanitised into the filename — it arrives from go-app and from env, so it chooses
+      no paths of its own
+- [x] Typed event schema, versioned from the start:
 
 ```json
 { "v": 1, "run_id": "...", "step": "train_batting", "phase": "cv",
   "current": 3, "total": 5, "metrics": {"rmse": 24.1}, "ts": "..." }
 ```
 
-- [ ] Keep `auto_tune` working on the generalised module — do not leave two paths
-- [ ] Writes must be atomic (temp file + rename) so a reader never sees a partial JSON
+- [x] Keep `auto_tune` working on the generalised module — do not leave two paths.
+      `ml/auto_tune_progress.py` is now a thin adapter: it keeps its dozen tuning-specific
+      keyword arguments, because forcing those through the shared `Event` at every call
+      site would make the emitters harder to read, but it owns no mechanism
+- [x] Writes must be atomic (temp file + rename) so a reader never sees a partial JSON.
+      The temp file is created in the destination directory: `os.replace` is only atomic
+      within one filesystem, and `/tmp` is often a different one
+
+**The compatibility constraint, and how it is met.** `GET /admin/train/auto-tune/progress`
+is polled by go-app and rendered by the ops console, which read `phase`, `algorithm`,
+`trial`, `best_score` and friends at the top level. The envelope (`v`, `run_id`, `step`,
+`ts`) was added *underneath* those fields rather than in place of them, so nothing
+downstream changes. `test_keeps_the_payload_shape_go_app_reads` asserts that field by
+field — if it ever stops being true the console silently loses its auto-tune detail,
+which is not a failure that announces itself.
+
+**Two things the generalisation forced, both improvements.** With per-run files there is
+no single path to read, so `get_auto_tune_progress` now asks for *the live run*: the
+newest non-stale file for the step. That closes a hole the fixed path had — a crashed
+run left its file behind and the endpoint reported it as current, showing a run that was
+not happening. `AUTO_TUNE_PROGRESS_FILE` still pins a path for tests and for an operator
+who wants to `tail` one file.
+
+**Emission never breaks a training run.** Every failure — unwritable directory, full
+disk, an observer that raises — is logged and swallowed. Progress is telemetry; a
+ten-minute training run that succeeded must not be reported as failed because the
+progress file could not be written.
 
 ### O-2 · Instrument the six trainers
 

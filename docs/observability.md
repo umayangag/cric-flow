@@ -99,7 +99,48 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - Frontend `MLModelStatsTab` (tables, chips, and tuning insights).
     - Manual inspection of which models are “good enough” to promote.
 
-### 2.3. Logs
+### 2.3. Cross-process progress
+
+A training step runs as a subprocess of ml-service, and
+`training_orchestrator.run_training_subprocess` calls `subprocess.run(...,
+capture_output=True)` — which buffers everything until exit, discards it on success and
+logs only a tail on failure. Nothing about a ten-minute run is observable from its
+output. A subprocess cannot push into its parent's memory, but it can write a file, and
+`ml/run_progress.py` is that channel.
+
+- **Event schema** (versioned; `v` is bumped on a breaking envelope change):
+
+  ```json
+  { "v": 1, "run_id": "1234", "step": "auto_tune", "phase": "cv",
+    "current": 3, "total": 5, "metrics": {"rmse": 24.1}, "ts": "2026-08-26T12:00:00Z" }
+  ```
+
+  Step-specific fields (auto-tune's `algorithm`, `trial`, `best_score`) are merged at
+  the top level beside the envelope, which is where existing consumers already read
+  them. Envelope keys are reserved and cannot be shadowed.
+
+- **One file per run**, at `<artifacts>/progress/<step>__<run_id>.json`. A single global
+  path means two runs — concurrent, or one started before the reader noticed the last
+  finished — overwrite each other's state, and the reader cannot tell which run it is
+  looking at. `run_id` comes from `PIPELINE_RUN_ID` or the pid, and is sanitised into
+  the filename rather than trusted.
+
+- **Writes are atomic**: temp file in the *destination directory*, then `os.replace`
+  (only atomic within one filesystem, so `/tmp` will not do). A reader polling the file
+  sees the old event or the new one, never half of either.
+
+- **Reading**: `latest_for_step` returns the newest **non-stale** file for a step —
+  older than 30 minutes is treated as abandoned. A crashed run leaves its file behind,
+  and reporting that as current shows a run that is not happening.
+
+- **Emission never breaks a step.** Unwritable directory, full disk, an observer that
+  raises: all logged and swallowed. Progress is telemetry.
+
+- **Served by** `GET /admin/train/auto-tune/progress`, which go-app polls while a
+  training step is in flight and folds into `/ops/pipeline/stream`.
+  `AUTO_TUNE_PROGRESS_FILE` pins an explicit path for tests, or to `tail` one file.
+
+### 2.4. Logs
 
 - **Training / auto-tune / backtest**
   - Logs include:

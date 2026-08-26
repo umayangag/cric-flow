@@ -1,36 +1,49 @@
 """
-Auto-tune progress reporting. Writes live status to a JSON file for frontend consumption.
-Read by GET /admin/train/auto-tune/progress.
+Auto-tune progress reporting.
+
+This is now a thin adapter over `ml.run_progress`, which is the one progress channel
+every step uses (ops plan O-1). It stays as its own module because auto-tune's callers
+pass a dozen tuning-specific keyword arguments — algorithm, trial, best score — that do
+not generalise, and forcing them through the shared `Event` at every call site would
+make the emitters harder to read for no gain.
+
+What it does *not* do any more is own a mechanism. There is one file format, one
+atomic-write path and one staleness rule, and they live in `run_progress`.
+
+The emitted payload keeps auto-tune's fields at the top level, where its existing
+consumers — `training_orchestrator.get_auto_tune_progress`, go-app's SSE payload and
+the ops console — already read them. The envelope adds `v`, `run_id`, `step` and `ts`
+alongside; those are additive and ignored by readers that do not want them.
 """
 
 from __future__ import annotations
 
-import json
-import logging
-import os
 from typing import Any, Callable, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from ml import run_progress
 
-_PROGRESS_FILE: Optional[str] = None
-_PROGRESS_CALLBACK: Optional[Callable[[Dict[str, Any]], None]] = None
+#: The step name auto-tune's progress files are written under.
+STEP = "auto_tune"
 
 
-def set_progress_file(path: Optional[str]) -> None:
+def set_progress_file(path: Optional[str], run_id: str = "") -> None:
     """Set the progress file path. None disables file writing."""
-    global _PROGRESS_FILE
-    _PROGRESS_FILE = path
+    run_progress.set_progress_file(path, run_id or STEP)
 
 
 def get_progress_file() -> Optional[str]:
     """Return the current progress file path."""
-    return _PROGRESS_FILE
+    return run_progress.get_progress_file()
+
+
+def configure(run_id: Optional[str] = None, directory: Optional[str] = None) -> Optional[str]:
+    """Point auto-tune's progress at a per-run file and return the path."""
+    return run_progress.configure(STEP, run_id=run_id, directory=directory)
 
 
 def set_progress_callback(cb: Optional[Callable[[Dict[str, Any]], None]]) -> None:
     """Optional callback for progress (e.g. for tests)."""
-    global _PROGRESS_CALLBACK
-    _PROGRESS_CALLBACK = cb
+    run_progress.set_callback(cb)
 
 
 def write_progress(
@@ -50,57 +63,41 @@ def write_progress(
     algorithms_requested: Optional[list] = None,
     activity: Optional[str] = None,
 ) -> None:
-    """Write progress to file and optional callback."""
-    payload: Dict[str, Any] = {
-        "phase": phase,
+    """Write auto-tune progress through the shared channel."""
+    extra: Dict[str, Any] = {
         "model_kind": model_kind,
         "format_suffix": format_suffix or "",
         "task_index": task_index,
         "task_total": task_total,
     }
-    if algorithm is not None:
-        payload["algorithm"] = algorithm
-    if hyperparams is not None:
-        payload["hyperparams"] = hyperparams
-    if trial is not None:
-        payload["trial"] = trial
-    if trials_total is not None:
-        payload["trials_total"] = trials_total
-    if best_score is not None:
-        payload["best_score"] = best_score
-    if best_algorithm is not None:
-        payload["best_algorithm"] = best_algorithm
-    if message is not None:
-        payload["message"] = message
-    if algorithms_screened is not None:
-        payload["algorithms_screened"] = algorithms_screened
-    if algorithms_requested is not None:
-        payload["algorithms_requested"] = algorithms_requested
-    if activity is not None:
-        payload["activity"] = activity
+    optional = {
+        "algorithm": algorithm,
+        "hyperparams": hyperparams,
+        "trial": trial,
+        "trials_total": trials_total,
+        "best_score": best_score,
+        "best_algorithm": best_algorithm,
+        "algorithms_screened": algorithms_screened,
+        "algorithms_requested": algorithms_requested,
+        "activity": activity,
+    }
+    extra.update({k: v for k, v in optional.items() if v is not None})
 
-    if _PROGRESS_CALLBACK:
-        try:
-            _PROGRESS_CALLBACK(payload)
-        except Exception as e:
-            logger.warning("auto_tune_progress.callback_failed error=%s", e)
-
-    path = _PROGRESS_FILE
-    if not path:
-        return
-    try:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-    except OSError as e:
-        logger.warning("auto_tune_progress.write_failed path=%s error=%s", path, e)
+    run_progress.emit(
+        run_progress.Event(
+            step=STEP,
+            phase=phase,
+            # task_index/task_total are auto-tune's countable dimension, so they are
+            # also the generic current/total. Kept in extra as well: the ops console
+            # reads the original names, and O-5 will move it to the generic ones.
+            current=task_index,
+            total=task_total,
+            message=message or "",
+            extra=extra,
+        )
+    )
 
 
 def clear_progress() -> None:
     """Remove progress file when auto-tune completes or fails."""
-    path = _PROGRESS_FILE
-    if path and os.path.isfile(path):
-        try:
-            os.remove(path)
-        except OSError as e:
-            logger.warning("auto_tune_progress.clear_failed path=%s error=%s", path, e)
+    run_progress.clear()

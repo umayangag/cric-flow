@@ -41,18 +41,51 @@ def test_set_progress_callback():
 
 
 def test_write_progress_minimal():
-    """write_progress with minimal args builds correct payload."""
+    """write_progress with minimal args builds the expected auto-tune fields.
+
+    The payload now carries the shared envelope (v, run_id, step, ts) alongside
+    auto-tune's own fields -- one channel for every step, ops plan O-1. The
+    auto-tune fields stay at the top level, which is what keeps go-app's SSE payload
+    and the ops console working unchanged, so this asserts them by name rather than
+    by whole-dict equality that would break on every future envelope addition.
+    """
     captured = []
     set_progress_callback(lambda p: captured.append(p))
     write_progress("phase", "bowling", None, 2, 5)
-    assert captured[0] == {
+    payload = captured[0]
+    set_progress_callback(None)
+
+    for key, value in {
         "phase": "phase",
         "model_kind": "bowling",
         "format_suffix": "",
         "task_index": 2,
         "task_total": 5,
-    }
+    }.items():
+        assert payload[key] == value
+
+    assert payload["v"] == 1
+    assert payload["step"] == "auto_tune"
+    assert payload["ts"].endswith("Z")
+    # task_index/task_total are also the generic countable dimension.
+    assert payload["current"] == 2
+    assert payload["total"] == 5
+
+
+def test_write_progress_omits_absent_optional_fields():
+    """Fields nobody passed must be absent, not present-and-null.
+
+    A consumer distinguishing "no best score yet" from "best score is null" should not
+    have to; absent means absent.
+    """
+    captured = []
+    set_progress_callback(lambda p: captured.append(p))
+    write_progress("phase", "bowling", None, 2, 5)
+    payload = captured[0]
     set_progress_callback(None)
+
+    for key in ("algorithm", "trial", "best_score", "hyperparams", "metrics", "message"):
+        assert key not in payload
 
 
 def test_write_progress_full():
@@ -161,6 +194,7 @@ def test_clear_progress_oserror_logged(tmp_path):
     def failing_remove(_):
         raise OSError(13, "Permission denied")
 
-    with patch("ml.auto_tune_progress.os.remove", failing_remove):
+    # The mechanism lives in run_progress now; auto_tune_progress no longer imports os.
+    with patch("ml.run_progress.os.remove", failing_remove):
         clear_progress()
     set_progress_file(None)
