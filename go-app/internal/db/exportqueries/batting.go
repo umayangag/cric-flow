@@ -144,16 +144,7 @@ func BattingInferenceRows(ctx context.Context, format string) ([][]string, error
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
-		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
-		"batting_last_1", "batting_last_2", "batting_last_3",
-		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
-		"batting_days_since_last", "batting_innings_in_last_90d",
-		"batting_temp", "batting_wind", "batting_rain", "batting_humidity", "batting_cloud", "batting_pressure", "batting_viscosity",
-		"batting_inning", "batting_session", "toss", "venue", "opposition", "player_name",
-		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-	}
+	headers := BattingInferenceHeaders()
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
@@ -221,17 +212,7 @@ func BattingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"runs", "balls", "fours", "sixes", "batting_position",
-		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
-		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
-		"batting_last_1", "batting_last_2", "batting_last_3",
-		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
-		"batting_days_since_last", "batting_innings_in_last_90d",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "player_name",
-		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-	}
+	headers := BattingFormatHeaders()
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
@@ -425,18 +406,7 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
 
-	headers := []string{
-		"runs", "innings_runs", "balls", "fours", "sixes", "batting_position",
-		"batting_mean_w3", "batting_mean_w5", "batting_mean_w10", "batting_mean_w20",
-		"batting_std_w5", "batting_std_w10", "batting_max_w10", "batting_min_w10", "batting_median_w10",
-		"batting_last_1", "batting_last_2", "batting_last_3",
-		"batting_career_mean", "batting_career_count", "batting_pct_zero_w10", "batting_trend_w5",
-		"batting_days_since_last", "batting_innings_in_last_90d",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "batting_session", "toss", "batting_venue", "batting_opposition", "player_name",
-		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements",
-		"match_date",
-	}
+	headers := BattingTrainingHeaders()
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)

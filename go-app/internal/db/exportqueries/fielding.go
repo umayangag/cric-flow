@@ -123,13 +123,7 @@ func fieldingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs [
 		return nil, err
 	}
 	alpha, lastN, windowN, _, _, _ := GetFeatureExtractionParams()
-	headers := []string{
-		"catches", "run_outs", "stumpings",
-		"fielding_consistency", "fielding_form",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
-		"match_date",
-	}
+	headers := FieldingTrainingHeaders()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {
@@ -186,13 +180,7 @@ func fieldingHoldoutRawQuery(matchIDs []int64) (string, []any) {
 // fieldingHoldoutRowsImpl returns fielding export-shaped rows for the given match IDs with features at cutoff.
 func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.Time) ([][]string, error) {
 	if len(matchIDs) == 0 {
-		headers := []string{
-			"catches", "run_outs", "stumpings",
-			"fielding_consistency", "fielding_form",
-			"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-			"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
-			"match_date",
-		}
+		headers := FieldingHoldoutHeaders()
 		return [][]string{headers}, nil
 	}
 	q, args := fieldingHoldoutRawQuery(matchIDs)
@@ -233,13 +221,7 @@ func fieldingHoldoutRowsImpl(ctx context.Context, matchIDs []int64, cutoff time.
 		return nil, err
 	}
 	alpha, lastN, windowN, _, _, _ := GetFeatureExtractionParams()
-	headers := []string{
-		"catches", "run_outs", "stumpings",
-		"fielding_consistency", "fielding_form",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "toss", "fielding_venue", "fielding_opposition", "player_name", "format_code",
-		"match_date",
-	}
+	headers := FieldingHoldoutHeaders()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
 	for _, r := range rawRows {

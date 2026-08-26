@@ -119,11 +119,7 @@ func inningsTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"match_id", "inning_number", "innings_runs", "innings_wickets", "venue_id", "opposition_id", "format_code",
-		"match_date", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
-	}
+	headers := InningsTrainingHeaders()
 	out := make([][]string, 0, 512)
 	out = append(out, headers)
 	for rows.Next() {

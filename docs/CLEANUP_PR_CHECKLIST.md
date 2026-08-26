@@ -25,7 +25,8 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-9 | done | `cleanup/c1-9-orphaned-go-funcs` | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
-| C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
+| C2-2b | todo | | Remove the 7 weather features from the contract (unblocked by C2-2b-pre) |
+| C2-2b-pre | done | `test/c2-2b-header-alignment` | Export header-alignment tests — the guard C2-2b needs |
 | C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
@@ -530,6 +531,75 @@ make go-app-check
 ## Phase 2 — Weather
 
 Blocked on **C2-1**. Written below for Option B (delete).
+
+### C2-2b-pre — Export header-alignment tests
+
+**Why:** C2-2b's risk is a same-count column reordering in the export queries, which nothing caught. `exportqueries/headers.go` only covered sequence columns, and `tests/golden/expected_headers_*.json` had rotted (see below).
+
+**Scope**
+
+- [x] Extracted all 11 inline `headers := []string{…}` literals into named accessors in `exportqueries/export_headers.go`, so they can be asserted without a database
+- [x] `export_headers_test.go` with four checks: contract tracking, no duplicates, per-format vs cross-format agreement, and stable counts
+- [x] Proved the extraction changed nothing: all **331 columns across 11 lists** compared byte-identical before and after
+- [x] Proved the tests fail on each failure mode, rather than assuming they would
+
+| injected fault | caught by |
+|---|---|
+| same-count reorder (**the silent one**) | "columns are out of contract order" |
+| contract feature dropped from the export | "set of contract features missing … changed" |
+| duplicated column | "column count changed (16 → 17)" |
+
+**Two findings that changed the design**
+
+1. **My first assertion encoded a false invariant.** I asserted the `*_infer_*.csv` headers must equal `configs/feature_vectors.json`. They must not: the export omits the 4 cyclical time features and the 8 sequence features. Those are not a bug — sequence columns are appended only via `AppendSeqIfEnabled`, and the cyclical ones are derived at prediction time. **Live serving is unaffected**, because it goes through `ComputeFeaturesAtCutoff*`, whose `ensureContractKeys` fills every contract key by construction. The test now asserts the *documented* omission set instead, so adding a contract feature without extending the export fails loudly.
+
+2. **The inference and training exports use different names for the same features on purpose** — `batting_temp`/`venue` in inference (matching `feature_vectors.json`), `temp`/`batting_venue` in training (matching `ml/train_batting.py:FEATURE_COLS`). A well-meaning "let's make these consistent" edit would break training silently. Pinned by the tests.
+
+**Noted, not fixed:** `tests/golden/expected_headers_*_training.json` are stale — 22 columns including `batting_consistency` and `season_id`, versus the ~41 the export actually emits since the raw-windowed-stats migration. They are consumed by `make -C ml-service validate-exports --use-golden`, which is not in CI, which is why they rotted. Same pattern as the `Makefile` path-filter gap in C7-2.
+
+---
+
+### C2-2b — scope reassessment (2026-08-26)
+
+**Attempted, then backed out deliberately.** The shared contract and `internal/features/contract.go` edits are trivial; the exporter is not. This is materially larger than every other item in this checklist and warrants being planned rather than pushed through.
+
+**What the surface actually is**
+
+| file | weather-bearing query variants | SELECTs in file |
+|---|---|---|
+| `exportqueries/batting.go` | 5 | 21 |
+| `exportqueries/bowling.go` | 5 | 24 |
+| `exportqueries/fielding.go` | 2 | 2 |
+| `exportqueries/extras.go` | 1 | 13 |
+| `exportqueries/innings.go` | 1 | 19 |
+| `exportqueries/win.go` | 1 | 18 |
+
+15 variants, and the weather columns appear in at least five distinct shapes: single-column `COALESCE(w.x, 0) AS name`, multi-column `COALESCE(...)` lines, bare `w.temp, w.wind, …` inside multi-line SELECTs, multi-line `CASE WHEN lower(w.viscosity) …` expressions, and `GROUP BY` clauses. A first pass with pattern matching caught roughly half and left the files inconsistent, so it was reverted.
+
+**Why that matters more than the line count.** Rows are read with `scanx.ScanToStrings(rows, len(headers))`.
+
+*Correction to an earlier draft of this note:* an off-by-**count** edit is **not** silent — `ScanToStrings` builds `n` destinations and pgx errors when that does not match the column count, so the export fails loudly. The silent case is narrower but real: removing one column from the SELECT and a *different* one from the headers keeps the count equal and shifts every column in between. That produces training data that looks fine and is wrong.
+
+**C2-2b-pre now guards exactly that** — see below.
+
+**Also in scope, not yet touched**
+
+- `EXTRAS_FEATURE_COLS`, `WIN_FEATURE_COLS`, `INNINGS_FEATURE_COLS` in `ml/train_{extras,win,innings}.py`
+- Weather fields on `app/models/features.py` and the predict/backtest request models
+- `weather_composite` in `ml/match_level_derived_features.py` (weights in `ml/config.py`, consumed by `app/reconciliation.py`) — a derived feature computed from `rain`, `humidity`, `cloud`, all constant 0
+- `tests/golden/expected_headers_*.json` and `tests/golden/run_parity.py`
+- Re-export and retrain of all six models
+
+**Recommended approach when this is picked up**
+
+1. **Land a header-alignment test first.** Nothing today asserts that an exporter's header list matches `configs/feature_vectors.json`. `exportqueries/headers.go` only covers sequence columns. With that test in place the silent failure becomes a loud one, and the SQL edits can proceed safely — it is also worth having permanently.
+2. Then the exporter edits, verified by running a real export and diffing emitted headers against the contract.
+3. Then the ML col lists, request models and golden headers.
+4. Then re-export and retrain, comparing metrics.
+
+Step 1 has standalone value and could land on its own.
+
+---
 
 ### C2-2 — Remove the weather subsystem and its feature slots
 
