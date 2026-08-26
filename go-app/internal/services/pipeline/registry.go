@@ -1,7 +1,5 @@
 package pipeline
 
-import "sort"
-
 // Lane names the resource a step contends for. Two steps in the same lane never run
 // at once; steps in different lanes may overlap.
 //
@@ -179,26 +177,6 @@ func (r *Registry) ByCommand(command string) (Step, bool) {
 func (r *Registry) Has(id string) bool {
 	_, ok := r.byID[id]
 	return ok
-}
-
-// IDs returns every step ID in pipeline order.
-func (r *Registry) IDs() []string {
-	out := make([]string, 0, len(r.steps))
-	for _, s := range r.steps {
-		out = append(out, s.ID)
-	}
-	return out
-}
-
-// Commands returns every data_migrations command, sorted, for callers that need a
-// stable set rather than pipeline order.
-func (r *Registry) Commands() []string {
-	out := make([]string, 0, len(r.steps))
-	for _, s := range r.steps {
-		out = append(out, s.Command)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // CommandsInLane returns the data_migrations commands of every step in the lane.
