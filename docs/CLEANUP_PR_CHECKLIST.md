@@ -33,7 +33,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C5-1 | done | `cleanup/c5-1-canonical-formats` | Single source of truth for canonical format codes |
 | C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
-| C6-1 | todo | | Frontend: one API client |
+| C6-1 | done | `cleanup/c6-1-one-api-client` | Frontend: one API client |
 | C6-2 | todo | | Remove the `app/` compatibility re-export shims |
 | C6-3 | todo | | Split the serving image from the training image |
 | C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
@@ -825,11 +825,31 @@ make check-all
 
 **Scope**
 
-- [ ] Pick one — `src/api/client.ts` is the better home; the directory already exists with `types.ts`
-- [ ] Move the `api` object's methods across, keeping `toUpperTrim` / `isRFC3339` and the query builders
-- [ ] Update every importer (11 files import `../api`)
-- [ ] Merge `src/api.test.ts` into `src/api/client.test.ts`
-- [ ] Reconcile `src/types.ts` with `src/api/types.ts`
+**The plan assumed a merge. It was a deletion.**
+
+`src/api/client.ts` was not a second client in use — it was the base of an **orphaned cluster**, the same pattern as the `frontend/pages/` tree removed in C0-2:
+
+```
+src/pages/BacktestPage.tsx           <- nothing: no route in App.tsx, referenced nowhere
+src/components/BacktestFilters.tsx   <- BacktestPage + its own test
+src/components/BacktestEvaluate.tsx  <- BacktestPage + its own test
+src/components/BacktestResults.tsx   <- BacktestPage + its own test
+src/api/client.ts                    <- those three + its own test
+src/api/types.ts                     <- those three + BacktestPage + client.ts
+```
+
+`src/api.ts` does not import `src/api/types.ts`; the two trees were entirely separate. The live evaluate flow is `/evaluate` → `EvaluateDbTab` → `useEvaluateDb` → `api` (`src/api.ts`) → `src/types.ts`.
+
+`BacktestPage` is a 50-line prototype; the shipping flow (`EvaluateDbTab` + `EvaluateDbSection` + `useEvaluateDb`) is 844 lines. Merging a dead prototype into the live client would have been the wrong move.
+
+- [x] Delete the orphaned cluster — **1,183 lines**
+- [x] `src/api/` removed; `src/api.ts` is now the only client, with every importer resolving to it
+- [x] Five endpoints that had two implementations (`/ops/suggestions`, `/api/options/{formats,teams-by-format,opponents}`, `/ops/migrations`) now have one
+- [x] No reconciliation of `src/types.ts` against `src/api/types.ts` was needed — the duplicate type file went with the cluster
+
+**The build proves it never shipped.** Bundle size is unchanged at `index-*.js 327.88 kB` before and after: tree-shaking had already excluded the whole cluster.
+
+**Tests:** 18 files / 92 tests → 14 / 67. The 4 files and 25 tests removed were the cluster's own.
 
 **Verify**
 
