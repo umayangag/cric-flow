@@ -25,7 +25,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C1-9 | done | `cleanup/c1-9-orphaned-go-funcs` | Remove remaining orphaned Go functions |
 | C2-1 | done | — | **Decision:** weather — **remove features now, keep schema**, build later |
 | C2-2a | done | `cleanup/c2-2a-weather-plumbing` | Remove the dead weather plumbing (no contract change) |
-| C2-2b | todo | | Remove the 7 weather features from the contract (needs retrain) |
+| C2-2b | blocked | | Remove the 7 weather features from the contract — **needs a scope decision, see below** |
 | C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
@@ -530,6 +530,44 @@ make go-app-check
 ## Phase 2 — Weather
 
 Blocked on **C2-1**. Written below for Option B (delete).
+
+### C2-2b — scope reassessment (2026-08-26)
+
+**Attempted, then backed out deliberately.** The shared contract and `internal/features/contract.go` edits are trivial; the exporter is not. This is materially larger than every other item in this checklist and warrants being planned rather than pushed through.
+
+**What the surface actually is**
+
+| file | weather-bearing query variants | SELECTs in file |
+|---|---|---|
+| `exportqueries/batting.go` | 5 | 21 |
+| `exportqueries/bowling.go` | 5 | 24 |
+| `exportqueries/fielding.go` | 2 | 2 |
+| `exportqueries/extras.go` | 1 | 13 |
+| `exportqueries/innings.go` | 1 | 19 |
+| `exportqueries/win.go` | 1 | 18 |
+
+15 variants, and the weather columns appear in at least five distinct shapes: single-column `COALESCE(w.x, 0) AS name`, multi-column `COALESCE(...)` lines, bare `w.temp, w.wind, …` inside multi-line SELECTs, multi-line `CASE WHEN lower(w.viscosity) …` expressions, and `GROUP BY` clauses. A first pass with pattern matching caught roughly half and left the files inconsistent, so it was reverted.
+
+**Why that matters more than the line count.** Rows are read with `scanx.ScanToStrings(rows, len(headers))`. Dropping a SELECT column without its header entry — or vice versa — does **not** fail to compile and does **not** error at runtime; it silently shifts every subsequent column. The result is training data that looks fine and is wrong. Every other item in this checklist had a loud failure mode.
+
+**Also in scope, not yet touched**
+
+- `EXTRAS_FEATURE_COLS`, `WIN_FEATURE_COLS`, `INNINGS_FEATURE_COLS` in `ml/train_{extras,win,innings}.py`
+- Weather fields on `app/models/features.py` and the predict/backtest request models
+- `weather_composite` in `ml/match_level_derived_features.py` (weights in `ml/config.py`, consumed by `app/reconciliation.py`) — a derived feature computed from `rain`, `humidity`, `cloud`, all constant 0
+- `tests/golden/expected_headers_*.json` and `tests/golden/run_parity.py`
+- Re-export and retrain of all six models
+
+**Recommended approach when this is picked up**
+
+1. **Land a header-alignment test first.** Nothing today asserts that an exporter's header list matches `configs/feature_vectors.json`. `exportqueries/headers.go` only covers sequence columns. With that test in place the silent failure becomes a loud one, and the SQL edits can proceed safely — it is also worth having permanently.
+2. Then the exporter edits, verified by running a real export and diffing emitted headers against the contract.
+3. Then the ML col lists, request models and golden headers.
+4. Then re-export and retrain, comparing metrics.
+
+Step 1 has standalone value and could land on its own.
+
+---
 
 ### C2-2 — Remove the weather subsystem and its feature slots
 
