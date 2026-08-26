@@ -63,41 +63,63 @@ func (p *progressWriter) sample(now time.Time) Progress {
 
 var _ io.Writer = (*progressWriter)(nil)
 
-// live holds the progress of the fetch currently in flight.
+// slot holds the live state of one in-flight data step.
 //
-// A download runs in a goroutine inside go-app, so unlike a training subprocess it
-// can simply publish into memory — the same shape precompute already uses for its
-// per-format status. There is one slot because the data lane admits one step at a
-// time; the lane, not this variable, is what enforces that.
-var live struct {
-	sync.Mutex
+// Fetch and extract run in goroutines inside go-app, so unlike a training subprocess
+// they can simply publish into memory — the same shape precompute already uses for
+// its per-format status. One slot per step kind is enough because the data lane
+// admits one step at a time; the lane, not this variable, is what enforces that.
+type slot[T any] struct {
+	mu       sync.Mutex
 	active   bool
-	progress Progress
+	progress T
 	source   string
 }
 
-// PublishProgress records the current download state for the ops console.
-func PublishProgress(source string, p Progress) {
-	live.Lock()
-	defer live.Unlock()
-	live.active = true
-	live.progress = p
-	live.source = source
+func (s *slot[T]) publish(source string, p T) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.active = true
+	s.progress = p
+	s.source = source
 }
 
-// ClearProgress marks the download finished. Callers defer it so a failed or
-// cancelled fetch cannot leave the console showing a transfer that is not running.
-func ClearProgress() {
-	live.Lock()
-	defer live.Unlock()
-	live.active = false
-	live.progress = Progress{}
-	live.source = ""
+// clear marks the step finished. Callers defer it so a failed or cancelled step
+// cannot leave the console showing work that is not running.
+func (s *slot[T]) clear() {
+	var zero T
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.active = false
+	s.progress = zero
+	s.source = ""
 }
+
+func (s *slot[T]) status() (T, string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.progress, s.source, s.active
+}
+
+var (
+	liveFetch   slot[Progress]
+	liveExtract slot[ExtractProgress]
+)
+
+// PublishProgress records the current download state for the ops console.
+func PublishProgress(source string, p Progress) { liveFetch.publish(source, p) }
+
+// ClearProgress marks the download finished.
+func ClearProgress() { liveFetch.clear() }
 
 // Status is the live download state, or ok=false when nothing is downloading.
-func Status() (Progress, string, bool) {
-	live.Lock()
-	defer live.Unlock()
-	return live.progress, live.source, live.active
-}
+func Status() (Progress, string, bool) { return liveFetch.status() }
+
+// PublishExtractProgress records the current extraction state for the ops console.
+func PublishExtractProgress(source string, p ExtractProgress) { liveExtract.publish(source, p) }
+
+// ClearExtractProgress marks the extraction finished.
+func ClearExtractProgress() { liveExtract.clear() }
+
+// ExtractStatus is the live extraction state, or ok=false when nothing is extracting.
+func ExtractStatus() (ExtractProgress, string, bool) { return liveExtract.status() }

@@ -148,8 +148,10 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 
 ## Acquiring a dataset
 
-Getting a new Cricsheet archive onto the box used to require a shell. It is now a
-tracked background job like every other pipeline step.
+Getting a new Cricsheet archive onto the box used to require a shell. It is now two
+tracked background jobs like every other pipeline step.
+
+### Fetching it
 
 | Endpoint | What it does |
 |---|---|
@@ -183,6 +185,46 @@ bytes and digest are known, alongside a `.meta.json` sidecar recording the sourc
 `ETag`, `Last-Modified`, size and digest. That sidecar is what makes a second fetch
 conditional: an unchanged archive answers 304 and is reported as "already current"
 rather than re-downloaded.
+
+### Extracting it
+
+| Endpoint | What it does |
+|---|---|
+| `GET /ops/data/staged` | Staged archives with their provenance, plus the manifest of the live dataset |
+| `POST /ops/data/extract` | Inflates a staged archive into the dataset directory. Body: `{"archive":"all_json.zip"}`, or `{}` for the newest |
+
+Also **202**, also visible on the SSE stream — the `extract` step reports entries and
+bytes.
+
+**Nothing enters the dataset directory until the whole archive has been inflated and
+checked.** That ordering is the guarantee: reading paths and inflating bytes from an
+archive we did not create happens entirely inside `_staging/`, so a malicious,
+truncated or simply wrong archive fails with the live directory untouched. The final
+step is same-filesystem renames of files already known to be good.
+
+**What it refuses.** `archive/zip` does **not** sanitise entry names on your behalf —
+`f.Name` is whatever the archive author wrote — so every one of these is checked here,
+with a crafted fixture per case in `extract_test.go`:
+
+- **Zip-slip**: `../escaped.json`, `a/b/../../../x`, `/etc/passwd`, backslash-separated
+  traversals (separators are normalised *before* the check, not after), `C:\...` drive
+  prefixes and `//host/share` UNC paths. The resolved path is then re-checked against
+  the destination root with a trailing separator, so `/data/cricsheet-evil` cannot pass
+  as a prefix match of `/data/cricsheet`.
+- **Symlink entries**, and anything else that is not a regular file or directory. A link
+  entry has an innocent name; it is the *next* entry written through it that escapes.
+- **Zip bombs**: caps on entry count, total uncompressed bytes and per-entry expansion
+  ratio, checked up front from the central directory *and* again mid-inflate — the
+  declared sizes are attacker-controlled, so a bomb that understates itself is caught
+  on the way in.
+- **An archive with no match files.** Extracting "successfully" into an empty dataset
+  is the silent-success failure this repo has been bitten by repeatedly.
+
+Extraction **replaces** rather than merges, so a stale match file from the previous
+dataset cannot survive into the new one. The displaced contents are moved to
+`_staging/previous-<timestamp>/`, which makes a mistaken replace recoverable. A
+`.dataset-manifest` is written beside the data recording entry count, bytes, the source
+archive's digest and URL, and the time — the provenance A-3 and P-1 build on.
 
 **Lanes.** Acquisition runs in the `data` lane, training and the rest of the pipeline in
 `compute`. Steps within a lane run one at a time; the lanes overlap, so a download does

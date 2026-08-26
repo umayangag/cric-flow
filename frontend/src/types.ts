@@ -396,6 +396,13 @@ export type PipelineStepProgress = {
     bytes_per_sec?: number;
     eta_sec?: number;
   };
+  /** Live extraction progress for a dataset extract. Absent until the first sample. */
+  extract?: {
+    entries?: number;
+    entries_total?: number;
+    bytes?: number;
+    eta_sec?: number;
+  };
 };
 
 /**

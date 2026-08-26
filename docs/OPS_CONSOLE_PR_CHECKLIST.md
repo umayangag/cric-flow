@@ -97,7 +97,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | F-2 | done | `ops/pr2-multi-step-progress` | SSE reports only one in-flight step |
 | F-3 | done | `ops/pr3-dataset-directory` | Make the dataset directory a first-class, observable thing |
 | A-1 | done | `ops/pr4-data-fetch` | `POST /ops/data/fetch` — download a Cricsheet archive |
-| A-2 | todo | | `POST /ops/data/extract` — unzip into the data directory |
+| A-2 | done | `ops/pr5-data-extract` | `POST /ops/data/extract` — unzip into the data directory |
 | A-3 | todo | | Dataset registry: what is on disk and where it came from |
 | A-4 | todo | | Frontend: Data tab — feeds, fetch, extract, registry |
 | O-1 | todo | | Generalise `auto_tune_progress` into a shared progress channel |
@@ -265,18 +265,45 @@ and still stops everything without one. `TestJobCancels_AreKeyedByLane` and
 
 ### A-2 · `POST /ops/data/extract`
 
-- [ ] Unzip from staging into the data directory as a tracked job with entry-count progress
-- [ ] **Zip-slip defence is mandatory.** Reject any entry whose cleaned path escapes the
-      destination root. Reject absolute paths, `..` segments and symlink entries.
-      This is the single highest-severity item in this plan
-- [ ] Cap total uncompressed bytes and entry count — a zip bomb must be refused, not survived
-- [ ] Extract to a temporary sibling and swap on success, so a failed extract cannot
-      leave the data directory half-updated
-- [ ] Write a manifest: entry count, bytes, source archive digest, completion time
+- [x] Unzip from staging into the data directory as a tracked job with entry-count
+      progress, folded into the same SSE stream as `fetch`
+- [x] **Zip-slip defence.** Traversal segments, absolute paths, backslash-separated
+      traversals (normalised *before* the check, not after), `C:\` drive prefixes,
+      `//host/share` UNC paths, and symlink or other irregular entries. The resolved
+      path is then re-checked against the destination root *with a trailing separator*,
+      so `/data/cricsheet-evil` cannot pass as a prefix match of `/data/cricsheet`
+- [x] Cap entry count, total uncompressed bytes and per-entry expansion ratio —
+      checked up front from the central directory **and again mid-inflate**, because
+      the declared sizes are attacker-controlled and a bomb can understate itself
+- [x] Nothing enters the dataset directory until the whole archive has been inflated
+      and checked. See the note below on why this is not a single directory rename
+- [x] Write a manifest (`.dataset-manifest`): entry count, bytes, source archive digest
+      and URL, completion time. A-3's registry and P-1's provenance stamp read from it
+- [x] Also: refuse an archive that extracts without producing a single match file.
+      Extracting "successfully" into an empty dataset is this repo's recurring failure
+- [x] `GET /ops/data/staged` — the archives available to extract, each with the
+      provenance its fetch recorded, plus the manifest of the dataset currently live
 
 **Acceptance:** a malicious archive (traversal entry, symlink, bomb) is rejected with a
 clear error and leaves no files outside the destination. Write these as tests with
 crafted fixtures — do not assume the stdlib refuses on your behalf, `archive/zip` does not.
+
+**Done, and verified the hard way.** Every refusal above has a crafted fixture in
+`extract_test.go`, built by writing zip headers directly rather than through the
+`Create` helper — the entries a well-behaved writer would never emit are the whole
+point. The suite was then re-run with the path, symlink and mode checks removed: all
+fourteen cases fail without them. A security test that has never been seen to fail is
+not evidence.
+
+**Not a temporary sibling, and why.** The plan called for extracting to a sibling and
+swapping by rename. That is not available here: the staging directory lives *inside*
+the dataset directory (F-3's decision, so one env var moves everything and the swap
+stays on one filesystem), so renaming the dataset directory away would take the archive
+being read with it. What is done instead gives the same guarantee for the risk that
+matters — the entire archive is inflated and checked inside staging, and only then are
+already-verified files moved across with same-filesystem renames. Extraction replaces
+rather than merges; the displaced contents go to `_staging/previous-<timestamp>/`, so a
+mistaken replace is recoverable.
 
 ### A-3 · Dataset registry
 

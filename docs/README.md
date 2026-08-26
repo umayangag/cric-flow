@@ -29,7 +29,7 @@ Plans with open items. Check these before starting related work.
 |-----|--------|
 | [../model-harmony-plan.md](../model-harmony-plan.md) | Cross-model consistency: the strategic plan (**65 items open**) |
 | [../model-harmony-implementation-plan.md](../model-harmony-implementation-plan.md) | Its implementation companion (**6 open**). Note the correction banner: `[x]` there means *designed and prototyped*, not in use |
-| [OPS_CONSOLE_PR_CHECKLIST.md](OPS_CONSOLE_PR_CHECKLIST.md) | Run the whole pipeline from the frontend: acquisition, extraction, structured progress, chaining (**13 items open**) |
+| [OPS_CONSOLE_PR_CHECKLIST.md](OPS_CONSOLE_PR_CHECKLIST.md) | Run the whole pipeline from the frontend: acquisition, extraction, structured progress, chaining (**12 items open**) |
 | [CONSUMER_SURFACES_PR_CHECKLIST.md](CONSUMER_SURFACES_PR_CHECKLIST.md) | Streamline Workbench, Evaluate and Prediction; remove dead model-selection paths (**17 items open**) |
 | [../feature-catalog/README.md](../feature-catalog/README.md) | Five numbered feature plans driving the three product goals |
 | [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md) | ML service architecture improvements (P0–P4) |

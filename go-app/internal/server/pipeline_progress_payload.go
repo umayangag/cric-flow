@@ -41,6 +41,8 @@ type stepProgress struct {
 	AutoTune map[string]interface{} `json:"auto_tune,omitempty"`
 	// Fetch carries live download progress (bytes, rate, ETA) for a dataset fetch.
 	Fetch *dataacquire.Progress `json:"fetch,omitempty"`
+	// Extract carries live extraction progress (entries, bytes) for a dataset extract.
+	Extract *dataacquire.ExtractProgress `json:"extract,omitempty"`
 }
 
 type precomputeProgress struct {
@@ -61,9 +63,10 @@ type progressReporter struct {
 	autoTuneProgress func(context.Context) map[string]interface{}
 	// precomputeStatus reads in-process precompute state; a field for the same reason.
 	precomputeStatus func() precompute.Status
-	// fetchStatus reads in-process download state, likewise stubbable.
-	fetchStatus func() (dataacquire.Progress, string, bool)
-	now         func() time.Time
+	// fetchStatus and extractStatus read in-process acquisition state, likewise stubbable.
+	fetchStatus   func() (dataacquire.Progress, string, bool)
+	extractStatus func() (dataacquire.ExtractProgress, string, bool)
+	now           func() time.Time
 }
 
 func newProgressReporter() *progressReporter {
@@ -72,6 +75,7 @@ func newProgressReporter() *progressReporter {
 		autoTuneProgress: pipelinesvc.FetchAutoTuneProgress,
 		precomputeStatus: precompute.GetStatus,
 		fetchStatus:      dataacquire.Status,
+		extractStatus:    dataacquire.ExtractStatus,
 		now:              time.Now,
 	}
 }
@@ -110,6 +114,8 @@ func (p *progressReporter) describe(ctx context.Context, m tracking.Migration) s
 		out.AutoTune = p.autoTuneProgress(ctx)
 	case "dataset-fetch":
 		out.Fetch, out.EstimatedSec = p.fetchDetail()
+	case "dataset-extract":
+		out.Extract, out.EstimatedSec = p.extractDetail()
 	}
 	return out
 }
@@ -122,6 +128,16 @@ func (p *progressReporter) describe(ctx context.Context, m tracking.Migration) s
 // has not written its first sample is not a fetch that has downloaded nothing.
 func (p *progressReporter) fetchDetail() (*dataacquire.Progress, *int64) {
 	progress, _, ok := p.fetchStatus()
+	if !ok {
+		return nil, nil
+	}
+	return &progress, progress.ETASec
+}
+
+// extractDetail reports entries, bytes and an ETA for an extraction in flight.
+// Like fetchDetail, absent state is reported as absent rather than as zero entries.
+func (p *progressReporter) extractDetail() (*dataacquire.ExtractProgress, *int64) {
+	progress, _, ok := p.extractStatus()
 	if !ok {
 		return nil, nil
 	}
