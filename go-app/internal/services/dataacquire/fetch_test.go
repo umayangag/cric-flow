@@ -274,6 +274,10 @@ func TestFetch_StopsWhenTheJobContextIsCancelled(t *testing.T) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
+	// Deferred as well as called from the goroutine: if Fetch returns early the
+	// goroutine may never reach its cancel, and a leaked context is a leaked timer.
+	// Cancelling twice is defined to be a no-op.
+	defer cancel()
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
