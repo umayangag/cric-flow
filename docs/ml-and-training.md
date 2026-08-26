@@ -169,6 +169,28 @@ Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.c
 
 ---
 
+## Docker images: serve vs train
+
+`ml-service/Dockerfile` has two targets.
+
+| target | requirements | size | what it is for |
+|---|---|---|---|
+| `serve` (compose default) | `requirements-serve.txt` | **1.23 GB** | Serving predictions, `/admin/train/*`, and Optuna-only auto-tune |
+| `train` | `requirements.txt` | **5.02 GB** | Adds AutoGluon model ranking and SHAP explanations |
+
+```bash
+docker build -f ml-service/Dockerfile --target serve -t cric-app-ml:serve .
+docker build -f ml-service/Dockerfile --target train -t cric-app-ml:train .
+```
+
+**The serve image is not limited to serving.** `/admin/train/*` shells out to `python -m ml.train_*`, which needs only scikit-learn; `/admin/train/auto-tune` runs `ml.auto_tune`, which needs Optuna. Both are in the serving set. AutoGluon and SHAP each sit behind a guarded import with a graceful fallback, so auto-tune degrades to Optuna-only instead of failing. Build `train` when you want AutoGluon's model ranking.
+
+`requirements-serve.txt` is also what CI installs, so the test suite runs against the same dependency set the serving image ships.
+
+> **PyCaret does not work on this project's Python and is not worth its weight.** PyCaret 3.3.0 raises at import on Python >= 3.12 — *"Pycaret only supports python 3.9, 3.10, 3.11"* — and both the Docker image (`python:3.12-slim`) and the local venv are 3.12. It is installed by `requirements.txt`, pulls a large dependency tree, and is rejected every time; `_HAS_PYCARET` is `False` in both. `ml/auto_tune_pycaret.py` is guarded, so nothing breaks — the cost is dead weight in the `train` image. Removing it from `requirements.in` is blocked by `make compile-requirements-docker` failing on a `setup.py egg_info` step (pre-existing, reproducible on unmodified input). See C6-3 in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md).
+
+---
+
 ## Probability calibration (classifiers)
 
 For classifiers (e.g. the win model), predicted probabilities can be **calibrated** (Platt scaling or isotonic regression) so they reflect true frequencies, and evaluated with a reliability diagram, Brier score, or ECE.

@@ -14,8 +14,8 @@ on:
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
-      - 'ml-service/requirements-ci.in'
-      - 'ml-service/requirements-ci.txt'
+      - 'ml-service/requirements-serve.in'
+      - 'ml-service/requirements-serve.txt'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -24,8 +24,8 @@ on:
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
-      - 'ml-service/requirements-ci.in'
-      - 'ml-service/requirements-ci.txt'
+      - 'ml-service/requirements-serve.in'
+      - 'ml-service/requirements-serve.txt'
 
 jobs:
   ci:
@@ -62,14 +62,14 @@ jobs:
 
       - name: Run tests with coverage (xml + term)
         env:
-          REQUIREMENTS_FILE: requirements-ci.txt
+          REQUIREMENTS_FILE: requirements-serve.txt
         run: make -C ml-service coverage
 
       - name: Enforce coverage threshold
         env:
           # Keep aligned with ml-service/Makefile COV_MIN. Raise together once coverage improves.
           COV_MIN: "78"
-          REQUIREMENTS_FILE: requirements-ci.txt
+          REQUIREMENTS_FILE: requirements-serve.txt
         run: make -C ml-service coverage-check
 
       - name: Upload coverage artifact
