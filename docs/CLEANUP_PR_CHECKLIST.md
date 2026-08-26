@@ -36,7 +36,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C6-1 | done | `cleanup/c6-1-one-api-client` | Frontend: one API client |
 | C6-2 | done | `cleanup/c6-2-drop-app-shims` | Remove the `app/` compatibility re-export shims |
 | C6-3 | done | `cleanup/c6-3-split-serving-image` | Split the serving image from the training image |
-| C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
+| C6-4 | done | `cleanup/c6-4-generate-junie-skills` | Consolidate `.cursor/skills` and `.junie/skills` |
 | C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
 | C7-2 | done | `ci/c7-2-guardrails` | CI guardrails so dead code stops accumulating |
 | C7-3 | done | `test/c7-3-seqcalc-coverage` | Raise coverage on live under-tested code to absorb deletions |
@@ -939,10 +939,19 @@ make e2e-backtest-smoke
 
 **Scope**
 
-- [ ] Diff each pair and merge into one canonical copy
-- [ ] Keep one directory as the source of truth; make the other a symlink, or drop it and note the location in `.junie/README.md`
-- [ ] Same treatment for `.cursor/rules` vs `.gemini/styleguide.md` if they overlap
-- [ ] Add `.cursor/tmp/` to `.gitignore` (also covered by C0-1)
+**The plan's premise was wrong, and following it would have broken a tool.**
+
+`.cursor/skills` and `.junie/skills` are not redundant copies — they are the same seven workflows in **two different file formats** for two live assistants. `.cursor` uses YAML frontmatter; `.junie/README.md` explicitly specifies a plain trigger line, *"a `SKILL.md` file starting with `When the user says "/my-command" ...`"*. Both are in use: there is a `.github/workflows/junie.yaml`, and `.junie/guidelines.md` is the project's directives file. Merging into one file, or symlinking, breaks whichever tool loses its format.
+
+**The real problem was drift, and it was behavioural.** Every pair differed (up to 137 changed lines), and not just in wording: `.junie`'s `/run-check-all-incremental` still described **three** components and omitted the `frontend-backend-sync-check` step that CI enforces. Anyone running it in Junie skipped a check.
+
+- [x] `scripts/sync-junie-skills.py` generates `.junie/skills/` from `.cursor/skills/` — strips the frontmatter, builds Junie's trigger line from the frontmatter `description`, and stamps a "generated, do not edit" header
+- [x] `make sync-skills` / `make sync-skills-check`; the check exits 1 on drift and on a Junie skill with no Cursor source
+- [x] All 7 regenerated; the missing sync step is now present
+- [x] `.junie/README.md` documents that the files are generated and that new skills start in `.cursor/`
+- [x] `.cursor/tmp/` was gitignored in C0-1
+
+**Not done:** `.cursor/rules` vs `.gemini/styleguide.md` do not overlap — the former is Cursor rule files, the latter a 737-byte style note for Gemini review. Nothing to consolidate.
 
 **Verify** — none beyond `make check-all`; this is documentation.
 

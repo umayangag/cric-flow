@@ -1,10 +1,10 @@
-When the user says "/update-deps" or asks to update dependencies, upgrade packages, bump deps, or refresh go-app/ml-service/frontend dependencies (on the current branch, without opening PRs)
+<!-- Generated from ../../.cursor/skills/update-deps/SKILL.md by scripts/sync-junie-skills.py. Edit the Cursor copy, then re-run the script. -->
+
+When the user says "/update-deps" — Updates dependencies for go-app (Go modules), ml-service (Python pip-tools), and frontend (npm) on the current branch (no PRs). Use when the user asks to update dependencies, upgrade packages, bump deps, or run /update-deps. For separate PRs per component off main, use update-deps-prs (/update-deps-prs).
 
 # Update Dependencies
 
 Update dependencies across **go-app**, **ml-service**, and **frontend**. Run from the repository root.
-
-For **separate PRs per component off main**, use `/update-deps-prs` instead.
 
 ## Scope
 

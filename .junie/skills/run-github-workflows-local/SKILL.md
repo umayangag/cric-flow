@@ -1,6 +1,10 @@
-When the user says "/run-github-workflows-local" or wants to verify CI locally before push
+<!-- Generated from ../../.cursor/skills/run-github-workflows-local/SKILL.md by scripts/sync-junie-skills.py. Edit the Cursor copy, then re-run the script. -->
+
+When the user says "/run-github-workflows-local" — Runs all runnable GitHub Actions workflows locally using equivalent make/npm commands. Use when verifying CI before push, debugging workflow failures, or ensuring local changes pass the same checks as GitHub Actions.
 
 # Run GitHub Workflows Locally
+
+## Goal
 
 Verify that all runnable GitHub workflows pass locally before pushing, without relying on CI. Map each workflow to equivalent local commands and run them in the correct order.
 

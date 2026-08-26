@@ -1,4 +1,6 @@
-When the user says "/gemini-review-check-iterate" or wants a full review-and-fix cycle with Gemini and local checks before committing
+<!-- Generated from ../../.cursor/skills/gemini-review-check-iterate/SKILL.md by scripts/sync-junie-skills.py. Edit the Cursor copy, then re-run the script. -->
+
+When the user says "/gemini-review-check-iterate" — Runs Gemini code review (gemini "/code-review" --yolo), then run-check-all-incremental until all checks pass, re-runs Gemini review and iterates until no high or medium issues remain, then commits and pushes to the current branch. Use when the user wants a full review-and-fix cycle with Gemini and local checks before committing.
 
 # Gemini review, check-all, iterate, then commit
 
@@ -37,4 +39,4 @@ Run a full quality cycle: Gemini code review → fix and pass all local checks �
 ## Efficiency
 
 - After fixing review feedback, re-run only affected component checks (e.g. go-app only) when possible.
-- Use run-check-all-incremental's per-step commands to re-run only failed steps.
+- Use run-check-all-incremental’s per-step commands to re-run only failed steps.
