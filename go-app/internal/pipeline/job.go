@@ -1,6 +1,6 @@
 // Package pipeline provides shared orchestration for pipeline steps (import, precompute, export).
 // Both HTTP handlers and CLI commands use these helpers to minimize logic duplication.
-// Pipeline steps are singleton: only one step may run across the whole system at a time.
+// Concurrency is per lane: steps sharing a lane run one at a time (see steps.Lane).
 package pipeline
 
 import (
@@ -11,31 +11,24 @@ import (
 	"runtime/debug"
 	"time"
 
+	steps "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
-// PipelineCommands are the data_migrations command names that form the main pipeline.
-// Only one of these may be IN_PROGRESS at a time (enforced in RunJob and in ml-service Tracker).
-var PipelineCommands = []string{
-	"cricsheet-import",
-	"precompute-features",
-	"export-dataset",
-	"train-batting",
-	"train-bowling",
-	"train-fielding",
-	"train-extras",
-	"train-win",
-	"train-innings",
-	"ml-auto-tune",
-}
-
-// ErrPipelineBusy is returned when another pipeline step is already running (singleton).
+// ErrPipelineBusy is returned when another step in the same lane is already running.
 var ErrPipelineBusy = errors.New("another pipeline step is already running")
 
-// HasPipelineBusy returns true if any pipeline step is currently IN_PROGRESS.
-// Handlers use this to return 409 before starting a new step.
-func HasPipelineBusy(ctx context.Context) (bool, error) {
-	return tracking.HasInProgressForAnyCommand(ctx, PipelineCommands)
+// LaneBusy reports whether any step sharing a lane with the given command is currently
+// IN_PROGRESS. Handlers call it to return 409 before starting a step.
+//
+// This used to consult a hand-maintained list of commands that had already drifted:
+// train-combination-meta was missing from it, so that step could overlap a training
+// run despite the lock existing precisely to stop that. The lane now comes from the
+// step registry, so the list cannot go stale again.
+func LaneBusy(ctx context.Context, command string) (bool, error) {
+	registry := steps.Steps()
+	lane := registry.LaneForCommand(command)
+	return tracking.HasInProgressForAnyCommand(ctx, registry.CommandsInLane(lane))
 }
 
 // JobFunc runs a pipeline step. It returns (exitMeta, err). On success, exitMeta is
@@ -55,8 +48,8 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 		defer cancel()
 	}
 
-	// Enforce singleton: only one pipeline step for the whole system at a time.
-	busy, err := tracking.HasInProgressForAnyCommand(ctx, PipelineCommands)
+	// Enforce the lane: one step at a time within a lane, lanes free to overlap.
+	busy, err := LaneBusy(ctx, jobName)
 	if err != nil {
 		slog.Warn("pipeline: check for existing run failed",
 			slog.String("command", jobName),

@@ -94,7 +94,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | ID | Status | Branch / PR | Summary |
 |----|--------|-------------|---------|
 | F-1 | done | `ops/pr1-ui-honesty` | `train_combination_meta` missing from the frontend step list |
-| F-2 | todo | | SSE reports only one in-flight step |
+| F-2 | done | `ops/pr2-multi-step-progress` | SSE reports only one in-flight step |
 | F-3 | todo | | Make the dataset directory a first-class, observable thing |
 | A-1 | todo | | `POST /ops/data/fetch` — download a Cricsheet archive |
 | A-2 | todo | | `POST /ops/data/extract` — unzip into the data directory |
@@ -152,12 +152,27 @@ otherwise this drifts again.
 busy-lock that is *usually* true, but it is an assumption baked into the transport,
 and R-1 (chaining) will make it false.
 
-- [ ] Change the payload to carry a list of running steps, not a single one
-- [ ] Keep a compatible shape for the existing panel, or migrate it in the same PR
-- [ ] Decide explicitly whether `fetch`/`extract` share the training busy-lock
-      (recommendation: **no** — downloading should not block a training run)
+- [x] Change the payload to carry a list of running steps, not a single one —
+      `{running, steps: [...]}`, most recently started first
+- [x] Migrate the panel in the same PR rather than keeping a compatible shape. A
+      mirrored `step_id` alongside `steps[0]` would be a second way to say the same
+      thing, and the only consumer is our own ops console
+- [x] Decided: **no**, `fetch`/`extract` do not share the training lock. Encoded as
+      `Step.Lane` in the registry (`LaneCompute` / `LaneData`): steps in a lane run
+      one at a time, lanes overlap. Phase A's steps declare `LaneData` and nothing
+      else changes
 
-**Risk:** the payload is consumed by `PipelineProgressPanel`; change both together.
+**Also fixed here:** `pipeline.PipelineCommands` — a *seventh* copy of the step list,
+and the one the busy-lock actually consulted — was missing `train-combination-meta`,
+so that step could overlap a training run despite the lock existing to prevent exactly
+that. The lane now comes from the registry, and `TestLaneBusyCoversEveryComputeStep`
+is the regression guard.
+
+**Refactor:** `pipelineProgressStreamHandler` was a 90-line closure mixing SSE
+transport, payload assembly and ETA arithmetic. It is now `sseStream` (transport),
+`progressReporter` (payload, with injectable clock and status sources so the ETA is
+testable without a live stream), and on the frontend `usePipelineProgressStream`
+(connection and retry) plus `PipelineStepProgressCard` (one step's display).
 
 ### F-3 · Make the dataset directory a first-class, observable thing
 

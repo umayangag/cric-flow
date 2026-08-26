@@ -309,8 +309,8 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	formats := body.Formats
 	// Empty formats means "all": precompute's discoverFormatCodes reads match_format,
 	// which holds exactly the canonical codes.
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+	if busy, _ := pipeline.LaneBusy(r.Context(), "precompute-features"); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
 		return
 	}
 	slog.Info(
@@ -374,8 +374,8 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	opts := &cricsheet.Options{
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}
-	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
+	if busy, _ := pipeline.LaneBusy(r.Context(), "cricsheet-import"); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
 		return
 	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))

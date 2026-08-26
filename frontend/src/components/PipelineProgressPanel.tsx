@@ -1,44 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box } from '@mui/material';
 import Button from '@mui/material/Button';
-import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import { api } from '../api';
 import type { PipelineProgressPayload } from '../types';
-
-const MAX_STREAM_RETRIES = 5;
-const RETRY_DELAY_MS = 3000;
-/** Keep showing last progress for this long after connection loss before showing error. */
-const STALE_PROGRESS_BUFFER_MS = 15000;
-
-function formatElapsed(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  if (m >= 60) {
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-  }
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-function formatActivity(activity: string): string {
-  const labels: Record<string, string> = {
-    loading_data: 'Loading data',
-    screening: 'Screening algorithms',
-    cross_validating: 'Cross-validating',
-    screening_done: 'Screening complete',
-    running_trial: 'Running Optuna trial',
-    initializing: 'Initializing',
-  };
-  return labels[activity] ?? activity.replace(/_/g, ' ');
-}
-
-const PHASE_LABELS: Record<string, string> = {
-  fine_tuning: 'Fine-tuning',
-  loading: 'Loading',
-  pycaret: 'PyCaret ranking',
-  autogluon: 'AutoGluon',
-};
+import { usePipelineProgressStream } from '../hooks/usePipelineProgressStream';
+import PipelineStepProgressCard from './PipelineStepProgressCard';
 
 type PipelineProgressPanelProps = {
   pipelineRunning: boolean;
@@ -46,27 +13,43 @@ type PipelineProgressPanelProps = {
 };
 
 /**
- * Live pipeline progress via SSE. Shown below the pipeline graph when a step is running.
- * Auto-retries the stream connection on failure (e.g. proxy timeout) up to MAX_STREAM_RETRIES.
+ * Live pipeline progress, shown below the pipeline graph while anything is running.
+ *
+ * Renders one card per in-flight step. Steps can overlap — acquisition runs in its own
+ * lane, and the run-plan executor drives several — so this reads the whole `steps`
+ * list rather than assuming a single running step.
  */
 const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
   pipelineRunning,
   onRefresh,
 }) => {
-  const [payload, setPayload] = useState<PipelineProgressPayload | null>(null);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [reconnectingBuffered, setReconnectingBuffered] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const [stopLoading, setStopLoading] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
-  const wasRunningRef = useRef(false);
-  const onRefreshRef = useRef(onRefresh);
-  const showErrorAfterBufferRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  onRefreshRef.current = onRefresh;
 
-  const doRefresh = useCallback(() => {
-    onRefreshRef.current?.();
-  }, []);
+  const handleRunCompleted = useCallback(
+    (payload: PipelineProgressPayload) => {
+      onRefresh?.();
+      // Tell other tabs (e.g. ML Model Stats) a step finished so they can refresh
+      // model-dependent views the user has open.
+      try {
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          window.dispatchEvent(
+            new CustomEvent<PipelineProgressPayload>('cric:pipeline-completed', {
+              detail: payload,
+            }),
+          );
+        }
+      } catch {
+        // Ignore environments without window / CustomEvent
+      }
+    },
+    [onRefresh],
+  );
+
+  const { payload, error, reconnecting, connecting } = usePipelineProgressStream(
+    pipelineRunning,
+    handleRunCompleted,
+  );
 
   const handleStopPipeline = useCallback(async () => {
     setStopError(null);
@@ -74,7 +57,7 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
     try {
       const { status, data: res } = await api.opsPipelineStop();
       if (status === 200) {
-        doRefresh();
+        onRefresh?.();
       } else {
         setStopError(res.error || `Failed (${status})`);
       }
@@ -83,103 +66,26 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
     } finally {
       setStopLoading(false);
     }
-  }, [doRefresh]);
+  }, [onRefresh]);
 
-  useEffect(() => {
-    if (!pipelineRunning) {
-      setStreamError(null);
-      setReconnectingBuffered(false);
-      setRetryCount(0);
-      setPayload((prev) => (prev?.running ? { ...prev, running: false } : prev));
-      return;
-    }
-    setStreamError(null);
-    setReconnectingBuffered(false);
-    const ac = new AbortController();
-    let mounted = true;
-    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  const runningSteps = payload?.running ? (payload.steps ?? []) : [];
+  const showRunning = runningSteps.length > 0;
 
-    const runStream = () => {
-      api
-        .subscribePipelineProgress(ac.signal, (p) => {
-          if (mounted) {
-            if (showErrorAfterBufferRef.current) {
-              clearTimeout(showErrorAfterBufferRef.current);
-              showErrorAfterBufferRef.current = null;
-            }
-            setStreamError(null);
-            setReconnectingBuffered(false);
-            setPayload(p);
-            if (wasRunningRef.current && p.running === false) {
-              wasRunningRef.current = false;
-              doRefresh();
-              // Notify other tabs (e.g. ML Model Stats) that a pipeline step has completed
-              // so they can refresh any model-dependent views while the user keeps them open.
-              try {
-                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                  window.dispatchEvent(
-                    new CustomEvent<PipelineProgressPayload>('cric:pipeline-completed', {
-                      detail: p,
-                    }),
-                  );
-                }
-              } catch {
-                // Ignore environments without window / CustomEvent
-              }
-            } else if (p.running === true) {
-              wasRunningRef.current = true;
-            }
-          }
-        })
-        .then(() => {
-          if (mounted) doRefresh();
-        })
-        .catch((e) => {
-          if (!mounted || (e as { name?: string }).name === 'AbortError') return;
-          const message = e instanceof Error ? e.message : String(e);
-          const isLastRetry = retryCount >= MAX_STREAM_RETRIES - 1;
-          if (mounted) setReconnectingBuffered(true);
-          // Keep showing last progress for STALE_PROGRESS_BUFFER_MS; only then show error.
-          if (showErrorAfterBufferRef.current) clearTimeout(showErrorAfterBufferRef.current);
-          showErrorAfterBufferRef.current = setTimeout(() => {
-            showErrorAfterBufferRef.current = null;
-            if (mounted) {
-              setReconnectingBuffered(false);
-              setStreamError(
-                isLastRetry
-                  ? `${message}. Click Refresh to try again.`
-                  : 'Connection lost. Reconnecting…',
-              );
-            }
-          }, STALE_PROGRESS_BUFFER_MS);
-          if (!isLastRetry) {
-            retryTimeout = setTimeout(() => {
-              setRetryCount((c) => c + 1);
-            }, RETRY_DELAY_MS);
-          }
-        });
-    };
-
-    runStream();
-
-    return () => {
-      mounted = false;
-      if (retryTimeout) clearTimeout(retryTimeout);
-      if (showErrorAfterBufferRef.current) {
-        clearTimeout(showErrorAfterBufferRef.current);
-        showErrorAfterBufferRef.current = null;
-      }
-      ac.abort();
-    };
-  }, [pipelineRunning, retryCount, doRefresh]);
-
-  if (!pipelineRunning && !payload?.running && !streamError) {
+  if (!pipelineRunning && !showRunning && !error) {
     return null;
   }
 
-  const p = payload;
-  const showRunning = p?.running === true;
-  const connecting = pipelineRunning && p == null && !streamError;
+  const stopButton = (
+    <Button
+      size="small"
+      color="error"
+      variant="outlined"
+      disabled={stopLoading}
+      onClick={handleStopPipeline}
+    >
+      {stopLoading ? 'Stopping…' : 'Stop pipeline'}
+    </Button>
+  );
 
   return (
     <Box
@@ -195,170 +101,53 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
         Live progress
       </Typography>
-      {streamError && (
+
+      {error && (
         <Typography variant="body2" color="error">
-          {streamError}
+          {error}
         </Typography>
       )}
-      {!streamError && connecting && (
+
+      {!error && connecting && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
             Connecting to live progress…
           </Typography>
-          <Button
-            size="small"
-            color="error"
-            variant="outlined"
-            disabled={stopLoading}
-            onClick={handleStopPipeline}
-          >
-            {stopLoading ? 'Stopping…' : 'Stop pipeline'}
-          </Button>
+          {stopButton}
         </Box>
       )}
-      {!streamError && !connecting && !showRunning && (
+
+      {!error && !connecting && !showRunning && (
         <Typography variant="body2" color="text.secondary">
           No pipeline in progress.
         </Typography>
       )}
-      {!streamError && showRunning && p && (
+
+      {!error && showRunning && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          {reconnectingBuffered && (
+          {reconnecting && (
             <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
               Reconnecting… (showing last status)
             </Typography>
           )}
-          {p.detail && (
-            <Typography variant="body2" color="text.secondary">
-              {p.detail}
-            </Typography>
-          )}
-          {p.params && Object.keys(p.params).length > 0 && (
-            <Typography variant="caption" color="text.secondary" component="div">
-              {Object.entries(p.params)
-                .map(([key, value]) => {
-                  const label = key.replace(/_/g, ' ');
-                  const val =
-                    typeof value === 'object' && value !== null && !Array.isArray(value)
-                      ? JSON.stringify(value)
-                      : String(value);
-                  return `${label}: ${val}`;
-                })
-                .join(' · ')}
-            </Typography>
-          )}
-          {p.step_id === 'auto_tune' && p.auto_tune && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mt: 0.5 }}>
-              <Typography variant="caption" fontWeight={600} color="primary.main">
-                Phase:{' '}
-                {(p.auto_tune.phase && PHASE_LABELS[p.auto_tune.phase]) ?? 'Algorithm screening'}
-                {p.auto_tune.activity && <> · Activity: {formatActivity(p.auto_tune.activity)}</>}
-              </Typography>
-              {p.auto_tune.algorithms_requested && p.auto_tune.algorithms_requested.length > 0 && (
-                <Typography variant="caption" color="text.secondary">
-                  Selected: <strong>{p.auto_tune.algorithms_requested.join(', ')}</strong>
-                </Typography>
-              )}
-              {p.auto_tune.algorithms_screened && p.auto_tune.algorithms_screened.length > 0 && (
-                <Typography variant="caption" color="text.secondary">
-                  Considering: {p.auto_tune.algorithms_screened.join(', ')}
-                  {p.auto_tune.format_suffix && ` · Format: ${p.auto_tune.format_suffix}`}
-                </Typography>
-              )}
-              {p.auto_tune.algorithm && !p.auto_tune.algorithms_screened?.length && (
-                <Typography variant="caption" color="text.secondary">
-                  Current algorithm: <strong>{p.auto_tune.algorithm}</strong>
-                  {p.auto_tune.format_suffix && ` · Format: ${p.auto_tune.format_suffix}`}
-                </Typography>
-              )}
-              {p.auto_tune.hyperparams && Object.keys(p.auto_tune.hyperparams).length > 0 && (
-                <Typography variant="caption" color="text.secondary" component="div">
-                  Hyperparams:{' '}
-                  {Object.entries(p.auto_tune.hyperparams)
-                    .map(([k, v]) => `${k}=${String(v)}`)
-                    .join(', ')}
-                </Typography>
-              )}
-              {(p.auto_tune.trial != null || p.auto_tune.trials_total != null) && (
-                <Typography variant="caption" color="text.secondary">
-                  Trial {p.auto_tune.trial ?? '?'} / {p.auto_tune.trials_total ?? '?'}
-                </Typography>
-              )}
-              {p.auto_tune.best_score != null && (
-                <Typography variant="caption" color="text.secondary">
-                  Best score so far: {p.auto_tune.best_score.toFixed(4)}
-                </Typography>
-              )}
-              {p.auto_tune.message && (
-                <Typography variant="caption" color="text.secondary">
-                  {p.auto_tune.message}
-                </Typography>
-              )}
-            </Box>
-          )}
-          {p.step_id === 'auto_tune' && !p.auto_tune?.phase && (
-            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-              Algorithms are screened first; best algorithm is then fine-tuned. Progress updates as
-              tuning runs.
-            </Typography>
-          )}
+
+          {runningSteps.map((step, index) => (
+            <PipelineStepProgressCard key={step.step_id ?? index} step={step} />
+          ))}
+
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2" fontWeight={600}>
-              {p.step_label || p.step_id || 'Running'}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Elapsed: {formatElapsed(p.elapsed_sec ?? 0)}
-            </Typography>
-            {p.estimated_remaining_sec != null && p.estimated_remaining_sec > 0 && (
+            {runningSteps.length > 1 && (
               <Typography variant="body2" color="text.secondary">
-                Est. remaining: ~{formatElapsed(p.estimated_remaining_sec)}
+                {runningSteps.length} steps running
               </Typography>
             )}
-            <Button
-              size="small"
-              color="error"
-              variant="outlined"
-              disabled={stopLoading}
-              onClick={handleStopPipeline}
-            >
-              {stopLoading ? 'Stopping…' : 'Stop pipeline'}
-            </Button>
+            {stopButton}
           </Box>
+
           {stopError && (
             <Typography variant="caption" color="error">
               {stopError}
             </Typography>
-          )}
-          {p.precompute && (
-            <Box>
-              <Typography variant="caption" color="text.secondary" display="block">
-                Phase: {p.precompute.phase || '—'} · Current format:{' '}
-                {p.precompute.current_format || '—'}
-              </Typography>
-              {p.precompute.formats_total != null && p.precompute.formats_total > 0 && (
-                <Box sx={{ mt: 0.5 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Formats: {p.precompute.formats?.join(', ') || '—'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {p.precompute.current_index != null && p.precompute.current_index >= 0
-                        ? `${p.precompute.current_index + 1} / ${p.precompute.formats_total}`
-                        : `0 / ${p.precompute.formats_total}`}
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={
-                      p.precompute.current_index != null && p.precompute.formats_total > 0
-                        ? ((p.precompute.current_index + 1) / p.precompute.formats_total) * 100
-                        : 0
-                    }
-                    sx={{ height: 6, borderRadius: 1 }}
-                  />
-                </Box>
-              )}
-            </Box>
           )}
         </Box>
       )}
