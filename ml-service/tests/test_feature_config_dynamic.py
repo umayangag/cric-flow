@@ -28,7 +28,7 @@ def test_dynamic_order_from_feature_config(tmp_path, monkeypatch):
     monkeypatch.setenv("FEATURE_CONFIG_PATH", str(cfg_path))
 
     from app.features import batting_feature_vector, bowling_feature_vector
-    from app.models import BattingFeatures, BowlingFeatures
+    from app.models.features import BattingFeatures, BowlingFeatures
 
     m_config = importlib.import_module("app.feature_config")
     importlib.reload(m_config)

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from app.models import BacktestPlayerPred
+from app.models.backtest import BacktestPlayerPred
 from app.reconciliation import (
     build_innings_feature_vector,
     predict_innings,

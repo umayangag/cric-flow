@@ -42,22 +42,23 @@ from .errors import error_payload
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .model_metadata import get_model_metadata
 from .model_stats_service import build_model_stats
-from .models import (
+from .models.backtest import (
     BacktestMatchResponse,
     BacktestPlayersResponse,
     BacktestPredictRequest,
     BatchPredictRequest,
     BatchPredictResponse,
     BatchPredictResultItem,
-    BattingFeatures,
-    BattingPrediction,
-    BowlingFeatures,
-    BowlingPrediction,
-    ExtrasFeatures,
-    ExtrasPrediction,
     GenerateMatchRequest,
     GenerateMatchResponse,
     HistoricalMatchBacktestRequest,
+)
+from .models.features import BattingFeatures, BowlingFeatures
+from .models.predict import (
+    BattingPrediction,
+    BowlingPrediction,
+    ExtrasFeatures,
+    ExtrasPrediction,
     TeamOptimizationRequest,
     TeamOptimizationResponse,
     TeamOptimizationSelectedPlayer,
@@ -65,11 +66,7 @@ from .models import (
     WinFeaturesEnhanced,
     WinPrediction,
 )
-from .prediction_service import (
-    GenerateMatchSettings,
-    generate_match,
-    predict_players_batch,
-    predict_players_with_features,
+from .prediction_service.endpoints import (
     run_batting_prediction,
     run_bowling_prediction,
     run_extras_prediction,
@@ -78,6 +75,9 @@ from .prediction_service import (
     run_win_prediction_enhanced,
     validate_predict_batch,
 )
+from .prediction_service.generate_match import generate_match
+from .prediction_service.players import predict_players_batch, predict_players_with_features
+from .prediction_settings import GenerateMatchSettings
 
 # ---------------------------------------------------------------------------
 # Lifespan

@@ -14,10 +14,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
-from app.models import (
-    BacktestPlayerPred,
-    BattingPrediction,
-    BowlingPrediction,
+from app.models.backtest import BacktestPlayerPred
+from app.models.predict import BattingPrediction, BowlingPrediction
+from app.models.reconciliation import (
     InningsReconciliationPreferences,
     MatchReconciliationInputs,
     PlayerReconciliationPreferences,

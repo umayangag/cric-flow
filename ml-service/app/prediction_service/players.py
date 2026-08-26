@@ -22,7 +22,7 @@ from ..backtest_service import (
 from ..feature_config import get_feature_names
 from ..features import batting_feature_vector, bowling_feature_vector, fielding_feature_vector
 from ..logging import get_struct_logger
-from ..models import BacktestPlayerPred, BatchPredictItem, MatchContext
+from ..models.backtest import BacktestPlayerPred, BatchPredictItem, MatchContext
 from ..prediction_settings import round_datetime_to_granularity
 from ..train_on_the_fly import train_on_the_fly_cached
 from .innings import predict_match_innings

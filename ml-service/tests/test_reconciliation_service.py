@@ -2,9 +2,8 @@
 
 from unittest.mock import patch
 
-from app.models import (
-    BattingPrediction,
-    BowlingPrediction,
+from app.models.predict import BattingPrediction, BowlingPrediction
+from app.models.reconciliation import (
     InningsReconciliationPreferences,
     MatchReconciliationInputs,
     PlayerReconciliationPreferences,

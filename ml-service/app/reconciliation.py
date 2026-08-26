@@ -22,7 +22,7 @@ from ml.match_level_derived_features import compute_match_level_derived_features
 from ml.train_innings import LEGACY_INNINGS_FEATURE_COLS
 from ml.win_features import format_one_hot_from_code
 
-from .models import BacktestPlayerPred
+from .models.backtest import BacktestPlayerPred
 
 
 def _innings_feature_dict(

@@ -1,6 +1,6 @@
 """Tests for ml.consistency_eval."""
 
-from app.models import BacktestPlayerPred
+from app.models.backtest import BacktestPlayerPred
 from ml.consistency_eval import (
     build_before_after_stats_from_predictions,
     compute_consistency_metrics,
