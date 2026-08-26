@@ -111,11 +111,7 @@ LEFT JOIN (SELECT DISTINCT ON (match_id) match_id, temp, wind, rain, humidity, c
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"match_id", "venue_id", "total_extras", "format_code",
-		"match_date", "temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"bat_consistency_sum", "bowl_consistency_sum", "bat_form_sum", "bowl_form_sum",
-	}
+	headers := ExtrasTrainingHeaders()
 	out := make([][]string, 0, 256)
 	out = append(out, headers)
 	for rows.Next() {

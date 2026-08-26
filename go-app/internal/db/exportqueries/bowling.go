@@ -140,31 +140,7 @@ func BowlingInferenceRows(ctx context.Context, format string) ([][]string, error
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
-		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
-		"bowling_last_1", "bowling_last_2", "bowling_last_3",
-		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
-		"bowling_days_since_last", "bowling_innings_in_last_90d",
-		"bowling_temp",
-		"bowling_wind",
-		"bowling_rain",
-		"bowling_humidity",
-		"bowling_cloud",
-		"bowling_pressure",
-		"bowling_viscosity",
-		"batting_inning",
-		"bowling_session",
-		"toss",
-		"bowling_venue",
-		"bowling_opposition",
-		"player_name",
-		"catches",
-		"run_outs",
-		"stumpings",
-		"runouts_direct_hits",
-		"fielding_involvements",
-	}
+	headers := BowlingInferenceHeaders()
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	for rows.Next() {
@@ -231,33 +207,7 @@ func BowlingFormatRows(ctx context.Context, format string) ([][]string, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	headers := []string{
-		"runs", "balls", "wickets",
-		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
-		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
-		"bowling_last_1", "bowling_last_2", "bowling_last_3",
-		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
-		"bowling_days_since_last", "bowling_innings_in_last_90d",
-		"temp",
-		"wind",
-		"rain",
-		"humidity",
-		"cloud",
-		"pressure",
-		"viscosity",
-		"inning",
-		"bowling_session",
-		"toss",
-		"bowling_venue",
-		"bowling_opposition",
-		"player_name",
-		"catches",
-		"run_outs",
-		"stumpings",
-		"runouts_direct_hits",
-		"fielding_involvements",
-		"format_code",
-	}
+	headers := BowlingFormatHeaders()
 	out := make([][]string, 0, 1024)
 	out = append(out, headers)
 	fmtcode := strings.ToUpper(strings.TrimSpace(format))
@@ -457,18 +407,7 @@ func bowlingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 	for k := range oppKeys {
 		oppCache[k] = bulkRes[db.HistQueryKey{P: k.P, T: time.Unix(0, k.T), F: k.F, O: k.O, V: 0}]
 	}
-	headers := []string{
-		"runs", "balls", "wickets", "innings_runs", "innings_wickets",
-		"bowling_mean_w3", "bowling_mean_w5", "bowling_mean_w10", "bowling_mean_w20",
-		"bowling_std_w5", "bowling_std_w10", "bowling_max_w10", "bowling_min_w10", "bowling_median_w10",
-		"bowling_last_1", "bowling_last_2", "bowling_last_3",
-		"bowling_career_mean", "bowling_career_count", "bowling_pct_zero_w10", "bowling_trend_w5",
-		"bowling_days_since_last", "bowling_innings_in_last_90d",
-		"temp", "wind", "rain", "humidity", "cloud", "pressure", "viscosity",
-		"inning", "bowling_session", "toss", "bowling_venue", "bowling_opposition", "player_name",
-		"catches", "run_outs", "stumpings", "runouts_direct_hits", "fielding_involvements", "format_code",
-		"match_date",
-	}
+	headers := BowlingTrainingHeaders()
 	alpha, lastN, windowN, alphaShort, alphaLong, momentumN := GetFeatureExtractionParams()
 	out := make([][]string, 0, len(rawRows)+1)
 	out = append(out, headers)
