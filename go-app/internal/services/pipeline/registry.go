@@ -1,0 +1,219 @@
+package pipeline
+
+import "sort"
+
+// Step is the single authoritative definition of one pipeline step.
+//
+// Before this type existed the same eleven steps were spelled out in six places —
+// two switch statements in the run handler, three maps in this package and two more
+// in opsstatus — and a step added to one of them stayed invisible to the others.
+// That is how train_combination_meta reached main with a working handler that the UI
+// never offered. Everything that needs to know about steps now derives from Registry,
+// so a step can only be added in one place.
+type Step struct {
+	// ID is the stable identifier used by POST /ops/pipeline/run/{id}, by
+	// /ops/status and by the frontend. It never changes once released.
+	ID string
+
+	// Command is the value written to data_migrations.command for a run of this step.
+	Command string
+
+	// Label is the human-readable name shown in the UI and in error messages.
+	Label string
+
+	// Model is the ML model name used for the tuned-parameter lookup, or "" when
+	// the step trains no single model.
+	Model string
+
+	// MLEndpoint is the ml-service path segment for POST /admin/train/{endpoint},
+	// or "" when go-app executes the step itself.
+	MLEndpoint string
+
+	// Requires lists the step IDs that must have completed successfully before
+	// this step may start. Empty means the step has no predecessor.
+	Requires []string
+
+	// Optional marks a step that is outside the default happy path — it is offered
+	// but never implied by the steps before it.
+	Optional bool
+
+	// Prerequisite describes a precondition that step ordering cannot express, in
+	// terms the operator can act on. Empty when ordering says everything.
+	Prerequisite string
+}
+
+// IsTraining reports whether the step trains a model whose hyper-parameters are
+// looked up from the tuned-params table.
+func (s Step) IsTraining() bool { return s.Model != "" }
+
+// RunsOnMLService reports whether the step is executed by ml-service rather than go-app.
+func (s Step) RunsOnMLService() bool { return s.MLEndpoint != "" }
+
+// Registry is an ordered, read-only collection of pipeline steps with lookups by
+// ID and by data_migrations command. Construct it with NewRegistry; the package
+// level Steps() returns the one the application uses.
+type Registry struct {
+	steps     []Step
+	byID      map[string]Step
+	byCommand map[string]Step
+}
+
+// NewRegistry indexes the given steps. The order of steps is preserved and is the
+// order the pipeline is presented in.
+func NewRegistry(steps ...Step) *Registry {
+	r := &Registry{
+		steps:     append([]Step(nil), steps...),
+		byID:      make(map[string]Step, len(steps)),
+		byCommand: make(map[string]Step, len(steps)),
+	}
+	for _, s := range r.steps {
+		r.byID[s.ID] = s
+		r.byCommand[s.Command] = s
+	}
+	return r
+}
+
+// All returns the steps in pipeline order.
+func (r *Registry) All() []Step { return append([]Step(nil), r.steps...) }
+
+// ByID returns the step with the given ID.
+func (r *Registry) ByID(id string) (Step, bool) {
+	s, ok := r.byID[id]
+	return s, ok
+}
+
+// ByCommand returns the step whose runs are recorded under the given
+// data_migrations command.
+func (r *Registry) ByCommand(command string) (Step, bool) {
+	s, ok := r.byCommand[command]
+	return s, ok
+}
+
+// Has reports whether the registry knows the step ID. This is the set the run
+// handler accepts, and the set the frontend must offer.
+func (r *Registry) Has(id string) bool {
+	_, ok := r.byID[id]
+	return ok
+}
+
+// IDs returns every step ID in pipeline order.
+func (r *Registry) IDs() []string {
+	out := make([]string, 0, len(r.steps))
+	for _, s := range r.steps {
+		out = append(out, s.ID)
+	}
+	return out
+}
+
+// Commands returns every data_migrations command, sorted, for callers that need a
+// stable set rather than pipeline order.
+func (r *Registry) Commands() []string {
+	out := make([]string, 0, len(r.steps))
+	for _, s := range r.steps {
+		out = append(out, s.Command)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// LabelForCommand returns the human-readable label for a data_migrations command,
+// falling back to the command itself for rows written by something outside the registry.
+func (r *Registry) LabelForCommand(command string) string {
+	if s, ok := r.byCommand[command]; ok {
+		return s.Label
+	}
+	return command
+}
+
+// defaultRegistry is the pipeline as it actually runs. Adding a step here — and
+// only here — makes it acceptable to the run handler, ordered by /ops/status,
+// labelled in run history, and (via the generated contract) required of the UI.
+var defaultRegistry = NewRegistry(
+	Step{
+		ID:      "import",
+		Command: "cricsheet-import",
+		Label:   "Import",
+	},
+	Step{
+		ID:       "precompute",
+		Command:  "precompute-features",
+		Label:    "Precompute",
+		Requires: []string{"import"},
+	},
+	Step{
+		ID:       "export",
+		Command:  "export-dataset",
+		Label:    "Export",
+		Requires: []string{"precompute"},
+	},
+	Step{
+		ID:         "train_batting",
+		Command:    "train-batting",
+		Label:      "Train Batting",
+		Model:      "batting",
+		MLEndpoint: "batting",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_bowling",
+		Command:    "train-bowling",
+		Label:      "Train Bowling",
+		Model:      "bowling",
+		MLEndpoint: "bowling",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_fielding",
+		Command:    "train-fielding",
+		Label:      "Train Fielding",
+		Model:      "fielding",
+		MLEndpoint: "fielding",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_extras",
+		Command:    "train-extras",
+		Label:      "Train Extras",
+		Model:      "extras",
+		MLEndpoint: "extras",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_win",
+		Command:    "train-win",
+		Label:      "Train Win",
+		Model:      "win",
+		MLEndpoint: "win",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_innings",
+		Command:    "train-innings",
+		Label:      "Train Innings",
+		Model:      "innings",
+		MLEndpoint: "innings",
+		Requires:   []string{"export"},
+	},
+	Step{
+		ID:         "train_combination_meta",
+		Command:    "train-combination-meta",
+		Label:      "Train Combination Meta",
+		MLEndpoint: "combination-meta",
+		Requires:   []string{"train_win"},
+		Optional:   true,
+		Prerequisite: "Needs backtest_contributions.csv. Produce it with " +
+			"POST /api/backtest/export-contributions (Evaluate tab) before running this step, " +
+			"or it fails with CONTRIBUTIONS_CSV_MISSING.",
+	},
+	Step{
+		ID:         "auto_tune",
+		Command:    "ml-auto-tune",
+		Label:      "Auto-tune",
+		MLEndpoint: "auto-tune",
+		Requires:   []string{"train_fielding", "train_extras", "train_win"},
+		Optional:   true,
+	},
+)
+
+// Steps returns the application's pipeline step registry.
+func Steps() *Registry { return defaultRegistry }

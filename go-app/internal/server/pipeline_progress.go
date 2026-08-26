@@ -69,14 +69,11 @@ func (a *App) pipelineProgressStreamHandler(w http.ResponseWriter, r *http.Reque
 		}
 		// Use the most recently started migration (first in list)
 		m := inProgress[0]
-		stepID := pipelinesvc.CommandToStepID[m.Command]
+		stepID := pipelinesvc.StepIDForCommand(m.Command)
 		if stepID == "" {
 			stepID = m.Command
 		}
-		stepLabel := pipelinesvc.CommandToStepLabel[m.Command]
-		if stepLabel == "" {
-			stepLabel = m.Command
-		}
+		stepLabel := pipelinesvc.StepLabelForCommand(m.Command)
 		elapsed := time.Since(m.StartedAt).Seconds()
 		detail, params := pipelinesvc.BuildProgressDetailAndParams(m.Command, m.Args)
 		payload := pipelineProgressPayload{

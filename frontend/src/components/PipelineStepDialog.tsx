@@ -25,6 +25,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     'idle' | 'loading' | 'started' | 'run_from_root' | 'error' | 'requires_confirmation'
   >('idle');
   const [runMessage, setRunMessage] = useState('');
+  const [runHint, setRunHint] = useState('');
   const [runCommand, setRunCommand] = useState('');
   const [autoTuneModel, setAutoTuneModel] = useState('all');
   const [autoTuneFormat, setAutoTuneFormat] = useState('unified');
@@ -89,6 +90,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
   const handleRun = async (s: PipelineStep, confirmUseDefault = false) => {
     setRunState('loading');
     setRunMessage('');
+    setRunHint('');
     setRunCommand('');
     try {
       const params = confirmUseDefault
@@ -108,8 +110,11 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
         setRunState('requires_confirmation');
         setRunMessage(res.message || 'No auto-tuned parameters found. Train with default config?');
       } else {
+        // The backend answers preconditions with {code, message, hint} so the UI can
+        // name the next action instead of showing a bare red toast.
         setRunState('error');
-        setRunMessage(res.error || `HTTP ${status}`);
+        setRunMessage(res.message || res.error || `HTTP ${status}`);
+        setRunHint(res.hint || '');
       }
     } catch (e) {
       setRunState('error');
@@ -145,6 +150,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
   const handleClose = () => {
     setRunState('idle');
     setRunMessage('');
+    setRunHint('');
     setRunCommand('');
     setAutoTuneRescreen(false);
     setAutoTuneCutoff('');
@@ -153,17 +159,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
   };
 
   return (
-    <Dialog
-      open={step !== null}
-      onClose={() => {
-        setRunState('idle');
-        setRunMessage('');
-        setRunCommand('');
-        onClose();
-      }}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={step !== null} onClose={handleClose} maxWidth="sm" fullWidth>
       {step && (
         <>
           <DialogTitle>{step.label}</DialogTitle>
@@ -184,6 +180,14 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                 algorithms={autoTuneAlgorithms}
                 onAlgorithmsChange={setAutoTuneAlgorithms}
               />
+            )}
+            {step.prerequisite && (
+              <Typography
+                variant="body2"
+                sx={{ mb: 1.5, p: 1, borderRadius: 1, bgcolor: 'info.light' }}
+              >
+                {step.prerequisite}
+              </Typography>
             )}
             {!step.runnable && step.status !== 'running' && (
               <Typography
@@ -209,6 +213,11 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                 }}
               >
                 {runMessage}
+                {runHint && (
+                  <Typography component="span" variant="body2" sx={{ display: 'block', mt: 0.5 }}>
+                    {runHint}
+                  </Typography>
+                )}
               </Typography>
             )}
             {(runState === 'run_from_root' && runCommand) || runState === 'idle' ? (

@@ -27,8 +27,6 @@ export interface UseEvaluateDbReturn {
   statusMessage: string;
 
   // Model settings
-  predictionModel: 'format' | 'unified';
-  setPredictionModel: (v: 'format' | 'unified') => void;
   useLatestModel: boolean;
   setUseLatestModel: (v: boolean) => void;
 
@@ -56,7 +54,6 @@ export interface UseEvaluateDbReturn {
   resetOutputs: () => void;
   handleLoadCandidates: () => Promise<void>;
   handleEvaluateSelectedMatch: () => Promise<void>;
-  jobUseUnifiedModel: boolean | null;
   jobUseLatestModel: boolean | null;
 }
 
@@ -89,8 +86,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   );
   const [statusMessage, setStatusMessage] = useState<string>('');
 
-  // Prediction model for evaluate: format-specific or unified (legacy)
-  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   // Model temporal mode: strict (trained only on data before match) or latest (current model; may include match)
   const [useLatestModel, setUseLatestModel] = useState<boolean>(true);
 
@@ -108,20 +103,13 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [evaluationSteps, setEvaluationSteps] = useState<EvaluationStep[]>([]);
-  const [jobUseUnifiedModel, setJobUseUnifiedModel] = useState<boolean | null>(null);
   const [jobUseLatestModel, setJobUseLatestModel] = useState<boolean | null>(null);
 
-  const applyJobModeFromStatus = useCallback(
-    (status: { use_unified_model?: boolean; use_latest_model?: boolean }) => {
-      setJobUseUnifiedModel(
-        typeof status.use_unified_model === 'boolean' ? status.use_unified_model : null,
-      );
-      setJobUseLatestModel(
-        typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
-      );
-    },
-    [],
-  );
+  const applyJobModeFromStatus = useCallback((status: { use_latest_model?: boolean }) => {
+    setJobUseLatestModel(
+      typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
+    );
+  }, []);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -141,7 +129,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setStatusMessage('');
     setError(null);
     setCurrentJobId(null);
-    setJobUseUnifiedModel(null);
     setJobUseLatestModel(null);
     clearStoredEvalJob();
   }, [setError]);
@@ -289,10 +276,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         team1.trim(),
         team2.trim(),
         selectedMatchId,
-        {
-          use_unified_model: predictionModel === 'unified',
-          use_latest_model: useLatestModel,
-        },
+        { use_latest_model: useLatestModel },
       );
       setStoredEvalJob({
         job_id,
@@ -305,10 +289,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
-      applyJobModeFromStatus({
-        use_unified_model: predictionModel === 'unified',
-        use_latest_model: useLatestModel,
-      });
+      applyJobModeFromStatus({ use_latest_model: useLatestModel });
       setStatusMessage(
         'Evaluation in progress. You can refresh the page; progress will be restored.',
       );
@@ -316,16 +297,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
     }
-  }, [
-    format,
-    team1,
-    team2,
-    selectedMatchId,
-    predictionModel,
-    useLatestModel,
-    applyJobModeFromStatus,
-    setError,
-  ]);
+  }, [format, team1, team2, selectedMatchId, useLatestModel, applyJobModeFromStatus, setError]);
 
   return {
     format,
@@ -340,8 +312,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     loading,
     error,
     statusMessage,
-    predictionModel,
-    setPredictionModel,
     useLatestModel,
     setUseLatestModel,
     candidates,
@@ -359,7 +329,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     resetOutputs,
     handleLoadCandidates,
     handleEvaluateSelectedMatch,
-    jobUseUnifiedModel,
     jobUseLatestModel,
   };
 }

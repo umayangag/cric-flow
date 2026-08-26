@@ -1,0 +1,99 @@
+{
+  "$comment": "Generated from go-app/internal/services/pipeline/registry.go. Do not edit by hand; run: go test ./internal/services/pipeline -run TestPipelineContract -update",
+  "version": 1,
+  "pipeline_steps": [
+    {
+      "id": "import",
+      "label": "Import",
+      "optional": false,
+      "requires": []
+    },
+    {
+      "id": "precompute",
+      "label": "Precompute",
+      "optional": false,
+      "requires": [
+        "import"
+      ]
+    },
+    {
+      "id": "export",
+      "label": "Export",
+      "optional": false,
+      "requires": [
+        "precompute"
+      ]
+    },
+    {
+      "id": "train_batting",
+      "label": "Train Batting",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_bowling",
+      "label": "Train Bowling",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_fielding",
+      "label": "Train Fielding",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_extras",
+      "label": "Train Extras",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_win",
+      "label": "Train Win",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_innings",
+      "label": "Train Innings",
+      "optional": false,
+      "requires": [
+        "export"
+      ]
+    },
+    {
+      "id": "train_combination_meta",
+      "label": "Train Combination Meta",
+      "optional": true,
+      "requires": [
+        "train_win"
+      ],
+      "prerequisite": "Needs backtest_contributions.csv. Produce it with POST /api/backtest/export-contributions (Evaluate tab) before running this step, or it fails with CONTRIBUTIONS_CSV_MISSING."
+    },
+    {
+      "id": "auto_tune",
+      "label": "Auto-tune",
+      "optional": true,
+      "requires": [
+        "train_fielding",
+        "train_extras",
+        "train_win"
+      ]
+    }
+  ],
+  "rejected_query_params": [
+    "use_unified_model",
+    "model=unified"
+  ]
+}

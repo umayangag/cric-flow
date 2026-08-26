@@ -217,8 +217,6 @@ export type EvaluateStatusResponse = {
   format: string;
   team1: string;
   team2: string;
-  /** True when the unified (all-formats) model was used instead of the format-specific model. */
-  use_unified_model?: boolean;
   /** True when the latest model was used (vs strict temporal cutoff). */
   use_latest_model?: boolean;
   status: 'running' | 'done' | 'error';
@@ -340,7 +338,11 @@ export type PipelineRunResponse = {
   command?: string;
   /** When true, no auto-tuned params in DB; UI should prompt before training with default config */
   requires_confirmation?: boolean;
+  /** Machine-readable failure reason, e.g. UNIFIED_MODEL_REMOVED. */
+  code?: string;
   message?: string;
+  /** The next action to take. Written to be shown, not swallowed. */
+  hint?: string;
 };
 
 /** Payload of SSE "progress" event from GET /ops/pipeline/stream */
@@ -454,8 +456,6 @@ export type AccuracyTrendFilters = {
   limit?: number;
   cache?: 'off' | 'read' | 'readwrite';
   metrics?: string;
-  /** When true, use the unified (legacy) model for predictions instead of the format-specific model. */
-  use_unified_model?: boolean;
 };
 
 // --- Workbench: walk-forward registry (from walk_forward_registry.json) ---

@@ -31,33 +31,21 @@ import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
 
-/** Reusable display of job mode (unified/format model · latest/strict) when at least one flag is non-null. */
+/** Reusable display of job mode (latest artifacts vs strict temporal cutoff). */
 function JobModeDisplay({
-  jobUseUnifiedModel,
   jobUseLatestModel,
   prefix,
   sx,
 }: {
-  jobUseUnifiedModel: boolean | null;
   jobUseLatestModel: boolean | null;
   prefix: string;
   sx?: SxProps;
 }) {
-  if (jobUseUnifiedModel === null && jobUseLatestModel === null) return null;
+  if (jobUseLatestModel === null) return null;
   return (
     <Typography variant="body2" color="text.secondary" sx={sx}>
       {prefix}
-      {jobUseUnifiedModel === null
-        ? '—'
-        : jobUseUnifiedModel
-          ? 'Unified (all-formats) model'
-          : 'Format-specific model'}
-      {' · '}
-      {jobUseLatestModel === null
-        ? '—'
-        : jobUseLatestModel
-          ? 'Latest model'
-          : 'Strict temporal cutoff'}
+      {jobUseLatestModel ? 'Latest model' : 'Strict temporal cutoff'}
     </Typography>
   );
 }
@@ -89,10 +77,6 @@ export interface EvaluateDbSectionProps {
   error: string | null;
   statusMessage: string;
 
-  // Model settings
-  predictionModel: 'format' | 'unified';
-  onPredictionModelChange: (v: 'format' | 'unified') => void;
-
   // Backtest data
   candidates: BacktestCandidate[];
   selectedMatchId: number | null;
@@ -110,7 +94,6 @@ export interface EvaluateDbSectionProps {
   evaluationSteps: EvaluationStep[];
 
   // Evaluate job mode (from backend flags)
-  jobUseUnifiedModel: boolean | null;
   jobUseLatestModel: boolean | null;
 
   // Derived
@@ -136,8 +119,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   loading,
   error,
   statusMessage,
-  predictionModel,
-  onPredictionModelChange,
   candidates,
   selectedMatchId,
   onSelectMatch,
@@ -148,7 +129,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   currentJobId,
   evaluating,
   evaluationSteps,
-  jobUseUnifiedModel,
   jobUseLatestModel,
   canLoad,
   canEvaluate,
@@ -254,12 +234,7 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
-        <JobModeDisplay
-          jobUseUnifiedModel={jobUseUnifiedModel}
-          jobUseLatestModel={jobUseLatestModel}
-          prefix="Mode: "
-          sx={{ mt: 0.5 }}
-        />
+        <JobModeDisplay jobUseLatestModel={jobUseLatestModel} prefix="Mode: " sx={{ mt: 0.5 }} />
       </Paper>
     )}
 
@@ -328,18 +303,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           >
             Latest: pre-loaded artifacts. Strict: train-on-the-fly with data before match.
           </Typography>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 260 }}>
-          <InputLabel id="eval-db-model-label">Prediction model</InputLabel>
-          <Select
-            labelId="eval-db-model-label"
-            value={predictionModel}
-            onChange={(e) => onPredictionModelChange(e.target.value as 'format' | 'unified')}
-            label="Prediction model"
-          >
-            <MenuItem value="format">Format-specific (model for selected format)</MenuItem>
-            <MenuItem value="unified">Unified (all-formats / legacy model)</MenuItem>
-          </Select>
         </FormControl>
         <Button
           variant="contained"
@@ -420,7 +383,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           Evaluation Results
         </Typography>
         <JobModeDisplay
-          jobUseUnifiedModel={jobUseUnifiedModel}
           jobUseLatestModel={jobUseLatestModel}
           prefix="Evaluated with "
           sx={{ mb: 1 }}

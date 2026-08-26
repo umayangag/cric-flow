@@ -14,7 +14,6 @@ export function useUpcomingMatch() {
   const [team2, setTeam2] = useState('');
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState('');
-  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   const [runSimulation, setRunSimulation] = useState(false);
   const [availableFormats, setAvailableFormats] = useState<string[]>([]);
   const [availableTeam1s, setAvailableTeam1s] = useState<string[]>([]);
@@ -160,7 +159,6 @@ export function useUpcomingMatch() {
         team2: team2.trim(),
         venue: venue.trim() || undefined,
         match_date: matchDate,
-        use_unified_model: predictionModel === 'unified',
         simulate: runSimulation,
       });
       setResult(res);
@@ -182,8 +180,6 @@ export function useUpcomingMatch() {
     setVenue,
     matchDate,
     setMatchDate,
-    predictionModel,
-    setPredictionModel,
     runSimulation,
     setRunSimulation,
     availableFormats,

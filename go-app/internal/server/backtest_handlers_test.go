@@ -157,29 +157,6 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 	}
 }
 
-func TestParseUseUnifiedModel(t *testing.T) {
-	testCases := []struct {
-		name       string
-		rawURL     string
-		defaultVal bool
-		want       bool
-	}{
-		{"default false", "/api/backtest?match_id=1", false, false},
-		{"default true", "/api/backtest?match_id=1", true, true},
-		{"use_unified_model=1", "/api/backtest?match_id=1&use_unified_model=1", false, true},
-		{"use_unified_model=true", "/api/backtest?match_id=1&use_unified_model=true", false, true},
-		{"model=unified", "/api/backtest?match_id=1&model=unified", false, true},
-	}
-	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, tc.rawURL, nil)
-			got := parseUseUnifiedModel(r, tc.defaultVal)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestParseUseLatestModel(t *testing.T) {
 	testCases := []struct {
 		name       string

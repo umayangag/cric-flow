@@ -13,8 +13,6 @@ const MAX_LIMIT = 500;
 export interface UseWorkbenchReturn {
   format: string;
   setFormat: (v: string) => void;
-  predictionModel: 'format' | 'unified';
-  setPredictionModel: (v: 'format' | 'unified') => void;
   startDate: string;
   setStartDate: (v: string) => void;
   endDate: string;
@@ -39,7 +37,6 @@ export interface UseWorkbenchReturn {
 
 export function useWorkbench(): UseWorkbenchReturn {
   const [format, setFormat] = useState<string>('');
-  const [predictionModel, setPredictionModel] = useState<'format' | 'unified'>('format');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
@@ -106,7 +103,6 @@ export function useWorkbench(): UseWorkbenchReturn {
         order: 'asc',
         limit: Math.min(Math.max(1, limit), MAX_LIMIT),
         cache: 'read',
-        use_unified_model: predictionModel === 'unified',
       };
       const data = await api.accuracyTrend(filters);
       setTrendData(data);
@@ -116,7 +112,7 @@ export function useWorkbench(): UseWorkbenchReturn {
     } finally {
       setTrendLoading(false);
     }
-  }, [format, startDate, endDate, limit, predictionModel]);
+  }, [format, startDate, endDate, limit]);
 
   const handleRegistryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,8 +140,6 @@ export function useWorkbench(): UseWorkbenchReturn {
   return {
     format,
     setFormat,
-    predictionModel,
-    setPredictionModel,
     startDate,
     setStartDate,
     endDate,

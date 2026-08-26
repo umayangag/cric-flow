@@ -143,10 +143,6 @@ func runExportContributionsWork(
 	}
 
 	// Collect successfully prepped matches.
-	formatForPrediction := format
-	if body.UseUnifiedModel {
-		formatForPrediction = ""
-	}
 	var batchInputs []BatchPredictPlayersInput
 	var validIndices []int
 	for i, p := range preps {
@@ -155,7 +151,7 @@ func runExportContributionsWork(
 		}
 		batchInputs = append(batchInputs, BatchPredictPlayersInput{
 			Cutoff:         p.cutoff,
-			Format:         formatForPrediction,
+			Format:         format,
 			PlayerIDs:      p.squad,
 			Features:       p.features,
 			UseLatestModel: false,
@@ -270,7 +266,7 @@ func exportContribsFallback(
 		mid := mid
 		g.Go(func() error {
 			matchIDStr := strconv.FormatInt(mid, 10)
-			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, body.UseUnifiedModel, false, nil)
+			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, false, nil)
 			if err != nil {
 				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
 				return nil

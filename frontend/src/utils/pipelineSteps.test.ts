@@ -33,10 +33,11 @@ describe('pipelineSteps', () => {
   describe('derivePipelineSteps', () => {
     it('returns default steps when data is null', () => {
       const steps = derivePipelineSteps(null);
-      expect(steps).toHaveLength(10);
+      expect(steps).toHaveLength(11);
       expect(steps.map((s) => s.id)).toContain('import');
       expect(steps.map((s) => s.id)).toContain('precompute');
       expect(steps.map((s) => s.id)).toContain('auto_tune');
+      expect(steps.map((s) => s.id)).toContain('train_combination_meta');
       steps.forEach((s) => {
         expect(s.label).toBeTruthy();
         expect(s.command).toBeTruthy();
@@ -49,7 +50,7 @@ describe('pipelineSteps', () => {
 
     it('returns default steps when data is empty object', () => {
       const steps = derivePipelineSteps({ timestamp: '' });
-      expect(steps).toHaveLength(10);
+      expect(steps).toHaveLength(11);
       expect(steps[0].status).toBe('pending');
     });
 

@@ -16,24 +16,14 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
-// TrainingStepToModel maps a pipeline train step ID to the ML model name for tuned-params lookup.
+// TrainingStepToModel maps a pipeline train step ID to the ML model name for
+// tuned-params lookup, or "" when the step trains no single model.
 func TrainingStepToModel(stepID string) string {
-	switch stepID {
-	case "train_batting":
-		return "batting"
-	case "train_bowling":
-		return "bowling"
-	case "train_fielding":
-		return "fielding"
-	case "train_extras":
-		return "extras"
-	case "train_innings":
-		return "innings"
-	case "train_win":
-		return "win"
-	default:
+	step, ok := Steps().ByID(stepID)
+	if !ok {
 		return ""
 	}
+	return step.Model
 }
 
 // MLServiceBaseURL returns the ML service base URL from env or config fallback.
@@ -81,12 +71,8 @@ func CallMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		msg := string(body)
-		if msg != "" {
-			return fmt.Errorf("ml-service %s: %s — %s", url, resp.Status, msg)
-		}
-		return fmt.Errorf("ml-service %s: %s", url, resp.Status)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, mlErrorBodyLimit))
+		return newMLError(url, resp.StatusCode, resp.Status, body)
 	}
 	return nil
 }
@@ -102,34 +88,20 @@ func DefaultPrecomputeETASecPerFormat() int {
 	return config.PipelinePrecomputeETASecondsPerFmt(config.Load())
 }
 
-// CommandToStepID maps data_migrations command to pipeline step ID for the UI.
-var CommandToStepID = map[string]string{
-	"cricsheet-import":       "import",
-	"precompute-features":    "precompute",
-	"export-dataset":         "export",
-	"train-batting":          "train_batting",
-	"train-bowling":          "train_bowling",
-	"train-fielding":         "train_fielding",
-	"train-extras":           "train_extras",
-	"train-win":              "train_win",
-	"train-innings":          "train_innings",
-	"train-combination-meta": "train_combination_meta",
-	"ml-auto-tune":           "auto_tune",
+// StepIDForCommand maps a data_migrations command to the pipeline step ID the UI
+// knows it by. Returns "" for a command written by something outside the registry.
+func StepIDForCommand(command string) string {
+	step, ok := Steps().ByCommand(command)
+	if !ok {
+		return ""
+	}
+	return step.ID
 }
 
-// CommandToStepLabel maps data_migrations command to a human-readable label.
-var CommandToStepLabel = map[string]string{
-	"cricsheet-import":       "Import",
-	"precompute-features":    "Precompute",
-	"export-dataset":         "Export",
-	"train-batting":          "Train Batting",
-	"train-bowling":          "Train Bowling",
-	"train-fielding":         "Train Fielding",
-	"train-extras":           "Train Extras",
-	"train-win":              "Train Win",
-	"train-innings":          "Train Innings",
-	"train-combination-meta": "Train Combination Meta",
-	"ml-auto-tune":           "Auto-tune",
+// StepLabelForCommand maps a data_migrations command to a human-readable label,
+// falling back to the command itself when the registry does not know it.
+func StepLabelForCommand(command string) string {
+	return Steps().LabelForCommand(command)
 }
 
 // FetchAutoTuneProgress fetches live auto-tune progress from the ML service. Returns nil on error.
@@ -236,4 +208,85 @@ func BuildProgressDetailAndParams(
 		detail = command
 	}
 	return detail, params
+}
+
+// mlErrorBodyLimit caps how much of an ml-service error body is read. The bodies
+// we care about are a few hundred bytes of JSON; anything larger is a stack trace
+// we do not want in data_migrations.error_message.
+const mlErrorBodyLimit = 4 << 10
+
+// MLError is a failure reported by ml-service. ml-service answers preconditions
+// with a structured body — {"detail": {"code", "message", "hint"}} — precisely so
+// the operator can be told what to do next (C5-2's CONTRIBUTIONS_CSV_MISSING is the
+// canonical example). Keeping that structure instead of flattening it to a string
+// is what lets the run-history row say "run export-contributions first" rather than
+// "ml-service returned 400".
+type MLError struct {
+	// URL is the ml-service endpoint that failed.
+	URL string
+	// StatusCode is the HTTP status returned by ml-service.
+	StatusCode int
+	// Code is the machine-readable error code, when ml-service supplied one.
+	Code string
+	// Message is the human-readable explanation, when ml-service supplied one.
+	Message string
+	// Hint is the next action the operator should take, when ml-service supplied one.
+	Hint string
+	// Body is the raw response body, kept for errors that carry no structure.
+	Body string
+
+	// rawStatus is the status line as ml-service phrased it ("400 Bad Request").
+	rawStatus string
+}
+
+// IsPrecondition reports whether the failure is the caller's to fix — a missing
+// input or a bad argument — rather than a fault inside ml-service.
+func (e *MLError) IsPrecondition() bool {
+	return e.StatusCode >= 400 && e.StatusCode < 500
+}
+
+// Error renders the failure with the actionable parts first, because this string is
+// what lands in data_migrations.error_message and is what the operator reads.
+func (e *MLError) Error() string {
+	switch {
+	case e.Code != "" && e.Hint != "":
+		return fmt.Sprintf("%s: %s — %s", e.Code, e.Message, e.Hint)
+	case e.Code != "":
+		return fmt.Sprintf("%s: %s", e.Code, e.Message)
+	case e.Body != "":
+		return fmt.Sprintf("ml-service %s: %s — %s", e.URL, e.status(), e.Body)
+	default:
+		return fmt.Sprintf("ml-service %s: %s", e.URL, e.status())
+	}
+}
+
+func (e *MLError) status() string {
+	if e.rawStatus != "" {
+		return e.rawStatus
+	}
+	return http.StatusText(e.StatusCode)
+}
+
+// newMLError parses an ml-service error body into an MLError, falling back to the
+// raw body when the response is not the structured shape.
+func newMLError(url string, statusCode int, status string, body []byte) *MLError {
+	e := &MLError{
+		URL:        url,
+		StatusCode: statusCode,
+		rawStatus:  status,
+		Body:       strings.TrimSpace(string(body)),
+	}
+	var envelope struct {
+		Detail struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Hint    string `json:"hint"`
+		} `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &envelope); err == nil {
+		e.Code = envelope.Detail.Code
+		e.Message = envelope.Detail.Message
+		e.Hint = envelope.Detail.Hint
+	}
+	return e
 }
