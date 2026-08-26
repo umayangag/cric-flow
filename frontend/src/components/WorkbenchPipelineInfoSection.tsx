@@ -104,8 +104,8 @@ const WorkbenchPipelineInfoSection: React.FC<WorkbenchPipelineInfoSectionProps> 
             <li>
               Output: <code>outputs.export_dir</code> (e.g. <code>output/go-app</code>) —{' '}
               <code>batting_encoded_all.csv</code>, <code>bowling_encoded_all.csv</code>, and
-              per-format CSVs (e.g. <code>batting_encoded_T20.csv</code>). Fielding/extras/win
-              rows are not written as standalone CSVs by default; they are served via{' '}
+              per-format CSVs (e.g. <code>batting_encoded_T20.csv</code>). Fielding/extras/win rows
+              are not written as standalone CSVs by default; they are served via{' '}
               <code>GET /api/backtest/training-data?cutoff=...&amp;format=all</code>.
             </li>
             <li>
