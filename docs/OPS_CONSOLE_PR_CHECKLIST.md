@@ -101,7 +101,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | A-3 | done | `ops/pr6-dataset-registry` | Dataset registry: what is on disk and where it came from |
 | A-4 | done | `ops/pr7-data-tab` | Frontend: Data tab — feeds, fetch, extract, registry |
 | O-1 | done | `ops/pr8-progress-channel` | Generalise `auto_tune_progress` into a shared progress channel |
-| O-2 | todo | | Instrument the six trainers to emit milestones and metrics |
+| O-2 | done | `ops/pr9-instrument-trainers` | Instrument the six trainers to emit milestones and metrics |
 | O-3 | todo | | Serve generalised progress; fold into the existing SSE stream |
 | O-4 | todo | | Persist final metrics to `data_migrations.metadata` |
 | O-5 | todo | | Frontend: per-step progress, metrics, run-history drill-down |
@@ -454,12 +454,46 @@ progress file could not be written.
 
 ### O-2 · Instrument the six trainers
 
-- [ ] `train_batting`, `train_bowling`, `train_fielding`, `train_extras`, `train_win`,
-      `train_innings` emit: data loaded (rows, columns), CV fold progress, per-fold and
-      final metrics, artifact written (path, bytes)
-- [ ] Also emit the **dropped low-variance columns** — that is where a silently constant
+- [x] `train_batting`, `train_bowling`, `train_fielding`, `train_extras`, `train_win`,
+      `train_innings` emit: data loaded (rows, columns, targets), fitting started,
+      artifact written (name, bytes), format finished
+- [x] CV fold progress and per-fold metrics — **only where cross-validation exists.**
+      `train_win` splits with `TimeSeriesSplit` and now emits accuracy, Brier and log
+      loss per fold; the others fit once. A step emitting fake folds to look busy would
+      be worse than one that says nothing
+- [x] Also emit the **dropped low-variance columns** — that is where a silently constant
       feature like `weather_composite` becomes visible instead of being quietly discarded
-- [ ] Emission must never break training: wrap in try/except, log and continue
+- [x] Emission must never break training: wrap in try/except, log and continue
+
+**Done by `ml/training_progress.py`** — a milestone vocabulary over O-1's transport.
+Named milestones rather than a dict to fill in: every trainer emitting the same names is
+what lets one panel render all of them, and what stops "rows" being `rows` in one step
+and `n_rows` in the next.
+
+**Ten drop sites, all of them discarded.** Every trainer already called
+`drop_low_variance_columns`; every one assigned the result to `_dropped` and moved on.
+A feature that had gone silently constant — an export bug, a column the pipeline stopped
+populating — was removed without anyone being told. All ten now report.
+`test_every_low_variance_drop_is_reported` is a source check rather than a behavioural
+one, deliberately: reaching every site behaviourally needs a valid row schema for four
+different trainers, and a test that stubs its way there passes vacuously when the
+fixture fails to build. What needs guarding is that no *new* drop site appears without
+an emit beside it. Verified by deleting an emit and watching it fail.
+
+**Guarding the transport was not enough.** The first version wrapped only
+`run_progress.emit`, and the tests immediately found the hole: what reaches a caller is
+usually a failure in the *arguments* — statting a path that turned out to be `None`,
+coercing a row count that arrived as a string. Every emitter is now `@never_raises`.
+
+**Completed formats, not "the current format".** Formats train concurrently
+(`ML_TRAIN_FORMAT_WORKERS`), so "which format is running" has no single answer and
+`current` cannot mean "the one in flight". Counting *completed* formats stays true under
+concurrency; the format each event is about travels in `extra`. Asserted with twenty
+threads.
+
+**Metrics are cleaned before they travel.** Scores arrive as numpy scalars, and a NaN
+from a degenerate fold serialises to the literal `NaN` — not valid JSON, and enough to
+make the whole progress file unreadable to a strict parser.
 
 **Note:** `run_training_subprocess` keeps `capture_output=True`. Raw output stays out of
 scope by the fidelity decision — the events carry the signal. Revisit only if the

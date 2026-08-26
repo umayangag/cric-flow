@@ -41,6 +41,17 @@ from ml.config import (
 )
 from ml.data_quality import drop_low_variance_columns
 from ml.pipeline_common import compute_time_decay_weights
+from ml.training_progress import (
+    artifact_written,
+    columns_dropped,
+    data_loaded,
+    fitting,
+    format_done,
+    set_total_formats,
+)
+from ml.training_progress import finish as progress_finish
+from ml.training_progress import fold as report_fold
+from ml.training_progress import start as progress_start
 from ml.win_features import (
     DERIVED_FEATURE_COLS,
     WIN_ENHANCED_FEATURE_COLS,
@@ -163,7 +174,8 @@ def rows_to_xy_by_format(
         if df.empty:
             return {}
         X = df[feature_cols].astype(float).values
-        X, feature_cols, _dropped = drop_low_variance_columns(X, feature_cols)
+        X, feature_cols, dropped = drop_low_variance_columns(X, feature_cols)
+        columns_dropped("win", None, dropped, len(feature_cols))
         Y = df[WIN_TARGET_COL].astype(int).values
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feature_cols)}
@@ -185,7 +197,8 @@ def rows_to_xy_by_format(
             continue
         fmt_feature_cols = [c for c in feature_cols if c not in per_format_exclude]
         X = g[fmt_feature_cols].astype(float).values
-        X, fmt_feature_cols, _dropped = drop_low_variance_columns(X, fmt_feature_cols)
+        X, fmt_feature_cols, dropped = drop_low_variance_columns(X, fmt_feature_cols)
+        columns_dropped("win", fmt, dropped, len(fmt_feature_cols))
         Y = g[WIN_TARGET_COL].astype(int).values
         w = _weights(g)
         out[fmt] = (X, Y, w, fmt_feature_cols)
@@ -198,12 +211,18 @@ def _walk_forward_cv(
     sample_weight: Optional[np.ndarray],
     params: dict,
     n_splits: int = 5,
+    format_code: Optional[str] = None,
 ) -> dict:
-    """Run walk-forward (time series) cross-validation and return summary metrics."""
+    """Run walk-forward (time series) cross-validation and return summary metrics.
+
+    This is the longest silent stretch of a win-model run: five sequential fits with
+    nothing reported until all of them finish. Each fold now emits its own metrics as
+    it completes, so the run is watchable rather than merely slow.
+    """
     tscv = TimeSeriesSplit(n_splits=n_splits)
     accuracies, briers, log_losses_list = [], [], []
 
-    for train_idx, test_idx in tscv.split(X):
+    for fold_index, (train_idx, test_idx) in enumerate(tscv.split(X), start=1):
         X_train, X_test = X[train_idx], X[test_idx]
         Y_train, Y_test = Y[train_idx], Y[test_idx]
         w_train = sample_weight[train_idx] if sample_weight is not None else None
@@ -222,11 +241,18 @@ def _walk_forward_cv(
 
         proba = model.predict_proba(X_test)
         preds = model.predict(X_test)
-        accuracies.append(accuracy_score(Y_test, preds))
+        fold_accuracy = accuracy_score(Y_test, preds)
+        accuracies.append(fold_accuracy)
 
+        fold_metrics = {"accuracy": float(fold_accuracy)}
         if proba.shape[1] == 2:
-            briers.append(brier_score_loss(Y_test, proba[:, 1]))
-            log_losses_list.append(log_loss(Y_test, proba[:, 1], labels=[0, 1]))
+            fold_brier = brier_score_loss(Y_test, proba[:, 1])
+            fold_log_loss = log_loss(Y_test, proba[:, 1], labels=[0, 1])
+            briers.append(fold_brier)
+            log_losses_list.append(fold_log_loss)
+            fold_metrics["brier"] = float(fold_brier)
+            fold_metrics["log_loss"] = float(fold_log_loss)
+        report_fold("win", format_code, fold_index, n_splits, fold_metrics)
 
     return {
         "cv_accuracy_mean": float(np.mean(accuracies)),
@@ -323,7 +349,8 @@ def train_and_save(
     """Train GradientBoosting win classifier, run walk-forward CV, save model + metadata."""
     params = _get_gb_params(format_code)
 
-    cv_metrics = _walk_forward_cv(X, Y, sample_weight, params)
+    data_loaded("win", format_code, int(X.shape[0]), int(X.shape[1]), 1)
+    cv_metrics = _walk_forward_cv(X, Y, sample_weight, params, format_code=format_code)
     logger.info(
         "train_win.walk_forward_cv format=%s cv_accuracy=%.4f±%.4f cv_brier=%s folds=%s",
         format_code,
@@ -333,18 +360,30 @@ def train_and_save(
         cv_metrics["per_fold_accuracy"],
     )
 
+    fitting("win", format_code, int(X.shape[0]), int(X.shape[1]))
     model = _fit_gradient_boosting(X, Y, params, sample_weight)
     metadata = _build_model_metadata(model, X, feature_cols, format_code, params, cv_metrics)
     code = "".join(c for c in format_code if c.isalnum() or c == "_").strip()
     if not code:
         code = "unknown"
+    model_filename = f"win_model_{code}.joblib"
     _save_model_and_metadata(
         model,
         metadata,
         out_dir,
-        f"win_model_{code}.joblib",
+        model_filename,
         f"win_model_{code}_metadata.json",
         params["joblib_compress"],
+    )
+    artifact_written("win", format_code, [os.path.join(out_dir, model_filename)])
+    format_done(
+        "win",
+        format_code,
+        {
+            "cv_accuracy_mean": cv_metrics.get("cv_accuracy_mean"),
+            "cv_brier_mean": cv_metrics.get("cv_brier_mean"),
+            "rows": int(X.shape[0]),
+        },
     )
 
 
@@ -370,7 +409,7 @@ def train_and_save_legacy(
     logger.info("train_win.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
-def main() -> None:
+def _main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(
@@ -448,6 +487,7 @@ def main() -> None:
         )
         sys.exit(1)
 
+    set_total_formats(len(by_format))
     feature_cols: list[str] = []
     for fmt, (X, Y, w, fc) in by_format.items():
         feature_cols = fc
@@ -460,6 +500,20 @@ def main() -> None:
     all_weights = _concat_weights_win([w for _, (_, _, w, _) in by_format.items()])
     if all_X.shape[0] >= 10:
         train_and_save_legacy(all_X, all_Y, out_dir, feature_cols, sample_weight=all_weights)
+
+
+def main() -> None:
+    """Entry point. Opens the progress channel around the whole run.
+
+    Wrapping rather than editing the body keeps the two concerns apart, and the
+    `finally` is what guarantees the progress file is removed even when training
+    exits through `sys.exit` -- a file left behind reads as a run still going.
+    """
+    progress_start("win")
+    try:
+        _main()
+    finally:
+        progress_finish("win")
 
 
 if __name__ == "__main__":

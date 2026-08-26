@@ -48,6 +48,9 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.training_progress import columns_dropped, data_loaded, format_done, set_total_formats
+from ml.training_progress import finish as progress_finish
+from ml.training_progress import start as progress_start
 from ml.utils import make_base_estimator
 from ml.win_features import get_format_codes, get_format_one_hot_columns
 
@@ -187,7 +190,8 @@ def rows_to_xy_by_format(
         if df.empty or len(df) < MIN_SAMPLES_FOR_FORMAT:
             return {}, None, None, None, None
         X_raw = df[feat_cols].astype(float).values
-        X_raw, feat_cols, _dropped = drop_low_variance_columns(X_raw, feat_cols)
+        X_raw, feat_cols, dropped = drop_low_variance_columns(X_raw, feat_cols)
+        columns_dropped("innings", None, dropped, len(feat_cols))
         Y = df[INNINGS_TARGET_COLS].astype(float).values
         scaler = StandardScaler()
         X = scaler.fit_transform(X_raw)
@@ -208,7 +212,8 @@ def rows_to_xy_by_format(
             continue
         feat_cols_fmt = [c for c in INNINGS_FEATURE_COLS if c in g.columns and c not in per_format_exclude]
         X_raw = g[feat_cols_fmt].astype(float).values
-        X_raw, feat_cols_fmt, _dropped = drop_low_variance_columns(X_raw, feat_cols_fmt)
+        X_raw, feat_cols_fmt, dropped = drop_low_variance_columns(X_raw, feat_cols_fmt)
+        columns_dropped("innings", fmt, dropped, len(feat_cols_fmt))
         Y = g[INNINGS_TARGET_COLS].astype(float).values
         scaler = StandardScaler()
         X = scaler.fit_transform(X_raw)
@@ -222,7 +227,8 @@ def rows_to_xy_by_format(
     all_X_raw = np.vstack(legacy_rows)
     all_Y = np.vstack(all_Y_list)
     # Single low-variance drop on the aggregated pool so legacy_feat_cols matches all_X_raw width.
-    all_X_raw, legacy_feat_cols, _dropped_legacy = drop_low_variance_columns(all_X_raw, legacy_feat_cols)
+    all_X_raw, legacy_feat_cols, dropped_legacy = drop_low_variance_columns(all_X_raw, legacy_feat_cols)
+    columns_dropped("innings", "_LEGACY_", dropped_legacy, len(legacy_feat_cols))
     legacy_scaler = StandardScaler()
     legacy_scaler.fit(all_X_raw)
     return out, all_X_raw, all_Y, legacy_scaler, legacy_feat_cols
@@ -298,7 +304,7 @@ def train_and_save_legacy(
     logger.info("train_innings.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
-def main() -> None:
+def _main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(
@@ -348,9 +354,12 @@ def main() -> None:
     if not by_format:
         logger.error("train_innings.no_data hint=empty or insufficient rows")
         sys.exit(1)
+    set_total_formats(len(by_format))
     for fmt, (X, Y, scaler, w, feat_names) in by_format.items():
         logger.info("pipeline: train_innings processing format=%s n=%s", fmt, X.shape[0])
+        data_loaded("innings", fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
         train_and_save(X, Y, scaler, out_dir, fmt, feat_names, sample_weight=w)
+        format_done("innings", fmt, {"rows": int(X.shape[0])})
 
     # Unified (legacy) model: train on all data combined
     if (
@@ -364,6 +373,20 @@ def main() -> None:
         all_weights_list = [w for _, (_, _, _, w, _fn) in by_format.items()]
         all_weights = np.concatenate(all_weights_list) if all(w is not None for w in all_weights_list) else None
         train_and_save_legacy(all_X, all_Y, legacy_scaler, out_dir, legacy_feat_names, sample_weight=all_weights)
+
+
+def main() -> None:
+    """Entry point. Opens the progress channel around the whole run.
+
+    Wrapping rather than editing the body keeps the two concerns apart, and the
+    `finally` is what guarantees the progress file is removed even when training
+    exits through `sys.exit` -- a file left behind reads as a run still going.
+    """
+    progress_start("innings")
+    try:
+        _main()
+    finally:
+        progress_finish("innings")
 
 
 if __name__ == "__main__":
