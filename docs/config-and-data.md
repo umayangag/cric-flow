@@ -42,7 +42,6 @@ Config file: `go-app/config.json`
 - `ops` (optional) — `migrations_page_default` (10), `migrations_page_max` (100), `migrations_page_cap` (10000), `recent_migrations_count` (100).
 - `resources` (optional) — `precompute_mb_per_worker` (450), `import_mb_per_worker` (150), `export_mb_per_worker` (100), `seqcalc_mb_per_worker` (500), `fielding_mb_per_worker` (50), `memory_usage_fraction_percent` (80), `seqcalc_low_memory_limit_gib` (2), `precompute_concurrency_when_no_limit` (2).
 - `export`
-  - `split_by_format` (bool) — write per-format CSVs by default.
   - `required_format` (string) — restrict export to this format unless overridden by flags.
 
 **Environment:** `GO_APP_CONFIG`, `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `PRECOMPUTE_CONCURRENCY`, `IMPORT_CONCURRENCY`, `SEQCALC_CONCURRENCY`, `EXPORT_CONCURRENCY`, `FIELDING_CONCURRENCY`.

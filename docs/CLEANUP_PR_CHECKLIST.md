@@ -32,13 +32,13 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
 | C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
 | C5-1 | done | `cleanup/c5-1-canonical-formats` | Single source of truth for canonical format codes |
-| C5-2 | todo | | Resolve `train_combination_meta`'s 501 |
-| C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
+| C5-2 | done | `docs/c7-1-c5-3-docs-and-makefiles` | Resolve `train_combination_meta`'s 501 |
+| C5-3 | done | `docs/c7-1-c5-3-docs-and-makefiles` | Reconcile the Makefile pipeline with the API pipeline |
 | C6-1 | done | `cleanup/c6-1-one-api-client` | Frontend: one API client |
 | C6-2 | done | `cleanup/c6-2-drop-app-shims` | Remove the `app/` compatibility re-export shims |
 | C6-3 | done | `cleanup/c6-3-split-serving-image` | Split the serving image from the training image |
 | C6-4 | done | `cleanup/c6-4-generate-junie-skills` | Consolidate `.cursor/skills` and `.junie/skills` |
-| C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
+| C7-1 | done | `docs/c7-1-c5-3-docs-and-makefiles` | Generate `ARCHITECTURE_MAP.md` from the real contracts |
 | C7-2 | done | `ci/c7-2-guardrails` | CI guardrails so dead code stops accumulating |
 | C7-3 | done | `test/c7-3-seqcalc-coverage` | Raise coverage on live under-tested code to absorb deletions |
 
@@ -758,9 +758,9 @@ make check-all
 - [ ] Delete the `legacy_*` booleans from the `/health` and `/artifacts/status` payloads
 - [ ] In `app/prediction_service/endpoints.py`: make `format` required on `/predict/batting`, `/predict/bowling`, `/predict/extras`, `/predict/win`; remove `resolve_model_pair`'s legacy branch and the "train legacy artifacts" hints
 - [ ] Remove the `_LEGACY_` fallbacks in `app/prediction_service/players.py:63,66,67,386,499` and `innings.py:28,40`
-- [ ] Remove `LEGACY_EXTRAS_FEATURE_COLS` from `ml/train_extras.py` and its use in `endpoints.py:47`
-- [ ] Update `go-app/internal/mlclient` to always send `format`
-- [ ] Update `frontend/src/components/HealthTab.tsx` and `src/types.ts` where the `legacy_*` fields are consumed
+- [x] Update `frontend/src/components/HealthTab.tsx` and `src/types.ts` — done in C3-2; the box was left unticked
+- [ ] ~~Remove `LEGACY_EXTRAS_FEATURE_COLS`~~ — **deliberately kept.** This is not the `_LEGACY_` artifact registry. It is the column order used when an artifact has **no sidecar metadata**: `build_extras_feature_vector` prefers the sidecar's `feature_names` and falls back to this. Same for `LEGACY_INNINGS_FEATURE_COLS` in `app/reconciliation.py`. Removing them breaks artifacts trained before sidecars existed — a separate decision from the model-tier fallback C3-2 removed.
+- [ ] ~~Update `go-app/internal/mlclient` to always send `format`~~ — **no change needed.** `models.BattingFeatures.Format` already exists and callers set it per row; C3-2 only made omitting it fail loudly instead of silently. Stated in the PR, recorded here.
 - [x] Update `ml-service/README.md`, `docs/config-and-data.md` and `docs/ml-and-training.md`
 
 **Behaviour change:** `/predict/batting`, `/predict/bowling`, `/predict/extras` and `/predict/win` now return **400 `MISSING_FORMAT`** when `format` is absent, instead of silently serving an unsuffixed model. A format with no loaded model still returns 404 `MODEL_NOT_LOADED`. Both go-app (`models.BattingFeatures.Format`) and the ML request models already carry `format` per row, so no client change was needed — the failure mode simply became explicit.
@@ -1189,6 +1189,37 @@ All 17 remaining truly-dead functions sit in `internal/db` / `internal/db/export
 Net roughly −0.7pt, leaving ~60.9%. **`COV_MIN_GO` does not need to move.**
 
 **Next targets if more headroom is wanted:** `internal/services/predictteam` (417 uncovered, 24.3%) is the largest gap and covers core team-prediction logic — the 1,306-line `predict_team.go`. Higher value than seqcalc, but needs mocks rather than pure-function tests.
+
+---
+
+### C7-1 / C5-2 / C5-3 — the last three
+
+**C7-1 — `ARCHITECTURE_MAP.md` is now generated.** The file opens by telling readers to use it *instead of* reading source, so its errors propagate. It claimed batting took **27** inputs (the contract said 42, and is now 35), documented a `/predict/fielding` endpoint that does not exist, and listed `match_date_unix`, replaced by cyclical encodings in v3.
+
+`scripts/gen-architecture-map.py` derives the model shapes and both route tables between marker comments; the surrounding prose stays hand-written, because data flow and aggregation logic are not mechanically knowable. `make gen-architecture-map` regenerates, `make gen-architecture-map-check` (and CI) fails when stale.
+
+Static parsing was not enough: `EXTRAS_FEATURE_COLS`, `INNINGS_FEATURE_COLS` and `WIN_ENHANCED_FEATURE_COLS` are built by concatenation, so AST reported them as empty. The generator imports those modules instead, which is why the Make target runs it with the ml-service venv.
+
+**It immediately found something:** `weather_composite` is still in `EXTRAS_FEATURE_COLS` and `INNINGS_FEATURE_COLS`, a derived feature computed from `rain`, `humidity` and `cloud` — all removed in C2-2b, so it is now constant 0. Not fixed here: removing it is another feature-contract change needing a re-export and retrain. **Follow-up worth its own item.**
+
+**C5-2 — implemented, not deleted.** The plan allowed either implementing the step or dropping it from the UI. It is implemented: a new `POST /admin/train/combination-meta` on ml-service follows the same pattern as the other train endpoints, and go-app's handler delegates through `makeMLTrainHandler` like every sibling step.
+
+A missing input is treated as a precondition, not a server error. Verified both paths:
+
+| case | result |
+|---|---|
+| no `backtest_contributions.csv` | **400** `CONTRIBUTIONS_CSV_MISSING`, naming the path and the command to run |
+| with a 60-row CSV | **200**, writes `combination_meta.json` |
+
+The recovered weights were `bat 0.476 / bowl 0.295 / field 0.210` against synthetic data generated with `0.5 / 0.3 / 0.2` — so it is genuinely fitting, not just returning 200.
+
+**C5-3 — Makefile vs API.**
+
+- `make help` now opens by explaining that the API path enforces step order, streams progress and can be cancelled while the direct targets do not, and marks API-calling targets `[API]`
+- The duplicate `FORMAT ?=` at line 225 was a silent no-op (the first assignment at 115 wins); replaced with a comment
+- **`export.split_by_format` removed.** C3-1 left it inert, and this confirmed it at both call sites: in `runExportHandler` both branches reach `formatsPkg.CanonicalCodes()`, and in `precomputeHandler` an empty format list makes `discoverFormatCodes` query `match_format`, which holds exactly the canonical codes. Removed from `config/types.go`, both handlers, `go-app/config.json` and the docs.
+
+**Also corrected here:** three C3-2 boxes were left unticked while C3-2 was marked done. One was actually done; the other two were deliberate decisions explained in the PR but never recorded. Both are now written down — see C3-2.
 
 ---
 

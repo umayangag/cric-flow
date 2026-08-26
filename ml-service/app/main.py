@@ -841,6 +841,30 @@ async def admin_train_innings(request: Request, cutoff: str = ""):
     return {"status": "ok", "step": "innings"}
 
 
+@app.post("/admin/train/combination-meta")
+@_require_admin_train("combination-meta", "Combination-meta training failed")
+async def admin_train_combination_meta(request: Request):
+    """Train the score-combination meta-model from the backtest contributions CSV.
+
+    The CSV is produced by go-app's POST /api/backtest/export-contributions. A missing
+    input is a precondition, not a server error, so it returns 400 with the command to
+    run rather than a 500 that says "check the logs".
+    """
+    csv_path = training_orchestrator.combination_meta_csv_path()
+    if not os.path.isfile(csv_path):
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="CONTRIBUTIONS_CSV_MISSING",
+                message=f"combination-meta training needs {csv_path}, which does not exist",
+                hint="Run POST /api/backtest/export-contributions on go-app first, then retry.",
+            ),
+        )
+    async with _get_training_semaphore():
+        await asyncio.to_thread(training_orchestrator.run_combination_meta_training, logger)
+    return {"status": "ok", "step": "combination_meta"}
+
+
 @app.post("/admin/train/auto-tune")
 @_require_admin_train("auto-tune", "Auto-tune failed")
 async def admin_train_auto_tune(

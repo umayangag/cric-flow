@@ -2,11 +2,9 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -15,7 +13,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
-	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
@@ -108,18 +105,10 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 		a.makeMLTrainHandler("train_innings", "train-innings", "innings")(w, r)
 		return
 	case "train_combination_meta":
-		// Run from project root: make train-combination-meta CSV=<path> OUT=<path>
-		exportDir := config.DefaultExportDir()
-		csvPath := filepath.Join(exportDir, "backtest_contributions.csv")
-		outPath := filepath.Join(exportDir, "combination_meta.json")
-		if cfg := config.Load(); cfg != nil && cfg.Selection.MetaModelPath != "" {
-			outPath = cfg.Selection.MetaModelPath
-		}
-		respondJSON(w, http.StatusNotImplemented, map[string]string{
-			"error":   "step must be run from project root",
-			"step":    step,
-			"command": fmt.Sprintf("make train-combination-meta CSV=%s OUT=%s", csvPath, outPath),
-		})
+		// Delegates to ml-service like every other train step (C5-2). It used to return
+		// 501 telling the caller to shell out, which made it the one step the UI offered
+		// but could not complete.
+		a.makeMLTrainHandler("train_combination_meta", "train-combination-meta", "combination-meta")(w, r)
 		return
 	case "auto_tune":
 		a.makeMLTrainHandler("auto_tune", "ml-auto-tune", "auto-tune")(w, r)
@@ -134,13 +123,9 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 // runExportHandler starts export-dataset in the background with tracking.
 func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	outDir := config.DefaultExportDir()
-	cfg := config.Load()
 	opts := exportsvc.Options{
 		OutDir:  outDir,
 		Unified: true,
-	}
-	if cfg != nil && cfg.Export.SplitByFormat {
-		opts.Formats = formatsPkg.CanonicalCodes()
 	}
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})

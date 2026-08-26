@@ -82,7 +82,6 @@ type Config struct {
 		} `json:"fielding_enrich"`
 	} `json:"features"`
 	Export struct {
-		SplitByFormat  bool   `json:"split_by_format"`
 		RequiredFormat string `json:"required_format"`
 	} `json:"export"`
 	Team struct {

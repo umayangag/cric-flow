@@ -212,7 +212,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastExport == nil || lastExport.StartedAt.Before(lastPrecompute.StartedAt) {
 		return []Suggestion{{
 			Title:       "Export Dataset",
-			Description: "Features updated. Run from project root. Exports unified and per-format CSVs to output/go-app (when export.split_by_format is on).",
+			Description: "Features updated. Exports the cross-format and per-format CSVs to output/go-app.",
 			Command:     "make export-dataset",
 			Priority:    "MEDIUM",
 		}}
