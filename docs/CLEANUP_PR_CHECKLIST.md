@@ -35,7 +35,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C5-3 | todo | | Reconcile the Makefile pipeline with the API pipeline |
 | C6-1 | done | `cleanup/c6-1-one-api-client` | Frontend: one API client |
 | C6-2 | done | `cleanup/c6-2-drop-app-shims` | Remove the `app/` compatibility re-export shims |
-| C6-3 | todo | | Split the serving image from the training image |
+| C6-3 | done | `cleanup/c6-3-split-serving-image` | Split the serving image from the training image |
 | C6-4 | todo | | Consolidate `.cursor/skills` and `.junie/skills` |
 | C7-1 | todo | | Generate `ARCHITECTURE_MAP.md` from the real contracts |
 | C7-2 | done | `ci/c7-2-guardrails` | CI guardrails so dead code stops accumulating |
@@ -900,11 +900,23 @@ make ml-service-check
 
 **Scope**
 
-- [ ] Add `requirements-serve.in` (minimal: fastapi, uvicorn, pydantic, numpy, pandas, scikit-learn, joblib, structlog, httpx, psycopg2-binary, python-dotenv, psutil) and compile it
-- [ ] Multi-stage `Dockerfile`: a `serve` target on the minimal set and a `train` target on the full set
-- [ ] Point `docker-compose.yml`'s `ml-service` at the `serve` target
-- [ ] Decide how `/admin/train/*` runs: a separate `train` container, or keep the full image for local dev and use `serve` in deployment — document the choice in `docs/ml-and-training.md`
-- [ ] Record before/after image sizes in the PR body
+- [x] **Renamed `requirements-ci.{in,txt}` → `requirements-serve.{in,txt}`** rather than adding a third file. That set already *was* the serving set; naming it `-ci` while the production image used it would have been misleading. CI installs it too, so tests run against exactly what the serve image ships. Regenerated with `pip-compile` rather than editing the provenance header — only one pin moved (`greenlet` added transitively).
+- [x] Multi-stage `Dockerfile` with `serve` and `train` targets
+- [x] `docker-compose.yml` pinned to `target: serve`
+- [x] Documented in `docs/ml-and-training.md`
+
+**5.01 GB → 1.23 GB, a 75% reduction.** Both targets built and exercised, not just built:
+
+| | size | verified |
+|---|---|---|
+| `serve` | **1.23 GB** | `/health` responds; `ml.train_batting`, `ml.auto_tune`, `ml.tuning.runners` all import; `_HAS_PYCARET`/`_HAS_AUTOGLUON` correctly `False` |
+| `train` | 5.02 GB | `autogluon`, `shap`, `torch` all import |
+
+**No decision was needed on `/admin/train/*`.** The plan asked whether training needs a separate container. It does not: `/admin/train/*` shells out to `python -m ml.train_*` (scikit-learn) and `/admin/train/auto-tune` runs `ml.auto_tune` (Optuna) — both in the serving set. AutoGluon and SHAP sit behind guarded imports with graceful fallbacks, so auto-tune degrades to Optuna-only. `train` is only needed for AutoGluon's model ranking.
+
+**⚠ PyCaret has never worked on this project's Python.** PyCaret 3.3.0 raises at import on Python ≥ 3.12 — *"Pycaret only supports python 3.9, 3.10, 3.11"* — and both the Docker image (`python:3.12-slim`) and the local venv are 3.12. It installs, pulls a large dependency tree, and is rejected every time; `_HAS_PYCARET` is `False` in both. `ml/auto_tune_pycaret.py` is guarded so nothing breaks — the cost is dead weight in the `train` image and a feature the docs implied worked.
+
+**I could not remove it here:** `make compile-requirements-docker` fails on a `setup.py egg_info` step, and it fails on **unmodified** input too, so that target is separately broken. Two follow-ups worth their own items — fix the compile target, then drop `pycaret` (or pin the image to Python 3.11 if PyCaret ranking is wanted).
 
 **Verify**
 

@@ -8,10 +8,10 @@ UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
 COV_MIN?=78
-# CI sets REQUIREMENTS_FILE=requirements-ci.txt so venv gets minimal deps (no pycaret/autogluon).
+# CI sets REQUIREMENTS_FILE=requirements-serve.txt so venv gets the serving deps (no pycaret/autogluon/shap).
 REQUIREMENTS_FILE?=requirements.txt
 
-.PHONY: all venv install compile-requirements compile-requirements-ci compile-requirements-ci-docker run train-batting train-bowling train-fielding train-extras train-win train-models
+.PHONY: all venv install compile-requirements compile-requirements-serve compile-requirements-serve-docker run train-batting train-bowling train-fielding train-extras train-win train-models
 .PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
 .PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
@@ -35,14 +35,14 @@ compile-requirements: venv
 compile-requirements-docker:
 	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements.in -o requirements.txt"
 
-# Regenerate requirements-ci.txt from requirements-ci.in (minimal deps for CI: no pycaret/autogluon).
-compile-requirements-ci: venv
+# Regenerate requirements-serve.txt from requirements-serve.in (serving + CI deps).
+compile-requirements-serve: venv
 	$(PIP) install --upgrade pip pip-tools
-	$(VENV)/bin/pip-compile -U --strip-extras requirements-ci.in -o requirements-ci.txt
+	$(VENV)/bin/pip-compile -U --strip-extras requirements-serve.in -o requirements-serve.txt
 
 # Same as above but with Python 3.12 (matches CI runner).
-compile-requirements-ci-docker:
-	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements-ci.in -o requirements-ci.txt"
+compile-requirements-serve-docker:
+	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements-serve.in -o requirements-serve.txt"
 
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install
@@ -187,11 +187,11 @@ _install_ruff: venv
 	@$(PIP) show ruff >/dev/null 2>&1 || { echo "Installing ruff into $(VENV)..."; $(PIP) install ruff >/dev/null; }
 
 # --- CI convenience targets ---
-# Install minimal deps for CI (lint + tests). Uses requirements-ci.txt (no pycaret/autogluon/torch).
-# Regenerate with: make compile-requirements-ci-docker
+# Install deps for CI (lint + tests). Uses requirements-serve.txt, the same set the serve image ships.
+# Regenerate with: make compile-requirements-serve-docker
 ci-setup:
 	python -m pip install --upgrade pip
-	python -m pip install -r requirements-ci.txt
+	python -m pip install -r requirements-serve.txt
 	python -m pip install ruff pytest pytest-cov httpx
 
 # Helper to ensure pytest and pytest-cov are available in the project venv

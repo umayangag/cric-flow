@@ -61,6 +61,9 @@ services:
     build:
       context: .
       dockerfile: ml-service/Dockerfile
+      # Serving image: no pycaret/autogluon/shap. /admin/train/* still works;
+      # auto-tune runs Optuna-only. Build --target train for PyCaret/AutoGluon ranking.
+      target: serve
     image: umayangag/cric-app-ml:latest
     container_name: cric-ml-service
     depends_on:

@@ -1,0 +1,24 @@
+# Runtime dependencies for SERVING, and the set CI installs.
+#
+# This is what the `serve` Docker stage and the CI job both use. It omits pycaret,
+# autogluon and shap (and their transitive weight: torch, tensorboard, chronos),
+# which only the `train` stage needs. Every one of those is behind a guarded import
+# with a graceful fallback, so the serve image can still run /admin/train/* and
+# auto-tune -- auto-tune just uses Optuna alone, without PyCaret/AutoGluon ranking.
+#
+# Use: pip-compile -U --strip-extras requirements-serve.in -o requirements-serve.txt
+# Pin numpy/pandas to match full requirements.txt to avoid drift between the images.
+fastapi
+uvicorn
+pydantic
+numpy==1.26.4
+pandas==2.1.4
+scikit-learn==1.5.2
+scipy==1.11.4
+joblib
+optuna
+structlog
+httpx
+psycopg2-binary
+python-dotenv
+psutil
