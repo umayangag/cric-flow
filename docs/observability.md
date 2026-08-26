@@ -140,6 +140,27 @@ output. A subprocess cannot push into its parent's memory, but it can write a fi
   training step is in flight and folds into `/ops/pipeline/stream`.
   `AUTO_TUNE_PROGRESS_FILE` pins an explicit path for tests, or to `tail` one file.
 
+**What the six trainers emit** (`ml/training_progress.py`), by phase:
+
+| Phase | Carries |
+|---|---|
+| `load` | rows, features, targets — a run against 200 stale rows looks like one against 200,000 until something says otherwise |
+| `features` | low-variance columns dropped, by name, with kept/dropped counts |
+| `fit` | rows and features at the moment fitting starts — the long silent stretch |
+| `cv` | fold index/total and per-fold metrics. **Only `train_win` cross-validates**; the rest fit once, and a step emitting fake folds to look busy would be worse than one saying nothing |
+| `artifact` | each artifact's basename and size. Size is the postcondition worth checking: a model file of a few hundred bytes is a failed fit that reported success |
+| `done` | per-format completion, then a final event for the run |
+
+`current`/`total` count **completed formats**, not "the one running". Formats train
+concurrently (`ML_TRAIN_FORMAT_WORKERS`), so there is no single current format; the
+format an event is about travels in `extra.format`.
+
+Emission is total. Every emitter is wrapped so neither the transport nor the argument
+handling can propagate — a trainer that finished successfully must not be reported as
+failed because a label was the wrong type. Metrics are coerced and filtered on the way
+out: numpy scalars become floats, and NaN or infinity is dropped rather than written as
+the literal `NaN`, which is not valid JSON and would make the file unreadable.
+
 ### 2.4. Logs
 
 - **Training / auto-tune / backtest**

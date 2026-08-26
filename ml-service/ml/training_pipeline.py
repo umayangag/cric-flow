@@ -35,6 +35,14 @@ from .config import get_pipeline_common_config, get_training_params
 from .data_quality import clip_target_outliers, impute_features
 from .feature_transforms import apply_transforms, get_transform_config
 from .pipeline_common import compute_time_decay_weights, get_scaler
+from .training_progress import (
+    artifact_written,
+    data_loaded,
+    fitting,
+    format_done,
+)
+from .training_progress import finish as progress_finish
+from .training_progress import start as progress_start
 from .utils import extract_feature_importance_from_estimator, make_base_estimator
 
 logger = logging.getLogger(__name__)
@@ -305,6 +313,7 @@ class TrainingPipeline:
             model = MultiOutputRegressor(base_est)
         else:
             model = base_est
+        fitting(self.spec.name, suffix, int(X.shape[0]), int(X.shape[1]))
         model.fit(Xs, Y, sample_weight=sample_weight)
 
         # Extract feature importance
@@ -314,9 +323,15 @@ class TrainingPipeline:
         # Save artifacts
         prefix = f"{self.spec.artifact_prefix}_share" if share_model else self.spec.artifact_prefix
         sfx = f"_{suffix}" if suffix else ""
+        written = []
         if scaler is not None:
-            joblib.dump(scaler, os.path.join(out_dir, f"{prefix}_scaler{sfx}.joblib"), compress=compress)
-        joblib.dump(model, os.path.join(out_dir, f"{prefix}_model{sfx}.joblib"), compress=compress)
+            scaler_path = os.path.join(out_dir, f"{prefix}_scaler{sfx}.joblib")
+            joblib.dump(scaler, scaler_path, compress=compress)
+            written.append(scaler_path)
+        model_path = os.path.join(out_dir, f"{prefix}_model{sfx}.joblib")
+        joblib.dump(model, model_path, compress=compress)
+        written.append(model_path)
+        artifact_written(self.spec.name, suffix, written)
 
         # Save metadata
         if metadata is not None:
@@ -445,8 +460,16 @@ class TrainingPipeline:
 
         targets = pipeline._resolve_targets(args)
 
+        # The channel is opened here, around everything, so a failure inside a format
+        # loop still leaves a final event and a removed file rather than a progress
+        # file that reads as a run still going.
         if args.from_api:
-            pipeline._run_api_mode(args, targets)
+            resolved = targets or _config_formats()
+            progress_start(spec.name, len(resolved), args.out)
+            try:
+                pipeline._run_api_mode(args, resolved)
+            finally:
+                progress_finish(spec.name)
             return
 
         default_csv_dir = os.environ.get("GO_APP_OUTPUT_DIR", svc_config.default_go_app_export_dir())
@@ -468,7 +491,11 @@ class TrainingPipeline:
             raise SystemExit(1)
 
         # Per-format training loop
-        pipeline._run_csv_format_loop(args, targets, default_csv_dir)
+        progress_start(spec.name, len(targets), args.out)
+        try:
+            pipeline._run_csv_format_loop(args, targets, default_csv_dir)
+        finally:
+            progress_finish(spec.name)
 
     # ── Private helpers ──────────────────────────────────────────────────
 
@@ -559,6 +586,7 @@ class TrainingPipeline:
             if X.size == 0 or Y.size == 0:
                 logger.warning("train_%s.skip_format_no_data format=%s", self.spec.name, fmt)
                 return 0
+            data_loaded(self.spec.name, fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
             training_params = get_training_params(self.spec.name, fmt)
             transform_config = get_transform_config(self.spec.name)
             meta = {
@@ -591,6 +619,7 @@ class TrainingPipeline:
                 args.out,
                 int(X.shape[0]),
             )
+            format_done(self.spec.name, fmt, {"rows": int(X.shape[0])})
             return 1
 
         saved_count = _run_concurrent(_train_one_api, targets)
@@ -639,6 +668,7 @@ class TrainingPipeline:
                     csv_path,
                 )
                 return 0
+            data_loaded(self.spec.name, fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
             transform_config = get_transform_config(self.spec.name)
             meta = {
                 "csv_path": csv_path,
@@ -669,6 +699,7 @@ class TrainingPipeline:
                 args.out,
                 int(X.shape[0]),
             )
+            format_done(self.spec.name, fmt, {"rows": int(X.shape[0])})
             return 1
 
         saved_count = _run_concurrent(_train_one_csv, targets)

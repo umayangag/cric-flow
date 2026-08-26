@@ -44,6 +44,9 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.training_progress import columns_dropped, data_loaded, format_done, set_total_formats
+from ml.training_progress import finish as progress_finish
+from ml.training_progress import start as progress_start
 from ml.win_features import get_format_codes, get_format_one_hot_columns
 
 logger = logging.getLogger(__name__)
@@ -172,7 +175,8 @@ def rows_to_xy_by_format(
             return {}
         feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in df.columns]
         X = df[feat_cols].astype(float).values
-        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
+        X, feat_cols, dropped = drop_low_variance_columns(X, feat_cols)
+        columns_dropped("extras", None, dropped, len(feat_cols))
         Y = df[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feat_cols)}
@@ -190,7 +194,8 @@ def rows_to_xy_by_format(
             continue
         feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in g.columns and c not in per_format_exclude]
         X = g[feat_cols].astype(float).values
-        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
+        X, feat_cols, dropped = drop_low_variance_columns(X, feat_cols)
+        columns_dropped("extras", fmt, dropped, len(feat_cols))
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(g)
         out[fmt] = (X, Y, w, feat_cols)
@@ -201,7 +206,8 @@ def rows_to_xy_by_format(
         all_X = np.vstack(legacy_rows)
         all_Y = np.vstack(legacy_Y)
         # Single low-variance drop on the aggregated legacy pool so column width is consistent.
-        all_X, legacy_feat_cols, _ = drop_low_variance_columns(all_X, legacy_feat_cols)
+        all_X, legacy_feat_cols, dropped = drop_low_variance_columns(all_X, legacy_feat_cols)
+        columns_dropped("extras", "_LEGACY_", dropped, len(legacy_feat_cols))
         all_w = _concat_weights_extras(legacy_w)
         out["_LEGACY_"] = (all_X, all_Y, all_w, legacy_feat_cols)
     return out
@@ -285,7 +291,7 @@ def train_and_save_legacy(
     logger.info("train_extras.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
-def main() -> None:
+def _main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(
@@ -336,16 +342,33 @@ def main() -> None:
         logger.error("train_extras.no_data hint=empty or insufficient rows")
         sys.exit(1)
 
+    set_total_formats(len(by_format))
     legacy_pack = by_format.pop("_LEGACY_", None)
     for fmt, (X, Y, w, feat_names) in by_format.items():
         logger.info("pipeline: train_extras processing format=%s n=%s", fmt, X.shape[0])
+        data_loaded("extras", fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
         train_and_save(X, Y, out_dir, fmt, feat_names, sample_weight=w)
         logger.info("train_extras.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
+        format_done("extras", fmt, {"rows": int(X.shape[0])})
 
     if legacy_pack is not None:
         all_X, all_Y, all_weights, legacy_feat_names = legacy_pack
         if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
             train_and_save_legacy(all_X, all_Y, out_dir, legacy_feat_names, sample_weight=all_weights)
+
+
+def main() -> None:
+    """Entry point. Opens the progress channel around the whole run.
+
+    Wrapping rather than editing the body keeps the two concerns apart, and the
+    `finally` is what guarantees the progress file is removed even when training
+    exits through `sys.exit` -- a file left behind reads as a run still going.
+    """
+    progress_start("extras")
+    try:
+        _main()
+    finally:
+        progress_finish("extras")
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ from .config import (
 from .data_quality import drop_low_variance_columns
 from .pipeline_common import compute_time_decay_weights, get_scaler
 from .training_pipeline import ModelSpec, TrainingPipeline
+from .training_progress import columns_dropped
 from .utils import make_base_estimator
 
 logger = logging.getLogger(__name__)
@@ -152,7 +153,8 @@ def rows_to_xy_by_format(
             return {}
         feat_cols = [c for c in FIELDING_FEATURE_COLS if c in df.columns]
         X = df[feat_cols].astype(float).values
-        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
+        X, feat_cols, dropped = drop_low_variance_columns(X, feat_cols)
+        columns_dropped("fielding", None, dropped, len(feat_cols))
         Y = df[[c for c in FIELDING_TARGET_COLS if c in df.columns]].astype(float).values
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feat_cols)}
@@ -168,7 +170,8 @@ def rows_to_xy_by_format(
             continue
         feat_cols = [c for c in FIELDING_FEATURE_COLS if c in g.columns]
         X = g[feat_cols].astype(float).values
-        X, feat_cols, _dropped = drop_low_variance_columns(X, feat_cols)
+        X, feat_cols, dropped = drop_low_variance_columns(X, feat_cols)
+        columns_dropped("fielding", fmt, dropped, len(feat_cols))
         Y = g[[c for c in FIELDING_TARGET_COLS if c in g.columns]].astype(float).values
         if X.shape[0] < 10:
             continue
@@ -181,7 +184,8 @@ def rows_to_xy_by_format(
         all_X = np.vstack(legacy_X_blocks)
         all_Y = np.vstack(legacy_Y_blocks)
         pooled_cols = list(legacy_feat_cols)
-        all_X, pooled_cols, _dropped = drop_low_variance_columns(all_X, pooled_cols)
+        all_X, pooled_cols, dropped = drop_low_variance_columns(all_X, pooled_cols)
+        columns_dropped("fielding", "_LEGACY_", dropped, len(pooled_cols))
         all_w = _concat_weights(legacy_w_blocks)
         out["_LEGACY_"] = (all_X, all_Y, all_w, pooled_cols)
     return out
