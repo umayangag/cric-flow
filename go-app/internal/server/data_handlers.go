@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
@@ -17,7 +18,10 @@ import (
 
 // fetchCommand is the data_migrations command for a dataset download. It is the
 // registry's command for the "fetch" step, not a literal chosen here.
-var fetchCommand = mustStepCommand("fetch")
+var (
+	fetchCommand   = mustStepCommand("fetch")
+	extractCommand = mustStepCommand("extract")
+)
 
 // dataFeedsHandler handles GET /ops/data/feeds.
 //
@@ -28,6 +32,86 @@ func (a *App) dataFeedsHandler(w http.ResponseWriter, _ *http.Request) {
 		"feeds":         dataacquire.Feeds(),
 		"allowed_hosts": dataacquire.AllowedHosts(),
 		"staging_dir":   dataset.StagingDir(),
+	})
+}
+
+// dataStagedHandler handles GET /ops/data/staged: the archives available to extract,
+// each with whatever provenance its fetch recorded, plus the manifest of the dataset
+// currently live. Together they answer "what is on this box, and where did it come
+// from?" — the question A-3 turns into a registry.
+func (a *App) dataStagedHandler(w http.ResponseWriter, _ *http.Request) {
+	dir := dataset.Dir()
+	payload := map[string]any{
+		"staging_dir": dataset.StagingDir(),
+		"archives":    dataacquire.ListStaged(dataset.StagingDir()),
+		"dataset_dir": dir,
+	}
+	if manifest, ok := dataacquire.ReadManifest(dir); ok {
+		payload["live"] = manifest
+	}
+	respondJSON(w, http.StatusOK, payload)
+}
+
+// dataExtractRequest is the body of POST /ops/data/extract. An empty Archive means
+// the newest staged archive.
+type dataExtractRequest struct {
+	Archive string `json:"archive"`
+}
+
+// dataExtractHandler handles POST /ops/data/extract: it inflates a staged archive
+// into the dataset directory as a tracked background job.
+//
+// Like fetch it answers 202. Unlike fetch, the risk is not the network but the
+// archive: see dataacquire.Extract for the zip-slip, bomb and postcondition checks,
+// all of which run before a single file reaches the live directory.
+func (a *App) dataExtractHandler(w http.ResponseWriter, r *http.Request) {
+	var body dataExtractRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		slog.Info("data extract: decode request body failed", slog.Any("err", err))
+		respondBadRequest(w, err)
+		return
+	}
+
+	stagingDir := dataset.StagingDir()
+	archive, err := dataacquire.ResolveStagedArchive(stagingDir, body.Archive)
+	if err != nil {
+		slog.Info("data extract: no usable archive",
+			slog.String("archive", body.Archive), slog.Any("err", err))
+		respondJSON(w, http.StatusBadRequest, map[string]any{
+			"error":       err.Error(),
+			"staging_dir": stagingDir,
+			"archives":    dataacquire.ListStaged(stagingDir),
+		})
+		return
+	}
+
+	if busy, _ := pipeline.LaneBusy(r.Context(), extractCommand); busy {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
+		return
+	}
+
+	destDir := dataset.Dir()
+	args := map[string]any{"archive": archive, "dest_dir": destDir}
+	slog.Info("data extract: request accepted, starting background job", slog.Any("args", args))
+
+	a.startTrackedJob(extractCommand, args, dataacquire.DefaultTimeout,
+		func(ctx context.Context) (any, error) {
+			defer dataacquire.ClearExtractProgress()
+			return dataacquire.Extract(ctx, dataacquire.ExtractOptions{
+				ArchivePath: archive,
+				DestDir:     destDir,
+				WorkDir:     stagingDir,
+				Progress: func(p dataacquire.ExtractProgress) {
+					dataacquire.PublishExtractProgress(filepath.Base(archive), p)
+				},
+			})
+		})
+
+	respondJSON(w, http.StatusAccepted, map[string]any{
+		"status":   "started",
+		"step":     "extract",
+		"archive":  filepath.Base(archive),
+		"dest_dir": destDir,
 	})
 }
 

@@ -59,6 +59,8 @@ func NewRouter(a *App) http.Handler {
 	// pipeline, not a stage of it — the same distinction Step.Surface encodes.
 	admin.HandleFunc("/ops/data/feeds", a.dataFeedsHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/data/fetch", a.dataFetchHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/ops/data/staged", a.dataStagedHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/ops/data/extract", a.dataExtractHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}

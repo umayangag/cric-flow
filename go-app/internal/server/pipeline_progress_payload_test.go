@@ -24,6 +24,9 @@ func testReporter() *progressReporter {
 	}
 	r.precomputeStatus = func() precompute.Status { return precompute.Status{} }
 	r.fetchStatus = func() (dataacquire.Progress, string, bool) { return dataacquire.Progress{}, "", false }
+	r.extractStatus = func() (dataacquire.ExtractProgress, string, bool) {
+		return dataacquire.ExtractProgress{}, "", false
+	}
 	return r
 }
 
@@ -199,4 +202,32 @@ func TestFetchWithNoLiveSampleReportsAbsence(t *testing.T) {
 	require.Len(t, payload.Steps, 1)
 	assert.Nil(t, payload.Steps[0].Fetch)
 	assert.Nil(t, payload.Steps[0].EstimatedSec)
+}
+
+// TestExtractProgressReachesTheStream keeps extraction on the same single stream as
+// everything else, for the same reason fetch is there.
+func TestExtractProgressReachesTheStream(t *testing.T) {
+	t.Parallel()
+	eta := int64(17)
+	r := testReporter()
+	r.extractStatus = func() (dataacquire.ExtractProgress, string, bool) {
+		return dataacquire.ExtractProgress{
+			Entries:      1200,
+			EntriesTotal: 20000,
+			Bytes:        5 << 20,
+			ETASec:       &eta,
+		}, "all_json.zip", true
+	}
+
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("dataset-extract", time.Minute)})
+	require.Len(t, payload.Steps, 1)
+	step := payload.Steps[0]
+
+	require.NotNil(t, step.Extract)
+	assert.Equal(t, 1200, step.Extract.Entries)
+	assert.Equal(t, 20000, step.Extract.EntriesTotal)
+	require.NotNil(t, step.EstimatedSec)
+	assert.Equal(t, eta, *step.EstimatedSec)
+	assert.Equal(t, "data", step.Lane)
+	assert.Nil(t, step.Fetch, "an extract is not a download")
 }

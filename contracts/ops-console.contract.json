@@ -99,6 +99,13 @@
       "optional": false,
       "requires": [],
       "prerequisite": "Downloads from the Cricsheet host allowlist into the staging directory. The server needs outbound network access."
+    },
+    {
+      "id": "extract",
+      "label": "Extract Dataset",
+      "optional": false,
+      "requires": [],
+      "prerequisite": "Needs a .zip in the staging directory — fetch one first, or place one there. Extraction replaces the dataset directory; the previous contents are kept under staging."
     }
   ],
   "lanes": [

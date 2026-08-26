@@ -346,6 +346,20 @@ var defaultRegistry = NewRegistry(
 		Prerequisite: "Downloads from the Cricsheet host allowlist into the staging " +
 			"directory. The server needs outbound network access.",
 	},
+	// Extract deliberately declares no Requires. Ordering here would say the archive
+	// must have come from a fetch, and it need not have: an operator can drop one in
+	// staging by hand. The handler checks the archive exists, which is the real
+	// precondition, and says so in terms that name the file.
+	Step{
+		ID:      "extract",
+		Command: "dataset-extract",
+		Label:   "Extract Dataset",
+		Lane:    LaneData,
+		Surface: SurfaceData,
+		Prerequisite: "Needs a .zip in the staging directory — fetch one first, or " +
+			"place one there. Extraction replaces the dataset directory; the previous " +
+			"contents are kept under staging.",
+	},
 )
 
 // Steps returns the application's pipeline step registry.

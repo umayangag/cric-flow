@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
@@ -102,4 +105,71 @@ func TestRequestedLanes(t *testing.T) {
 	_, err = requestedLanes(httptest.NewRequest(http.MethodPost, "/ops/pipeline/stop?lane=nonsense", nil))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "compute", "the error must name the lanes that do exist")
+}
+
+// TestDataExtractHandler_RefusesAnUnsafeOrMissingArchive: the archive name comes from
+// a request body, so it is checked rather than trusted — a caller asking to extract
+// "../../etc/shadow" must be refused before anything opens it.
+func TestDataExtractHandler_RefusesAnUnsafeOrMissingArchive(t *testing.T) {
+	// Not parallel: t.Setenv points the dataset directory at a temp dir.
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+
+	cases := map[string]string{
+		"traversal":        `{"archive":"../../etc/shadow"}`,
+		"nested path":      `{"archive":"sub/all_json.zip"}`,
+		"backslash path":   `{"archive":"..\\all_json.zip"}`,
+		"not an archive":   `{"archive":"matches.json"}`,
+		"does not exist":   `{"archive":"missing.zip"}`,
+		"nothing staged":   `{}`,
+		"empty after trim": `{"archive":"   "}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/ops/data/extract", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			(&App{}).dataExtractHandler(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code, "body %s must be refused", body)
+			var resp map[string]any
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+			assert.NotEmpty(t, resp["error"])
+			assert.NotNil(t, resp["staging_dir"], "a refusal must say where archives are looked for")
+		})
+	}
+}
+
+func TestDataStagedHandler_ListsArchivesAndTheLiveManifest(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+	staging := dataset.StagingDir()
+	require.NoError(t, os.MkdirAll(staging, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "all_json.zip"), []byte("PK"), 0o600))
+	// A non-archive in staging must not be offered as one.
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "notes.txt"), []byte("x"), 0o600))
+
+	rec := httptest.NewRecorder()
+	(&App{}).dataStagedHandler(rec, httptest.NewRequest(http.MethodGet, "/ops/data/staged", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Archives   []dataacquire.StagedArchive `json:"archives"`
+		StagingDir string                      `json:"staging_dir"`
+		Live       *dataacquire.ExtractResult  `json:"live"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Archives, 1)
+	assert.Equal(t, "all_json.zip", body.Archives[0].Filename)
+	assert.Equal(t, staging, body.StagingDir)
+	assert.Nil(t, body.Live, "a directory with no manifest has genuinely unknown provenance")
+}
+
+func TestExtractCommandComesFromTheRegistry(t *testing.T) {
+	t.Parallel()
+	step, ok := pipelinesvc.Steps().ByID("extract")
+	require.True(t, ok, "the extract step must exist in the registry")
+	assert.Equal(t, step.Command, extractCommand)
+	assert.Equal(t, pipelinesvc.LaneData, pipelinesvc.Steps().LaneForCommand(extractCommand))
+	assert.Equal(t, pipelinesvc.SurfaceData, step.EffectiveSurface())
+	assert.NotEmpty(t, step.Prerequisite, "extract's staged-archive precondition must be stated")
 }
