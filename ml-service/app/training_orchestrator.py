@@ -7,12 +7,12 @@ boundaries stay clear.
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
+from ml import auto_tune_progress
 from ml.config import get_format_codes
 
 # Logger type: any object with info, warning, error, debug
@@ -247,29 +247,32 @@ def run_innings_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
         logger.info("admin.train.success", step="innings")
 
 
-def get_auto_tune_progress_path() -> str:
-    """Return path to auto-tune progress JSON file."""
-    path = os.environ.get("AUTO_TUNE_PROGRESS_FILE")
-    if path:
-        return path
-    try:
-        from ml.config import default_artifacts_dir
+def get_auto_tune_progress_path() -> Optional[str]:
+    """Return an explicitly configured auto-tune progress file, or None.
 
-        return os.path.join(default_artifacts_dir(), "auto_tune_progress.json")
-    except Exception:
-        return os.path.join("..", "..", "output", "ml-service", "auto_tune_progress.json")
+    Progress files are now per-run (ops plan O-1), so there is no single path to
+    return in the ordinary case -- `get_auto_tune_progress` finds the live one. This
+    survives only for `AUTO_TUNE_PROGRESS_FILE`, which pins a path for tests and for
+    an operator who wants to watch one file with `tail`.
+    """
+    return os.environ.get("AUTO_TUNE_PROGRESS_FILE") or None
 
 
 def get_auto_tune_progress() -> Dict[str, Any]:
-    """Read and return auto-tune progress JSON; empty dict if missing or invalid."""
-    path = get_auto_tune_progress_path()
-    if not os.path.isfile(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    """Return live auto-tune progress, or {} when nothing is running.
+
+    With one progress file per run, "the" progress file is whichever the running job
+    is writing: the newest non-stale file for the step. A crashed run leaves its file
+    behind, and reporting that as current would show a run that is not happening --
+    `run_progress.latest_for_step` is where that rule lives, so this and every future
+    step endpoint apply it identically.
+    """
+    from ml import run_progress
+
+    pinned = get_auto_tune_progress_path()
+    if pinned:
+        return run_progress.read(pinned)
+    return run_progress.latest_for_step(auto_tune_progress.STEP)
 
 
 VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")

@@ -214,8 +214,18 @@ def main() -> None:
 
         out_dir = default_artifacts_dir()
 
-    progress_path = os.environ.get("AUTO_TUNE_PROGRESS_FILE") or os.path.join(out_dir, "auto_tune_progress.json")
-    _progress.set_progress_file(progress_path)
+    # One progress file per run (ops plan O-1): a fixed path means a run started
+    # while the previous one is still being read overwrites its state, and the reader
+    # cannot tell which run it is looking at. AUTO_TUNE_PROGRESS_FILE still pins a
+    # path when something outside wants to watch one file.
+    pinned = os.environ.get("AUTO_TUNE_PROGRESS_FILE")
+    run_id = os.environ.get("PIPELINE_RUN_ID") or str(os.getpid())
+    if pinned:
+        _progress.set_progress_file(pinned, run_id)
+        progress_path = pinned
+    else:
+        progress_path = _progress.configure(run_id=run_id, directory=out_dir)
+    logger.info("auto_tune.progress_file path=%s run_id=%s", progress_path, run_id)
 
     def _config_formats() -> List[str]:
         try:
