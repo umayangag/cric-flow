@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -321,4 +323,41 @@ func TestExtract_FailsOnAnUnreadableArchive(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Zero(t, dataset.Inspect(destDir).MatchFiles)
+}
+
+// TestExtract_DigestsAHandPlacedArchive: an archive that reached staging without a
+// fetch has no sidecar, so extract is the only chance to learn its digest. Without
+// one the dataset registry cannot identify what is now live, which is exactly the
+// case P-2 has to flag.
+func TestExtract_DigestsAHandPlacedArchive(t *testing.T) {
+	t.Parallel()
+	opts := extractFixture(t, []zipEntry{{name: "1234.json", body: `{"info":{}}`}})
+
+	result, err := Extract(context.Background(), opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.ArchiveSHA256, "a hand-placed archive must still be identifiable")
+	assert.Len(t, result.ArchiveSHA256, 64, "sha256 renders as 64 hex characters")
+
+	raw, err := os.ReadFile(opts.ArchivePath)
+	require.NoError(t, err)
+	sum := sha256.Sum256(raw)
+	assert.Equal(t, hex.EncodeToString(sum[:]), result.ArchiveSHA256)
+}
+
+// TestExtract_PrefersTheSidecarDigest: when the fetch already computed the digest as
+// the bytes streamed past, extract must reuse it rather than re-reading the file.
+func TestExtract_PrefersTheSidecarDigest(t *testing.T) {
+	t.Parallel()
+	opts := extractFixture(t, []zipEntry{{name: "1234.json", body: "{}"}})
+	writeSidecar(opts.ArchivePath, Result{
+		SHA256:    "known-from-the-fetch",
+		SourceURL: "https://cricsheet.org/downloads/all_json.zip",
+		FeedID:    "all",
+	})
+
+	result, err := Extract(context.Background(), opts)
+	require.NoError(t, err)
+	assert.Equal(t, "known-from-the-fetch", result.ArchiveSHA256)
+	assert.Equal(t, "all", result.FeedID, "the fetch's provenance must carry into the manifest")
+	assert.Contains(t, result.SourceURL, "cricsheet.org")
 }

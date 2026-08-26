@@ -346,6 +346,48 @@ export type PipelineRunResponse = {
 };
 
 /**
+ * One acquired dataset, from GET /ops/data/datasets.
+ *
+ * Optional fields are genuinely unknown rather than zero: an archive placed in
+ * staging by hand has no feed or source URL, and one that has been downloaded but not
+ * extracted has no entry count. Render absence as "unknown", never as 0.
+ */
+export type DatasetRegistryEntry = {
+  id: number;
+  /** SHA-256 of the archive. This, not the filename, identifies a dataset. */
+  sha256: string;
+  feed?: string;
+  source_url?: string;
+  filename: string;
+  bytes: number;
+  etag?: string;
+  last_modified?: string;
+  fetched_at?: string;
+  extracted_at?: string;
+  entry_count?: number;
+  /** The subset of entries the importer will read. */
+  match_files?: number;
+  extracted_bytes?: number;
+  dest_dir?: string;
+  created_at: string;
+  updated_at: string;
+  /** True for the dataset currently in the data directory, derived from its manifest. */
+  live: boolean;
+};
+
+/** Payload of GET /ops/data/datasets. */
+export type DatasetRegistryResponse = {
+  datasets: DatasetRegistryEntry[];
+  dataset_dir: string;
+  /**
+   * Digest of the dataset in the data directory. It can be set while no entry is
+   * marked live: that means the directory holds a dataset the registry has never
+   * seen, which is a state to show rather than hide.
+   */
+  live_sha256: string;
+};
+
+/**
  * Resource a step contends for. Steps in one lane run one at a time; the lanes
  * overlap, so a dataset download and a training run can be in flight together.
  * Generated backend-side from the step registry (contracts/ops-console.contract.json).

@@ -98,7 +98,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | F-3 | done | `ops/pr3-dataset-directory` | Make the dataset directory a first-class, observable thing |
 | A-1 | done | `ops/pr4-data-fetch` | `POST /ops/data/fetch` — download a Cricsheet archive |
 | A-2 | done | `ops/pr5-data-extract` | `POST /ops/data/extract` — unzip into the data directory |
-| A-3 | todo | | Dataset registry: what is on disk and where it came from |
+| A-3 | done | `ops/pr6-dataset-registry` | Dataset registry: what is on disk and where it came from |
 | A-4 | todo | | Frontend: Data tab — feeds, fetch, extract, registry |
 | O-1 | todo | | Generalise `auto_tune_progress` into a shared progress channel |
 | O-2 | todo | | Instrument the six trainers to emit milestones and metrics |
@@ -307,13 +307,54 @@ mistaken replace is recoverable.
 
 ### A-3 · Dataset registry
 
-- [ ] Persist one row per acquired dataset: feed, source URL, digest, fetched-at,
-      extracted-at, entry count, bytes
-- [ ] `GET /ops/data/datasets`
-- [ ] Mark which dataset is currently live in the data directory
+- [x] Persist one row per acquired dataset: feed, source URL, digest, fetched-at,
+      extracted-at, entry count, match-file count, bytes, destination
+      (migration `0002_datasets.sql`, table `datasets`)
+- [x] `GET /ops/data/datasets`, newest first, bounded limit
+- [x] Mark which dataset is currently live in the data directory
 
 **Why it matters:** without this, P-1/P-2 have nothing to reference, and
 "which data produced this model?" stays unanswerable.
+
+**The digest is the identity, not the filename.** Cricsheet reuses filenames across
+releases — `all_json.zip` is always `all_json.zip` — so a filename-keyed registry would
+conflate every dataset ever fetched into one row. Both steps upsert on `sha256`: a
+re-fetch of unchanged bytes updates the existing row instead of duplicating it, and
+leaves the extract columns untouched, because re-downloading an archive does not
+un-extract it. Extract can *insert*, not only update, because an archive can reach
+staging without passing through fetch.
+
+**No `is_live` column, deliberately.** Which dataset is live is a property of the
+filesystem — an operator who rsyncs files into the data directory changes it without
+touching Postgres, and a stored flag would go on asserting the old answer. It is derived
+by matching the on-disk `.dataset-manifest` digest against `sha256`, so it cannot go
+stale. The endpoint returns `live_sha256` separately, so "the box holds a dataset this
+registry has never seen" is visible rather than rendered as an empty list.
+
+**Extract now hashes an archive that has no sidecar**, at the cost of one extra read of
+a local file. A hand-placed archive would otherwise land in the registry with a blank
+digest — and a dataset with no digest is exactly the case P-2 exists to flag, so leaving
+it blank would defeat the point of recording it.
+
+**Unknown is not zero.** Every optional column is nullable and scanned through
+`sql.Null*`: a hand-placed archive has no feed or URL, and a downloaded-but-not-extracted
+one has no entry count. "We do not know where this came from" and "it came from nowhere"
+are different answers, and the second is never true.
+
+**A registry write failure is logged, not fatal.** The step has already succeeded — the
+bytes are on disk — and failing the job would report work that happened as work that did
+not. Provenance survives regardless: it is in the run's `data_migrations` metadata, the
+archive's sidecar and the extracted directory's manifest. The registry is the index over
+those, not their only copy.
+
+**Verified against Postgres, not only mocks.** The unit tests use the DB mock, which
+proves the queries are *sent* but not that Postgres accepts them — an `ON CONFLICT`
+naming a non-unique column would pass all of them and fail on the box. Seven integration
+tests in `registry_integration_test.go` run the real SQL (`RUN_DB_TESTS=1`), covering the
+re-fetch-does-not-erase-the-extract case, provenance preservation, the hand-placed
+archive, live marking and ordering. They were run locally against a disposable
+`postgres:15-alpine` container; CI applies migrations but does not yet set
+`RUN_DB_TESTS=1`.
 
 ### A-4 · Frontend: Data tab
 

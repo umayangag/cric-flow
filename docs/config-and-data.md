@@ -226,6 +226,40 @@ dataset cannot survive into the new one. The displaced contents are moved to
 `.dataset-manifest` is written beside the data recording entry count, bytes, the source
 archive's digest and URL, and the time — the provenance A-3 and P-1 build on.
 
+### The dataset registry
+
+`GET /ops/data/datasets` returns one row per acquired dataset, newest first, with the
+one currently in the data directory marked `live`.
+
+`data_migrations` already records every *run*, but a run is not a dataset: two fetches
+of an unchanged archive are two runs and one dataset, and a fetch followed by an
+extract is two runs and still one dataset. Without a table that says so, "which data
+produced this model?" has to be reconstructed from job metadata every time.
+
+**The archive's SHA-256 is the identity**, not the filename. Cricsheet reuses filenames
+across releases — `all_json.zip` is always `all_json.zip` — so a filename-keyed registry
+would conflate every dataset ever fetched into one row. Fetch and extract both upsert on
+the digest: a re-fetch of unchanged bytes updates the existing row rather than adding a
+duplicate, and it leaves the extract columns alone, because re-downloading an archive
+does not un-extract it.
+
+**There is no `is_live` column.** Which dataset is live is a property of the filesystem:
+an operator who rsyncs files into the data directory changes it without touching
+Postgres, and a stored flag would go on asserting the old answer. It is derived by
+matching the on-disk `.dataset-manifest` digest against `sha256`. A consequence worth
+knowing: `live_sha256` can be set while no row is marked live, which means the box holds
+a dataset the registry has never seen.
+
+Optional columns are genuinely unknown rather than zero. An archive placed in staging by
+hand has no feed or source URL; one downloaded but not yet extracted has no entry count.
+Extraction hashes an archive that arrives without a sidecar, so even a hand-placed one
+can be identified — a dataset with no digest is exactly the case P-2 has to flag.
+
+A registry write that fails is logged, not fatal: the step itself has already succeeded,
+the bytes are on disk, and provenance also lives in the job's `data_migrations` metadata,
+the archive's sidecar and the directory's manifest. The registry is the index over those,
+not their only copy.
+
 **Lanes.** Acquisition runs in the `data` lane, training and the rest of the pipeline in
 `compute`. Steps within a lane run one at a time; the lanes overlap, so a download does
 not block a training run. `POST /ops/pipeline/stop` stops everything by default, or one

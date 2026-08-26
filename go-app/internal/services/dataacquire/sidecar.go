@@ -1,7 +1,10 @@
 package dataacquire
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"os"
 )
@@ -47,4 +50,23 @@ func writeSidecar(archive string, r Result) {
 		slog.Warn("dataset fetch: writing sidecar failed",
 			slog.String("path", sidecarPath(archive)), slog.Any("err", err))
 	}
+}
+
+// hashFile returns the hex SHA-256 of a file on disk.
+//
+// Fetch computes the digest as the bytes stream past, so this is only for an archive
+// that arrived some other way. It reads in chunks rather than into memory: these
+// files run to hundreds of megabytes.
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), nil
 }

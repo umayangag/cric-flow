@@ -8,11 +8,14 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
+	"github.com/umayangag/cric-flow/go-app/internal/services/datasetregistry"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
@@ -97,7 +100,7 @@ func (a *App) dataExtractHandler(w http.ResponseWriter, r *http.Request) {
 	a.startTrackedJob(extractCommand, args, dataacquire.DefaultTimeout,
 		func(ctx context.Context) (any, error) {
 			defer dataacquire.ClearExtractProgress()
-			return dataacquire.Extract(ctx, dataacquire.ExtractOptions{
+			result, err := dataacquire.Extract(ctx, dataacquire.ExtractOptions{
 				ArchivePath: archive,
 				DestDir:     destDir,
 				WorkDir:     stagingDir,
@@ -105,6 +108,11 @@ func (a *App) dataExtractHandler(w http.ResponseWriter, r *http.Request) {
 					dataacquire.PublishExtractProgress(filepath.Base(archive), p)
 				},
 			})
+			if err != nil {
+				return nil, err
+			}
+			recordExtract(ctx, result)
+			return result, nil
 		})
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
@@ -175,6 +183,7 @@ func (a *App) dataFetchHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return nil, err
 			}
+			recordFetch(ctx, result)
 			return result, nil
 		})
 
@@ -197,4 +206,108 @@ func mustStepCommand(stepID string) string {
 		panic("pipeline registry has no step " + strings.TrimSpace(stepID))
 	}
 	return step.Command
+}
+
+// dataDatasetsHandler handles GET /ops/data/datasets: the dataset registry, newest
+// first, with the row currently live in the data directory marked.
+//
+// Which dataset is live is read from the on-disk manifest rather than a column. An
+// operator who rsyncs files into the data directory changes what is live without
+// touching Postgres; a stored flag would go on asserting the old answer, and a
+// provenance record that can be quietly wrong is worse than none.
+func (a *App) dataDatasetsHandler(w http.ResponseWriter, r *http.Request) {
+	limit := datasetListLimit(r.URL.Query().Get("limit"))
+
+	dir := dataset.Dir()
+	liveSHA := ""
+	if manifest, ok := dataacquire.ReadManifest(dir); ok {
+		liveSHA = manifest.ArchiveSHA256
+	}
+
+	datasets, err := datasetregistry.List(r.Context(), limit, liveSHA)
+	if err != nil {
+		slog.Error("ops datasets: list failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read the dataset registry"})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"datasets":    datasets,
+		"dataset_dir": dir,
+		// live_sha256 is reported even when no row matches it, because "the directory
+		// holds a dataset this registry has never seen" is a state worth showing
+		// rather than rendering as an empty list.
+		"live_sha256": liveSHA,
+	})
+}
+
+// Dataset listing bounds, mirroring the backtest list conventions.
+const (
+	defaultDatasetListLimit = 50
+	maxDatasetListLimit     = 200
+)
+
+// datasetListLimit reads the ?limit= parameter, bounded.
+//
+// Absent, unparseable and non-positive all mean the default rather than "no limit":
+// an unbounded list endpoint is a slow query waiting for the registry to grow.
+func datasetListLimit(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 {
+		return defaultDatasetListLimit
+	}
+	return min(n, maxDatasetListLimit)
+}
+
+// recordFetch and recordExtract write the registry row for a completed step.
+//
+// A failure here is logged, not returned. The step itself has already succeeded —
+// the bytes are on disk — and failing the job for a registry write would report work
+// that happened as work that did not. Provenance is not lost either way: it is in the
+// job's own data_migrations metadata, in the archive's sidecar and in the extracted
+// directory's manifest. The registry is the index over those, not their only copy.
+func recordFetch(ctx context.Context, result dataacquire.Result) {
+	err := datasetregistry.RecordFetch(ctx, datasetregistry.FetchRecord{
+		SHA256:       result.SHA256,
+		Feed:         result.FeedID,
+		SourceURL:    result.SourceURL,
+		Filename:     filepath.Base(result.Path),
+		Bytes:        result.Bytes,
+		ETag:         result.ETag,
+		LastModified: result.LastModified,
+		FetchedAt:    parseTimestamp(result.FetchedAt),
+	})
+	if err != nil {
+		slog.Warn("dataset registry: recording the fetch failed",
+			slog.String("sha256", result.SHA256), slog.Any("err", err))
+	}
+}
+
+func recordExtract(ctx context.Context, result dataacquire.ExtractResult) {
+	err := datasetregistry.RecordExtract(ctx, datasetregistry.ExtractRecord{
+		SHA256:         result.ArchiveSHA256,
+		Feed:           result.FeedID,
+		SourceURL:      result.SourceURL,
+		Filename:       filepath.Base(result.ArchivePath),
+		EntryCount:     result.Entries,
+		MatchFiles:     result.MatchFiles,
+		ExtractedBytes: result.Bytes,
+		DestDir:        result.DestDir,
+		ExtractedAt:    parseTimestamp(result.ExtractedAt),
+	})
+	if err != nil {
+		slog.Warn("dataset registry: recording the extract failed",
+			slog.String("sha256", result.ArchiveSHA256), slog.Any("err", err))
+	}
+}
+
+// parseTimestamp reads an RFC3339 stamp, falling back to now. The values come from
+// results this process just produced, so a parse failure means a bug rather than bad
+// input — but a wrong-by-seconds timestamp beats a zero one that renders as year 1.
+func parseTimestamp(raw string) time.Time {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Now().UTC()
+	}
+	return t
 }
