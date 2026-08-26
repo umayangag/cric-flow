@@ -17,6 +17,7 @@ type Response struct {
 	Services       map[string]bool `json:"services"`
 	DB             map[string]any  `json:"db"`
 	Precompute     map[string]any  `json:"precompute"`
+	Dataset        map[string]any  `json:"dataset"`
 	Exports        map[string]any  `json:"exports"`
 	Artifacts      map[string]any  `json:"artifacts"`
 	Fielding       map[string]any  `json:"fielding"`

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 )
 
 // Options captures CLI options for cricsheet-importer.
@@ -30,11 +31,8 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var apply bool
 	var concurrency int
 
-	// Environment defaults
-	defIn := getenv("GO_APP_CRICSHEET_DIR", "")
-	if defIn == "" {
-		defIn = config.DefaultCricsheetDir()
-	}
+	// The dataset directory resolves the same way for the CLI as for the API.
+	defIn := dataset.Dir()
 	defConc := getenvInt("CRICSHEET_CONCURRENCY", runtime.NumCPU())
 
 	fs.StringVar(&inDir, "in", defIn, "input directory containing Cricsheet match files")
@@ -73,13 +71,6 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		FailFast:             failFast,
 		Timeout:              timeout,
 	}, nil
-}
-
-func getenv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }
 
 func getenvInt(key string, def int) int {

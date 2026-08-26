@@ -2,6 +2,7 @@ package cricsheet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 )
 
 // Options controls optional behaviors for Cricsheet import.
@@ -24,7 +26,15 @@ type Options struct {
 	FailFast             bool
 }
 
+// ErrNoMatchFiles is returned when the dataset directory holds nothing to import.
+//
+// This is a failure, not a no-op. An import that reads the wrong directory finds no
+// files and would otherwise complete "successfully" with zero rows — the silent
+// success that made a mis-defaulted data directory invisible for as long as it was.
+var ErrNoMatchFiles = errors.New("no Cricsheet match files found")
+
 // ImportDir reads all .json files in dir and imports them into the DB concurrently.
+// It does not recurse: only files directly in dir are read.
 // concurrency limits parallel file imports; 0 or negative uses resource-aware limit (memory/CPU).
 // Each file's DB writes run in a single transaction (all-or-nothing per file).
 func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) (int, error) {
@@ -37,22 +47,16 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	if concurrency < 1 {
 		concurrency = 1
 	}
-	entries, err := os.ReadDir(dir)
+	files, err := dataset.MatchFiles(dir)
 	if err != nil {
 		slog.Error("cricsheet.ImportDir ReadDir failed", slog.String("dir", dir), slog.Any("err", err))
 		return 0, err
 	}
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if strings.HasSuffix(strings.ToLower(name), ".json") {
-			files = append(files, filepath.Join(dir, name))
-		}
+	if len(files) == 0 {
+		slog.Error("cricsheet.ImportDir found no match files", slog.String("dir", dir))
+		return 0, fmt.Errorf("%w in %s (set %s or inputs.cricsheet_dir to the directory holding the *.json match files)",
+			ErrNoMatchFiles, dir, dataset.DirEnvVar)
 	}
-	sort.Strings(files)
 
 	slog.Info("pipeline: cricsheet import scanning complete",
 		slog.String("dir", dir),

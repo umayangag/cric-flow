@@ -95,7 +95,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 |----|--------|-------------|---------|
 | F-1 | done | `ops/pr1-ui-honesty` | `train_combination_meta` missing from the frontend step list |
 | F-2 | done | `ops/pr2-multi-step-progress` | SSE reports only one in-flight step |
-| F-3 | todo | | Make the dataset directory a first-class, observable thing |
+| F-3 | done | `ops/pr3-dataset-directory` | Make the dataset directory a first-class, observable thing |
 | A-1 | todo | | `POST /ops/data/fetch` — download a Cricsheet archive |
 | A-2 | todo | | `POST /ops/data/extract` — unzip into the data directory |
 | A-3 | todo | | Dataset registry: what is on disk and where it came from |
@@ -179,11 +179,28 @@ testable without a live stream), and on the frontend `usePipelineProgressStream`
 **Why:** the data location is a defaulted string (`"../data"`) buried in a handler.
 Nothing reports what is in it. Acquisition needs this to exist first.
 
-- [ ] Promote the data directory to config, with an env override
-- [ ] Add it to `/ops/status`: path, file count, total bytes, newest file mtime
-- [ ] Show it in the Ops UI
+- [x] Promote the data directory to config, with an env override — one resolver,
+      `dataset.Dir()`: `GO_APP_CRICSHEET_DIR`, then `inputs.cricsheet_dir`, then the
+      built-in default. The CLI, the import handler and `/ops/status` all use it
+- [x] Add it to `/ops/status`: path, exists, match-file count, total bytes, newest file
+      and its mtime, plus the env var name so the UI can say how to change it
+- [x] Show it in the Ops UI (`OpsDatasetSection`), calling out missing and empty
+      directories rather than showing a zero and leaving you to notice
 
 **Acceptance:** you can tell from the browser whether there is any data on the box.
+
+**The bug this uncovered.** The location was a defaulted string in the handler
+(`"../data"`), a *different* default in config (`"../data/go-app/cricsheet"`), and an
+env var only the CLI read. `cricsheet.ImportDir` does not recurse, so an import
+started from the ops console read the wrong directory, found no `.json` files, and
+**completed successfully with zero rows** — the third instance of this repo's
+silent-success failure mode.
+
+Two fixes, both here: every caller resolves the directory the same way, and
+`ImportDir` now verifies its own postcondition — zero match files is
+`ErrNoMatchFiles`, naming the directory it looked in and the env var that moves it.
+`dataset.MatchFiles` is shared by the importer and the status section, so the count
+the browser shows is exactly the set import will read.
 
 ---
 

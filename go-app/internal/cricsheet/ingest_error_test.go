@@ -142,3 +142,50 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		require.Error(t, err, "ImportDir must stop and return on first DB error when FailFast is true")
 	})
 }
+
+// TestImportDir_EmptyDirectoryIsAFailure guards the bug that made a mis-defaulted data
+// directory invisible: the API handler read "../data" while the match files were in
+// "../data/go-app/cricsheet", and since ImportDir does not recurse it found nothing —
+// then reported success. Zero files is now a loud failure naming the directory.
+func TestImportDir_EmptyDirectoryIsAFailure(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		prepare func(t *testing.T, dir string)
+	}{
+		{
+			name:    "no files at all",
+			prepare: func(*testing.T, string) {},
+		},
+		{
+			name: "files, but none the importer reads",
+			prepare: func(t *testing.T, dir string) {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("x"), 0o600))
+			},
+		},
+		{
+			name: "match files only in a subdirectory, which is not recursed into",
+			prepare: func(t *testing.T, dir string) {
+				nested := filepath.Join(dir, "go-app", "cricsheet")
+				require.NoError(t, os.MkdirAll(nested, 0o755))
+				require.NoError(t, os.WriteFile(filepath.Join(nested, "1.json"), []byte("{}"), 0o600))
+			},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			tc.prepare(t, dir)
+
+			n, err := cricsheet.ImportDir(context.Background(), dir, &cricsheet.Options{}, 1)
+			require.ErrorIs(t, err, cricsheet.ErrNoMatchFiles)
+			require.Zero(t, n)
+			require.Contains(t, err.Error(), dir, "the error must name the directory it looked in")
+			require.Contains(t, err.Error(), "GO_APP_CRICSHEET_DIR", "and how to point it elsewhere")
+		})
+	}
+}
