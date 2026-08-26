@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,24 +21,51 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
-// pipelineStopHandler handles POST /ops/pipeline/stop. Cancels the current pipeline job context and marks the in-progress migration as CANCELLED.
+// pipelineStopHandler handles POST /ops/pipeline/stop. It cancels the job contexts of
+// the requested lanes and marks their in-flight runs CANCELLED.
+//
+// An optional ?lane= names one lane ("compute" or "data"); with no lane it stops
+// everything, which is what the Stop button means. The parameter exists because the
+// lanes overlap by design: cancelling a ten-minute download should not have to also
+// abandon a training run that has been going for eight.
 func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
+	lanes, err := requestedLanes(r)
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	cancelled, err := pipelinesvc.StopRun(
 		r.Context(),
 		"cancelled by user",
-		a.CancelCurrentJob,
-		tracking.CancelInProgressMigration,
+		lanes,
+		a.CancelJobsInLanes,
+		tracking.CancelInProgressMigrations,
 	)
 	if err != nil {
 		slog.Warn("pipeline stop: cancel migration failed", slog.Any("err", err))
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	if !cancelled {
+	if cancelled == 0 {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+	respondJSON(w, http.StatusOK, map[string]any{"status": "cancelled", "cancelled": cancelled})
+}
+
+// requestedLanes reads the optional ?lane= parameter. Nil means every lane.
+func requestedLanes(r *http.Request) ([]pipelinesvc.Lane, error) {
+	raw := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("lane")))
+	if raw == "" {
+		return nil, nil
+	}
+	lane := pipelinesvc.Lane(raw)
+	if !pipelinesvc.IsKnownLane(lane) {
+		return nil, fmt.Errorf("unknown lane %q; known lanes: %s",
+			raw, strings.Join(pipelinesvc.LaneNames(), ", "))
+	}
+	return []pipelinesvc.Lane{lane}, nil
 }
 
 // pipelineRunHandler handles POST /ops/pipeline/run/{step}.
@@ -58,6 +86,16 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	if !known {
 		slog.Info("pipeline run: unknown step", slog.String("step", stepID))
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown step: " + stepID})
+		return
+	}
+	// Acquisition steps are in the registry — that is what keeps their lane and label
+	// honest — but they are not stages of the pipeline and are not started from here.
+	// Saying where they live beats a bare 400 that leaves the caller guessing.
+	if step.EffectiveSurface() != pipelinesvc.SurfacePipeline {
+		slog.Info("pipeline run: step is not a pipeline stage", slog.String("step", step.ID))
+		respondJSON(w, http.StatusBadRequest, map[string]string{
+			"error": step.Label + " is a dataset step, not a pipeline stage; start it with POST /ops/data/" + step.ID,
+		})
 		return
 	}
 	slog.Info("pipeline run requested", slog.String("step", step.ID))
@@ -202,10 +240,11 @@ func (a *App) startTrackedJob(
 	timeout time.Duration,
 	work func(context.Context) (any, error),
 ) {
+	lane := pipelinesvc.Steps().LaneForCommand(command)
 	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetCurrentJobCancel(cancel)
+	a.SetJobCancel(lane, cancel)
 	go func() {
-		defer a.ClearCurrentJobCancel()
+		defer a.ClearJobCancel(lane)
 		slog.Info(command+" started", slog.Any("args", args))
 		if err := pipeline.RunJob(jobCtx, command, args, timeout, work); err != nil {
 			slog.Error(command+" failed", slog.Any("err", err))

@@ -68,12 +68,17 @@ func (g *stepGate) runnable(step pipelinesvc.Step) bool {
 
 // BuildPipelineSection returns a map with "steps" (per-step running, runnable,
 // completed) for /ops/status, in pipeline order.
+//
+// It reports the pipeline surface only. Acquisition steps share the registry so their
+// lane and label cannot drift, but they have no place in an ordering that runs import
+// through auto-tune — "order" is what the UI renders the graph from, and a fetch step
+// in it would be a stage that is not one.
 func BuildPipelineSection(ctx context.Context) map[string]any {
 	gate := newStepGate(ctx)
-	all := gate.registry.All()
-	steps := make(map[string]any, len(all))
-	order := make([]string, 0, len(all))
-	for _, step := range all {
+	graph := gate.registry.OnSurface(pipelinesvc.SurfacePipeline)
+	steps := make(map[string]any, len(graph))
+	order := make([]string, 0, len(graph))
+	for _, step := range graph {
 		steps[step.ID] = map[string]any{
 			"running":   gate.running(step),
 			"runnable":  gate.runnable(step),

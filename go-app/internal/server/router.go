@@ -54,6 +54,12 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/pipeline/stream", a.pipelineProgressStreamHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 
+	// Dataset acquisition. These live under /ops/data rather than
+	// /ops/pipeline/run/{step} because acquisition is what you do before the
+	// pipeline, not a stage of it — the same distinction Step.Surface encodes.
+	admin.HandleFunc("/ops/data/feeds", a.dataFeedsHandler).Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/ops/data/fetch", a.dataFetchHandler).Methods(http.MethodPost, http.MethodOptions)
+
 	// Options
 	optionsHandler := &OptionsHandler{}
 	admin.HandleFunc("/api/options/teams", optionsHandler.HandleGetTeams).Methods(http.MethodGet, http.MethodOptions)

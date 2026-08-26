@@ -61,22 +61,41 @@ func HasInProgressForCommand(ctx context.Context, command string) (bool, error) 
 	return exists, nil
 }
 
-// CancelInProgressMigration sets the most recent IN_PROGRESS migration to CANCELLED (e.g. user stop).
-// Returns true if a row was updated, false if none in progress.
-func CancelInProgressMigration(ctx context.Context, reason string) (bool, error) {
+// CancelInProgressMigrations sets every IN_PROGRESS run whose command is in the given
+// set to CANCELLED, and returns how many rows it updated. An empty set cancels every
+// in-flight run.
+//
+// It used to cancel inProgress[0] and call that "the" run — the same single-slot
+// assumption the SSE stream carried (ops plan F-2) and for the same reason: one global
+// lock made it true. It stopped being true when acquisition got its own lane, and the
+// failure was quiet in the worst way: Stop cancelled the context of one job and marked
+// a different job's row CANCELLED, leaving one run killed but recorded as running and
+// another recorded as cancelled but still going.
+func CancelInProgressMigrations(ctx context.Context, reason string, commands []string) (int, error) {
 	if !db.Available() {
-		return false, nil
+		return 0, nil
 	}
 	inProgress, err := GetInProgressMigrations(ctx)
 	if err != nil || len(inProgress) == 0 {
-		return false, err
+		return 0, err
 	}
-	m := inProgress[0]
-	err = UpdateMigrationStatus(ctx, m.ID, StatusCancelled, nil, reason)
-	if err != nil {
-		return false, err
+
+	wanted := make(map[string]bool, len(commands))
+	for _, c := range commands {
+		wanted[c] = true
 	}
-	return true, nil
+
+	cancelled := 0
+	for _, m := range inProgress {
+		if len(wanted) > 0 && !wanted[m.Command] {
+			continue
+		}
+		if err := UpdateMigrationStatus(ctx, m.ID, StatusCancelled, nil, reason); err != nil {
+			return cancelled, err
+		}
+		cancelled++
+	}
+	return cancelled, nil
 }
 
 // CancelStaleInProgressMigrations sets IN_PROGRESS rows to CANCELLED only when started_at

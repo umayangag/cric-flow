@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -38,6 +39,8 @@ type stepProgress struct {
 	EstimatedSec *int64 `json:"estimated_remaining_sec,omitempty"`
 	// AutoTune carries live auto-tune progress (phase, algorithm, trial, ...).
 	AutoTune map[string]interface{} `json:"auto_tune,omitempty"`
+	// Fetch carries live download progress (bytes, rate, ETA) for a dataset fetch.
+	Fetch *dataacquire.Progress `json:"fetch,omitempty"`
 }
 
 type precomputeProgress struct {
@@ -58,7 +61,9 @@ type progressReporter struct {
 	autoTuneProgress func(context.Context) map[string]interface{}
 	// precomputeStatus reads in-process precompute state; a field for the same reason.
 	precomputeStatus func() precompute.Status
-	now              func() time.Time
+	// fetchStatus reads in-process download state, likewise stubbable.
+	fetchStatus func() (dataacquire.Progress, string, bool)
+	now         func() time.Time
 }
 
 func newProgressReporter() *progressReporter {
@@ -66,6 +71,7 @@ func newProgressReporter() *progressReporter {
 		registry:         pipelinesvc.Steps(),
 		autoTuneProgress: pipelinesvc.FetchAutoTuneProgress,
 		precomputeStatus: precompute.GetStatus,
+		fetchStatus:      dataacquire.Status,
 		now:              time.Now,
 	}
 }
@@ -102,8 +108,24 @@ func (p *progressReporter) describe(ctx context.Context, m tracking.Migration) s
 		out.Precompute, out.EstimatedSec = p.precomputeDetail(m)
 	case "ml-auto-tune":
 		out.AutoTune = p.autoTuneProgress(ctx)
+	case "dataset-fetch":
+		out.Fetch, out.EstimatedSec = p.fetchDetail()
 	}
 	return out
+}
+
+// fetchDetail reports bytes, rate and ETA for a download in flight.
+//
+// The download runs in this process, so unlike a training subprocess it can publish
+// straight into memory — no progress file is needed until O-1 generalises one for the
+// trainers. Absent state is reported as absent rather than as zero bytes: a fetch that
+// has not written its first sample is not a fetch that has downloaded nothing.
+func (p *progressReporter) fetchDetail() (*dataacquire.Progress, *int64) {
+	progress, _, ok := p.fetchStatus()
+	if !ok {
+		return nil, nil
+	}
+	return &progress, progress.ETASec
 }
 
 // precomputeDetail reports per-format progress and an ETA for a precompute run.

@@ -345,12 +345,19 @@ export type PipelineRunResponse = {
   hint?: string;
 };
 
+/**
+ * Resource a step contends for. Steps in one lane run one at a time; the lanes
+ * overlap, so a dataset download and a training run can be in flight together.
+ * Generated backend-side from the step registry (contracts/ops-console.contract.json).
+ */
+export type PipelineLane = 'compute' | 'data';
+
 /** Live progress for one running pipeline step. */
 export type PipelineStepProgress = {
   step_id?: string;
   step_label?: string;
   /** Resource the step contends for: 'compute' (db and artifacts) or 'data' (acquisition). */
-  lane?: string;
+  lane?: PipelineLane;
   /** Human-readable description of what is happening */
   detail?: string;
   /** Current parameters (e.g. model, format, cutoff) for display */
@@ -380,6 +387,14 @@ export type PipelineStepProgress = {
     algorithms_screened?: string[];
     algorithms_requested?: string[];
     activity?: string;
+  };
+  /** Live download progress for a dataset fetch. Absent until the first sample. */
+  fetch?: {
+    downloaded_bytes?: number;
+    /** Declared Content-Length, absent when the server sent none. */
+    total_bytes?: number;
+    bytes_per_sec?: number;
+    eta_sec?: number;
   };
 };
 

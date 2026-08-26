@@ -96,7 +96,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | F-1 | done | `ops/pr1-ui-honesty` | `train_combination_meta` missing from the frontend step list |
 | F-2 | done | `ops/pr2-multi-step-progress` | SSE reports only one in-flight step |
 | F-3 | done | `ops/pr3-dataset-directory` | Make the dataset directory a first-class, observable thing |
-| A-1 | todo | | `POST /ops/data/fetch` — download a Cricsheet archive |
+| A-1 | done | `ops/pr4-data-fetch` | `POST /ops/data/fetch` — download a Cricsheet archive |
 | A-2 | todo | | `POST /ops/data/extract` — unzip into the data directory |
 | A-3 | todo | | Dataset registry: what is on disk and where it came from |
 | A-4 | todo | | Frontend: Data tab — feeds, fetch, extract, registry |
@@ -212,13 +212,17 @@ The part that removes the terminal from the loop.
 
 Download a Cricsheet archive to a staging directory as a tracked background job.
 
-- [ ] Background job via `pipeline.RunJob`, like every other step — returns 202, not a
+- [x] Background job via `pipeline.RunJob`, like every other step — returns 202, not a
       held-open request. A large archive over a slow link must not be request-scoped
-- [ ] Named feeds (`all`, `t20s`, `odis`, `tests`, …) resolved server-side to URLs,
-      plus an optional explicit URL
-- [ ] Report bytes-downloaded / total / rate through the progress channel
-- [ ] Write to `data/_staging/`, never directly into the live data directory
-- [ ] Record source URL, HTTP `ETag`/`Last-Modified`, size and SHA-256 in job metadata
+- [x] Named feeds (`all`, `t20s`, `odis`, `tests`, `ipl`) resolved server-side to URLs,
+      plus an optional explicit URL — both go through the same allowlist check
+- [x] Report bytes-downloaded / total / rate through the progress channel — folded into
+      the existing `/ops/pipeline/stream` payload as `steps[].fetch`, not a second stream
+- [x] Write to `<cricsheet_dir>/_staging/`, never directly into the live data directory.
+      A subdirectory rather than a sibling: one env var still moves everything, the
+      extract-and-swap A-2 needs stays on one filesystem, and `ImportDir` cannot see it
+- [x] Record source URL, HTTP `ETag`/`Last-Modified`, size and SHA-256 in job metadata,
+      and in a `.meta.json` sidecar beside the archive so the ETag survives a restart
 
 **Defences that land now, not later** — because "remote later" was the answer:
 
@@ -228,6 +232,36 @@ Download a Cricsheet archive to a staging directory as a tracked background job.
 | **Disk exhaustion** | Check free space before starting; hard cap on `Content-Length`; abort and clean up staging on overrun |
 | **Silent truncation** | Verify the byte count and record the digest. A short read must fail loudly — this is exactly the `--fail`-less-curl bug from C1-2, in new clothes |
 | **Wasted re-download** | Send `If-None-Match`; treat 304 as success with "already current" |
+
+**Done by:** `go-app/internal/services/dataacquire`. Every row above is a test with a
+crafted case, not an assertion in a comment: `TestResolveSource_RejectsOffAllowlistHosts`
+covers the metadata service, loopback, private ranges and suffix lookalikes;
+`TestNewClient_RejectsRedirectsOffTheAllowlist` covers the 302 that defeats a check done
+only on the typed URL; the cap is tested both by declared `Content-Length` and by
+outgrowing it mid-stream on a chunked response.
+
+**Two structural changes this needed.**
+
+`Step.Surface` — the registry is the one list of steps (F-1), but `fetch` is not a stage
+of the pipeline and must not appear on its graph. `SurfaceData` keeps its lane, label and
+busy-check derived from the same place as every other step while keeping it off the
+ordering; `/ops/pipeline/run/fetch` refuses with a pointer to `/ops/data/fetch` rather
+than a bare 400. The contract gained a `data_steps` list alongside `pipeline_steps`.
+
+**The bug this uncovered.** F-2 gave acquisition its own lane so a download would not
+block training. Two things still assumed one global job: `App.currentJobCancel` was a
+single `context.CancelFunc`, and `tracking.CancelInProgressMigration` cancelled
+`inProgress[0]` — the same single-slot assumption F-2 fixed in the stream, in two places
+it did not reach. The moment a fetch and a training run actually overlapped, starting the
+fetch would overwrite the training job's cancel func, making it uncancellable, and Stop
+would kill one job while marking a *different* one CANCELLED — one run dead but recorded
+as running, another recorded as cancelled but still going.
+
+Both are now keyed by lane (`App.SetJobCancel`/`CancelJobsInLanes`,
+`tracking.CancelInProgressMigrations`), and `StopRun` scopes both halves to the *same*
+lane set so they cannot disagree. `POST /ops/pipeline/stop` takes an optional `?lane=`
+and still stops everything without one. `TestJobCancels_AreKeyedByLane` and
+`TestStopRun_ScopesBothHalvesToTheSameLane` are the regression guards.
 
 ### A-2 · `POST /ops/data/extract`
 

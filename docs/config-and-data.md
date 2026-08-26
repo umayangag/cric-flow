@@ -29,6 +29,10 @@ Config file: `go-app/config.json`
     `GO_APP_CRICSHEET_DIR` overrides it. Import does **not** recurse: the `.json` files
     must be directly in this directory, and an import that finds none fails rather than
     reporting success with zero rows.
+
+    A `_staging/` subdirectory under it holds downloaded archives (`POST /ops/data/fetch`).
+    It is invisible to import, which skips directories and does not recurse, so a
+    half-downloaded archive can never be mistaken for match data.
   - `etl_dir` — default directory for curated CSVs (optional etl-importer path).
 - `outputs`
   - `export_dir` — where `export-dataset` writes CSVs.
@@ -139,6 +143,51 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
   Skipped files are logged; fix or remove them and re-run.
 
 **Scope:** Input dir = `-in` / `GO_APP_INPUT_DIR`. One file = one match; count = files that completed `ImportMatchFile` without error. Importer: `go-app/cmd/cricsheet-importer`, `go-app/internal/cricsheet/ingest.go`; format: `go-app/internal/cricsheet/format.go` (`DetectFormat`).
+
+---
+
+## Acquiring a dataset
+
+Getting a new Cricsheet archive onto the box used to require a shell. It is now a
+tracked background job like every other pipeline step.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /ops/data/feeds` | The named feeds, the host allowlist and the staging directory |
+| `POST /ops/data/fetch` | Downloads an archive into staging. Body: `{"feed":"t20s"}` **or** `{"url":"https://cricsheet.org/..."}` — one or the other, never both |
+
+The response is **202**, not the archive: a multi-hundred-megabyte download over a slow
+link outlives any sane request timeout. Watch it on the existing SSE stream
+(`GET /ops/pipeline/stream`), where the step reports `fetch` with bytes, rate and ETA.
+
+**What it refuses, and why**
+
+- **Any host outside the allowlist** (`cricsheet.org`, `www.cricsheet.org`), including
+  redirects that leave it. A server-side fetch of a user-supplied URL is an SSRF
+  primitive; the allowlist is the feature's definition, not a hardening pass. Matching
+  is exact, so `cricsheet.org.attacker.example` is refused.
+- **Plaintext http**, and a redirect that downgrades to it.
+- **A URL whose last path segment is not a plain `*.zip`**, so the staging filename can
+  never contain a separator or a `..`.
+- **An archive over the size cap** (4 GiB), by its declared `Content-Length` or by
+  outgrowing it mid-stream.
+- **A download the filesystem cannot hold**, checked before it starts. When free space
+  is unreportable this is logged and skipped rather than guessed at.
+- **A short read.** The byte count is verified against the declared length and the
+  SHA-256 recorded. A truncated archive fails here rather than becoming a corrupt
+  dataset that only breaks during extraction.
+
+Nothing is written into the live dataset directory. The archive lands in
+`<cricsheet_dir>/_staging/` under a temp name and is renamed into place only after its
+bytes and digest are known, alongside a `.meta.json` sidecar recording the source URL,
+`ETag`, `Last-Modified`, size and digest. That sidecar is what makes a second fetch
+conditional: an unchanged archive answers 304 and is reported as "already current"
+rather than re-downloaded.
+
+**Lanes.** Acquisition runs in the `data` lane, training and the rest of the pipeline in
+`compute`. Steps within a lane run one at a time; the lanes overlap, so a download does
+not block a training run. `POST /ops/pipeline/stop` stops everything by default, or one
+lane with `?lane=data`.
 
 ---
 

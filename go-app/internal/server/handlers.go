@@ -22,6 +22,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
+	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
 // healthHandler responds with liveness OK.
@@ -319,10 +320,11 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 		slog.String("season", season),
 		slog.Any("formats", formats),
 	)
+	precomputeLane := pipelinesvc.Steps().LaneForCommand("precompute-features")
 	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetCurrentJobCancel(cancel)
+	a.SetJobCancel(precomputeLane, cancel)
 	go func() {
-		defer a.ClearCurrentJobCancel()
+		defer a.ClearJobCancel(precomputeLane)
 		timeout := config.PipelineTimeout()
 		slog.Info(
 			"precompute job started",
@@ -382,10 +384,11 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
+	importLane := pipelinesvc.Steps().LaneForCommand("cricsheet-import")
 	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetCurrentJobCancel(cancel)
+	a.SetJobCancel(importLane, cancel)
 	go func() {
-		defer a.ClearCurrentJobCancel()
+		defer a.ClearJobCancel(importLane)
 		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
 			jobCtx,

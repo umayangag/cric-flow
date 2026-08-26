@@ -12,6 +12,7 @@ import type {
   PredictTeamSelectionResponse,
   PipelineRunResponse,
   PipelineProgressPayload,
+  PipelineLane,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   AutoTuneRunDetailsResponse,
@@ -215,16 +216,24 @@ export const api = {
     return { status: res.status, data };
   },
   /**
-   * Stop the currently running pipeline step (POST /ops/pipeline/stop).
-   * Returns 200 with { status: 'cancelled' } or 409 if no step is running.
+   * Stop running pipeline steps (POST /ops/pipeline/stop).
+   *
+   * With no lane it stops everything, which is what the Stop button means. Passing a
+   * lane stops only that one — the lanes overlap by design, so cancelling a download
+   * should not have to abandon a training run that is eight minutes in.
+   *
+   * Returns 200 with { status: 'cancelled', cancelled: n } or 409 if nothing is running.
    */
-  async opsPipelineStop(): Promise<{ status: number; data: { status?: string; error?: string } }> {
-    const url = `${BASE_API_URL}/ops/pipeline/stop`;
+  async opsPipelineStop(
+    lane?: PipelineLane,
+  ): Promise<{ status: number; data: { status?: string; cancelled?: number; error?: string } }> {
+    const query = lane ? `?lane=${encodeURIComponent(lane)}` : '';
+    const url = `${BASE_API_URL}/ops/pipeline/stop${query}`;
     const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
-    let data: { status?: string; error?: string } = {};
+    let data: { status?: string; cancelled?: number; error?: string } = {};
     try {
       const text = await res.text();
-      if (text) data = JSON.parse(text) as { status?: string; error?: string };
+      if (text) data = JSON.parse(text) as { status?: string; cancelled?: number; error?: string };
     } catch {
       data = { error: res.statusText || 'Invalid response' };
     }

@@ -22,10 +22,15 @@ const contractPath = "../../../../contracts/ops-console.contract.json"
 // to assume about the backend's pipeline surface, and it is generated rather than
 // hand-written so it cannot describe a backend that does not exist.
 type contractDoc struct {
-	Comment  string         `json:"$comment"`
-	Version  int            `json:"version"`
-	Steps    []contractStep `json:"pipeline_steps"`
-	Rejected []string       `json:"rejected_query_params"`
+	Comment string         `json:"$comment"`
+	Version int            `json:"version"`
+	Steps   []contractStep `json:"pipeline_steps"`
+	// DataSteps are the acquisition steps. They are a separate list rather than more
+	// entries in pipeline_steps because they are not stages of the pipeline and must
+	// not appear on its graph — the split Step.Surface encodes.
+	DataSteps []contractStep `json:"data_steps"`
+	Lanes     []string       `json:"lanes"`
+	Rejected  []string       `json:"rejected_query_params"`
 }
 
 type contractStep struct {
@@ -41,9 +46,10 @@ type contractStep struct {
 // frontend may send, and a copy that a test compares is safer than an import cycle.
 var rejectedQueryParams = []string{"use_unified_model", "model=unified"}
 
-func buildContract() contractDoc {
-	steps := make([]contractStep, 0, len(Steps().All()))
-	for _, s := range Steps().All() {
+func contractSteps(surface Surface) []contractStep {
+	source := Steps().OnSurface(surface)
+	steps := make([]contractStep, 0, len(source))
+	for _, s := range source {
 		requires := s.Requires
 		if requires == nil {
 			requires = []string{}
@@ -56,12 +62,18 @@ func buildContract() contractDoc {
 			Prerequisite: s.Prerequisite,
 		})
 	}
+	return steps
+}
+
+func buildContract() contractDoc {
 	return contractDoc{
 		Comment: "Generated from go-app/internal/services/pipeline/registry.go. Do not edit by hand; " +
 			"run: go test ./internal/services/pipeline -run TestPipelineContract -update",
-		Version:  1,
-		Steps:    steps,
-		Rejected: rejectedQueryParams,
+		Version:   1,
+		Steps:     contractSteps(SurfacePipeline),
+		DataSteps: contractSteps(SurfaceData),
+		Lanes:     LaneNames(),
+		Rejected:  rejectedQueryParams,
 	}
 }
 
@@ -105,9 +117,36 @@ func TestRegistryIsInternallyConsistent(t *testing.T) {
 		seenID[step.ID] = true
 		seenCommand[step.Command] = true
 
+		assert.True(t, IsKnownLane(step.EffectiveLane()), "step %s declares unknown lane %s", step.ID, step.Lane)
+
 		for _, req := range step.Requires {
 			assert.True(t, registry.Has(req), "step %s requires unknown step %s", step.ID, req)
 		}
+	}
+}
+
+// TestSurfacesPartitionTheRegistry keeps the two contract lists exhaustive. A step
+// added with a surface nobody renders would be accepted by the backend and invisible
+// everywhere — the exact shape of the train_combination_meta gap, one level up.
+func TestSurfacesPartitionTheRegistry(t *testing.T) {
+	t.Parallel()
+	pipelineSteps := Steps().OnSurface(SurfacePipeline)
+	dataSteps := Steps().OnSurface(SurfaceData)
+	assert.Len(t, Steps().All(), len(pipelineSteps)+len(dataSteps),
+		"every step must be on exactly one rendered surface")
+}
+
+// TestAcquisitionRunsInTheDataLane guards the decision F-2 recorded: acquisition does
+// not share the training lock. Were fetch to fall back to LaneCompute, a download
+// would block training for as long as it ran, which is the system the lanes exist to
+// avoid — and nothing else would fail to say so.
+func TestAcquisitionRunsInTheDataLane(t *testing.T) {
+	t.Parallel()
+	for _, step := range Steps().OnSurface(SurfaceData) {
+		assert.Equal(t, LaneData, step.EffectiveLane(), "data step %s must run in the data lane", step.ID)
+	}
+	for _, step := range Steps().OnSurface(SurfacePipeline) {
+		assert.Equal(t, LaneCompute, step.EffectiveLane(), "pipeline step %s must run in the compute lane", step.ID)
 	}
 }
 

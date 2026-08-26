@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
+	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
 // App holds long-lived application dependencies to be shared with handlers.
@@ -16,9 +17,16 @@ type App struct {
 	dbProbe          opsstatus.DBProbe
 	jobContext       context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
-	// currentJobCancel is the cancel func for the running pipeline job (if any). Used by Stop pipeline.
-	currentJobCancelMu sync.Mutex
-	currentJobCancel   context.CancelFunc
+	// jobCancels holds one cancel func per lane, for the job running in that lane.
+	//
+	// This used to be a single slot, which was correct only while one global lock
+	// meant one job. Acquisition has its own lane (ops plan F-2) precisely so a
+	// download and a training run can overlap — and the moment they do, a single
+	// slot means starting the download silently makes the training run
+	// uncancellable, and Stop cancels whichever job wrote the slot last. Keying by
+	// lane makes the structure say what the lanes already promised.
+	jobCancelsMu sync.Mutex
+	jobCancels   map[pipelinesvc.Lane]context.CancelFunc
 }
 
 // NewApp creates an App. jobCtx is cancelled when the process receives SIGTERM/SIGINT;
@@ -41,36 +49,55 @@ func (a *App) JobContext() context.Context {
 	return context.Background()
 }
 
-// SetCurrentJobCancel stores the cancel func for the running pipeline job. Call when starting a job.
-func (a *App) SetCurrentJobCancel(cancel context.CancelFunc) {
+// SetJobCancel stores the cancel func for the job starting in a lane. Call when
+// starting a job; the lane comes from the step's registry entry.
+func (a *App) SetJobCancel(lane pipelinesvc.Lane, cancel context.CancelFunc) {
 	if a == nil {
 		return
 	}
-	a.currentJobCancelMu.Lock()
-	defer a.currentJobCancelMu.Unlock()
-	a.currentJobCancel = cancel
+	a.jobCancelsMu.Lock()
+	defer a.jobCancelsMu.Unlock()
+	if a.jobCancels == nil {
+		a.jobCancels = map[pipelinesvc.Lane]context.CancelFunc{}
+	}
+	a.jobCancels[lane] = cancel
 }
 
-// ClearCurrentJobCancel clears the stored cancel func. Call in defer when the job goroutine exits.
-func (a *App) ClearCurrentJobCancel() {
+// ClearJobCancel forgets the lane's cancel func. Call in defer when the job goroutine exits.
+func (a *App) ClearJobCancel(lane pipelinesvc.Lane) {
 	if a == nil {
 		return
 	}
-	a.currentJobCancelMu.Lock()
-	defer a.currentJobCancelMu.Unlock()
-	a.currentJobCancel = nil
+	a.jobCancelsMu.Lock()
+	defer a.jobCancelsMu.Unlock()
+	delete(a.jobCancels, lane)
 }
 
-// CancelCurrentJob cancels the current pipeline job context if one is running (e.g. user clicked Stop).
-func (a *App) CancelCurrentJob() {
+// CancelJobsInLanes cancels the running job in each named lane and reports how many
+// it cancelled. Passing no lanes cancels every lane, which is what an unqualified
+// Stop means.
+func (a *App) CancelJobsInLanes(lanes ...pipelinesvc.Lane) int {
 	if a == nil {
-		return
+		return 0
 	}
-	a.currentJobCancelMu.Lock()
-	fn := a.currentJobCancel
-	a.currentJobCancel = nil
-	a.currentJobCancelMu.Unlock()
-	if fn != nil {
+	a.jobCancelsMu.Lock()
+	if len(lanes) == 0 {
+		lanes = lanes[:0]
+		for lane := range a.jobCancels {
+			lanes = append(lanes, lane)
+		}
+	}
+	fns := make([]context.CancelFunc, 0, len(lanes))
+	for _, lane := range lanes {
+		if fn, ok := a.jobCancels[lane]; ok {
+			fns = append(fns, fn)
+			delete(a.jobCancels, lane)
+		}
+	}
+	a.jobCancelsMu.Unlock()
+
+	for _, fn := range fns {
 		fn()
 	}
+	return len(fns)
 }
