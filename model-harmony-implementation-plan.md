@@ -9,6 +9,20 @@ This document is a **concrete, implementation-focused companion** to `model-harm
 
 Status key: `[ ]` pending, `[~]` in-progress, `[x]` done.
 
+> **Correction (2026-08, C1-5).** Several items below are marked `[x] done` on the strength
+> of code that was written but never wired into training, serving or reconciliation. An
+> import-graph check found `ml.match_schema`, `ml.match_aggregates`, `ml.harmony_metrics`,
+> `ml.compute_harmony_realism_metrics`, `ml.compute_win_coherence_metrics` and
+> `ml.analyze_reconciliation_adjustments` unreachable from every live entrypoint, and they
+> were removed. Read `[x]` on those items as **"designed and prototyped"**, not "in use".
+>
+> What survives: the accounting rules in [docs/match-schema.md](docs/match-schema.md), and
+> `ml/win_coherence_metrics.py`, which `app/prediction_service/generate_match.py` imports.
+> The live reconciliation path is `ml/reconciliation_{core,solver,service,adapter}.py`.
+>
+> Anything reinstated from here should land with a caller, or the reachability check
+> (`make -C ml-service check-reachability`) will flag it again.
+
 ---
 
 ## 1. Current state summary (PR #91 baseline)
