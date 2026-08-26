@@ -307,12 +307,8 @@ func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	season := body.Season
 	formats := body.Formats
-	// Align with export: when no formats specified and config uses split-by-format, use the same canonical list.
-	if len(formats) == 0 {
-		if cfg := config.Load(); cfg != nil && cfg.Export.SplitByFormat {
-			formats = formatsPkg.CanonicalCodes()
-		}
-	}
+	// Empty formats means "all": precompute's discoverFormatCodes reads match_format,
+	// which holds exactly the canonical codes.
 	if busy, _ := pipeline.HasPipelineBusy(r.Context()); busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "another pipeline step is already running"})
 		return

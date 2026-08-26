@@ -1,0 +1,57 @@
+# Two documents in this repo are generated from code and will silently rot otherwise:
+#
+#   ARCHITECTURE_MAP.md   opens by telling readers to use it *instead of* reading source,
+#                         so a stale model shape or endpoint list is inherited by everyone
+#                         who trusts it. It drifted to claiming batting took 27 inputs when
+#                         the contract said 42, and documenting a /predict/fielding route
+#                         that does not exist.
+#   .junie/skills/        generated from .cursor/skills/. These had drifted behaviourally:
+#                         the Junie copy of run-check-all-incremental omitted a check CI
+#                         enforces, so anyone following it there skipped it.
+#
+# Neither check belongs in a per-component workflow: both read from go-app, ml-service and
+# configs/ at once, so a path filter scoped to one component would miss changes made in
+# another. Hence its own job.
+name: Docs consistency
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'ARCHITECTURE_MAP.md'
+      - 'scripts/gen-architecture-map.py'
+      - 'scripts/sync-junie-skills.py'
+      - 'configs/feature_vectors.json'
+      - 'ml-service/ml/**'
+      - 'ml-service/app/main.py'
+      - 'go-app/internal/server/router.go'
+      - '.cursor/skills/**'
+      - '.junie/skills/**'
+      - '.github/workflows/docs-consistency.yml'
+
+jobs:
+  check:
+    if: github.event.pull_request.draft == false
+    name: Generated docs are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ml-service/requirements-serve.txt
+
+      # The feature lists are computed by concatenation at import time, so generating the
+      # map means importing the ml modules -- which needs their runtime dependencies.
+      - name: Install ml-service runtime deps
+        run: python -m pip install -r ml-service/requirements-serve.txt
+
+      - name: ARCHITECTURE_MAP.md is up to date
+        run: make gen-architecture-map-check
+
+      # No dependencies needed: this one is pure text transformation.
+      - name: .junie/skills matches .cursor/skills
+        run: make sync-skills-check

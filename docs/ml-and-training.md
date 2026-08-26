@@ -53,7 +53,7 @@ You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or
 
 **Pipeline steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form/consistency/sequence per format. (3) Export — writes the cross-format `*_encoded_all.csv` and per-format CSVs. (4) Train Batting — per-format. (5) Train Bowling — same. (6) Train Fielding — API data. (7) Train Extras, (8) Train Win — same pattern. (9) Optional: Auto-tune (from UI or API).
 
-**Prerequisites:** Stack running (`make dev-up`). `export.split_by_format: true` in go-app config. For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
+**Prerequisites:** Stack running (`make dev-up`). Exports are always per-format (the `export.split_by_format` flag was removed in C5-3 — it no longer changed anything). For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
 
 **CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format artifacts. ML resolves the model by the request's `format`, which is required — there is no fallback tier.
 
@@ -265,7 +265,9 @@ The sidecar pins two things:
 
 ## Data-quality: scale-aware low-variance column drop
 
-`ml.data_quality.drop_low_variance_columns` removes effectively constant columns before fitting. The threshold is **scale-aware**: a column is dropped when `std ≤ threshold · (|mean| + 1)`. The `+ 1` term gives a sensible bar for zero-mean features (like `form_differential`) while still flagging tiny noise on large-mean ones (like `match_date_unix`). The knob lives under `ml.data_quality.low_variance_threshold` (default `1e-6`); values are coefficients, not absolute variance thresholds. Weather fields are protected by default — they are often empty historically but will be populated over time.
+`ml.data_quality.drop_low_variance_columns` removes effectively constant columns before fitting. The threshold is **scale-aware**: a column is dropped when `std ≤ threshold · (|mean| + 1)`. The `+ 1` term gives a sensible bar for zero-mean features (like `form_differential`) while still flagging tiny noise on large-mean ones (like a raw venue or season id). The knob lives under `ml.data_quality.low_variance_threshold` (default `1e-6`); values are coefficients, not absolute variance thresholds.
+
+This is what will absorb `weather_composite`: the inputs it is derived from were removed in C2-2b, so it is now constant zero in every row and the low-variance filter discards it at fit time. Dropping it from `EXTRAS_FEATURE_COLS` and `INNINGS_FEATURE_COLS` outright is a feature-contract change needing its own re-export and retrain.
 
 ---
 

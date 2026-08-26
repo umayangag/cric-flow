@@ -152,6 +152,44 @@ def run_bowling_training(cutoff: str, go_app_url: str, logger: Optional[Logger] 
         logger.info("admin.train.success", step="bowling")
 
 
+def combination_meta_csv_path() -> str:
+    """Path to the backtest contributions CSV the meta-model trains from."""
+    export_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
+    if not export_dir:
+        from ml.config import default_go_app_export_dir
+
+        export_dir = default_go_app_export_dir()
+    return os.path.join(export_dir, "backtest_contributions.csv")
+
+
+def run_combination_meta_training(logger: Optional[Logger] = None) -> None:
+    """Train the score-combination meta-model from the backtest contributions CSV.
+
+    Inputs and outputs live on the shared output volume: the CSV is produced by
+    POST /api/backtest/export-contributions on go-app, and the JSON is read by go-app's
+    team selection (config `selection.meta_model_path`). Raises ValueError if the CSV is
+    absent, so the caller can tell "not run yet" from "failed".
+    """
+    csv_path = combination_meta_csv_path()
+    out_path = os.path.join(os.path.dirname(csv_path), "combination_meta.json")
+
+    if not os.path.isfile(csv_path):
+        raise ValueError(
+            f"combination-meta training needs {csv_path}, which does not exist. "
+            "Run POST /api/backtest/export-contributions on go-app first."
+        )
+
+    if logger:
+        logger.info("admin.train.start", step="combination_meta", csv=csv_path, out=out_path)
+    run_training_subprocess(
+        "ml.train_combination_meta",
+        ["--csv", csv_path, "--out", out_path],
+        logger=logger,
+    )
+    if logger:
+        logger.info("admin.train.success", step="combination_meta", out=out_path)
+
+
 def run_fielding_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
     """Run fielding training. If cutoff: from API; else CSV. Raises ValueError on failure."""
     if cutoff:

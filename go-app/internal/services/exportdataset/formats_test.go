@@ -9,9 +9,8 @@ import (
 	svc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 )
 
-func mkCfg(split bool, req string) *config.Config {
+func mkCfg(req string) *config.Config {
 	c := &config.Config{}
-	c.Export.SplitByFormat = split
 	c.Export.RequiredFormat = req
 	return c
 }
@@ -28,7 +27,7 @@ func TestResolveFormats_CliPrecedence(t *testing.T) {
 		{
 			name: "all formats",
 			opts: svc.Options{Formats: []string{"TEST", "ODI", "T20", "T20I"}},
-			cfg:  mkCfg(false, ""),
+			cfg:  mkCfg(""),
 			want: []string{"TEST", "ODI", "T20", "T20I"},
 		},
 		{
@@ -65,19 +64,12 @@ func TestResolveFormats_ConfigFallbacks(t *testing.T) {
 	}{
 		{
 			name: "required format",
-			cfg:  mkCfg(false, " odi "),
+			cfg:  mkCfg(" odi "),
 			want: []string{"ODI"},
 		},
 		{
-			// split_by_format no longer changes the outcome: exports are always
-			// per-format since the combined unsuffixed CSVs were removed in C3-1
-			name: "split by format",
-			cfg:  mkCfg(true, ""),
-			want: formatsPkg.CanonicalCodes(),
-		},
-		{
 			name: "no required format falls back to every canonical format",
-			cfg:  mkCfg(false, ""),
+			cfg:  mkCfg(""),
 			want: formatsPkg.CanonicalCodes(),
 		},
 		{

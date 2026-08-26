@@ -2,13 +2,17 @@
 
 Concise reference for data flow, ML models, and aggregation. Use `@ARCHITECTURE_MAP.md` to avoid re-reading source files.
 
+> Model shapes and the endpoint list are **generated** from the contracts — see the marked
+> blocks below. Regenerate with `make gen-architecture-map`; `make gen-architecture-map-check`
+> (and CI) fails if they are stale. The surrounding prose is hand-written.
+
 ---
 
 ## 1. Data Flow: Simulator → Models
 
 ### Sources
-- **go-app** computes features at cutoff (form, consistency, weather, venue, opposition, season, sequential features).
-- **Feature vectors** are defined in `configs/feature_vectors.json` (single source of truth, including `match_date_unix` where used).
+- **go-app** computes features at cutoff (rolling form windows, venue, opposition, cyclical match date, sequential features).
+- **Feature vectors** are defined in `configs/feature_vectors.json` (single source of truth). Match date is encoded cyclically (`match_month_sin/cos`, `match_day_of_week_sin/cos`); the older `match_date_unix` was replaced in v3.
 - Training data: `GET /api/backtest/training-data?format=all&cutoff=...` or exported CSVs (`go-app/export-dataset` → `batting_encoded_*.csv`, etc.). Sections now cover **batting**, **bowling**, **fielding**, **extras**, **win**, and **innings**.
 
 ### Flow (backtest / team prediction)
@@ -16,7 +20,7 @@ Concise reference for data flow, ML models, and aggregation. Use `@ARCHITECTURE_
 ```
 DB (match/squad/cutoff) → go-app features (ComputeFeaturesAtCutoffForMatch / ComputeFeaturesAtCutoffForFutureMatch)
     → ml-service:
-        - /predict/batting, /predict/bowling, /predict/fielding (player-level)
+        - /predict/batting, /predict/bowling (player-level; fielding has no direct endpoint)
         - /predict/extras, /predict/win (match-level)
         - innings model (no direct endpoint; used via /ml/backtest and team prediction for hybrid reconciliation)
     → per-player predictions (runs, balls, wickets, catches, etc.)
@@ -41,40 +45,113 @@ Same as above: player predictions from batting/bowling/fielding
 
 ## 2. Core ML Models: Hyperparameters and Shape
 
-All training params from `ml-service/config.json` → `ml.training.<model>` (defaults in `config.default.json`). Base estimator via `ml.utils.make_base_estimator` (RandomForest, GBM, quantile, ExtraTrees, stacked, etc.).
+Training params come from `ml-service/config.json` → `ml.training.<model>` (defaults in
+`config.default.json`); the base estimator from `ml.utils.make_base_estimator`.
 
-| Model | Level | Input dim | Output dim | n_estimators | max_depth | Other |
-|-------|-------|-----------|------------|--------------|-----------|-------|
-| **Batting** | Player | 27 | 5 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
-| **Bowling** | Player | 26 | 3 | 200 | 12 | StandardScaler on X; MultiOutputRegressor |
-| **Fielding** | Player | 15 | 3 | 150 | 10 | StandardScaler on X; MultiOutputRegressor |
-| **Extras** | Match | 15 | 1 | 100 | 8 | RandomForestRegressor; no scaler |
-| **Win** | Match | 21 | 1 (prob) | 100 | 8 | RandomForestClassifier; no scaler |
-| **Innings** | Innings | 17 | 2 | 100 | 8 | StandardScaler on X; MultiOutputRegressor (runs, wickets) |
+The shapes below are **generated** from the contracts themselves, so they cannot drift:
 
-### Batting
-- **Inputs** (27, from `feature_vectors.batting`): `batting_consistency`, `batting_form`, `batting_form_short`, `batting_form_long`, `batting_momentum`, `batting_temp`, `batting_wind`, `batting_rain`, `batting_humidity`, `batting_cloud`, `batting_pressure`, `batting_viscosity`, `batting_inning`, `batting_session`, `toss`, `venue`, `opposition`, `season`, `match_date_unix`, + 8 seq: `bat_prev_sr`, `bat_prev_out_rate`, `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`.
-- **Outputs** (5): `runs`, `balls`, `fours`, `sixes`, `batting_position` (strike_rate derived).
+<!-- BEGIN GENERATED: models -- edit scripts/gen-architecture-map.py, not this block -->
 
-### Bowling
-- **Inputs** (26, from `feature_vectors.bowling`): `bowling_consistency`, `bowling_form`, `bowling_momentum`, `bowling_career_avg`, `bowling_temp`, `bowling_wind`, `bowling_rain`, `bowling_humidity`, `bowling_cloud`, `bowling_pressure`, `bowling_viscosity`, `batting_inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `season`, `match_date_unix`, + 8 seq: `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`.
-- **Outputs** (3): `runs_conceded`, `deliveries`, `wickets_taken` (econ derived).
+| Model | Level | Inputs | Outputs | Input source |
+|-------|-------|--------|---------|--------------|
+| **Batting** | Player | 35 | 5 — `runs`, `balls`, `fours`, `sixes`, `batting_position` | `configs/feature_vectors.json` → `batting` |
+| **Bowling** | Player | 35 | 3 — `runs`, `balls`, `wickets` | `configs/feature_vectors.json` → `bowling` |
+| **Fielding** | Player | 10 | 3 — `catches`, `run_outs`, `stumpings` | `configs/feature_vectors.json` → `fielding` |
+| **Extras** | Match | 17 | 1 — `total_extras` | `ml.train_extras.EXTRAS_FEATURE_COLS` |
+| **Win** | Match | 78 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` |
+| **Innings** | Innings | 19 | 2 — `innings_runs`, `innings_wickets` | `ml.train_innings.INNINGS_FEATURE_COLS` |
 
-### Fielding
-- **Inputs** (16, from `feature_vectors.fielding`): `fielding_consistency`, `fielding_form`, `fielding_temp`, `fielding_wind`, `fielding_rain`, `fielding_humidity`, `fielding_cloud`, `fielding_pressure`, `fielding_viscosity`, `inning`, `toss`, `fielding_venue`, `fielding_opposition`, `season_id`, `match_date_unix`.
-- **Outputs** (3): `catches`, `run_outs`, `stumpings`.
+Input feature names, in order:
 
-### Extras
-- **Inputs** (15, from `ml.train_extras.EXTRAS_FEATURE_COLS`): `format_id`, `venue_id`, `season_id`, `match_date_unix`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`.
-- **Output** (1): `total_extras`.
+- **Batting** (35): `batting_mean_w3`, `batting_mean_w5`, `batting_mean_w10`, `batting_mean_w20`, `batting_std_w5`, `batting_std_w10`, `batting_max_w10`, `batting_min_w10`, `batting_median_w10`, `batting_last_1`, `batting_last_2`, `batting_last_3`, `batting_career_mean`, `batting_career_count`, `batting_pct_zero_w10`, `batting_trend_w5`, `batting_days_since_last`, `batting_innings_in_last_90d`, `batting_inning`, `batting_session`, `toss`, `venue`, `opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_prev_sr`, `bat_prev_out_rate`, `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`
+- **Bowling** (35): `bowling_mean_w3`, `bowling_mean_w5`, `bowling_mean_w10`, `bowling_mean_w20`, `bowling_std_w5`, `bowling_std_w10`, `bowling_max_w10`, `bowling_min_w10`, `bowling_median_w10`, `bowling_last_1`, `bowling_last_2`, `bowling_last_3`, `bowling_career_mean`, `bowling_career_count`, `bowling_pct_zero_w10`, `bowling_trend_w5`, `bowling_days_since_last`, `bowling_innings_in_last_90d`, `batting_inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`
+- **Fielding** (10): `fielding_consistency`, `fielding_form`, `inning`, `toss`, `fielding_venue`, `fielding_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`
+- **Extras** (17): `venue_id`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential`, `consistency_differential`, `weather_composite` … (+5 more, see `ml.train_extras`)
+- **Win** (78): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `toss_winner_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std` … (+66 more, see `ml.win_features`)
+- **Innings** (19): `venue_id`, `inning_number`, `opposition_id`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential` … (+7 more, see `ml.train_innings`)
 
-### Win
-- **Inputs** (21, from `ml.train_win.WIN_FEATURE_COLS`): `format_id`, `venue_id`, `match_date_unix`, `team1_opposition_id`, `team2_opposition_id`, `toss_winner_opposition_id`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `team1_bat_consistency_sum`, `team1_bowl_consistency_sum`, `team2_bat_consistency_sum`, `team2_bowl_consistency_sum`, `team1_bat_form_sum`, `team1_bowl_form_sum`, `team2_bat_form_sum`, `team2_bowl_form_sum`.
-- **Output** (1): `team1_win_probability` (0–1).
+<!-- END GENERATED: models -->
 
-### Innings
-- **Inputs** (17, from `ml.train_innings.INNINGS_FEATURE_COLS`): `format_id`, `venue_id`, `season_id`, `match_date_unix`, `inning_number`, `opposition_id`, `temp`, `wind`, `rain`, `humidity`, `cloud`, `pressure`, `viscosity`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`.
-- **Outputs** (2): `innings_runs`, `innings_wickets` (used for hybrid reconciliation; no public predict endpoint).
+Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
+
+---
+
+## 2b. HTTP endpoints
+
+<!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
+
+**ml-service** (24 routes, from `app/main.py`):
+
+| Method | Path |
+|--------|------|
+| GET | `/health` |
+| GET | `/artifacts/status` |
+| GET | `/model-metadata` |
+| GET | `/model-stats` |
+| POST | `/ml/backtest/predict` |
+| POST | `/ml/backtest/predict-batch` |
+| POST | `/api/ml/generate-match` |
+| POST | `/ml/backtest/match` |
+| POST | `/predict/batting` |
+| POST | `/predict/bowling` |
+| POST | `/predict/extras` |
+| POST | `/predict/win` |
+| POST | `/predict/win-enhanced` |
+| POST | `/optimize/team-selection` |
+| POST | `/admin/reload` |
+| POST | `/admin/train/batting` |
+| POST | `/admin/train/bowling` |
+| POST | `/admin/train/fielding` |
+| POST | `/admin/train/extras` |
+| POST | `/admin/train/win` |
+| POST | `/admin/train/innings` |
+| POST | `/admin/train/combination-meta` |
+| POST | `/admin/train/auto-tune` |
+| GET | `/admin/train/auto-tune/progress` |
+
+**go-app** (37 routes, from `internal/server/router.go`):
+
+| Method | Path |
+|--------|------|
+| GET | `/health` |
+| GET | `/readiness` |
+| POST | `/precompute` |
+| GET | `/precompute/status` |
+| POST | `/import/cricsheet` |
+| GET | `/ops/status` |
+| GET | `/ops/migrations` |
+| GET | `/ops/migrations/{id:[0-9]+}/auto-tune` |
+| GET | `/ops/suggestions` |
+| POST | `/ops/pipeline/run/{step}` |
+| POST | `/ops/pipeline/stop` |
+| GET | `/ops/pipeline/stream` |
+| GET | `/api/options/teams` |
+| GET | `/api/options/teams-by-format` |
+| GET | `/api/options/opponents` |
+| GET | `/api/options/formats` |
+| GET | `/api/canonical/formats` |
+| GET | `/api/options/venues` |
+| GET | `/players/{id}` |
+| GET | `/matches/{id}` |
+| POST | `/predict/batting` |
+| POST | `/predict/bowling` |
+| GET, POST | `/api/predict/team-selection` |
+| GET | `/api/backtest/match` |
+| GET | `/api/backtest/evaluate-stream` |
+| GET, POST | `/api/backtest/evaluate-start` |
+| GET | `/api/backtest/evaluate-status` |
+| GET | `/api/backtest/scorecard` |
+| GET | `/api/backtest/training-data` |
+| GET | `/api/backtest/matches` |
+| GET | `/api/backtest/holdout-data` |
+| GET | `/api/backtest/accuracy-trend` |
+| POST | `/api/backtest/export-contributions` |
+| GET | `/api/backtest/export-contributions-status` |
+| GET | `/api/ml/tuned-params/list` |
+| GET | `/api/ml/tuned-params` |
+| POST | `/api/ml/tuned-params` |
+
+<!-- END GENERATED: endpoints -->
 
 ---
 
@@ -89,7 +166,7 @@ All training params from `ml-service/config.json` → `ml.training.<model>` (def
 
 **Hybrid reconciliation (innings model)**:
 
-- When the **innings model** is loaded and match context is provided (team assignments, format, venue, weather), ml-service predicts `innings_runs` and `innings_wickets` per innings.
+- When the **innings model** is loaded and match context is provided (team assignments, format, venue), ml-service predicts `innings_runs` and `innings_wickets` per innings.
 - Player-level `runs`, `wickets`, and bowling economy are then **rescaled** so that:
   - sum(batsman runs) = innings_runs
   - sum(bowler wickets) = innings_wickets

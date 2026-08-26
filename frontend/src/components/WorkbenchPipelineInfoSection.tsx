@@ -98,15 +98,14 @@ const WorkbenchPipelineInfoSection: React.FC<WorkbenchPipelineInfoSectionProps> 
           <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
             <li>
               Reads: match, match_inning, batting_data, bowling_data, fielding_data,
-              feature_*_snapshots, weather_data. Uses strict cutoff: only matches with{' '}
+              feature_*_snapshots. Uses strict cutoff: only matches with{' '}
               <code>{'match_date < cutoff'}</code>.
             </li>
             <li>
               Output: <code>outputs.export_dir</code> (e.g. <code>output/go-app</code>) —{' '}
-              <code>batting_encoded_all.csv</code>, <code>bowling_encoded_all.csv</code>, and when{' '}
-              <code>export.split_by_format</code> is true, per-format CSVs (e.g.{' '}
-              <code>batting_encoded_T20.csv</code>). Fielding/extras/win rows are not written as
-              standalone CSVs by default; they are served via{' '}
+              <code>batting_encoded_all.csv</code>, <code>bowling_encoded_all.csv</code>, and
+              per-format CSVs (e.g. <code>batting_encoded_T20.csv</code>). Fielding/extras/win
+              rows are not written as standalone CSVs by default; they are served via{' '}
               <code>GET /api/backtest/training-data?cutoff=...&amp;format=all</code>.
             </li>
             <li>

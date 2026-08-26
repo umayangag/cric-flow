@@ -59,7 +59,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make export-dataset',
       description:
-        'Export unified and per-format batting/bowling CSVs to output/go-app (when export.split_by_format is on). Run from project root.',
+        'Export unified and per-format batting/bowling CSVs to output/go-app. Run from project root.',
       runnable: true,
     },
     {

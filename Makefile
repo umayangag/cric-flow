@@ -15,7 +15,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
 .PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
-.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks sync-skills sync-skills-check init init-go init-py cricsheet-import
+.PHONY: fmt fmt-check fmt-go fmt-py lint-go lint-py install-hooks sync-skills sync-skills-check gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 .PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
@@ -222,7 +222,7 @@ train-models: train-batting train-bowling train-fielding train-extras train-win 
 # When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
 # Options: ALGORITHMS=rf,gb VALIDATION_METHOD=walk_forward
 MODEL ?= batting
-FORMAT ?=
+# FORMAT is already defined above (default T20); a second `FORMAT ?=` here was a no-op.
 ALL_FORMATS ?=
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
@@ -533,6 +533,18 @@ lint-frontend:
 
 # Regenerate .junie/skills from .cursor/skills. The two assistants need different file
 # formats for the same workflows, so .cursor is the source and .junie is generated.
+# Regenerate the derived blocks of ARCHITECTURE_MAP.md from the contracts themselves.
+# Several feature lists are built by concatenation, so they have to be imported rather
+# than parsed -- hence a real interpreter with the ml-service deps. Locally that is the
+# venv; in CI the deps are installed into the system interpreter, so fall back to it.
+MAP_PYTHON := $(if $(wildcard $(ML_VENV_BIN)/python),$(ML_VENV_BIN)/python,python3)
+
+gen-architecture-map:
+	$(MAP_PYTHON) scripts/gen-architecture-map.py
+
+gen-architecture-map-check:
+	$(MAP_PYTHON) scripts/gen-architecture-map.py --check
+
 sync-skills:
 	python3 scripts/sync-junie-skills.py
 
@@ -628,6 +640,11 @@ ci: ci-go ci-ml
 help:
 	@echo "\nProject — Make targets (grouped)"
 	@echo "--------------------------------"
+	@echo "The pipeline can be driven two ways. The API (POST /ops/pipeline/run/<step>, or the"
+	@echo "Ops Status tab) enforces step order, streams progress and can be cancelled. These"
+	@echo "targets run the same work directly and do not. Prefer the API for a real run;"
+	@echo "targets marked [API] just call it."
+	@echo ""
 	@echo "[Orchestration]"
 	@echo "  up-all             One-shot: docker up → migrate → import → precompute → export → train → restart ML"
 	@echo "  e2e                Run pipeline for a single FORMAT (requires FORMAT)"
@@ -647,7 +664,7 @@ help:
 	@echo "[Data & Pipeline]"
 	@echo "  migrate            Run DB migrations (match + match_inning schema)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning)"
-	@echo "  precompute         Trigger precompute (via API)"
+	@echo "  precompute         [API] POST /precompute on a running stack (API_KEY?=dev-local-key)"
 	@echo "  precompute-all        Run unified precompute (as-of/replay + sequential) for FORMAT (default T20)"
 	@echo "  precompute-all-all-formats  Run unified precompute for all formats"
 	@echo "  precompute-seq     Precompute sequence features: go-app/cmd/precompute-sequence-features (FORMAT?=$(FORMAT))"
