@@ -258,21 +258,45 @@ def get_auto_tune_progress_path() -> Optional[str]:
     return os.environ.get("AUTO_TUNE_PROGRESS_FILE") or None
 
 
-def get_auto_tune_progress() -> Dict[str, Any]:
-    """Return live auto-tune progress, or {} when nothing is running.
+def get_step_progress(step: str, run_id: str = "") -> Dict[str, Any]:
+    """Return live progress for a pipeline step, or {} when nothing is running.
 
-    With one progress file per run, "the" progress file is whichever the running job
-    is writing: the newest non-stale file for the step. A crashed run leaves its file
-    behind, and reporting that as current would show a run that is not happening --
-    `run_progress.latest_for_step` is where that rule lives, so this and every future
-    step endpoint apply it identically.
+    With one progress file per run (ops plan O-1) there is no single path to read, so
+    this asks for *the live run*: the newest non-stale file for the step. A crashed run
+    leaves its file behind, and reporting that as current would show a run that is not
+    happening -- `run_progress.latest_for_step` is where that rule lives, so every step
+    applies it identically.
+
+    Naming a `run_id` reads exactly that run, including a finished or stale one. That
+    is what a caller wants when it is asking about a specific run rather than "what is
+    happening now".
     """
     from ml import run_progress
 
-    pinned = get_auto_tune_progress_path()
-    if pinned:
-        return run_progress.read(pinned)
-    return run_progress.latest_for_step(auto_tune_progress.STEP)
+    step = (step or "").strip()
+    if not step:
+        return {}
+
+    if run_id.strip():
+        return run_progress.read(run_progress.progress_path(step, run_id.strip()))
+
+    # AUTO_TUNE_PROGRESS_FILE pins a path for tests and for an operator watching one
+    # file with tail. It only ever described auto-tune, so it only applies there.
+    if step == auto_tune_progress.STEP:
+        pinned = get_auto_tune_progress_path()
+        if pinned:
+            return run_progress.read(pinned)
+
+    return run_progress.latest_for_step(step)
+
+
+def get_auto_tune_progress() -> Dict[str, Any]:
+    """Return live auto-tune progress. The auto-tune view of `get_step_progress`.
+
+    Kept because `GET /admin/train/auto-tune/progress` is a released endpoint, but it
+    delegates rather than duplicating: one implementation, two routes.
+    """
+    return get_step_progress(auto_tune_progress.STEP)
 
 
 VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")

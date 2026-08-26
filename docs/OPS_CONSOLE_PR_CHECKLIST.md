@@ -102,7 +102,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | A-4 | done | `ops/pr7-data-tab` | Frontend: Data tab — feeds, fetch, extract, registry |
 | O-1 | done | `ops/pr8-progress-channel` | Generalise `auto_tune_progress` into a shared progress channel |
 | O-2 | done | `ops/pr9-instrument-trainers` | Instrument the six trainers to emit milestones and metrics |
-| O-3 | todo | | Serve generalised progress; fold into the existing SSE stream |
+| O-3 | done | `ops/pr10-serve-progress` | Serve generalised progress; fold into the existing SSE stream |
 | O-4 | todo | | Persist final metrics to `data_migrations.metadata` |
 | O-5 | todo | | Frontend: per-step progress, metrics, run-history drill-down |
 | R-1 | todo | | Server-side run-plan executor (chaining, stop-on-failure, resume) |
@@ -501,10 +501,40 @@ milestones prove insufficient in practice.
 
 ### O-3 · Serve and stream the progress
 
-- [ ] Generalise the auto-tune progress endpoint to `GET /admin/train/progress?run_id=`
-- [ ] go-app polls it while a training step is in flight and folds the events into the
+- [x] `GET /admin/train/progress?step=&run_id=`. With no `run_id` it reports the *live*
+      run — the newest non-stale file for that step. Naming a `run_id` reads exactly
+      that run, finished or stale, which is what a caller asking about a specific run
+      wants as opposed to one asking "what is happening now"
+- [x] go-app polls it while a training step is in flight and folds the events into the
       existing `/ops/pipeline/stream` SSE payload — **one** stream for the UI, not two
-- [ ] Handle the ml-service-unreachable case as *unknown*, not as failure
+- [x] Handle the ml-service-unreachable case as *unknown*, not as failure
+
+**`/admin/train/auto-tune/progress` survives as a delegate.** It is a released endpoint,
+so removing it is a breaking change outside this item's scope — but it has no
+implementation of its own. One implementation, two routes.
+
+**"Unreachable" and "nothing yet" are different answers.** `FetchStepProgress` returns
+`(nil, nil)` for a step that has published nothing and `(nil, ErrProgressUnavailable)`
+when ml-service could not be asked. Collapsing them — which the old
+`FetchAutoTuneProgress` did, returning nil for both — renders identically as a blank
+panel, but one is a run about to report and the other is a broken link the operator can
+act on. The payload carries `progress_unavailable` and the card says so in words,
+including that *the step is still running*: saying "failed" about a healthy run whose
+telemetry link is down would be worse than saying nothing.
+
+**Only ml-service steps are polled.** `import`, `precompute` and `export` run inside
+go-app and have no progress endpoint to ask, so asking about them would be a request per
+SSE tick for an answer that cannot exist. The registry's `RunsOnMLService()` is the gate.
+
+**The ETA measures from the run's start, not the last event.** The progress file records
+when the last event was written, which says nothing about when the run began — that
+comes from the `data_migrations` row. Nothing is reported until at least one unit has
+finished: with zero completed there is no observed rate, and a number invented from a
+default is one the operator has no reason to believe.
+
+**`FetchAutoTuneProgress` keeps its nil-on-error contract** because its callers cannot
+act on the difference; it now delegates to the tri-state fetcher rather than duplicating
+the HTTP call.
 
 ### O-4 · Persist final metrics
 

@@ -520,6 +520,35 @@ export type PipelineStepProgress = {
     bytes?: number;
     eta_sec?: number;
   };
+  /**
+   * Milestones published by a trainer: rows loaded, low-variance columns dropped,
+   * CV folds, artifacts written. Absent until the step publishes its first event.
+   *
+   * The envelope is versioned (`v`); step-specific fields sit beside it at the top
+   * level, so this is deliberately open rather than a closed shape.
+   */
+  training?: {
+    v?: number;
+    run_id?: string;
+    step?: string;
+    phase?: string;
+    current?: number;
+    total?: number;
+    metrics?: Record<string, number>;
+    message?: string;
+    ts?: string;
+    format?: string;
+    dropped_columns?: string[];
+    dropped_columns_truncated?: number;
+    artifacts?: { path: string; bytes: number }[];
+    [key: string]: unknown;
+  };
+  /**
+   * True when ml-service could not be asked, as distinct from it answering "nothing
+   * published yet". Both render as an empty panel otherwise, but one is a run about
+   * to report and the other is a broken link the operator can act on.
+   */
+  progress_unavailable?: boolean;
 };
 
 /**

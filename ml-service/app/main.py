@@ -907,8 +907,27 @@ async def admin_train_auto_tune(
     return {"status": "ok", "step": "auto-tune"}
 
 
+@app.get("/admin/train/progress")
+async def admin_train_progress(request: Request, step: str = "", run_id: str = ""):
+    """Return live progress for a training step (ops plan O-3).
+
+    `step` is a pipeline step id (`train_batting`, `auto_tune`, ...). With no `run_id`
+    this reports the live run -- the newest non-stale progress file for that step.
+    Naming a `run_id` reads exactly that run, finished or not.
+
+    An empty object means "nothing is running", which is a normal answer, not an error:
+    go-app polls this on a timer and a 404 per tick would be noise.
+    """
+    _verify_admin_api_key(request)
+    return training_orchestrator.get_step_progress(step, run_id)
+
+
 @app.get("/admin/train/auto-tune/progress")
 async def admin_train_auto_tune_progress(request: Request):
-    """Return current auto-tune progress (if running)."""
+    """Return current auto-tune progress (if running).
+
+    The auto-tune view of `/admin/train/progress`. It delegates rather than
+    duplicating; it survives because it is a released endpoint.
+    """
     _verify_admin_api_key(request)
     return training_orchestrator.get_auto_tune_progress()

@@ -136,9 +136,25 @@ output. A subprocess cannot push into its parent's memory, but it can write a fi
 - **Emission never breaks a step.** Unwritable directory, full disk, an observer that
   raises: all logged and swallowed. Progress is telemetry.
 
-- **Served by** `GET /admin/train/auto-tune/progress`, which go-app polls while a
-  training step is in flight and folds into `/ops/pipeline/stream`.
-  `AUTO_TUNE_PROGRESS_FILE` pins an explicit path for tests, or to `tail` one file.
+- **Served by** `GET /admin/train/progress?step=&run_id=`. With no `run_id` it reports
+  the *live* run — the newest non-stale file for that step. Naming a `run_id` reads
+  exactly that run, finished or stale. An empty object means "nothing is running",
+  which is a normal answer, not an error: go-app polls on a timer and a 404 per tick
+  would be noise. `GET /admin/train/auto-tune/progress` survives as a delegate — one
+  implementation, two routes. `AUTO_TUNE_PROGRESS_FILE` pins an explicit path for
+  tests, or to `tail` one file, and applies only to auto-tune.
+
+- **Folded into one stream.** go-app polls the endpoint for any step the registry marks
+  as `RunsOnMLService()` while it is in flight, and puts the event in the step's
+  `training` field on `/ops/pipeline/stream`. `import`, `precompute` and `export` run
+  inside go-app and are never asked.
+
+- **Unreachable is reported as unknown, not failure.** `progress_unavailable: true`
+  means ml-service could not be asked; an absent `training` field means the step has
+  published nothing yet. Both render as an empty panel otherwise, but one is a run
+  about to report and the other is a broken link. The UI says so in words, including
+  that the step is still running — saying "failed" about a healthy run whose telemetry
+  link is down would be worse than saying nothing.
 
 **What the six trainers emit** (`ml/training_progress.py`), by phase:
 

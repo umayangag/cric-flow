@@ -196,6 +196,83 @@ const ExtractDetails: React.FC<{ extract: NonNullable<PipelineStepProgress['extr
   );
 };
 
+const TRAINING_PHASE_LABELS: Record<string, string> = {
+  load: 'Loading data',
+  features: 'Feature selection',
+  fit: 'Fitting',
+  cv: 'Cross-validating',
+  artifact: 'Writing artifacts',
+  done: 'Finished',
+};
+
+/** Metrics as "rmse 24.1 · rows 12,345", with integers left unrounded. */
+function formatMetrics(metrics: Record<string, number>): string {
+  return Object.entries(metrics)
+    .map(([key, value]) => {
+      const label = key.replace(/_/g, ' ');
+      const shown = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
+      return `${label} ${shown}`;
+    })
+    .join(' · ');
+}
+
+/** Milestones published by a trainer: phase, progress, metrics, dropped columns. */
+const TrainingDetails: React.FC<{ training: NonNullable<PipelineStepProgress['training']> }> = ({
+  training,
+}) => {
+  const current = training.current;
+  const total = training.total;
+  const determinate = typeof current === 'number' && typeof total === 'number' && total > 0;
+  const dropped = training.dropped_columns ?? [];
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      <Typography variant="caption" fontWeight={600} color="primary.main">
+        {(training.phase && TRAINING_PHASE_LABELS[training.phase]) ?? training.phase ?? 'Running'}
+        {training.format && ` · ${training.format}`}
+        {determinate && ` · ${current} / ${total}`}
+      </Typography>
+
+      {training.message && (
+        <Typography variant="caption" color="text.secondary">
+          {training.message}
+        </Typography>
+      )}
+
+      {training.metrics && Object.keys(training.metrics).length > 0 && (
+        <Typography variant="caption" color="text.secondary">
+          {formatMetrics(training.metrics)}
+        </Typography>
+      )}
+
+      {/* The plan singles this out: a silently constant feature was being dropped
+          with nobody told. Naming the columns is the entire point of surfacing it. */}
+      {dropped.length > 0 && (
+        <Typography variant="caption" color="warning.main">
+          Dropped low-variance columns: {dropped.join(', ')}
+          {training.dropped_columns_truncated
+            ? ` (+${training.dropped_columns_truncated} more)`
+            : ''}
+        </Typography>
+      )}
+
+      {training.artifacts && training.artifacts.length > 0 && (
+        <Typography variant="caption" color="text.secondary">
+          Wrote {training.artifacts.map((a) => `${a.path} (${formatBytes(a.bytes)})`).join(', ')}
+        </Typography>
+      )}
+
+      {determinate && (
+        <LinearProgress
+          variant="determinate"
+          value={(current / total) * 100}
+          sx={{ height: 6, borderRadius: 1 }}
+        />
+      )}
+    </Box>
+  );
+};
+
 /**
  * One running step. The panel renders one of these per in-flight step, so nothing
  * here assumes it is the only thing running.
@@ -247,6 +324,17 @@ const PipelineStepProgressCard: React.FC<{ step: PipelineStepProgress }> = ({ st
     {step.precompute && <PrecomputeDetails precompute={step.precompute} />}
     {step.fetch && <FetchDetails fetch={step.fetch} />}
     {step.extract && <ExtractDetails extract={step.extract} />}
+
+    {step.training && <TrainingDetails training={step.training} />}
+
+    {/* Unreachable is not the same as nothing-yet. Both would otherwise be a blank
+        panel, but only one of them is something the operator can fix. */}
+    {step.progress_unavailable && (
+      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+        Progress unavailable — ml-service could not be reached. The step is still running; only its
+        detail is unknown.
+      </Typography>
+    )}
 
     {/* A data step that has started but not yet published a sample has unknown
         progress, and unknown is not zero: rendering 0 of 0 reads as a stall. */}

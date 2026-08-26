@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
@@ -43,6 +44,15 @@ type stepProgress struct {
 	Fetch *dataacquire.Progress `json:"fetch,omitempty"`
 	// Extract carries live extraction progress (entries, bytes) for a dataset extract.
 	Extract *dataacquire.ExtractProgress `json:"extract,omitempty"`
+	// Training carries live milestones published by a trainer (ops plan O-2): rows
+	// loaded, low-variance columns dropped, CV folds, artifacts written.
+	Training map[string]interface{} `json:"training,omitempty"`
+	// ProgressUnavailable is true when ml-service could not be asked, as distinct
+	// from it answering "nothing published yet".
+	//
+	// Both render as an empty panel otherwise, but one is a run about to report and
+	// the other is a broken link, and the operator can act on the second.
+	ProgressUnavailable bool `json:"progress_unavailable,omitempty"`
 }
 
 type precomputeProgress struct {
@@ -61,6 +71,9 @@ type progressReporter struct {
 	registry *pipelinesvc.Registry
 	// autoTuneProgress fetches live auto-tune state; a field so tests can stub it.
 	autoTuneProgress func(context.Context) map[string]interface{}
+	// stepProgress fetches live milestones for a training step, distinguishing
+	// "nothing yet" (nil, nil) from "could not ask" (nil, error).
+	stepProgress func(context.Context, string) (map[string]interface{}, error)
 	// precomputeStatus reads in-process precompute state; a field for the same reason.
 	precomputeStatus func() precompute.Status
 	// fetchStatus and extractStatus read in-process acquisition state, likewise stubbable.
@@ -73,6 +86,7 @@ func newProgressReporter() *progressReporter {
 	return &progressReporter{
 		registry:         pipelinesvc.Steps(),
 		autoTuneProgress: pipelinesvc.FetchAutoTuneProgress,
+		stepProgress:     pipelinesvc.FetchStepProgress,
 		precomputeStatus: precompute.GetStatus,
 		fetchStatus:      dataacquire.Status,
 		extractStatus:    dataacquire.ExtractStatus,
@@ -116,8 +130,80 @@ func (p *progressReporter) describe(ctx context.Context, m tracking.Migration) s
 		out.Fetch, out.EstimatedSec = p.fetchDetail()
 	case "dataset-extract":
 		out.Extract, out.EstimatedSec = p.extractDetail()
+	default:
+		p.attachTrainingProgress(ctx, stepID, m, &out)
 	}
 	return out
+}
+
+// attachTrainingProgress folds a trainer's milestones into the step's live state.
+//
+// This is the whole point of O-3: one stream for the UI. A second endpoint for
+// training progress would be a second thing to connect, reconnect and keep in sync,
+// for a panel that is already listening here.
+//
+// Only steps the registry knows are asked about. A command from outside the registry
+// has no step id to query with, and asking ml-service about "" on every tick would be
+// a request per tick for an answer that cannot exist.
+func (p *progressReporter) attachTrainingProgress(
+	ctx context.Context,
+	stepID string,
+	m tracking.Migration,
+	out *stepProgress,
+) {
+	step, known := p.registry.ByID(stepID)
+	if !known || !step.RunsOnMLService() {
+		return
+	}
+
+	progress, err := p.stepProgress(ctx, stepID)
+	if err != nil {
+		// Unreachable is reported as unknown, not as failure: the step itself may be
+		// running perfectly well, and saying "failed" about a healthy run is worse
+		// than saying "cannot tell".
+		slog.Debug("pipeline progress: step progress unavailable",
+			slog.String("step", stepID), slog.Any("err", err))
+		out.ProgressUnavailable = true
+		return
+	}
+	if len(progress) == 0 {
+		return
+	}
+	out.Training = progress
+	if eta := p.trainingETA(progress, m); eta != nil {
+		out.EstimatedSec = eta
+	}
+}
+
+// trainingETA estimates seconds remaining from the units the step has completed.
+//
+// Elapsed time comes from the migration row rather than the progress file: the file
+// records when the last event was written, which says nothing about when the run
+// began. Nothing is reported until at least one unit has finished — with zero
+// completed there is no observed rate, and a number invented from a default is a
+// number the operator has no reason to believe.
+func (p *progressReporter) trainingETA(progress map[string]interface{}, m tracking.Migration) *int64 {
+	current, okCurrent := numberFrom(progress["current"])
+	total, okTotal := numberFrom(progress["total"])
+	if !okCurrent || !okTotal || current <= 0 || total <= current {
+		return nil
+	}
+
+	elapsed := p.now().Sub(m.StartedAt).Seconds()
+	if elapsed <= 0 {
+		return nil
+	}
+	remaining := int64((elapsed / current) * (total - current))
+	if remaining <= 0 {
+		return nil
+	}
+	return &remaining
+}
+
+// numberFrom reads a JSON number, which decodes as float64.
+func numberFrom(v interface{}) (float64, bool) {
+	f, ok := v.(float64)
+	return f, ok
 }
 
 // fetchDetail reports bytes, rate and ETA for a download in flight.

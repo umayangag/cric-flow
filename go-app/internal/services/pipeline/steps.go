@@ -5,10 +5,12 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -83,6 +85,12 @@ func ProgressInterval() time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
+// ProgressFetchTimeout bounds one poll of ml-service for step progress.
+//
+// It is short on purpose: this runs once per SSE tick, and a slow ml-service must
+// degrade the progress panel to "unknown" rather than stall the whole stream behind it.
+func ProgressFetchTimeout() time.Duration { return 5 * time.Second }
+
 // DefaultPrecomputeETASecPerFormat returns the config precompute_eta_seconds_per_fmt (used for ETA before any format completes).
 func DefaultPrecomputeETASecPerFormat() int {
 	return config.PipelinePrecomputeETASecondsPerFmt(config.Load())
@@ -104,33 +112,65 @@ func StepLabelForCommand(command string) string {
 	return Steps().LabelForCommand(command)
 }
 
-// FetchAutoTuneProgress fetches live auto-tune progress from the ML service. Returns nil on error.
-func FetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
-	base := MLServiceBaseURL()
-	url := base + "/admin/train/auto-tune/progress"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// ErrProgressUnavailable reports that ml-service could not be asked, as distinct from
+// it answering "nothing is running".
+//
+// The difference matters to the operator and nothing else can recover it. A step that
+// has published no progress yet and a step whose progress cannot be reached both look
+// like an empty panel, but one is a run about to report and the other is a broken
+// link — and the second is worth saying out loud rather than rendering as silence.
+var ErrProgressUnavailable = errors.New("ml-service progress is unreachable")
+
+// FetchStepProgress fetches live progress for a pipeline step from ml-service.
+//
+// It returns (nil, nil) when the step is running but has published nothing yet, and
+// (nil, ErrProgressUnavailable) when ml-service could not be reached or refused.
+func FetchStepProgress(ctx context.Context, stepID string) (map[string]interface{}, error) {
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return nil, nil
+	}
+
+	endpoint := MLServiceBaseURL() + "/admin/train/progress?step=" + url.QueryEscape(stepID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("%w: %v", ErrProgressUnavailable, err)
 	}
 	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
 		req.Header.Set("X-API-Key", key)
 	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
 		req.Header.Set("X-API-Key", key)
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+
+	client := &http.Client{Timeout: ProgressFetchTimeout()}
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		if resp != nil {
-			resp.Body.Close()
-		}
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrProgressUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: ml-service returned %s", ErrProgressUnavailable, resp.Status)
+	}
 	var m map[string]interface{}
-	if json.NewDecoder(resp.Body).Decode(&m) != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrProgressUnavailable, err)
+	}
+	if len(m) == 0 {
+		// A reachable service saying "nothing yet" is not an error.
+		return nil, nil
+	}
+	return m, nil
+}
+
+// FetchAutoTuneProgress fetches live auto-tune progress. Returns nil on error or when
+// nothing is running -- kept for callers that cannot distinguish the two anyway.
+func FetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
+	progress, err := FetchStepProgress(ctx, "auto_tune")
+	if err != nil {
 		return nil
 	}
-	return m
+	return progress
 }
 
 // BuildProgressDetailAndParams returns a short human-readable detail string and a params map from migration command and args.

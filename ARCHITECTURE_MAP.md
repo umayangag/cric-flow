@@ -80,7 +80,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (24 routes, from `app/main.py`):
+**ml-service** (25 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
@@ -107,6 +107,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/admin/train/innings` |
 | POST | `/admin/train/combination-meta` |
 | POST | `/admin/train/auto-tune` |
+| GET | `/admin/train/progress` |
 | GET | `/admin/train/auto-tune/progress` |
 
 **go-app** (42 routes, from `internal/server/router.go`):
