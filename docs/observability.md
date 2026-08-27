@@ -266,6 +266,22 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
     - Refetches staged archives, registry and busy state every 4s while a data step
       runs, so the tab settles by itself when the job finishes.
 
+- **Run history drill-down** (`OpsMigrationsTable` → `RunSummaryPanel`)
+  - **Source**: `GET /ops/migrations`, whose `metadata` a training run now fills (O-4).
+  - **Displays**: which dataset produced the run (digest, feed, source URL, match-file
+    count), per-format rows and artifacts, metrics **with their change against the
+    previous completed run of the same step**, and the low-variance columns dropped.
+  - **Direction matters**: a metric moving up is only good news for some metrics.
+    Spread measures (`_std`, `variance`) are lower-is-better whatever they measure —
+    `cv_accuracy_std` contains "accuracy" and must not be read as higher-is-better, or
+    a model that got *less consistent* is reported as improved. A metric matching no
+    rule is shown with its delta and no verdict.
+  - **Comparison window**: opening the dialog fetches 100 recent runs to find the
+    previous run of that step, because it is usually not on the page being viewed. A
+    failed run is never used as a baseline. Finding none says so.
+  - **Failures**: `error_message` already carries `CODE: message — hint` from go-app's
+    `MLError`; the dialog splits it so the next action is its own block.
+
 - **`WorkbenchTab`**
   - **Endpoints**:
     - `GET /api/formats` (available formats).

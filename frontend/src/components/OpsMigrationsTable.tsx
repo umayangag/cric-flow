@@ -10,6 +10,11 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import { Box } from '@mui/material';
+import Chip from '@mui/material/Chip';
+import Typography from '@mui/material/Typography';
+import JsonCollapse from './common/JsonCollapse';
+import RunSummaryPanel from './RunSummaryPanel';
+import { asRunMetadata, findPreviousRun, flattenMetrics, parseFailure } from '../utils/runMetadata';
 import {
   TableContainer,
   Table,
@@ -102,6 +107,50 @@ function formatCommandWithParams(m: Migration): string {
   return `${cmd} ${parts.join(' ')}`;
 }
 
+/**
+ * A failed run's message, with the code and the next action pulled out.
+ *
+ * go-app already formats an ml-service precondition as `CODE: message — hint` so the
+ * operator is told what to do next (C5-2's CONTRIBUTIONS_CSV_MISSING is the model).
+ * This is presentation only: it stops the hint being buried mid-way through a red
+ * monospace block, and falls back to the raw string when there is no structure.
+ */
+const FailureDetails: React.FC<{ errorMessage: string }> = ({ errorMessage }) => {
+  const failure = parseFailure(errorMessage);
+  if (!failure) return null;
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {failure.code && <Chip size="small" color="error" label={failure.code} />}
+      <Typography
+        variant="body2"
+        color="error"
+        component="div"
+        sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+      >
+        {failure.message}
+      </Typography>
+      {failure.hint && (
+        <Box
+          sx={{
+            p: 1.5,
+            borderRadius: 1,
+            bgcolor: 'warning.light',
+            color: 'warning.contrastText',
+          }}
+        >
+          <Typography variant="body2">
+            <strong>Next:</strong> {failure.hint}
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+/** How many recent runs to search when looking for the previous run of a step. */
+const COMPARISON_WINDOW = 100;
+
 const OpsMigrationsTable: React.FC = () => {
   const [migrations, setMigrations] = useState<Migration[]>([]);
   const [loading, setLoading] = useState(false);
@@ -113,6 +162,8 @@ const OpsMigrationsTable: React.FC = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
+  const [previousRun, setPreviousRun] = useState<Migration | undefined>();
+  const [comparisonReady, setComparisonReady] = useState(false);
   const limit = 10;
 
   const load = useCallback(
@@ -152,6 +203,30 @@ const OpsMigrationsTable: React.FC = () => {
     setDetailsMigration(m);
     setDetailsError(null);
     setAutoTuneRuns(null);
+    setPreviousRun(undefined);
+    setComparisonReady(false);
+
+    // A metric only means something next to the last one, and the previous run of
+    // this step is usually not on the page being viewed. One bounded request when
+    // the dialog opens beats loading a hundred rows the table never shows.
+    if (m.status === 'COMPLETED') {
+      void api
+        .opsMigrations(1, COMPARISON_WINDOW)
+        .then((window) => {
+          if (ac.signal.aborted) return;
+          setPreviousRun(findPreviousRun(m, window.items ?? []));
+        })
+        .catch(() => {
+          // A failed comparison lookup is not a failed drill-down: the run's own
+          // detail is already here, and "no comparison available" is the honest
+          // rendering of not knowing.
+        })
+        .finally(() => {
+          if (!ac.signal.aborted) setComparisonReady(true);
+        });
+    } else {
+      setComparisonReady(true);
+    }
 
     if (m.command === 'ml-auto-tune' && m.status === 'COMPLETED') {
       setDetailsLoading(true);
@@ -178,8 +253,15 @@ const OpsMigrationsTable: React.FC = () => {
     setDetailsMigration(null);
     setAutoTuneRuns(null);
     setDetailsError(null);
+    setPreviousRun(undefined);
+    setComparisonReady(false);
     setDetailsLoading(false);
   };
+
+  const runMetadata = asRunMetadata(detailsMigration?.metadata);
+  const previousMetrics = previousRun
+    ? flattenMetrics(asRunMetadata(previousRun.metadata))
+    : undefined;
 
   if (loading && migrations.length === 0) return <div>Loading migrations...</div>;
   if (error) return <ErrorText>Error: {error}</ErrorText>;
@@ -254,21 +336,7 @@ const OpsMigrationsTable: React.FC = () => {
         </DialogTitle>
         <DialogContent dividers>
           {detailsMigration != null && detailsMigration.error_message && (
-            <Box
-              component="pre"
-              sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                maxHeight: '60vh',
-                overflow: 'auto',
-                margin: 0,
-                fontSize: 12,
-                color: '#dc2626',
-                fontFamily: 'ui-monospace, Menlo, monospace',
-              }}
-            >
-              {detailsMigration.error_message}
-            </Box>
+            <FailureDetails errorMessage={detailsMigration.error_message} />
           )}
 
           {detailsMigration != null &&
@@ -297,30 +365,26 @@ const OpsMigrationsTable: React.FC = () => {
             !detailsMigration.error_message &&
             (detailsMigration.command !== 'ml-auto-tune' ||
               detailsMigration.status !== 'COMPLETED') && (
-              <Box
-                component="pre"
-                sx={{
-                  p: 1.5,
-                  bgcolor: 'grey.100',
-                  color: 'text.primary',
-                  borderRadius: 1,
-                  overflow: 'auto',
-                  maxHeight: '60vh',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  fontSize: 12,
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                  margin: 0,
-                }}
-              >
-                {JSON.stringify(
-                  {
-                    args: detailsMigration.args,
-                    meta: detailsMigration.metadata,
-                  },
-                  null,
-                  2,
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {runMetadata ? (
+                  <RunSummaryPanel
+                    metadata={runMetadata}
+                    previousMetrics={previousMetrics}
+                    previousRun={previousRun}
+                    comparisonReady={comparisonReady}
+                  />
+                ) : (
+                  // Steps go-app runs itself record their own shapes, and rows written
+                  // before O-4 record almost nothing. Raw JSON is the honest rendering
+                  // for both: there is no structure here to present.
+                  <Typography variant="body2" color="text.secondary">
+                    This run recorded no structured summary.
+                  </Typography>
                 )}
+                <JsonCollapse
+                  data={{ args: detailsMigration.args, metadata: detailsMigration.metadata }}
+                  summary="Show raw JSON"
+                />
               </Box>
             )}
         </DialogContent>
