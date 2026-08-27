@@ -41,6 +41,48 @@ func UpdateMigrationStatus(
 	`, id, status, metadata, errMsgPtr)
 }
 
+// UpdateMigrationMetadata replaces a run's metadata without touching its status.
+//
+// The status-changing update sets completed_at, which is right for a run that has
+// ended and wrong for one still going. A run plan writes its progress as it walks its
+// steps (ops plan R-1), and doing that through UpdateMigrationStatus would mark the
+// plan finished on its first step.
+func UpdateMigrationMetadata(ctx context.Context, id int, metadata json.RawMessage) error {
+	if !db.Available() {
+		return nil
+	}
+	return db.Exec(ctx, `
+		UPDATE data_migrations
+		SET metadata = $2
+		WHERE id = $1
+	`, id, metadata)
+}
+
+// LatestForCommand returns the most recent run of a command, or ok=false when there
+// is none.
+func LatestForCommand(ctx context.Context, command string) (Migration, bool, error) {
+	if !db.Available() {
+		return Migration{}, false, nil
+	}
+	rows, err := db.Query(ctx, `
+		SELECT id, command, args, started_at, completed_at, status, metadata, error_message
+		FROM data_migrations
+		WHERE command = $1
+		ORDER BY started_at DESC
+		LIMIT 1
+	`, command)
+	if err != nil {
+		return Migration{}, false, err
+	}
+	defer rows.Close()
+
+	found, err := scanMigrations(rows)
+	if err != nil || len(found) == 0 {
+		return Migration{}, false, err
+	}
+	return found[0], true, nil
+}
+
 // HasInProgressForCommand returns true if there is at least one row in data_migrations
 // for the given command with status IN_PROGRESS. Used by /ops/status pipeline section.
 // When the db pool is not initialized (e.g. disconnected), returns (false, nil).

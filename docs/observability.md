@@ -45,6 +45,39 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
   - **Usage**:
     - Ops Status pipeline section.
     - Pipeline `/ops/pipeline/*` handlers and `internal/services/pipeline`.
+    - Run plans, under the command `pipeline-plan` (below).
+
+### 1.2.1. Run plans (`internal/services/runplan`)
+
+`make up-all` and `make full-pipeline` have existed in the Makefile for as long as the
+pipeline has; from the ops console the same thing was eleven manual clicks with waiting
+in between. A run plan is the server-side executor that closes that asymmetry.
+
+| Endpoint | |
+|---|---|
+| `POST /ops/pipeline/run-plan` | A named plan or an explicit step list, never both. An empty body means `full` |
+| `GET /ops/pipeline/plan` | The latest plan, running or not, with `resume_from` |
+| `POST /ops/pipeline/stop` | Stops the plan **and** the step it is on |
+
+- **Named plans are derived from the step registry**, not written out: `full` is every
+  non-optional pipeline step, `retrain-only` the ml-service ones, `data-refresh` the
+  go-app ones. Optional steps are never implied — a "run everything" that silently
+  included auto-tune would take hours nobody asked for.
+- **State lives in `data_migrations`** under `pipeline-plan`, written before and after
+  every step rather than only at the end. A page reload, another tab, or a browser
+  closed overnight does not lose the run.
+- **`pipeline-plan` is deliberately not a registry step.** Were it one, the plan's own
+  IN_PROGRESS row would put it in the compute lane and `LaneBusy` would block the very
+  steps the plan exists to run. `UpdateMigrationMetadata` exists for the same shape of
+  reason: the status-changing update stamps `completed_at`, which would mark a plan
+  finished on its first step.
+- **Stops at the first failure**, leaving the remaining steps `PENDING` so the plan
+  resumes from where it stopped rather than from the top.
+- **Ordering comes from `CanRunPipelineStep`**, injected rather than reimplemented, so a
+  plan and a single-step trigger cannot disagree about whether a step may run.
+- **Steps already complete are skipped**, which is what makes a resume cheap.
+- **Cancellation stops the plan first**: cancelling only the current step would end that
+  step and let the plan start the next one, which is not what Stop means.
 
 ### 1.3. Logs
 

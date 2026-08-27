@@ -37,6 +37,12 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The plan goes first: cancelling only the step it is on would stop that step and
+	// then let the plan start the next one, which is not what Stop means (ops plan
+	// R-1). Cancelling the plan's context also cancels the step beneath it, so the
+	// lane cancel below is belt and braces for a step started on its own.
+	planStopped := a.StopRunPlan()
+
 	cancelled, err := pipelinesvc.StopRun(
 		r.Context(),
 		"cancelled by user",
@@ -49,11 +55,15 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	if cancelled == 0 {
+	if cancelled == 0 && !planStopped {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"status": "cancelled", "cancelled": cancelled})
+	respondJSON(w, http.StatusOK, map[string]any{
+		"status":       "cancelled",
+		"cancelled":    cancelled,
+		"plan_stopped": planStopped,
+	})
 }
 
 // requestedLanes reads the optional ?lane= parameter. Nil means every lane.
