@@ -63,3 +63,110 @@ describe('PipelineStepProgressCard — dataset steps', () => {
     expect(screen.getByText('Import')).toBeInTheDocument();
   });
 });
+
+describe('PipelineStepProgressCard — training milestones', () => {
+  afterEach(cleanup);
+
+  it('shows phase, counters and metrics for a CV fold', () => {
+    const step: PipelineStepProgress = {
+      step_id: 'train_win',
+      step_label: 'Train Win',
+      training: {
+        v: 1,
+        phase: 'cv',
+        current: 3,
+        total: 5,
+        format: 'T20I',
+        metrics: { accuracy: 0.7123, rows: 12345 },
+        message: 'Fold 3/5 (T20I)',
+      },
+    };
+    render(<PipelineStepProgressCard step={step} />);
+
+    expect(screen.getByText(/Cross-validating · T20I · 3 \/ 5/)).toBeInTheDocument();
+    expect(screen.getByText(/accuracy 0\.7123/)).toBeInTheDocument();
+    expect(screen.getByText(/rows 12,345/)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
+  });
+
+  // The plan singles this out: a silently constant feature was being dropped with
+  // nobody told. Naming the columns is the entire point of surfacing it.
+  it('names the dropped low-variance columns', () => {
+    render(
+      <PipelineStepProgressCard
+        step={{
+          step_id: 'train_win',
+          training: {
+            phase: 'features',
+            dropped_columns: ['weather_composite', 'rain'],
+            metrics: { dropped: 2, kept: 40 },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/weather_composite, rain/)).toBeInTheDocument();
+  });
+
+  it('says how many dropped columns were not listed', () => {
+    render(
+      <PipelineStepProgressCard
+        step={{
+          step_id: 'train_win',
+          training: { phase: 'features', dropped_columns: ['a'], dropped_columns_truncated: 12 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/\+12 more/)).toBeInTheDocument();
+  });
+
+  it('lists artifacts with their sizes', () => {
+    render(
+      <PipelineStepProgressCard
+        step={{
+          step_id: 'train_batting',
+          training: {
+            phase: 'artifact',
+            artifacts: [{ path: 'batting_model_T20I.joblib', bytes: 1048576 }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/batting_model_T20I\.joblib \(1\.0 MB\)/)).toBeInTheDocument();
+  });
+
+  // Unreachable and nothing-yet both render as a blank panel otherwise, but only one
+  // of them is something the operator can fix.
+  it('distinguishes unreachable progress from no progress yet', () => {
+    const { unmount } = render(
+      <PipelineStepProgressCard
+        step={{ step_id: 'train_batting', step_label: 'Train Batting', progress_unavailable: true }}
+      />,
+    );
+    expect(screen.getByText(/ml-service could not be reached/)).toBeInTheDocument();
+    expect(screen.getByText(/step is still running/)).toBeInTheDocument();
+    unmount();
+
+    render(
+      <PipelineStepProgressCard step={{ step_id: 'train_batting', step_label: 'Train Batting' }} />,
+    );
+    expect(screen.queryByText(/could not be reached/)).not.toBeInTheDocument();
+  });
+
+  it('omits the bar when there is nothing to count', () => {
+    render(
+      <PipelineStepProgressCard
+        step={{
+          step_id: 'train_batting',
+          training: { phase: 'fit', message: 'Fitting on 40 rows' },
+        }}
+      />,
+    );
+
+    // "Fitting" appears twice: the phase label and the message. Match the message.
+    expect(screen.getByText('Fitting on 40 rows')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+});

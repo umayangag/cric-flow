@@ -137,3 +137,73 @@ def test_cleared_progress_disappears_from_the_reader():
 
     auto_tune_progress.clear_progress()
     assert training_orchestrator.get_auto_tune_progress() == {}
+
+
+def test_get_step_progress_reads_any_step():
+    """The generalised reader (ops plan O-3) is not auto-tune specific."""
+    from ml import run_progress
+    from ml.run_progress import Event
+
+    run_progress.configure("train_batting", run_id="run-1")
+    run_progress.emit(Event(step="train_batting", phase="cv", current=3, total=5))
+
+    got = training_orchestrator.get_step_progress("train_batting")
+    assert got["phase"] == "cv"
+    assert got["current"] == 3
+    assert got["step"] == "train_batting"
+
+
+def test_get_step_progress_does_not_confuse_steps():
+    from ml import run_progress
+    from ml.run_progress import Event
+
+    run_progress.configure("train_batting", run_id="r1")
+    run_progress.emit(Event(step="train_batting", phase="batting-phase"))
+    run_progress.configure("train_win", run_id="r1")
+    run_progress.emit(Event(step="train_win", phase="win-phase"))
+
+    assert training_orchestrator.get_step_progress("train_batting")["phase"] == "batting-phase"
+    assert training_orchestrator.get_step_progress("train_win")["phase"] == "win-phase"
+
+
+def test_get_step_progress_with_a_run_id_reads_that_run():
+    """Naming a run reads exactly it, including one that has gone stale.
+
+    That is what a caller asking about a specific run wants, as opposed to one asking
+    "what is happening now".
+    """
+    import os
+    import time
+
+    from ml import run_progress
+    from ml.run_progress import Event
+
+    path = run_progress.configure("train_win", run_id="finished-run")
+    run_progress.emit(Event(step="train_win", phase="done"))
+    long_ago = time.time() - (run_progress.STALE_AFTER_SEC + 60)
+    os.utime(path, (long_ago, long_ago))
+
+    assert training_orchestrator.get_step_progress("train_win") == {}, "not live"
+    assert training_orchestrator.get_step_progress("train_win", "finished-run")["phase"] == "done"
+
+
+def test_get_step_progress_requires_a_step():
+    assert training_orchestrator.get_step_progress("") == {}
+    assert training_orchestrator.get_step_progress("   ") == {}
+
+
+def test_get_step_progress_is_empty_for_an_unknown_step():
+    assert training_orchestrator.get_step_progress("train_nonexistent") == {}
+
+
+# The pinned env var only ever described auto-tune, so it must not leak into another
+# step's answer.
+def test_pinned_file_does_not_apply_to_other_steps(tmp_path, monkeypatch):
+    import json
+
+    pinned = tmp_path / "pinned.json"
+    pinned.write_text(json.dumps({"phase": "pinned-auto-tune"}))
+    monkeypatch.setenv("AUTO_TUNE_PROGRESS_FILE", str(pinned))
+
+    assert training_orchestrator.get_step_progress("auto_tune")["phase"] == "pinned-auto-tune"
+    assert training_orchestrator.get_step_progress("train_batting") == {}
