@@ -104,7 +104,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | O-2 | done | `ops/pr9-instrument-trainers` | Instrument the six trainers to emit milestones and metrics |
 | O-3 | done | `ops/pr10-serve-progress` | Serve generalised progress; fold into the existing SSE stream |
 | O-4 | done | `ops/pr11-persist-metrics` | Persist final metrics to `data_migrations.metadata` |
-| O-5 | todo | | Frontend: per-step progress, metrics, run-history drill-down |
+| O-5 | done | `ops/pr12-run-history` | Frontend: per-step progress, metrics, run-history drill-down |
 | R-1 | todo | | Server-side run-plan executor (chaining, stop-on-failure, resume) |
 | R-2 | todo | | `POST /ops/pipeline/run-plan` and plan status |
 | R-3 | todo | | Frontend: "Run full pipeline" with per-step live state |
@@ -583,11 +583,41 @@ an error would report work that happened as work that did not.
 
 ### O-5 · Frontend
 
-- [ ] Real per-step progress bars driven by `current`/`total`
-- [ ] Metrics panel per run; highlight change against the previous run of the same step
-- [ ] Run-history drill-down: args, metrics, error, dataset used
-- [ ] Keep the failure message actionable — the 400 `CONTRIBUTIONS_CSV_MISSING` pattern
-      from C5-2 is the model to follow
+- [x] Real per-step progress bars driven by `current`/`total` — **landed in O-3**, which
+      had to render the payload it introduced. Noted here rather than claimed twice
+- [x] Metrics panel per run; highlight change against the previous run of the same step
+- [x] Run-history drill-down: args, metrics, error, dataset used. The dialog rendered
+      `JSON.stringify({args, meta})`; it now renders the run, with the raw JSON still a
+      click away for anything the panel does not model
+- [x] Keep the failure message actionable — go-app already formats an ml-service
+      precondition as `CODE: message — hint` (F-1's `MLError`), so the string was
+      already actionable. What changed is presentation: the code is a chip and the hint
+      is its own **Next:** block, instead of being buried mid-way through a red
+      monospace paragraph
+
+**Direction is the judgement in this item, and I got it wrong first.** Whether a metric
+moving up is good news depends entirely on which metric it is. `train_win` emits
+`cv_accuracy_std` — which contains "accuracy", and a naive substring match read it as
+higher-is-better, i.e. **reported a model that had got less consistent as an
+improvement.** Spread measures are now checked before everything else. The test that
+caught it is `treats a spread measure as lower-is-better even when it names a good
+metric`.
+
+A metric matching no rule is shown with its delta and **no verdict**: "it changed by
+this much" is true regardless, while "this is an improvement" would be a guess.
+
+**Comparison needs a window the table does not have.** The previous run of a step is
+usually not on the page being viewed, so opening the dialog fetches one bounded window
+(100 rows) and finds the most recent earlier *completed* run of the same command that
+recorded metrics. A failed run's numbers are not a baseline. Finding none is reported as
+"no earlier run of this step to compare against" — and, until the lookup returns, nothing
+is claimed either way.
+
+**Per-format metrics are prefixed, not merged.** `T20I.rmse` and `ODI.rmse` are different
+numbers; merging them would silently keep whichever came last.
+
+**Unknown provenance is stated.** A run from before the dataset registry, or against a
+directory populated by hand, says so — which is the case P-2 exists to flag.
 
 ---
 
