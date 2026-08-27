@@ -198,6 +198,10 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 				return err
 			}
 			resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
+			// Written only on success: a manifest beside a failed export would
+			// describe files that are missing or half-written, and something
+			// downstream would trust it.
+			writeManifest(opts.OutDir, formats, true, opts.Provenance)
 			return nil
 		}
 
@@ -246,6 +250,12 @@ func (r *Runner) Run(ctx context.Context, opts Options) error {
 			return err
 		}
 		resources.RecordWorkerMemorySample(resources.KindExport, exportLimit)
+		// Inference exports are inputs for a prediction, not training data, so they
+		// get no manifest: nothing trains from them and a manifest would invite
+		// something to try.
+		if !opts.InferenceOnly {
+			writeManifest(opts.OutDir, formats, false, opts.Provenance)
+		}
 		return nil
 	}
 	return nil

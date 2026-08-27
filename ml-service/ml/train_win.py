@@ -40,6 +40,7 @@ from ml.config import (
     get_training_params,
 )
 from ml.data_quality import drop_low_variance_columns
+from ml.dataset_provenance import attach as attach_provenance
 from ml.pipeline_common import compute_time_decay_weights
 from ml.training_progress import (
     artifact_written,
@@ -320,6 +321,9 @@ def _build_model_metadata(
     }
     if cv_metrics is not None:
         meta["cv_metrics"] = cv_metrics
+    # Provenance travels with the artifact (ops plan P-1): the export directory that
+    # produced these rows is overwritten by the next export.
+    attach_provenance(meta)
     return meta
 
 

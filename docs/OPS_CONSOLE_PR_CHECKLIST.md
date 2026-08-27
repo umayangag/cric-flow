@@ -108,7 +108,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | R-1 | done | `ops/pr13-run-plan-executor` | Server-side run-plan executor (chaining, stop-on-failure, resume) |
 | R-2 | done | `ops/pr13-run-plan-executor` | `POST /ops/pipeline/run-plan` and plan status |
 | R-3 | done | `ops/pr14-run-plan-ui` | Frontend: "Run full pipeline" with per-step live state |
-| P-1 | todo | | Stamp dataset provenance into exports and model sidecars |
+| P-1 | done | `ops/pr15-export-provenance` | Stamp dataset provenance into exports and model sidecars |
 | P-2 | todo | | Show which dataset produced which model |
 
 **Recommended order:** F → A → O → R → P. F is trivial and makes the UI honest. A
@@ -753,9 +753,49 @@ The payoff: results become explainable.
 
 ### P-1 · Stamp provenance
 
-- [ ] Record the dataset digest in the export manifest
-- [ ] Carry it into each model's sidecar metadata alongside `feature_names`
-- [ ] Include the training cutoff, which already varies per run
+- [x] Record the dataset digest in the export manifest — `export-manifest.json`, beside
+      the CSVs, with the formats, the files and **their sizes**, and the dataset block
+- [x] Carry it into each model's sidecar metadata alongside `feature_names`
+- [x] Include the training cutoff, which already varies per run
+
+**Provenance travels with the artifact, not with the directory that produced it.** The
+export directory is overwritten by the next export; a model file that cannot say what it
+trained on is one nobody can trust six months later. So the manifest is the *carrier*,
+and the sidecar is where it lands.
+
+**It sits beside `feature_names` because it answers the same kind of question:**
+`feature_names` says what shape the model expects, provenance says what it learned from.
+
+**The exporter does not read the dataset directory.** `Options.Provenance` is supplied
+by the caller. An exporter that reached into the dataset directory would be an exporter
+that knows about acquisition, and the layering is worth keeping — go-app's handler reads
+the manifest A-2 wrote and passes the answer in.
+
+**Read at the point of use, never cached.** The dataset directory can be replaced by an
+extract between one export and the next, and a cached digest would then describe data
+that is no longer there. A provenance record that is quietly wrong is worse than none —
+which is the whole reason P-2 exists.
+
+**Unknown is omitted, not blanked**, at every layer: a data directory populated by hand
+has no manifest, an export from before P-1 has none, and both are recorded as absent
+rather than as an object full of nulls that reads as "we looked and found nothing" when
+in fact nobody looked.
+
+**Only listed fields are copied** from manifest to sidecar. Copying wholesale would mean
+a future manifest field silently appearing in every artifact written afterwards.
+
+**Two writers, both stamped.** `training_pipeline.train_and_save` covers batting,
+bowling and fielding; `artifact_sidecar.write_artifact_meta` covers extras and innings;
+`train_win` builds its own metadata and is stamped directly.
+`test_every_trainer_reaches_a_stamping_path` guards against a correct helper that
+nothing calls — the failure no unit test would notice.
+
+**Inference exports get no manifest.** They are inputs for a prediction, not training
+data; nothing trains from them, and a manifest would invite something to try.
+
+**Merge note:** `step_work.go` (from R-1, #163) builds export options too. When that
+lands, its `exportsvc.Options` needs the same `Provenance: liveDatasetProvenance()`, or
+a plan-driven export writes a manifest with no dataset in it.
 
 ### P-2 · Surface it
 

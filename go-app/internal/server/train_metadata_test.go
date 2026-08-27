@@ -119,3 +119,47 @@ func TestTrainRunMetadata_IsJSONSerialisable(t *testing.T) {
 	assert.Contains(t, string(encoded), `"dataset_sha256":"abc"`)
 	assert.Contains(t, string(encoded), `"format":"T20I"`)
 }
+
+// TestLiveDatasetProvenance_ReadsTheDirectoryNotACache: the dataset directory can be
+// replaced by an extract between one export and the next, and a cached digest would
+// then describe data that is no longer there. A provenance record that is quietly
+// wrong is worse than none — the whole reason P-2 exists.
+func TestLiveDatasetProvenance_ReadsTheDirectoryNotACache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+
+	assert.False(t, liveDatasetProvenance().Known(), "an empty directory knows nothing")
+
+	first, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "first", FeedID: "t20s"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), first, 0o600))
+	assert.Equal(t, "first", liveDatasetProvenance().DatasetSHA256)
+
+	// A later extract replaces the dataset; the next export must say so.
+	second, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "second", FeedID: "all"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), second, 0o600))
+	assert.Equal(t, "second", liveDatasetProvenance().DatasetSHA256)
+	assert.Equal(t, "all", liveDatasetProvenance().DatasetFeed)
+}
+
+func TestLiveDatasetProvenance_CarriesEveryFieldTheManifestHas(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+	encoded, err := json.Marshal(dataacquire.ExtractResult{
+		ArchiveSHA256: "abc",
+		SourceURL:     "https://cricsheet.org/downloads/all_json.zip",
+		FeedID:        "all",
+		ExtractedAt:   "2026-08-26T10:00:00Z",
+		MatchFiles:    19998,
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), encoded, 0o600))
+
+	got := liveDatasetProvenance()
+	assert.Equal(t, "abc", got.DatasetSHA256)
+	assert.Contains(t, got.DatasetSourceURL, "cricsheet.org")
+	assert.Equal(t, "all", got.DatasetFeed)
+	assert.Equal(t, "2026-08-26T10:00:00Z", got.DatasetExtracted)
+	assert.Equal(t, 19998, got.DatasetMatchFile)
+}
