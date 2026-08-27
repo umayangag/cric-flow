@@ -17,6 +17,8 @@ import type {
   DataFeedsResponse,
   StagedResponse,
   OpsDataStartResponse,
+  RunPlanState,
+  RunPlanStartResponse,
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   AutoTuneRunDetailsResponse,
@@ -217,6 +219,44 @@ export const api = {
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
+  },
+  /**
+   * The latest run plan (GET /ops/pipeline/plan), running or not.
+   *
+   * Not "current": the state lives in the database, so this returns a plan the page
+   * did not start — after a reload, from another tab, or the morning after.
+   */
+  opsRunPlan(options?: { signal?: AbortSignal }): Promise<RunPlanState> {
+    return httpApi('/ops/pipeline/plan', { signal: options?.signal });
+  },
+  /**
+   * Start or resume a run plan (POST /ops/pipeline/run-plan).
+   *
+   * `resume` continues the last plan, skipping the steps it completed. Without it
+   * every step in the plan runs.
+   *
+   * Returns status alongside body rather than throwing, so 409 ("a plan is already in
+   * progress", "nothing to resume") reads as the answer it is rather than a crash.
+   */
+  async opsRunPlanStart(body: {
+    plan?: string;
+    steps?: string[];
+    resume?: boolean;
+  }): Promise<{ status: number; data: RunPlanStartResponse }> {
+    const url = `${BASE_API_URL}/ops/pipeline/run-plan`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify(body),
+    });
+    let data: RunPlanStartResponse = {};
+    try {
+      const text = await res.text();
+      if (text) data = JSON.parse(text) as RunPlanStartResponse;
+    } catch {
+      data = { error: res.statusText || 'Invalid response' };
+    }
+    return { status: res.status, data };
   },
   /** Named feeds and the host allowlist (GET /ops/data/feeds). */
   opsDataFeeds(options?: { signal?: AbortSignal }): Promise<DataFeedsResponse> {
