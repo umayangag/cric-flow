@@ -156,6 +156,29 @@ output. A subprocess cannot push into its parent's memory, but it can write a fi
   that the step is still running — saying "failed" about a healthy run whose telemetry
   link is down would be worse than saying nothing.
 
+**The run's outcome outlives its progress.** `finish()` writes a `.result.json` beside
+the progress file and then removes the progress file. They have different lifetimes on
+purpose: progress that lingers reads as a run still going, while the outcome has to
+survive because whoever wants it — go-app, persisting into `data_migrations.metadata` —
+asks only after the run is over. ml-service returns the summary on the training
+endpoint's response, which is the only moment it is still available.
+
+The summary carries per-format rows and features, per-format metrics, the low-variance
+columns dropped, and the artifacts written with their sizes. go-app stamps the dataset
+digest onto it from the manifest in the dataset directory — ml-service does not know
+which dataset produced the CSVs it trained on, and go-app does. That join is what makes
+*"which data produced this model?"* a lookup:
+
+```
+GET /ops/migrations  ->  metadata.provenance.dataset_sha256
+                         metadata.summary.formats[].metrics
+                         metadata.summary.dropped_columns
+```
+
+Provenance that cannot be established is omitted rather than blanked: a dataset
+directory populated by hand has no manifest, and a hand-placed archive has a digest but
+no feed or URL. Absent means genuinely unknown.
+
 **What the six trainers emit** (`ml/training_progress.py`), by phase:
 
 | Phase | Carries |

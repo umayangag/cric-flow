@@ -16,6 +16,8 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -196,7 +198,11 @@ func (a *App) makeMLTrainHandler(step pipelinesvc.Step) http.HandlerFunc {
 
 		a.startTrackedJob(step.Command, args, pipelinesvc.TrainStepTimeout(),
 			func(ctx context.Context) (any, error) {
-				return nil, pipelinesvc.CallMLTrainEndpoint(ctx, step.MLEndpoint, "?"+query.Encode())
+				result, err := pipelinesvc.CallMLTrainEndpointWithResult(ctx, step.MLEndpoint, "?"+query.Encode())
+				if err != nil {
+					return nil, err
+				}
+				return trainRunMetadata(step, cutoff, result), nil
 			})
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": step.ID})
 	}
@@ -252,4 +258,47 @@ func (a *App) startTrackedJob(
 		}
 		slog.Info(command + " completed")
 	}()
+}
+
+// trainRunMetadata builds what a finished training step is remembered by, for
+// data_migrations.metadata (ops plan O-4).
+//
+// The dataset digest is stamped here rather than by ml-service, because ml-service
+// does not know which dataset produced the CSVs it trained on -- go-app does, from
+// the manifest in the dataset directory (A-3). Recording it on the run is what closes
+// the provenance loop: "which data produced this model?" becomes a lookup rather than
+// an archaeology exercise.
+//
+// A run with no summary and no live dataset still records the step and cutoff, which
+// is more than the previous nil.
+func trainRunMetadata(step pipelinesvc.Step, cutoff string, result *pipelinesvc.TrainResult) map[string]any {
+	meta := map[string]any{
+		"step":   step.ID,
+		"cutoff": cutoff,
+	}
+	if result != nil && len(result.Summary) > 0 {
+		meta["summary"] = result.Summary
+	}
+	if manifest, ok := dataacquire.ReadManifest(dataset.Dir()); ok {
+		provenance := map[string]any{}
+		if manifest.ArchiveSHA256 != "" {
+			provenance["dataset_sha256"] = manifest.ArchiveSHA256
+		}
+		if manifest.SourceURL != "" {
+			provenance["dataset_source_url"] = manifest.SourceURL
+		}
+		if manifest.FeedID != "" {
+			provenance["dataset_feed"] = manifest.FeedID
+		}
+		if manifest.ExtractedAt != "" {
+			provenance["dataset_extracted_at"] = manifest.ExtractedAt
+		}
+		if manifest.MatchFiles > 0 {
+			provenance["dataset_match_files"] = manifest.MatchFiles
+		}
+		if len(provenance) > 0 {
+			meta["provenance"] = provenance
+		}
+	}
+	return meta
 }

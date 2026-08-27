@@ -579,6 +579,48 @@ export type DatasetStatus = {
   env_var?: string;
 };
 
+/**
+ * What a finished run is remembered by, from `data_migrations.metadata`.
+ *
+ * `provenance` is what makes "which data produced this model?" a lookup rather than
+ * an archaeology exercise. Its fields are individually optional because a dataset
+ * placed by hand has a digest but no feed or URL, and one placed before the registry
+ * existed has none of them — absent means genuinely unknown, never zero.
+ */
+export type RunMetadata = {
+  step?: string;
+  cutoff?: string;
+  summary?: {
+    v?: number;
+    step?: string;
+    run_id?: string;
+    saved?: number;
+    formats_completed?: number;
+    formats_total?: number;
+    finished_at?: string;
+    formats?: {
+      format: string;
+      rows?: number;
+      features?: number;
+      targets?: number;
+      completed?: boolean;
+      metrics?: Record<string, number>;
+      artifacts?: { path: string; bytes: number }[];
+    }[];
+    /** Low-variance columns removed before fitting, keyed by format. */
+    dropped_columns?: Record<string, string[]>;
+    [key: string]: unknown;
+  };
+  provenance?: {
+    dataset_sha256?: string;
+    dataset_source_url?: string;
+    dataset_feed?: string;
+    dataset_extracted_at?: string;
+    dataset_match_files?: number;
+  };
+  [key: string]: unknown;
+};
+
 export type Migration = {
   id: number;
   command: string;
@@ -586,7 +628,11 @@ export type Migration = {
   started_at: string;
   completed_at?: string;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-  metadata?: unknown;
+  /**
+   * Untyped for rows written before O-4 and by steps go-app runs itself, which record
+   * their own shapes. `RunMetadata` describes what a training step now writes.
+   */
+  metadata?: RunMetadata | unknown;
   error_message?: string;
 };
 

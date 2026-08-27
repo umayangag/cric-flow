@@ -753,7 +753,7 @@ async def admin_train_batting(request: Request, cutoff: str = ""):
             _settings.go_app_url,
             logger,
         )
-    return {"status": "ok", "step": "batting"}
+    return training_orchestrator.train_response("batting")
 
 
 @app.post("/admin/train/bowling")
@@ -767,7 +767,7 @@ async def admin_train_bowling(request: Request, cutoff: str = ""):
             _settings.go_app_url,
             logger,
         )
-    return {"status": "ok", "step": "bowling"}
+    return training_orchestrator.train_response("bowling")
 
 
 @app.post("/admin/train/fielding")
@@ -781,7 +781,7 @@ async def admin_train_fielding(request: Request, cutoff: str = ""):
             _settings.go_app_url,
             logger,
         )
-    return {"status": "ok", "step": "fielding"}
+    return training_orchestrator.train_response("fielding")
 
 
 @app.post("/admin/train/extras")
@@ -800,7 +800,7 @@ async def admin_train_extras(request: Request, cutoff: str = ""):
         )
     async with _get_training_semaphore():
         await asyncio.to_thread(training_orchestrator.run_extras_training, cutoff, _settings.go_app_url, logger)
-    return {"status": "ok", "step": "extras"}
+    return training_orchestrator.train_response("extras")
 
 
 @app.post("/admin/train/win")
@@ -819,7 +819,7 @@ async def admin_train_win(request: Request, cutoff: str = ""):
         )
     async with _get_training_semaphore():
         await asyncio.to_thread(training_orchestrator.run_win_training, cutoff, _settings.go_app_url, logger)
-    return {"status": "ok", "step": "win"}
+    return training_orchestrator.train_response("win")
 
 
 @app.post("/admin/train/innings")
@@ -838,7 +838,7 @@ async def admin_train_innings(request: Request, cutoff: str = ""):
         )
     async with _get_training_semaphore():
         await asyncio.to_thread(training_orchestrator.run_innings_training, cutoff, _settings.go_app_url, logger)
-    return {"status": "ok", "step": "innings"}
+    return training_orchestrator.train_response("innings")
 
 
 @app.post("/admin/train/combination-meta")
@@ -862,7 +862,9 @@ async def admin_train_combination_meta(request: Request):
         )
     async with _get_training_semaphore():
         await asyncio.to_thread(training_orchestrator.run_combination_meta_training, logger)
-    return {"status": "ok", "step": "combination_meta"}
+    # combination_meta is not instrumented, so this carries no summary today. Routing
+    # it through the same builder means it gains one the moment it is.
+    return training_orchestrator.train_response("combination_meta")
 
 
 @app.post("/admin/train/auto-tune")

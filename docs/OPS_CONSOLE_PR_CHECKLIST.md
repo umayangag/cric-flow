@@ -103,7 +103,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | O-1 | done | `ops/pr8-progress-channel` | Generalise `auto_tune_progress` into a shared progress channel |
 | O-2 | done | `ops/pr9-instrument-trainers` | Instrument the six trainers to emit milestones and metrics |
 | O-3 | done | `ops/pr10-serve-progress` | Serve generalised progress; fold into the existing SSE stream |
-| O-4 | todo | | Persist final metrics to `data_migrations.metadata` |
+| O-4 | done | `ops/pr11-persist-metrics` | Persist final metrics to `data_migrations.metadata` |
 | O-5 | todo | | Frontend: per-step progress, metrics, run-history drill-down |
 | R-1 | todo | | Server-side run-plan executor (chaining, stop-on-failure, resume) |
 | R-2 | todo | | `POST /ops/pipeline/run-plan` and plan status |
@@ -538,10 +538,48 @@ the HTTP call.
 
 ### O-4 · Persist final metrics
 
-- [ ] On completion, write the final metrics into `data_migrations.metadata` (already
+- [x] On completion, write the final metrics into `data_migrations.metadata` (already
       `jsonb`, already the run-history table — no new table needed)
-- [ ] Include the dataset digest from A-3 to close the provenance loop
-- [ ] Extend `/ops/migrations` to return it
+- [x] Include the dataset digest from A-3 to close the provenance loop
+- [x] Extend `/ops/migrations` to return it — it already did; what was missing was
+      anything worth returning. The frontend `metadata` field is now typed
+      (`RunMetadata`) instead of `unknown`
+
+**A result is not progress, and the difference is a lifetime.** The obvious design —
+have go-app read the progress file when the run ends — cannot work: `finish()` removes
+that file, because one left behind reads as a run still going. So the outcome is written
+to a separate `.result.json` beside it, which *outlives* the run, and ml-service returns
+it on the training endpoint's response. That response is the only moment the outcome is
+still available to go-app.
+
+The two files both end in `.json`, so `list_for_step` excludes results explicitly —
+otherwise a finished run would be read as a running one, which is the exact confusion the
+two lifetimes exist to avoid.
+
+**The summary is accumulated as events go past.** The progress file holds only the
+*last* event; it is overwritten on every emit, which is what makes it cheap to poll. The
+run's outcome is a different question — which formats trained, on how many rows, what was
+dropped, what was written — and building it as the run proceeds is the only chance to
+have it, since nothing re-reads a stream of overwritten files.
+
+**The dataset digest is stamped by go-app, not ml-service.** ml-service does not know
+which dataset produced the CSVs it trained on; go-app does, from the manifest A-2 leaves
+in the dataset directory. Recording it on the run is what closes the loop this plan
+opened by saying nothing could answer *"which data produced this model?"*.
+
+**Provenance that cannot be established is omitted, not blanked.** A dataset directory
+populated by hand has no manifest and a hand-placed archive has a digest but no feed or
+URL. Absent means genuinely unknown — which is precisely the case P-2 exists to flag, and
+inventing a value would defeat it.
+
+**A bug the tests caught.** `format_done` only recorded a format into the summary when it
+carried metrics, so a format that trained successfully but published no numbers was
+absent from the summary entirely — which reads as "it did not run". Now recorded either
+way.
+
+**Losing the summary is not losing the run.** An unreadable success body is logged and
+the run still completes: a 200 is a success whatever the body says, and turning it into
+an error would report work that happened as work that did not.
 
 ### O-5 · Frontend
 
