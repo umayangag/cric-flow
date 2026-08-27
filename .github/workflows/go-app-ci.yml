@@ -66,6 +66,14 @@ jobs:
           version: v2.11.1
           working-directory: go-app
           args: -c ../.golangci.yml
+          # The action's config-verify step fetches its JSON schema from
+          # golangci-lint.run on every run, and that fetch has been the single
+          # largest source of CI flakes here -- three timeouts in one afternoon,
+          # each costing a rerun on a PR whose code was fine. It only checks the
+          # YAML's shape against a schema; an unknown linter or a malformed
+          # setting still fails the lint run itself, which is the check that
+          # matters. Trading a network dependency for nothing lost.
+          verify: false
 
       # golangci-lint's `unused` only sees unexported identifiers within a package,
       # so exported-but-uncalled code slips past it. This is whole-program.
