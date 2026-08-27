@@ -46,6 +46,14 @@ SCHEMA_VERSION = 1
 #: Subdirectory under the artifacts directory holding per-run progress files.
 PROGRESS_DIRNAME = "progress"
 
+#: Suffix for a run's terminal summary, written when the run ends.
+#:
+#: A result is not progress. The progress file is removed when the run finishes --
+#: a file left behind reads as a run still going -- but the *outcome* has to survive
+#: that, because whoever wants it (go-app, persisting into data_migrations.metadata)
+#: asks only after the run is over. Two files, two lifetimes.
+RESULT_SUFFIX = ".result.json"
+
 #: Envelope keys. `extra` may not overwrite these — a step-specific field that shadowed
 #: `step` or `run_id` would make the event describe the wrong run.
 RESERVED_KEYS = frozenset({"v", "run_id", "step", "phase", "current", "total", "metrics", "message", "ts"})
@@ -135,6 +143,45 @@ def progress_path(step: str, run_id: str, directory: Optional[str] = None) -> st
     """Return the progress file path for one run of one step."""
     name = f"{safe_component(step)}__{safe_component(run_id)}.json"
     return os.path.join(progress_dir(directory), name)
+
+
+def result_path(step: str, run_id: str, directory: Optional[str] = None) -> str:
+    """Return the terminal-summary path for one run of one step."""
+    name = f"{safe_component(step)}__{safe_component(run_id)}{RESULT_SUFFIX}"
+    return os.path.join(progress_dir(directory), name)
+
+
+def write_result(summary: Dict[str, Any]) -> Optional[str]:
+    """Persist a run's terminal summary beside its progress file. Never raises."""
+    path = _progress_file
+    if not path:
+        return None
+    target = path[: -len(".json")] + RESULT_SUFFIX if path.endswith(".json") else path + RESULT_SUFFIX
+    _write_atomic(target, summary)
+    return target
+
+
+def read_result(step: str, run_id: str, directory: Optional[str] = None) -> Dict[str, Any]:
+    """Read one run's terminal summary. Returns {} when it is missing or unreadable."""
+    return read(result_path(step, run_id, directory))
+
+
+def latest_result_for_step(step: str, directory: Optional[str] = None) -> Dict[str, Any]:
+    """Return the newest terminal summary for a step, or {}.
+
+    No staleness rule here, unlike `latest_for_step`: a result is *supposed* to outlive
+    its run. Age says nothing about whether it is the answer being asked for.
+    """
+    pattern = os.path.join(progress_dir(directory), f"{safe_component(step)}__*{RESULT_SUFFIX}")
+    try:
+        paths = sorted(glob.glob(pattern), key=_mtime, reverse=True)
+    except OSError:  # pragma: no cover - glob rarely raises
+        return {}
+    for path in paths:
+        payload = read(path)
+        if payload:
+            return payload
+    return {}
 
 
 def configure(step: str, run_id: Optional[str] = None, directory: Optional[str] = None) -> Optional[str]:
@@ -235,6 +282,10 @@ def list_for_step(step: str, directory: Optional[str] = None) -> List[str]:
         paths = glob.glob(pattern)
     except OSError:  # pragma: no cover - glob rarely raises
         return []
+    # Result files also end in .json and would otherwise be read as live progress —
+    # which is exactly the "a finished run looks like a running one" confusion the
+    # two separate lifetimes exist to avoid.
+    paths = [p for p in paths if not p.endswith(RESULT_SUFFIX)]
     return sorted(paths, key=_mtime, reverse=True)
 
 

@@ -129,3 +129,65 @@ func TestFetchAutoTuneProgress_ReturnsProgress(t *testing.T) {
 	require.NotNil(t, progress)
 	assert.Equal(t, "lgbm", progress["algorithm"])
 }
+
+// TestCallMLTrainEndpointWithResult_ReturnsTheSummary: the summary comes back on the
+// response because there is no afterwards to poll in — the progress file is removed
+// as the run ends, so this is the only moment the outcome still exists.
+func TestCallMLTrainEndpointWithResult_ReturnsTheSummary(t *testing.T) {
+	withMLService(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		_, _ = w.Write([]byte(`{"status":"ok","step":"batting","summary":{"formats_completed":4,"saved":4}}`))
+	})
+
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "batting", "?cutoff=2026-01-01")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "ok", result.Status)
+	assert.Equal(t, float64(4), result.Summary["formats_completed"])
+}
+
+func TestCallMLTrainEndpointWithResult_NoSummaryIsFine(t *testing.T) {
+	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","step":"combination_meta"}`))
+	})
+
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "combination-meta", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.Summary)
+}
+
+// TestCallMLTrainEndpointWithResult_UnreadableBodyDoesNotFailTheRun: the step
+// succeeded. Losing the summary is not losing the run, and turning it into an error
+// would report work that happened as work that did not.
+func TestCallMLTrainEndpointWithResult_UnreadableBodyDoesNotFailTheRun(t *testing.T) {
+	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{not json`))
+	})
+
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "batting", "")
+	require.NoError(t, err, "a 200 is a success whatever the body says")
+	assert.Nil(t, result)
+}
+
+func TestCallMLTrainEndpointWithResult_PropagatesAFailure(t *testing.T) {
+	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"detail":{"code":"CONTRIBUTIONS_CSV_MISSING","message":"nope"}}`))
+	})
+
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "combination-meta", "")
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "CONTRIBUTIONS_CSV_MISSING")
+}
+
+// TestCallMLTrainEndpoint_KeepsItsErrorOnlyContract for callers that never wanted the
+// body.
+func TestCallMLTrainEndpoint_KeepsItsErrorOnlyContract(t *testing.T) {
+	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","step":"batting"}`))
+	})
+
+	require.NoError(t, CallMLTrainEndpoint(context.Background(), "batting", ""))
+}

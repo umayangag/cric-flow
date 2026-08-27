@@ -52,6 +52,32 @@ func DefaultCutoff() string {
 // CallMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
 // When ml-service ADMIN_API_KEY is set, sends X-API-Key header.
 func CallMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
+	_, err := CallMLTrainEndpointWithResult(ctx, step, querySuffix)
+	return err
+}
+
+// mlSuccessBodyLimit bounds the success body we will read. A run summary is a few
+// kilobytes; anything far larger is a bug on the other side, and reading it into a
+// migration row would be storing that bug.
+const mlSuccessBodyLimit = 1 << 20
+
+// TrainResult is what a completed training step reports about itself.
+type TrainResult struct {
+	Status string `json:"status"`
+	Step   string `json:"step"`
+	// Summary is the run's terminal state as the trainer recorded it: formats
+	// trained, rows, metrics, dropped columns, artifacts. Absent for a step that
+	// publishes no progress.
+	Summary map[string]interface{} `json:"summary,omitempty"`
+}
+
+// CallMLTrainEndpointWithResult runs a training step and returns what it reported.
+//
+// The summary comes back on the response rather than being polled for afterwards,
+// because there is no afterwards to poll in: the progress file is removed as the run
+// ends (a file left behind reads as a run still going), so the response is the only
+// moment the outcome is still available.
+func CallMLTrainEndpointWithResult(ctx context.Context, step string, querySuffix string) (*TrainResult, error) {
 	base := MLServiceBaseURL()
 	url := base + "/admin/train/" + step + querySuffix
 	slog.Info("pipeline: calling ML service train endpoint",
@@ -59,7 +85,7 @@ func CallMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 		slog.String("url", url))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
 		req.Header.Set("X-API-Key", key)
@@ -69,14 +95,27 @@ func CallMLTrainEndpoint(ctx context.Context, step string, querySuffix string) e
 	client := &http.Client{Timeout: TrainStepTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, mlErrorBodyLimit))
-		return newMLError(url, resp.StatusCode, resp.Status, body)
+		return nil, newMLError(url, resp.StatusCode, resp.Status, body)
 	}
-	return nil
+
+	// The step succeeded. An unreadable body loses the summary, not the run, so it
+	// is logged rather than turned into a failure the operator has to interpret.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, mlSuccessBodyLimit))
+	if err != nil {
+		slog.Warn("pipeline: could not read train response body", slog.String("step", step), slog.Any("err", err))
+		return nil, nil
+	}
+	var result TrainResult
+	if err := json.Unmarshal(body, &result); err != nil {
+		slog.Warn("pipeline: unreadable train response body", slog.String("step", step), slog.Any("err", err))
+		return nil, nil
+	}
+	return &result, nil
 }
 
 // ProgressInterval returns the SSE polling interval for pipeline progress from config.

@@ -22,6 +22,7 @@ import functools
 import logging
 import os
 import threading
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, TypeVar, cast
 
 from ml import run_progress
@@ -112,7 +113,68 @@ class _FormatCounter:
             return self._completed, self._total
 
 
+class _RunSummary:
+    """Accumulates what a run should be remembered by, for `finish` to persist.
+
+    The live progress file only holds the *last* event — it is overwritten on every
+    emit, which is what makes it cheap to poll. The run's outcome is a different
+    question: which formats trained, on how many rows, what was dropped, what was
+    written. Building it as events go past costs nothing and is the only chance to
+    have it, since nothing re-reads a stream of overwritten files.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._formats: Dict[str, Dict[str, Any]] = {}
+        self._dropped: Dict[str, List[str]] = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._formats.clear()
+            self._dropped.clear()
+
+    def _slot(self, fmt: Optional[str]) -> Dict[str, Any]:
+        key = fmt or "_ALL_"
+        return self._formats.setdefault(key, {"format": key})
+
+    def record_data(self, fmt: Optional[str], metrics: Mapping[str, Any]) -> None:
+        with self._lock:
+            self._slot(fmt).update(metrics)
+
+    def record_metrics(self, fmt: Optional[str], metrics: Optional[Mapping[str, Any]]) -> None:
+        if not metrics:
+            return
+        with self._lock:
+            self._slot(fmt).setdefault("metrics", {}).update(metrics)
+
+    def record_completed(self, fmt: Optional[str]) -> None:
+        """Note that a format finished, even if it reported no numbers.
+
+        Without this a format that trained successfully but published no metrics is
+        absent from the summary entirely — which reads as "it did not run", a
+        different and wrong answer.
+        """
+        with self._lock:
+            self._slot(fmt)["completed"] = True
+
+    def record_dropped(self, fmt: Optional[str], names: Sequence[str]) -> None:
+        with self._lock:
+            self._dropped[fmt or "_ALL_"] = list(names)
+
+    def record_artifacts(self, fmt: Optional[str], artifacts: List[Dict[str, Any]]) -> None:
+        with self._lock:
+            self._slot(fmt)["artifacts"] = artifacts
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "formats": [dict(v) for v in self._formats.values()],
+                "dropped_columns": {k: list(v) for k, v in self._dropped.items() if v},
+            }
+
+
 _formats = _FormatCounter()
+_summary = _RunSummary()
 
 
 @never_raises
@@ -121,6 +183,7 @@ def start(model_name: str, total_formats: int = 0, out_dir: Optional[str] = None
     step = step_name(model_name)
     try:
         _formats.reset(total_formats)
+        _summary.reset()
         run_id = os.environ.get("PIPELINE_RUN_ID") or None
         path = run_progress.configure(step, run_id=run_id, directory=out_dir)
         _emit(Event(step=step, phase=PHASE_LOAD, current=0, total=total_formats, message="Starting"))
@@ -168,9 +231,25 @@ def finish(model_name: str, saved: int = 0) -> None:
             extra={"saved": saved},
         )
     )
+
+    summary = _summary.snapshot()
+    summary.update(
+        {
+            "v": run_progress.SCHEMA_VERSION,
+            "step": step,
+            "run_id": run_progress.get_run_id(),
+            "formats_completed": completed,
+            "formats_total": total,
+            "saved": saved,
+            "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        }
+    )
     try:
+        # Written before the progress file is cleared, and outliving it: whoever wants
+        # the outcome asks only after the run is over.
+        run_progress.write_result(summary)
         run_progress.clear()
-    except Exception as e:  # pragma: no cover - clear is defensive already
+    except Exception as e:  # pragma: no cover - both are defensive already
         logger.warning("training_progress.finish_failed model=%s error=%s", model_name, e)
 
 
@@ -191,6 +270,7 @@ def data_loaded(
     metrics: Dict[str, Any] = {"rows": int(rows), "features": int(features)}
     if targets is not None:
         metrics["targets"] = int(targets)
+    _summary.record_data(fmt, metrics)
     completed, total = _formats.snapshot()
     _emit(
         Event(
@@ -218,6 +298,7 @@ def columns_dropped(model_name: str, fmt: Optional[str], dropped: Sequence[str],
     names = list(dropped or [])
     if not names:
         return
+    _summary.record_dropped(fmt, names)
     extra: Dict[str, Any] = _fmt_extra(fmt)
     extra["dropped_columns"] = names[:MAX_REPORTED_COLUMNS]
     if len(names) > MAX_REPORTED_COLUMNS:
@@ -250,6 +331,7 @@ def fold(
     `TimeSeriesSplit`; the rest fit once. A step that emitted fake folds to look busy
     would be worse than one that says nothing.
     """
+    _summary.record_metrics(fmt, _clean_metrics(metrics))
     _emit(
         Event(
             step=step_name(model_name),
@@ -300,6 +382,7 @@ def artifact_written(model_name: str, fmt: Optional[str], paths: Iterable[str]) 
     if not written:
         return
 
+    _summary.record_artifacts(fmt, written)
     completed, total = _formats.snapshot()
     extra = _fmt_extra(fmt)
     extra["artifacts"] = written
@@ -319,6 +402,8 @@ def artifact_written(model_name: str, fmt: Optional[str], paths: Iterable[str]) 
 @never_raises
 def format_done(model_name: str, fmt: Optional[str], metrics: Optional[Mapping[str, Any]] = None) -> None:
     """Mark one format finished and advance the completed count."""
+    _summary.record_metrics(fmt, _clean_metrics(metrics))
+    _summary.record_completed(fmt)
     completed, total = _formats.complete_one()
     _emit(
         Event(

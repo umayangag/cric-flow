@@ -290,6 +290,45 @@ def get_step_progress(step: str, run_id: str = "") -> Dict[str, Any]:
     return run_progress.latest_for_step(step)
 
 
+def get_run_summary(step: str, run_id: str = "") -> Dict[str, Any]:
+    """Return the terminal summary of a training run, or {} when there is none.
+
+    Written by `training_progress.finish` as the subprocess exits, and deliberately
+    outliving the progress file: the progress file is removed when a run ends -- a
+    file left behind reads as a run still going -- but the outcome has to survive
+    that, because whoever wants it asks only after the run is over.
+
+    A step that is not instrumented (or a run that died before finishing) has no
+    summary, and {} says so rather than inventing one.
+    """
+    from ml import run_progress
+
+    step = (step or "").strip()
+    if not step:
+        return {}
+    if run_id.strip():
+        return run_progress.read_result(step, run_id.strip())
+    return run_progress.latest_result_for_step(step)
+
+
+def train_response(step: str, run_id: str = "") -> Dict[str, Any]:
+    """Build a training endpoint's success body, carrying the run summary when there is one.
+
+    go-app persists this into `data_migrations.metadata` (ops plan O-4), which is what
+    finally makes a finished run answerable: how many rows, which formats, what was
+    dropped, what was written. Returning it on the response rather than having go-app
+    poll for it is the only reliable moment -- by the time go-app could ask, the
+    progress file is gone.
+    """
+    from ml.training_progress import step_name
+
+    body: Dict[str, Any] = {"status": "ok", "step": step}
+    summary = get_run_summary(step_name(step), run_id)
+    if summary:
+        body["summary"] = summary
+    return body
+
+
 def get_auto_tune_progress() -> Dict[str, Any]:
     """Return live auto-tune progress. The auto-tune view of `get_step_progress`.
 
