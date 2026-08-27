@@ -75,7 +75,11 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   resumes from where it stopped rather than from the top.
 - **Ordering comes from `CanRunPipelineStep`**, injected rather than reimplemented, so a
   plan and a single-step trigger cannot disagree about whether a step may run.
-- **Steps already complete are skipped**, which is what makes a resume cheap.
+- **`Execute` runs every step; `Resume` skips what the run being resumed completed.**
+  Skipping is driven by that run's own state, never by history at large — a version
+  that asked "has this step ever succeeded?" would skip everything on a box that had
+  run the pipeline once, and report success having done nothing. The failed step is
+  where a resume starts, not something to skip past.
 - **Cancellation stops the plan first**: cancelling only the current step would end that
   step and let the plan start the next one, which is not what Stop means.
 

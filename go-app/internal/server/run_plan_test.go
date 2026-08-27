@@ -174,3 +174,12 @@ func TestRunPlanState_SaysNothingHasRunRatherThanErroring(t *testing.T) {
 	assert.False(t, body.Running)
 	assert.ElementsMatch(t, runplan.Names(), body.Plans)
 }
+
+func TestRunPlanStart_RefusesToResumeWithNothingToResume(t *testing.T) {
+	// Not parallel: it reads the plan store.
+	db.SetDB(nil)
+	rec := postRunPlan(t, `{"plan":"full","resume":true}`)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	assert.Contains(t, rec.Body.String(), "no previous plan to resume")
+}

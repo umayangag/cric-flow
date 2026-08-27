@@ -9,7 +9,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/services/runplan"
-	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
 // planCancel holds the cancel func for the run plan in flight.
@@ -57,20 +56,6 @@ func (a *App) newPlanExecutor() *runplan.Executor {
 		Store: runplan.TrackingStore{},
 		Run:   a.runPlanStep,
 		Gate:  opsstatus.CanRunPipelineStep,
-		Completed: func(ctx context.Context, stepID string) bool {
-			step, known := pipelinesvc.Steps().ByID(stepID)
-			if !known {
-				return false
-			}
-			done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, step.Command)
-			if err != nil {
-				// Unknown is treated as not-done: running a step twice is wasteful,
-				// skipping one that never ran is wrong.
-				slog.Warn("run plan: completion check failed", slog.String("step", stepID), slog.Any("err", err))
-				return false
-			}
-			return done
-		},
 	}
 }
 
@@ -101,15 +86,26 @@ func (a *App) runPlanStep(ctx context.Context, step pipelinesvc.Step) error {
 //
 // Background because a full pipeline outlives any request, and persisted because the
 // browser that started it may be closed long before it ends.
-func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step) {
+//
+// `prior` resumes a stopped run, skipping the steps it completed. Nil runs every step
+// — which is what a fresh plan means, and what an earlier version got wrong by
+// skipping anything that had ever succeeded on this box.
+func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step, prior *runplan.State) {
 	planCtx, cancel := context.WithCancel(a.JobContext())
 	a.planCancel.set(cancel)
 
 	go func() {
 		defer cancel()
 		defer a.planCancel.clear()
+
 		executor := a.newPlanExecutor()
-		if err := executor.Execute(planCtx, plan, steps); err != nil {
+		var err error
+		if prior != nil {
+			err = executor.Resume(planCtx, plan, steps, *prior)
+		} else {
+			err = executor.Execute(planCtx, plan, steps)
+		}
+		if err != nil {
 			slog.Error("run plan: stopped", slog.String("plan", plan), slog.Any("err", err))
 			return
 		}

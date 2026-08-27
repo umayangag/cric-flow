@@ -672,6 +672,16 @@ then refuse one step in — having already run the others.
 **`full` excludes optional steps.** A "run everything" that silently included auto-tune
 would take hours nobody asked for.
 
+**A bug found while building R-3 on this, and fixed here.** The first version asked
+tracking whether each step had *ever* completed successfully, and skipped it if so. On
+any box that had run the pipeline once, a fresh `full` plan would therefore skip every
+step and report success **having done nothing** — the exact silent-success failure this
+codebase keeps meeting, and the worst possible one to put behind a "Run full pipeline"
+button. Skipping is now driven by the prior run's own state: `Execute` runs everything,
+`Resume` skips what the run being resumed completed, and the failed step is where the
+resume starts rather than something to skip past.
+`TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore` is the guard.
+
 **A bug the tests caught.** The executor mutates its state as it walks, and handed that
 same state to the `Store`. The production store marshals immediately so it never
 noticed — but any implementation that *retained* what it was given would watch its
@@ -686,7 +696,8 @@ records change underneath it. The executor now clones before every store call, a
       empty body means `full`, because an operator posting nothing wants the pipeline,
       not an error about which plan they forgot to name
 - [x] `GET /ops/pipeline/plan` for current plan state, including `resume_from` — where
-      a resume would start, answered by the same logic the executor's own skip uses
+      a resume would start, answered by the same logic the executor's own skip uses.
+      `POST /ops/pipeline/run-plan` takes `{"resume": true}` to continue it
 - [x] `POST /ops/pipeline/stop` extended to stop the plan. The plan is cancelled
       *first*: stopping only the step it is on would end that step and then let the
       plan start the next one, which is not what Stop means

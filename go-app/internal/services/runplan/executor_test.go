@@ -200,10 +200,10 @@ func TestExecute_RefusesAStepTheGateRejects(t *testing.T) {
 	assert.Equal(t, []StepStatus{StatusCompleted, StatusFailed, StatusPending}, statuses(store.final))
 }
 
-// TestExecute_SkipsWhatIsAlreadyDone is what makes resuming cheap: re-running an
+// TestResume_SkipsWhatTheLastRunFinished is what makes resuming cheap: re-running an
 // eleven-step pipeline because step nine failed is how an operator learns not to use
 // the button.
-func TestExecute_SkipsWhatIsAlreadyDone(t *testing.T) {
+func TestResume_SkipsWhatTheLastRunFinished(t *testing.T) {
 	t.Parallel()
 	store := &fakeStore{}
 	var ran []string
@@ -211,12 +211,66 @@ func TestExecute_SkipsWhatIsAlreadyDone(t *testing.T) {
 		ran = append(ran, step.ID)
 		return nil
 	})
-	exec.Completed = func(_ context.Context, stepID string) bool { return stepID == "import" }
 
-	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute")))
+	prior := State{Plan: PlanFull, Steps: []StepState{
+		{StepID: "import", Status: StatusCompleted},
+		{StepID: "precompute", Status: StatusFailed},
+	}}
+	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "precompute"), prior))
 
 	assert.Equal(t, []string{"precompute"}, ran)
 	assert.Equal(t, []StepStatus{StatusSkipped, StatusCompleted}, statuses(store.final))
+}
+
+// TestResume_RerunsTheStepThatFailed: the failed step is where the resume starts, not
+// something to skip past.
+func TestResume_RerunsTheStepThatFailed(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{}
+	var ran []string
+	exec := executorFor(store, func(_ context.Context, step pipelinesvc.Step) error {
+		ran = append(ran, step.ID)
+		return nil
+	})
+
+	prior := State{Plan: PlanFull, Steps: []StepState{
+		{StepID: "import", Status: StatusCompleted},
+		{StepID: "precompute", Status: StatusFailed},
+		{StepID: "export", Status: StatusPending},
+	}}
+	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "precompute", "export"), prior))
+
+	assert.Equal(t, []string{"precompute", "export"}, ran)
+}
+
+// TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore is the regression guard for
+// a bug that would have been catastrophic and silent.
+//
+// An earlier version asked tracking whether each step had *ever* completed
+// successfully, and skipped it if so. On any box that had run the pipeline once, a
+// fresh `full` plan would therefore skip every step and report success having done
+// nothing — the exact silent-success failure this codebase keeps meeting. Skipping is
+// now driven by the prior run's own state, and a fresh Execute has no prior run.
+func TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{}
+	var ran []string
+	exec := executorFor(store, func(_ context.Context, step pipelinesvc.Step) error {
+		ran = append(ran, step.ID)
+		return nil
+	})
+
+	// A previous run of this plan completed everything. A fresh Execute must ignore it.
+	store.final = State{Plan: PlanFull, Steps: []StepState{
+		{StepID: "import", Status: StatusCompleted},
+		{StepID: "precompute", Status: StatusCompleted},
+	}}
+
+	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute")))
+
+	assert.Equal(t, []string{"import", "precompute"}, ran,
+		"a fresh plan runs every step; skipping history is how a plan silently does nothing")
+	assert.Equal(t, []StepStatus{StatusCompleted, StatusCompleted}, statuses(store.final))
 }
 
 func TestExecute_RefusesToStartWhenAPlanIsAlreadyRunning(t *testing.T) {

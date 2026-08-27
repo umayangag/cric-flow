@@ -33,10 +33,6 @@ type StepRunner func(ctx context.Context, step pipelinesvc.Step) error
 // endpoint applies, rather than a second copy that could disagree with it.
 type StepGate func(ctx context.Context, stepID string) (bool, string)
 
-// StepCompleted reports whether a step has already completed successfully, so a
-// resumed plan can skip what is already done.
-type StepCompleted func(ctx context.Context, stepID string) bool
-
 // Store persists plan state. Backed by data_migrations in production.
 //
 // Implementations receive a copy of the state and may retain it: the executor clones
@@ -56,20 +52,52 @@ type Store interface {
 
 // Executor walks a plan's steps in order, stopping at the first failure.
 type Executor struct {
-	Store     Store
-	Run       StepRunner
-	Gate      StepGate
-	Completed StepCompleted
+	Store Store
+	Run   StepRunner
+	Gate  StepGate
 	// Now is injectable so the timestamps in a plan's state are testable.
 	Now func() time.Time
 }
 
-// Execute runs a plan to completion, or to its first failure.
+// Execute runs a plan from the beginning, to completion or to its first failure.
 //
 // It returns when the plan is over. Callers that must not block start it in a
 // goroutine — the plan's state is persisted as it goes, so nothing is lost if the
 // caller stops watching, or if the browser that started it is closed overnight.
-func (e *Executor) Execute(ctx context.Context, plan string, steps []pipelinesvc.Step) (err error) {
+func (e *Executor) Execute(ctx context.Context, plan string, steps []pipelinesvc.Step) error {
+	return e.run(ctx, plan, steps, nil)
+}
+
+// Resume continues a plan, skipping the steps that completed in the run being resumed.
+//
+// "Completed" means completed *in that run*, which is the only sense that makes sense
+// here. An earlier version asked whether the step had ever completed successfully —
+// so on any box that had run the pipeline before, a fresh `full` plan would skip every
+// step and report success having done nothing. That is the silent-success failure this
+// codebase keeps meeting, and it is why skipping is now driven by the prior run's own
+// state rather than by history at large.
+func (e *Executor) Resume(ctx context.Context, plan string, steps []pipelinesvc.Step, prior State) error {
+	return e.run(ctx, plan, steps, completedIn(prior))
+}
+
+// completedIn returns the steps a prior run finished with, so a resume does not repeat
+// them. A step that failed is *not* included: it is where the resume starts.
+func completedIn(prior State) map[string]bool {
+	done := make(map[string]bool, len(prior.Steps))
+	for _, step := range prior.Steps {
+		if step.Status == StatusCompleted || step.Status == StatusSkipped {
+			done[step.StepID] = true
+		}
+	}
+	return done
+}
+
+func (e *Executor) run(
+	ctx context.Context,
+	plan string,
+	steps []pipelinesvc.Step,
+	alreadyDone map[string]bool,
+) (err error) {
 	if _, _, running, activeErr := e.Store.Active(ctx); activeErr == nil && running {
 		return ErrPlanRunning
 	}
@@ -100,7 +128,7 @@ func (e *Executor) Execute(ctx context.Context, plan string, steps []pipelinesvc
 			return ctx.Err()
 		}
 
-		if e.alreadyDone(ctx, step.ID) {
+		if alreadyDone[step.ID] {
 			current.Status = StatusSkipped
 			current.FinishedAt = e.timestamp()
 			slog.Info("run plan: step already complete, skipping", slog.String("step", step.ID))
@@ -170,13 +198,6 @@ func (e *Executor) gate(ctx context.Context, stepID string) (bool, string) {
 		return true, ""
 	}
 	return e.Gate(ctx, stepID)
-}
-
-func (e *Executor) alreadyDone(ctx context.Context, stepID string) bool {
-	if e.Completed == nil {
-		return false
-	}
-	return e.Completed(ctx, stepID)
 }
 
 func (e *Executor) timestamp() string {

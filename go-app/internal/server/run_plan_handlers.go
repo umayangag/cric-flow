@@ -18,6 +18,12 @@ import (
 type runPlanRequest struct {
 	Plan  string   `json:"plan"`
 	Steps []string `json:"steps"`
+	// Resume continues the last plan instead of starting over, skipping the steps it
+	// already completed. Without it every step runs, which is what "run the plan"
+	// means — re-running an eleven-step pipeline because step nine failed is how an
+	// operator learns not to use the button, and silently skipping steps that
+	// succeeded weeks ago would be worse still.
+	Resume bool `json:"resume"`
 }
 
 // runPlanStartHandler handles POST /ops/pipeline/run-plan.
@@ -51,22 +57,43 @@ func (a *App) runPlanStartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, _, running, activeErr := (runplan.TrackingStore{}).Active(r.Context()); activeErr == nil && running {
+	store := runplan.TrackingStore{}
+	if _, _, running, activeErr := store.Active(r.Context()); activeErr == nil && running {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": runplan.ErrPlanRunning.Error()})
 		return
+	}
+
+	var prior *runplan.State
+	if body.Resume {
+		_, last, found, lastErr := store.Latest(r.Context())
+		if lastErr != nil || !found {
+			respondJSON(w, http.StatusConflict, map[string]string{
+				"error": "there is no previous plan to resume",
+			})
+			return
+		}
+		if _, incomplete := last.FirstIncomplete(); !incomplete {
+			respondJSON(w, http.StatusConflict, map[string]string{
+				"error": "the last plan finished every step; there is nothing to resume",
+			})
+			return
+		}
+		prior = &last
 	}
 
 	stepIDs := make([]string, 0, len(steps))
 	for _, step := range steps {
 		stepIDs = append(stepIDs, step.ID)
 	}
-	slog.Info("run plan: starting", slog.String("plan", body.Plan), slog.Any("steps", stepIDs))
-	a.StartRunPlan(body.Plan, steps)
+	slog.Info("run plan: starting",
+		slog.String("plan", body.Plan), slog.Bool("resume", body.Resume), slog.Any("steps", stepIDs))
+	a.StartRunPlan(body.Plan, steps, prior)
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"status": "started",
 		"plan":   body.Plan,
 		"steps":  stepIDs,
+		"resume": body.Resume,
 	})
 }
 
