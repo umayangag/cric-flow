@@ -88,11 +88,12 @@ func (a *App) handleBacktestSelect(ctx context.Context, w http.ResponseWriter, f
 type BacktestProgressFunc func(step, message string)
 
 // doEvaluateWork runs the default evaluate pipeline (no use_ml=1). Progress is called after each step when non-nil.
-// When useLatestModel is true, ML uses the latest available model (may include post-cutoff training data); otherwise strict temporal cutoff.
+//
+// Evaluation always predicts with the artifacts ml-service has loaded. There is no
+// per-request choice of model vintage: see removed_params.go for use_latest_model.
 func doEvaluateWork(
 	ctx context.Context,
 	format, team1, team2, matchID string,
-	useLatestModel bool,
 	progress BacktestProgressFunc,
 ) (*backtestEvaluateResponse, error) {
 	mid, err := strconv.ParseInt(matchID, 10, 64)
@@ -127,7 +128,7 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("ml_predict", "Calling ML model for player predictions (batting, bowling, fielding when loaded)...")
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features, useLatestModel, nil)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, squad, features, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -143,17 +144,12 @@ func doEvaluateWork(
 	if progress != nil {
 		progress("metrics", "Computing player metrics and errors...")
 	}
-	modelMode := "strict_temporal"
-	if useLatestModel {
-		modelMode = "latest"
-	}
 	resp := backtestEvaluateResponse{
 		Filters: map[string]any{
-			"format":     format,
-			"team1":      team1,
-			"team2":      team2,
-			"match_id":   mid,
-			"model_mode": modelMode,
+			"format":   format,
+			"team1":    team1,
+			"team2":    team2,
+			"match_id": mid,
 		},
 	}
 	resp.Match.MatchID = mid
@@ -184,23 +180,16 @@ func doEvaluateWork(
 	return &resp, nil
 }
 
-// parseUseLatestModel reads use_latest_model from the request (query or JSON body when applicable).
-// When true, ML uses the latest available model (may include post-cutoff training data).
-// Default is false (strict temporal: model trained only on data before match date).
-func parseUseLatestModel(r *http.Request, defaultVal bool) bool {
-	q := r.URL.Query()
-	if v := strings.TrimSpace(q.Get("use_latest_model")); v == "1" || strings.EqualFold(v, "true") {
-		return true
-	}
-	return defaultVal
-}
-
 // handleBacktestEvaluate serves the evaluate mode for the backtest endpoint.
 // It requires a valid matchID and computes per-player results and summary metrics.
 func (a *App) handleBacktestEvaluate(
 	ctx context.Context,
 	w http.ResponseWriter,
-	r *http.Request,
+	// The request itself is no longer read here: the only thing this handler took
+	// from it was use_latest_model, which W0-2 retired. Kept in the signature because
+	// the dispatcher passes it to every mode handler and one odd signature would be
+	// worse than one unused parameter.
+	_ *http.Request,
 	format, team1, team2, matchID string,
 	useMLFlag string,
 	cutoffStr string,
@@ -244,8 +233,7 @@ func (a *App) handleBacktestEvaluate(
 		return
 	}
 
-	useLatest := parseUseLatestModel(r, false)
-	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, useLatest, nil)
+	resp, err := doEvaluateWork(ctx, format, team1, team2, matchID, nil)
 	if err != nil {
 		respondErr(w, err)
 		return

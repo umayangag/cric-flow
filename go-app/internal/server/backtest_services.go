@@ -264,7 +264,7 @@ func computePlayerMetricsFallback(
 			continue
 		}
 		g.Go(func() error {
-			preds, err := mlBacktestPredictFunc(gCtx, p.cutoff, p.format, p.squad, nil, false, nil)
+			preds, err := mlBacktestPredictFunc(gCtx, p.cutoff, p.format, p.squad, nil, nil)
 			if err != nil {
 				return nil
 			}

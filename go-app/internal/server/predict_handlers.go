@@ -42,7 +42,7 @@ func (mlPredictorAdapter) PredictPlayers(
 			Viscosity:         matchCtx.Viscosity,
 		}
 	}
-	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features, true, mc)
+	preds, err := mlBacktestPredictFunc(ctx, cutoff, format, playerIDs, features, mc)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,6 @@ func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchF
 		format string,
 		playerIDs []int64,
 		features map[int64]map[string]float64,
-		useLatest bool,
 		matchCtx *predictteam.MatchContext,
 	) (map[int64]predictteam.PlayerPred, float64, float64, float64, string, error) {
 		var mc *MatchContextForReconciliation
@@ -256,7 +255,7 @@ func newReconciledGenerator(client *BacktestMLClient) predictteam.GenerateMatchF
 				Viscosity:         matchCtx.Viscosity,
 			}
 		}
-		resp, err := client.GenerateMatch(ctx, cutoff, format, playerIDs, features, useLatest, mc)
+		resp, err := client.GenerateMatch(ctx, cutoff, format, playerIDs, features, mc)
 		if err != nil {
 			return nil, 0, 0, 0, "", err
 		}

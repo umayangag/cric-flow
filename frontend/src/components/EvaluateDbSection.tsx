@@ -19,7 +19,6 @@ import {
   CircularProgress,
   TextField,
 } from '@mui/material';
-import type { SxProps } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { accentGradient } from '../theme';
@@ -30,25 +29,6 @@ import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
 
 const filter = createFilterOptions<string>();
-
-/** Reusable display of job mode (latest artifacts vs strict temporal cutoff). */
-function JobModeDisplay({
-  jobUseLatestModel,
-  prefix,
-  sx,
-}: {
-  jobUseLatestModel: boolean | null;
-  prefix: string;
-  sx?: SxProps;
-}) {
-  if (jobUseLatestModel === null) return null;
-  return (
-    <Typography variant="body2" color="text.secondary" sx={sx}>
-      {prefix}
-      {jobUseLatestModel ? 'Latest model' : 'Strict temporal cutoff'}
-    </Typography>
-  );
-}
 
 /** Shared filter for Team 1/Team 2 Autocomplete: show all when empty, require ≥3 chars when typing. */
 function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
@@ -93,9 +73,6 @@ export interface EvaluateDbSectionProps {
   evaluating: boolean;
   evaluationSteps: EvaluationStep[];
 
-  // Evaluate job mode (from backend flags)
-  jobUseLatestModel: boolean | null;
-
   // Derived
   canLoad: boolean;
   canEvaluate: boolean;
@@ -129,7 +106,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   currentJobId,
   evaluating,
   evaluationSteps,
-  jobUseLatestModel,
   canLoad,
   canEvaluate,
   onResetOutputs,
@@ -139,12 +115,8 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   <Stack spacing={3} sx={{ mt: 2 }}>
     <Typography variant="body1">
       Evaluate historical matches by predicting for actual players and comparing predictions vs
-      actuals. Uses the latest loaded model (fast, good for QA).
+      actuals. Predictions come from the artifacts ml-service currently has loaded for the format.
     </Typography>
-    <Alert severity="info" sx={{ maxWidth: 560 }}>
-      Strict cutoff and train-on-the-fly are disabled to avoid high CPU/RAM usage. Pre-trained
-      artifacts must be loaded for your format (e.g. T20I). Use Latest model only.
-    </Alert>
 
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
       <FormControl fullWidth size="small">
@@ -234,7 +206,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           {evaluationResult && !evaluating && ' · Complete (result below)'}
           {error && !evaluating && ' · Failed (see error above)'}
         </Typography>
-        <JobModeDisplay jobUseLatestModel={jobUseLatestModel} prefix="Mode: " sx={{ mt: 0.5 }} />
       </Paper>
     )}
 
@@ -286,24 +257,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
           </Box>
         )}
       <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 260 }}>
-          <InputLabel id="eval-db-temporal-label">Model temporal mode</InputLabel>
-          <Select
-            labelId="eval-db-temporal-label"
-            value="latest"
-            label="Model temporal mode"
-            disabled
-          >
-            <MenuItem value="latest">Latest model only</MenuItem>
-          </Select>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 0.5, maxWidth: 340 }}
-          >
-            Latest: pre-loaded artifacts. Strict: train-on-the-fly with data before match.
-          </Typography>
-        </FormControl>
         <Button
           variant="contained"
           color="secondary"
@@ -382,11 +335,6 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
-        <JobModeDisplay
-          jobUseLatestModel={jobUseLatestModel}
-          prefix="Evaluated with "
-          sx={{ mb: 1 }}
-        />
         <EvaluationResults result={evaluationResult} />
       </Box>
     )}

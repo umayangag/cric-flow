@@ -54,6 +54,13 @@ var removedQueryParams = []removedParam{
 		Message: "model=unified has been removed; models are per-format",
 		Hint:    "Drop the parameter and pass the format you want. There is no cross-format serving model.",
 	},
+	{
+		Name:    "use_latest_model",
+		Code:    "LATEST_MODEL_REMOVED",
+		Message: "use_latest_model has been removed; prediction always uses the loaded artifacts",
+		Hint: "Drop the parameter. To evaluate against a different model, retrain and reload it; " +
+			"the Workbench tab reports which dataset each loaded artifact was trained on.",
+	},
 }
 
 // rejectRemovedParams refuses requests carrying a retired parameter with 400 and a

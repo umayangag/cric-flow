@@ -46,7 +46,7 @@ func TestBacktestMatchHandler_EvaluateMode_Success(t *testing.T) {
 			3: {Runs: 0},
 		}, nil
 	}
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{
 			1: {Runs: 25},
 			2: {Runs: 15},
@@ -116,7 +116,7 @@ func TestBacktestMatchHandler_EvaluateMode_PassesCutoffToML(t *testing.T) {
 	}
 
 	var receivedCutoff time.Time
-	mlBacktestPredictFunc = func(_ context.Context, cutoffArg time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, cutoffArg time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		receivedCutoff = cutoffArg
 		return map[int64]playerPredictions{
 			10: {Runs: 35},
@@ -167,7 +167,7 @@ func TestBacktestMatchHandler_EvaluateMode_BowlingMetrics(t *testing.T) {
 		}, nil
 	}
 	// Predictions
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{
 			101: {Runs: 28, Wickets: 1, Economy: 8.0},
 			102: {Runs: 10, Wickets: 0, Economy: 5.5},
@@ -231,7 +231,7 @@ func TestBacktestMatchHandler_EvaluateMode_FieldingMetrics(t *testing.T) {
 		}, nil
 	}
 	// Predictions include fielding
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{
 			201: {Runs: 12, Catches: 1, RunOuts: 2},
 			202: {Runs: 4, Catches: 0, RunOuts: 1},
@@ -290,7 +290,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregatesMetrics(t *testing.T) 
 			2: {Runs: 30},
 		}, nil
 	}
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{
 			1: {Runs: 18},
 			2: {Runs: 35},
@@ -348,7 +348,7 @@ func TestBacktestMatchHandler_EvaluateMode_MatchAggregates_FromPlayerPreds(t *te
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 		return map[int64]playerActuals{1: {Runs: 10}}, nil
 	}
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{1: {Runs: 9}}, nil
 	}
 	getBacktestMatchAggregatesActualsFunc = func(_ context.Context, _ int64) (matchAggregates, error) {
@@ -399,7 +399,7 @@ func TestBacktestMatchHandler_EvaluateMode_RMSE_R2(t *testing.T) {
 		}, nil
 	}
 	// Predictions
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{
 			1: {Runs: 25},
 			2: {Runs: 15},
@@ -449,7 +449,7 @@ func TestBacktestMatchHandler_EvaluateMode_FeaturesSeamCalled(t *testing.T) {
 	getBacktestPlayerActualsForMatchFunc = func(_ context.Context, _ int64) (map[int64]playerActuals, error) {
 		return map[int64]playerActuals{7: {Runs: 10}, 8: {Runs: 20}, 9: {Runs: 30}}, nil
 	}
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return map[int64]playerPredictions{7: {Runs: 11}, 8: {Runs: 19}, 9: {Runs: 31}}, nil
 	}
 

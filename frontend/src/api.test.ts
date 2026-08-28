@@ -140,9 +140,7 @@ describe('frontend api client (DB-backed)', () => {
     });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
-    const result = await api.evaluateStart('T20', 'IND', 'AUS', 789, {
-      use_latest_model: true,
-    });
+    const result = await api.evaluateStart('T20', 'IND', 'AUS', 789);
 
     expect(result).toEqual({ job_id: 'job-123' });
     expect(fetchMock).toHaveBeenCalledWith(
@@ -151,8 +149,10 @@ describe('frontend api client (DB-backed)', () => {
     );
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toContain('match_id=789');
+    // Both model toggles are retired: go-app refuses either of them (W0-1, W0-2), so a
+    // request the UI can construct must not carry them.
     expect(url).not.toContain('use_unified_model');
-    expect(url).toContain('use_latest_model=1');
+    expect(url).not.toContain('use_latest_model');
     vi.unstubAllGlobals();
   });
 

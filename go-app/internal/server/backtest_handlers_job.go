@@ -16,15 +16,12 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var format, team1, team2, matchID string
-	var useLatestModel bool
-	useLatestFromBody := false
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		var body struct {
-			Format         string `json:"format"`
-			Team1          string `json:"team1"`
-			Team2          string `json:"team2"`
-			MatchID        int64  `json:"match_id"`
-			UseLatestModel *bool  `json:"use_latest_model,omitempty"`
+			Format  string `json:"format"`
+			Team1   string `json:"team1"`
+			Team2   string `json:"team2"`
+			MatchID int64  `json:"match_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(
@@ -40,13 +37,6 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		if body.MatchID != 0 {
 			matchID = strconv.FormatInt(body.MatchID, 10)
 		}
-		if body.UseLatestModel != nil {
-			useLatestModel = *body.UseLatestModel
-			useLatestFromBody = true
-		}
-	}
-	if !useLatestFromBody {
-		useLatestModel = parseUseLatestModel(r, false)
 	}
 	if format == "" || team1 == "" || team2 == "" || matchID == "" {
 		q := r.URL.Query()
@@ -80,7 +70,7 @@ func (a *App) backtestEvaluateStartHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID, useLatestModel)
+	jobID, err := startEvaluateJob(r.Context(), format, team1, team2, matchID)
 	if err != nil {
 		respondErr(w, err)
 		return
@@ -154,8 +144,7 @@ func (a *App) backtestEvaluateStreamHandler(w http.ResponseWriter, r *http.Reque
 		writeSSE("progress", string(data))
 	}
 
-	useLatest := parseUseLatestModel(r, false)
-	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, useLatest, progress)
+	resp, err := doEvaluateWork(r.Context(), format, team1, team2, matchID, progress)
 	if err != nil {
 		payload := map[string]string{"message": err.Error()}
 		data, _ := json.Marshal(payload)

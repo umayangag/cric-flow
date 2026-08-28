@@ -247,8 +247,6 @@ export type EvaluateStatusResponse = {
   format: string;
   team1: string;
   team2: string;
-  /** True when the latest model was used (vs strict temporal cutoff). */
-  use_latest_model?: boolean;
   status: 'running' | 'done' | 'error';
   steps?: EvaluateJobStep[];
   result?: BacktestEvaluateResponse | null;
