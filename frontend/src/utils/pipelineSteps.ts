@@ -27,7 +27,17 @@ export type PipelineStep = {
   id: PipelineStepId;
   label: string;
   status: StepStatus;
+  /** The shell command that runs this step outside the console. */
   command: string;
+  /**
+   * What a run of this step is recorded as in `data_migrations`.
+   *
+   * Distinct from `command`, which is the make target a human would type. This is the
+   * value run history carries, and it is what lets a surface recognise its own runs —
+   * an accuracy trend that cannot tell a retrain from a precompute cannot say what
+   * changed. Asserted against the generated contract, so it cannot drift from Go.
+   */
+  migrationCommand: string;
   description: string;
   /** Only runnable when previous step completed successfully (from backend). */
   runnable: boolean;
@@ -54,6 +64,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Import',
       status: 'pending',
       command: 'make migrate && make cricsheet-import',
+      migrationCommand: 'cricsheet-import',
       description:
         'Download the configured Cricsheet archive, extract it and load the matches into the ' +
         'database — fetch, extract and import as one run. Fetch and extract are skipped, and say ' +
@@ -65,6 +76,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Precompute',
       status: 'pending',
       command: 'make precompute-all-all-formats',
+      migrationCommand: 'precompute-features',
       description:
         'Compute raw windowed stat snapshots (and sequence features when enabled) for all formats. Run from project root.',
       runnable: true,
@@ -74,6 +86,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Export',
       status: 'pending',
       command: 'make export-dataset',
+      migrationCommand: 'export-dataset',
       description:
         'Export all-format and per-format batting/bowling CSVs to output/go-app. Run from project root.',
       runnable: true,
@@ -83,6 +96,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Batting',
       status: 'pending',
       command: 'make train-batting',
+      migrationCommand: 'train-batting',
       description:
         'Train per-format batting models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
@@ -92,6 +106,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Bowling',
       status: 'pending',
       command: 'make train-bowling',
+      migrationCommand: 'train-bowling',
       description:
         'Train per-format bowling models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
@@ -101,6 +116,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Fielding',
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
+      migrationCommand: 'train-fielding',
       description:
         'Train per-format fielding models. Uses params from config and DB. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
       runnable: true,
@@ -110,6 +126,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Extras',
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
+      migrationCommand: 'train-extras',
       description:
         'Train per-format extras models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
       runnable: true,
@@ -119,6 +136,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Win',
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
+      migrationCommand: 'train-win',
       description:
         'Train per-format win models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
       runnable: true,
@@ -128,6 +146,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Innings',
       status: 'pending',
       command: 'make train-innings CUTOFF=2025-01-01T00:00:00Z',
+      migrationCommand: 'train-innings',
       description:
         'Train per-format innings models (innings_runs, innings_wickets) for reconciliation. Uses params from config and DB. Set CUTOFF and GO_APP_URL. Run from project root.',
       runnable: true,
@@ -137,6 +156,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Train Combination Meta',
       status: 'optional',
       command: 'make train-combination-meta',
+      migrationCommand: 'train-combination-meta',
       description:
         'Train the score-combination meta-model that blends per-model contributions into a final score. Optional; run it after Train Win when you want blended scores rather than the default weights.',
       runnable: true,
@@ -148,6 +168,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       label: 'Auto-tune',
       status: 'optional',
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
+      migrationCommand: 'ml-auto-tune',
       description:
         'Discover best algorithm and hyperparameters (saves to DB when GO_APP_URL is set). Run when params are unknown or you want to re-optimize. After auto-tune, you can run Train steps to refresh all artifacts from the new DB params. Optional; use Train steps only when params are already known.',
       runnable: true,

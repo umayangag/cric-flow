@@ -12,7 +12,7 @@ import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
 import ErrorNotice from './common/ErrorNotice';
 import type { ApiError } from '../lib/apiError';
-import { formatCount, formatWhen, shortDigest } from '../utils/format';
+import { MISSING, formatBytes, formatCount, formatWhen, shortDigest } from '../utils/format';
 import type { MLModelStat, ModelStatsResponse } from '../types';
 
 type Props = {
@@ -53,6 +53,31 @@ const FRESHNESS_TOOLTIP: Record<Freshness, string> = {
 };
 
 /**
+ * The newest export any model was trained from, or null when none records one.
+ *
+ * A model can be trained on the dataset that is still live and *still* be out of step
+ * with its siblings: two exports of the same dataset, hours apart, produce different
+ * training rows. Comparing each model against the newest export the set knows about
+ * needs no new data — the models carry it — and catches the case a dataset digest
+ * cannot (W5-1).
+ */
+export function newestExportAmong(models: MLModelStat[]): string | null {
+  let newest: string | null = null;
+  for (const model of models) {
+    const exported = model.provenance?.exported_at;
+    if (!exported) continue;
+    if (newest === null || exported > newest) newest = exported;
+  }
+  return newest;
+}
+
+/** Whether this model came from an older export than the newest one on the box. */
+export function isBehindNewestExport(model: MLModelStat, newestExport: string | null): boolean {
+  const exported = model.provenance?.exported_at;
+  return Boolean(newestExport && exported && exported < newestExport);
+}
+
+/**
  * Which dataset produced which model (ops plan P-2).
  *
  * The plan opened by saying this was unanswerable. Every piece now exists: the extract
@@ -64,6 +89,8 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
   const live = stats?.live_dataset;
   const stale = models.filter((m) => freshnessOf(m) === 'stale');
   const unknown = models.filter((m) => freshnessOf(m) === 'unknown');
+  const newestExport = newestExportAmong(models);
+  const behind = models.filter((m) => isBehindNewestExport(m, newestExport));
 
   return (
     <SectionCard
@@ -96,7 +123,8 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
           ) : (
             <Typography variant="body2" color="text.secondary">
               The data directory holds no dataset manifest, so nothing can be compared against it.
-              Fetch and extract a dataset from the Data tab to start recording provenance.
+              Run <strong>Import</strong> from Ops → Pipeline to acquire one and start recording
+              provenance.
             </Typography>
           )}
 
@@ -105,6 +133,15 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
               {stale.length} model{stale.length === 1 ? ' was' : 's were'} trained on a different
               dataset from the one now on the box. Predictions from{' '}
               {stale.length === 1 ? 'it' : 'them'} reflect the older data until you re-train.
+            </Alert>
+          )}
+
+          {behind.length > 0 && (
+            <Alert severity="info">
+              {behind.length} model{behind.length === 1 ? ' was' : 's were'} trained from an older
+              export than {newestExport ? formatWhen(newestExport) : 'the newest one'}. The dataset
+              may be the same; the training rows built from it are not, so these models and their
+              siblings are not comparable.
             </Alert>
           )}
 
@@ -119,9 +156,12 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
                   <TableRow>
                     <TableCell>Model</TableCell>
                     <TableCell>Format</TableCell>
+                    <TableCell>Algorithm</TableCell>
                     <TableCell>Dataset</TableCell>
                     <TableCell>Cutoff</TableCell>
                     <TableCell>Trained</TableCell>
+                    <TableCell>Exported</TableCell>
+                    <TableCell align="right">Size</TableCell>
                     <TableCell>Accuracy</TableCell>
                   </TableRow>
                 </TableHead>
@@ -133,6 +173,7 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
                       <TableRow key={`${model.model_name}-${model.match_format}`}>
                         <TableCell>{model.model_name}</TableCell>
                         <TableCell>{model.match_format}</TableCell>
+                        <TableCell>{model.algorithm ?? MISSING}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           <Tooltip title={FRESHNESS_TOOLTIP[freshness]}>
                             <Chip
@@ -154,14 +195,21 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
                             models from the same export with different cutoffs are
                             different models. */}
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                          {provenance?.training_cutoff
-                            ? formatWhen(provenance.training_cutoff)
-                            : '—'}
+                          {formatWhen(provenance?.training_cutoff)}
                         </TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {formatWhen(model.trained_at ?? model.modified)}
                         </TableCell>
-                        <TableCell>{model.accuracy_display ?? '—'}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {formatWhen(provenance?.exported_at)}
+                          {isBehindNewestExport(model, newestExport) && (
+                            <Tooltip title="Trained from an older export than the newest one on this box.">
+                              <Chip size="small" variant="outlined" label="behind" sx={{ ml: 1 }} />
+                            </Tooltip>
+                          )}
+                        </TableCell>
+                        <TableCell align="right">{formatBytes(model.size_bytes)}</TableCell>
+                        <TableCell>{model.accuracy_display ?? MISSING}</TableCell>
                       </TableRow>
                     );
                   })}

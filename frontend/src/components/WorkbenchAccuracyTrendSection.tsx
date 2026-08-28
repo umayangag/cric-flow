@@ -1,5 +1,7 @@
 import React from 'react';
 import ErrorNotice from './common/ErrorNotice';
+import AccuracyTrendRuns from './AccuracyTrendRuns';
+import type { Migration } from '../types';
 import type { ApiError } from '../lib/apiError';
 import {
   Box,
@@ -41,6 +43,8 @@ type Props = {
   maxLimit: number;
   trendLoading: boolean;
   trendError: ApiError | null;
+  runs: Migration[];
+  runsLoading: boolean;
   trendData: AccuracyTrendResponse | null;
   onChangeFormat: (value: string) => void;
   onChangeStartDate: (value: string) => void;
@@ -58,6 +62,8 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
   maxLimit,
   trendLoading,
   trendError,
+  runs,
+  runsLoading,
   trendData,
   onChangeFormat,
   onChangeStartDate,
@@ -223,6 +229,11 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
               </TableBody>
             </Table>
           </TableContainer>
+          <AccuracyTrendRuns
+            results={trendData.results ?? []}
+            migrations={runs}
+            loading={runsLoading}
+          />
         </Box>
       )}
     </SectionCard>

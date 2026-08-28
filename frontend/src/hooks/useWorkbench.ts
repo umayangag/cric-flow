@@ -5,6 +5,7 @@ import type { ApiError } from '../lib/apiError';
 import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
+  Migration,
   ModelMetadataApiResponse,
   ModelStatsResponse,
   WalkForwardRegistry,
@@ -12,6 +13,9 @@ import type {
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+
+/** How many run-history rows to pull for annotating the accuracy trend. */
+const RUN_HISTORY_LIMIT = 100;
 
 export interface UseWorkbenchReturn {
   format: string;
@@ -28,6 +32,9 @@ export interface UseWorkbenchReturn {
   trendError: ApiError | null;
   trendData: AccuracyTrendResponse | null;
   loadAccuracyTrend: () => Promise<void>;
+  /** Run history, so the trend can say what changed while it was moving (W5-2). */
+  runs: Migration[];
+  runsLoading: boolean;
   registryFile: File | null;
   registryError: string | null;
   registry: WalkForwardRegistry | null;
@@ -73,6 +80,8 @@ export function useWorkbench(): UseWorkbenchReturn {
     errorMessage: 'Failed to load model stats',
   });
   const trend = useAsync((filters: AccuracyTrendFilters) => api.accuracyTrend(filters));
+  // Enough history to cover a plotted window; the panel filters it to the dates shown.
+  const runs = useAsync(() => api.opsMigrations(1, RUN_HISTORY_LIMIT), { runOnMount: [] });
 
   const [registryFile, setRegistryFile] = useState<File | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
@@ -135,6 +144,8 @@ export function useWorkbench(): UseWorkbenchReturn {
       trendError: trend.error,
       trendData: trend.data,
       loadAccuracyTrend,
+      runs: runs.data?.items ?? [],
+      runsLoading: runs.loading,
       registryFile,
       registryError,
       registry,
@@ -156,6 +167,8 @@ export function useWorkbench(): UseWorkbenchReturn {
       trend.error,
       trend.data,
       loadAccuracyTrend,
+      runs.data,
+      runs.loading,
       registryFile,
       registryError,
       registry,

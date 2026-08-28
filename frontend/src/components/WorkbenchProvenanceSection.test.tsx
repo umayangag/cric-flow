@@ -1,6 +1,10 @@
 import { render, screen, cleanup, within } from '@testing-library/react';
 import React from 'react';
-import WorkbenchProvenanceSection, { freshnessOf } from './WorkbenchProvenanceSection';
+import WorkbenchProvenanceSection, {
+  freshnessOf,
+  isBehindNewestExport,
+  newestExportAmong,
+} from './WorkbenchProvenanceSection';
 import type { MLModelStat, ModelStatsResponse } from '../types';
 
 function model(overrides: Partial<MLModelStat>): MLModelStat {
@@ -136,5 +140,33 @@ describe('WorkbenchProvenanceSection', () => {
     render(<WorkbenchProvenanceSection stats={null} loading />);
 
     expect(screen.getByText(/Loading model provenance/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * W5-1's second flag. A model can be trained on the dataset that is still live and
+ * still be out of step with its siblings: two exports of the same dataset, hours
+ * apart, produce different training rows. The digest cannot catch that; the export
+ * timestamp the models already carry can.
+ */
+describe('behind the newest export', () => {
+  const older = { provenance: { exported_at: '2026-08-01T00:00:00Z' } } as MLModelStat;
+  const newer = { provenance: { exported_at: '2026-08-20T00:00:00Z' } } as MLModelStat;
+  const unrecorded = {} as MLModelStat;
+
+  it('finds the newest export the set knows about', () => {
+    expect(newestExportAmong([older, newer, unrecorded])).toBe('2026-08-20T00:00:00Z');
+    expect(newestExportAmong([unrecorded])).toBeNull();
+  });
+
+  it('flags only models from an older export', () => {
+    const newest = newestExportAmong([older, newer]);
+    expect(isBehindNewestExport(older, newest)).toBe(true);
+    expect(isBehindNewestExport(newer, newest)).toBe(false);
+  });
+
+  it('does not flag a model that records no export', () => {
+    // Unrecorded is unknown, not behind — the same rule the dataset digest follows.
+    expect(isBehindNewestExport(unrecorded, '2026-08-20T00:00:00Z')).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ const frontendSrc = resolve(here, '..');
 
 type ContractStep = {
   id: PipelineStepId;
+  command: string;
   label: string;
   optional: boolean;
   requires: string[];
@@ -78,6 +79,16 @@ describe('ops console contract', () => {
         ui?.prerequisite,
         `${step.id} must tell the operator about its precondition`,
       ).toBeTruthy();
+    }
+  });
+
+  it('records the same data_migrations command the backend writes', () => {
+    // Without this the UI can only recognise its own run history by hand-typed
+    // strings — which is how the six step tables drifted before F-1 replaced them.
+    const uiSteps = derivePipelineSteps(null);
+    for (const step of contract.pipeline_steps) {
+      const ui = uiSteps.find((s) => s.id === step.id);
+      expect(ui?.migrationCommand, `${step.id} migration command`).toBe(step.command);
     }
   });
 
