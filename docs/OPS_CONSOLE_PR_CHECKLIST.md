@@ -361,10 +361,17 @@ archive, live marking and ordering. They were run locally against a disposable
 - [x] Feed picker plus optional URL, with the allowlist rule stated in the UI
 - [x] Live fetch progress (bytes, rate, ETA) and extract progress (entries)
 - [x] Registry table with the live dataset marked
-- [ ] "Fetch → Extract → Import" offered as a sequence once R-1 exists — **still open,
-      and deliberately.** R-1 does not exist, and chaining these in the browser would
-      be a second executor that loses the run on a page reload. The tab says where
-      Import is instead of pretending to sequence it
+- [x] "Fetch → Extract → Import" offered as a sequence once R-1 exists — **done, and
+      not here.** R-1 landed, and the sequence went server-side as the `import` run
+      plan (consumer plan W6-2): Import downloads, extracts and loads, skipping what
+      the box already has and saying why. The reasoning above held — chaining in the
+      browser would have been a second executor that loses the run on a page reload.
+
+> **Superseded.** This tab no longer exists. Once Import acquired its own data there
+> was nothing left on it to decide, and the one part that was never an action — the
+> dataset registry — moved to Ops Status beneath the directory it describes. See
+> [CONSUMER_SURFACES_PR_CHECKLIST.md](CONSUMER_SURFACES_PR_CHECKLIST.md) W6-3. The
+> `/ops/data/*` endpoints A-1 to A-3 built are unchanged and still serve the plan.
 
 **Its own tab, not a section of Ops Status.** Acquisition is what you do *before* the
 pipeline, not a stage of it — the same distinction `Step.Surface` encodes on the
