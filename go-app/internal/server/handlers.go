@@ -112,7 +112,17 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		return
 	}
 	modelsList, ok := modelsVal.([]any)
-	if !ok || !db.Available() {
+	if !ok {
+		return
+	}
+
+	// The live dataset is go-app's to know: ml-service can say what a model was
+	// trained on, but not whether that is still what is on the box (ops plan P-2).
+	// Attached before the DB check below, because a model being stale is worth
+	// knowing whether or not Postgres is up.
+	attachLiveDataset(payload, modelsList)
+
+	if !db.Available() {
 		return
 	}
 	ctx := r.Context()
@@ -528,4 +538,45 @@ func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, preds)
+}
+
+// attachLiveDataset records which dataset is currently on the box, and marks each
+// model as trained on it or not.
+//
+// The comparison lives here rather than in the browser because "which dataset is live"
+// is a fact about this server's filesystem — the frontend would have to be told it
+// anyway, and computing the verdict once beats every client deriving it slightly
+// differently.
+//
+// A model with no provenance is *not* marked stale. It predates P-1, or was trained
+// from CSVs with no export manifest, and "we do not know" is a different answer from
+// "it is out of date" — treating unknown as stale would flag every model on a box that
+// has not retrained since, which is noise rather than a warning.
+func attachLiveDataset(payload map[string]any, models []any) {
+	live := liveDatasetProvenance()
+	if live.Known() {
+		payload["live_dataset"] = map[string]any{
+			"dataset_sha256":       live.DatasetSHA256,
+			"dataset_feed":         live.DatasetFeed,
+			"dataset_source_url":   live.DatasetSourceURL,
+			"dataset_extracted_at": live.DatasetExtracted,
+			"dataset_match_files":  live.DatasetMatchFile,
+		}
+	}
+
+	for _, m := range models {
+		modelMap, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		provenance, ok := modelMap["provenance"].(map[string]any)
+		if !ok {
+			continue
+		}
+		digest, _ := provenance["dataset_sha256"].(string)
+		if digest == "" || !live.Known() {
+			continue
+		}
+		modelMap["dataset_is_live"] = digest == live.DatasetSHA256
+	}
 }
