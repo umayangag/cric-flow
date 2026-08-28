@@ -1,11 +1,13 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
-import { api } from '../api';
-import { getStoredEvalJob, setStoredEvalJob, clearStoredEvalJob } from '../lib/evaluateDbStorage';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useBacktestFormOptions } from './useBacktestFormOptions';
-import { usePolling } from './usePolling';
+import { useEvaluateCandidates } from './useEvaluateCandidates';
+import { useEvaluateJob } from './useEvaluateJob';
+import { useMatchScorecard } from './useMatchScorecard';
+import { ApiError } from '../lib/apiError';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 
-export type EvaluationStep = { step: string; message: string };
+export type { EvaluationStep } from './useEvaluateJob';
+import type { EvaluationStep } from './useEvaluateJob';
 
 export interface UseEvaluateDbReturn {
   // Form inputs
@@ -23,7 +25,7 @@ export interface UseEvaluateDbReturn {
 
   // UI state
   loading: boolean;
-  error: string | null;
+  error: ApiError | null;
   statusMessage: string;
 
   // Backtest data
@@ -35,7 +37,7 @@ export interface UseEvaluateDbReturn {
   // Scorecard
   scorecard: MatchScorecardResponse | null;
   scorecardLoading: boolean;
-  scorecardError: string | null;
+  scorecardError: ApiError | null;
 
   // Evaluate job
   currentJobId: string | null;
@@ -52,8 +54,22 @@ export interface UseEvaluateDbReturn {
   handleEvaluateSelectedMatch: () => Promise<void>;
 }
 
+/**
+ * The Evaluate tab's state, composed from the three concerns it used to hold at once.
+ *
+ * It was 365 lines and 17 `useState` calls covering candidate loading, the evaluation
+ * job, polling, the scorecard and a set of model-mode flags — plus a callback whose
+ * job was keeping two copies of those flags in agreement. W0-2 removed the flags,
+ * W3-1 split the rest into {@link useEvaluateCandidates}, {@link useEvaluateJob} and
+ * {@link useMatchScorecard}, and this is what is left: wiring, and the two questions
+ * the components actually ask — can I load, can I evaluate.
+ *
+ * The seams are the ones the data has. Selection belongs to the candidate list, not to
+ * the job; the scorecard depends on the selected match and nothing else; the job knows
+ * the parameters it was started with, so nothing has to be reconciled against the form
+ * (W3-2 — the reconciliation callback is gone rather than smaller).
+ */
 export function useEvaluateDb(): UseEvaluateDbReturn {
-  const formOptions = useBacktestFormOptions();
   const {
     format,
     setFormat,
@@ -66,218 +82,68 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     availableTeam2s,
     optionsError,
     setOptionsError,
-  } = formOptions;
+  } = useBacktestFormOptions();
 
-  // UI state (action errors; options load errors come from formOptions.optionsError)
-  const [loading, setLoading] = useState<boolean>(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const error = optionsError ?? actionError;
-  const setError = useCallback(
-    (v: string | null) => {
-      setActionError(v);
-      if (v === null) setOptionsError(null);
-    },
-    [setOptionsError],
-  );
-  const [statusMessage, setStatusMessage] = useState<string>('');
+  const candidates = useEvaluateCandidates();
+  const job = useEvaluateJob();
+  const scorecard = useMatchScorecard(candidates.selectedMatchId);
 
-  // Backtest data
-  const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
-  const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
-  const [evaluationResult, setEvaluationResult] = useState<BacktestEvaluateResponse | null>(null);
+  const { setSelectedMatchId, reload: reloadCandidates } = candidates;
+  const { restore } = job;
 
-  // Match summary (scorecard) for selected match
-  const [scorecard, setScorecard] = useState<MatchScorecardResponse | null>(null);
-  const [scorecardLoading, setScorecardLoading] = useState<boolean>(false);
-  const [scorecardError, setScorecardError] = useState<string | null>(null);
+  // Pick up a job left running before a refresh, and put the form back the way it was.
+  // Once, on mount: this restores a snapshot, it does not subscribe to anything.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    void (async () => {
+      const previous = await restore();
+      if (!previous) return;
+      setFormat(previous.format);
+      setTeam1(previous.team1);
+      setTeam2(previous.team2);
+      setSelectedMatchId(previous.matchId);
+      // The table has to show the match list again for the selected row to mean
+      // anything. A failure here leaves the job visible and the table empty, which is
+      // worse than it sounds only if it is silent — it is not, the list reports it.
+      await reloadCandidates(previous.format, previous.team1, previous.team2);
+    })();
+  }, [restore, setFormat, setTeam1, setTeam2, setSelectedMatchId, reloadCandidates]);
 
-  // Evaluate job (survives refresh: job_id stored in localStorage, poll status)
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [evaluating, setEvaluating] = useState<boolean>(false);
-  const [evaluationSteps, setEvaluationSteps] = useState<EvaluationStep[]>([]);
+  const loading = candidates.candidatesLoading;
+  const error =
+    job.error ?? candidates.candidatesError ?? (optionsError ? new ApiError(optionsError) : null);
 
-  const canLoad = useMemo(
-    () => !!format && !!team1 && !!team2 && !loading,
-    [format, team1, team2, loading],
-  );
-  const canEvaluate = useMemo(
-    () => !!format && !!team1 && !!team2 && selectedMatchId != null && !loading && !evaluating,
-    [format, team1, team2, selectedMatchId, loading, evaluating],
-  );
+  const canLoad = Boolean(format && team1 && team2) && !loading;
+  const canEvaluate =
+    Boolean(format && team1 && team2) &&
+    candidates.selectedMatchId != null &&
+    !loading &&
+    !job.evaluating;
 
   const resetOutputs = useCallback(() => {
-    setCandidates([]);
-    setSelectedMatchId(null);
-    setEvaluationResult(null);
-    setScorecard(null);
-    setScorecardError(null);
-    setStatusMessage('');
-    setError(null);
-    setCurrentJobId(null);
-    clearStoredEvalJob();
-  }, [setError]);
-
-  // Restore evaluation job on mount (e.g. after refresh) — poll if still running
-  useEffect(() => {
-    let cancelled = false;
-    const data = getStoredEvalJob();
-    if (!data) return;
-
-    api
-      .getEvaluateStatus(data.job_id)
-      .then((status) => {
-        if (cancelled) return;
-        setCurrentJobId(data.job_id);
-        setFormat(data.format);
-        setTeam1(data.team1);
-        setTeam2(data.team2);
-        setSelectedMatchId(data.match_id);
-        setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
-        if (status.status === 'running') {
-          setEvaluating(true);
-          setStatusMessage('Evaluation in progress (restored).');
-        } else if (status.status === 'done' && status.result) {
-          setEvaluating(false);
-          setEvaluationResult(status.result);
-          setStatusMessage('Evaluation complete.');
-        } else if (status.status === 'error') {
-          setEvaluating(false);
-          setError(status.error ?? 'Unknown error');
-          setStatusMessage('');
-        }
-        // Reload candidates so the table shows the match list and selected row after refresh
-        api
-          .backtestSelect(data.format, data.team1, data.team2)
-          .then((resp) => {
-            if (!cancelled) setCandidates(resp.candidates ?? []);
-          })
-          .catch(() => {
-            /* ignore */
-          });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        clearStoredEvalJob();
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [setFormat, setTeam1, setTeam2, setSelectedMatchId, setError]);
-
-  // Poll evaluate status while job is running
-  const pollEvaluateStatus = useCallback(async () => {
-    if (!currentJobId || !evaluating) return;
-    try {
-      const status = await api.getEvaluateStatus(currentJobId);
-      setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
-      if (status.status === 'done') {
-        setEvaluating(false);
-        setEvaluationResult(status.result ?? null);
-        setStatusMessage('Evaluation complete.');
-        clearStoredEvalJob();
-      } else if (status.status === 'error') {
-        setEvaluating(false);
-        setError(status.error ?? 'Unknown error');
-        setStatusMessage('');
-        clearStoredEvalJob();
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setEvaluating(false);
-      if (msg.includes('404') || msg.includes('NOT_FOUND')) {
-        setError('Evaluation job no longer available (server may have restarted).');
-      } else {
-        setError(msg || 'Failed to fetch evaluation status.');
-      }
-      setStatusMessage('');
-      clearStoredEvalJob();
-    }
-  }, [currentJobId, evaluating, setError]);
-
-  usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
-
-  // Load match scorecard when a match is selected
-  useEffect(() => {
-    if (selectedMatchId == null) {
-      setScorecard(null);
-      setScorecardError(null);
-      setScorecardLoading(false);
-      return;
-    }
-    let active = true;
-    setScorecardLoading(true);
-    setScorecardError(null);
-    api
-      .getMatchScorecard(selectedMatchId)
-      .then((data) => {
-        if (active) {
-          setScorecard(data);
-          setScorecardError(null);
-        }
-      })
-      .catch((e: unknown) => {
-        if (active) {
-          setScorecard(null);
-          setScorecardError(e instanceof Error ? e.message : String(e));
-        }
-      })
-      .finally(() => {
-        if (active) setScorecardLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedMatchId]);
+    candidates.clear();
+    job.clear();
+    setOptionsError(null);
+  }, [candidates, job, setOptionsError]);
 
   const handleLoadCandidates = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setEvaluationResult(null);
-      setStatusMessage('Loading played matches…');
-      const resp = await api.backtestSelect(format, team1.trim(), team2.trim());
-      setCandidates(resp.candidates || []);
-      setStatusMessage(
-        `Loaded ${resp.candidates?.length ?? 0} candidates for ${team1} vs ${team2} (${format}).`,
-      );
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setStatusMessage('');
-    } finally {
-      setLoading(false);
-    }
-  }, [format, team1, team2, setError]);
+    setOptionsError(null);
+    await candidates.load(format, team1, team2);
+  }, [candidates, format, team1, team2, setOptionsError]);
 
   const handleEvaluateSelectedMatch = useCallback(async () => {
-    if (selectedMatchId == null) return;
-    setError(null);
-    setStatusMessage('Starting evaluation…');
-    try {
-      const { job_id } = await api.evaluateStart(
-        format.trim(),
-        team1.trim(),
-        team2.trim(),
-        selectedMatchId,
-      );
-      setStoredEvalJob({
-        job_id,
-        match_id: selectedMatchId,
-        format: format.trim(),
-        team1: team1.trim(),
-        team2: team2.trim(),
-        started_at: new Date().toISOString(),
-      });
-      setCurrentJobId(job_id);
-      setEvaluating(true);
-      setEvaluationSteps([]);
-      setStatusMessage(
-        'Evaluation in progress. You can refresh the page; progress will be restored.',
-      );
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatusMessage('');
-    }
-  }, [format, team1, team2, selectedMatchId, setError]);
+    if (candidates.selectedMatchId == null) return;
+    await job.start(format, team1, team2, candidates.selectedMatchId);
+  }, [job, format, team1, team2, candidates.selectedMatchId]);
+
+  const statusMessage = useMemo(() => {
+    if (job.statusMessage) return job.statusMessage;
+    if (candidates.candidatesLoading) return 'Loading played matches…';
+    if (candidates.candidatesError || !candidates.loaded) return '';
+    return `Loaded ${candidates.candidates.length} candidates for ${team1} vs ${team2} (${format}).`;
+  }, [job.statusMessage, candidates, team1, team2, format]);
 
   return {
     format,
@@ -292,16 +158,16 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     loading,
     error,
     statusMessage,
-    candidates,
-    selectedMatchId,
-    setSelectedMatchId,
-    evaluationResult,
-    scorecard,
-    scorecardLoading,
-    scorecardError,
-    currentJobId,
-    evaluating,
-    evaluationSteps,
+    candidates: candidates.candidates,
+    selectedMatchId: candidates.selectedMatchId,
+    setSelectedMatchId: candidates.setSelectedMatchId,
+    evaluationResult: job.result,
+    scorecard: scorecard.scorecard,
+    scorecardLoading: scorecard.scorecardLoading,
+    scorecardError: scorecard.scorecardError,
+    currentJobId: job.jobId,
+    evaluating: job.evaluating,
+    evaluationSteps: job.steps,
     canLoad,
     canEvaluate,
     resetOutputs,
