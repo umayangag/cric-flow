@@ -106,7 +106,16 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 					exportsvc.NewExtrasService(repo),
 					exportsvc.NewWinService(repo),
 				)
-				return map[string]any{"out_dir": outDir}, runner.Run(ctx, exportsvc.Options{OutDir: outDir, Unified: true})
+				// Provenance here as well as in runExportHandler: a plan-driven export
+				// and a manually triggered one must produce the same manifest, and
+				// without this the plan's would name no dataset at all — silently,
+				// which is the failure this whole phase exists to prevent.
+				opts := exportsvc.Options{
+					OutDir:     outDir,
+					Unified:    true,
+					Provenance: liveDatasetProvenance(),
+				}
+				return map[string]any{"out_dir": outDir}, runner.Run(ctx, opts)
 			},
 		}
 	}

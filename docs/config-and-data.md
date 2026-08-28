@@ -267,6 +267,36 @@ lane with `?lane=data`.
 
 ---
 
+## Export provenance
+
+An export leaves `export-manifest.json` beside its CSVs (ops plan P-1):
+
+```json
+{ "v": 1, "exported_at": "…", "formats": ["T20I"], "unified": true,
+  "files": [{"name": "batting_encoded_T20I.csv", "bytes": 4096}],
+  "provenance": { "dataset_sha256": "…", "dataset_feed": "all",
+                  "dataset_source_url": "…", "dataset_extracted_at": "…",
+                  "dataset_match_files": 19998 } }
+```
+
+A CSV on disk says nothing about the dataset behind its rows. ml-service reads this
+manifest when training and copies the provenance — plus the training cutoff, which
+already varies per run — into each model's sidecar, beside `feature_names`. The
+provenance then travels **with the artifact**, because the export directory that
+produced it is overwritten by the next export.
+
+`files` records sizes because an empty CSV is a failed export that reported success,
+and a manifest listing a file without its size would hide exactly that.
+
+Provenance that cannot be established is **omitted, not blanked** — a data directory
+populated by hand has no manifest, and an export from before P-1 has none. Absent means
+genuinely unknown, which is what P-2 flags; inventing a digest would defeat it.
+
+Inference exports (`--inference-only`) get no manifest: they are inputs for a
+prediction, not training data.
+
+---
+
 ## Export schemas and ML input mapping
 
 **Goal:** go-app dataset exports match ML service expected inputs (column order and types).

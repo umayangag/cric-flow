@@ -18,6 +18,14 @@ type Options struct {
 	Unified       bool
 	InferenceOnly bool
 	EnableSeq     bool // gate sequence feature columns in exporter
+	// Provenance describes the dataset these CSVs are derived from, recorded in the
+	// export manifest (ops plan P-1).
+	//
+	// Supplied by the caller rather than read here: which dataset is live is a
+	// question about the dataset directory, and an exporter that reached into it
+	// would be an exporter that knows about acquisition. The zero value means
+	// unknown, which is a real state and reported as such.
+	Provenance Provenance
 }
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.

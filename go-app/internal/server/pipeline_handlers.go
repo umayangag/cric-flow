@@ -153,7 +153,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outDir := config.DefaultExportDir()
-	opts := exportsvc.Options{OutDir: outDir, Unified: true}
+	opts := exportsvc.Options{OutDir: outDir, Unified: true, Provenance: liveDatasetProvenance()}
 	a.startTrackedJob("export-dataset", map[string]any{"out_dir": outDir}, config.ExportTimeout(),
 		func(ctx context.Context) (any, error) {
 			repo := &exportqueries.Repo{}
@@ -311,4 +311,24 @@ func trainRunMetadata(step pipelinesvc.Step, cutoff string, result *pipelinesvc.
 		}
 	}
 	return meta
+}
+
+// liveDatasetProvenance reads what is known about the dataset in the data directory.
+//
+// Read at the point of use rather than cached: the directory can be replaced by an
+// extract between one export and the next, and a cached digest would then describe
+// data that is no longer there — a provenance record that is quietly wrong is worse
+// than none, which is the whole reason P-2 exists.
+func liveDatasetProvenance() exportsvc.Provenance {
+	manifest, ok := dataacquire.ReadManifest(dataset.Dir())
+	if !ok {
+		return exportsvc.Provenance{}
+	}
+	return exportsvc.Provenance{
+		DatasetSHA256:    manifest.ArchiveSHA256,
+		DatasetSourceURL: manifest.SourceURL,
+		DatasetFeed:      manifest.FeedID,
+		DatasetExtracted: manifest.ExtractedAt,
+		DatasetMatchFile: manifest.MatchFiles,
+	}
 }

@@ -33,6 +33,7 @@ from sklearn.multioutput import MultiOutputRegressor
 from . import config as svc_config
 from .config import get_pipeline_common_config, get_training_params
 from .data_quality import clip_target_outliers, impute_features
+from .dataset_provenance import attach as attach_provenance
 from .feature_transforms import apply_transforms, get_transform_config
 from .pipeline_common import compute_time_decay_weights, get_scaler
 from .training_progress import (
@@ -336,6 +337,11 @@ class TrainingPipeline:
         # Save metadata
         if metadata is not None:
             metadata["share_model"] = share_model
+            # Provenance travels with the artifact, not with the export directory that
+            # produced it — that directory is overwritten by the next export, and a
+            # model file that cannot say what it trained on is one nobody can trust
+            # six months later (ops plan P-1).
+            attach_provenance(metadata, csv_dir=metadata.get("csv_dir"), cutoff=metadata.get("cutoff"))
             if feature_importance is not None:
                 metadata["feature_importance"] = feature_importance
             if transform_config:
@@ -672,6 +678,8 @@ class TrainingPipeline:
             transform_config = get_transform_config(self.spec.name)
             meta = {
                 "csv_path": csv_path,
+                # The manifest sits beside the CSV, so the directory is what locates it.
+                "csv_dir": os.path.dirname(csv_path) or ".",
                 "rows": int(X.shape[0]),
                 "n_features": int(X.shape[1]),
                 "n_targets": int(Y.shape[1]),

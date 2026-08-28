@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -118,4 +119,71 @@ func TestTrainRunMetadata_IsJSONSerialisable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(encoded), `"dataset_sha256":"abc"`)
 	assert.Contains(t, string(encoded), `"format":"T20I"`)
+}
+
+// TestLiveDatasetProvenance_ReadsTheDirectoryNotACache: the dataset directory can be
+// replaced by an extract between one export and the next, and a cached digest would
+// then describe data that is no longer there. A provenance record that is quietly
+// wrong is worse than none — the whole reason P-2 exists.
+func TestLiveDatasetProvenance_ReadsTheDirectoryNotACache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+
+	assert.False(t, liveDatasetProvenance().Known(), "an empty directory knows nothing")
+
+	first, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "first", FeedID: "t20s"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), first, 0o600))
+	assert.Equal(t, "first", liveDatasetProvenance().DatasetSHA256)
+
+	// A later extract replaces the dataset; the next export must say so.
+	second, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "second", FeedID: "all"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), second, 0o600))
+	assert.Equal(t, "second", liveDatasetProvenance().DatasetSHA256)
+	assert.Equal(t, "all", liveDatasetProvenance().DatasetFeed)
+}
+
+func TestLiveDatasetProvenance_CarriesEveryFieldTheManifestHas(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(dataset.DirEnvVar, dir)
+	encoded, err := json.Marshal(dataacquire.ExtractResult{
+		ArchiveSHA256: "abc",
+		SourceURL:     "https://cricsheet.org/downloads/all_json.zip",
+		FeedID:        "all",
+		ExtractedAt:   "2026-08-26T10:00:00Z",
+		MatchFiles:    19998,
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), encoded, 0o600))
+
+	got := liveDatasetProvenance()
+	assert.Equal(t, "abc", got.DatasetSHA256)
+	assert.Contains(t, got.DatasetSourceURL, "cricsheet.org")
+	assert.Equal(t, "all", got.DatasetFeed)
+	assert.Equal(t, "2026-08-26T10:00:00Z", got.DatasetExtracted)
+	assert.Equal(t, 19998, got.DatasetMatchFile)
+}
+
+// TestEveryExportPathStampsProvenance guards the gap this nearly shipped with: the
+// run-plan executor builds its own export options (stepJob), and a manually triggered
+// export builds another (runExportHandler). One carried provenance and the other did
+// not, so a plan-driven export would have written a manifest naming no dataset —
+// silently, which is the failure this phase exists to prevent.
+//
+// A source check because the two call sites are what must agree, and constructing a
+// real export needs a database.
+func TestEveryExportPathStampsProvenance(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"step_work.go", "pipeline_handlers.go"} {
+		source, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		text := string(source)
+		if !strings.Contains(text, "exportsvc.Options{") {
+			continue
+		}
+		assert.Contains(t, text, "liveDatasetProvenance()",
+			"%s builds export options without provenance; its manifest would name no dataset", path)
+	}
 }

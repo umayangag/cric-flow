@@ -26,6 +26,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from ml.dataset_provenance import default_csv_dir, provenance_for
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +58,13 @@ def write_artifact_meta(
         "format_code": format_code or "_LEGACY_",
         "feature_names": list(feature_names),
     }
+    # Provenance sits beside feature_names because it answers the same kind of
+    # question about the artifact: feature_names says what shape the model expects,
+    # provenance says what data it learned from (ops plan P-1). Both are useless in
+    # the export directory that produced them, because the next export overwrites it.
+    provenance = provenance_for(default_csv_dir())
+    if provenance:
+        payload["provenance"] = provenance
     if derived_weights is not None:
         payload["derived_weights"] = {k: float(v) for k, v in derived_weights.items()}
     if extra:
