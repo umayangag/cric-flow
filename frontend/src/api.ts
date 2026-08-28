@@ -562,7 +562,6 @@ export const api = {
     team2: string;
     venue?: string;
     match_date: string; // YYYY-MM-DD or RFC3339
-    season_id?: number;
     extra_team1?: number[];
     extra_team2?: number[];
     min_bowlers?: number;

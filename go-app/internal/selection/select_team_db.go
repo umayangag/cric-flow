@@ -69,7 +69,7 @@ func SelectTeam(
 	cutoff := time.Now().Truncate(24 * time.Hour)
 
 	features, err := exportqueries.ComputeFeaturesAtCutoffForFutureMatch(
-		ctx, cutoff, fmtCode, venuePtr, oppoID, playerIDs, nil, nil,
+		ctx, cutoff, fmtCode, venuePtr, oppoID, playerIDs, nil,
 	)
 	if err != nil {
 		return Result{}, fmt.Errorf("compute features: %w", err)

@@ -3,68 +3,17 @@ package server
 import (
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
+
+	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 )
 
-// removedParam describes a request parameter the API used to honour and now refuses.
+// rejectRemovedParams refuses requests carrying a retired query parameter with 400 and
+// a hint, rather than serving a result the caller did not ask for.
 //
-// The alternative — accepting it and quietly ignoring it — is the failure mode this
-// codebase has already been bitten by: a caller asks for one thing, gets another, and
-// nothing says so. A removed parameter that changed which model answered the request
-// is exactly that case, so it is refused with an explanation instead.
-type removedParam struct {
-	// Name is the query parameter.
-	Name string
-	// Value, when non-empty, narrows the rejection to that one value. Empty means
-	// the parameter is refused whatever it is set to.
-	Value string
-	// Code is the machine-readable reason, for clients that map codes to remedies.
-	Code string
-	// Message says what was removed.
-	Message string
-	// Hint says what to do instead.
-	Hint string
-}
-
-// matches reports whether the request carries this removed parameter.
-func (p removedParam) matches(q url.Values) bool {
-	if !q.Has(p.Name) {
-		return false
-	}
-	if p.Value == "" {
-		return true
-	}
-	return strings.EqualFold(strings.TrimSpace(q.Get(p.Name)), p.Value)
-}
-
-// removedQueryParams is the whole list. Adding an entry here retires a parameter
-// across every route in one edit.
-var removedQueryParams = []removedParam{
-	{
-		Name:    "use_unified_model",
-		Code:    "UNIFIED_MODEL_REMOVED",
-		Message: "use_unified_model has been removed; models are per-format",
-		Hint:    "Drop the parameter and pass the format you want. There is no cross-format serving model.",
-	},
-	{
-		Name:    "model",
-		Value:   "unified",
-		Code:    "UNIFIED_MODEL_REMOVED",
-		Message: "model=unified has been removed; models are per-format",
-		Hint:    "Drop the parameter and pass the format you want. There is no cross-format serving model.",
-	},
-	{
-		Name:    "use_latest_model",
-		Code:    "LATEST_MODEL_REMOVED",
-		Message: "use_latest_model has been removed; prediction always uses the loaded artifacts",
-		Hint: "Drop the parameter. To evaluate against a different model, retrain and reload it; " +
-			"the Workbench tab reports which dataset each loaded artifact was trained on.",
-	},
-}
-
-// rejectRemovedParams refuses requests carrying a retired parameter with 400 and a
-// hint, rather than serving a result the caller did not ask for.
+// The list itself lives in apiparams, which the generated frontend contract is built
+// from too — so a parameter cannot be retired on the server while the UI goes on
+// sending it. Body-only parameters are not visible here; the handler that decodes the
+// body refuses those (see rejectRetiredBodyField).
 //
 // Note this deliberately does not touch auto_tune's own `unified` flag: that is a
 // training mode (train one model across formats), not a serving tier, and it is a
@@ -73,8 +22,14 @@ var removedQueryParams = []removedParam{
 func rejectRemovedParams(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		for _, p := range removedQueryParams {
-			if !p.matches(q) {
+		get := func(name string) (string, bool) {
+			if !q.Has(name) {
+				return "", false
+			}
+			return q.Get(name), true
+		}
+		for _, p := range apiparams.Query() {
+			if !p.Matches(get) {
 				continue
 			}
 			slog.Info("rejected removed request parameter",
@@ -84,4 +39,25 @@ func rejectRemovedParams(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// retiredBodyFieldError is returned when a decoded request body carries a retired
+// field. encoding/json ignores unknown fields, so a caller still sending one would
+// otherwise get a prediction computed without it and no indication why — the
+// silent-success failure the retired list exists to prevent.
+type retiredBodyFieldError struct{ param apiparams.Retired }
+
+func (e retiredBodyFieldError) Error() string { return e.param.Message }
+
+// rejectRetiredBodyField reports an error when the raw JSON body carries the named
+// retired field, so the handler can refuse with the code and hint the list carries.
+func rejectRetiredBodyField(present bool, name string) error {
+	if !present {
+		return nil
+	}
+	p, ok := apiparams.ByName(name)
+	if !ok {
+		return nil
+	}
+	return retiredBodyFieldError{param: p}
 }

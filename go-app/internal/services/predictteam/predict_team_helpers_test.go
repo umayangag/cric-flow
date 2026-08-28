@@ -40,27 +40,18 @@ func TestHasFieldingPredictions(t *testing.T) {
 	})
 }
 
-func TestToWeatherOverride(t *testing.T) {
+// TestNoWeatherIsZero pins the claim the removal rests on: every weather feature a
+// prediction sends is zero. If someone reintroduces a way to set them, this fails
+// before the models are quietly fed a dimension they have only ever seen as zero.
+func TestNoWeatherIsZero(t *testing.T) {
 	t.Parallel()
 
-	t.Run("nil input", func(t *testing.T) {
-		require.Nil(t, toWeatherOverride(nil))
-	})
-
-	t.Run("with values", func(t *testing.T) {
-		w := &WeatherInput{
-			Temp: 28, Humidity: 65, Wind: 10,
-			Rain: 0, Cloud: 40, Pressure: 1013,
-		}
-		got := toWeatherOverride(w)
-		require.NotNil(t, got)
-		require.Equal(t, 28.0, got.Temp)
-		require.Equal(t, 65.0, got.Humidity)
-		require.Equal(t, 10.0, got.Wind)
-		require.Equal(t, 0.0, got.Rain)
-		require.Equal(t, 40.0, got.Cloud)
-		require.Equal(t, 1013.0, got.Pressure)
-	})
+	require.Zero(t, noWeather.Temp)
+	require.Zero(t, noWeather.Wind)
+	require.Zero(t, noWeather.Rain)
+	require.Zero(t, noWeather.Humidity)
+	require.Zero(t, noWeather.Cloud)
+	require.Zero(t, noWeather.Pressure)
 }
 
 func TestDefaultSimulationOpts(t *testing.T) {

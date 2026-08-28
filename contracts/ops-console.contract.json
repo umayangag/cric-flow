@@ -114,6 +114,10 @@
   ],
   "rejected_query_params": [
     "use_unified_model",
-    "model=unified"
+    "model=unified",
+    "use_latest_model"
+  ],
+  "rejected_body_params": [
+    "weather"
   ]
 }
