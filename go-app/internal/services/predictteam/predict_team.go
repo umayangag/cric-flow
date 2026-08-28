@@ -102,7 +102,6 @@ type GenerateMatchFunc func(
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
-	useLatest bool,
 	matchCtx *MatchContext,
 ) (players map[int64]PlayerPred, innings1Runs, innings2Runs float64, winProbTeam1 float64, modelVersion string, err error)
 
@@ -631,7 +630,6 @@ func predictTeamsWithIntermediates(
 			format,
 			selectedIDs,
 			featuresForSelected,
-			true,
 			matchCtx,
 		)
 		if errGen == nil {

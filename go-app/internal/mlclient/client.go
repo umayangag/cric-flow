@@ -128,6 +128,12 @@ func (c *Client) PredictPlayers(
 		}
 	}
 
+	// use_latest_model stays true here, and only here. This client serves team
+	// selection for a *future* match, so training on the newest data is the correct
+	// answer rather than a preference; every other caller was removed with the
+	// request parameter (consumer plan W0-2). It is read by ml-service only in the
+	// train-on-the-fly fallback, where it rounds the training cutoff to now instead
+	// of a cutoff that has not happened yet.
 	req := unifiedPredictRequest{
 		CutoffDate:     cutoff.Format(time.RFC3339),
 		PlayerIDs:      playerIDs,

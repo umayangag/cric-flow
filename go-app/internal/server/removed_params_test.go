@@ -39,6 +39,20 @@ func TestRejectRemovedParams(t *testing.T) {
 			"UNIFIED_MODEL_REMOVED",
 		},
 		{
+			"use_latest_model=1 is refused",
+			"/api/backtest?match_id=1&use_latest_model=1",
+			http.StatusBadRequest,
+			"LATEST_MODEL_REMOVED",
+		},
+		{
+			// Refused whatever it is set to: false was the default, and honouring it
+			// would promise a strict temporal cutoff the loaded artifacts do not have.
+			"use_latest_model=0 is refused too",
+			"/api/backtest?match_id=1&use_latest_model=0",
+			http.StatusBadRequest,
+			"LATEST_MODEL_REMOVED",
+		},
+		{
 			"auto_tune model values are untouched",
 			"/ops/pipeline/run/auto_tune?model=batting",
 			http.StatusOK,

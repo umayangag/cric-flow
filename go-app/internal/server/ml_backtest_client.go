@@ -54,12 +54,11 @@ type mlBacktestMatchContext struct {
 
 // request/response DTOs kept local to avoid leaking server internals.
 type mlBacktestPredictRequest struct {
-	Cutoff         string                        `json:"cutoff_date"`
-	PlayerIDs      []int64                       `json:"player_ids,omitempty"`
-	Format         string                        `json:"format,omitempty"`
-	Features       map[string]map[string]float64 `json:"features,omitempty"`
-	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
-	MatchContext   *mlBacktestMatchContext       `json:"match_context,omitempty"`
+	Cutoff       string                        `json:"cutoff_date"`
+	PlayerIDs    []int64                       `json:"player_ids,omitempty"`
+	Format       string                        `json:"format,omitempty"`
+	Features     map[string]map[string]float64 `json:"features,omitempty"`
+	MatchContext *mlBacktestMatchContext       `json:"match_context,omitempty"`
 }
 
 type mlBacktestPlayerPred struct {
@@ -80,12 +79,11 @@ type mlBacktestPlayersResponse struct {
 
 // mlGenerateMatchRequest matches ml-service GenerateMatchRequest (POST /api/ml/generate-match).
 type mlGenerateMatchRequest struct {
-	CutoffDate     string                        `json:"cutoff_date"`
-	PlayerIDs      []int64                       `json:"player_ids"`
-	Format         string                        `json:"format"`
-	Features       map[string]map[string]float64 `json:"features,omitempty"`
-	MatchContext   *mlBacktestMatchContext       `json:"match_context,omitempty"`
-	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+	CutoffDate   string                        `json:"cutoff_date"`
+	PlayerIDs    []int64                       `json:"player_ids"`
+	Format       string                        `json:"format"`
+	Features     map[string]map[string]float64 `json:"features,omitempty"`
+	MatchContext *mlBacktestMatchContext       `json:"match_context,omitempty"`
 }
 
 // mlInningsSummary matches ml-service InningsSummary.
@@ -349,7 +347,6 @@ type MatchContextForReconciliation struct {
 
 // predictPlayers calls the ML backtest endpoint to get player-level predictions.
 // When format is non-empty and features is non-nil, they are sent so the ML service can run the full pipeline (real models).
-// useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
 // matchCtx: when non-nil and innings model is loaded, ML rescales predictions for consistency.
 func (c *BacktestMLClient) predictPlayers(
 	ctx context.Context,
@@ -357,17 +354,15 @@ func (c *BacktestMLClient) predictPlayers(
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
-	useLatestModel bool,
 	matchCtx *MatchContextForReconciliation,
 ) (map[int64]playerPredictions, error) {
 	if len(playerIDs) == 0 {
 		return map[int64]playerPredictions{}, nil
 	}
 	body := mlBacktestPredictRequest{
-		Cutoff:         cutoff.Format(time.RFC3339),
-		PlayerIDs:      playerIDs,
-		Format:         strings.TrimSpace(format),
-		UseLatestModel: useLatestModel,
+		Cutoff:    cutoff.Format(time.RFC3339),
+		PlayerIDs: playerIDs,
+		Format:    strings.TrimSpace(format),
 	}
 	if len(features) > 0 {
 		body.Features = make(map[string]map[string]float64, len(features))
@@ -443,11 +438,10 @@ func (c *BacktestMLClient) predictPlayers(
 // ---------------------------------------------------------------------------
 
 type mlBatchPredictItem struct {
-	CutoffDate     string                        `json:"cutoff_date"`
-	PlayerIDs      []int64                       `json:"player_ids"`
-	Format         string                        `json:"format"`
-	Features       map[string]map[string]float64 `json:"features,omitempty"`
-	UseLatestModel bool                          `json:"use_latest_model,omitempty"`
+	CutoffDate string                        `json:"cutoff_date"`
+	PlayerIDs  []int64                       `json:"player_ids"`
+	Format     string                        `json:"format"`
+	Features   map[string]map[string]float64 `json:"features,omitempty"`
 }
 
 type mlBatchPredictRequest struct {
@@ -464,11 +458,10 @@ type mlBatchPredictResponse struct {
 
 // BatchPredictPlayersInput holds the inputs for one item in a batch prediction.
 type BatchPredictPlayersInput struct {
-	Cutoff         time.Time
-	Format         string
-	PlayerIDs      []int64
-	Features       map[int64]map[string]float64
-	UseLatestModel bool
+	Cutoff    time.Time
+	Format    string
+	PlayerIDs []int64
+	Features  map[int64]map[string]float64
 }
 
 // PredictPlayersBatch sends multiple prediction requests to the ML service
@@ -484,10 +477,9 @@ func (c *BacktestMLClient) PredictPlayersBatch(
 	items := make([]mlBatchPredictItem, 0, len(inputs))
 	for _, in := range inputs {
 		item := mlBatchPredictItem{
-			CutoffDate:     in.Cutoff.Format(time.RFC3339),
-			PlayerIDs:      in.PlayerIDs,
-			Format:         strings.TrimSpace(in.Format),
-			UseLatestModel: in.UseLatestModel,
+			CutoffDate: in.Cutoff.Format(time.RFC3339),
+			PlayerIDs:  in.PlayerIDs,
+			Format:     strings.TrimSpace(in.Format),
 		}
 		if len(in.Features) > 0 {
 			item.Features = make(map[string]map[string]float64, len(in.Features))
@@ -554,24 +546,21 @@ func (c *BacktestMLClient) PredictPlayersBatch(
 // per-player projection, innings totals, and win probability for a future match.
 // playerIDs must include all players in the match (typically both XIs).
 // features is a per-player feature map (player_id -> feature_name -> value).
-// When useLatestModel is true, ML may ignore the strict cutoff and use the latest available model.
 func (c *BacktestMLClient) GenerateMatch(
 	ctx context.Context,
 	cutoff time.Time,
 	format string,
 	playerIDs []int64,
 	features map[int64]map[string]float64,
-	useLatestModel bool,
 	matchCtx *MatchContextForReconciliation,
 ) (MlGenerateMatchResponse, error) {
 	if len(playerIDs) == 0 {
 		return MlGenerateMatchResponse{}, errors.New("playerIDs required")
 	}
 	reqBody := mlGenerateMatchRequest{
-		CutoffDate:     cutoff.Format(time.RFC3339),
-		PlayerIDs:      playerIDs,
-		Format:         strings.TrimSpace(format),
-		UseLatestModel: useLatestModel,
+		CutoffDate: cutoff.Format(time.RFC3339),
+		PlayerIDs:  playerIDs,
+		Format:     strings.TrimSpace(format),
 	}
 	if len(features) > 0 {
 		reqBody.Features = make(map[string]map[string]float64, len(features))

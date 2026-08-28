@@ -157,28 +157,6 @@ func TestParseBacktestAccuracyTrendParams(t *testing.T) {
 	}
 }
 
-func TestParseUseLatestModel(t *testing.T) {
-	testCases := []struct {
-		name       string
-		rawURL     string
-		defaultVal bool
-		want       bool
-	}{
-		{"default false", "/api/backtest?match_id=1", false, false},
-		{"default true", "/api/backtest?match_id=1", true, true},
-		{"use_latest_model=1", "/api/backtest?match_id=1&use_latest_model=1", false, true},
-		{"use_latest_model=true", "/api/backtest?match_id=1&use_latest_model=true", false, true},
-	}
-	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, tc.rawURL, nil)
-			got := parseUseLatestModel(r, tc.defaultVal)
-			require.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestIntPtr(t *testing.T) {
 	got := intPtr(42)
 	require.NotNil(t, got)

@@ -40,7 +40,7 @@ func TestBacktestMLClient_PredictPlayers(t *testing.T) {
 	t.Setenv("ML_SERVICE_URL", srv.URL)
 	c := NewBacktestMLClient()
 	cutoff := time.Date(2024, 10, 30, 14, 0, 0, 0, time.UTC)
-	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, false, nil)
+	res, err := c.predictPlayers(t.Context(), cutoff, "", []int64{1, 2, 3}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, res, 3)
 	got := res[1]
@@ -188,7 +188,7 @@ func TestBacktestMLClient_GenerateMatch(t *testing.T) {
 		Team2OppositionID: 200,
 		Temp:              25,
 	}
-	res, err := c.GenerateMatch(t.Context(), cutoff, "T20", []int64{10, 20}, features, true, ctx)
+	res, err := c.GenerateMatch(t.Context(), cutoff, "T20", []int64{10, 20}, features, ctx)
 	require.NoError(t, err)
 	require.Equal(t, "v-test-generate", res.ModelVersion)
 	require.Len(t, res.Players, 2)

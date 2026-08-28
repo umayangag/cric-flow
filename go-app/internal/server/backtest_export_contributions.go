@@ -150,11 +150,10 @@ func runExportContributionsWork(
 			continue
 		}
 		batchInputs = append(batchInputs, BatchPredictPlayersInput{
-			Cutoff:         p.cutoff,
-			Format:         format,
-			PlayerIDs:      p.squad,
-			Features:       p.features,
-			UseLatestModel: false,
+			Cutoff:    p.cutoff,
+			Format:    format,
+			PlayerIDs: p.squad,
+			Features:  p.features,
 		})
 		validIndices = append(validIndices, i)
 	}
@@ -266,7 +265,7 @@ func exportContribsFallback(
 		mid := mid
 		g.Go(func() error {
 			matchIDStr := strconv.FormatInt(mid, 10)
-			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, false, nil)
+			resp, err := doEvaluateWork(gCtx, format, team1, team2, matchIDStr, nil)
 			if err != nil {
 				slog.Warn("export-contributions evaluate failed", "match_id", mid, "err", err)
 				return nil

@@ -34,17 +34,12 @@ function buildBacktestEvaluateUrl(
   team1: string,
   team2: string,
   matchId: number | string,
-  options?: {
-    /** Use latest model (artifacts or train-on-the-fly with "now" cutoff). When false, strict temporal - train only on data before match. Default false. */
-    use_latest_model?: boolean;
-  },
 ): string {
   const u = new URL(path, BASE_API_URL);
   u.searchParams.set('format', format);
   u.searchParams.set('team1', team1);
   u.searchParams.set('team2', team2);
   u.searchParams.set('match_id', String(matchId));
-  if (options?.use_latest_model === true) u.searchParams.set('use_latest_model', '1');
   return u.toString();
 }
 
@@ -467,7 +462,6 @@ export const api = {
       onResult: (result: BacktestEvaluateResponse) => void;
       onError: (err: Error) => void;
     },
-    options?: { use_latest_model?: boolean },
   ): Promise<void> {
     const url = buildBacktestEvaluateUrl(
       '/api/backtest/evaluate-stream',
@@ -475,7 +469,6 @@ export const api = {
       team1,
       team2,
       matchId,
-      options,
     );
     const res = await fetch(url, { headers: apiHeaders(false) });
     if (!res.ok) {
@@ -523,7 +516,6 @@ export const api = {
     team1: string,
     team2: string,
     matchId: number | string,
-    options?: { use_latest_model?: boolean },
   ): Promise<{ job_id: string }> {
     const url = buildBacktestEvaluateUrl(
       '/api/backtest/evaluate-start',
@@ -531,7 +523,6 @@ export const api = {
       team1,
       team2,
       matchId,
-      options,
     );
 
     const controller = new AbortController();

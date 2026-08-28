@@ -42,7 +42,7 @@ nothing good.
 | ID | Status | Depends on | Summary |
 |----|--------|-----------|---------|
 | W0-1 | done | — | Remove `use_unified_model` end to end |
-| W0-2 | todo | — | Audit `use_latest_model` — real feature or vestigial twin? |
+| W0-2 | done | — | Audit `use_latest_model` — vestigial, and misreporting; removed |
 | W0-3 | todo | — | Sweep for other dead toggles and props |
 | W1-1 | todo | — | One async-state primitive instead of 49 `useState` calls |
 | W1-2 | todo | — | Shared error display that honours the structured payload |
@@ -58,9 +58,14 @@ nothing good.
 | W5-1 | todo | ops P-1 | Workbench as a model console: registry with provenance |
 | W5-2 | todo | ops O-4 | Accuracy trend tied to actual runs |
 | W5-3 | todo | ops R-3 | Retire what the ops console now shows live |
+| W6-1 | todo | — | The archive URL is configuration, not a form field |
+| W6-2 | todo | ops R-1 | Import acquires what it imports: fetch → extract → import |
+| W6-3 | todo | W6-2 | Retire the Data tab's manual fetch/extract controls |
 
 **Recommended order:** W0 → W1 → W2 in that order and immediately; W3/W4 next; W5 last,
-after the ops plan's Phase O and P land.
+after the ops plan's Phase O and P land. **W6 is independent of all of them** and can be
+taken whenever — it is backend-led, and the only frontend it touches is the surface it
+deletes.
 
 ---
 
@@ -107,10 +112,50 @@ Two same-named concepts; this is exactly the `_LEGACY_` name collision again.
 same UI hook (`useLatestModel`, defaulting true). It may be a real feature or the dead
 twin. It has not been traced to a terminal effect.
 
-- [ ] Trace it to whatever actually changes behaviour
-- [ ] If it selects between artifact versions, document it and keep it
-- [ ] If it has no terminal effect, remove it the way W0-1 removes its sibling
-- [ ] Either way, record the finding — an untraced flag is how the first one survived
+**The finding.** Traced end to end, it reaches exactly **one** line that does anything:
+
+1. go-app threads it from the request onto `mlBacktestPredictRequest.use_latest_model`
+2. ml-service reads it in `_resolve_prediction_model_pairs` (`players.py:94`) — **inside**
+   the `if not bat_pair or not bowl_pair:` train-on-the-fly fallback, where it rounds the
+   *training* cutoff to now instead of the request's cutoff
+3. that branch needs `ENABLE_TRAIN_ON_THE_FLY`, which defaults to **false**
+   (`settings.py:127`); with it off, a format with no artifacts raises before the flag
+   is read
+
+So it is **not a serving-tier selector**. With artifacts loaded — every real deployment —
+it is never consulted. It selects a training cutoff, in a mode that is off by default.
+
+**It was also lying.** `doEvaluateWork` stamped `model_mode: "strict_temporal" | "latest"`
+onto the evaluate response from this flag, and `JobModeDisplay` rendered it as *"Strict
+temporal cutoff"*. With pre-trained artifacts both values describe the *same* artifact,
+so the default asserted a temporal guarantee the evaluation does not have — an evaluation
+surface overstating its own validity. Worse than W0-1's 400, which at least fails visibly.
+
+The UI had already half-abandoned it: the Evaluate tab shipped a **disabled** `Select`
+pinned to `"latest"`, under a caption describing a strict mode that could not be chosen,
+with the whole `use_latest_model` plumbing still live behind it.
+
+- [x] Trace it to whatever actually changes behaviour — one line, behind a disabled-by-default flag
+- [x] If it selects between artifact versions, document it and keep it — *it does not*
+- [x] Removed the way W0-1 removes its sibling: gone from `api.ts`, `types.ts`,
+      `useEvaluateDb`, `EvaluateDbSection`; gone from the go-app request surface
+      (`parseUseLatestModel`, the eval-job fields, the three ML request DTOs, the
+      `mlBacktestPredictFunc` seam and `predictteam.GenerateMatchFunc` — whose `useLatest`
+      parameter had only ever been called with a literal `true`)
+- [x] Refused, not ignored: `400 LATEST_MODEL_REMOVED` via the existing
+      `rejectRemovedParams` middleware — one list entry, both values
+- [x] `model_mode` and `JobModeDisplay` deleted rather than relabelled. **W3-4 replaces
+      them** with the artifact's real provenance, which is the honest version of the
+      question the label was pretending to answer
+- [x] **Kept, deliberately:** ml-service's own `use_latest_model` parameter, which has a
+      real effect on its API, and the one `UseLatestModel: true` in
+      `mlclient/client.go` — that client serves team selection for a *future* match,
+      where training on the newest data is correct rather than a preference. The
+      constant now says so in a comment, because an unexplained constant is how the
+      first flag survived
+
+**Acceptance:** no request the UI can construct carries a model-vintage toggle, and no
+response claims a temporal guarantee it cannot keep.
 
 ### W0-3 · Sweep for other dead toggles
 
@@ -277,6 +322,77 @@ Deliberately last: it is where the ops plan's provenance work becomes visible.
 - [ ] Remove Workbench panels the Ops tab now renders from live state
 - [ ] Workbench keeps one job: *what do my models look like and how good are they?*
       Anything about *running* the pipeline belongs in Ops
+
+---
+
+## Phase W6 — Import acquires its own data
+
+**Why:** the Data tab is not what acquisition should look like. Getting a dataset onto
+the box today is **three operator actions across two tabs**: pick a feed and Fetch
+(Data tab) → Extract (Data tab) → Import (Ops Status). The Data tab's own closing
+caption admits it — *"Once extracted, run Import from Ops Status…"*. The archive URL is
+a thing the operator is asked to choose on every run, when it is in fact a deployment
+constant: this box always pulls the same Cricsheet archive.
+
+Traced before writing this: the source lives in `dataacquire.feeds` (five hardcoded
+`Feed` structs) and is selected per request by `dataFetchHandler`; `dataExtractHandler`
+inflates a staged archive into `dataset.Dir()`; `importCricSheetHandler` reads that
+directory. Nothing chains them — which is the same shape as the gap R-1 closed for the
+compute steps, left open on the data lane.
+
+**What is expected instead:** the URL is configuration. **Import** is one button that
+downloads, extracts and loads.
+
+### W6-1 · The archive URL is configuration, not a form field
+
+- [ ] `inputs.cricsheet_source_url` in `go-app/config.json`, read through a
+      `config.CricsheetSourceURL()` accessor beside `DefaultCricsheetDir()`, with an
+      environment override in the same shape as `GO_APP_CRICSHEET_DIR`
+- [ ] Default it to the archive this deployment actually uses
+      (`https://cricsheet.org/downloads/all_json.zip`) so an unconfigured box still works
+- [ ] The configured URL goes through `dataacquire.ResolveSource` like any other:
+      **being ours is not an exemption from the allowlist**, the rule the named feeds
+      already follow
+- [ ] `/ops/status` reports the configured source, so "where would Import get data
+      from?" is answerable without reading the config file
+
+### W6-2 · Import acquires what it imports
+
+- [ ] `POST /ops/pipeline/run/import` ensures the dataset directory holds the
+      configured archive before importing: fetch → extract → import, one action
+- [ ] Chain it on the **R-1 run-plan executor** rather than a second chaining
+      mechanism — that is what gives it per-step live state, Stop, resume and run
+      history for free. The two data steps are on `LaneData` and carry no `Requires`,
+      so the ordering gate needs the plan to express the dependency explicitly
+- [ ] **Skipping must be visible.** Fetch is skipped when the live manifest already
+      names an archive from the configured URL and the server's conditional request
+      says it is unchanged; extract is skipped when the live manifest already names
+      the staged archive. A skipped step that renders as "done" is the silent-success
+      failure this repo has been bitten by three times — render it as *skipped, and why*
+- [ ] Re-download must stay reachable: a `?refresh=1` (or equivalent) that ignores the
+      skip rule, because "the upstream archive changed under the same URL" is the
+      normal case for Cricsheet, not an edge one
+
+**Acceptance:** on a box with an empty dataset directory, one click of **Import** ends
+with match rows in the database, and the run history shows the three steps it took.
+**Risk:** Import silently becoming a ten-minute network operation. The progress panel
+must say *downloading* before it says *importing*, or the first slow run reads as a hang.
+
+### W6-3 · Retire the Data tab's manual controls
+
+- [ ] Remove the feed picker, the URL box and the Extract button — W6-1 and W6-2 leave
+      them with nothing to decide
+- [ ] Keep what answers *what data is on this box and where did it come from*: the
+      dataset registry, the live manifest, staged archives. That belongs next to the
+      pipeline it feeds, on Ops Status, not on a tab of its own
+- [ ] `POST /ops/data/fetch` and `/ops/data/extract` stay as endpoints — the run plan
+      calls them, and an operator overriding the configured source is a real need. They
+      stop being the *normal* path, which is the point
+- [ ] Same rule as W0-1 for anything actually removed: refuse it loudly rather than
+      accept and ignore it
+
+**Acceptance:** no surface asks the operator to choose an archive URL to do the ordinary
+thing.
 
 ---
 

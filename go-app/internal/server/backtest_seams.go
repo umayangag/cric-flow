@@ -36,10 +36,9 @@ var (
 		}
 		return exq.ComputeFeaturesAtCutoffNoMatch(ctx, cutoff, format, playerIDs)
 	}
-	// ML seam for backtest: given cutoff, format, player ids, optional features, useLatestModel flag, and optional matchCtx for reconciliation.
-	// useLatestModel: when true, ML uses the latest available model (may include post-cutoff training data).
+	// ML seam for backtest: given cutoff, format, player ids, optional features, and optional matchCtx for reconciliation.
 	// matchCtx: when non-nil, ML rescales predictions for consistency (requires innings model).
-	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ bool, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
+	mlBacktestPredictFunc = func(_ context.Context, _ time.Time, _ string, _ []int64, _ map[int64]map[string]float64, _ *MatchContextForReconciliation) (map[int64]playerPredictions, error) {
 		return nil, sql.ErrNoRows
 	}
 	// Match-level aggregates: actuals from DB for given match

@@ -26,10 +26,6 @@ export interface UseEvaluateDbReturn {
   error: string | null;
   statusMessage: string;
 
-  // Model settings
-  useLatestModel: boolean;
-  setUseLatestModel: (v: boolean) => void;
-
   // Backtest data
   candidates: BacktestCandidate[];
   selectedMatchId: number | null;
@@ -54,7 +50,6 @@ export interface UseEvaluateDbReturn {
   resetOutputs: () => void;
   handleLoadCandidates: () => Promise<void>;
   handleEvaluateSelectedMatch: () => Promise<void>;
-  jobUseLatestModel: boolean | null;
 }
 
 export function useEvaluateDb(): UseEvaluateDbReturn {
@@ -86,9 +81,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   );
   const [statusMessage, setStatusMessage] = useState<string>('');
 
-  // Model temporal mode: strict (trained only on data before match) or latest (current model; may include match)
-  const [useLatestModel, setUseLatestModel] = useState<boolean>(true);
-
   // Backtest data
   const [candidates, setCandidates] = useState<BacktestCandidate[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
@@ -103,13 +95,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [evaluationSteps, setEvaluationSteps] = useState<EvaluationStep[]>([]);
-  const [jobUseLatestModel, setJobUseLatestModel] = useState<boolean | null>(null);
-
-  const applyJobModeFromStatus = useCallback((status: { use_latest_model?: boolean }) => {
-    setJobUseLatestModel(
-      typeof status.use_latest_model === 'boolean' ? status.use_latest_model : null,
-    );
-  }, []);
 
   const canLoad = useMemo(
     () => !!format && !!team1 && !!team2 && !loading,
@@ -129,7 +114,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setStatusMessage('');
     setError(null);
     setCurrentJobId(null);
-    setJobUseLatestModel(null);
     clearStoredEvalJob();
   }, [setError]);
 
@@ -148,7 +132,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         setTeam1(data.team1);
         setTeam2(data.team2);
         setSelectedMatchId(data.match_id);
-        applyJobModeFromStatus(status);
         setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
         if (status.status === 'running') {
           setEvaluating(true);
@@ -179,7 +162,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     return () => {
       cancelled = true;
     };
-  }, [applyJobModeFromStatus, setFormat, setTeam1, setTeam2, setSelectedMatchId, setError]);
+  }, [setFormat, setTeam1, setTeam2, setSelectedMatchId, setError]);
 
   // Poll evaluate status while job is running
   const pollEvaluateStatus = useCallback(async () => {
@@ -187,7 +170,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     try {
       const status = await api.getEvaluateStatus(currentJobId);
       setEvaluationSteps(status.steps?.map((s) => ({ step: s.step, message: s.message })) ?? []);
-      applyJobModeFromStatus(status);
       if (status.status === 'done') {
         setEvaluating(false);
         setEvaluationResult(status.result ?? null);
@@ -210,7 +192,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setStatusMessage('');
       clearStoredEvalJob();
     }
-  }, [currentJobId, evaluating, applyJobModeFromStatus, setError]);
+  }, [currentJobId, evaluating, setError]);
 
   usePolling(pollEvaluateStatus, 2000, Boolean(currentJobId && evaluating));
 
@@ -276,7 +258,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
         team1.trim(),
         team2.trim(),
         selectedMatchId,
-        { use_latest_model: useLatestModel },
       );
       setStoredEvalJob({
         job_id,
@@ -289,7 +270,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setCurrentJobId(job_id);
       setEvaluating(true);
       setEvaluationSteps([]);
-      applyJobModeFromStatus({ use_latest_model: useLatestModel });
       setStatusMessage(
         'Evaluation in progress. You can refresh the page; progress will be restored.',
       );
@@ -297,7 +277,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
       setError(err instanceof Error ? err.message : String(err));
       setStatusMessage('');
     }
-  }, [format, team1, team2, selectedMatchId, useLatestModel, applyJobModeFromStatus, setError]);
+  }, [format, team1, team2, selectedMatchId, setError]);
 
   return {
     format,
@@ -312,8 +292,6 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     loading,
     error,
     statusMessage,
-    useLatestModel,
-    setUseLatestModel,
     candidates,
     selectedMatchId,
     setSelectedMatchId,
@@ -329,6 +307,5 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     resetOutputs,
     handleLoadCandidates,
     handleEvaluateSelectedMatch,
-    jobUseLatestModel,
   };
 }
