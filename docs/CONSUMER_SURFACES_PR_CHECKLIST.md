@@ -43,7 +43,7 @@ nothing good.
 |----|--------|-----------|---------|
 | W0-1 | done | — | Remove `use_unified_model` end to end |
 | W0-2 | done | — | Audit `use_latest_model` — vestigial, and misreporting; removed |
-| W0-3 | todo | — | Sweep for other dead toggles and props |
+| W0-3 | done | — | Sweep for other dead toggles and props |
 | W1-1 | todo | — | One async-state primitive instead of 49 `useState` calls |
 | W1-2 | todo | — | Shared error display that honours the structured payload |
 | W1-3 | todo | — | Consolidate duplicated formatters |
@@ -159,10 +159,50 @@ response claims a temporal guarantee it cannot keep.
 
 ### W0-3 · Sweep for other dead toggles
 
-- [ ] Every boolean the UI can send: trace to a terminal behaviour or delete
-- [ ] Particular suspicion on options predating the per-format split
-- [ ] Add a test asserting the UI's request-option set matches what handlers read,
-      mirroring the ops plan's F-1 step-list test
+Every option the UI declares it can send, traced. The verdicts, so the next sweep does
+not redo the work:
+
+| Option | Verdict |
+|---|---|
+| `weather` (predict/team-selection) | **removed** — see below |
+| `season_id` (predict/team-selection) | **removed** — declared in `api.ts`, read by no handler; `predictTeamRequest` has no such field |
+| `resume` (run-plan) | kept — R-1's resume, traced to `Executor.Resume` |
+| `simulate` | kept — gates `PredictTeamsWithSimulation` |
+| `require_keeper`, `min_bowlers`, `extra_team1/2`, `simulation_top_k/samples/max_pairs` | kept — real effects in `buildPredictInput` / `buildSimulationOpts`. The UI declares them and never sends them, which is not the same as dead: a declared option a handler honours is a usable API, not a lie |
+| `use_reconciled_scorecard`, `include_both_scorecards` | kept — backend-only; not declared in `api.ts` |
+| `feed` / `url` (data fetch), `archive` (extract) | kept — W6 changes who chooses them, not whether they work |
+
+**`weather` was the real find.** `POST /api/predict/team-selection` accepted a weather
+object and threaded it through five signatures — `predictTeamRequest.Weather` →
+`predictteam.WeatherInput` → `exportqueries.WeatherOverride` → `batting_temp`,
+`bowling_wind` and four more, plus the win model's match context.
+
+It is worse than dead. Nothing populates `weather_data`
+([docs/weather-not-implemented.md](weather-not-implemented.md) records why, and that
+0 of 877 venues have coordinates), so **every training row the win model has ever seen
+carried zeros in those columns**. The request field let a caller put a real temperature
+into a dimension the model has only seen as zero: not a better prediction, an
+off-distribution one, and nothing said so. None of the six names appears in the v3
+feature contract either, so on the player models the values were simply discarded.
+
+- [x] Every option the UI can send: traced to a terminal behaviour or deleted — table above
+- [x] `weather` removed from the request, from `predictteam` and from `exportqueries`;
+      the six features stay pinned at zero next to the comment that says why, and
+      `TestNoWeatherIsZero` fails if anyone reintroduces a way to set them
+- [x] Refused rather than ignored — but `weather` arrived in a **JSON body**, where
+      `encoding/json` drops unknown fields silently. `rejectRetiredBodyField` refuses
+      it with `400 WEATHER_NOT_IMPLEMENTED`; the query-string middleware could not have
+- [x] The contract test now generates from the **real** list. `registry_test.go` held a
+      hand-typed copy of `removedQueryParams` with a comment excusing the duplication
+      and nothing asserting the two matched — a list about drift that could itself
+      drift. Both now read `internal/services/apiparams`, a leaf package
+- [x] Split the contract into `rejected_query_params` and `rejected_body_params`. They
+      are checked differently on purpose: a query parameter's name only appears where a
+      request is built, so every source is grepped; a body field's name is an ordinary
+      word (`weather` is also a section of `/ops/status`) so only `api.ts` is, which is
+      sufficient because its request types are closed object literals
+
+**Acceptance:** every request option the UI declares reaches a handler that acts on it.
 
 ---
 

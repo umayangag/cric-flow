@@ -20,32 +20,31 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
 
-// WeatherInput holds optional weather conditions for the match (forecast or historical average).
-// When provided, these override the default 0 values in feature computation.
-type WeatherInput struct {
-	Temp     float64 `json:"temp,omitempty"`     // Celsius
-	Humidity float64 `json:"humidity,omitempty"` // 0-100
-	Wind     float64 `json:"wind,omitempty"`
-	Rain     float64 `json:"rain,omitempty"`
-	Cloud    float64 `json:"cloud,omitempty"`
-	Pressure float64 `json:"pressure,omitempty"`
-}
+// noWeather is what every weather feature is worth at prediction time: nothing.
+//
+// Weather is planned, not implemented — see docs/weather-not-implemented.md. Nothing
+// populates weather_data, so every training row the win model has ever seen carried
+// zeros in these six columns. The request field that let a caller pass real values was
+// removed in consumer plan W0-3: feeding a real temperature to a model that has only
+// ever seen zero is not a better prediction, it is an off-distribution one that
+// nothing reports. The columns stay in the feature vector; filling them honestly is
+// the weather work, not this.
+var noWeather = struct{ Temp, Wind, Rain, Humidity, Cloud, Pressure int }{}
 
 // Input defines the request for future-match team selection.
 type Input struct {
-	Format                 string        `json:"format"`
-	Team1                  string        `json:"team1"`
-	Team2                  string        `json:"team2"`
-	Venue                  string        `json:"venue,omitempty"` // venue name; empty = unknown venue
-	MatchDate              time.Time     `json:"match_date"`
-	Weather                *WeatherInput `json:"weather,omitempty"`                  // optional; when set, used in features
-	ExtraTeam1             []int64       `json:"extra_team1,omitempty"`              // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2             []int64       `json:"extra_team2,omitempty"`              // extra player IDs for team2
-	OppositionPlayerIDs    []int64       `json:"opposition_player_ids,omitempty"`    // optional; for future batter-bowler matchup features
-	MinBowlers             int           `json:"min_bowlers,omitempty"`              // default 5
-	RequireKeeper          bool          `json:"require_keeper,omitempty"`           // default true
-	UseReconciledScorecard bool          `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
-	IncludeBothScorecards  bool          `json:"include_both_scorecards,omitempty"`  // when true, return both standard and reconciled scorecards for comparison
+	Format                 string    `json:"format"`
+	Team1                  string    `json:"team1"`
+	Team2                  string    `json:"team2"`
+	Venue                  string    `json:"venue,omitempty"` // venue name; empty = unknown venue
+	MatchDate              time.Time `json:"match_date"`
+	ExtraTeam1             []int64   `json:"extra_team1,omitempty"`              // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2             []int64   `json:"extra_team2,omitempty"`              // extra player IDs for team2
+	OppositionPlayerIDs    []int64   `json:"opposition_player_ids,omitempty"`    // optional; for future batter-bowler matchup features
+	MinBowlers             int       `json:"min_bowlers,omitempty"`              // default 5
+	RequireKeeper          bool      `json:"require_keeper,omitempty"`           // default true
+	UseReconciledScorecard bool      `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
+	IncludeBothScorecards  bool      `json:"include_both_scorecards,omitempty"`  // when true, return both standard and reconciled scorecards for comparison
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -356,7 +355,6 @@ func predictTeamsWithIntermediates(
 	for _, p := range pool2 {
 		ids2 = append(ids2, p.PlayerID)
 	}
-	weatherOpt := toWeatherOverride(input.Weather)
 	// Opposition strength: use the other team's pool (team1 faces team2, team2 faces team1).
 	// When input.OppositionPlayerIDs is set, use it as override for the opposition pool (e.g. single-team prediction).
 	oppositionIDsTeam1 := ids2
@@ -373,7 +371,6 @@ func predictTeamsWithIntermediates(
 		venueID,
 		opp2ID,
 		ids1,
-		weatherOpt,
 		oppositionIDsTeam1,
 	)
 	if err != nil {
@@ -387,7 +384,6 @@ func predictTeamsWithIntermediates(
 		venueID,
 		opp1ID,
 		ids2,
-		weatherOpt,
 		oppositionIDsTeam2,
 	)
 	if err != nil {
@@ -478,7 +474,6 @@ func predictTeamsWithIntermediates(
 				venueIDVal,
 				opp1IDVal,
 				opp2IDVal,
-				input.Weather,
 				allFeats,
 			)
 			if err != nil {
@@ -577,7 +572,6 @@ func predictTeamsWithIntermediates(
 		venueIDVal,
 		opp1IDVal,
 		opp2IDVal,
-		input.Weather,
 		nameToID1,
 		nameToID2,
 		sel1,
@@ -758,14 +752,12 @@ func getMatchWinProbability(
 	predictor MLPredictor,
 	format string,
 	formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	weather *WeatherInput,
 	nameToID1, nameToID2 map[string]int64,
 	sel1, sel2 []teamselect.Player,
 	allFeats map[int64]map[string]float64,
 ) (float64, error) {
 	ids1 := selectedPlayerIDs(sel1, nameToID1)
 	ids2 := selectedPlayerIDs(sel2, nameToID2)
-	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
 	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
 		t1Feats := extractPlayerFeatures(ids1, allFeats)
 		t2Feats := extractPlayerFeatures(ids2, allFeats)
@@ -774,12 +766,6 @@ func getMatchWinProbability(
 			venueIDVal,
 			opp2IDVal,
 			opp1IDVal,
-			temp,
-			wind,
-			rain,
-			humidity,
-			cloud,
-			pressure,
 			t1Feats,
 			t2Feats,
 			format,
@@ -797,12 +783,12 @@ func getMatchWinProbability(
 		Team1OppositionID:       int(opp2IDVal), // team1 bats first, faces team2
 		Team2OppositionID:       int(opp1IDVal),
 		TossWinnerOppositionID:  0,
-		Temp:                    temp,
-		Wind:                    wind,
-		Rain:                    rain,
-		Humidity:                humidity,
-		Cloud:                   cloud,
-		Pressure:                pressure,
+		Temp:                    noWeather.Temp,
+		Wind:                    noWeather.Wind,
+		Rain:                    noWeather.Rain,
+		Humidity:                noWeather.Humidity,
+		Cloud:                   noWeather.Cloud,
+		Pressure:                noWeather.Pressure,
 		Viscosity:               0,
 		Team1BatConsistencySum:  sumFeature(ids1, allFeats, "batting_consistency"),
 		Team1BowlConsistencySum: sumFeature(ids1, allFeats, "bowling_consistency"),
@@ -827,18 +813,6 @@ func selectedPlayerIDs(sel []teamselect.Player, nameToID map[string]int64) []int
 	return ids
 }
 
-func extractWeather(w *WeatherInput) (temp, wind, rain, humidity, cloud, pressure int) {
-	if w != nil {
-		temp = int(w.Temp)
-		wind = int(w.Wind)
-		rain = int(w.Rain)
-		humidity = int(w.Humidity)
-		cloud = int(w.Cloud)
-		pressure = int(w.Pressure)
-	}
-	return
-}
-
 func sumFeature(ids []int64, allFeats map[int64]map[string]float64, key string) float64 {
 	s := 0.0
 	for _, pid := range ids {
@@ -859,9 +833,13 @@ func extractPlayerFeatures(ids []int64, allFeats map[int64]map[string]float64) m
 	return out
 }
 
+// buildEnhancedWinFeatures assembles the win model's inputs.
+//
+// It takes no weather: there is none to take. See noWeather — the six columns are
+// zero in every training row, so they are filled from one place that says why rather
+// than threaded through a signature as if a caller could choose them.
 func buildEnhancedWinFeatures(
 	formatID, venueIDVal, team1OppID, team2OppID int64,
-	temp, wind, rain, humidity, cloud, pressure int,
 	t1Feats, t2Feats map[int64]map[string]float64,
 	format string,
 ) WinFeaturesEnhanced {
@@ -871,12 +849,12 @@ func buildEnhancedWinFeatures(
 		Team1OppositionID:      int(team1OppID),
 		Team2OppositionID:      int(team2OppID),
 		TossWinnerOppositionID: 0,
-		Temp:                   temp,
-		Wind:                   wind,
-		Rain:                   rain,
-		Humidity:               humidity,
-		Cloud:                  cloud,
-		Pressure:               pressure,
+		Temp:                   noWeather.Temp,
+		Wind:                   noWeather.Wind,
+		Rain:                   noWeather.Rain,
+		Humidity:               noWeather.Humidity,
+		Cloud:                  noWeather.Cloud,
+		Pressure:               noWeather.Pressure,
 		Viscosity:              0,
 		Team1PlayerFeatures:    t1Feats,
 		Team2PlayerFeatures:    t2Feats,
@@ -935,20 +913,6 @@ func buildTeamSelectPool(
 		})
 	}
 	return out
-}
-
-func toWeatherOverride(w *WeatherInput) *exportqueries.WeatherOverride {
-	if w == nil {
-		return nil
-	}
-	return &exportqueries.WeatherOverride{
-		Temp:     w.Temp,
-		Humidity: w.Humidity,
-		Wind:     w.Wind,
-		Rain:     w.Rain,
-		Cloud:    w.Cloud,
-		Pressure: w.Pressure,
-	}
 }
 
 // hasFieldingPredictions returns true if any prediction has non-zero catches or run_outs,
@@ -1033,13 +997,12 @@ func selectTeamsByWinProbability(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
 	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
 		sel1, sel2, err := tryServerSideTeamOptimization(
 			ctx, optimizer, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, weather, allFeats,
+			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, allFeats,
 		)
 		if err == nil {
 			return sel1, sel2, nil
@@ -1050,7 +1013,7 @@ func selectTeamsByWinProbability(
 
 	return selectTeamsByWinProbabilityPerCall(
 		ctx, enhanced, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, weather, allFeats,
+		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, allFeats,
 	)
 }
 
@@ -1064,10 +1027,8 @@ func tryServerSideTeamOptimization(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
-	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
 	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
 	nameToID1 := buildNameToIDMap(pool1)
 	nameToID2 := buildNameToIDMap(pool2)
@@ -1086,12 +1047,12 @@ func tryServerSideTeamOptimization(
 			"team1_opposition_id":       float64(t1OppID),
 			"team2_opposition_id":       float64(t2OppID),
 			"toss_winner_opposition_id": 0,
-			"temp":                      float64(temp),
-			"wind":                      float64(wind),
-			"rain":                      float64(rain),
-			"humidity":                  float64(humidity),
-			"cloud":                     float64(cloud),
-			"pressure":                  float64(pressure),
+			"temp":                      float64(noWeather.Temp),
+			"wind":                      float64(noWeather.Wind),
+			"rain":                      float64(noWeather.Rain),
+			"humidity":                  float64(noWeather.Humidity),
+			"cloud":                     float64(noWeather.Cloud),
+			"pressure":                  float64(noWeather.Pressure),
 			"viscosity":                 0,
 		}
 	}
@@ -1211,12 +1172,10 @@ func selectTeamsByWinProbabilityPerCall(
 	pool1, pool2 []db.PlayerPoolRow,
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	weather *WeatherInput,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
 	nameToID1 := buildNameToIDMap(pool1)
 	nameToID2 := buildNameToIDMap(pool2)
-	temp, wind, rain, humidity, cloud, pressure := extractWeather(weather)
 	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
 
 	buildEvalFunc := func(
@@ -1252,12 +1211,6 @@ func selectTeamsByWinProbabilityPerCall(
 				venueIDVal,
 				team1OppID,
 				team2OppID,
-				temp,
-				wind,
-				rain,
-				humidity,
-				cloud,
-				pressure,
 				t1Feats,
 				t2Feats,
 				fmtUpper,

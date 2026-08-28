@@ -32,6 +32,7 @@ type Contract = {
   version: number;
   pipeline_steps: ContractStep[];
   rejected_query_params: string[];
+  rejected_body_params: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -88,7 +89,7 @@ describe('ops console contract', () => {
     }
   });
 
-  it('never constructs a request parameter the backend rejects', () => {
+  it('never constructs a query parameter the backend rejects', () => {
     const offenders: string[] = [];
     for (const file of productionSources(frontendSrc)) {
       const text = readFileSync(file, 'utf8');
@@ -98,6 +99,20 @@ describe('ops console contract', () => {
         }
       }
     }
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * Body fields are checked against api.ts alone, not every source.
+   *
+   * Their names are ordinary words — "weather" is also a section of /ops/status — so a
+   * repo-wide grep would refuse the UI for rendering a response. api.ts is the only
+   * place a request body is built, and the request types there are closed object
+   * literals, so TypeScript refuses an extra key at every call site.
+   */
+  it('never constructs a body field the backend rejects', () => {
+    const apiModule = readFileSync(join(frontendSrc, 'api.ts'), 'utf8');
+    const offenders = contract.rejected_body_params.filter((param) => apiModule.includes(param));
     expect(offenders).toEqual([]);
   });
 });

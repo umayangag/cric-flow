@@ -88,20 +88,16 @@ type predictTeamRequest struct {
 	SimulationTopK     int    `json:"simulation_top_k,omitempty"`
 	SimulationSamples  int    `json:"simulation_samples,omitempty"`
 	SimulationMaxPairs int    `json:"simulation_max_pairs,omitempty"`
-	Weather            *struct {
-		Temp     float64 `json:"temp"`
-		Humidity float64 `json:"humidity"`
-		Wind     float64 `json:"wind"`
-		Rain     float64 `json:"rain"`
-		Cloud    float64 `json:"cloud"`
-		Pressure float64 `json:"pressure"`
-	} `json:"weather"`
-	ExtraTeam1             []int64 `json:"extra_team1"`
-	ExtraTeam2             []int64 `json:"extra_team2"`
-	MinBowlers             int     `json:"min_bowlers"`
-	RequireKeeper          *bool   `json:"require_keeper"`
-	UseReconciledScorecard *bool   `json:"use_reconciled_scorecard,omitempty"`
-	IncludeBothScorecards  *bool   `json:"include_both_scorecards,omitempty"`
+	// Weather is decoded only to refuse it. It is retired (consumer plan W0-3), and an
+	// unknown field is silently dropped by encoding/json — so a caller still sending a
+	// forecast would get a prediction computed without it and no indication why.
+	Weather                json.RawMessage `json:"weather,omitempty"`
+	ExtraTeam1             []int64         `json:"extra_team1"`
+	ExtraTeam2             []int64         `json:"extra_team2"`
+	MinBowlers             int             `json:"min_bowlers"`
+	RequireKeeper          *bool           `json:"require_keeper"`
+	UseReconciledScorecard *bool           `json:"use_reconciled_scorecard,omitempty"`
+	IncludeBothScorecards  *bool           `json:"include_both_scorecards,omitempty"`
 }
 
 // parsePredictTeamRequest decodes the request body from JSON or query params.
@@ -109,6 +105,9 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	var body predictTeamRequest
 	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			return body, err
+		}
+		if err := rejectRetiredBodyField(len(body.Weather) > 0, "weather"); err != nil {
 			return body, err
 		}
 		return body, nil
@@ -172,16 +171,6 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam
 		RequireKeeper:          true,
 		UseReconciledScorecard: body.UseReconciledScorecard != nil && *body.UseReconciledScorecard,
 		IncludeBothScorecards:  body.IncludeBothScorecards != nil && *body.IncludeBothScorecards,
-	}
-	if body.Weather != nil {
-		input.Weather = &predictteam.WeatherInput{
-			Temp:     body.Weather.Temp,
-			Humidity: body.Weather.Humidity,
-			Wind:     body.Weather.Wind,
-			Rain:     body.Weather.Rain,
-			Cloud:    body.Weather.Cloud,
-			Pressure: body.Weather.Pressure,
-		}
 	}
 	if body.RequireKeeper != nil {
 		input.RequireKeeper = *body.RequireKeeper
@@ -298,6 +287,15 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	}
 	body, err := parsePredictTeamRequest(r)
 	if err != nil {
+		var retired retiredBodyFieldError
+		if errors.As(err, &retired) {
+			writeJSON(w, http.StatusBadRequest, apiError{
+				Code:    retired.param.Code,
+				Message: retired.param.Message,
+				Hint:    retired.param.Hint,
+			})
+			return
+		}
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_JSON", Message: err.Error()})
 		return
 	}

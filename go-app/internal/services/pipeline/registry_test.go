@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 )
 
 // updateContract regenerates contracts/ops-console.contract.json instead of asserting
@@ -30,7 +32,16 @@ type contractDoc struct {
 	// not appear on its graph — the split Step.Surface encodes.
 	DataSteps []contractStep `json:"data_steps"`
 	Lanes     []string       `json:"lanes"`
-	Rejected  []string       `json:"rejected_query_params"`
+	// Rejected and RejectedBody are the retired request parameters, generated from
+	// apiparams rather than typed here, so a parameter retired on the server fails the
+	// UI's tests in the same commit.
+	//
+	// They are two lists because the two are checked differently: a query parameter's
+	// name only appears where a request is built, so the frontend greps every source
+	// for it; a body field's name is an ordinary word that also appears in responses,
+	// so only the module that builds requests is checked.
+	Rejected     []string `json:"rejected_query_params"`
+	RejectedBody []string `json:"rejected_body_params"`
 }
 
 type contractStep struct {
@@ -40,11 +51,6 @@ type contractStep struct {
 	Requires     []string `json:"requires"`
 	Prerequisite string   `json:"prerequisite,omitempty"`
 }
-
-// rejectedQueryParams mirrors go-app's removed-parameter list. It lives here rather
-// than being imported from internal/server because the contract is about what the
-// frontend may send, and a copy that a test compares is safer than an import cycle.
-var rejectedQueryParams = []string{"use_unified_model", "model=unified"}
 
 func contractSteps(surface Surface) []contractStep {
 	source := Steps().OnSurface(surface)
@@ -69,11 +75,12 @@ func buildContract() contractDoc {
 	return contractDoc{
 		Comment: "Generated from go-app/internal/services/pipeline/registry.go. Do not edit by hand; " +
 			"run: go test ./internal/services/pipeline -run TestPipelineContract -update",
-		Version:   1,
-		Steps:     contractSteps(SurfacePipeline),
-		DataSteps: contractSteps(SurfaceData),
-		Lanes:     LaneNames(),
-		Rejected:  rejectedQueryParams,
+		Version:      1,
+		Steps:        contractSteps(SurfacePipeline),
+		DataSteps:    contractSteps(SurfaceData),
+		Lanes:        LaneNames(),
+		Rejected:     apiparams.QueryNames(),
+		RejectedBody: apiparams.BodyNames(),
 	}
 }
 

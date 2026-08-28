@@ -401,11 +401,6 @@ const rawStatsSnapshotQuery = `
 // requiredPrecomputedKeysBase is empty; raw stats replace form/consistency and are optional for new/debut players (filled with 0).
 var requiredPrecomputedKeysBase = []string{}
 
-// WeatherOverride optionally overrides weather feature values (otherwise 0) for future-match prediction.
-type WeatherOverride struct {
-	Temp, Humidity, Wind, Rain, Cloud, Pressure float64
-}
-
 // computeOppositionStrength returns average batting form and bowling form (as of cutoff) across the
 // given opposition player IDs for the format. Used to add opposition_batting_strength and
 // opposition_bowling_strength at prediction when the opposition pool is known. On error or empty
@@ -464,7 +459,6 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 	venueID *int64,
 	oppositionID int64,
 	playerIDs []int64,
-	weather *WeatherOverride,
 	oppositionPlayerIDs []int64,
 ) (map[int64]map[string]float64, error) {
 	if len(playerIDs) == 0 {
@@ -510,10 +504,6 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			}
 			return 0
 		}
-		wt, wh, ww, wr, wc, wp := 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-		if weather != nil {
-			wt, wh, ww, wr, wc, wp = weather.Temp, weather.Humidity, weather.Wind, weather.Rain, weather.Cloud, weather.Pressure
-		}
 		feats := map[string]float64{
 			"batting_venue":      get("batting_venue"),
 			"batting_opposition": get("batting_opposition"),
@@ -521,8 +511,12 @@ func ComputeFeaturesAtCutoffForFutureMatch(
 			"bowling_opposition": get("bowling_opposition"),
 			"venue":              get("venue"),
 			"opposition":         get("opposition"),
-			"batting_temp":       wt, "batting_wind": ww, "batting_rain": wr, "batting_humidity": wh, "batting_cloud": wc, "batting_pressure": wp, "batting_viscosity": 0,
-			"bowling_temp": wt, "bowling_wind": ww, "bowling_rain": wr, "bowling_humidity": wh, "bowling_cloud": wc, "bowling_pressure": wp, "bowling_viscosity": 0,
+			// Weather is zero here for the same reason it is zero in every training row:
+			// nothing populates weather_data (docs/weather-not-implemented.md). The
+			// override that let a caller supply real values was removed in consumer plan
+			// W0-3 — it fed a dimension the models have only ever seen as zero.
+			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
+			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
 			"batting_inning": 0, "batting_session": 0, "toss": 0,
 			"bowling_session":             0,
 			"opposition_batting_strength": oppBatStr,
