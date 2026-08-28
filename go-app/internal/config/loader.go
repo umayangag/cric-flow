@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -104,6 +105,25 @@ func DefaultCricsheetDir() string {
 		return cfg.Inputs.CricsheetDir
 	}
 	return filepath.Join("..", "data", "go-app", "cricsheet")
+}
+
+// DefaultCricsheetSourceURL is the archive an unconfigured box acquires.
+//
+// A default rather than a required setting: the whole point of consumer plan W6 is
+// that Import works without being told where to get data, and every deployment of this
+// project so far wants the same archive.
+const DefaultCricsheetSourceURL = "https://cricsheet.org/downloads/all_json.zip"
+
+// CricsheetSourceURL returns the configured archive URL, or the built-in default.
+//
+// The value is still checked against the download allowlist before anything is
+// fetched: being ours is not an exemption, the same rule the named feeds follow.
+func CricsheetSourceURL() string {
+	cfg := Load()
+	if cfg != nil && strings.TrimSpace(cfg.Inputs.CricsheetSourceURL) != "" {
+		return strings.TrimSpace(cfg.Inputs.CricsheetSourceURL)
+	}
+	return DefaultCricsheetSourceURL
 }
 
 var (

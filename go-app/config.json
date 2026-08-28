@@ -1,6 +1,7 @@
 {
   "inputs": {
-    "cricsheet_dir": "../data/go-app/cricsheet"
+    "cricsheet_dir": "../data/go-app/cricsheet",
+    "cricsheet_source_url": "https://cricsheet.org/downloads/all_json.zip"
   },
   "outputs": {
     "export_dir": "output/go-app"

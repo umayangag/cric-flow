@@ -58,14 +58,14 @@ const PlanStepRow: React.FC<{ step: RunPlanStep }> = ({ step }) => {
         <Chip size="small" color={STATUS_COLOUR[step.status]} label={step.status} />
         <Typography variant="body2">{step.label}</Typography>
         {step.status === 'SKIPPED' && (
-          <Tooltip
-            describeChild
-            title="This step completed in the run being resumed, so it was not repeated."
-          >
-            <Typography variant="caption" color="text.secondary">
-              already done
-            </Typography>
-          </Tooltip>
+          <Typography variant="caption" color="text.secondary">
+            {/*
+              The backend's own reason, not a label chosen here. A step can be skipped
+              because a resume already ran it or because the box already holds what it
+              would produce, and rendering both as "already done" would hide which.
+            */}
+            {step.note ?? 'not repeated'}
+          </Typography>
         )}
       </Box>
       {failed && (

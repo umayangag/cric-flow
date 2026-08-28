@@ -198,3 +198,29 @@ func mustResolve(t *testing.T, ids ...string) []pipelinesvc.Step {
 	require.NoError(t, err)
 	return steps
 }
+
+// TestImportPlanAcquiresBeforeImporting pins the order consumer plan W6-2 depends on.
+//
+// It is the only place the dependency "import needs data on disk" is written down:
+// fetch and extract are on SurfaceData and carry no Requires, so no predicate over
+// the pipeline surface can produce this sequence, and nothing else would notice if it
+// were reordered into "import, then download the data it just imported".
+func TestImportPlanAcquiresBeforeImporting(t *testing.T) {
+	t.Parallel()
+
+	steps, err := Resolve(PlanImport, nil)
+	require.NoError(t, err)
+
+	ids := make([]string, 0, len(steps))
+	for _, step := range steps {
+		ids = append(ids, step.ID)
+	}
+	require.Equal(t, []string{"fetch", "extract", "import"}, ids)
+}
+
+// TestImportPlanIsOffered keeps the plan discoverable: a plan the API will run but
+// never names is one an operator finds by guessing.
+func TestImportPlanIsOffered(t *testing.T) {
+	t.Parallel()
+	require.Contains(t, Names(), PlanImport)
+}

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/url"
+	"path/filepath"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
@@ -10,6 +11,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
+	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
@@ -41,6 +43,13 @@ type StepRequest struct {
 	// *is* the confirmation — but the run records that it happened, so "why is this
 	// model worse?" has an answer in the history rather than nowhere.
 	ConfirmDefaultParams bool
+	// Feed and SourceURL name the archive an acquisition step works on. Empty means
+	// the configured source (inputs.cricsheet_source_url), which is what a plan and
+	// what Import both use.
+	Feed      string
+	SourceURL string
+	// Archive names the staged .zip to extract. Empty means the newest one.
+	Archive string
 }
 
 // StepJob is everything needed to run one step: what it is recorded as, how long it
@@ -76,6 +85,71 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 			Run: func(ctx context.Context) (any, error) {
 				n, err := cricsheet.ImportDir(ctx, dir, opts, 0)
 				return map[string]any{"files": n, "dir": dir}, err
+			},
+		}
+
+	// Acquisition. These live here, beside the compute steps, because a run plan must
+	// be able to run them: Import acquires what it imports (consumer plan W6-2), and a
+	// second definition of "what fetch does" is the drift F-1 spent a whole PR undoing.
+	case "fetch":
+		src, err := a.acquisitionSource(req)
+		stagingDir := dataset.StagingDir()
+		return StepJob{
+			Command: step.Command,
+			Args: map[string]any{
+				"feed": req.Feed, "url": sourceURLForArgs(src, err), "staging_dir": stagingDir,
+			},
+			Timeout: dataacquire.DefaultTimeout,
+			Run: func(ctx context.Context) (any, error) {
+				if err != nil {
+					return nil, err
+				}
+				// Clearing on every exit — success, failure or cancellation — is what
+				// stops the console from showing a transfer that is no longer running.
+				defer dataacquire.ClearProgress()
+				result, fetchErr := dataacquire.Fetch(ctx, src, dataacquire.Options{
+					StagingDir: stagingDir,
+					Progress: func(p dataacquire.Progress) {
+						dataacquire.PublishProgress(src.URL.Redacted(), p)
+					},
+				})
+				if fetchErr != nil {
+					return nil, fetchErr
+				}
+				recordFetch(ctx, result)
+				return result, nil
+			},
+		}
+
+	case "extract":
+		stagingDir := dataset.StagingDir()
+		destDir := dataset.Dir()
+		return StepJob{
+			Command: step.Command,
+			Args:    map[string]any{"archive": req.Archive, "dest_dir": destDir},
+			Timeout: dataacquire.DefaultTimeout,
+			Run: func(ctx context.Context) (any, error) {
+				// Resolved inside Run rather than when the job is built: in a plan this
+				// step is built before fetch has downloaded anything, so resolving
+				// earlier would look at a staging directory that is still empty.
+				archive, resolveErr := dataacquire.ResolveStagedArchive(stagingDir, req.Archive)
+				if resolveErr != nil {
+					return nil, resolveErr
+				}
+				defer dataacquire.ClearExtractProgress()
+				result, extractErr := dataacquire.Extract(ctx, dataacquire.ExtractOptions{
+					ArchivePath: archive,
+					DestDir:     destDir,
+					WorkDir:     stagingDir,
+					Progress: func(p dataacquire.ExtractProgress) {
+						dataacquire.PublishExtractProgress(filepath.Base(archive), p)
+					},
+				})
+				if extractErr != nil {
+					return nil, extractErr
+				}
+				recordExtract(ctx, result)
+				return result, nil
 			},
 		}
 
@@ -143,4 +217,29 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 			return trainRunMetadata(step, cutoff, result), nil
 		},
 	}
+}
+
+// acquisitionSource resolves the archive a fetch will download.
+//
+// The configured source is the default and the normal path (consumer plan W6-1): a
+// deployment pulls the same archive every time, so being asked to choose one on every
+// run was the friction that made acquisition a three-step dance. An explicit feed or
+// URL still overrides it, and all three go through the same allowlist — being
+// configured is not an exemption.
+func (a *App) acquisitionSource(req StepRequest) (dataacquire.Source, error) {
+	feed, rawURL := req.Feed, req.SourceURL
+	if feed == "" && rawURL == "" {
+		rawURL = config.CricsheetSourceURL()
+	}
+	return dataacquire.ResolveSource(feed, rawURL)
+}
+
+// sourceURLForArgs is what a run records as its source. A source that failed to
+// resolve still has to record *something*, or the failed run in the history would not
+// say what it was trying to fetch.
+func sourceURLForArgs(src dataacquire.Source, err error) string {
+	if err != nil || src.URL == nil {
+		return ""
+	}
+	return src.URL.Redacted()
 }

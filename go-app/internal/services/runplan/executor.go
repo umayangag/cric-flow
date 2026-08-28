@@ -68,6 +68,22 @@ func (e *Executor) Execute(ctx context.Context, plan string, steps []pipelinesvc
 	return e.run(ctx, plan, steps, nil)
 }
 
+// ExecuteSkipping runs a plan, skipping the named steps for the given reasons.
+//
+// Distinct from Resume, which skips what a previous run finished. This skips what the
+// box's current state makes unnecessary — Import does not download an archive the
+// dataset directory already holds (consumer plan W6-2). The reason travels with the
+// skip because a step that renders as "done" without having run is exactly the
+// silent-success failure this codebase keeps meeting.
+func (e *Executor) ExecuteSkipping(
+	ctx context.Context,
+	plan string,
+	steps []pipelinesvc.Step,
+	skip map[string]string,
+) error {
+	return e.run(ctx, plan, steps, skip)
+}
+
 // Resume continues a plan, skipping the steps that completed in the run being resumed.
 //
 // "Completed" means completed *in that run*, which is the only sense that makes sense
@@ -80,13 +96,16 @@ func (e *Executor) Resume(ctx context.Context, plan string, steps []pipelinesvc.
 	return e.run(ctx, plan, steps, completedIn(prior))
 }
 
+// resumeNote is what a step skipped by a resume records about itself.
+const resumeNote = "completed in the run being resumed"
+
 // completedIn returns the steps a prior run finished with, so a resume does not repeat
 // them. A step that failed is *not* included: it is where the resume starts.
-func completedIn(prior State) map[string]bool {
-	done := make(map[string]bool, len(prior.Steps))
+func completedIn(prior State) map[string]string {
+	done := make(map[string]string, len(prior.Steps))
 	for _, step := range prior.Steps {
 		if step.Status == StatusCompleted || step.Status == StatusSkipped {
-			done[step.StepID] = true
+			done[step.StepID] = resumeNote
 		}
 	}
 	return done
@@ -96,7 +115,7 @@ func (e *Executor) run(
 	ctx context.Context,
 	plan string,
 	steps []pipelinesvc.Step,
-	alreadyDone map[string]bool,
+	skip map[string]string,
 ) (err error) {
 	if _, _, running, activeErr := e.Store.Active(ctx); activeErr == nil && running {
 		return ErrPlanRunning
@@ -128,10 +147,12 @@ func (e *Executor) run(
 			return ctx.Err()
 		}
 
-		if alreadyDone[step.ID] {
+		if reason, skipped := skip[step.ID]; skipped {
 			current.Status = StatusSkipped
+			current.Note = reason
 			current.FinishedAt = e.timestamp()
-			slog.Info("run plan: step already complete, skipping", slog.String("step", step.ID))
+			slog.Info("run plan: skipping step",
+				slog.String("step", step.ID), slog.String("reason", reason))
 			e.save(ctx, id, state)
 			continue
 		}

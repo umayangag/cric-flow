@@ -68,7 +68,13 @@ func (a *App) newPlanExecutor() *runplan.Executor {
 func (a *App) runPlanStep(ctx context.Context, step pipelinesvc.Step) error {
 	// A plan cannot stop to ask about training on default parameters, and asking for
 	// the whole pipeline is the confirmation. The run records that it happened.
-	job := a.stepJob(step, StepRequest{ConfirmDefaultParams: true})
+	return a.runPlanStepWith(ctx, step, StepRequest{})
+}
+
+// runPlanStepWith runs one step with the plan's own request options.
+func (a *App) runPlanStepWith(ctx context.Context, step pipelinesvc.Step, req StepRequest) error {
+	req.ConfirmDefaultParams = true
+	job := a.stepJob(step, req)
 
 	lane := pipelinesvc.Steps().LaneForCommand(job.Command)
 	stepCtx, cancel := context.WithCancel(ctx)
@@ -110,6 +116,32 @@ func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step, prior *runplan
 			return
 		}
 		slog.Info("run plan: completed", slog.String("plan", plan))
+	}()
+}
+
+// StartImportPlan begins the acquire-and-import plan in the background.
+//
+// Separate from StartRunPlan because its steps are skipped by what is on disk rather
+// than by what a previous run finished, and because it carries a StepRequest: the
+// import step's own options (placeholder fielding rows) have to survive being run by
+// a plan rather than by its handler.
+func (a *App) StartImportPlan(steps []pipelinesvc.Step, skip map[string]string, req StepRequest) {
+	planCtx, cancel := context.WithCancel(a.JobContext())
+	a.planCancel.set(cancel)
+
+	go func() {
+		defer cancel()
+		defer a.planCancel.clear()
+
+		executor := a.newPlanExecutor()
+		executor.Run = func(ctx context.Context, step pipelinesvc.Step) error {
+			return a.runPlanStepWith(ctx, step, req)
+		}
+		if err := executor.ExecuteSkipping(planCtx, runplan.PlanImport, steps, skip); err != nil {
+			slog.Error("import plan: stopped", slog.Any("err", err))
+			return
+		}
+		slog.Info("import plan: completed")
 	}()
 }
 

@@ -29,6 +29,13 @@ const (
 	PlanRetrainOnly = "retrain-only"
 	// PlanDataRefresh re-imports and re-derives without touching the models.
 	PlanDataRefresh = "data-refresh"
+	// PlanImport acquires a dataset and loads it: fetch, extract, import.
+	//
+	// This is what the Import action runs (consumer plan W6-2). It is a plan rather
+	// than three things an operator does in two tabs, and it is the run-plan executor
+	// rather than a second chaining mechanism, so it gets per-step live state, Stop
+	// and run history without any of them being written twice.
+	PlanImport = "import"
 )
 
 // StepStatus is where one step of a plan has got to.
@@ -69,6 +76,14 @@ type StepState struct {
 	FinishedAt string `json:"finished_at,omitempty"`
 	// Error is the failure message, actionable where ml-service supplied one.
 	Error string `json:"error,omitempty"`
+	// Note says why a step was skipped.
+	//
+	// A skipped step that renders as "done" is the silent-success failure this
+	// codebase has met three times, so a skip has to say what it decided and on what
+	// evidence: "the dataset directory already holds all_json.zip from this source
+	// (21,253 match files)" is a claim an operator can check, and "SKIPPED" alone is
+	// not.
+	Note string `json:"note,omitempty"`
 	// MigrationID links to the step's own row in run history.
 	MigrationID int `json:"migration_id,omitempty"`
 }
@@ -106,6 +121,12 @@ func planSteps(name string) ([]string, error) {
 	}
 
 	switch strings.TrimSpace(strings.ToLower(name)) {
+	case PlanImport:
+		// Named explicitly rather than filtered out of the graph: fetch and extract
+		// are on SurfaceData and carry no Requires, so no predicate over the pipeline
+		// surface can produce this order. Stating it is also the only place the
+		// dependency "import needs data on disk" is written down.
+		return []string{"fetch", "extract", "import"}, nil
 	case PlanFull:
 		// Optional steps are excluded by definition: they are offered but never
 		// implied by the steps before them, and a "run everything" that silently
@@ -122,18 +143,34 @@ func planSteps(name string) ([]string, error) {
 
 // Names returns the known plan names, sorted, for error messages and the API.
 func Names() []string {
-	names := []string{PlanFull, PlanRetrainOnly, PlanDataRefresh}
+	names := []string{PlanFull, PlanRetrainOnly, PlanDataRefresh, PlanImport}
 	sort.Strings(names)
 	return names
 }
 
 // Describe returns the ordered steps of a named plan.
+//
+// A named plan's own sequence is honoured as written, unlike a caller-supplied step
+// list: the plan *is* the ordering decision. That matters for PlanImport, whose steps
+// run fetch → extract → import — an order the registry cannot express, because
+// acquisition sits on a different surface and carries no Requires, and which
+// re-sorting into registry order would turn into "import, then download the data it
+// just imported".
 func Describe(name string) ([]pipelinesvc.Step, error) {
 	ids, err := planSteps(name)
 	if err != nil {
 		return nil, err
 	}
-	return stepsByID(ids)
+	registry := pipelinesvc.Steps()
+	steps := make([]pipelinesvc.Step, 0, len(ids))
+	for _, id := range ids {
+		step, known := registry.ByID(id)
+		if !known {
+			return nil, fmt.Errorf("plan %q names unknown step %q", name, id)
+		}
+		steps = append(steps, step)
+	}
+	return steps, nil
 }
 
 // Resolve turns a named plan or an explicit step list into ordered steps.
@@ -153,7 +190,12 @@ func Resolve(name string, stepIDs []string) ([]pipelinesvc.Step, error) {
 	return Describe(name)
 }
 
-// stepsByID validates step IDs and returns them in registry order.
+// stepsByID validates a *caller-supplied* step list and returns it in registry order.
+//
+// The surface check belongs here rather than in Describe: it guards against a request
+// asking to run acquisition as if it were a pipeline stage, which is a mistake worth
+// naming. A named plan that includes acquisition is not that mistake — it is a plan
+// that has decided where acquisition goes.
 func stepsByID(ids []string) ([]pipelinesvc.Step, error) {
 	registry := pipelinesvc.Steps()
 	wanted := make(map[string]bool, len(ids))

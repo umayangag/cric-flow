@@ -372,9 +372,18 @@ func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 // importCricSheetHandler runs import of the cricsheet data directory.
-// Request body: {"dir":"<optional override>", "placeholders_fielding":true}
-// With no dir, the configured dataset directory is used — the same one /ops/status
-// reports and the CLI reads, rather than a literal that only agreed with neither.
+//
+// Request body: {"dir":"<optional override>", "placeholders_fielding":true, "refresh":true}
+//
+// With no dir it *acquires and then imports* the configured archive (consumer plan
+// W6-2): fetch, extract, import, as one run plan. Getting a dataset onto the box used
+// to be three operator actions across two tabs, with the Data tab's own caption
+// admitting it — "Once extracted, run Import from Ops Status". The archive URL is
+// configuration, because a deployment pulls the same one every time.
+//
+// Fetch and extract are skipped, visibly and with a reason, when the directory already
+// holds data from that source; `refresh` overrides that. An explicit `dir` means the
+// caller is naming data they already have, so nothing is acquired.
 func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	var body cricSheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -382,8 +391,17 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		respondBadRequest(w, err)
 		return
 	}
+	// The console triggers steps with query parameters, the CLI and tests with a body.
+	// Reading both is one line; making the operator's Re-download button work only from
+	// one of them is a bug report.
+	if v := strings.TrimSpace(r.URL.Query().Get("refresh")); v == "1" || strings.EqualFold(v, "true") {
+		body.Refresh = true
+	}
 	dir := strings.TrimSpace(body.Dir)
 	if dir == "" {
+		if a.startImportPlan(w, r, body) {
+			return
+		}
 		dir = dataset.Dir()
 	}
 	opts := &cricsheet.Options{

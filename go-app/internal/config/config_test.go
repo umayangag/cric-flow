@@ -715,3 +715,28 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		})
 	}
 }
+
+// TestCricsheetSourceURL covers the setting Import acquires from (consumer plan W6-1).
+//
+// The default matters as much as the override: the point of W6 is that Import works
+// on a box nobody has configured, so an empty or absent setting must not mean "no
+// source", it must mean "the usual one".
+func TestCricsheetSourceURL(t *testing.T) {
+	// Not parallel: mutates the package-level cached config, like the tests above.
+	t.Run("falls back to the built-in default", func(t *testing.T) {
+		cached = &Config{}
+		require.Equal(t, DefaultCricsheetSourceURL, CricsheetSourceURL())
+	})
+
+	t.Run("uses the configured URL", func(t *testing.T) {
+		cached = &Config{}
+		cached.Inputs.CricsheetSourceURL = "https://cricsheet.org/downloads/t20s_json.zip"
+		require.Equal(t, "https://cricsheet.org/downloads/t20s_json.zip", CricsheetSourceURL())
+	})
+
+	t.Run("treats a blank setting as unset rather than as no source", func(t *testing.T) {
+		cached = &Config{}
+		cached.Inputs.CricsheetSourceURL = "   "
+		require.Equal(t, DefaultCricsheetSourceURL, CricsheetSourceURL())
+	})
+}

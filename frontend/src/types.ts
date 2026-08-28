@@ -405,6 +405,15 @@ export type RunPlanStep = {
   finished_at?: string;
   /** Actionable where ml-service supplied a code and a hint. */
   error?: string;
+  /**
+   * Why a step was skipped, in the backend's words.
+   *
+   * A skipped step that renders as "done" is a claim the run cannot back up. The
+   * reason is what makes "skipped" checkable — "the dataset directory already holds
+   * all_json.zip from this source (21,253 match files)" is something an operator can
+   * go and verify.
+   */
+  note?: string;
   migration_id?: number;
 };
 
