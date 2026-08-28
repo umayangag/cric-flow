@@ -29,6 +29,8 @@ const EvaluateDbTab: React.FC = () => {
       currentJobId={state.currentJobId}
       evaluating={state.evaluating}
       evaluationSteps={state.evaluationSteps}
+      modelStats={state.modelStats}
+      modelStatsLoading={state.modelStatsLoading}
       canLoad={state.canLoad}
       canEvaluate={state.canEvaluate}
       onResetOutputs={state.resetOutputs}
