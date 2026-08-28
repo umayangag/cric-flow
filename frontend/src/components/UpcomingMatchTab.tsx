@@ -11,13 +11,14 @@ import {
   Stack,
   Switch,
   Typography,
-  Alert,
   CircularProgress,
   TextField,
 } from '@mui/material';
 import type { SxProps } from '@mui/material';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import TeamTable from './TeamTable';
+import ErrorNotice from './common/ErrorNotice';
+import PredictionReadiness from './PredictionReadiness';
 import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
 import type { PredictScorecardSummary } from '../types';
 
@@ -106,6 +107,7 @@ const UpcomingMatchTab: React.FC = () => {
     canPredict,
     handlePredict,
     maxFutureDays,
+    opsStatus,
   } = useUpcomingMatch();
 
   return (
@@ -209,11 +211,11 @@ const UpcomingMatchTab: React.FC = () => {
         </Button>
       </Stack>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
+      <PredictionReadiness status={opsStatus} />
+
+      <Box sx={{ mb: 2 }}>
+        <ErrorNotice error={error} title="Prediction failed" />
+      </Box>
 
       {result && (
         <Box sx={{ mt: 3 }}>
