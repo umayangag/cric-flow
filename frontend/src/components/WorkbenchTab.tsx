@@ -2,12 +2,10 @@ import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import SectionCard from './common/SectionCard';
 import WorkbenchAccuracyTrendSection from './WorkbenchAccuracyTrendSection';
-import WorkbenchPipelineInfoSection from './WorkbenchPipelineInfoSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
 import WorkbenchProvenanceSection from './WorkbenchProvenanceSection';
 import { useWorkbench } from '../hooks/useWorkbench';
-import { getTrainableModelKeys, hasCombinationMeta } from '../utils/modelMetadata';
 
 const WorkbenchTab: React.FC = () => {
   const {
@@ -37,9 +35,6 @@ const WorkbenchTab: React.FC = () => {
     modelStatsError,
   } = useWorkbench();
 
-  const trainableModelKeys = getTrainableModelKeys(modelMetadata);
-  const combinationMeta = hasCombinationMeta(modelMetadata);
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <Alert severity="info" sx={{ mb: 1 }}>
@@ -53,12 +48,12 @@ const WorkbenchTab: React.FC = () => {
           (train → predict next window → score). Predictions always use the model trained for the
           match&apos;s own format.
         </Typography>
+        <Typography variant="body2" component="div" sx={{ mt: 1 }}>
+          Running the pipeline lives in <strong>Ops → Pipeline</strong>, which shows each
+          step&apos;s real state. What each step does is in <code>docs/overview.md</code> and{' '}
+          <code>docs/ml-and-training.md</code>.
+        </Typography>
       </Alert>
-
-      <WorkbenchPipelineInfoSection
-        trainableModelKeys={trainableModelKeys.length > 0 ? trainableModelKeys : undefined}
-        hasCombinationMeta={combinationMeta}
-      />
 
       <WorkbenchAccuracyTrendSection
         format={format}

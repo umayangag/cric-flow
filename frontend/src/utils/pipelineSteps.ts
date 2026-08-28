@@ -64,7 +64,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make precompute-all-all-formats',
       description:
-        'Compute form, consistency, and sequence features for all formats (TEST, ODI, T20, T20I). Run from project root.',
+        'Compute raw windowed stat snapshots (and sequence features when enabled) for all formats. Run from project root.',
       runnable: true,
     },
     {
@@ -73,7 +73,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make export-dataset',
       description:
-        'Export unified and per-format batting/bowling CSVs to output/go-app. Run from project root.',
+        'Export all-format and per-format batting/bowling CSVs to output/go-app. Run from project root.',
       runnable: true,
     },
     {
@@ -82,7 +82,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-batting',
       description:
-        'Train per-format and unified (legacy) batting models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
+        'Train per-format batting models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
     },
     {
@@ -91,7 +91,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-bowling',
       description:
-        'Train per-format and unified (legacy) bowling models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
+        'Train per-format bowling models from exported CSVs. Uses params from config and DB (from previous auto-tune when GO_APP_URL is set). Run from project root.',
       runnable: true,
     },
     {
@@ -100,7 +100,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-fielding CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format fielding models. Uses params from config and DB. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
+        'Train per-format fielding models. Uses params from config and DB. Set CUTOFF (RFC3339) and GO_APP_URL; or use FIELDING_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -109,7 +109,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-extras CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format extras models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
+        'Train per-format extras models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or EXTRAS_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {
@@ -118,7 +118,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
       description:
-        'Train unified plus per-format win models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
+        'Train per-format win models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
       runnable: true,
     },
     {

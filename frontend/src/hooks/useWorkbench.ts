@@ -100,7 +100,13 @@ export function useWorkbench(): UseWorkbenchReturn {
       try {
         const parsed = JSON.parse(reader.result as string) as WalkForwardRegistry;
         if (!parsed.windows || !Array.isArray(parsed.windows)) {
-          setRegistryError('Invalid registry: missing "windows" array');
+          // The shape is stated here rather than in prose above the upload button
+          // (W2-2): it is only needed by someone whose file is wrong, and a rule
+          // enforced next to the check cannot drift away from it.
+          setRegistryError(
+            'Not a walk-forward registry: expected a JSON object with a "windows" array, ' +
+              'each entry carrying model_type, format, cutoff_trained_before, window_x and metrics.',
+          );
           return;
         }
         setRegistry(parsed);

@@ -152,4 +152,34 @@ describe('pipelineSteps', () => {
       expect(importStep?.runnable).toBe(true);
     });
   });
+
+  /**
+   * These descriptions are the last hand-written prose about the pipeline that still
+   * ships inside the app (W2-1 deleted the other 214 lines). Prose drifts silently,
+   * and this one already had: it still described "unified (legacy)" models after the
+   * pooled tier was removed, and "form, consistency" features after the v3 contract
+   * replaced them with raw windowed stats.
+   *
+   * A test cannot check that a description is *accurate*. It can check that it does
+   * not name a concept the repo has removed, which is how every drift here has looked.
+   * Adding a term to this list is the last step of removing a concept.
+   */
+  describe('descriptions do not describe a system that no longer exists', () => {
+    const RETIRED = [
+      // The pooled cross-format serving tier. Removed in C3-2 / consumer W0-1.
+      { term: 'unified model', why: 'models are per-format; there is no pooled tier' },
+      { term: 'legacy', why: 'the legacy artifact tier was removed with the pooled model' },
+      // Formula features replaced by raw windowed stats in the v3 feature contract.
+      { term: 'consistency', why: 'the v3 feature contract uses raw windowed stats' },
+      // Planned, not implemented: docs/weather-not-implemented.md, consumer W0-3.
+      { term: 'weather', why: 'nothing populates weather_data and no model reads it' },
+    ];
+
+    it.each(RETIRED)('never says "$term" — $why', ({ term }) => {
+      const offenders = derivePipelineSteps(null)
+        .filter((step) => step.description.toLowerCase().includes(term))
+        .map((step) => step.id);
+      expect(offenders).toEqual([]);
+    });
+  });
 });
