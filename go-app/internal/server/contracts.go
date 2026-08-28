@@ -40,4 +40,8 @@ type precomputeRequest struct {
 type cricSheetRequest struct {
 	Dir                  string `json:"dir"`
 	PlaceholdersFielding bool   `json:"placeholders_fielding"`
+	// Refresh downloads the configured archive again even when the dataset directory
+	// already holds it. Cricsheet republishes under the same URL, so "the data has
+	// changed" is a thing an operator knows and the server cannot infer.
+	Refresh bool `json:"refresh"`
 }

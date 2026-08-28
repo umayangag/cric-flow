@@ -53,6 +53,12 @@ type Config struct {
 	Server ServerConfig `json:"server"`
 	Inputs struct {
 		CricsheetDir string `json:"cricsheet_dir"`
+		// CricsheetSourceURL is the archive Import downloads when the dataset
+		// directory does not already hold it. It is configuration rather than a
+		// request parameter because a deployment pulls the same archive every time —
+		// asking an operator to choose one on every run made acquisition a three-step
+		// dance across two tabs (consumer plan W6).
+		CricsheetSourceURL string `json:"cricsheet_source_url"`
 	} `json:"inputs"`
 	Outputs struct {
 		ExportDir string `json:"export_dir"`

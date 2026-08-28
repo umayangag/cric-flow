@@ -49,13 +49,16 @@ func ListStaged(stagingDir string) []StagedArchive {
 			Bytes:    info.Size(),
 			Modified: info.ModTime().UTC().Format(time.RFC3339),
 		}
-		if meta := readSidecar(filepath.Join(stagingDir, e.Name())); meta.SHA256 != "" {
-			archive.SHA256 = meta.SHA256
-			archive.SourceURL = meta.SourceURL
-			archive.FeedID = meta.FeedID
-			archive.FetchedAt = meta.FetchedAt
-			archive.LastModified = meta.LastModified
-		}
+		// Each field is taken on its own merits. Gating the whole sidecar on the
+		// digest being present — as this did — silently threw away the source URL of
+		// any archive whose sidecar lacked one, and the source URL is what decides
+		// whether Import already has the data it is about to download (W6-2).
+		meta := readSidecar(filepath.Join(stagingDir, e.Name()))
+		archive.SHA256 = meta.SHA256
+		archive.SourceURL = meta.SourceURL
+		archive.FeedID = meta.FeedID
+		archive.FetchedAt = meta.FetchedAt
+		archive.LastModified = meta.LastModified
 		out = append(out, archive)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Modified > out[j].Modified })

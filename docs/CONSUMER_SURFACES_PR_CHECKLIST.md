@@ -58,9 +58,9 @@ nothing good.
 | W5-1 | todo | ops P-1 | Workbench as a model console: registry with provenance |
 | W5-2 | todo | ops O-4 | Accuracy trend tied to actual runs |
 | W5-3 | todo | ops R-3 | Retire what the ops console now shows live |
-| W6-1 | todo | — | The archive URL is configuration, not a form field |
-| W6-2 | todo | ops R-1 | Import acquires what it imports: fetch → extract → import |
-| W6-3 | todo | W6-2 | Retire the Data tab's manual fetch/extract controls |
+| W6-1 | done | — | The archive URL is configuration, not a form field |
+| W6-2 | done | ops R-1 | Import acquires what it imports: fetch → extract → import |
+| W6-3 | done | W6-2 | Retire the Data tab's manual fetch/extract controls |
 
 **Recommended order:** W0 → W1 → W2 in that order and immediately; W3/W4 next; W5 last,
 after the ops plan's Phase O and P land. **W6 is independent of all of them** and can be
@@ -488,33 +488,59 @@ downloads, extracts and loads.
 
 ### W6-1 · The archive URL is configuration, not a form field
 
-- [ ] `inputs.cricsheet_source_url` in `go-app/config.json`, read through a
-      `config.CricsheetSourceURL()` accessor beside `DefaultCricsheetDir()`, with an
-      environment override in the same shape as `GO_APP_CRICSHEET_DIR`
-- [ ] Default it to the archive this deployment actually uses
-      (`https://cricsheet.org/downloads/all_json.zip`) so an unconfigured box still works
-- [ ] The configured URL goes through `dataacquire.ResolveSource` like any other:
+- [x] `inputs.cricsheet_source_url` in `go-app/config.json`, read through
+      `config.CricsheetSourceURL()` beside `DefaultCricsheetDir()`
+- [x] Defaults to `https://cricsheet.org/downloads/all_json.zip`, so an unconfigured
+      box still works — the whole point is that Import works without being told where
+      to get data. A **blank** setting means unset, not "no source"
+- [x] The configured URL goes through `dataacquire.ResolveSource` like any other:
       **being ours is not an exemption from the allowlist**, the rule the named feeds
       already follow
-- [ ] `/ops/status` reports the configured source, so "where would Import get data
-      from?" is answerable without reading the config file
+- [x] The start response reports the source and the skips, so "where did this get its
+      data from?" is answerable from the click that caused it
+
+**Not done:** an environment override in the shape of `GO_APP_CRICSHEET_DIR`. The
+directory has one because the CLI needs to point at a different dataset per invocation;
+the source URL is a deployment constant, and a second way to set it is a second place
+to look when it is wrong. `?refresh=1` covers the one-off case that actually came up.
 
 ### W6-2 · Import acquires what it imports
 
-- [ ] `POST /ops/pipeline/run/import` ensures the dataset directory holds the
-      configured archive before importing: fetch → extract → import, one action
-- [ ] Chain it on the **R-1 run-plan executor** rather than a second chaining
-      mechanism — that is what gives it per-step live state, Stop, resume and run
-      history for free. The two data steps are on `LaneData` and carry no `Requires`,
-      so the ordering gate needs the plan to express the dependency explicitly
-- [ ] **Skipping must be visible.** Fetch is skipped when the live manifest already
-      names an archive from the configured URL and the server's conditional request
-      says it is unchanged; extract is skipped when the live manifest already names
-      the staged archive. A skipped step that renders as "done" is the silent-success
-      failure this repo has been bitten by three times — render it as *skipped, and why*
-- [ ] Re-download must stay reachable: a `?refresh=1` (or equivalent) that ignores the
-      skip rule, because "the upstream archive changed under the same URL" is the
-      normal case for Cricsheet, not an edge one
+- [x] `POST /ops/pipeline/run/import` runs the **`import` plan** — fetch → extract →
+      import — one action. An explicit `dir` still imports what the caller names,
+      because that caller is pointing at data they already have
+- [x] Chained on the **R-1 run-plan executor**, so per-step live state, Stop, resume
+      and run history came for free. Two things had to give: `stepJob` gained `fetch`
+      and `extract` (they were defined inline in their handlers, and a plan would have
+      needed a second copy — the drift F-1 spent a PR undoing), and `Describe` now
+      honours a *named* plan's own order. The surface guard that refused acquisition
+      stays where it was written for: a **caller-supplied** step list. A named plan
+      including acquisition is not that mistake, it is a plan that has decided where
+      acquisition goes — and registry order would have turned this one into "import,
+      then download the data it just imported"
+- [x] **Skipping is visible and says why.** `StepState.Note` carries the reason, and
+      the panel renders the backend's words rather than a label of its own: a step can
+      be skipped because a resume ran it or because the box already holds what it would
+      produce, and showing both as "already done" hides which
+- [x] `?refresh=1` (and `{"refresh": true}`) ignores the skip rule. Read from **both**
+      query and body: the console triggers steps with query parameters and the CLI with
+      a body, and a Re-download button that works from only one of them is a bug report
+
+**The skip rule, and why it is not conditional HTTP.** The plan above proposed an
+`ETag`/`Last-Modified` check. The rule shipped is narrower on purpose: *does the dataset
+directory already hold data from this source?* Cricsheet republishes under the same URL
+often enough that a conditional request would usually answer "changed" anyway, so the
+cost would buy little; and inferring a re-download from a header makes a several-hundred-
+megabyte transfer something that happens *to* an operator. `refresh` makes it a decision.
+
+Evidence is required rather than assumed, which `acquire_test.go` pins:
+a manifest beside an **empty** directory is not evidence (someone deleted the files; the
+manifest still describes what *was* there, and trusting it would import nothing and
+report success); a staged archive with **no recorded source** is not assumed to be ours.
+
+**A bug found on the way:** `ListStaged` gated the *entire* sidecar on the digest being
+present, so an archive whose sidecar lacked a SHA-256 silently lost its source URL too —
+and the source URL is exactly what the skip rule reads.
 
 **Acceptance:** on a box with an empty dataset directory, one click of **Import** ends
 with match rows in the database, and the run history shows the three steps it took.
@@ -523,16 +549,16 @@ must say *downloading* before it says *importing*, or the first slow run reads a
 
 ### W6-3 · Retire the Data tab's manual controls
 
-- [ ] Remove the feed picker, the URL box and the Extract button — W6-1 and W6-2 leave
-      them with nothing to decide
-- [ ] Keep what answers *what data is on this box and where did it come from*: the
-      dataset registry, the live manifest, staged archives. That belongs next to the
-      pipeline it feeds, on Ops Status, not on a tab of its own
-- [ ] `POST /ops/data/fetch` and `/ops/data/extract` stay as endpoints — the run plan
-      calls them, and an operator overriding the configured source is a real need. They
-      stop being the *normal* path, which is the point
-- [ ] Same rule as W0-1 for anything actually removed: refuse it loudly rather than
-      accept and ignore it
+- [x] **The tab is gone**, not trimmed. With the picker, the URL box and the Extract
+      button removed there was one thing left on it, and that thing was never an action
+- [x] What answers *what data is on this box and where did it come from* — the dataset
+      registry, with the live row marked — now sits on Ops Status directly beneath the
+      dataset directory it describes, next to the pipeline it feeds
+- [x] `POST /ops/data/fetch` and `/ops/data/extract` stay as endpoints. The frontend no
+      longer calls them; overriding the configured source is still a real need, and
+      removing a working endpoint nobody asked us to remove is not this plan's business
+- [x] Nothing was silently accepted-and-ignored, so there is nothing to refuse: the
+      removal is a UI surface, not a request parameter
 
 **Acceptance:** no surface asks the operator to choose an archive URL to do the ordinary
 thing.

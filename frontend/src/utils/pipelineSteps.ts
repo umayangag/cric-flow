@@ -55,7 +55,9 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       status: 'pending',
       command: 'make migrate && make cricsheet-import',
       description:
-        'Apply migrations and import Cricsheet JSON into the database. Run from project root.',
+        'Download the configured Cricsheet archive, extract it and load the matches into the ' +
+        'database — fetch, extract and import as one run. Fetch and extract are skipped, and say ' +
+        'so, when the dataset directory already holds that archive. Run from project root.',
       runnable: true,
     },
     {
