@@ -82,6 +82,10 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   where a resume starts, not something to skip past.
 - **Cancellation stops the plan first**: cancelling only the current step would end that
   step and let the plan start the next one, which is not what Stop means.
+- **Rendered by `RunPlanPanel`** in the Ops Status pipeline card. It holds no plan state
+  of its own — it reads `GET /ops/pipeline/plan`, and polls while idle as well as while
+  running, so a plan started from another tab appears without a reload. Progress counts
+  *finished* steps, not started ones, and a plan that is not running says so.
 
 ### 1.3. Logs
 

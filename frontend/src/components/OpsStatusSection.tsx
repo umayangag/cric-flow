@@ -1,6 +1,7 @@
 import React from 'react';
 import OpsPipelineGraph from './OpsPipelineGraph';
 import PipelineProgressPanel from './PipelineProgressPanel';
+import RunPlanPanel from './RunPlanPanel';
 import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsTableStats from './OpsTableStats';
 import OpsStatusDetailsGrid from './OpsStatusDetailsGrid';
@@ -72,6 +73,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
           subtitle="Import → precompute → export → train (uses config + DB params) or auto-tune (discover params). Click a step to copy its command."
         >
           <OpsPipelineGraph data={data} onRefresh={onRefresh} />
+          <RunPlanPanel onRefresh={onRefresh} />
           <PipelineProgressPanel
             pipelineRunning={Object.values(asObj(data.pipeline?.steps ?? {})).some(
               (s) => asObj(s).running === true,

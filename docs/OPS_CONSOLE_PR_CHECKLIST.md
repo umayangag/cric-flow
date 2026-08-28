@@ -107,7 +107,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | O-5 | done | `ops/pr12-run-history` | Frontend: per-step progress, metrics, run-history drill-down |
 | R-1 | done | `ops/pr13-run-plan-executor` | Server-side run-plan executor (chaining, stop-on-failure, resume) |
 | R-2 | done | `ops/pr13-run-plan-executor` | `POST /ops/pipeline/run-plan` and plan status |
-| R-3 | todo | | Frontend: "Run full pipeline" with per-step live state |
+| R-3 | done | `ops/pr14-run-plan-ui` | Frontend: "Run full pipeline" with per-step live state |
 | P-1 | todo | | Stamp dataset provenance into exports and model sidecars |
 | P-2 | todo | | Show which dataset produced which model |
 
@@ -707,9 +707,43 @@ documented as existing only in the Makefile. It closes that asymmetry.
 
 ### R-3 · Frontend
 
-- [ ] One "Run full pipeline" action with per-step live state
-- [ ] Resume-from-failure without restarting from the top
-- [ ] Show the plan even when it was started from another tab
+- [x] One "Run full pipeline" action with per-step live state (`RunPlanPanel`, in the
+      Ops Status pipeline card)
+- [x] Resume-from-failure without restarting from the top — the button names the step
+      it would resume from, and says in its description what it will skip
+- [x] Show the plan even when it was started from another tab. The panel holds no plan
+      state of its own: it reads `GET /ops/pipeline/plan`, which is the database. It
+      polls while idle as well as while running, so a plan started elsewhere appears
+      without a reload
+
+**Progress counts finished steps, not started ones.** A bar that advanced when a step
+*began* would sit at 100% while the last step was still running.
+
+**A plan that is not running says so.** Otherwise a finished run and a stalled one look
+identical, and the operator has to guess which they are looking at.
+
+**A failed poll is not an alert.** The previous state is still the best answer available
+and the next tick usually fixes it; an error banner every time the network hiccups
+teaches people to ignore banners.
+
+**Two bugs found here, both fixed where they belong.**
+
+*In R-1, on this branch's base:* the executor skipped any step that had **ever**
+completed successfully. On a box that had run the pipeline once, a fresh `full` plan
+would have skipped every step and reported success having done nothing. Writing the
+resume button is what made me ask what "already done" actually meant. Fixed in the R-1
+commit, not papered over here.
+
+*In this panel:* wrapping the resume button in a MUI `Tooltip` put the tooltip text on
+`aria-label`, **replacing** the button's accessible name — a screen reader would have
+announced "Continues from precompute, skipping what already completed" instead of
+"Resume from precompute". `describeChild` makes the title a description rather than a
+name. The test that caught it now asserts both.
+
+**The failure message is rendered whole here**, not split into code/message/hint as
+`OpsMigrationsTable` does. go-app already formats it as `CODE: message — hint`, so it is
+actionable as it stands, and duplicating O-5's parser into a second component is how the
+two would drift. Worth unifying once both have landed.
 
 ---
 

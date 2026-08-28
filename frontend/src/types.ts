@@ -365,6 +365,51 @@ export type OpsDataStartResponse = {
   archives?: StagedArchive[];
 };
 
+/** Where one step of a run plan has got to. */
+export type RunPlanStepStatus =
+  'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SKIPPED';
+
+export type RunPlanStep = {
+  step_id: string;
+  label: string;
+  status: RunPlanStepStatus;
+  started_at?: string;
+  finished_at?: string;
+  /** Actionable where ml-service supplied a code and a hint. */
+  error?: string;
+  migration_id?: number;
+};
+
+/**
+ * Payload of GET /ops/pipeline/plan — the latest plan, running or not.
+ *
+ * "Latest" rather than "current" is deliberate: the state lives in the database, so a
+ * plan shows up after a page reload, from another tab, or the morning after the
+ * browser that started it was closed.
+ */
+export type RunPlanState = {
+  id?: number;
+  running: boolean;
+  plan?: string;
+  steps?: RunPlanStep[];
+  started_at?: string;
+  finished_at?: string;
+  /** Where a resume would start. Absent while the plan is running. */
+  resume_from?: string;
+  /** The plan names the backend accepts. */
+  plans: string[];
+};
+
+/** Response from POST /ops/pipeline/run-plan. */
+export type RunPlanStartResponse = {
+  status?: string;
+  plan?: string;
+  steps?: string[];
+  resume?: boolean;
+  error?: string;
+  plans?: string[];
+};
+
 /** A named Cricsheet archive the server will fetch, from GET /ops/data/feeds. */
 export type DataFeed = {
   id: string;
