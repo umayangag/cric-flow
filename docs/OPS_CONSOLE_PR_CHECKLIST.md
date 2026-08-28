@@ -793,9 +793,12 @@ nothing calls — the failure no unit test would notice.
 **Inference exports get no manifest.** They are inputs for a prediction, not training
 data; nothing trains from them, and a manifest would invite something to try.
 
-**Merge note:** `step_work.go` (from R-1, #163) builds export options too. When that
-lands, its `exportsvc.Options` needs the same `Provenance: liveDatasetProvenance()`, or
-a plan-driven export writes a manifest with no dataset in it.
+**Both export paths are stamped, and a test says so.** R-1's executor builds its own
+export options (`stepJob`) and a manual trigger builds another (`runExportHandler`). The
+first version of this item only stamped the second, so a plan-driven export would have
+written a manifest naming no dataset — silently, which is the failure this phase exists
+to prevent. `TestEveryExportPathStampsProvenance` fails if either call site loses it;
+verified by removing one and watching it fail.
 
 ### P-2 · Surface it
 

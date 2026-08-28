@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -162,4 +163,27 @@ func TestLiveDatasetProvenance_CarriesEveryFieldTheManifestHas(t *testing.T) {
 	assert.Equal(t, "all", got.DatasetFeed)
 	assert.Equal(t, "2026-08-26T10:00:00Z", got.DatasetExtracted)
 	assert.Equal(t, 19998, got.DatasetMatchFile)
+}
+
+// TestEveryExportPathStampsProvenance guards the gap this nearly shipped with: the
+// run-plan executor builds its own export options (stepJob), and a manually triggered
+// export builds another (runExportHandler). One carried provenance and the other did
+// not, so a plan-driven export would have written a manifest naming no dataset —
+// silently, which is the failure this phase exists to prevent.
+//
+// A source check because the two call sites are what must agree, and constructing a
+// real export needs a database.
+func TestEveryExportPathStampsProvenance(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"step_work.go", "pipeline_handlers.go"} {
+		source, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		text := string(source)
+		if !strings.Contains(text, "exportsvc.Options{") {
+			continue
+		}
+		assert.Contains(t, text, "liveDatasetProvenance()",
+			"%s builds export options without provenance; its manifest would name no dataset", path)
+	}
 }
