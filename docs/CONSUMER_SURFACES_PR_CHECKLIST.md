@@ -44,7 +44,7 @@ nothing good.
 | W0-1 | done | — | Remove `use_unified_model` end to end |
 | W0-2 | done | — | Audit `use_latest_model` — vestigial, and misreporting; removed |
 | W0-3 | done | — | Sweep for other dead toggles and props |
-| W1-1 | todo | — | One async-state primitive instead of 49 `useState` calls |
+| W1-1 | done | — | One async-state primitive instead of 49 `useState` calls |
 | W1-2 | todo | — | Shared error display that honours the structured payload |
 | W1-3 | todo | — | Consolidate duplicated formatters |
 | W2-1 | todo | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
@@ -215,13 +215,37 @@ between tabs, and why every new panel re-invents the same three states.
 
 ### W1-1 · One async-state primitive
 
-- [ ] A single hook owning `{ data, loading, error, run, reset }` over the existing
-      `useApiCall`
-- [ ] Migrate one surface first to prove the shape before converting the rest
-- [ ] Target: no component holding more than one loading flag and one error string
+- [x] `useAsync` owns `{ data, loading, error, run, reset, setData }`. `run` takes
+      arguments, which `useApiCall` could not, so a call that needs a format no longer
+      has to be wrapped in a fresh closure and an effect
+- [x] `useApiCall` is **re-expressed on top of it** rather than left beside it. Its
+      shape is unchanged, so its dozen call sites and their `usePolling(refetch, …)`
+      pairings are untouched — but there is now one lifecycle, not two
+- [x] Migrated `useWorkbench` first to prove the shape: four independent fetches, each
+      with a hand-written `data`/`loading`/`error` triple and three near-identical mount
+      effects with the cancelled-flag spelled differently each time. **Twelve `useState`
+      calls became four `useAsync` calls**
+- [ ] Remaining surfaces: `useEvaluateDb` (W3-1), `useUpcomingMatch` (W4-1), `useDataTab`
 
-**Risk:** a large mechanical refactor across working UI. Do it per-surface, not in one PR,
-and keep each step green.
+**Two things the hand-written versions all lacked**, and the reason this is worth more
+than a line count:
+
+- **Stale results are discarded.** Every call takes a sequence number and only the
+  newest may write state. Change format mid-request and the slower first response can
+  no longer land on top of the second. Every open-coded copy had this race.
+- **Nothing is set after unmount.** `reset()` also retires a call in flight, so a
+  response arriving after a reset cannot repopulate what was just cleared.
+
+Both are covered by `useAsync.test.ts`, which drives two overlapping calls with
+deferred promises rather than asserting on timing.
+
+**On the error type:** `useAsync`'s `error` is an `ApiError`, not a string — the
+structured `{code, message, hint, available}` the backend already sends. W1-2 makes
+`api.ts` populate it and adds the component that renders each part as what it is.
+`useApiCall` keeps flattening it to `error.message` so nothing downstream had to change
+in this step.
+
+**Risk:** a large mechanical refactor across working UI. Done per-surface, not in one PR.
 
 ### W1-2 · Shared error display honouring the structured payload
 

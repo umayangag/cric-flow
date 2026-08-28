@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { api } from '../api';
+import { useAsync } from './useAsync';
 import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
@@ -39,110 +40,55 @@ export interface UseWorkbenchReturn {
   modelStatsError: string | null;
 }
 
+/**
+ * The Workbench's state, and the first surface migrated to {@link useAsync} (W1-1).
+ *
+ * It was chosen to prove the shape because it was the clearest case of the problem:
+ * four independent fetches, each with its own `data`/`loading`/`error` triple written
+ * out by hand, three of them with a near-identical mount effect and a
+ * cancelled/active flag spelled differently every time. Twelve `useState` calls became
+ * four `useAsync` calls, and the staleness guard the hand-written versions all lacked
+ * came with them.
+ *
+ * What did *not* move: the four form fields, which are genuinely component state, and
+ * the registry file, which is parsed locally rather than fetched.
+ */
 export function useWorkbench(): UseWorkbenchReturn {
   const [format, setFormat] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
-  const [availableFormats, setAvailableFormats] = useState<string[]>([]);
-  const [trendLoading, setTrendLoading] = useState(false);
-  const [trendError, setTrendError] = useState<string | null>(null);
-  const [trendData, setTrendData] = useState<AccuracyTrendResponse | null>(null);
+
+  const formats = useAsync(api.getFormats, { runOnMount: [] });
+  const metadata = useAsync(api.getModelMetadata, {
+    runOnMount: [],
+    errorMessage: 'Failed to load model metadata',
+  });
+  // Model stats carry each model's provenance and whether its dataset is still live
+  // (ops plan P-2). Fetched here rather than in the section so the Workbench makes one
+  // request whatever it chooses to render.
+  const stats = useAsync(api.getModelStats, {
+    runOnMount: [],
+    errorMessage: 'Failed to load model stats',
+  });
+  const trend = useAsync((filters: AccuracyTrendFilters) => api.accuracyTrend(filters));
 
   const [registryFile, setRegistryFile] = useState<File | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<WalkForwardRegistry | null>(null);
 
-  const [modelMetadata, setModelMetadata] = useState<ModelMetadataApiResponse | null>(null);
-  const [modelMetadataLoading, setModelMetadataLoading] = useState(true);
-  const [modelMetadataError, setModelMetadataError] = useState<string | null>(null);
-  // Model stats carry each model's provenance and whether its dataset is still live
-  // (ops plan P-2). Fetched here rather than in the section so the Workbench makes one
-  // request whatever it chooses to render.
-  const [modelStats, setModelStats] = useState<ModelStatsResponse | null>(null);
-  const [modelStatsLoading, setModelStatsLoading] = useState(true);
-  const [modelStatsError, setModelStatsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const stats = await api.getModelStats();
-        if (!cancelled) setModelStats(stats);
-      } catch (e) {
-        if (!cancelled)
-          setModelStatsError(e instanceof Error ? e.message : 'Failed to load model stats');
-      } finally {
-        if (!cancelled) setModelStatsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    api
-      .getFormats()
-      .then((f) => {
-        if (active) setAvailableFormats(f);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setModelMetadataLoading(true);
-    setModelMetadataError(null);
-    api
-      .getModelMetadata()
-      .then((data) => {
-        if (active) {
-          setModelMetadata(data as ModelMetadataApiResponse);
-          setModelMetadataError(null);
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setModelMetadata(null);
-          setModelMetadataError(err instanceof Error ? err.message : String(err));
-        }
-      })
-      .finally(() => {
-        if (active) setModelMetadataLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const loadAccuracyTrend = useCallback(async () => {
-    setTrendError(null);
-    setTrendLoading(true);
-    try {
-      const filters: AccuracyTrendFilters = {
-        format: format || undefined,
-        start_date: startDate || undefined,
-        end_date: endDate || undefined,
-        order: 'asc',
-        limit: Math.min(Math.max(1, limit), MAX_LIMIT),
-        cache: 'read',
-      };
-      const data = await api.accuracyTrend(filters);
-      setTrendData(data);
-    } catch (e) {
-      setTrendError(e instanceof Error ? e.message : String(e));
-      setTrendData(null);
-    } finally {
-      setTrendLoading(false);
-    }
-  }, [format, startDate, endDate, limit]);
+    await trend.run({
+      format: format || undefined,
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      order: 'asc',
+      limit: Math.min(Math.max(1, limit), MAX_LIMIT),
+      cache: 'read',
+    });
+  }, [trend, format, startDate, endDate, limit]);
 
-  const handleRegistryFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRegistryFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setRegistryError(null);
     setRegistry(null);
@@ -151,8 +97,7 @@ export function useWorkbench(): UseWorkbenchReturn {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const text = reader.result as string;
-        const parsed = JSON.parse(text) as WalkForwardRegistry;
+        const parsed = JSON.parse(reader.result as string) as WalkForwardRegistry;
         if (!parsed.windows || !Array.isArray(parsed.windows)) {
           setRegistryError('Invalid registry: missing "windows" array');
           return;
@@ -163,32 +108,57 @@ export function useWorkbench(): UseWorkbenchReturn {
       }
     };
     reader.readAsText(file);
-  };
+  }, []);
 
-  return {
-    format,
-    setFormat,
-    startDate,
-    setStartDate,
-    endDate,
-    setEndDate,
-    limit,
-    setLimit,
-    maxLimit: MAX_LIMIT,
-    availableFormats,
-    trendLoading,
-    trendError,
-    trendData,
-    loadAccuracyTrend,
-    registryFile,
-    registryError,
-    registry,
-    handleRegistryFile,
-    modelMetadata,
-    modelMetadataLoading,
-    modelMetadataError,
-    modelStats,
-    modelStatsLoading,
-    modelStatsError,
-  };
+  return useMemo(
+    () => ({
+      format,
+      setFormat,
+      startDate,
+      setStartDate,
+      endDate,
+      setEndDate,
+      limit,
+      setLimit,
+      maxLimit: MAX_LIMIT,
+      // A failed format list is not worth a message here: the picker simply offers
+      // nothing, and the panels below say why they are empty.
+      availableFormats: formats.data ?? [],
+      trendLoading: trend.loading,
+      trendError: trend.error?.message ?? null,
+      trendData: trend.data,
+      loadAccuracyTrend,
+      registryFile,
+      registryError,
+      registry,
+      handleRegistryFile,
+      modelMetadata: metadata.data,
+      modelMetadataLoading: metadata.loading,
+      modelMetadataError: metadata.error?.message ?? null,
+      modelStats: stats.data,
+      modelStatsLoading: stats.loading,
+      modelStatsError: stats.error?.message ?? null,
+    }),
+    [
+      format,
+      startDate,
+      endDate,
+      limit,
+      formats.data,
+      trend.loading,
+      trend.error,
+      trend.data,
+      loadAccuracyTrend,
+      registryFile,
+      registryError,
+      registry,
+      handleRegistryFile,
+      metadata.data,
+      metadata.loading,
+      metadata.error,
+      stats.data,
+      stats.loading,
+      stats.error,
+    ],
+  );
 }
