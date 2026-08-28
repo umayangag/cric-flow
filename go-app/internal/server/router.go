@@ -51,6 +51,9 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/stop", a.pipelineStopHandler).Methods(http.MethodPost, http.MethodOptions)
+	// Run plans: the API equivalent of `make up-all` / `make full-pipeline`.
+	admin.HandleFunc("/ops/pipeline/run-plan", a.runPlanStartHandler).Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/ops/pipeline/plan", a.runPlanStateHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/stream", a.pipelineProgressStreamHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 

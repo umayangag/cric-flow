@@ -105,8 +105,8 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | O-3 | done | `ops/pr10-serve-progress` | Serve generalised progress; fold into the existing SSE stream |
 | O-4 | done | `ops/pr11-persist-metrics` | Persist final metrics to `data_migrations.metadata` |
 | O-5 | done | `ops/pr12-run-history` | Frontend: per-step progress, metrics, run-history drill-down |
-| R-1 | todo | | Server-side run-plan executor (chaining, stop-on-failure, resume) |
-| R-2 | todo | | `POST /ops/pipeline/run-plan` and plan status |
+| R-1 | done | `ops/pr13-run-plan-executor` | Server-side run-plan executor (chaining, stop-on-failure, resume) |
+| R-2 | done | `ops/pr13-run-plan-executor` | `POST /ops/pipeline/run-plan` and plan status |
 | R-3 | todo | | Frontend: "Run full pipeline" with per-step live state |
 | P-1 | todo | | Stamp dataset provenance into exports and model sidecars |
 | P-2 | todo | | Show which dataset produced which model |
@@ -625,19 +625,82 @@ directory populated by hand, says so — which is the case P-2 exists to flag.
 
 ### R-1 · Run-plan executor
 
-- [ ] Server-side sequential executor over an ordered step list
-- [ ] Stop on first failure, leaving the plan resumable from the failed step
-- [ ] Reuse `CanRunPipelineStep` for ordering rather than duplicating the rules
-- [ ] Persist plan state so a page reload — or a browser closed overnight — does not
-      lose the run
-- [ ] Cancellation must stop the plan, not just the current step
+- [x] Server-side sequential executor over an ordered step list (`services/runplan`)
+- [x] Stop on first failure, leaving the plan resumable from the failed step. The
+      remaining steps stay `PENDING` rather than being marked failed — that is what
+      `FirstIncomplete` reads to answer "where would a resume start?"
+- [x] Reuse `CanRunPipelineStep` for ordering rather than duplicating the rules. It is
+      injected as `Executor.Gate`, so the plan and the single-step endpoint cannot
+      disagree about whether a step may run
+- [x] Persist plan state so a page reload — or a browser closed overnight — does not
+      lose the run. Written to `data_migrations` before and after every step, not only
+      at the end, so a reader mid-run can see which step is in flight
+- [x] Cancellation must stop the plan, not just the current step
+
+**R-1 and R-2 landed together, and could not sensibly be split.** `make deadcode` (the
+C7-2 guardrail) fails on unreachable exported functions, and an executor with no route
+to invoke it is exactly that. The choices were to add a fake caller, ship a red PR, or
+land the API in the same change. The API is the honest one — an executor nobody can
+invoke is not done.
+
+**A plan is a run, so it lives in `data_migrations`.** That table already has a row per
+run, a status, timestamps and a `jsonb` column. A dedicated table would have been a
+second place to look for the same thing, with its own migration and its own answer to
+"what is running right now?".
+
+**But `pipeline-plan` is deliberately *not* a registry step.** Were it one, the plan's
+own IN_PROGRESS row would put it in the compute lane and `LaneBusy` would block the very
+steps the plan exists to run. There is a unit test asserting it is absent from both
+lanes, and an integration test asserting a live plan row does not make `import` look
+busy.
+
+**One definition of what a step does.** `stepJob` is shared by the single-step handlers
+and the executor. Before it, each step's work lived inline in its handler and a plan
+would have needed its own copy — which is how the two would have drifted, exactly as six
+parallel step tables drifted before F-1 replaced them with one registry.
+
+**A plan confirms training on default parameters, and records that it did.** A single
+step asks first and the client re-posts; a plan cannot stop to ask, and asking for the
+whole pipeline *is* the confirmation. `confirm_use_default` goes into the run's args, so
+"why is this model worse?" has an answer in the history rather than nowhere.
+
+**An explicit step list is reordered into registry order**, not run as given. The
+registry's order is the dependency order; honouring an arbitrary sequence would mean
+running export before precompute because someone typed it that way, which the gate would
+then refuse one step in — having already run the others.
+
+**`full` excludes optional steps.** A "run everything" that silently included auto-tune
+would take hours nobody asked for.
+
+**A bug found while building R-3 on this, and fixed here.** The first version asked
+tracking whether each step had *ever* completed successfully, and skipped it if so. On
+any box that had run the pipeline once, a fresh `full` plan would therefore skip every
+step and report success **having done nothing** — the exact silent-success failure this
+codebase keeps meeting, and the worst possible one to put behind a "Run full pipeline"
+button. Skipping is now driven by the prior run's own state: `Execute` runs everything,
+`Resume` skips what the run being resumed completed, and the failed step is where the
+resume starts rather than something to skip past.
+`TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore` is the guard.
+
+**A bug the tests caught.** The executor mutates its state as it walks, and handed that
+same state to the `Store`. The production store marshals immediately so it never
+noticed — but any implementation that *retained* what it was given would watch its
+records change underneath it. The executor now clones before every store call, and
+`TestCloneIsDeep` guards it.
 
 ### R-2 · API
 
-- [ ] `POST /ops/pipeline/run-plan` accepting a named plan (`full`, `retrain-only`,
-      `data-refresh`) or an explicit step list
-- [ ] `GET /ops/pipeline/plan` for current plan state
-- [ ] `POST /ops/pipeline/stop` extended to stop the plan
+- [x] `POST /ops/pipeline/run-plan` accepting a named plan (`full`, `retrain-only`,
+      `data-refresh`) or an explicit step list — never both; the ambiguity is refused
+      rather than resolved, as `/ops/data/fetch` refuses a feed and a URL together. An
+      empty body means `full`, because an operator posting nothing wants the pipeline,
+      not an error about which plan they forgot to name
+- [x] `GET /ops/pipeline/plan` for current plan state, including `resume_from` — where
+      a resume would start, answered by the same logic the executor's own skip uses.
+      `POST /ops/pipeline/run-plan` takes `{"resume": true}` to continue it
+- [x] `POST /ops/pipeline/stop` extended to stop the plan. The plan is cancelled
+      *first*: stopping only the step it is on would end that step and then let the
+      plan start the next one, which is not what Stop means
 
 **This is the API equivalent of `make up-all` / `make full-pipeline`**, which C5-3
 documented as existing only in the Makefile. It closes that asymmetry.

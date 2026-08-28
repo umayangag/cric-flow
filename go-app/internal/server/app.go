@@ -27,6 +27,10 @@ type App struct {
 	// lane makes the structure say what the lanes already promised.
 	jobCancelsMu sync.Mutex
 	jobCancels   map[pipelinesvc.Lane]context.CancelFunc
+
+	// planCancel stops a run plan as a whole, which is a different thing from
+	// stopping the step it is currently on (ops plan R-1).
+	planCancel planCancel
 }
 
 // NewApp creates an App. jobCtx is cancelled when the process receives SIGTERM/SIGINT;
