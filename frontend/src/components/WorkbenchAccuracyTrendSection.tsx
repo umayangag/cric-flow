@@ -1,6 +1,7 @@
 import React from 'react';
+import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -39,7 +40,7 @@ type Props = {
   limit: number;
   maxLimit: number;
   trendLoading: boolean;
-  trendError: string | null;
+  trendError: ApiError | null;
   trendData: AccuracyTrendResponse | null;
   onChangeFormat: (value: string) => void;
   onChangeStartDate: (value: string) => void;
@@ -171,11 +172,9 @@ const WorkbenchAccuracyTrendSection: React.FC<Props> = ({
           {trendLoading ? 'Loading…' : 'Load accuracy trend'}
         </Button>
       </Stack>
-      {trendError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {trendError}
-        </Alert>
-      )}
+      <Box sx={{ mt: trendError ? 2 : 0 }}>
+        <ErrorNotice error={trendError} title="Could not load the accuracy trend" />
+      </Box>
       {trendLoading && <LinearProgress sx={{ mt: 1 }} />}
       {trendData && !trendLoading && (
         <Box sx={{ mt: 2 }}>

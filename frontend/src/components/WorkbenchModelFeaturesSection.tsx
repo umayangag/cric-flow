@@ -8,12 +8,13 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Alert,
   CircularProgress,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SectionCard from './common/SectionCard';
+import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 import {
   getModelEntries,
   getPlayerLevelKeys,
@@ -26,7 +27,7 @@ export interface WorkbenchModelFeaturesSectionProps {
   /** Full response from GET /api/ml/model-metadata; null when loading or on error. No fallback. */
   modelMetadata: ModelMetadataApiResponse | null;
   loading: boolean;
-  error: string | null;
+  error: ApiError | string | null;
 }
 
 const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps> = ({
@@ -40,7 +41,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
         title="Model features & interconnection"
         subtitle="Loaded from ML service (GET /api/ml/model-metadata)."
       >
-        <Alert severity="error">ML service unavailable: {error}</Alert>
+        <ErrorNotice error={error} title="ML service unavailable" />
       </SectionCard>
     );
   }

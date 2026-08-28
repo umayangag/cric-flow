@@ -1,12 +1,12 @@
 import React from 'react';
 import { Box } from '@mui/material';
-import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import DataFetchSection from './DataFetchSection';
 import DataExtractSection from './DataExtractSection';
 import DatasetRegistryTable from './DatasetRegistryTable';
+import ErrorNotice from './common/ErrorNotice';
 import PipelineProgressPanel from './PipelineProgressPanel';
 import { useDataTab } from '../hooks/useDataTab';
 
@@ -36,7 +36,7 @@ const DataTab: React.FC = () => {
         </Button>
       </Box>
 
-      {error && <Alert severity="error">{error}</Alert>}
+      <ErrorNotice error={error} title="Could not load dataset state" />
 
       <PipelineProgressPanel pipelineRunning={busy} onRefresh={refresh} />
 

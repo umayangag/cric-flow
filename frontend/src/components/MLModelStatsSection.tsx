@@ -13,6 +13,8 @@ import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import MenuItem from '@mui/material/MenuItem';
 import SectionCard from './common/SectionCard';
+import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 import { MLModelRow } from './MLModelRow';
 import MLPredictionGraph from './MLPredictionGraph';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
@@ -20,7 +22,7 @@ import OpsFormatHierarchy from './OpsFormatHierarchy';
 /** Presentational section for ML model stats: table, refresh button, loading/error states. */
 export interface MLModelStatsSectionProps {
   data: ModelStatsResponse | null;
-  error: string | null;
+  error: ApiError | string | null;
   loading: boolean;
   onRefresh: () => void;
 }
@@ -105,11 +107,7 @@ export function MLModelStatsSection({
         )}
       </Stack>
 
-      {error && (
-        <Typography color="error" role="alert">
-          {error}
-        </Typography>
-      )}
+      <ErrorNotice error={error} title="Could not load model stats" />
 
       {!data && !error && (
         <Typography variant="body2" sx={{ opacity: 0.8 }}>

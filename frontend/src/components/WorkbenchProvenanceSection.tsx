@@ -10,13 +10,15 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
+import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 import { formatWhen, shortDigest } from '../utils/datasetFormat';
 import type { MLModelStat, ModelStatsResponse } from '../types';
 
 type Props = {
   stats: ModelStatsResponse | null;
   loading?: boolean;
-  error?: string | null;
+  error?: ApiError | string | null;
 };
 
 /** Whether a model's training data is current, stale, or genuinely unknown. */
@@ -69,7 +71,7 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
       subtitle="Which dataset produced which model, and whether that dataset is still the one on the box."
     >
       {loading && <Typography variant="body2">Loading model provenance…</Typography>}
-      {error && <Alert severity="error">{error}</Alert>}
+      <ErrorNotice error={error} title="Could not load model provenance" />
 
       {!loading && !error && (
         <>

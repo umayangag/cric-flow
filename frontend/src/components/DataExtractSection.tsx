@@ -6,6 +6,7 @@ import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
+import ErrorNotice from './common/ErrorNotice';
 import { api } from '../api';
 import { formatBytes } from './OpsDatasetSection';
 import { formatWhen, shortDigest } from '../utils/datasetFormat';
@@ -129,7 +130,7 @@ const DataExtractSection: React.FC<Props> = ({ staged, busy, onStarted }) => {
       )}
 
       {notice && <Alert severity="success">{notice}</Alert>}
-      {error && <Alert severity="error">{error}</Alert>}
+      <ErrorNotice error={error} title="Extraction could not start" />
     </SectionCard>
   );
 };

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useAsync } from './useAsync';
+import type { ApiError } from '../lib/apiError';
 import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
@@ -24,7 +25,7 @@ export interface UseWorkbenchReturn {
   maxLimit: number;
   availableFormats: string[];
   trendLoading: boolean;
-  trendError: string | null;
+  trendError: ApiError | null;
   trendData: AccuracyTrendResponse | null;
   loadAccuracyTrend: () => Promise<void>;
   registryFile: File | null;
@@ -34,10 +35,10 @@ export interface UseWorkbenchReturn {
   /** Full model metadata from GET /api/ml/model-metadata (model_modes + entries); null until loaded or on error. No fallback. */
   modelMetadata: ModelMetadataApiResponse | null;
   modelMetadataLoading: boolean;
-  modelMetadataError: string | null;
+  modelMetadataError: ApiError | null;
   modelStats: ModelStatsResponse | null;
   modelStatsLoading: boolean;
-  modelStatsError: string | null;
+  modelStatsError: ApiError | null;
 }
 
 /**
@@ -125,7 +126,7 @@ export function useWorkbench(): UseWorkbenchReturn {
       // nothing, and the panels below say why they are empty.
       availableFormats: formats.data ?? [],
       trendLoading: trend.loading,
-      trendError: trend.error?.message ?? null,
+      trendError: trend.error,
       trendData: trend.data,
       loadAccuracyTrend,
       registryFile,
@@ -134,10 +135,10 @@ export function useWorkbench(): UseWorkbenchReturn {
       handleRegistryFile,
       modelMetadata: metadata.data,
       modelMetadataLoading: metadata.loading,
-      modelMetadataError: metadata.error?.message ?? null,
+      modelMetadataError: metadata.error,
       modelStats: stats.data,
       modelStatsLoading: stats.loading,
-      modelStatsError: stats.error?.message ?? null,
+      modelStatsError: stats.error,
     }),
     [
       format,
