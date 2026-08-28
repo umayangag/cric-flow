@@ -22,6 +22,8 @@ const WorkbenchTab: React.FC = () => {
     trendLoading,
     trendError,
     trendData,
+    runs,
+    runsLoading,
     loadAccuracyTrend,
     registryFile,
     registryError,
@@ -64,6 +66,8 @@ const WorkbenchTab: React.FC = () => {
         maxLimit={maxLimit}
         trendLoading={trendLoading}
         trendError={trendError}
+        runs={runs}
+        runsLoading={runsLoading}
         trendData={trendData}
         onChangeFormat={setFormat}
         onChangeStartDate={setStartDate}

@@ -4,12 +4,14 @@
   "pipeline_steps": [
     {
       "id": "import",
+      "command": "cricsheet-import",
       "label": "Import",
       "optional": false,
       "requires": []
     },
     {
       "id": "precompute",
+      "command": "precompute-features",
       "label": "Precompute",
       "optional": false,
       "requires": [
@@ -18,6 +20,7 @@
     },
     {
       "id": "export",
+      "command": "export-dataset",
       "label": "Export",
       "optional": false,
       "requires": [
@@ -26,6 +29,7 @@
     },
     {
       "id": "train_batting",
+      "command": "train-batting",
       "label": "Train Batting",
       "optional": false,
       "requires": [
@@ -34,6 +38,7 @@
     },
     {
       "id": "train_bowling",
+      "command": "train-bowling",
       "label": "Train Bowling",
       "optional": false,
       "requires": [
@@ -42,6 +47,7 @@
     },
     {
       "id": "train_fielding",
+      "command": "train-fielding",
       "label": "Train Fielding",
       "optional": false,
       "requires": [
@@ -50,6 +56,7 @@
     },
     {
       "id": "train_extras",
+      "command": "train-extras",
       "label": "Train Extras",
       "optional": false,
       "requires": [
@@ -58,6 +65,7 @@
     },
     {
       "id": "train_win",
+      "command": "train-win",
       "label": "Train Win",
       "optional": false,
       "requires": [
@@ -66,6 +74,7 @@
     },
     {
       "id": "train_innings",
+      "command": "train-innings",
       "label": "Train Innings",
       "optional": false,
       "requires": [
@@ -74,6 +83,7 @@
     },
     {
       "id": "train_combination_meta",
+      "command": "train-combination-meta",
       "label": "Train Combination Meta",
       "optional": true,
       "requires": [
@@ -83,6 +93,7 @@
     },
     {
       "id": "auto_tune",
+      "command": "ml-auto-tune",
       "label": "Auto-tune",
       "optional": true,
       "requires": [
@@ -95,6 +106,7 @@
   "data_steps": [
     {
       "id": "fetch",
+      "command": "dataset-fetch",
       "label": "Fetch Dataset",
       "optional": false,
       "requires": [],
@@ -102,6 +114,7 @@
     },
     {
       "id": "extract",
+      "command": "dataset-extract",
       "label": "Extract Dataset",
       "optional": false,
       "requires": [],

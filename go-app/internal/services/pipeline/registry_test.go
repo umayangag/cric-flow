@@ -45,7 +45,12 @@ type contractDoc struct {
 }
 
 type contractStep struct {
-	ID           string   `json:"id"`
+	ID string `json:"id"`
+	// Command is what a run of this step is recorded as in data_migrations. The
+	// frontend needs it to recognise its own run history — an accuracy trend that
+	// cannot tell a retrain from a precompute cannot say what changed (W5-2) — and
+	// hand-typing it there is how the six step tables drifted before F-1.
+	Command      string   `json:"command"`
 	Label        string   `json:"label"`
 	Optional     bool     `json:"optional"`
 	Requires     []string `json:"requires"`
@@ -62,6 +67,7 @@ func contractSteps(surface Surface) []contractStep {
 		}
 		steps = append(steps, contractStep{
 			ID:           s.ID,
+			Command:      s.Command,
 			Label:        s.Label,
 			Optional:     s.Optional,
 			Requires:     requires,

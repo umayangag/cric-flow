@@ -55,9 +55,9 @@ nothing good.
 | W3-4 | partly | ops O-4 | Evaluation results: show metrics against the run that produced them |
 | W4-1 | done | W1-1 | Streamline `useUpcomingMatch` |
 | W4-2 | partly | — | Prediction results: make the failure modes legible |
-| W5-1 | todo | ops P-1 | Workbench as a model console: registry with provenance |
-| W5-2 | todo | ops O-4 | Accuracy trend tied to actual runs |
-| W5-3 | todo | ops R-3 | Retire what the ops console now shows live |
+| W5-1 | done | ops P-1 | Workbench as a model console: registry with provenance |
+| W5-2 | done | ops O-4 | Accuracy trend tied to actual runs |
+| W5-3 | done | ops R-3 | Retire what the ops console now shows live |
 | W6-1 | done | — | The archive URL is configuration, not a form field |
 | W6-2 | done | ops R-1 | Import acquires what it imports: fetch → extract → import |
 | W6-3 | done | W6-2 | Retire the Data tab's manual fetch/extract controls |
@@ -509,20 +509,52 @@ Deliberately last: it is where the ops plan's provenance work becomes visible.
 
 ### W5-1 · Registry with provenance *(depends on ops P-1)*
 
-- [ ] Per model: format, algorithm, dataset digest, cutoff, metrics, trained-at, size
-- [ ] Flag models trained on a dataset that is no longer live
-- [ ] Flag models older than the newest export
+Ops P-2 built most of this. What was left:
+
+- [x] Per model: format, **algorithm**, dataset digest, cutoff, metrics, trained-at,
+      **exported-at** and **size** — the three in bold were the gaps
+- [x] Models trained on a dataset that is no longer live were already flagged by P-2,
+      with the three-state verdict (`current` / `stale` / `unknown`) it was careful to
+      keep — "we cannot tell" is not a synonym for "out of date"
+- [x] **Models older than the newest export**, which the dataset digest cannot catch: a
+      model can be trained on the dataset that is still live and still be out of step
+      with its siblings, because two exports of the same dataset hours apart produce
+      different training rows. The comparison needs no new data — the models carry
+      `exported_at` — and a model that records none is *unknown*, not behind
+- [x] Fixed a reference the section had already outgrown: it told the operator to
+      "fetch and extract a dataset from the Data tab", which W6-3 deleted
 
 ### W5-2 · Accuracy trend tied to runs *(depends on ops O-4)*
 
-- [ ] Plot against real run history rather than an isolated endpoint
-- [ ] Annotate points with what changed — retrain, auto-tune, new dataset
+- [x] The runs that fall inside the plotted window, listed beneath the trend: retrain,
+      auto-tune, new data, new export — with the window taken from the plotted match
+      dates, because a run outside it cannot explain a movement inside it
+- [x] A window with **no** such runs says so, in those words: movement in the trend is
+      the matches differing, not the model. That is the more common case and the one
+      most likely to be misread
+- [x] The commands it recognises come from the **generated contract**, not from typed
+      strings: `contractStep` now carries `Command`, `pipelineSteps.ts` carries
+      `migrationCommand`, and `opsContract.test.ts` asserts they agree. A surface that
+      cannot tell a retrain from a precompute cannot say what changed, and hand-typed
+      command strings are how the six step tables drifted before F-1
+
+**Not a shared axis, deliberately.** Overlaying runs on the trend line would imply each
+point was produced by the model of its day, and it was not: the accuracy trend is
+per-match error scored by *whatever model is loaded now*. Listing the runs alongside
+says what actually changed without asserting a relationship the data does not have.
 
 ### W5-3 · Retire what the ops console now shows live *(depends on ops R-3)*
 
-- [ ] Remove Workbench panels the Ops tab now renders from live state
-- [ ] Workbench keeps one job: *what do my models look like and how good are they?*
-      Anything about *running* the pipeline belongs in Ops
+- [x] Done in **W2-1**, which deleted `WorkbenchPipelineInfoSection` rather than
+      rewriting it — building a second, smaller copy of the Ops graph in the Workbench
+      would have been building exactly what this item then removes
+- [x] Audited what is left. The Workbench now holds: accuracy trend, walk-forward
+      registry, model provenance, model features, and a Commands & docs card. Every one
+      answers *what do my models look like and how good are they?*
+- [x] **Commands & docs stays.** It names the commands that *produce the data these
+      panels view* — a walk-forward registry, an auto-tune run — not commands that run
+      the pipeline. The line is whether the operator is asking about their models or
+      operating the system, and it falls on the models' side
 
 ---
 
