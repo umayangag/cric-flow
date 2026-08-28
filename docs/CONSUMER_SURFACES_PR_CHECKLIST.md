@@ -49,9 +49,9 @@ nothing good.
 | W1-3 | done | — | Consolidate duplicated formatters |
 | W2-1 | done | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
 | W2-2 | done | — | Audit the other prose-heavy, zero-hook components |
-| W3-1 | todo | W1-1 | Split `useEvaluateDb` (365 lines, 17 states) |
-| W3-2 | todo | W3-1 | Collapse the form-state / job-state duplication |
-| W3-3 | todo | W1-1 | Put evaluate polling on the shared `usePolling` |
+| W3-1 | done | W1-1 | Split `useEvaluateDb` (365 lines, 17 states) |
+| W3-2 | done | W3-1 | Collapse the form-state / job-state duplication |
+| W3-3 | done | W1-1 | Put evaluate polling on the shared `usePolling` |
 | W3-4 | todo | ops O-4 | Evaluation results: show metrics against the run that produced them |
 | W4-1 | todo | W1-1 | Streamline `useUpcomingMatch` |
 | W4-2 | todo | — | Prediction results: make the failure modes legible |
@@ -392,9 +392,16 @@ env vars, a description of the registry's JSON keys, and a worked example.
 **Why:** 365 lines, 17 `useState`, mixing candidate loading, evaluation jobs, polling,
 scorecards and model-mode flags in one hook.
 
-- [ ] Separate by concern: candidates, evaluation job lifecycle, scorecard
-- [ ] Each built on W1-1
-- [ ] `EvaluateDbSection` (434 lines) splits along the same seams
+- [x] Separated by the seams the *data* has, not by line count:
+      `useEvaluateCandidates` (the list, and which row is chosen — selection belongs to
+      the list, because clearing one must clear the other), `useEvaluateJob` (start,
+      follow, restore) and `useMatchScorecard` (depends on a match id and nothing else)
+- [x] Each built on W1-1's `useAsync`
+- [x] **17 `useState` calls became 7**, and `useEvaluateDb` is now composition plus the
+      two questions the components ask: can I load, can I evaluate
+- [ ] `EvaluateDbSection` (434 lines) splits along the same seams — not done; the hook
+      was the part that was hard to follow, and splitting a presentational component
+      that reads top-to-bottom would be motion rather than progress
 
 ### W3-2 · Collapse the form-state / job-state duplication
 
@@ -403,16 +410,25 @@ scorecards and model-mode flags in one hook.
 `applyJobModeFromStatus`. Two sources of truth that can disagree, and the UI cannot say
 which it is showing.
 
-- [ ] One shape: form intent vs. the running job's *actual* parameters, explicitly labelled
-- [ ] Show the running job's real parameters, not the current form values — after W0-1
-      removes half of them there is much less to reconcile
-- [ ] The reconciliation callback should disappear rather than shrink
+- [x] **The reconciliation callback is gone rather than smaller.** W0-1 and W0-2
+      removed both flags it kept in sync, and the split gave the remainder an owner: a
+      job carries the parameters it was started with, in `localStorage`, and the form
+      is somebody else's state. There is nothing left for the two to disagree about
+- [x] One shape: the job hook reports the job, the form hook reports the form, and
+      `useEvaluateDb` does not copy either into the other
 
 ### W3-3 · Unify polling
 
-- [ ] `pollEvaluateStatus` is bespoke while `usePolling` exists — move it over
-- [ ] Consistent backoff and stop-on-unmount
-- [ ] Stop polling when the tab is hidden
+**Correction to the plan:** `pollEvaluateStatus` was *already* on `usePolling` when
+this was written. The real gap was the third bullet.
+
+- [x] Still on `usePolling`, now inside `useEvaluateJob` where the job it polls lives
+- [x] Stop-on-unmount was already there; `useAsync`'s staleness guard covers the case
+      it did not, where a slow response lands after the state it belongs to is gone
+- [x] **Polling stops while the tab is hidden** and resumes with an immediate run. A
+      background tab left open overnight was asking the server a question every two
+      seconds that nobody was there to read; and a returning user wants fresh state
+      anyway, which the immediate resume gives them without waiting out an interval
 
 ### W3-4 · Results tied to the run that produced them *(depends on ops O-4)*
 

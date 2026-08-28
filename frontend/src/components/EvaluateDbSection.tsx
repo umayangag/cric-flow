@@ -26,6 +26,7 @@ import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardRespons
 import type { EvaluationStep } from '../hooks/useEvaluateDb';
 import CandidatesTable from './CandidatesTable';
 import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
 
@@ -55,7 +56,7 @@ export interface EvaluateDbSectionProps {
 
   // UI state
   loading: boolean;
-  error: string | null;
+  error: ApiError | null;
   statusMessage: string;
 
   // Backtest data
@@ -67,7 +68,7 @@ export interface EvaluateDbSectionProps {
   // Scorecard
   scorecard: MatchScorecardResponse | null;
   scorecardLoading: boolean;
-  scorecardError: string | null;
+  scorecardError: ApiError | null;
 
   // Evaluate job
   currentJobId: string | null;

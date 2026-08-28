@@ -13,11 +13,13 @@ import {
 import type { MatchScorecardResponse } from '../types';
 
 import { formatCount, formatDecimal } from '../utils/format';
+import ErrorNotice from './common/ErrorNotice';
+import type { ApiError } from '../lib/apiError';
 
 type Props = {
   scorecard: MatchScorecardResponse | null;
   loading?: boolean;
-  error?: string | null;
+  error?: ApiError | string | null;
   /** Override default "Match summary" title */
   title?: string;
   /** Optional subtitle (e.g. for predicted card: "ML using data before match date") */
@@ -39,11 +41,7 @@ const MatchScorecard: React.FC<Props> = ({
     );
   }
   if (error) {
-    return (
-      <Typography color="error" sx={{ py: 2 }}>
-        {error}
-      </Typography>
-    );
+    return <ErrorNotice error={error} title="Could not load the scorecard" />;
   }
   if (!scorecard || !scorecard.innings?.length) {
     return (
