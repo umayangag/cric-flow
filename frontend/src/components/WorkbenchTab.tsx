@@ -5,6 +5,7 @@ import WorkbenchAccuracyTrendSection from './WorkbenchAccuracyTrendSection';
 import WorkbenchPipelineInfoSection from './WorkbenchPipelineInfoSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
+import WorkbenchProvenanceSection from './WorkbenchProvenanceSection';
 import { useWorkbench } from '../hooks/useWorkbench';
 import { getTrainableModelKeys, hasCombinationMeta } from '../utils/modelMetadata';
 
@@ -31,6 +32,9 @@ const WorkbenchTab: React.FC = () => {
     modelMetadata,
     modelMetadataLoading,
     modelMetadataError,
+    modelStats,
+    modelStatsLoading,
+    modelStatsError,
   } = useWorkbench();
 
   const trainableModelKeys = getTrainableModelKeys(modelMetadata);
@@ -78,6 +82,12 @@ const WorkbenchTab: React.FC = () => {
         registryError={registryError}
         registry={registry}
         onFileChange={handleRegistryFile}
+      />
+
+      <WorkbenchProvenanceSection
+        stats={modelStats}
+        loading={modelStatsLoading}
+        error={modelStatsError}
       />
 
       <WorkbenchModelFeaturesSection

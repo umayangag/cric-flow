@@ -149,11 +149,41 @@ export type MLModelStat = {
   completed_at?: string;
   /** Training duration in seconds (from data_migration.completed_at - started_at). */
   duration_seconds?: number;
+  /**
+   * The dataset this model was trained on, from its sidecar (ops plan P-1).
+   *
+   * Absent for a model trained before provenance existed, or from CSVs with no export
+   * manifest. Absent means genuinely unknown — never assume it matches the live one.
+   */
+  provenance?: DatasetProvenance;
+  /**
+   * Whether `provenance.dataset_sha256` matches the dataset currently on the box.
+   *
+   * Absent when either side is unknown, which is a third state and not a synonym for
+   * false: "we cannot tell" and "it is stale" are different things to show an operator.
+   */
+  dataset_is_live?: boolean;
 };
+
+/** Where a dataset came from. Every field optional — absent means unknown. */
+export type DatasetProvenance = {
+  dataset_sha256?: string;
+  dataset_source_url?: string;
+  dataset_feed?: string;
+  dataset_extracted_at?: string;
+  dataset_match_files?: number;
+  /** When the CSVs this model trained on were exported. */
+  exported_at?: string;
+  /** The training cutoff, which varies per run and is recorded nowhere else. */
+  training_cutoff?: string;
+};
+
 export type ModelStatsResponse = {
   models_dir: string;
   models: MLModelStat[];
   hierarchy?: FormatHierarchyNode[];
+  /** The dataset currently in the data directory, when one is identifiable. */
+  live_dataset?: DatasetProvenance;
 };
 
 // --- Backtest API DTOs ---

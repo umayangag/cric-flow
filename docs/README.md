@@ -29,7 +29,6 @@ Plans with open items. Check these before starting related work.
 |-----|--------|
 | [../model-harmony-plan.md](../model-harmony-plan.md) | Cross-model consistency: the strategic plan (**65 items open**) |
 | [../model-harmony-implementation-plan.md](../model-harmony-implementation-plan.md) | Its implementation companion (**6 open**). Note the correction banner: `[x]` there means *designed and prototyped*, not in use |
-| [OPS_CONSOLE_PR_CHECKLIST.md](OPS_CONSOLE_PR_CHECKLIST.md) | Run the whole pipeline from the frontend: acquisition, extraction, structured progress, chaining (**1 item open**) |
 | [CONSUMER_SURFACES_PR_CHECKLIST.md](CONSUMER_SURFACES_PR_CHECKLIST.md) | Streamline Workbench, Evaluate and Prediction; remove dead model-selection paths (**17 items open**) |
 | [../feature-catalog/README.md](../feature-catalog/README.md) | Five numbered feature plans driving the three product goals |
 | [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md) | ML service architecture improvements (P0–P4) |
@@ -41,6 +40,7 @@ Kept for the reasoning, not as instructions. Nothing here is a to-do list.
 | Doc | Purpose |
 |-----|--------|
 | [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md) | The repo-wide cleanup, one PR per item — **complete**. Records what was removed and, more usefully, what was deliberately kept and why |
+| [OPS_CONSOLE_PR_CHECKLIST.md](OPS_CONSOLE_PR_CHECKLIST.md) | Running the pipeline from the frontend, one PR per item — **complete**. Records the acquisition defences, the progress channel, and the bugs each phase uncovered |
 | [weather-not-implemented.md](weather-not-implemented.md) | Why weather is absent from the models, what remains in the schema, and what building it would take |
 | [rollout-reconciliation.md](rollout-reconciliation.md) | How the innings reconciliation path was rolled out |
 | [stage3-joint-modelling.md](stage3-joint-modelling.md) | Joint-modelling investigation and its outcome |

@@ -4,6 +4,7 @@ import type {
   AccuracyTrendResponse,
   AccuracyTrendFilters,
   ModelMetadataApiResponse,
+  ModelStatsResponse,
   WalkForwardRegistry,
 } from '../types';
 
@@ -33,6 +34,9 @@ export interface UseWorkbenchReturn {
   modelMetadata: ModelMetadataApiResponse | null;
   modelMetadataLoading: boolean;
   modelMetadataError: string | null;
+  modelStats: ModelStatsResponse | null;
+  modelStatsLoading: boolean;
+  modelStatsError: string | null;
 }
 
 export function useWorkbench(): UseWorkbenchReturn {
@@ -52,6 +56,30 @@ export function useWorkbench(): UseWorkbenchReturn {
   const [modelMetadata, setModelMetadata] = useState<ModelMetadataApiResponse | null>(null);
   const [modelMetadataLoading, setModelMetadataLoading] = useState(true);
   const [modelMetadataError, setModelMetadataError] = useState<string | null>(null);
+  // Model stats carry each model's provenance and whether its dataset is still live
+  // (ops plan P-2). Fetched here rather than in the section so the Workbench makes one
+  // request whatever it chooses to render.
+  const [modelStats, setModelStats] = useState<ModelStatsResponse | null>(null);
+  const [modelStatsLoading, setModelStatsLoading] = useState(true);
+  const [modelStatsError, setModelStatsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const stats = await api.getModelStats();
+        if (!cancelled) setModelStats(stats);
+      } catch (e) {
+        if (!cancelled)
+          setModelStatsError(e instanceof Error ? e.message : 'Failed to load model stats');
+      } finally {
+        if (!cancelled) setModelStatsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -159,5 +187,8 @@ export function useWorkbench(): UseWorkbenchReturn {
     modelMetadata,
     modelMetadataLoading,
     modelMetadataError,
+    modelStats,
+    modelStatsLoading,
+    modelStatsError,
   };
 }

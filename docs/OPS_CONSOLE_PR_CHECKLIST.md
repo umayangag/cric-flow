@@ -109,7 +109,7 @@ change that delivers the agreed fidelity, and it keeps one mechanism instead of 
 | R-2 | done | `ops/pr13-run-plan-executor` | `POST /ops/pipeline/run-plan` and plan status |
 | R-3 | done | `ops/pr14-run-plan-ui` | Frontend: "Run full pipeline" with per-step live state |
 | P-1 | done | `ops/pr15-export-provenance` | Stamp dataset provenance into exports and model sidecars |
-| P-2 | todo | | Show which dataset produced which model |
+| P-2 | done | `ops/pr16-workbench-provenance` | Show which dataset produced which model |
 
 **Recommended order:** F → A → O → R → P. F is trivial and makes the UI honest. A
 removes the only impossible-from-UI step. O makes long runs tolerable to watch. R is
@@ -802,8 +802,35 @@ verified by removing one and watching it fail.
 
 ### P-2 · Surface it
 
-- [ ] Workbench shows, per model: dataset, cutoff, metrics, trained-at
-- [ ] Flag models trained on a dataset that is no longer the live one
+- [x] Workbench shows, per model: dataset, cutoff, metrics, trained-at
+      (`WorkbenchProvenanceSection`)
+- [x] Flag models trained on a dataset that is no longer the live one
+
+**Three states, not two.** A model is `current`, `stale`, or `unknown` — and unknown is
+not a synonym for stale. A model trained before provenance existed, or from CSVs with no
+export manifest, is *unaccounted for*, not out of date; flagging every one of them as
+stale would put a warning on every model on any box that has not retrained since, which
+is noise rather than a warning. The same distinction is enforced on the backend:
+`dataset_is_live` is simply absent when either side is unknown.
+
+**The comparison happens in go-app, not the browser.** ml-service can say what a model
+was trained on; only go-app knows whether that is still what is on the box, because the
+dataset directory is its filesystem. Computing the verdict once beats every client
+deriving it slightly differently — and the frontend would have had to be told the live
+digest anyway.
+
+**Attached before the database check.** `enrichModelStatsPayload` returned early when
+Postgres was unavailable; provenance now lands first, because a model being stale is
+worth knowing whether or not the database is up.
+
+**Two sidecar names, both read.** `TrainingPipeline` writes
+`<kind>_metadata_<fmt>.json`; `artifact_sidecar` writes `<kind>_meta_<fmt>.json`. Two
+writers, two names — unifying them would rename files that inference already reads by
+name, which is a bigger change than this item, so `model_stats_service` reads either.
+
+**Nothing to compare against is stated, not implied.** A box with no dataset manifest
+gets "nothing can be compared against it" rather than a table of models silently marked
+unknown — and crucially not a re-train warning, which would be the wrong advice.
 
 ---
 

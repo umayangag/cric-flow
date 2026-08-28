@@ -12,6 +12,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from ml.artifact_sidecar import meta_filename
 from ml.config import get_mlqa_config
 
 from .logging import get_struct_logger
@@ -357,6 +358,50 @@ def enrich_with_tuning_report(
         rec["tuned"] = False
 
 
+#: The two sidecars a trained model may have, in the order they are preferred.
+#:
+#: `<kind>_metadata_<fmt>.json` is written by TrainingPipeline (batting, bowling,
+#: fielding) and `<kind>_meta_<fmt>.json` by artifact_sidecar (extras, innings, and
+#: win's own builder). Two names because two writers, and unifying them would rename
+#: files that inference already reads by name.
+def _sidecar_candidates(kind: str, fmt: Optional[str]) -> List[str]:
+    suffix = fmt or "LEGACY"
+    return [
+        f"{kind}_metadata_{suffix}.json",
+        meta_filename(kind, fmt),
+    ]
+
+
+def enrich_with_provenance(
+    rec: Dict[str, Any],
+    models_dir: str,
+    kind: str,
+    fmt: Optional[str],
+) -> None:
+    """Attach the dataset a model was trained on, from its sidecar (ops plan P-2).
+
+    Absent when the model predates P-1 or was trained from CSVs with no export
+    manifest. That is reported by omission rather than as an empty block: "we do not
+    know what this model was trained on" is the answer, and it is the one worth
+    flagging.
+    """
+    for name in _sidecar_candidates(kind, fmt):
+        path = os.path.join(models_dir, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                sidecar = json.load(f)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug("model_stats.sidecar_unreadable", path=path, error=str(e))
+            continue
+
+        provenance = sidecar.get("provenance") if isinstance(sidecar, dict) else None
+        if isinstance(provenance, dict) and provenance:
+            rec["provenance"] = provenance
+            return
+
+
 def build_model_stats(models_dir: str) -> Dict[str, Any]:
     """Scan MODELS_DIR for model artifacts and tuning reports; return unified model stats."""
     stats: List[Dict[str, Any]] = []
@@ -382,6 +427,7 @@ def build_model_stats(models_dir: str) -> Dict[str, Any]:
             continue
 
         enrich_with_tuning_report(rec, models_dir, entries, kind, fmt)
+        enrich_with_provenance(rec, models_dir, kind, fmt)
         stats.append(rec)
 
     stats.sort(key=lambda x: (x["model_name"], x["match_format"]))

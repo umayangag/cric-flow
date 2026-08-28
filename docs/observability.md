@@ -323,6 +323,19 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - **Failures**: `error_message` already carries `CODE: message — hint` from go-app's
     `MLError`; the dialog splits it so the next action is its own block.
 
+- **Model provenance** (`WorkbenchProvenanceSection`)
+  - **Source**: `GET /api/ml/model-stats`. ml-service attaches each model's
+    `provenance` from its sidecar; go-app attaches `live_dataset` and, per model,
+    `dataset_is_live`.
+  - **Displays**: per model — dataset digest, training cutoff, trained-at, accuracy —
+    and a warning listing models trained on a dataset that is no longer on the box.
+  - **Three states, not two**: `current`, `stale`, `unknown`. A model with no recorded
+    dataset is *unaccounted for*, not out of date; `dataset_is_live` is absent rather
+    than false, because flagging every such model as stale would warn about every model
+    on a box that has not retrained since.
+  - **The comparison is go-app's**: ml-service can say what a model trained on, but
+    only go-app knows whether that is still what is on disk.
+
 - **`WorkbenchTab`**
   - **Endpoints**:
     - `GET /api/formats` (available formats).
