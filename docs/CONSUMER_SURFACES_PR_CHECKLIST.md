@@ -46,7 +46,7 @@ nothing good.
 | W0-3 | done | — | Sweep for other dead toggles and props |
 | W1-1 | done | — | One async-state primitive instead of 49 `useState` calls |
 | W1-2 | done | — | Shared error display that honours the structured payload |
-| W1-3 | todo | — | Consolidate duplicated formatters |
+| W1-3 | done | — | Consolidate duplicated formatters |
 | W2-1 | todo | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
 | W2-2 | todo | — | Audit the other prose-heavy, zero-hook components |
 | W3-1 | todo | W1-1 | Split `useEvaluateDb` (365 lines, 17 states) |
@@ -289,9 +289,26 @@ fetch that used to discard it.
 
 ### W1-3 · Consolidate duplicated formatters
 
-- [ ] Percentage, fixed-decimal, duration and label formatters are redefined across at
-      least eight components — collect into `utils/format.ts`
-- [ ] One rule for null/undefined/NaN, applied everywhere
+- [x] Collected into `utils/format.ts`: bytes, rate, count, decimal, percent,
+      timestamp, epoch-seconds, duration, metric value, short digest
+- [x] `utils/datasetFormat.ts` folded in and deleted; `formatBytes` no longer lives in
+      a *component* (`OpsDatasetSection`) that four unrelated files imported it from
+- [x] One rule for null/undefined/NaN, and it is the shared test — `format.test.ts`
+      asserts it over every formatter at once rather than per function
+
+**The duplicates disagreed, which is the actual bug.** `formatBytes` existed three
+times: one answered `—` for zero, one `0 B`, one `—` for anything non-finite. Absence
+rendered as `—`, `-`, `''`, `N/A` or `0 B` depending on the panel — so an empty dataset
+directory and an unreachable one looked the same in one place and gratuitously
+different in another. `formatDuration` and `formatElapsed` were the same idea with
+different output. Two files each defined the same "integer or four decimals" metric
+formatter.
+
+**The rule now, everywhere:** absent (null/undefined/NaN/Infinity) → `—`; **zero is a
+value, not an absence** (`0 B`, `0.00`, `0s`); a negative where negatives are
+meaningless is absent. An unparseable timestamp is returned *as sent* rather than as a
+dash — the server sent something, and showing it beats hiding it behind a marker that
+reads as "nothing was sent".
 
 ---
 

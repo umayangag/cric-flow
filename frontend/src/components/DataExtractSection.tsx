@@ -8,8 +8,7 @@ import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
 import ErrorNotice from './common/ErrorNotice';
 import { api } from '../api';
-import { formatBytes } from './OpsDatasetSection';
-import { formatWhen, shortDigest } from '../utils/datasetFormat';
+import { formatBytes, formatWhen, shortDigest } from '../utils/format';
 import type { StagedResponse } from '../types';
 
 type Props = {

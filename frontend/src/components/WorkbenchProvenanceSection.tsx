@@ -12,7 +12,7 @@ import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
 import ErrorNotice from './common/ErrorNotice';
 import type { ApiError } from '../lib/apiError';
-import { formatWhen, shortDigest } from '../utils/datasetFormat';
+import { formatCount, formatWhen, shortDigest } from '../utils/format';
 import type { MLModelStat, ModelStatsResponse } from '../types';
 
 type Props = {
@@ -87,7 +87,7 @@ const WorkbenchProvenanceSection: React.FC<Props> = ({ stats, loading, error }) 
                 <span>sha256 {shortDigest(live.dataset_sha256)}</span>
               </Tooltip>
               {live.dataset_match_files != null && (
-                <> · {live.dataset_match_files.toLocaleString()} match files</>
+                <> · {formatCount(live.dataset_match_files)} match files</>
               )}
               {live.dataset_extracted_at && (
                 <> · extracted {formatWhen(live.dataset_extracted_at)}</>

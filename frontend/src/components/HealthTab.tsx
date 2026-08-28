@@ -10,6 +10,7 @@ import Divider from '@mui/material/Divider';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
+import { MISSING, formatBytes, formatEpochSeconds, formatWhen } from '../utils/format';
 import { usePolling } from '../hooks/usePolling';
 
 const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
@@ -76,23 +77,10 @@ const HealthTab: React.FC = () => {
     return mlData.status?.toLowerCase() === 'ok' ? 'ok' : 'warn';
   }, [mlData]);
 
-  const formatBytes = (n: number): string => {
-    if (!isFinite(n) || n <= 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0;
-    let v = n;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
-  };
-
-  const lastCheckedLocal = useMemo(() => {
-    if (!lastChecked) return '';
-    const d = new Date(lastChecked);
-    return isNaN(d.getTime()) ? '' : d.toLocaleString();
-  }, [lastChecked]);
+  const lastCheckedLocal = useMemo(
+    () => (lastChecked ? formatWhen(lastChecked) : ''),
+    [lastChecked],
+  );
 
   const loadedFormatsItems = useMemo(() => {
     return MODEL_TYPES.map((t) => {
@@ -118,20 +106,16 @@ const HealthTab: React.FC = () => {
   }, [mlData]);
 
   const totalSizeValue = useMemo(() => {
-    if (!mlData) return '—';
-    const total = allArtifacts.reduce((acc, it) => acc + (it.size_bytes ?? 0), 0);
-    return total > 0 ? formatBytes(total) : '0 B';
+    if (!mlData) return MISSING;
+    return formatBytes(allArtifacts.reduce((acc, it) => acc + (it.size_bytes ?? 0), 0));
   }, [mlData, allArtifacts]);
 
   const latestModifiedValue = useMemo(() => {
-    if (!mlData) return '—';
+    if (!mlData) return MISSING;
     const timestamps = allArtifacts
       .map((it) => it.modified)
       .filter((n): n is number => n != null && isFinite(n));
-    if (!timestamps.length) return 'N/A';
-    const max = Math.max(...timestamps);
-    const d = new Date(max * 1000);
-    return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+    return timestamps.length ? formatEpochSeconds(Math.max(...timestamps)) : MISSING;
   }, [mlData, allArtifacts]);
 
   return (

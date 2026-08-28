@@ -8,8 +8,8 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { formatBytes } from './OpsDatasetSection';
-import { formatWhen, shortDigest } from '../utils/datasetFormat';
+import { formatBytes } from '../utils/format';
+import { formatCount, formatMetricValue, formatWhen, shortDigest } from '../utils/format';
 import { compareMetrics, type MetricComparison } from '../utils/runMetadata';
 import type { Migration, RunMetadata } from '../types';
 
@@ -22,11 +22,6 @@ type Props = {
   /** True once the search for a previous run has finished. */
   comparisonReady: boolean;
 };
-
-/** A number as a short, readable value: integers unrounded, fractions to 4 places. */
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
-}
 
 /** A metric's change, with a verdict only where the direction is known. */
 const Delta: React.FC<{ comparison: MetricComparison }> = ({ comparison }) => {
@@ -53,12 +48,12 @@ const Delta: React.FC<{ comparison: MetricComparison }> = ({ comparison }) => {
       title={
         comparison.verdict === 'unknown'
           ? 'This metric has no known better direction, so the change is shown without a verdict.'
-          : `Previous: ${formatNumber(comparison.previous ?? 0)}`
+          : `Previous: ${formatMetricValue(comparison.previous ?? 0)}`
       }
     >
       <Typography variant="caption" color={colour} fontWeight={600}>
         {sign}
-        {formatNumber(comparison.delta)}
+        {formatMetricValue(comparison.delta)}
         {pct}
       </Typography>
     </Tooltip>
@@ -83,7 +78,7 @@ const Provenance: React.FC<{ provenance: NonNullable<RunMetadata['provenance']> 
         <span>sha256 {shortDigest(provenance.dataset_sha256)}</span>
       </Tooltip>
       {provenance.dataset_match_files != null && (
-        <> · {provenance.dataset_match_files.toLocaleString()} match files</>
+        <> · {formatCount(provenance.dataset_match_files)} match files</>
       )}
       {provenance.dataset_extracted_at && (
         <> · extracted {formatWhen(provenance.dataset_extracted_at)}</>
@@ -162,7 +157,7 @@ const RunSummaryPanel: React.FC<Props> = ({
                 {formats.map((fmt) => (
                   <TableRow key={fmt.format}>
                     <TableCell>{fmt.format}</TableCell>
-                    <TableCell align="right">{fmt.rows?.toLocaleString() ?? '—'}</TableCell>
+                    <TableCell align="right">{formatCount(fmt.rows)}</TableCell>
                     <TableCell align="right">{fmt.features ?? '—'}</TableCell>
                     <TableCell>
                       {(fmt.artifacts ?? [])
@@ -211,7 +206,7 @@ const RunSummaryPanel: React.FC<Props> = ({
                 {comparisons.map((c) => (
                   <TableRow key={c.name}>
                     <TableCell>{c.name}</TableCell>
-                    <TableCell align="right">{formatNumber(c.current)}</TableCell>
+                    <TableCell align="right">{formatMetricValue(c.current)}</TableCell>
                     <TableCell align="right">
                       <Delta comparison={c} />
                     </TableCell>

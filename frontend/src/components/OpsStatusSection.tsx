@@ -14,6 +14,7 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
+import { formatWhen } from '../utils/format';
 import ErrorNotice from './common/ErrorNotice';
 import { asObj } from '../utils/opsStatusHelpers';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
@@ -126,17 +127,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
               <Typography variant="body2" component="div">
                 Last match data import:{' '}
                 <strong>
-                  {(() => {
-                    const v = asObj(data?.db).last_match_import_at as unknown as
-                      string | number | Date | undefined;
-                    if (!v) return 'unknown';
-                    try {
-                      const d = new Date(v);
-                      return isNaN(d.getTime()) ? String(v) : d.toLocaleString();
-                    } catch {
-                      return String(v);
-                    }
-                  })()}
+                  {formatWhen(asObj(data?.db).last_match_import_at as string | undefined)}
                 </strong>
               </Typography>
               {(() => {

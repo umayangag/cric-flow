@@ -12,15 +12,7 @@ import {
 } from '@mui/material';
 import type { MatchScorecardResponse } from '../types';
 
-function fmtNum(n: number | null | undefined): string {
-  if (n == null) return '-';
-  return String(n);
-}
-
-function fmtDec(n: number | null | undefined, decimals = 2): string {
-  if (n == null) return '-';
-  return Number(n).toFixed(decimals);
-}
+import { formatCount, formatDecimal } from '../utils/format';
 
 type Props = {
   scorecard: MatchScorecardResponse | null;
@@ -105,11 +97,11 @@ const MatchScorecard: React.FC<Props> = ({
                 {inn.batting.map((b, idx) => (
                   <TableRow key={`${b.player_name}-${idx}`}>
                     <TableCell>{b.player_name}</TableCell>
-                    <TableCell align="right">{fmtNum(b.runs)}</TableCell>
-                    <TableCell align="right">{fmtNum(b.balls)}</TableCell>
-                    <TableCell align="right">{fmtNum(b.fours)}</TableCell>
-                    <TableCell align="right">{fmtNum(b.sixes)}</TableCell>
-                    <TableCell align="right">{fmtDec(b.strike_rate)}</TableCell>
+                    <TableCell align="right">{formatCount(b.runs)}</TableCell>
+                    <TableCell align="right">{formatCount(b.balls)}</TableCell>
+                    <TableCell align="right">{formatCount(b.fours)}</TableCell>
+                    <TableCell align="right">{formatCount(b.sixes)}</TableCell>
+                    <TableCell align="right">{formatDecimal(b.strike_rate)}</TableCell>
                     <TableCell>{b.how_out ?? '-'}</TableCell>
                   </TableRow>
                 ))}
@@ -143,14 +135,14 @@ const MatchScorecard: React.FC<Props> = ({
                   return (
                     <TableRow key={`${w.player_name}-${idx}`}>
                       <TableCell>{w.player_name}</TableCell>
-                      <TableCell align="right">{fmtDec(w.overs, 1)}</TableCell>
-                      <TableCell align="right">{fmtNum(w.maidens)}</TableCell>
-                      <TableCell align="right">{fmtNum(w.runs)}</TableCell>
-                      <TableCell align="right">{fmtNum(w.wickets)}</TableCell>
-                      <TableCell align="right">{fmtDec(w.economy)}</TableCell>
-                      <TableCell align="right">{fmtNum(w.wides)}</TableCell>
-                      <TableCell align="right">{fmtNum(w.no_balls)}</TableCell>
-                      <TableCell align="right">{fmtDec(bowlSR)}</TableCell>
+                      <TableCell align="right">{formatDecimal(w.overs, 1)}</TableCell>
+                      <TableCell align="right">{formatCount(w.maidens)}</TableCell>
+                      <TableCell align="right">{formatCount(w.runs)}</TableCell>
+                      <TableCell align="right">{formatCount(w.wickets)}</TableCell>
+                      <TableCell align="right">{formatDecimal(w.economy)}</TableCell>
+                      <TableCell align="right">{formatCount(w.wides)}</TableCell>
+                      <TableCell align="right">{formatCount(w.no_balls)}</TableCell>
+                      <TableCell align="right">{formatDecimal(bowlSR)}</TableCell>
                     </TableRow>
                   );
                 })}

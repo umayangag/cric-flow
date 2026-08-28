@@ -3,22 +3,7 @@ import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import type { DatasetStatus } from '../types';
-
-/** Bytes as a short human-readable size. */
-export function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / 1024 ** exponent;
-  return `${value >= 10 || exponent === 0 ? Math.round(value) : value.toFixed(1)} ${units[exponent]}`;
-}
-
-/** An RFC3339 timestamp as local time, or an em dash. */
-function formatWhen(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? value : d.toLocaleString();
-}
+import { formatBytes, formatWhen } from '../utils/format';
 
 /**
  * What is in the dataset directory on the server.
