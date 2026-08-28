@@ -47,8 +47,8 @@ nothing good.
 | W1-1 | done | — | One async-state primitive instead of 49 `useState` calls |
 | W1-2 | done | — | Shared error display that honours the structured payload |
 | W1-3 | done | — | Consolidate duplicated formatters |
-| W2-1 | todo | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
-| W2-2 | todo | — | Audit the other prose-heavy, zero-hook components |
+| W2-1 | done | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
+| W2-2 | done | — | Audit the other prose-heavy, zero-hook components |
 | W3-1 | todo | W1-1 | Split `useEvaluateDb` (365 lines, 17 states) |
 | W3-2 | todo | W3-1 | Collapse the form-state / job-state duplication |
 | W3-3 | todo | W1-1 | Put evaluate polling on the shared `usePolling` |
@@ -324,11 +324,28 @@ and it has already drifted: PR #149 had to correct it because it still described
 Two forces make it worse over time: it duplicates `docs/`, and the ops console will soon
 render the *live* pipeline state next to it.
 
-- [ ] Replace the step-by-step prose with the live pipeline state once ops R-3 exists
-- [ ] Keep only what is genuinely explanatory and not derivable, and link to `docs/`
-      for the rest
-- [ ] Anything retained that names a config key, column or endpoint must be covered by a
-      test or generated — the C7-1 rule
+**It had drifted four more times since PR #149.** Checked before deleting it, the
+component still described: `weather_data` written by import and "weather from DB or API"
+at prediction (nothing populates it, and W0-3 removed the request field); "per-format or
+legacy" artifacts (the legacy tier went with the pooled model); "form/consistency"
+features (the v3 contract replaced them with raw windowed stats); and
+`POST /api/predict/match`, which is not an endpoint — it is `/api/predict/team-selection`.
+
+- [x] **Deleted, not rewritten.** Ops R-3 renders the pipeline live, in the tab that
+      runs it. Replacing 214 lines of prose with a second, smaller copy of the Ops graph
+      would build exactly what W5-3 then removes, so this does that step now: the
+      Workbench points at Ops → Pipeline and at `docs/`
+- [x] The one thing kept is the sentence that is *not* derivable — that running the
+      pipeline lives in Ops and what each step does lives in `docs/`
+- [x] The step descriptions in `pipelineSteps.ts` are now the only pipeline prose left
+      in the app, and they had drifted the same way: "unified (legacy)" models on four
+      training steps, "form, consistency" on precompute. Corrected
+- [x] The C7-1 rule, made enforceable: a test asserts no step description names a
+      concept the repo has removed — `unified model`, `legacy`, `consistency`,
+      `weather` — each entry carrying why it is retired. A test cannot check that prose
+      is *accurate*; it can check that it does not describe a system that no longer
+      exists, which is what every drift here has looked like. **Adding a term to that
+      list is the last step of removing a concept**
 
 **Acceptance:** no hand-maintained description of a config key or column ships inside a
 component.
@@ -344,8 +361,27 @@ Found by the same scan; each needs a judgement, not a blanket rule:
 | `WorkbenchRegistrySection.tsx` | 180 | 0 | Same question |
 | `MatchScorecard.tsx` | 166 | 0 | Likely legitimately presentational |
 
-- [ ] Classify each: presentational-over-props (**fine**) vs. embedded documentation (**fix**)
-- [ ] Record the verdict so the next audit does not redo the work
+- [x] Classified, with the verdicts recorded here so the next audit does not redo them:
+
+| Component | Verdict |
+|---|---|
+| `MLModelRowDetails` (317) | **Presentational.** Every line renders a field of `MLModelStat` — tuned parameters, metrics, feature importance, the MLQA audit. Its two local percent helpers stay: they encode real behaviour (extra digits below 0.1%, `(n/a)` rather than `Infinity%` when the baseline is near zero) that `formatPercent` should not carry for everyone |
+| `OpsMatrix` (284) | **Presentational.** Props in, cells out, no prose at all. Confirmed rather than assumed |
+| `WorkbenchRegistrySection` (180) | **Was both.** Fixed — see below |
+| `MatchScorecard` (166) | **Presentational.** Renders a scorecard response; its only prose is a caption prop the caller supplies |
+
+**`WorkbenchRegistrySection` carried ~40 lines of embedded documentation** above the
+upload button: what walk-forward is, why to use it, a `make walk-forward` invocation with
+env vars, a description of the registry's JSON keys, and a worked example.
+
+- [x] Kept: *why walk-forward exists* — a judgement about evaluation that is not
+      derivable from anything on screen, condensed from two paragraphs to one
+- [x] Removed: the `make` invocation. The **Commands & docs** card in the same tab
+      already carries it, and two copies of a command drift apart
+- [x] Removed: the JSON-key description and the example. **The parser knows the shape**,
+      so the parser now says it — the upload error names the keys it expected. A rule
+      stated next to the check that enforces it cannot drift away from it, and it is
+      only needed by someone whose file is wrong
 
 ---
 

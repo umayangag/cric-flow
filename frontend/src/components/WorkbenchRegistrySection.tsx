@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Box,
   Button,
   Stack,
   Typography,
@@ -50,64 +49,21 @@ const WorkbenchRegistrySection: React.FC<WorkbenchRegistrySectionProps> = ({
       title="Walk-forward registry"
       subtitle="Upload a walk-forward registry JSON to view how well the model generalizes over time."
     >
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        <strong>What it is:</strong> Walk-forward evaluation tests whether your model stays accurate
-        as time moves forward. For each &quot;window&quot;, the pipeline trains on data only
-        <em> before </em> a cutoff date, then predicts the next X matches (holdout), and compares
-        predictions to actual results. The registry file records each window (model, format, cutoff,
-        metrics like MAE). This helps you spot if the model degrades on newer matches.
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        <strong>Why use it:</strong> A single backtest on a date range can hide that the model
-        performs worse on recent data. Walk-forward simulates real use: train on the past, predict
-        the future, then advance time and repeat. Upload the registry here to inspect metrics per
-        window (e.g. n_train, n_holdout, runs_mae) without re-running the pipeline.
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        <strong>How to get a registry:</strong> Run from the repo:{' '}
-        <Box component="code" sx={{ fontSize: '0.85em', bgcolor: 'action.hover', px: 0.5 }}>
-          make walk-forward INITIAL_CUTOFF=2024-01-01 WINDOW_X=50 WALK_FORMAT=T20
-        </Box>{' '}
-        (adjust dates and format as needed). The pipeline writes{' '}
-        <code>walk_forward_registry.json</code> to the ML service output directory. Upload that file
-        below.
-      </Typography>
+      {/*
+        What survives the W2-2 audit: why walk-forward exists at all, which is a
+        judgement about evaluation and is not derivable from anything on screen.
+        What did not: a Makefile invocation with env vars (the Commands & docs card
+        in this same tab already carries it, and two copies drift apart) and a
+        hand-written description of the file's JSON keys with a worked example
+        (the parser knows the shape — so the parser says so, when a file is wrong).
+      */}
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        <strong>Expected file shape:</strong> JSON with <code>run_id</code> (string) and{' '}
-        <code>windows</code> (array). Each window has <code>model_type</code>, <code>format</code>,{' '}
-        <code>cutoff_trained_before</code>, <code>window_x</code>, <code>metrics</code> (e.g.{' '}
-        <code>runs_mae</code>), and optionally <code>n_training_samples</code>,{' '}
-        <code>n_holdout_samples</code>. Example:
+        A single backtest over a date range can hide that a model does worse on recent matches.
+        Walk-forward evaluation trains on data before a cutoff, predicts the next X matches, then
+        advances the cutoff and repeats — so each window is scored on matches its model never saw.
+        Upload a registry to read those per-window metrics without re-running the pipeline. The
+        command that produces one is in <strong>Commands &amp; docs</strong> below.
       </Typography>
-      <Box
-        component="pre"
-        sx={{
-          fontSize: 11,
-          p: 1.5,
-          bgcolor: 'grey.100',
-          borderRadius: 1,
-          overflow: 'auto',
-          border: '1px solid',
-          borderColor: 'divider',
-          mb: 2,
-        }}
-      >
-        {`{
-  "run_id": "walk-2024-01-15",
-  "windows": [
-    {
-      "model_type": "batting",
-      "format": "T20",
-      "cutoff_trained_before": "2024-01-01T00:00:00Z",
-      "window_x": 50,
-      "n_training_samples": 1200,
-      "n_holdout_samples": 50,
-      "metrics": { "runs_mae": 12.4, "player_runs_mae": 8.2 }
-    }
-  ],
-  "config": { "initial_cutoff": "2024-01-01", "window_x": 50, "format": "T20" }
-}`}
-      </Box>
       <Stack direction="row" alignItems="center" spacing={2}>
         <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
           Choose JSON file
