@@ -53,8 +53,8 @@ nothing good.
 | W3-2 | done | W3-1 | Collapse the form-state / job-state duplication |
 | W3-3 | done | W1-1 | Put evaluate polling on the shared `usePolling` |
 | W3-4 | partly | ops O-4 | Evaluation results: show metrics against the run that produced them |
-| W4-1 | todo | W1-1 | Streamline `useUpcomingMatch` |
-| W4-2 | todo | — | Prediction results: make the failure modes legible |
+| W4-1 | done | W1-1 | Streamline `useUpcomingMatch` |
+| W4-2 | partly | — | Prediction results: make the failure modes legible |
 | W5-1 | todo | ops P-1 | Workbench as a model console: registry with provenance |
 | W5-2 | todo | ops O-4 | Accuracy trend tied to actual runs |
 | W5-3 | todo | ops R-3 | Retire what the ops console now shows live |
@@ -463,9 +463,17 @@ in the table so that case is visible.
 
 ### W4-1 · Streamline `useUpcomingMatch`
 
-- [ ] 205 lines, 16 states — same treatment as W3-1
-- [ ] Share candidate/team-selection logic with Evaluate where genuinely the same;
-      **do not** force-share where the flows differ
+- [x] The three near-identical fetch-and-cascade blocks (formats → teams → opponents),
+      each with its own `active` flag, are three `useAsync` calls whose effects say
+      only what they depend on
+- [x] The hand-rolled venue debounce moved to `useVenueSearch`, which also **discards a
+      stale response** — typing "Lord's" used to let the answer for "Lor" land on top
+- [x] **16 `useState` calls became 6**, and the six are the form fields the user types
+      into: component state, not an async lifecycle pretending to be one
+- [x] Not force-shared with Evaluate. The two flows *look* alike — both pick a format
+      and two teams — and differ underneath: Evaluate lists played matches to choose
+      one, prediction picks a future date with no match to select. Sharing the shape
+      would have meant a hook with two modes, which is worse than two hooks
 
 ### W4-2 · Make prediction failure modes legible
 
@@ -473,11 +481,25 @@ in the table so that case is visible.
 features, a known opposition pool. Today a missing precondition surfaces as a generic
 failure and the user cannot tell which one.
 
-- [ ] Distinguish and label: no model for format, missing precompute, unknown player,
-      insufficient history
-- [ ] Each maps to a named remedy (W1-2), linked to the pipeline step that fixes it
-- [ ] Sequence features are zero-filled until precompute runs — say so in the UI rather
-      than silently predicting on zeros
+**The worst of these does not fail at all.** Missing precompute means there are no
+feature snapshots to read, so the vector is **zero-filled** and the models answer
+happily — a confident-looking number nobody can tell is worthless. That is not an error
+to label better; it is a state to say out loud before the button is pressed.
+
+- [x] `PredictionReadiness` names the pipeline steps that have not completed, before a
+      prediction is run, and says in as many words that without precompute the form and
+      windowed statistics are filled with zeros and the answer will not be worth
+      anything. It derives that from the pipeline state the **Ops tab already derives**,
+      so it cannot claim the pipeline is ready while Ops says it is not
+- [x] Named remedies for `FORMAT_NOT_FOUND` and `NO_SQUAD`, on W1-2's shared component,
+      each pointing at the tab and step that fixes it
+- [x] "No model for the format" was already carried structurally by W1-2 —
+      `MODEL_NOT_LOADED`, its hint, and the list of formats that *are* loaded
+- [ ] "Unknown player" and "insufficient history" are **not** distinguished. Traced:
+      neither produces a distinct code, and neither is a failure — a player with no
+      history gets zero-filled features exactly like the precompute case. Labelling
+      them needs the backend to say which players it had nothing for, which is a
+      backend change this item did not scope. Recorded rather than quietly dropped
 
 ---
 

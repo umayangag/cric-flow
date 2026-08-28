@@ -21,6 +21,10 @@ const REMEDIES: Record<string, string> = {
   CONTRIBUTIONS_CSV_MISSING:
     'Produce backtest_contributions.csv first: Evaluate → Export contributions. Ops → Train Combination Meta needs it.',
   NO_DATA: 'The dataset directory is empty. Ops → Import acquires and loads a dataset.',
+  FORMAT_NOT_FOUND:
+    'No matches have been imported for this format. Ops → Import, then Precompute, then Export.',
+  NO_SQUAD:
+    'No player pool for this team in this format — the teams are derived from imported matches, so a team with no history here cannot be picked from.',
 };
 
 export type ErrorNoticeProps = {
