@@ -219,11 +219,45 @@ type mlWinPrediction struct {
 	Team1WinProbability float64 `json:"team1_win_probability"`
 }
 
-// mlErrorDetail is a subset of the ML service error response (FastAPI sends {"detail": ...}).
+// mlErrorDetail is the ML service error response (FastAPI sends {"detail": ...}).
+//
+// `available` is part of it and not an afterthought: when a model is not loaded, the
+// list of what *is* loaded is the answer. Dropping it — which this client did while it
+// flattened the payload into a formatted string — turns "no T20I model; you have ODI
+// and TEST" into "prediction failed".
 type mlErrorDetail struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Hint    string `json:"hint"`
+	Code      string   `json:"code"`
+	Message   string   `json:"message"`
+	Hint      string   `json:"hint"`
+	Available []string `json:"available"`
+}
+
+// mlServiceError is a structured failure from ml-service, kept structured all the way
+// to the HTTP response (consumer plan W1-2).
+//
+// Before this type the chain was: ml-service writes {code, message, hint, available};
+// this client formats it into "endpoint http 404: msg — hint", dropping code and
+// available; respondErr wraps that string in a 500 INTERNAL. A 404 the operator could
+// have acted on reached the browser as an unexplained server error. Every link in that
+// chain lost something, so the fix has to be a type that survives all of them.
+type mlServiceError struct {
+	Endpoint  string
+	Status    int
+	Code      string
+	Message   string
+	Hint      string
+	Available []string
+}
+
+func (e *mlServiceError) Error() string {
+	msg := e.Message
+	if msg == "" {
+		msg = "ml-service returned an error"
+	}
+	if e.Hint != "" {
+		msg += " — " + e.Hint
+	}
+	return fmt.Sprintf("%s http %d: %s", e.Endpoint, e.Status, msg)
 }
 
 // logMLNon2xx reads the response body, logs status and body for debugging, and returns an error
@@ -259,11 +293,14 @@ func logMLNon2xx(resp *http.Response, endpoint string) error {
 		}
 		var d mlErrorDetail
 		if err := json.Unmarshal(detail.Detail, &d); err == nil {
-			msg := d.Message
-			if d.Hint != "" {
-				msg += " — " + d.Hint
+			return &mlServiceError{
+				Endpoint:  endpoint,
+				Status:    resp.StatusCode,
+				Code:      d.Code,
+				Message:   d.Message,
+				Hint:      d.Hint,
+				Available: d.Available,
 			}
-			return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, msg)
 		}
 	}
 	return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(bodyStr))

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Box } from '@mui/material';
-import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import LinearProgress from '@mui/material/LinearProgress';
@@ -8,6 +7,7 @@ import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import ErrorNotice from './common/ErrorNotice';
 import { api } from '../api';
 import type { RunPlanState, RunPlanStep, RunPlanStepStatus } from '../types';
 
@@ -207,7 +207,7 @@ const RunPlanPanel: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
         (auto-tune, combination-meta) are never included — run those yourself.
       </Typography>
 
-      {error && <Alert severity="error">{error}</Alert>}
+      <ErrorNotice error={error} title="Run plan" />
 
       {steps.length > 0 && (
         <Box>

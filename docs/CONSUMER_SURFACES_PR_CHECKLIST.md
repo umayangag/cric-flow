@@ -45,7 +45,7 @@ nothing good.
 | W0-2 | done | — | Audit `use_latest_model` — vestigial, and misreporting; removed |
 | W0-3 | done | — | Sweep for other dead toggles and props |
 | W1-1 | done | — | One async-state primitive instead of 49 `useState` calls |
-| W1-2 | todo | — | Shared error display that honours the structured payload |
+| W1-2 | done | — | Shared error display that honours the structured payload |
 | W1-3 | todo | — | Consolidate duplicated formatters |
 | W2-1 | todo | — | Retire `WorkbenchPipelineInfoSection`'s static prose |
 | W2-2 | todo | — | Audit the other prose-heavy, zero-hook components |
@@ -253,13 +253,39 @@ in this step.
 and C5-2 added `CONTRIBUTIONS_CSV_MISSING` with an actionable hint. The UI mostly renders a
 generic red toast, discarding the `hint` field that was written specifically to be shown.
 
-- [ ] One error component rendering `message` prominently and `hint` as the next action
-- [ ] Map known codes (`MODEL_NOT_LOADED`, `MISSING_FORMAT`, `CONTRIBUTIONS_CSV_MISSING`)
-      to a concrete remedy — usually "run this pipeline step", linkable to the Ops tab
-- [ ] Never swallow `available` — when a model is not loaded, listing what *is* loaded is
-      the whole answer
+**It was worse than "the UI mostly renders a generic red toast".** Traced, the payload
+was destroyed twice before any component saw it:
 
-**Acceptance:** every backend error carrying a `hint` shows that hint to the user.
+1. `logMLNon2xx` parsed ml-service's `{code, message, hint, available}` and then
+   **formatted it into a string** — `"endpoint http 404: msg — hint"` — dropping `code`
+   and `available` outright
+2. `respondErr` wrapped that string in **`500 INTERNAL`**, so an upstream 404 the
+   operator could have acted on arrived as an unexplained server error
+3. `httpApi` threw `new Error("HTTP 500 …: " + text)`, so even the message was only
+   available as a substring
+
+Fixing the component alone would have achieved nothing: there was nothing left to show.
+
+- [x] go-app keeps it structured: `mlServiceError` carries code, hint and available to
+      `respondErr`, which relays them with the upstream status. 4xx passes through —
+      "you asked for a format with no model" is the caller's problem whichever service
+      noticed — and 5xx becomes **502**, because ml-service failing is a dependency
+      failing, not this request being malformed
+- [x] `api.ts` parses the body into `ApiError` instead of stringifying it: go-app's
+      top-level shape, ml-service's `{detail: …}` envelope and the older `{error: …}`
+      data-job shape, falling back to raw text so a proxy's HTML page stays legible
+- [x] One error component (`ErrorNotice`) rendering `message` prominently and `hint`
+      as the next action, replacing eight hand-rolled red boxes
+- [x] Known codes (`MODEL_NOT_LOADED`, `MISSING_FORMAT`, `CONTRIBUTIONS_CSV_MISSING`,
+      `NO_DATA`) map to a concrete remedy naming the tab and step that fixes it. Codes
+      with no entry get the backend's hint alone — inventing advice for an unknown code
+      would be worse than saying nothing
+- [x] `available` is never swallowed — it is rendered as its own line, because when a
+      model is not loaded, what *is* loaded is the whole answer
+
+**Acceptance:** every backend error carrying a `hint` shows that hint to the user —
+asserted in `ErrorNotice.test.tsx`, and `api.error.test.ts` asserts it survives the
+fetch that used to discard it.
 
 ### W1-3 · Consolidate duplicated formatters
 

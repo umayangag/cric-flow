@@ -1,3 +1,4 @@
+import { ApiError } from './lib/apiError';
 import type {
   HealthResponse,
   ModelMetadataApiResponse,
@@ -69,11 +70,61 @@ function createHttpClient(baseUrl: string) {
       ...options,
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
+      throw await readApiError(res);
     }
     return (await res.json()) as T;
   };
+}
+
+/**
+ * Turn a failed response into an ApiError, keeping the parts the backend wrote.
+ *
+ * This used to be `throw new Error('HTTP 400 Bad Request: ' + text)`, which is why no
+ * surface in the app showed a hint: there was nothing to show it from. go-app answers
+ * `{code, message, hint?, available?}` and ml-service wraps the same shape in
+ * `{detail: …}`; both are read here, and anything unrecognised falls back to the raw
+ * text so a proxy's HTML error page is still legible rather than swallowed.
+ */
+async function readApiError(res: Response): Promise<ApiError> {
+  const text = await res.text().catch(() => '');
+  const fallback = `HTTP ${res.status} ${res.statusText}`.trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return new ApiError(text.trim() || fallback, { status: res.status });
+  }
+
+  const envelope = parsed as { detail?: unknown; error?: unknown };
+  const payload = (
+    envelope && typeof envelope.detail === 'object' && envelope.detail !== null
+      ? envelope.detail
+      : parsed
+  ) as {
+    code?: unknown;
+    message?: unknown;
+    hint?: unknown;
+    available?: unknown;
+    error?: unknown;
+  };
+
+  // `error` rather than `message` is the older data-job shape; both are the message.
+  const message =
+    stringOrUndefined(payload?.message) ?? stringOrUndefined(payload?.error) ?? fallback;
+
+  return new ApiError(message, {
+    status: res.status,
+    code: stringOrUndefined(payload?.code),
+    hint: stringOrUndefined(payload?.hint),
+    available: Array.isArray(payload?.available)
+      ? payload.available.filter((v): v is string => typeof v === 'string')
+      : undefined,
+  });
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
 // Specific clients

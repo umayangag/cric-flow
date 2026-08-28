@@ -25,6 +25,7 @@ import { accentGradient } from '../theme';
 import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
 import type { EvaluationStep } from '../hooks/useEvaluateDb';
 import CandidatesTable from './CandidatesTable';
+import ErrorNotice from './common/ErrorNotice';
 import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
 
@@ -181,7 +182,7 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
     </Stack>
 
     {statusMessage && <Alert severity="info">{statusMessage}</Alert>}
-    {error && <Alert severity="error">{error}</Alert>}
+    <ErrorNotice error={error} title="Evaluation failed" />
 
     {/* Current evaluation (restored after refresh or in progress) */}
     {currentJobId && (
@@ -282,7 +283,7 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
               {statusMessage}
             </Alert>
           )}
-          {error && <Alert severity="error">{error}</Alert>}
+          <ErrorNotice error={error} />
         </Box>
       )}
 

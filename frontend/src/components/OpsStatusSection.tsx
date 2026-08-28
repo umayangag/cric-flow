@@ -14,6 +14,7 @@ import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
+import ErrorNotice from './common/ErrorNotice';
 import { asObj } from '../utils/opsStatusHelpers';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 import { TableStat } from '../types';
@@ -54,11 +55,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
       </Typography>
     </Stack>
 
-    {error && (
-      <Typography color="error" role="alert" aria-live="polite">
-        Error: {error}
-      </Typography>
-    )}
+    <ErrorNotice error={error} title="Could not fetch /ops/status" />
 
     {!data && !error && (
       <Typography component="div" variant="body2" sx={{ opacity: 0.8 }}>

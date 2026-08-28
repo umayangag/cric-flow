@@ -80,8 +80,10 @@ describe('OpsStatusTab', () => {
 
     const { unmount } = render(<OpsStatusTab />);
 
-    // Error message should be displayed
-    await waitFor(() => expect(screen.getByText(/Error:/i)).toBeInTheDocument());
+    // The failure itself is displayed, not a prefix: ErrorNotice renders the message,
+    // the backend's hint and what is available as separate things (W1-2).
+    await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not fetch /ops/status');
 
     // Unmount should clear the interval
     unmount();
