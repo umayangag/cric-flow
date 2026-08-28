@@ -52,7 +52,7 @@ nothing good.
 | W3-1 | done | W1-1 | Split `useEvaluateDb` (365 lines, 17 states) |
 | W3-2 | done | W3-1 | Collapse the form-state / job-state duplication |
 | W3-3 | done | W1-1 | Put evaluate polling on the shared `usePolling` |
-| W3-4 | todo | ops O-4 | Evaluation results: show metrics against the run that produced them |
+| W3-4 | partly | ops O-4 | Evaluation results: show metrics against the run that produced them |
 | W4-1 | todo | W1-1 | Streamline `useUpcomingMatch` |
 | W4-2 | todo | — | Prediction results: make the failure modes legible |
 | W5-1 | todo | ops P-1 | Workbench as a model console: registry with provenance |
@@ -432,10 +432,30 @@ this was written. The real gap was the third bullet.
 
 ### W3-4 · Results tied to the run that produced them *(depends on ops O-4)*
 
-- [ ] Show which model artifact, dataset and cutoff produced each evaluation
-- [ ] Compare against the previous evaluation of the same match
-- [ ] Distinguish "model not trained" from "evaluation failed" — currently both surface
-      as a generic error
+- [x] Which model artifact, dataset and cutoff produced each evaluation, above the
+      results: model, trained-at, training cutoff, dataset digest, and **whether that
+      dataset is still the one on this box**. The last column is the point — a model
+      trained on data that is no longer here has been scored against matches its
+      training set may already contain, which is the difference between a result and a
+      number
+- [x] The verdict has **three** states, not two. "We cannot tell" is a real answer for
+      a model trained before provenance existed, and rendering it as "no" would assert
+      staleness on no evidence. A format with no records says *unknown, not clean*
+- [x] "Model not trained" is now distinguishable from "evaluation failed" — but that
+      fell out of **W1-2** rather than needing anything here. ml-service's
+      `MODEL_NOT_LOADED` carries a hint and the list of formats that *are* loaded;
+      until W1-2 both were flattened into a 500 with the payload stringified into the
+      message, so no UI change could have told them apart
+- [ ] **Compare against the previous evaluation of the same match — not done.** There
+      is nowhere to compare against: evaluation jobs live in memory and are lost on
+      restart, so this needs a persisted evaluation history, which is a new feature
+      rather than a streamlining. Recorded here rather than quietly dropped
+
+**One caveat, stated in the component rather than assumed away:** provenance describes
+the artifacts loaded *now*. Evaluation has no per-request model choice — W0-2 removed
+the toggle that pretended otherwise — so those are the models that answered, unless
+artifacts were reloaded between running the evaluation and reading it. `trained_at` is
+in the table so that case is visible.
 
 ---
 

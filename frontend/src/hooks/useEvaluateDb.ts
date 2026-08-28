@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { api } from '../api';
+import { useAsync } from './useAsync';
 import { useBacktestFormOptions } from './useBacktestFormOptions';
 import { useEvaluateCandidates } from './useEvaluateCandidates';
 import { useEvaluateJob } from './useEvaluateJob';
 import { useMatchScorecard } from './useMatchScorecard';
 import { ApiError } from '../lib/apiError';
-import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
+import type {
+  BacktestCandidate,
+  BacktestEvaluateResponse,
+  MatchScorecardResponse,
+  ModelStatsResponse,
+} from '../types';
 
 export type { EvaluationStep } from './useEvaluateJob';
 import type { EvaluationStep } from './useEvaluateJob';
@@ -43,6 +50,16 @@ export interface UseEvaluateDbReturn {
   currentJobId: string | null;
   evaluating: boolean;
   evaluationSteps: EvaluationStep[];
+
+  /**
+   * Provenance of the artifacts that answered the evaluation (W3-4).
+   *
+   * Loaded once with the tab rather than after a result: an operator deciding whether
+   * to trust a number should not have to run an evaluation to find out the model was
+   * trained on a dataset that is no longer here.
+   */
+  modelStats: ModelStatsResponse | null;
+  modelStatsLoading: boolean;
 
   // Derived
   canLoad: boolean;
@@ -84,6 +101,7 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     setOptionsError,
   } = useBacktestFormOptions();
 
+  const modelStats = useAsync(api.getModelStats, { runOnMount: [] });
   const candidates = useEvaluateCandidates();
   const job = useEvaluateJob();
   const scorecard = useMatchScorecard(candidates.selectedMatchId);
@@ -165,6 +183,8 @@ export function useEvaluateDb(): UseEvaluateDbReturn {
     scorecard: scorecard.scorecard,
     scorecardLoading: scorecard.scorecardLoading,
     scorecardError: scorecard.scorecardError,
+    modelStats: modelStats.data,
+    modelStatsLoading: modelStats.loading,
     currentJobId: job.jobId,
     evaluating: job.evaluating,
     evaluationSteps: job.steps,

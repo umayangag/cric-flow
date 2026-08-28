@@ -22,11 +22,17 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { accentGradient } from '../theme';
-import type { BacktestCandidate, BacktestEvaluateResponse, MatchScorecardResponse } from '../types';
+import type {
+  BacktestCandidate,
+  BacktestEvaluateResponse,
+  MatchScorecardResponse,
+  ModelStatsResponse,
+} from '../types';
 import type { EvaluationStep } from '../hooks/useEvaluateDb';
 import CandidatesTable from './CandidatesTable';
 import ErrorNotice from './common/ErrorNotice';
 import type { ApiError } from '../lib/apiError';
+import EvaluationProvenance from './EvaluationProvenance';
 import EvaluationResults from './EvaluationResults';
 import MatchScorecard from './MatchScorecard';
 
@@ -74,6 +80,8 @@ export interface EvaluateDbSectionProps {
   currentJobId: string | null;
   evaluating: boolean;
   evaluationSteps: EvaluationStep[];
+  modelStats: ModelStatsResponse | null;
+  modelStatsLoading: boolean;
 
   // Derived
   canLoad: boolean;
@@ -108,6 +116,8 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
   currentJobId,
   evaluating,
   evaluationSteps,
+  modelStats,
+  modelStatsLoading,
   canLoad,
   canEvaluate,
   onResetOutputs,
@@ -337,6 +347,9 @@ export const EvaluateDbSection: React.FC<EvaluateDbSectionProps> = ({
         <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>
           Evaluation Results
         </Typography>
+        <Box sx={{ mb: 2 }}>
+          <EvaluationProvenance format={format} stats={modelStats} loading={modelStatsLoading} />
+        </Box>
         <EvaluationResults result={evaluationResult} />
       </Box>
     )}
