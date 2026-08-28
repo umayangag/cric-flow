@@ -2,6 +2,7 @@ import React from 'react';
 import Chip from '@mui/material/Chip';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { formatWhen } from '../utils/format';
 
 const emoji = (ok: boolean | undefined): string =>
   ok === true ? '✅' : ok === false ? '❌' : '⏳';
@@ -25,15 +26,7 @@ export const OpsBadges: React.FC<Props> = ({ services, timestamp }) => {
     ['DB Ready', services?.api_readiness],
     ['ML', services?.ml_health],
   ];
-  let last = '';
-  if (timestamp) {
-    try {
-      const d = new Date(timestamp);
-      last = isNaN(d.getTime()) ? String(timestamp) : d.toLocaleString();
-    } catch {
-      last = String(timestamp);
-    }
-  }
+  const last = timestamp ? formatWhen(String(timestamp)) : '';
   return (
     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
       {items.map(([label, ok]) => (

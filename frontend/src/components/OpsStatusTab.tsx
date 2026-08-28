@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { api } from '../api';
 import { useApiCall } from '../hooks/useApiCall';
 import { usePolling } from '../hooks/usePolling';
+import { formatWhen } from '../utils/format';
 import { OpsStatusSection } from './OpsStatusSection';
 import type { OpsStatus } from './OpsStatusSection';
 
@@ -18,15 +19,10 @@ const OpsStatusTab: React.FC = () => {
   // Initial load + auto-refresh while the tab is mounted.
   usePolling(refetch, REFRESH_MS, true);
 
-  const lastUpdated = useMemo(() => {
-    if (!data?.timestamp) return '';
-    try {
-      const d = new Date(data.timestamp);
-      return isNaN(d.getTime()) ? String(data.timestamp) : d.toLocaleString();
-    } catch {
-      return String(data.timestamp);
-    }
-  }, [data]);
+  const lastUpdated = useMemo(
+    () => (data?.timestamp ? formatWhen(String(data.timestamp)) : ''),
+    [data],
+  );
 
   return (
     <OpsStatusSection

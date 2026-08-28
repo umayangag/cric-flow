@@ -9,8 +9,8 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import SectionCard from './common/SectionCard';
-import { formatBytes } from './OpsDatasetSection';
-import { formatWhen, shortDigest } from '../utils/datasetFormat';
+import { formatBytes } from '../utils/format';
+import { formatWhen, shortDigest } from '../utils/format';
 import type { DatasetRegistryResponse } from '../types';
 
 type Props = { registry?: DatasetRegistryResponse };

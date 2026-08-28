@@ -3,19 +3,13 @@ import { Box } from '@mui/material';
 import LinearProgress from '@mui/material/LinearProgress';
 import Typography from '@mui/material/Typography';
 import type { PipelineStepProgress } from '../types';
-import { formatBytes } from './OpsDatasetSection';
-import { formatRate } from '../utils/datasetFormat';
-
-/** Seconds as a compact "1h 5m" / "2m 10s" / "45s". */
-export function formatElapsed(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  if (m >= 60) {
-    const h = Math.floor(m / 60);
-    return `${h}h ${m % 60}m`;
-  }
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
+import {
+  formatBytes,
+  formatCount,
+  formatDuration,
+  formatMetricValue,
+  formatRate,
+} from '../utils/format';
 
 function formatActivity(activity: string): string {
   const labels: Record<string, string> = {
@@ -177,9 +171,8 @@ const ExtractDetails: React.FC<{ extract: NonNullable<PipelineStepProgress['extr
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
         <Typography variant="caption" color="text.secondary">
-          {entries.toLocaleString()}
-          {total > 0 ? ` of ${total.toLocaleString()}` : ''} files ·{' '}
-          {formatBytes(extract.bytes ?? 0)}
+          {formatCount(entries)}
+          {total > 0 ? ` of ${formatCount(total)}` : ''} files · {formatBytes(extract.bytes ?? 0)}
         </Typography>
         {total > 0 && (
           <Typography variant="caption" color="text.secondary">
@@ -210,8 +203,7 @@ function formatMetrics(metrics: Record<string, number>): string {
   return Object.entries(metrics)
     .map(([key, value]) => {
       const label = key.replace(/_/g, ' ');
-      const shown = Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
-      return `${label} ${shown}`;
+      return `${label} ${formatMetricValue(value)}`;
     })
     .join(' · ');
 }
@@ -295,11 +287,11 @@ const PipelineStepProgressCard: React.FC<{ step: PipelineStepProgress }> = ({ st
         {step.step_label || step.step_id || 'Running'}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Elapsed: {formatElapsed(step.elapsed_sec ?? 0)}
+        Elapsed: {formatDuration(step.elapsed_sec ?? 0)}
       </Typography>
       {step.estimated_remaining_sec != null && step.estimated_remaining_sec > 0 && (
         <Typography variant="body2" color="text.secondary">
-          Est. remaining: ~{formatElapsed(step.estimated_remaining_sec)}
+          Est. remaining: ~{formatDuration(step.estimated_remaining_sec)}
         </Typography>
       )}
     </Box>
