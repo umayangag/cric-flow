@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import { useAsync } from './useAsync';
 
 export interface UseApiCallResult<T> {
   data: T | null;
@@ -8,34 +9,33 @@ export interface UseApiCallResult<T> {
 }
 
 /**
- * Encapsulates the common pattern: call an async API, track loading/error/data, expose refetch.
- * Use for one-off or manually-triggered fetches; pair with usePolling when auto-refresh is needed.
- * refetch is stable so it can be used in useEffect or usePolling without extra dependencies.
+ * The zero-argument, string-error view of {@link useAsync}.
+ *
+ * It stays because a dozen call sites read `error` as a string and pass `refetch` to
+ * `usePolling`, and rewriting those to consume a structured error is W1-2's job, not
+ * this hook's. What it no longer does is own a second copy of the lifecycle: the
+ * staleness guard and unmount safety useAsync added apply here too, which they did
+ * not when this was 20 lines of its own `useState`.
+ *
+ * Reach for `useAsync` in new code — it keeps the `hint` the backend sent.
  */
 export function useApiCall<T>(
   fetchFn: () => Promise<T>,
   options?: { defaultErrorMessage?: string },
 ): UseApiCallResult<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data, loading, error, run } = useAsync(fetchFn, {
+    errorMessage: options?.defaultErrorMessage ?? 'Request failed',
+  });
 
-  const defaultMessage = options?.defaultErrorMessage ?? 'Request failed';
-  const fetchFnRef = useRef(fetchFn);
-  fetchFnRef.current = fetchFn;
-
-  const refetch = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await fetchFnRef.current();
-      setData(result);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : defaultMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [defaultMessage]);
-
-  return { data, error, loading, refetch };
+  return useMemo(
+    () => ({
+      data,
+      loading,
+      error: error ? error.message : null,
+      refetch: async () => {
+        await run();
+      },
+    }),
+    [data, loading, error, run],
+  );
 }
