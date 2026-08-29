@@ -128,7 +128,10 @@ func TestHasInProgressForCommand(t *testing.T) {
 	}
 }
 
-func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
+// TestLastRunSucceededForCommand covers the semantics the pipeline graph depends on:
+// the *latest* run decides, so a step that succeeded once and has failed or been
+// cancelled since is not reported as complete.
+func TestLastRunSucceededForCommand(t *testing.T) {
 	// Do not use t.Parallel(); tests use db.SetDB (global).
 
 	testCases := []struct {
@@ -153,24 +156,57 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "completed_exists",
+			name: "latest_run_completed",
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-					Return(scanBoolRow(true))
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(&stubRows{migrations: []Migration{{ID: 5, Command: "export-dataset", Status: StatusCompleted}}}, nil)
 			},
-			command: "precompute-features",
+			command: "export-dataset",
 			want:    true,
 			wantErr: false,
 		},
 		{
-			name: "no_completed",
+			name: "latest_run_cancelled_after_an_earlier_success",
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-					Return(scanBoolRow(false))
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(&stubRows{migrations: []Migration{{ID: 14, Command: "precompute-features", Status: StatusCancelled}}}, nil)
+			},
+			command: "precompute-features",
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "latest_run_failed",
+			setup: func(m *mocks.MockDB) {
+				setupDB(t, m)
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(&stubRows{migrations: []Migration{{ID: 4, Command: "export-dataset", Status: StatusFailed}}}, nil)
 			},
 			command: "export-dataset",
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "still_running",
+			setup: func(m *mocks.MockDB) {
+				setupDB(t, m)
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(&stubRows{migrations: []Migration{{ID: 15, Command: "export-dataset", Status: StatusInProgress}}}, nil)
+			},
+			command: "export-dataset",
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "never_run",
+			setup: func(m *mocks.MockDB) {
+				setupDB(t, m)
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(&stubRows{}, nil)
+			},
+			command: "train-innings",
 			want:    false,
 			wantErr: false,
 		},
@@ -178,8 +214,8 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			name: "query_error",
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
-				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-					Return(scanErrRow{err: errors.New("db error")})
+				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errors.New("db error"))
 			},
 			command: "x",
 			want:    false,
@@ -194,7 +230,7 @@ func TestHasCompletedSuccessfullyForCommand(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(m)
 			}
-			got, err := HasCompletedSuccessfullyForCommand(context.Background(), tc.command)
+			got, err := LastRunSucceededForCommand(context.Background(), tc.command)
 			if tc.wantErr {
 				require.Error(t, err)
 				return

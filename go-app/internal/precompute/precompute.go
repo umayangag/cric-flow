@@ -76,12 +76,7 @@ func Run(parent context.Context, season string, formats []string, opts *RunOpts)
 	resources.LogMemoryAndGoroutines("precompute: memory and goroutines at start")
 
 	setStart(season, codes)
-	defer func() {
-		if err != nil {
-			setLastError(err.Error())
-		}
-		setDone()
-	}()
+	defer func() { setDone(err) }()
 
 	alpha := config.DefaultFeatureEWMAlpha
 	if opts != nil && opts.Alpha > 0 && opts.Alpha <= 1 {

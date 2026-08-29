@@ -325,6 +325,8 @@ export type OpsStatusDTO = {
   };
   precompute?: {
     formats?: Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
+    /** Why the last run did not finish, when it did not. Empty after a clean run. */
+    last_error?: string;
   };
   exports?: {
     formats?: Record<string, { files?: Array<{ name?: string; exists?: boolean }> } | undefined>;

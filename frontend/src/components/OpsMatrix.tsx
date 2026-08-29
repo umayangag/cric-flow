@@ -6,6 +6,7 @@ type MatrixType = 'precompute' | 'exports' | 'artifacts';
 
 type PrecomputeData = {
   formats?: Record<string, { status?: string } | undefined>;
+  last_error?: string;
 };
 type ExportFile = { name?: string; exists?: boolean; rows?: number };
 type ExportsData = {
@@ -116,6 +117,15 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
           missing
         </Box>
       </Box>
+      {/*
+        Without this, a run that stopped early reads as "nothing has ever been
+        computed" — the cells are honest but say nothing about why they changed.
+      */}
+      {(data as PrecomputeData)?.last_error && (
+        <Typography variant="caption" color="error.main" sx={{ fontSize: 11 }}>
+          Last run did not finish: {(data as PrecomputeData).last_error}
+        </Typography>
+      )}
     </Box>
   );
 

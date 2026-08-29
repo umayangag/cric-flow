@@ -16,7 +16,8 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `timestamp` (ISO string).
     - `services.api_health`, `services.api_readiness`, `services.ml_health`.
     - `db.counts` (e.g. `players`, `matches`) and `db.last_match_import_at`.
-    - `precompute.formats[FORMAT].status` (`ok` / `stale` / `missing` / `unknown`).
+    - `precompute.formats[FORMAT].status` (`ok` / `stale` / `missing` / `unknown`) and
+      `precompute.last_error` — why the last run did not finish, empty after a clean one.
     - `exports.formats[FORMAT].files[]` (per-export file presence).
     - `artifacts.formats[FORMAT].batting|bowling.exists/loaded`.
     - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
@@ -86,6 +87,24 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   of its own — it reads `GET /ops/pipeline/plan`, and polls while idle as well as while
   running, so a plan started from another tab appears without a reload. Progress counts
   *finished* steps, not started ones, and a plan that is not running says so.
+
+### 1.2.2. What "completed" means
+
+A step is complete when its **most recent** run in `data_migrations` is `COMPLETED` —
+not when it has ever completed. "Has this command ever succeeded?" is a question about
+the box's history rather than about the data on it, and answering it kept a green tick
+on a step whose latest run had failed or been cancelled, while `runnable` let the steps
+after it run against output that was never rebuilt.
+
+The same rule reaches the precompute freshness matrix from the other direction. A run
+records when it ended whatever happened to it, so `precompute.formats[…]` reads the
+run's *outcome*, not just its finish time; a run that stopped early falls back to the
+last run history records as `COMPLETED`, and reports `missing` when there is none.
+Partial snapshots left behind by a cancelled run are not a computed format.
+
+`BuildPipelineSection` decides completion; the console's own checks — files on disk,
+freshness dates — only fill in for steps the backend has said nothing about, and can no
+longer raise a step to green that run history says is not done.
 
 ### 1.3. Logs
 

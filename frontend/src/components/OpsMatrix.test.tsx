@@ -5,6 +5,31 @@ import OpsMatrix from './OpsMatrix';
 const CANONICAL_FORMATS = ['TEST', 'ODI', 'T20I', 'T20'];
 
 describe('OpsMatrix', () => {
+  it('explains why the formats are missing when the last run did not finish', () => {
+    const data = {
+      formats: { T20: { status: 'missing' }, ODI: { status: 'missing' } },
+      last_error: 'upsert raw stats venue pid=61: context canceled',
+    };
+
+    render(
+      <OpsMatrix type="precompute" title="Precompute" data={data} formats={CANONICAL_FORMATS} />,
+    );
+
+    expect(
+      screen.getByText(/Last run did not finish: upsert raw stats venue pid=61/),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about a failure after a clean run', () => {
+    const data = { formats: { T20: { status: 'ok' } } };
+
+    render(
+      <OpsMatrix type="precompute" title="Precompute" data={data} formats={CANONICAL_FORMATS} />,
+    );
+
+    expect(screen.queryByText(/Last run did not finish/)).not.toBeInTheDocument();
+  });
+
   it('renders precompute statuses per format', () => {
     const data = {
       formats: {

@@ -182,6 +182,9 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   const matchesCount = typeof counts.matches === 'number' ? counts.matches : 0;
   const importDone = data.services?.api_readiness === true && matchesCount > 0;
 
+  // A format map that is present but all "missing" means nothing has been computed,
+  // which is `pending`. It used to be forced to `stale` — amber, "there is something
+  // here, it is just old" — for the sole reason that the section existed at all.
   const precomputeFormats = getFormats(data.precompute);
   let precomputeStatus: StepStatus = 'pending';
   for (const k of Object.keys(precomputeFormats)) {
@@ -193,8 +196,6 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
     }
     if (s === 'stale') precomputeStatus = 'stale';
   }
-  if (precomputeStatus === 'pending' && Object.keys(precomputeFormats).length > 0)
-    precomputeStatus = 'stale';
 
   const exportFormats = getFormats(data.exports);
   let exportDone = false;
@@ -228,15 +229,24 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   steps[4].status = bowlingDone ? 'success' : 'pending';
   steps[5].status = fieldingDone ? 'success' : 'pending';
   // train_extras (6) and train_win (7): no artifact check; use backend completed + running/runnable
-  // Override with running, runnable, and completed from backend
+  //
+  // The backend decides completion; the checks above only decide what to show for a
+  // step it has said nothing about. They read artifacts on disk and freshness dates,
+  // which outlive the run that produced them: a cancelled precompute left snapshots
+  // behind and the graph went on showing a green tick, because this loop could raise a
+  // step to success but never lower one. Where run history says a step has not
+  // completed, evidence on disk makes it stale — there is data, just not from a run
+  // that finished — and no evidence makes it pending.
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
+    const reported = Object.prototype.hasOwnProperty.call(pipelineSteps, step.id);
     const stepData = asObj(pipelineSteps[step.id]);
     const running = stepData.running === true;
     const completed = stepData.completed === true;
     if (running) steps[i].status = 'running';
     else if (completed) steps[i].status = 'success';
+    else if (reported && steps[i].status === 'success') steps[i].status = 'stale';
     // Default true when backend omits runnable (e.g. older API)
     steps[i].runnable = stepData.runnable !== false;
   }

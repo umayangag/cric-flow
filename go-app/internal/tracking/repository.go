@@ -188,24 +188,23 @@ func ReconcileStaleRuns(ctx context.Context, reason string, staleOlderThan time.
 	return n, nil
 }
 
-// HasCompletedSuccessfullyForCommand returns true if there is at least one row for the given
-// command with status COMPLETED. Used to gate pipeline steps: next step is only runnable
-// after the previous completed successfully. When db pool is nil, returns (false, nil).
-func HasCompletedSuccessfullyForCommand(ctx context.Context, command string) (bool, error) {
+// LastRunSucceededForCommand reports whether the most recent run of a command
+// completed. Used to gate pipeline steps: the next step is only runnable after the
+// previous one succeeded. When the db pool is nil, returns (false, nil).
+//
+// The most recent run, not any run ever. "Has this command ever completed?" is a
+// question about the box's history, not about the data on it: a step that succeeded
+// once and has failed or been cancelled every time since went on showing a green tick,
+// and went on letting the steps after it run against output that was never rebuilt.
+func LastRunSucceededForCommand(ctx context.Context, command string) (bool, error) {
 	if !db.Available() || command == "" {
 		return false, nil
 	}
-	var exists bool
-	err := db.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM data_migrations
-			WHERE command = $1 AND status = $2
-		)
-	`, command, StatusCompleted).Scan(&exists)
-	if err != nil {
+	latest, found, err := LatestForCommand(ctx, command)
+	if err != nil || !found {
 		return false, err
 	}
-	return exists, nil
+	return latest.Status == StatusCompleted, nil
 }
 
 // GetLastCompletedAtForCommand returns the completed_at of the most recent COMPLETED row

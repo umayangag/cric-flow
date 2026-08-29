@@ -19,9 +19,10 @@ func BuildPrecomputeSection(ctx context.Context, now time.Time) map[string]any {
 	formats := CricketFormatCodes
 
 	section := map[string]any{
-		"last_run": "",
-		"as_of":    "",
-		"formats":  map[string]any{},
+		"last_run":   "",
+		"as_of":      "",
+		"formats":    map[string]any{},
+		"last_error": stat.LastError,
 	}
 
 	fm := map[string]any{}
@@ -31,7 +32,12 @@ func BuildPrecomputeSection(ctx context.Context, now time.Time) map[string]any {
 
 	var finishedAt time.Time
 	var formatsRan []string
-	if !stat.FinishedAt.IsZero() {
+	// Only a run that finished its work says anything about the freshness of the
+	// features. A run that stopped early leaves partial snapshots behind, and reading
+	// its FinishedAt as "computed just now" painted every format green on the console
+	// minutes after the run had been cancelled. Fall back to the last run the history
+	// records as COMPLETED instead, which is the same source the pipeline graph uses.
+	if stat.Succeeded() {
 		finishedAt = stat.FinishedAt.UTC()
 		formatsRan = stat.Formats
 	} else {
