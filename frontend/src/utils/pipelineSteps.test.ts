@@ -92,6 +92,17 @@ describe('pipelineSteps', () => {
       expect(precomputeStep?.status).toBe('stale');
     });
 
+    it('leaves precompute pending when every format is missing', () => {
+      const steps = derivePipelineSteps({
+        timestamp: '2026-01-01T00:00:00Z',
+        precompute: {
+          formats: { T20: { status: 'missing' }, ODI: { status: 'missing' } },
+        },
+      } as Parameters<typeof derivePipelineSteps>[0]);
+      const precomputeStep = steps.find((s) => s.id === 'precompute');
+      expect(precomputeStep?.status).toBe('pending');
+    });
+
     it('sets export to success when at least one format has file with exists true', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
@@ -141,6 +152,60 @@ describe('pipelineSteps', () => {
       expect(precomputeStep?.runnable).toBe(false);
       expect(battingStep?.status).toBe('success');
       expect(battingStep?.runnable).toBe(false);
+    });
+
+    /**
+     * The regression test for a graph that stayed green after a cancelled run: the
+     * heuristics above read files and freshness dates that outlive the run which wrote
+     * them, so where run history says a step has not completed, the graph must say so
+     * too rather than trusting the leftovers.
+     */
+    it('downgrades a step to stale when the backend says it has not completed', () => {
+      const steps = derivePipelineSteps({
+        timestamp: '2026-01-01T00:00:00Z',
+        services: { api_readiness: true },
+        db: { counts: { matches: 1 } },
+        precompute: { formats: { T20: { status: 'ok' } } },
+        exports: { formats: { T20: { files: [{ exists: true }] } } },
+        artifacts: { formats: { T20: { batting: { loaded: true } } } },
+        pipeline: {
+          steps: {
+            precompute: { completed: false, runnable: true },
+            export: { completed: false, runnable: false },
+            train_batting: { completed: false, runnable: false },
+          },
+        },
+      } as Parameters<typeof derivePipelineSteps>[0]);
+      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'export')?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'train_batting')?.status).toBe('stale');
+    });
+
+    it('leaves a step pending when the backend says not completed and nothing is on disk', () => {
+      const steps = derivePipelineSteps({
+        timestamp: '2026-01-01T00:00:00Z',
+        pipeline: { steps: { export: { completed: false, runnable: false } } },
+      } as Parameters<typeof derivePipelineSteps>[0]);
+      expect(steps.find((s) => s.id === 'export')?.status).toBe('pending');
+    });
+
+    it('keeps running ahead of the downgrade for a step being re-run', () => {
+      const steps = derivePipelineSteps({
+        timestamp: '2026-01-01T00:00:00Z',
+        precompute: { formats: { T20: { status: 'ok' } } },
+        pipeline: { steps: { precompute: { running: true, completed: false } } },
+      } as Parameters<typeof derivePipelineSteps>[0]);
+      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('running');
+    });
+
+    it('leaves steps the backend does not report alone', () => {
+      const steps = derivePipelineSteps({
+        timestamp: '2026-01-01T00:00:00Z',
+        precompute: { formats: { T20: { status: 'ok' } } },
+        pipeline: { steps: {} },
+      } as Parameters<typeof derivePipelineSteps>[0]);
+      // An older API that sends no per-step entry must not turn the whole graph amber.
+      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('success');
     });
 
     it('always keeps import step runnable', () => {

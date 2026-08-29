@@ -1,6 +1,8 @@
 package precompute
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -127,28 +129,31 @@ func TestSetCurrentFormat(t *testing.T) {
 }
 
 func TestSetDone(t *testing.T) {
-	resetState(t)
-	setStart("2024", []string{"T20I"})
-	setPhase("form")
-	setCurrentFormat("T20I")
-
-	setDone()
-
-	st := GetStatus()
-	assert.False(t, st.Running)
-	assert.Equal(t, "done", st.Phase)
-	assert.Empty(t, st.CurrentFormat)
-	assert.True(t, st.FormatStartedAt.IsZero())
-	require.False(t, st.FinishedAt.IsZero())
-}
-
-func TestSetLastError(t *testing.T) {
 	testCases := []struct {
-		name   string
-		errMsg string
+		name          string
+		runErr        error
+		wantPhase     string
+		wantLastError string
+		wantSucceeded bool
 	}{
-		{name: "with_error", errMsg: "something went wrong"},
-		{name: "empty_clears", errMsg: ""},
+		{
+			name:          "successful run reports done",
+			runErr:        nil,
+			wantPhase:     PhaseDone,
+			wantSucceeded: true,
+		},
+		{
+			name:          "failed run reports failed",
+			runErr:        errors.New("upsert raw stats venue pid=61"),
+			wantPhase:     PhaseFailed,
+			wantLastError: "upsert raw stats venue pid=61",
+		},
+		{
+			name:          "cancelled run reports failed",
+			runErr:        context.Canceled,
+			wantPhase:     PhaseFailed,
+			wantLastError: context.Canceled.Error(),
+		},
 	}
 
 	for i := range testCases {
@@ -156,13 +161,60 @@ func TestSetLastError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			setStart("2024", []string{"T20I"})
+			setPhase("form")
+			setCurrentFormat("T20I")
 
-			setLastError(tc.errMsg)
+			setDone(tc.runErr)
 
 			st := GetStatus()
-			assert.Equal(t, tc.errMsg, st.LastError)
+			assert.False(t, st.Running)
+			assert.Equal(t, tc.wantPhase, st.Phase)
+			assert.Equal(t, tc.wantLastError, st.LastError)
+			assert.Equal(t, tc.wantSucceeded, st.Succeeded())
+			assert.Empty(t, st.CurrentFormat)
+			assert.True(t, st.FormatStartedAt.IsZero())
+			require.False(t, st.FinishedAt.IsZero(), "a finished run records when it ended, however it ended")
 		})
 	}
+}
+
+// TestStatus_Succeeded_RunningOrUnfinished guards the two states that are neither a
+// success nor a failure, and which an "is FinishedAt set?" check used to conflate.
+func TestStatus_Succeeded_RunningOrUnfinished(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		status Status
+	}{
+		{"never run", Status{}},
+		{"still running", Status{Running: true, Phase: PhaseDone, FinishedAt: time.Now()}},
+		{"finished but unmarked", Status{FinishedAt: time.Now()}},
+		{"phase done without a finish time", Status{Phase: PhaseDone}},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.False(t, tc.status.Succeeded())
+		})
+	}
+}
+
+// TestSetStart_ClearsThePreviousRunsError covers the case that makes LastError
+// meaningful: a new run must not inherit the last one's failure.
+func TestSetStart_ClearsThePreviousRunsError(t *testing.T) {
+	resetState(t)
+	setStart("2024", []string{"T20I"})
+	setDone(errors.New("something went wrong"))
+
+	setStart("2025", []string{"ODI"})
+
+	st := GetStatus()
+	assert.Empty(t, st.LastError)
+	assert.True(t, st.Running)
+	assert.False(t, st.Succeeded())
 }
 
 func TestGetStatus_ReturnsIndependentCopy(t *testing.T) {
@@ -199,11 +251,11 @@ func TestFullLifecycle(t *testing.T) {
 	assert.Equal(t, "TEST", st.CurrentFormat)
 
 	// Error + done.
-	setLastError("timeout")
-	setDone()
+	setDone(errors.New("timeout"))
 	st = GetStatus()
 	assert.False(t, st.Running)
-	assert.Equal(t, "done", st.Phase)
+	assert.Equal(t, PhaseFailed, st.Phase)
 	assert.Equal(t, "timeout", st.LastError)
+	assert.False(t, st.Succeeded())
 	assert.Empty(t, st.CurrentFormat)
 }

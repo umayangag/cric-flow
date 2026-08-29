@@ -99,7 +99,7 @@ func TestRun(t *testing.T) {
 			formatIDs:  map[string]int64{"T20I": 3},
 			wantErr:    false,
 			wantCalls:  1,
-			wantStatus: "done",
+			wantStatus: PhaseDone,
 		},
 		{
 			name:       "happy_path_multiple_formats",
@@ -108,7 +108,7 @@ func TestRun(t *testing.T) {
 			formatIDs:  map[string]int64{"TEST": 1, "ODI": 2},
 			wantErr:    false,
 			wantCalls:  2,
-			wantStatus: "done",
+			wantStatus: PhaseDone,
 		},
 		{
 			name:       "nil_formats_with_no_db_formats_returns_nil",
@@ -116,7 +116,7 @@ func TestRun(t *testing.T) {
 			formatIDs:  map[string]int64{"NONE": 99},
 			wantErr:    false,
 			wantCalls:  1,
-			wantStatus: "done",
+			wantStatus: PhaseDone,
 		},
 		{
 			name:        "format_id_lookup_fails",
@@ -125,7 +125,7 @@ func TestRun(t *testing.T) {
 			wantErr:     true,
 			wantErrMsg:  "db error",
 			wantCalls:   0,
-			wantStatus:  "done",
+			wantStatus:  PhaseFailed,
 		},
 		{
 			name:       "runner_fails",
@@ -135,7 +135,7 @@ func TestRun(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "replay failed",
 			wantCalls:  1,
-			wantStatus: "done",
+			wantStatus: PhaseFailed,
 		},
 	}
 
@@ -214,5 +214,8 @@ func TestRun_StatusRecordsErrorOnFailure(t *testing.T) {
 	st := GetStatus()
 	assert.Equal(t, "boom", st.LastError)
 	assert.False(t, st.Running)
-	assert.Equal(t, "done", st.Phase)
+	// Not "done": a failed run used to be indistinguishable from a successful one,
+	// which is how the console reported every format green after a cancellation.
+	assert.Equal(t, PhaseFailed, st.Phase)
+	assert.False(t, st.Succeeded())
 }

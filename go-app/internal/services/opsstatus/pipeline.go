@@ -32,11 +32,14 @@ func newStepGate(ctx context.Context) *stepGate {
 // running reports whether the step currently has a run in flight.
 func (g *stepGate) running(step pipelinesvc.Step) bool { return g.inProgress[step.Command] }
 
-// completed reports whether the step has ever completed successfully.
+// completed reports whether the step's most recent run succeeded.
+//
+// Most recent, not "ever": a step whose latest run failed or was cancelled has not
+// produced the output the steps after it consume, whatever it managed weeks ago.
 func (g *stepGate) completed(step pipelinesvc.Step) bool {
-	done, err := tracking.HasCompletedSuccessfullyForCommand(g.ctx, step.Command)
+	done, err := tracking.LastRunSucceededForCommand(g.ctx, step.Command)
 	if err != nil {
-		slog.Warn("pipeline: HasCompletedSuccessfullyForCommand failed",
+		slog.Warn("pipeline: LastRunSucceededForCommand failed",
 			"step", step.ID, "command", step.Command, "err", err)
 		return false
 	}
@@ -114,7 +117,7 @@ func CanRunPipelineStep(ctx context.Context, stepID string) (ok bool, errMsg str
 		if !found {
 			continue
 		}
-		done, err := tracking.HasCompletedSuccessfullyForCommand(ctx, req.Command)
+		done, err := tracking.LastRunSucceededForCommand(ctx, req.Command)
 		if err != nil {
 			return false, "could not verify previous step"
 		}

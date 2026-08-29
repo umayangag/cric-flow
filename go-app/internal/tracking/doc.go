@@ -26,6 +26,6 @@
 //   - Updated: Tracker.Complete / Fail / Cancel; CaptureExit (defer); CancelInProgressMigration;
 //     ReconcileStaleRuns (on API startup).
 //   - Surfaced: GetInProgressMigrations, GetRecentMigrations, GetMigrationsPaginated;
-//     HasInProgressForCommand, HasCompletedSuccessfullyForCommand — used by ops_status and
+//     HasInProgressForCommand, LastRunSucceededForCommand — used by ops_status and
 //     pipeline step gating.
 package tracking
