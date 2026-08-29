@@ -373,6 +373,20 @@ export type PipelineRunResponse = {
   message?: string;
   /** The next action to take. Written to be shown, not swallowed. */
   hint?: string;
+  /** The named plan the step started, when it is one — `import` runs a plan. */
+  plan?: string;
+  /** The plan's steps, in the order they will run. */
+  steps?: string[];
+  /** The archive URL the plan resolved, redacted. */
+  source_url?: string;
+  /**
+   * Which of the plan's steps will not run, keyed by step id, and why.
+   *
+   * Import is a fetch -> extract -> import plan that skips acquisition when the
+   * dataset directory already holds the configured archive. Showing the backend's
+   * own reason is what keeps a skipped download from reading as a completed one.
+   */
+  skipped?: Record<string, string>;
 };
 
 /**

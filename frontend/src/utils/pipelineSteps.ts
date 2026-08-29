@@ -170,7 +170,7 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       command: 'make ml-auto-tune MODEL=all ALL_FORMATS=1',
       migrationCommand: 'ml-auto-tune',
       description:
-        'Discover best algorithm and hyperparameters (saves to DB when GO_APP_URL is set). Run when params are unknown or you want to re-optimize. After auto-tune, you can run Train steps to refresh all artifacts from the new DB params. Optional; use Train steps only when params are already known.',
+        'Discover best algorithm and hyperparameters (saves to DB when GO_APP_URL is set). Needs only Export, so run it before the Train steps when the feature space has changed and the saved params are no longer trustworthy — then run the Train steps to build every artifact from the new DB params. The "tune" run plan does both in that order. Optional; skip it and train directly when params are already known.',
       runnable: true,
     },
   ];

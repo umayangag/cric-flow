@@ -179,6 +179,18 @@ func TestRequirementsPrecedeTheirDependents(t *testing.T) {
 	}
 }
 
+// TestAutoTuneDependsOnTheExportOnly pins the edge that makes tune-before-train
+// possible. Auto-tune reads the exported CSVs and the training-data API — the same
+// inputs the train steps read, and not one trained artifact. Requiring a train step
+// here would gate the search behind the training it is meant to inform.
+func TestAutoTuneDependsOnTheExportOnly(t *testing.T) {
+	t.Parallel()
+	step, ok := Steps().ByID("auto_tune")
+	require.True(t, ok)
+	assert.Equal(t, []string{"export"}, step.Requires)
+	assert.True(t, step.Optional, "a search nobody asked for must never be implied")
+}
+
 func TestStepLookups(t *testing.T) {
 	t.Parallel()
 	registry := Steps()

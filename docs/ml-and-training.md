@@ -53,6 +53,8 @@ You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or
 
 **Pipeline steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form/consistency/sequence per format. (3) Export — writes the cross-format `*_encoded_all.csv` and per-format CSVs. (4) Train Batting — per-format. (5) Train Bowling — same. (6) Train Fielding — API data. (7) Train Extras, (8) Train Win — same pattern. (9) Optional: Auto-tune (from UI or API).
 
+**Auto-tune is placed last on the graph but depends only on Export.** It reads the exported CSVs (batting, bowling) and the training-data API (fielding, extras, win) — the same inputs the train steps read, and no trained artifact. So it can be run before the train steps, and in Mode B below it must be. The graph shows it last because that is where it is offered, not because it is gated behind training.
+
 **Prerequisites:** Stack running (`make dev-up`). Exports are always per-format (the `export.split_by_format` flag was removed in C5-3 — it no longer changed anything). For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
 
 **CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format artifacts. ML resolves the model by the request's `format`, which is required — there is no fallback tier.
@@ -110,6 +112,10 @@ When you need to discover or refresh best algorithm and hyperparameters:
 2. Auto-tune finds best algorithm + hyperparameters, saves params to the go-app DB (and writes artifacts). Optionally run **Train all** afterward so every artifact is produced by the same train scripts using the new DB params (single code path for artifacts).
 
 Use this when setting up a new format, after major data changes, or when you want to re-run algorithm screening or Optuna fine-tuning.
+
+**Run it as the `tune` plan.** `POST /ops/pipeline/run-plan {"plan":"tune"}`, or the Plan dropdown in Ops Status, runs auto-tune followed by every train step in one sequence, with per-step live state, Stop and resume. It assumes the export is current; run `data-refresh` (or `full`) first when it is not.
+
+**Why the search comes first.** Hyperparameters are a function of the feature space. When the feature space has changed — the feature contract, a `features.*` precompute parameter, a new format — the saved params no longer describe an optimum, so training before the search produces artifacts the search invalidates an hour later. Training first is only right in Mode A, where the params are already the ones you mean to use.
 
 **Summary:** Train = produce artifacts from current params (config + DB). Auto-tune = discover and persist params (and optionally artifacts). Avoid running train with defaults and then auto-tune for the same models; choose one of the two modes above.
 

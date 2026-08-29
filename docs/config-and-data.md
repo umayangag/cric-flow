@@ -226,6 +226,35 @@ dataset cannot survive into the new one. The displaced contents are moved to
 `.dataset-manifest` is written beside the data recording entry count, bytes, the source
 archive's digest and URL, and the time — the provenance A-3 and P-1 build on.
 
+### Importing it, and when Import re-downloads
+
+`POST /ops/pipeline/run/import` — the console's **Import** step — runs the whole
+acquisition plan: fetch → extract → import. It does not always fetch.
+`dataacquire.PlanAcquisition` asks one narrow question first: *does the dataset
+directory already hold data from the configured source?* When the live
+`.dataset-manifest` names that URL and the directory holds match files, both fetch and
+extract are skipped, and the 202 says which and why:
+
+```json
+{"status":"started","plan":"import","steps":["fetch","extract","import"],
+ "source_url":"https://cricsheet.org/downloads/all_json.zip",
+ "skipped":{"fetch":"the dataset directory already holds all_json.zip from this source (12345 match files)",
+            "extract":"the dataset directory already holds all_json.zip from this source (12345 match files)"}}
+```
+
+The console renders those reasons in the step dialog. **A skipped download that renders
+as a completed one is the failure this reporting exists to prevent** — the symptom is an
+operator re-running Import and finding DB Data Freshness unchanged, because the same
+matches were re-imported.
+
+It never asks whether the *upstream* archive changed. Cricsheet republishes under the
+same URL often enough that a conditional request would answer "changed" almost every
+time, so re-fetching is an explicit decision rather than something inferred from a
+header. Make it with **`?refresh=1`**, which is what the dialog's *"Re-download the
+archive even if this dataset is already on disk"* checkbox sends. That is the supported
+way to pick up newer matches; `POST /ops/data/fetch` remains available for pulling a
+source other than the configured one.
+
 ### The dataset registry
 
 `GET /ops/data/datasets` returns one row per acquired dataset, newest first, with the

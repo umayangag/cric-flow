@@ -32,7 +32,24 @@ const PLAN_DESCRIPTIONS: Record<string, string> = {
   full: 'Import → precompute → export → train every model.',
   'retrain-only': 'Re-train the models against data already imported and exported.',
   'data-refresh': 'Re-import and re-derive without touching the models.',
+  tune: 'Auto-tune, then re-train every model on the parameters it found. Run it when the feature space has changed and the saved parameters are no longer trustworthy.',
 };
+
+/**
+ * The plans built around an optional step, so the caption does not tell the operator
+ * something false.
+ *
+ * Every other plan leaves optional steps out by definition, and the caption used to
+ * say so unconditionally — which stopped being true the moment `tune` existed, since
+ * auto-tune is the step it exists to run.
+ */
+const PLANS_INCLUDING_OPTIONAL_STEPS = new Set(['tune']);
+
+function planCaption(plan: string): string {
+  const description = PLAN_DESCRIPTIONS[plan] ?? 'A named sequence of pipeline steps.';
+  if (PLANS_INCLUDING_OPTIONAL_STEPS.has(plan)) return description;
+  return `${description} Optional steps (auto-tune, combination-meta) are not included — run those yourself.`;
+}
 
 /** One step's row: where it got to, and why not when it failed. */
 const PlanStepRow: React.FC<{ step: RunPlanStep }> = ({ step }) => {
@@ -203,8 +220,7 @@ const RunPlanPanel: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       </Box>
 
       <Typography variant="caption" color="text.secondary">
-        {PLAN_DESCRIPTIONS[plan] ?? 'A named sequence of pipeline steps.'} Optional steps
-        (auto-tune, combination-meta) are never included — run those yourself.
+        {planCaption(plan)}
       </Typography>
 
       <ErrorNotice error={error} title="Run plan" />

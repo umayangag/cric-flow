@@ -303,12 +303,22 @@ var defaultRegistry = NewRegistry(
 			"POST /api/backtest/export-contributions (Evaluate tab) before running this step, " +
 			"or it fails with CONTRIBUTIONS_CSV_MISSING.",
 	},
+	// Auto-tune requires the export and nothing after it. It consumes the same inputs
+	// the train steps do — the exported CSVs for batting and bowling, the training-data
+	// API for the rest — and not one trained artifact.
+	//
+	// It used to require the train steps, which forced the one order the pipeline is
+	// meant to avoid: train on stale params, then search for better ones and throw the
+	// artifacts away. Hyperparameters are a function of the feature space, so when the
+	// feature space has changed the search has to come first and the training that
+	// follows it uses what it found. That is the `tune` run plan, and this edge is what
+	// makes it runnable.
 	Step{
 		ID:         "auto_tune",
 		Command:    "ml-auto-tune",
 		Label:      "Auto-tune",
 		MLEndpoint: "auto-tune",
-		Requires:   []string{"train_fielding", "train_extras", "train_win"},
+		Requires:   []string{"export"},
 		Optional:   true,
 	},
 	// Acquisition. Declared here so the lane, the label and the busy-check come from

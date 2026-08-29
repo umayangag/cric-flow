@@ -174,20 +174,36 @@ func TestCanRunPipelineStep(t *testing.T) {
 			wantMsg: "complete the previous step (Import) first",
 		},
 		{
-			name: "auto_tune_allowed_when_no_one_running",
+			// Auto-tune needs the export and nothing after it: it reads the same
+			// inputs the train steps read, so requiring them would force the one
+			// order the pipeline exists to avoid — train on stale params, then
+			// search for better ones.
+			name: "auto_tune_allowed_after_export_without_any_training",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
 					return ok && len(arr) >= 2 && arr[0] == "ml-auto-tune" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "train-fielding", tracking.StatusCompleted)
-				prerequisiteRun(m, "train-extras", tracking.StatusCompleted)
-				prerequisiteRun(m, "train-win", tracking.StatusCompleted)
+				prerequisiteRun(m, "export-dataset", tracking.StatusCompleted)
 			},
 			stepID:  "auto_tune",
 			wantOk:  true,
 			wantMsg: "",
+		},
+		{
+			name: "auto_tune_without_export_not_runnable",
+			setup: func(m *mocks.MockDB) {
+				setupPipelineDB(t, m)
+				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
+					arr, ok := a.([]any)
+					return ok && len(arr) >= 2 && arr[0] == "ml-auto-tune" && arr[1] == tracking.StatusInProgress
+				})).Return(scanBoolRow(false))
+				prerequisiteRun(m, "export-dataset", "")
+			},
+			stepID:  "auto_tune",
+			wantOk:  false,
+			wantMsg: "complete the previous step (Export) first",
 		},
 	}
 
