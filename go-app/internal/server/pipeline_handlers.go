@@ -56,14 +56,34 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cancelled == 0 && !planStopped {
+		slog.Info("pipeline stop: nothing running", slog.String("lanes", laneLabel(lanes)))
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
 		return
 	}
+	// Logged because "context canceled" reaches the logs from every goroutine that was
+	// holding work, and without this line there is no way to tell an operator's Stop
+	// from a bug that cancelled the run on its own.
+	slog.Info("pipeline stop: cancelled by user",
+		slog.String("lanes", laneLabel(lanes)),
+		slog.Int("cancelled", cancelled),
+		slog.Bool("plan_stopped", planStopped))
 	respondJSON(w, http.StatusOK, map[string]any{
 		"status":       "cancelled",
 		"cancelled":    cancelled,
 		"plan_stopped": planStopped,
 	})
+}
+
+// laneLabel renders the lanes a stop applied to for the log. No lanes means all of them.
+func laneLabel(lanes []pipelinesvc.Lane) string {
+	if len(lanes) == 0 {
+		return "all"
+	}
+	names := make([]string, 0, len(lanes))
+	for _, lane := range lanes {
+		names = append(names, string(lane))
+	}
+	return strings.Join(names, ",")
 }
 
 // requestedLanes reads the optional ?lane= parameter. Nil means every lane.
