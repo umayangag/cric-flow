@@ -8,10 +8,15 @@ import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
 import AutoTuneForm from './AutoTuneForm';
 import type { PipelineStep } from '../utils/pipelineSteps';
 
 const DEFAULT_ALGORITHMS = ['rf', 'gb', 'quantile'];
+
+/** "fetch" -> "Fetch", so a backend step id reads as the start of a sentence. */
+const titleCase = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : '');
 
 export interface PipelineStepDialogProps {
   step: PipelineStep | null;
@@ -27,6 +32,8 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
   const [runMessage, setRunMessage] = useState('');
   const [runHint, setRunHint] = useState('');
   const [runCommand, setRunCommand] = useState('');
+  const [runSkipped, setRunSkipped] = useState<Record<string, string>>({});
+  const [importRefresh, setImportRefresh] = useState(false);
   const [autoTuneModel, setAutoTuneModel] = useState('all');
   const [autoTuneFormat, setAutoTuneFormat] = useState('unified');
   const [autoTuneRescreen, setAutoTuneRescreen] = useState(false);
@@ -69,29 +76,35 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     if (step?.id === 'auto_tune') loadDefaultAlgorithms();
   }, [step?.id, autoTuneModel, autoTuneFormat, loadDefaultAlgorithms]);
 
-  const buildRunParams = (s: PipelineStep, extra?: Record<string, string>) =>
-    s.id === 'auto_tune'
-      ? {
-          model: autoTuneModel,
-          ...(autoTuneFormat === 'unified'
-            ? { unified: '1' }
-            : autoTuneFormat === ''
-              ? { all_formats: '1' }
-              : { format: autoTuneFormat }),
-          ...(autoTuneRescreen ? { rescreen: '1' } : {}),
-          ...(autoTuneCutoff.trim() ? { cutoff: autoTuneCutoff.trim() } : {}),
-          ...(autoTuneAlgorithms.size > 0
-            ? { algorithms: [...autoTuneAlgorithms].sort().join(',') }
-            : {}),
-          ...extra,
-        }
-      : { ...extra };
+  const buildRunParams = (s: PipelineStep, extra?: Record<string, string>) => {
+    if (s.id === 'auto_tune') {
+      return {
+        model: autoTuneModel,
+        ...(autoTuneFormat === 'unified'
+          ? { unified: '1' }
+          : autoTuneFormat === ''
+            ? { all_formats: '1' }
+            : { format: autoTuneFormat }),
+        ...(autoTuneRescreen ? { rescreen: '1' } : {}),
+        ...(autoTuneCutoff.trim() ? { cutoff: autoTuneCutoff.trim() } : {}),
+        ...(autoTuneAlgorithms.size > 0
+          ? { algorithms: [...autoTuneAlgorithms].sort().join(',') }
+          : {}),
+        ...extra,
+      };
+    }
+    if (s.id === 'import') {
+      return { ...(importRefresh ? { refresh: '1' } : {}), ...extra };
+    }
+    return { ...extra };
+  };
 
   const handleRun = async (s: PipelineStep, confirmUseDefault = false) => {
     setRunState('loading');
     setRunMessage('');
     setRunHint('');
     setRunCommand('');
+    setRunSkipped({});
     try {
       const params = confirmUseDefault
         ? { ...buildRunParams(s), confirm_use_default: '1' }
@@ -101,6 +114,9 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
       if (status === 202) {
         setRunState('started');
         setRunMessage('Step started. Status will update on refresh.');
+        // A plan that skipped a step said why. Dropping that reason is how a
+        // download that never ran comes to read as one that succeeded.
+        setRunSkipped(res.skipped ?? {});
         onRefresh?.();
       } else if (status === 501) {
         setRunState('run_from_root');
@@ -152,6 +168,8 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     setRunMessage('');
     setRunHint('');
     setRunCommand('');
+    setRunSkipped({});
+    setImportRefresh(false);
     setAutoTuneRescreen(false);
     setAutoTuneCutoff('');
     setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
@@ -180,6 +198,26 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                 algorithms={autoTuneAlgorithms}
                 onAlgorithmsChange={setAutoTuneAlgorithms}
               />
+            )}
+            {step.id === 'import' && (
+              <Box sx={{ mb: 1.5 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={importRefresh}
+                      onChange={(e) => setImportRefresh(e.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label="Re-download the archive even if this dataset is already on disk"
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Import skips the download when the dataset directory already holds the configured
+                  archive, so a repeat run re-imports the same matches. Cricsheet republishes under
+                  the same URL, so this is the only way to pick up newer ones — expect a transfer of
+                  several hundred MB.
+                </Typography>
+              </Box>
             )}
             {step.prerequisite && (
               <Typography
@@ -219,6 +257,16 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                   </Typography>
                 )}
               </Typography>
+            )}
+            {Object.keys(runSkipped).length > 0 && (
+              <Box sx={{ mb: 1.5, p: 1, borderRadius: 1, bgcolor: 'warning.light' }}>
+                <Typography variant="body2">Not every step in the plan will run:</Typography>
+                {Object.entries(runSkipped).map(([stepID, reason]) => (
+                  <Typography key={stepID} variant="body2" sx={{ mt: 0.5 }}>
+                    {`${titleCase(stepID)} skipped — ${reason}`}
+                  </Typography>
+                ))}
+              </Box>
             )}
             {(runState === 'run_from_root' && runCommand) || runState === 'idle' ? (
               <Box
