@@ -36,16 +36,26 @@ const Source: React.FC<{ feed?: string; url?: string }> = ({ feed, url }) => {
  * Every dataset this box has acquired, newest first, with the live one marked.
  *
  * "Live" is derived from the dataset directory's manifest rather than a stored flag,
- * so it stays true when files are put there by other means. The consequence shows up
- * here: `live_sha256` can be set while no row is marked, which means the directory
- * holds a dataset the registry has never seen. That is called out rather than
- * rendered as a table with nothing highlighted, because a silently unmarked table
- * looks like "nothing is live", which is a different and wrong answer.
+ * so it stays true when files are put there by other means. That leaves two ways for
+ * a table to come back with nothing marked, and both are said out loud, because a
+ * silently unmarked table reads as "the row you can see is the one in use" — a
+ * different and wrong answer:
+ *
+ *   - `live_sha256` set, no row marked: the directory holds a dataset the registry
+ *     has never seen.
+ *   - `live_sha256` empty: the directory has no manifest at all, so nothing can be
+ *     matched against it. A dataset extracted before the registry existed, or files
+ *     copied in directly, looks like this.
  */
 const DatasetRegistryTable: React.FC<Props> = ({ registry }) => {
   const datasets = registry?.datasets ?? [];
   const liveSha = registry?.live_sha256 ?? '';
-  const liveIsUnknown = liveSha !== '' && !datasets.some((d) => d.live);
+  const nothingIsMarkedLive = !datasets.some((d) => d.live);
+  // A digest with no matching row: the directory holds something unrecorded.
+  const liveIsUnknown = liveSha !== '' && nothingIsMarkedLive;
+  // No digest at all: there is no manifest to match rows against. Only worth saying
+  // when there are rows, since an empty registry has its own message below.
+  const liveIsUnmanifested = liveSha === '' && datasets.length > 0;
 
   return (
     <SectionCard
@@ -57,6 +67,14 @@ const DatasetRegistryTable: React.FC<Props> = ({ registry }) => {
           The dataset directory holds an archive this registry has never seen (sha256{' '}
           {shortDigest(liveSha)}). It was probably extracted before the registry existed, or the
           files were placed there directly.
+        </Typography>
+      )}
+
+      {liveIsUnmanifested && (
+        <Typography variant="body2" color="warning.main">
+          The dataset directory has no manifest, so none of these rows can be identified as the data
+          in use — a row below is somewhere this box has fetched from, not necessarily what it
+          imported. A manifest is written on extraction, so the next Extract will settle it.
         </Typography>
       )}
 
