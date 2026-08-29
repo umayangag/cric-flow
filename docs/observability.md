@@ -64,6 +64,11 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   non-optional pipeline step, `retrain-only` the ml-service ones, `data-refresh` the
   go-app ones. Optional steps are never implied — a "run everything" that silently
   included auto-tune would take hours nobody asked for.
+- **`tune` is the exception, and states its own order**: auto-tune, then the same train
+  steps `retrain-only` runs. It is the only plan that includes an optional step, because
+  the search is the point of it. No filter over registry order could produce this
+  sequence — auto-tune is declared last, where the graph offers it — so the plan names
+  it explicitly, as `import` does for fetch → extract → import.
 - **State lives in `data_migrations`** under `pipeline-plan`, written before and after
   every step rather than only at the end. A page reload, another tab, or a browser
   closed overnight does not lose the run.

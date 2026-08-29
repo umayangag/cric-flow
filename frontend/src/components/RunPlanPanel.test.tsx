@@ -15,7 +15,7 @@ vi.mock('../api', () => ({
   },
 }));
 
-const PLANS = ['data-refresh', 'full', 'retrain-only'];
+const PLANS = ['data-refresh', 'full', 'retrain-only', 'tune'];
 
 const IDLE: RunPlanState = { running: false, plans: PLANS };
 
@@ -160,6 +160,22 @@ describe('RunPlanPanel', () => {
     for (const name of PLANS) {
       expect(await screen.findByRole('option', { name })).toBeInTheDocument();
     }
+  });
+
+  // The caption used to claim optional steps are never included, which stopped being
+  // true when `tune` arrived: auto-tune is the step that plan exists to run.
+  it('does not claim the tune plan excludes optional steps', async () => {
+    mockRunPlan.mockResolvedValue(IDLE);
+    render(<RunPlanPanel />);
+
+    await waitFor(() => expect(screen.getByLabelText('Plan')).toBeInTheDocument());
+    expect(screen.getByText(/Optional steps .* are not included/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Plan'));
+    await userEvent.click(await screen.findByRole('option', { name: 'tune' }));
+
+    expect(await screen.findByText(/Auto-tune, then re-train every model/)).toBeInTheDocument();
+    expect(screen.queryByText(/Optional steps .* are not included/)).not.toBeInTheDocument();
   });
 
   it('says nothing has run rather than showing an empty list', async () => {

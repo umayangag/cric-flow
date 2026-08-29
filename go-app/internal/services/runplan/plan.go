@@ -29,6 +29,15 @@ const (
 	PlanRetrainOnly = "retrain-only"
 	// PlanDataRefresh re-imports and re-derives without touching the models.
 	PlanDataRefresh = "data-refresh"
+	// PlanTune re-optimises hyperparameters and then retrains on what it found.
+	//
+	// The counterpart to PlanRetrainOnly, for the slower loop: PlanRetrainOnly refreshes
+	// artifacts against known params after new matches arrive, this one is what you run
+	// when the params are no longer trustworthy — the feature contract changed, a
+	// `features.*` parameter changed, a format is new. Searching before training is the
+	// whole point of it; training first would produce artifacts the search immediately
+	// invalidates.
+	PlanTune = "tune"
 	// PlanImport acquires a dataset and loads it: fetch, extract, import.
 	//
 	// This is what the Import action runs (consumer plan W6-2). It is a plan rather
@@ -110,6 +119,11 @@ func planSteps(name string) ([]string, error) {
 	registry := pipelinesvc.Steps()
 	graph := registry.OnSurface(pipelinesvc.SurfacePipeline)
 
+	// trainingStep is the non-optional ml-service work: the train steps and nothing
+	// else. Shared by the two plans that retrain, so "which steps produce artifacts"
+	// is answered once.
+	trainingStep := func(s pipelinesvc.Step) bool { return !s.Optional && s.RunsOnMLService() }
+
 	include := func(keep func(pipelinesvc.Step) bool) []string {
 		out := make([]string, 0, len(graph))
 		for _, step := range graph {
@@ -133,7 +147,14 @@ func planSteps(name string) ([]string, error) {
 		// included auto-tune would take hours nobody asked for.
 		return include(func(s pipelinesvc.Step) bool { return !s.Optional }), nil
 	case PlanRetrainOnly:
-		return include(func(s pipelinesvc.Step) bool { return !s.Optional && s.RunsOnMLService() }), nil
+		return include(trainingStep), nil
+	case PlanTune:
+		// Named explicitly rather than filtered, because no predicate over registry
+		// order can produce it: auto-tune sits last on the graph, which is where the
+		// console offers it, but a tuning run has to search before it trains. Stating
+		// the order here is also the only place "tune, then retrain on the result" is
+		// written down.
+		return append([]string{"auto_tune"}, include(trainingStep)...), nil
 	case PlanDataRefresh:
 		return include(func(s pipelinesvc.Step) bool { return !s.Optional && !s.RunsOnMLService() }), nil
 	default:
@@ -143,7 +164,7 @@ func planSteps(name string) ([]string, error) {
 
 // Names returns the known plan names, sorted, for error messages and the API.
 func Names() []string {
-	names := []string{PlanFull, PlanRetrainOnly, PlanDataRefresh, PlanImport}
+	names := []string{PlanFull, PlanRetrainOnly, PlanDataRefresh, PlanTune, PlanImport}
 	sort.Strings(names)
 	return names
 }

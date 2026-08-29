@@ -97,9 +97,7 @@
       "label": "Auto-tune",
       "optional": true,
       "requires": [
-        "train_fielding",
-        "train_extras",
-        "train_win"
+        "export"
       ]
     }
   ],

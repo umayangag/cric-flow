@@ -57,6 +57,45 @@ func TestRetrainOnlySkipsTheDataSteps(t *testing.T) {
 	assert.Contains(t, ids(plan), "train_batting")
 }
 
+// TestTuneSearchesBeforeItTrains is the whole reason the plan exists: hyperparameters
+// are a function of the feature space, so a run that trains first produces artifacts
+// the search that follows immediately invalidates.
+func TestTuneSearchesBeforeItTrains(t *testing.T) {
+	t.Parallel()
+	plan, err := Describe(PlanTune)
+	require.NoError(t, err)
+
+	stepIDs := ids(plan)
+	require.NotEmpty(t, stepIDs)
+	assert.Equal(t, "auto_tune", stepIDs[0])
+	assert.Contains(t, stepIDs, "train_batting")
+	assert.Contains(t, stepIDs, "train_win")
+}
+
+// TestTuneRetrainsExactlyWhatRetrainOnlyDoes: the two plans differ in the search, not
+// in which artifacts they rebuild. A train step that joined one and not the other
+// would leave a model carrying params from a search it never saw.
+func TestTuneRetrainsExactlyWhatRetrainOnlyDoes(t *testing.T) {
+	t.Parallel()
+	tune, err := Describe(PlanTune)
+	require.NoError(t, err)
+	retrain, err := Describe(PlanRetrainOnly)
+	require.NoError(t, err)
+
+	assert.Equal(t, append([]string{"auto_tune"}, ids(retrain)...), ids(tune))
+}
+
+// TestTuneSkipsTheDataSteps: tuning consumes the export, it does not produce it.
+func TestTuneSkipsTheDataSteps(t *testing.T) {
+	t.Parallel()
+	plan, err := Describe(PlanTune)
+	require.NoError(t, err)
+
+	assert.NotContains(t, ids(plan), "import")
+	assert.NotContains(t, ids(plan), "precompute")
+	assert.NotContains(t, ids(plan), "export")
+}
+
 func TestDataRefreshSkipsTheModels(t *testing.T) {
 	t.Parallel()
 	plan, err := Describe(PlanDataRefresh)
