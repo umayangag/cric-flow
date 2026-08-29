@@ -4,11 +4,6 @@ __pycache__
 venv
 vendor/
 
-.junie_plans/
-.junie/plans
-.junie/context_index.json
-gemini
-.cursor/tmp/
 
 go-app/api
 go-app/coverage.out
@@ -70,8 +65,6 @@ frontend/.vitest-localstorage
 .DS_Store
 
 pr_reviews.json
-pr_gemini_reviews*.jsonl
-.gemini_unresolved_ids
 **/test_output.txt
 ml-service/logs.log
 

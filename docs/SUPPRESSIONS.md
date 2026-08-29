@@ -1,6 +1,6 @@
 # Lint and type suppressions
 
-This project treats warnings as failures (see [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) and [run-check-all-incremental](../.cursor/skills/run-check-all-incremental/SKILL.md)). Suppressions are allowed only when **unavoidable** and must be **documented**.
+This project treats warnings as failures (see [CLAUDE.md](../CLAUDE.md) § Quality bars). Suppressions are allowed only when **unavoidable** and must be **documented**.
 
 ## Categories
 

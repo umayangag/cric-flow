@@ -60,6 +60,5 @@ Kept for the reasoning, not as instructions. Nothing here is a to-do list.
 | File | Regenerate with | Guarded by |
 |------|-----------------|-----------|
 | The marked blocks of [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md) | `make gen-architecture-map` | `make gen-architecture-map-check` |
-| `.junie/skills/` (from `.cursor/skills/`) | `make sync-skills` | `make sync-skills-check` |
 
-Both run in the `Docs consistency` workflow on every PR that touches their inputs.
+It runs in the `Docs consistency` workflow on every PR that touches its inputs.

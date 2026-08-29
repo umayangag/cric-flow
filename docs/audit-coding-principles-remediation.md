@@ -1,7 +1,7 @@
 # Audit: Alignment with project coding principles and remediation plan
 
 **Date:** 2025-03-11  
-**Scope:** Full codebase (frontend, go-app, ml-service) vs. [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) and [architect-ml-expert](../.cursor/rules/architect-ml-expert.mdc).
+**Scope:** Full codebase (frontend, go-app, ml-service) vs. the coding principles and architecture/ML guidance in [CLAUDE.md](../CLAUDE.md).
 
 **Implementation status (single PR):** P0, P1 (Go-app, Frontend, ML-service), P2, and P3 are implemented on the same branch: docs + go-app server split; useBacktestFormOptions + evaluateDbStorage + useEvaluateDb refactor; useApiCall + MLModelStatsTab/OpsStatusTab; React.lazy route code-splitting; SUPPRESSIONS.md; app/prediction_settings.py extraction from prediction_service.
 
@@ -83,7 +83,7 @@
 
 ### 3.7 Frontend bundle size
 
-- **Guideline (run-check-all-incremental):** Fix chunk-size warnings (e.g. “Some chunks are larger than 500 kB”) via code-splitting or `manualChunks`; use `chunkSizeWarningLimit` only if code-splitting is impractical.
+- **Guideline (warnings are failures):** Fix chunk-size warnings (e.g. “Some chunks are larger than 500 kB”) via code-splitting or `manualChunks`; use `chunkSizeWarningLimit` only if code-splitting is impractical.
 - **Finding:** Main JS chunk is ~792 kB (gzip ~245 kB). `vite.config.ts` sets `chunkSizeWarningLimit: 800`, so the build does not warn but the principle prefers smaller chunks.
 - **Recommendation:** Add route-based or feature-based code-splitting (e.g. lazy routes, `manualChunks` for heavy screens) to get the main chunk below 500 kB where practical; only then consider keeping or lowering the warning limit.
 
@@ -119,18 +119,18 @@
 
 ### P4 – Ongoing
 
-10. **Coverage:** When adding features, add tests for new code paths. When coverage exceeds the threshold, raise the threshold (go-app, ml-service, frontend) per the run-check-all-incremental skill.
+10. **Coverage:** When adding features, add tests for new code paths. When coverage exceeds the threshold, raise the threshold (go-app, ml-service, frontend) per [CLAUDE.md](../CLAUDE.md) § Quality bars.
 11. **New code:** Apply coding-principles and architect-ml-expert rules to all new code (small units, descriptive names, no new suppressions without justification).
 
 ---
 
 ## 5. Quick reference
 
-- **Coding principles:** [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) (includes OOP guidelines)
+- **Coding principles:** [CLAUDE.md](../CLAUDE.md) § Coding principles (includes OOP guidelines)
 - **OOP audit:** [audit-oop.md](audit-oop.md)
-- **Architecture & ML:** [.cursor/rules/architect-ml-expert.mdc](../.cursor/rules/architect-ml-expert.mdc)
-- **Unit tests:** [.cursor/rules/unit-tests.mdc](../.cursor/rules/unit-tests.mdc)
-- **Check workflow:** `.cursor/skills/run-check-all-incremental/SKILL.md`
+- **Architecture & ML:** [CLAUDE.md](../CLAUDE.md) § Persona
+- **Unit tests:** [CLAUDE.md](../CLAUDE.md) § Testing
+- **Check workflow:** `make check-all`, or per component `make frontend-check` / `make go-app-check` / `make ml-service-check`.
 
 ---
 

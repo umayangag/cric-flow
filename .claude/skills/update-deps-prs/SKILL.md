@@ -1,12 +1,14 @@
-<!-- Generated from ../../.cursor/skills/update-deps-prs/SKILL.md by scripts/sync-junie-skills.py. Edit the Cursor copy, then re-run the script. -->
-
-When the user says "/update-deps-prs" — Updates go-app, ml-service, and frontend dependencies and opens one independent PR per component off main. Use when the user says /update-deps-prs, asks to bump deps with separate PRs, or refresh the whole repo's packages like the chore/update-*-deps workflow.
+---
+name: update-deps-prs
+description: Updates go-app, ml-service, and frontend dependencies and opens one independent PR per component off main. Use when the user says /update-deps-prs, asks to bump deps with separate PRs, or refresh the whole repo's packages like the chore/update-*-deps workflow.
+disable-model-invocation: true
+---
 
 # Update dependencies (separate PRs per component)
 
 When the user says **/update-deps-prs** (or asks for repo-wide dependency bumps as **separate PRs**), update **go-app**, **ml-service**, and **frontend** independently. Each component gets its own branch off `main`, local verification, commit, push, and `gh pr create`.
 
-For bump commands and pip/npm mechanics only (no PRs), see [update-deps](../update-deps/SKILL.md). For check commands, see [run-check-all-incremental](../run-check-all-incremental/SKILL.md).
+For bump commands and pip/npm mechanics only (no PRs), see [update-deps](../update-deps/SKILL.md). For the check order and coverage rules, see [CLAUDE.md](../../../CLAUDE.md) § Quality bars.
 
 ## Prerequisites
 
