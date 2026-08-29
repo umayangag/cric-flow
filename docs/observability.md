@@ -73,6 +73,11 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   finished on its first step.
 - **Stops at the first failure**, leaving the remaining steps `PENDING` so the plan
   resumes from where it stopped rather than from the top.
+- **A stop is logged** (`pipeline stop: cancelled by user`, with the lanes it hit).
+  `context canceled` reaches the logs from every goroutine that was holding work, so
+  without a line at the endpoint itself there is no way to tell an operator's Stop from
+  a run that cancelled itself — which is how a premature cancellation inside the
+  precompute worker pool went unexplained for two full runs.
 - **Ordering comes from `CanRunPipelineStep`**, injected rather than reimplemented, so a
   plan and a single-step trigger cannot disagree about whether a step may run.
 - **`Execute` runs every step; `Resume` skips what the run being resumed completed.**

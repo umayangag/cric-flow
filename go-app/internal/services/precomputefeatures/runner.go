@@ -181,76 +181,17 @@ func (Runner) RunReplayGlobalPool(ctx context.Context, jobs []FormatJob, windowN
 	)
 	resources.LogMemoryAndGoroutines("precompute-features(replay-global-pool): at start")
 
-	workCh := make(chan *replayWorkItem, totalLimit*2)
-	gProducers, prodCtx := errgroup.WithContext(ctx)
-	for _, job := range jobs {
-		job := job
-		gProducers.Go(func() error {
-			var after *db.MatchLite
-			for {
-				if prodCtx.Err() != nil {
-					return nil
-				}
-				matches, err := db.ListMatchesByFormatDatePage(prodCtx, job.FormatID, nil, nil, pageSize, after)
-				if err != nil {
-					slog.Error("precompute-features(replay-global-pool): list matches failed",
-						slog.String("format", job.Code), slog.Int64("format_id", job.FormatID), slog.Any("err", err))
-					return fmt.Errorf("list matches %s: %w", job.Code, err)
-				}
-				if len(matches) == 0 {
-					return nil
-				}
-				for _, m := range matches {
-					if prodCtx.Err() != nil {
-						return nil
-					}
-					players, err := db.ListPlayersInMatch(prodCtx, m.MatchID)
-					if err != nil {
-						slog.Error("precompute-features(replay-global-pool): list players failed",
-							slog.Int64("match_id", m.MatchID), slog.String("format", job.Code), slog.Any("err", err))
-						return fmt.Errorf("list players match %d: %w", m.MatchID, err)
-					}
-					for _, pid := range players {
-						item := &replayWorkItem{FormatCode: job.Code, FormatID: job.FormatID, Match: m, PlayerID: pid}
-						select {
-						case workCh <- item:
-						case <-prodCtx.Done():
-							return nil
-						}
-					}
-				}
-				after = &matches[len(matches)-1]
-			}
-		})
-	}
-	var producerErr error
-	go func() {
-		producerErr = gProducers.Wait()
-		close(workCh)
-	}()
-
-	gWorkers, workCtx := errgroup.WithContext(prodCtx)
-	for i := 0; i < totalLimit; i++ {
-		gWorkers.Go(func() error {
-			for item := range workCh {
-				if workCtx.Err() != nil {
-					return nil
-				}
-				if err := processOnePlayerReplay(workCtx, item.FormatCode, item.FormatID, item.Match, item.PlayerID, windowN); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	}
-	workerErr := gWorkers.Wait()
-	if producerErr != nil {
-		slog.Error("precompute-features(replay-global-pool): producer error", slog.Any("err", producerErr))
-		return producerErr
-	}
-	if workerErr != nil {
-		slog.Error("precompute-features(replay-global-pool): worker error", slog.Any("err", workerErr))
-		return workerErr
+	if err := runReplayPool(
+		ctx,
+		totalLimit*2,
+		totalLimit,
+		matchPlayerProducers(jobs, pageSize),
+		func(ctx context.Context, item *replayWorkItem) error {
+			return processOnePlayerReplay(ctx, item.FormatCode, item.FormatID, item.Match, item.PlayerID, windowN)
+		},
+	); err != nil {
+		slog.Error("precompute-features(replay-global-pool): pool failed", slog.Any("err", err))
+		return err
 	}
 
 	resources.RecordWorkerMemorySample(resources.KindPrecompute, totalLimit)
