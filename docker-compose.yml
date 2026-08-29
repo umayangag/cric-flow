@@ -38,6 +38,9 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
       GO_APP_OUTPUT_DIR: /output/go-app
+      # Dataset dir Import reads and the acquire step downloads into (must be writable
+      # in container; mount ./data below). Absolute so it does not depend on the cwd.
+      GO_APP_CRICSHEET_DIR: /data/go-app/cricsheet
       # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
@@ -56,6 +59,7 @@ services:
       - "8080:8080"
     volumes:
       - ./output:/output
+      - ./data:/data
 
   ml-service:
     build:

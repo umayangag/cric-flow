@@ -18,6 +18,14 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 # Writable output dir for pipeline export-dataset (bind-mount to host ./output in compose).
 RUN mkdir -p /output/go-app && chown -R 65532:65532 /output
+# Writable dataset dir for Import's acquire step (fetch/extract). Without this the
+# container runs as 65532 from WORKDIR /, so the configured relative path
+# "../data/go-app/cricsheet" resolves to /data — which root owns and 65532 cannot
+# create, and every download fails with "mkdir ../data: permission denied".
+# GO_APP_CRICSHEET_DIR points at the absolute path so nothing depends on the cwd;
+# bind-mount host ./data over it in compose to keep archives between runs.
+RUN mkdir -p /data/go-app/cricsheet && chown -R 65532:65532 /data
+ENV GO_APP_CRICSHEET_DIR=/data/go-app/cricsheet
 # Default Go memory target so GC runs under 2GB containers; override with -e GOMEMLIMIT=... if needed.
 ENV GOMEMLIMIT=1800MiB
 EXPOSE 8080
