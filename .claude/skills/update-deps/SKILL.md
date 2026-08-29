@@ -1,49 +1,178 @@
 ---
 name: update-deps
-description: Updates dependencies for go-app (Go modules), ml-service (Python pip-tools), and frontend (npm) on the current branch (no PRs). Use when the user asks to update dependencies, upgrade packages, bump deps, or run /update-deps. For separate PRs per component off main, use update-deps-prs (/update-deps-prs).
+description: Updates dependencies for go-app (Go modules), ml-service (pip-tools) and frontend (npm). Bumps on the current branch by default; opens one independent PR per component off main only when explicitly asked. Use when the user asks to update dependencies, upgrade packages, bump deps, or refresh the repo's packages, with or without separate PRs.
 ---
 
-# Update Dependencies
+# Update dependencies
 
-Update dependencies across **go-app**, **ml-service**, and **frontend**. Run from the repository root.
+Update dependencies across **go-app**, **ml-service**, and **frontend**. Run from the repository
+root.
+
+Two modes:
+
+| Mode | When | What it does |
+|------|------|--------------|
+| **Bump in place** (default) | "update the deps", `/update-deps` | Bumps on the current branch. No branches, no pushes, no PRs. |
+| **PR per component** | Only when the user explicitly asks for separate PRs | One branch off `main` per component, each verified, pushed, and opened as its own PR. |
+
+> **Hard rule:** never create a branch, commit, push, or open a PR unless the user explicitly
+> asked for the PR mode. The default mode stops after the bumps and verification.
 
 ## Scope
 
-| Component   | Location    | Mechanism        |
-|------------|-------------|------------------|
-| go-app     | `go-app/`   | Go modules       |
-| ml-service | `ml-service/` | pip-tools (requirements.in → requirements.txt) |
-| frontend   | `frontend/` | npm              |
+| Component | Location | Mechanism |
+|-----------|----------|-----------|
+| go-app | `go-app/` | Go modules |
+| ml-service | `ml-service/` | pip-tools (`requirements*.in` → `requirements*.txt`) |
+| frontend | `frontend/` | npm |
 
-## Instructions
+---
 
-1. **go-app (Go)**
-   - `cd go-app && go get -u ./... && go mod tidy`
-   - Commit changes to `go.mod` and `go.sum` if any.
+## Bump commands
 
-2. **ml-service (Python, pip-tools)**
-   - Direct dependencies live in `ml-service/requirements.in` only. Pinned output is generated into `requirements.txt` via pip-compile; do not edit `requirements.txt` by hand.
-   - Ensure venv exists: `make -C ml-service venv` if needed.
-   - To upgrade installed packages and refresh pins: `cd ml-service && make compile-requirements` (or: `.venv/bin/pip install pip-tools && .venv/bin/pip-compile -U requirements.in -o requirements.txt`), then `make -C ml-service install` to sync the venv.
-   - To add a new direct dependency: add the package name to `requirements.in`, then run `make -C ml-service compile-requirements`.
-   - Commit changes to `ml-service/requirements.in` and `ml-service/requirements.txt` if updated.
+These are the single source for how each component is bumped. Both modes use them.
 
-3. **frontend (npm)**
-   - `cd frontend && npm update`
-   - For major upgrades: run `npx npm-check-updates -u` then `npm install`, or use `npm install <pkg>@latest` for specific packages.
-   - Commit changes to `package.json` and `package-lock.json` if any.
+### go-app
 
-4. **Verification**
-   - Run `make check-all` (or per-component: `make go-app-check`, `make ml-service-check`, `make frontend-check`) to ensure nothing is broken after updates.
+```bash
+cd go-app && go get -u ./... && go mod tidy && cd ..
+```
 
-## Optional: Update only one component
+Touches `go-app/go.mod` and `go-app/go.sum`. `go get -u ./...` updates direct and indirect
+dependencies to the latest compatible versions in the module graph.
 
-- **Go only:** `cd go-app && go get -u ./... && go mod tidy`
-- **Python only:** run `make -C ml-service compile-requirements` to refresh pins from `requirements.in`, then `make -C ml-service install`.
-- **Frontend only:** `cd frontend && npm update`
+### ml-service
 
-## Notes
+Direct dependencies live in `requirements.in` and `requirements-serve.in`. The `.txt` files are
+**generated** — never edit them by hand.
 
-- Go: `go get -u ./...` updates all direct and indirect dependencies to latest minor/patch within the module graph.
-- Python: use pip-tools: maintain direct deps in `requirements.in`; run `pip-compile requirements.in` (or `make compile-requirements`) to regenerate pinned `requirements.txt` with full dependency tree.
-- Frontend: `npm update` only bumps within semver ranges in `package.json`; use `npm-check-updates` or `@latest` for major bumps.
+There are **two** pin sets and both must be regenerated:
+
+| File | Contents | Regenerate with |
+|------|----------|-----------------|
+| `requirements.txt` | Full runtime set, incl. PyCaret / AutoGluon / SHAP | `make -C ml-service compile-requirements` |
+| `requirements-serve.txt` | Serving + CI set (no auto-tune extras) — what the serve image ships **and what CI installs** | `make -C ml-service compile-requirements-serve-docker` |
+
+```bash
+make -C ml-service compile-requirements
+make -C ml-service compile-requirements-serve-docker
+make -C ml-service install   # sync the local venv to the new pins
+```
+
+Notes:
+
+- `compile-requirements` uses the **local venv**, whose Python may not match CI. If a Docker build
+  later fails on a resolution conflict (e.g. click/typer), regenerate with
+  `make -C ml-service compile-requirements-docker` instead, which pins under Python 3.12.
+- The serve set is regenerated with the **`-docker`** variant on purpose: CI runs Python 3.12 and
+  installs `requirements-serve.txt` directly, so the pins must be resolved under that interpreter.
+  `compile-requirements-serve` (venv) exists but will produce pins for whatever Python the venv has.
+- Forgetting `requirements-serve.txt` is the common mistake: the runtime pins move, CI and the
+  serve image stay stale, and nothing fails until a build does.
+- To **add** a direct dependency, add it to the appropriate `.in` file first, then recompile.
+
+### frontend
+
+```bash
+cd frontend && npm update && cd ..
+```
+
+Usually only changes `package-lock.json`, since `npm update` stays inside the semver ranges in
+`package.json`. For **major** bumps (only if the user asks): `npx npm-check-updates -u` then
+`npm install`, or `npm install <pkg>@latest` for a specific package.
+
+---
+
+## Verify
+
+Run checks for the components you actually bumped. Follow the check order and the
+"warnings are failures / never lower a threshold" rules in [CLAUDE.md](../../../CLAUDE.md)
+§ Quality bars.
+
+| Component | Command |
+|-----------|---------|
+| go-app | `make -C go-app vet fmt-check lint coverage` |
+| ml-service | `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service lint-check fmt-check coverage coverage-check` |
+| frontend | from `frontend/`: `npm run lint`, `format:check`, `typecheck`, `build`, `test` |
+| all | `make check-all` |
+
+Dependency-only changes do **not** need `frontend-backend-sync-check` unless format constants or
+model metadata moved.
+
+In the default mode, stop here and report what changed.
+
+---
+
+## Mode: one PR per component
+
+Only when the user explicitly asked. Each component gets its own branch off `main`, verified,
+committed, pushed, and opened as an independent PR.
+
+### Prerequisites
+
+- **GitHub CLI (`gh`)** authenticated with `repo` scope
+- Go 1.26+, Python 3.12 (ml-service venv), Node 20.x
+
+### Hard rules
+
+- Base every PR on **`main`** — fetch and pull before each slice
+- **One PR per component.** Never combine go-app + ml-service + frontend
+- **Stage only that component's files.** Never `git add .` / `git add -A`
+- If a component has **no diff** after the bump, skip its commit, push, and PR
+- No destructive git (force-push, hard reset, branch delete) without an explicit request
+
+### Slices
+
+| # | Component | Branch | Files to commit |
+|---|-----------|--------|-----------------|
+| 1 | go-app | `chore/update-go-app-deps` | `go-app/go.mod`, `go-app/go.sum` |
+| 2 | ml-service | `chore/update-ml-service-deps` | `ml-service/requirements.txt`, `ml-service/requirements-serve.txt` (plus the `.in` files if direct deps changed) |
+| 3 | frontend | `chore/update-frontend-deps` | `frontend/package.json`, `frontend/package-lock.json` (often lockfile only) |
+
+The user may ask for a single slice ("ml-service only") — still branch from `main` and open one PR.
+
+### Per-slice workflow
+
+```bash
+# 1. Branch from main
+git fetch origin main && git checkout main && git pull origin main
+git checkout -b <branch-from-table>
+
+# 2. Bump — see "Bump commands" above for this component
+
+# 3. Verify — see "Verify" above, this component only
+
+# 4. Commit, push, open PR
+git add <only the files from the table>
+git commit -m "<subject from the table below>"
+git push -u origin HEAD
+gh pr create --base main --head <branch> --title "<title>" --body "$(cat <<'BODY'
+## Summary
+- <what was upgraded>
+
+## Test plan
+- [x] <checks you ran>
+BODY
+)"
+```
+
+### Commit / PR titles
+
+| Component | Subject (commit and PR title) |
+|-----------|-------------------------------|
+| go-app | `chore(go-app): bump Go module dependencies` |
+| ml-service | `chore(ml-service): refresh pinned Python dependencies` |
+| frontend | `chore(frontend): bump npm lockfile dependencies` |
+
+If `package.json` ranges or an `.in` file changed, say so in the PR summary.
+
+### Report
+
+After all slices, print a table: component → PR URL (or "skipped, no diff").
+
+### Acceptance criteria
+
+- [ ] Up to three PRs off `main`, skipping components with no diff
+- [ ] Each slice passed its own component checks before push
+- [ ] Both ml-service pin files regenerated, not just `requirements.txt`
+- [ ] User has the PR URLs
