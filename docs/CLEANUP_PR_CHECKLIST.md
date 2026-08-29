@@ -1051,6 +1051,12 @@ make e2e-backtest-smoke
 
 ### C6-4 — Consolidate `.cursor/skills` and `.junie/skills`
 
+> **Superseded.** Cursor, Junie, and the Gemini review bot were later dropped in favour of
+> Claude Code alone. `.cursor/`, `.junie/`, `.gemini/`, `scripts/sync-junie-skills.py`, the
+> `sync-skills` targets, and `.github/workflows/junie.yaml` no longer exist; the rules now live
+> in [CLAUDE.md](../CLAUDE.md) and the skills in `.claude/skills/`. The record below is kept for
+> history — its paths are dead.
+
 **Why:** Both directories hold the same seven skills under the same names, and `diff -rq` reports every pair as differing. Two sets of instructions for one workflow will keep diverging.
 
 **Scope**

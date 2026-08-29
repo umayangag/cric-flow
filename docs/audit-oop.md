@@ -1,7 +1,7 @@
 # Audit: Object-oriented design (OOP) alignment
 
 **Date:** 2025-03-11  
-**Scope:** Alignment with the OOP section in [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) (encapsulation, interfaces for dependencies, composition over inheritance, SRP for types, language-appropriate OOP).
+**Scope:** Alignment with the OOP section in [CLAUDE.md](../CLAUDE.md) (encapsulation, interfaces for dependencies, composition over inheritance, SRP for types, language-appropriate OOP).
 
 ---
 
@@ -102,5 +102,5 @@ No blocking OOP violations were found. The codebase already follows small interf
 
 ## 6. Quick reference
 
-- **OOP guidelines:** [.cursor/rules/coding-principles.mdc](../.cursor/rules/coding-principles.mdc) § Object-oriented design (OOP).
+- **OOP guidelines:** [CLAUDE.md](../CLAUDE.md) § Coding principles → Object-oriented design.
 - **General remediation:** [audit-coding-principles-remediation.md](audit-coding-principles-remediation.md).

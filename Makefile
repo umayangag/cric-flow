@@ -15,7 +15,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
 .PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
-.PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks sync-skills sync-skills-check gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
+.PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 .PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
@@ -531,8 +531,6 @@ lint-py:
 lint-frontend:
 	$(MAKE) -C frontend fmt-check
 
-# Regenerate .junie/skills from .cursor/skills. The two assistants need different file
-# formats for the same workflows, so .cursor is the source and .junie is generated.
 # Regenerate the derived blocks of ARCHITECTURE_MAP.md from the contracts themselves.
 # Several feature lists are built by concatenation, so they have to be imported rather
 # than parsed -- hence a real interpreter with the ml-service deps. Locally that is the
@@ -544,12 +542,6 @@ gen-architecture-map:
 
 gen-architecture-map-check:
 	$(MAP_PYTHON) scripts/gen-architecture-map.py --check
-
-sync-skills:
-	python3 scripts/sync-junie-skills.py
-
-sync-skills-check:
-	python3 scripts/sync-junie-skills.py --check
 
 install-hooks:
 	git config core.hooksPath .githooks
@@ -717,8 +709,6 @@ help:
 	@echo "[Generated files — do not hand-edit]"
 	@echo "  gen-architecture-map        Regenerate the marked blocks of ARCHITECTURE_MAP.md"
 	@echo "  gen-architecture-map-check  Fail if those blocks are stale (runs in CI)"
-	@echo "  sync-skills                 Regenerate .junie/skills from .cursor/skills"
-	@echo "  sync-skills-check           Fail if they are out of sync (runs in CI)"
 	@echo
 	@echo "[Bootstrap]"
 	@echo "  init               Initialize both components (tools, venv, hooks)"
