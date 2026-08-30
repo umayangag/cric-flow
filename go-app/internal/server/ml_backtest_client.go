@@ -125,7 +125,6 @@ type mlWinFeatures struct {
 	VenueID                 int     `json:"venue_id"`
 	Team1OppositionID       int     `json:"team1_opposition_id"`
 	Team2OppositionID       int     `json:"team2_opposition_id"`
-	TossWinnerOppositionID  int     `json:"toss_winner_opposition_id"`
 	Temp                    int     `json:"temp"`
 	Wind                    int     `json:"wind"`
 	Rain                    int     `json:"rain"`
@@ -147,21 +146,20 @@ type mlWinFeatures struct {
 // mlWinFeaturesEnhanced matches the ML service WinFeaturesEnhanced request body
 // for POST /predict/win-enhanced. Sends per-player feature maps for on-the-fly aggregation.
 type mlWinFeaturesEnhanced struct {
-	FormatID               int                           `json:"format_id"`
-	VenueID                int                           `json:"venue_id"`
-	Team1OppositionID      int                           `json:"team1_opposition_id"`
-	Team2OppositionID      int                           `json:"team2_opposition_id"`
-	TossWinnerOppositionID int                           `json:"toss_winner_opposition_id"`
-	Temp                   int                           `json:"temp"`
-	Wind                   int                           `json:"wind"`
-	Rain                   int                           `json:"rain"`
-	Humidity               int                           `json:"humidity"`
-	Cloud                  int                           `json:"cloud"`
-	Pressure               int                           `json:"pressure"`
-	Viscosity              int                           `json:"viscosity"`
-	Team1PlayerFeatures    map[string]map[string]float64 `json:"team1_player_features"`
-	Team2PlayerFeatures    map[string]map[string]float64 `json:"team2_player_features"`
-	Format                 string                        `json:"format,omitempty"`
+	FormatID            int                           `json:"format_id"`
+	VenueID             int                           `json:"venue_id"`
+	Team1OppositionID   int                           `json:"team1_opposition_id"`
+	Team2OppositionID   int                           `json:"team2_opposition_id"`
+	Temp                int                           `json:"temp"`
+	Wind                int                           `json:"wind"`
+	Rain                int                           `json:"rain"`
+	Humidity            int                           `json:"humidity"`
+	Cloud               int                           `json:"cloud"`
+	Pressure            int                           `json:"pressure"`
+	Viscosity           int                           `json:"viscosity"`
+	Team1PlayerFeatures map[string]map[string]float64 `json:"team1_player_features"`
+	Team2PlayerFeatures map[string]map[string]float64 `json:"team2_player_features"`
+	Format              string                        `json:"format,omitempty"`
 }
 
 // mlTeamOptPoolPlayer is a single player in the optimization pool (JSON wire DTO).

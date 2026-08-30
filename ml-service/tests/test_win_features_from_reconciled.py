@@ -11,7 +11,6 @@ def test_build_win_features_standardized_sets_fields_and_normalizes_format():
         season_id=2024,
         team1_opposition_id=1,
         team2_opposition_id=2,
-        toss_winner_opposition_id=1,
         team1_bat_consistency_sum=10.0,
         team1_bowl_consistency_sum=8.0,
         team2_bat_consistency_sum=9.0,
@@ -27,6 +26,5 @@ def test_build_win_features_standardized_sets_fields_and_normalizes_format():
     assert f.venue_id == 10
     assert f.team1_opposition_id == 1
     assert f.team2_opposition_id == 2
-    assert f.toss_winner_opposition_id == 1
     assert f.team1_bat_consistency_sum == 10.0
     assert f.team2_bowl_form_sum == 3.0

@@ -180,30 +180,28 @@ type TeamOptSelectedPlayer struct {
 // WinFeaturesEnhanced holds match context plus per-player feature maps for
 // the enhanced win model that uses distribution statistics over player features.
 type WinFeaturesEnhanced struct {
-	FormatID               int
-	VenueID                int
-	Team1OppositionID      int
-	Team2OppositionID      int
-	TossWinnerOppositionID int
-	Temp                   int
-	Wind                   int
-	Rain                   int
-	Humidity               int
-	Cloud                  int
-	Pressure               int
-	Viscosity              int
-	Team1PlayerFeatures    map[int64]map[string]float64
-	Team2PlayerFeatures    map[int64]map[string]float64
-	Format                 string
+	FormatID            int
+	VenueID             int
+	Team1OppositionID   int
+	Team2OppositionID   int
+	Temp                int
+	Wind                int
+	Rain                int
+	Humidity            int
+	Cloud               int
+	Pressure            int
+	Viscosity           int
+	Team1PlayerFeatures map[int64]map[string]float64
+	Team2PlayerFeatures map[int64]map[string]float64
+	Format              string
 }
 
-// WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, toss, weather, team consistency/form sums).
+// WinFeatures holds match-level inputs for the win model (same families as training: format, venue, teams, team consistency/form sums).
 type WinFeatures struct {
 	FormatID                int
 	VenueID                 int
 	Team1OppositionID       int
 	Team2OppositionID       int
-	TossWinnerOppositionID  int
 	Temp                    int
 	Wind                    int
 	Rain                    int
@@ -782,7 +780,6 @@ func getMatchWinProbability(
 		VenueID:                 int(venueIDVal),
 		Team1OppositionID:       int(opp2IDVal), // team1 bats first, faces team2
 		Team2OppositionID:       int(opp1IDVal),
-		TossWinnerOppositionID:  0,
 		Temp:                    noWeather.Temp,
 		Wind:                    noWeather.Wind,
 		Rain:                    noWeather.Rain,
@@ -844,21 +841,20 @@ func buildEnhancedWinFeatures(
 	format string,
 ) WinFeaturesEnhanced {
 	return WinFeaturesEnhanced{
-		FormatID:               int(formatID),
-		VenueID:                int(venueIDVal),
-		Team1OppositionID:      int(team1OppID),
-		Team2OppositionID:      int(team2OppID),
-		TossWinnerOppositionID: 0,
-		Temp:                   noWeather.Temp,
-		Wind:                   noWeather.Wind,
-		Rain:                   noWeather.Rain,
-		Humidity:               noWeather.Humidity,
-		Cloud:                  noWeather.Cloud,
-		Pressure:               noWeather.Pressure,
-		Viscosity:              0,
-		Team1PlayerFeatures:    t1Feats,
-		Team2PlayerFeatures:    t2Feats,
-		Format:                 strings.TrimSpace(strings.ToUpper(format)),
+		FormatID:            int(formatID),
+		VenueID:             int(venueIDVal),
+		Team1OppositionID:   int(team1OppID),
+		Team2OppositionID:   int(team2OppID),
+		Temp:                noWeather.Temp,
+		Wind:                noWeather.Wind,
+		Rain:                noWeather.Rain,
+		Humidity:            noWeather.Humidity,
+		Cloud:               noWeather.Cloud,
+		Pressure:            noWeather.Pressure,
+		Viscosity:           0,
+		Team1PlayerFeatures: t1Feats,
+		Team2PlayerFeatures: t2Feats,
+		Format:              strings.TrimSpace(strings.ToUpper(format)),
 	}
 }
 
@@ -1036,18 +1032,17 @@ func (in winProbSelectionInputs) team2Side() selectionSide {
 // optimised; the request's TeamIsTeam1 flag is what says who is choosing.
 func (in winProbSelectionInputs) matchContext() map[string]float64 {
 	return map[string]float64{
-		"format_id":                 float64(in.formatID),
-		"venue_id":                  float64(in.venueID),
-		"team1_opposition_id":       float64(in.opp2ID),
-		"team2_opposition_id":       float64(in.opp1ID),
-		"toss_winner_opposition_id": 0,
-		"temp":                      float64(noWeather.Temp),
-		"wind":                      float64(noWeather.Wind),
-		"rain":                      float64(noWeather.Rain),
-		"humidity":                  float64(noWeather.Humidity),
-		"cloud":                     float64(noWeather.Cloud),
-		"pressure":                  float64(noWeather.Pressure),
-		"viscosity":                 0,
+		"format_id":           float64(in.formatID),
+		"venue_id":            float64(in.venueID),
+		"team1_opposition_id": float64(in.opp2ID),
+		"team2_opposition_id": float64(in.opp1ID),
+		"temp":                float64(noWeather.Temp),
+		"wind":                float64(noWeather.Wind),
+		"rain":                float64(noWeather.Rain),
+		"humidity":            float64(noWeather.Humidity),
+		"cloud":               float64(noWeather.Cloud),
+		"pressure":            float64(noWeather.Pressure),
+		"viscosity":           0,
 	}
 }
 

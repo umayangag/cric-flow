@@ -52,7 +52,6 @@ class WinFeatures(BaseModel):
     venue_id: int = Field(default=0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
-    toss_winner_opposition_id: int = Field(default=0, ge=0)
     team1_bat_consistency_sum: float = Field(default=0.0, ge=0)
     team1_bowl_consistency_sum: float = Field(default=0.0, ge=0)
     team2_bat_consistency_sum: float = Field(default=0.0, ge=0)
@@ -81,7 +80,6 @@ class WinFeaturesEnhanced(BaseModel):
     venue_id: int = Field(default=0, ge=0)
     team1_opposition_id: int = Field(default=0, ge=0)
     team2_opposition_id: int = Field(default=0, ge=0)
-    toss_winner_opposition_id: int = Field(default=0, ge=0)
     team1_player_features: Dict[str, Dict[str, float]] = Field(
         ..., description="Per-player feature maps for team1: {player_id: {feature_name: value}}"
     )
@@ -97,20 +95,17 @@ class WinFeaturesEnhanced(BaseModel):
         return v.strip().upper()
 
     def to_match_context_dict(self) -> Dict[str, float]:
-        """Extract the MATCH_CONTEXT_COLS subset as a float dict for the aggregation pipeline."""
+        """Extract the MATCH_CONTEXT_BASE_COLS subset as a float dict for the aggregation pipeline.
+
+        Every key here is a field this model declares. It used to read seven weather
+        attributes that were removed from the model but not from this method, so the
+        call raised AttributeError -- on /predict/win-enhanced, for every request.
+        """
         return {
             "format_id": float(self.format_id),
             "venue_id": float(self.venue_id),
             "team1_opposition_id": float(self.team1_opposition_id),
             "team2_opposition_id": float(self.team2_opposition_id),
-            "toss_winner_opposition_id": float(self.toss_winner_opposition_id),
-            "temp": float(self.temp),
-            "wind": float(self.wind),
-            "rain": float(self.rain),
-            "humidity": float(self.humidity),
-            "cloud": float(self.cloud),
-            "pressure": float(self.pressure),
-            "viscosity": float(self.viscosity),
         }
 
 
