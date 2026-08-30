@@ -41,6 +41,7 @@ SOURCE_ROOTS = ("app", "ml")
 #   ml.auto_tune        invoked as `python -m ml.auto_tune`
 #   ml.walk_forward     invoked by `make -C ml-service walk-forward`
 #   ml.train_combination_meta  invoked by `make train-combination-meta`
+#   ml.win_discrimination  invoked by `make -C ml-service win-discrimination`
 #
 # Keep this in step with the `-m ml.` call sites; the check fails loudly if an
 # entrypoint listed here no longer exists on disk.
@@ -55,6 +56,7 @@ MODULE_ENTRYPOINTS = (
     "ml.auto_tune",
     "ml.train_combination_meta",
     "ml.walk_forward",
+    "ml.win_discrimination",
 )
 
 # Run as scripts rather than imported, so no module imports them -- but they and
