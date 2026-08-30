@@ -96,8 +96,7 @@ def _win_feature_cols() -> List[str]:
 
 
 def get_model_metadata() -> Dict[str, Any]:
-    """Build model metadata from feature config and training modules. One source of truth for the UI.
-    """
+    """Build model metadata from feature config and training modules. One source of truth for the UI."""
     out: Dict[str, Any] = {}
 
     for kind in ("batting", "bowling", "fielding"):

@@ -377,9 +377,7 @@ def run_auto_tune_extras(
                 f"extras_model_{format_suffix.replace(' ', '_')}.joblib",
             )
             joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
-            report_path = os.path.join(
-                out_dir, f"tuning_report_extras_{format_suffix}.json"
-            )
+            report_path = os.path.join(out_dir, f"tuning_report_extras_{format_suffix}.json")
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report
@@ -755,9 +753,7 @@ def run_auto_tune_win(
                 f"win_model_{format_suffix.replace(' ', '_')}.joblib",
             )
             joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
-            report_path = os.path.join(
-                out_dir, f"tuning_report_win_{format_suffix}.json"
-            )
+            report_path = os.path.join(out_dir, f"tuning_report_win_{format_suffix}.json")
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report

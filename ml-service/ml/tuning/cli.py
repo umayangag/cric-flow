@@ -327,9 +327,7 @@ def main() -> None:
                                     algorithms_explicitly_passed=bool(algorithms_override),
                                     feature_names=pack.feature_names,
                                 )
-                                _maybe_save_tuned_params(
-                                    args.go_app_url, "extras", fcode, report, args.api_key or None
-                                )
+                                _maybe_save_tuned_params(args.go_app_url, "extras", fcode, report, args.api_key or None)
                                 logger.info(
                                     "auto_tune.done model=extras format=%s n=%s best_cv_score=%s",
                                     fcode,
@@ -365,9 +363,7 @@ def main() -> None:
                                     rescreen=args.rescreen,
                                     algorithms_explicitly_passed=bool(algorithms_override),
                                 )
-                                _maybe_save_tuned_params(
-                                    args.go_app_url, "win", fcode, report, args.api_key or None
-                                )
+                                _maybe_save_tuned_params(args.go_app_url, "win", fcode, report, args.api_key or None)
                                 logger.info(
                                     "auto_tune.done model=win format=%s n=%s best_cv_score=%s",
                                     fcode,
@@ -415,9 +411,7 @@ def main() -> None:
                             _lr: Optional[LoaderResult] = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_batting_csv(csv_path),
-                                lambda: load_batting_from_api(
-                                    args.go_app_url, fmt, args.cutoff, args.api_key or None
-                                ),
+                                lambda: load_batting_from_api(args.go_app_url, fmt, args.cutoff, args.api_key or None),
                                 can_fallback_to_api=api_available,
                             )
                             if _lr is None:
@@ -431,9 +425,7 @@ def main() -> None:
                             _lr = _load_via_csv_or_api(
                                 csv_path,
                                 lambda: load_bowling_csv(csv_path),
-                                lambda: load_bowling_from_api(
-                                    args.go_app_url, fmt, args.cutoff, args.api_key or None
-                                ),
+                                lambda: load_bowling_from_api(args.go_app_url, fmt, args.cutoff, args.api_key or None),
                                 can_fallback_to_api=api_available,
                             )
                             if _lr is None:
@@ -635,9 +627,7 @@ def main() -> None:
                                 algorithms_explicitly_passed=bool(algorithms_override),
                                 feature_names=lr.feature_names,
                             )
-                            _maybe_save_tuned_params(
-                                args.go_app_url, model_kind, fcode, report, args.api_key or None
-                            )
+                            _maybe_save_tuned_params(args.go_app_url, model_kind, fcode, report, args.api_key or None)
                             logger.info(
                                 "auto_tune.done model=%s format=%s n=%s best_cv_score=%s",
                                 model_kind,
