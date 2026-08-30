@@ -145,6 +145,7 @@ type Config struct {
 		UseWinProbabilitySelection bool                       `json:"use_win_probability_selection"` // when true, select XI by maximizing win probability via hill-climb
 		MaxWinProbSwapIterations   int                        `json:"max_win_prob_swap_iterations"`  // hill-climb outer-loop cap for win-prob selection (0 = 50)
 		MaxWinProbEvalBudget       int                        `json:"max_win_prob_eval_budget"`      // total ML eval calls allowed per team in win-prob hill-climb (0 = 500)
+		BestResponseRounds         int                        `json:"best_response_rounds"`          // alternating best-response rounds in win-prob selection (0 = 3)
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {

@@ -82,7 +82,7 @@ Two consequences that shape the whole plan:
 
 | ID | Status | PR branch (when done) | Title |
 |----|--------|----------------------|-------|
-| S-1 | todo | `select/s-1-opponent-xi` | Optimise against the opponent's XI, not their whole pool |
+| S-1 | done | `select/s-1-opponent-xi` | Optimise against the opponent's XI, not their whole pool |
 | S-2 | todo | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3 | todo | `select/s-3-selection-backtest` | Selection backtest harness and win-model discrimination report |
 | S-4 | todo | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |

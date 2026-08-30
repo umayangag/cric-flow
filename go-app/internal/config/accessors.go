@@ -382,6 +382,15 @@ func SelectionMaxWinProbEvalBudget(cfg *Config) int {
 	return DefaultSelectionMaxWinProbEvalBudget
 }
 
+// SelectionBestResponseRounds returns the cap on alternating best-response rounds in
+// win-probability selection.
+func SelectionBestResponseRounds(cfg *Config) int {
+	if cfg != nil && cfg.Selection.BestResponseRounds > 0 {
+		return cfg.Selection.BestResponseRounds
+	}
+	return DefaultSelectionBestResponseRounds
+}
+
 // Resource limits (used by resources package). 0 in config = use default constant.
 func ResourcesPrecomputeMBPerWorker(cfg *Config) int {
 	if cfg != nil && cfg.Resources != nil && cfg.Resources.PrecomputeMBPerWorker > 0 {
