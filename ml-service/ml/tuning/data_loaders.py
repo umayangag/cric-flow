@@ -39,6 +39,7 @@ class LoaderResult(NamedTuple):
 
 
 from ml.data_quality import drop_low_variance_columns, impute_features
+from ml.export_csv import read_export_csv
 from ml.match_level_derived_features import add_match_level_derived_features_to_df
 from ml.tuning.types import (
     BAT_SEQ_COLS,
@@ -116,7 +117,7 @@ def _sort_rows_by_match_date(headers: List[str], rows: List[List[str]]) -> List[
 
 
 def load_batting_csv(path: str) -> LoaderResult:
-    df = pd.read_csv(path)
+    df = read_export_csv(path)
     df = _sort_df_by_match_date(df)
     for col in BAT_SEQ_COLS:
         if col not in df.columns:
@@ -146,7 +147,7 @@ def load_batting_csv(path: str) -> LoaderResult:
 
 
 def load_bowling_csv(path: str) -> LoaderResult:
-    df = pd.read_csv(path)
+    df = read_export_csv(path)
     df = _sort_df_by_match_date(df)
     for col in BOWL_SEQ_COLS:
         if col not in df.columns:
@@ -182,7 +183,7 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     if _train_fielding is None:
         logger.error("auto_tune.load_fielding_csv.train_fielding_unavailable")
         raise RuntimeError("ml.train_fielding not available for fielding CSV")
-    df = pd.read_csv(path)
+    df = read_export_csv(path)
     df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
@@ -197,7 +198,7 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, L
     if _train_extras is None:
         logger.error("auto_tune.load_extras_csv.train_extras_unavailable")
         raise RuntimeError("ml.train_extras not available for extras CSV")
-    df = pd.read_csv(path)
+    df = read_export_csv(path)
     df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
@@ -212,7 +213,7 @@ def load_win_csv(path: str, format_code: Optional[str] = None) -> Dict[str, Load
     if _train_win is None:
         logger.error("auto_tune.load_win_csv.train_win_unavailable")
         raise RuntimeError("ml.train_win not available for win CSV")
-    df = pd.read_csv(path)
+    df = read_export_csv(path)
     df = _sort_df_by_match_date(df)
     headers = list(df.columns)
     rows = df.values.astype(str).tolist()
