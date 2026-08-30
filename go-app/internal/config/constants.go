@@ -136,4 +136,8 @@ const DefaultSelectionMaxPoolSizeForFullEnum = 18
 const (
 	DefaultSelectionMaxWinProbSwapIterations = 50
 	DefaultSelectionMaxWinProbEvalBudget     = 500
+	// DefaultSelectionBestResponseRounds caps the alternating best-response rounds in
+	// win-probability selection. Best response can cycle rather than converge, so the
+	// loop is bounded; three rounds is enough for the fixed point when there is one.
+	DefaultSelectionBestResponseRounds = 3
 )

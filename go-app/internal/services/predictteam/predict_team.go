@@ -982,13 +982,99 @@ func enrichFieldingFromHistory(
 	}
 }
 
-// selectTeamsByWinProbability uses the enhanced win model to drive team selection
-// via hill-climb optimization for both teams.
+// winProbSelectionInputs is everything a win-probability selection needs.
 //
-// When the predictor also implements TeamSelectionOptimizer, the entire
-// hill-climb loop is offloaded to the ML service in a single HTTP call per team
-// (batch model inference, zero per-candidate round-trips).  Falls back to the
-// original per-call approach if the optimisation endpoint is unavailable.
+// It exists because the best-response loop and both side optimisers need the same
+// values, and threading fourteen parameters through three signatures was already the
+// longest parameter list in this package.
+type winProbSelectionInputs struct {
+	pool1, pool2         []teamselect.Player
+	nameToID1, nameToID2 map[string]int64
+	constraints          teamselect.Constraints
+	weights              teamselect.ScoreWeights
+	format               string
+	formatID             int64
+	venueID              int64
+	opp1ID               int64
+	opp2ID               int64
+	allFeats             map[int64]map[string]float64
+}
+
+// selectionSide names which team a selection call is choosing for.
+//
+// The win model is not symmetric — it predicts *team1's* probability — so every
+// candidate evaluation has to say which side it is scoring, and which pool the
+// opposing XI's names resolve against.
+type selectionSide struct {
+	pool             []teamselect.Player
+	nameToID         map[string]int64
+	opponentNameToID map[string]int64
+	isTeam1          bool
+}
+
+func (in winProbSelectionInputs) team1Side() selectionSide {
+	return selectionSide{
+		pool:             in.pool1,
+		nameToID:         in.nameToID1,
+		opponentNameToID: in.nameToID2,
+		isTeam1:          true,
+	}
+}
+
+func (in winProbSelectionInputs) team2Side() selectionSide {
+	return selectionSide{
+		pool:             in.pool2,
+		nameToID:         in.nameToID2,
+		opponentNameToID: in.nameToID1,
+		isTeam1:          false,
+	}
+}
+
+// matchContext is the part of the win model's input that no candidate XI can change.
+//
+// team1_opposition_id is always team2's id and vice versa, whichever side is being
+// optimised; the request's TeamIsTeam1 flag is what says who is choosing.
+func (in winProbSelectionInputs) matchContext() map[string]float64 {
+	return map[string]float64{
+		"format_id":                 float64(in.formatID),
+		"venue_id":                  float64(in.venueID),
+		"team1_opposition_id":       float64(in.opp2ID),
+		"team2_opposition_id":       float64(in.opp1ID),
+		"toss_winner_opposition_id": 0,
+		"temp":                      float64(noWeather.Temp),
+		"wind":                      float64(noWeather.Wind),
+		"rain":                      float64(noWeather.Rain),
+		"humidity":                  float64(noWeather.Humidity),
+		"cloud":                     float64(noWeather.Cloud),
+		"pressure":                  float64(noWeather.Pressure),
+		"viscosity":                 0,
+	}
+}
+
+// sideOptimizer returns one side's best XI against a *fixed* opposing XI.
+//
+// The opposing XI is fixed for the duration of a call by design: the win model's
+// inputs are distribution statistics over both sides, so a search that moved both at
+// once would score every candidate against a target that had already changed.
+type sideOptimizer func(
+	ctx context.Context,
+	s selectionSide,
+	opponentXI []teamselect.Player,
+) ([]teamselect.Player, error)
+
+// selectTeamsByWinProbability picks both XIs by alternating best response.
+//
+// Each side is optimised against the other side's currently selected XI, never against
+// the other side's whole pool. That distinction is the point of this function. The win
+// model reads the size of each side directly — every feature group carries a *_count,
+// and bowl_depth_diff is the difference between two of them — so scoring an eleven
+// against an eighteen-man squad evaluates a match that cannot happen, and does it
+// identically for every candidate, which is worse than a bias: it is a constant.
+//
+// When the predictor implements TeamSelectionOptimizer the per-round search runs inside
+// ml-service (batch inference, one call per side per round); otherwise every candidate
+// costs a round-trip. A server-side failure falls back to the per-call optimiser for the
+// whole selection rather than mid-loop, so both XIs always come out of the same search.
 func selectTeamsByWinProbability(
 	ctx context.Context,
 	enhanced EnhancedWinPredictor,
@@ -999,102 +1085,205 @@ func selectTeamsByWinProbability(
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
 	allFeats map[int64]map[string]float64,
 ) ([]teamselect.Player, []teamselect.Player, error) {
+	inputs := winProbSelectionInputs{
+		pool1:       tsPool1,
+		pool2:       tsPool2,
+		nameToID1:   buildNameToIDMap(pool1),
+		nameToID2:   buildNameToIDMap(pool2),
+		constraints: constraints,
+		weights:     weights,
+		format:      strings.TrimSpace(strings.ToUpper(format)),
+		formatID:    formatID,
+		venueID:     venueIDVal,
+		opp1ID:      opp1IDVal,
+		opp2ID:      opp2IDVal,
+		allFeats:    allFeats,
+	}
+
 	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
-		sel1, sel2, err := tryServerSideTeamOptimization(
-			ctx, optimizer, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-			format, formatID, venueIDVal, opp1IDVal, opp2IDVal, allFeats,
-		)
+		sel1, sel2, err := runBestResponse(ctx, newServerSideSideOptimizer(optimizer, inputs), inputs)
 		if err == nil {
 			return sel1, sel2, nil
 		}
 		slog.WarnContext(ctx, "server-side team optimization unavailable, falling back to per-call hill-climb",
 			slog.Any("err", err))
 	}
-
-	return selectTeamsByWinProbabilityPerCall(
-		ctx, enhanced, tsPool1, tsPool2, constraints, pool1, pool2, weights,
-		format, formatID, venueIDVal, opp1IDVal, opp2IDVal, allFeats,
-	)
+	return runBestResponse(ctx, newPerCallSideOptimizer(enhanced, inputs), inputs)
 }
 
-// tryServerSideTeamOptimization offloads the full hill-climb loop to the ML
-// service via POST /optimize/team-selection, one call per team.
-func tryServerSideTeamOptimization(
+// runBestResponse alternates: optimise team1 against team2's XI, then team2 against
+// team1's new XI, and repeat.
+//
+// It stops early when a round changes neither XI — a fixed point, where neither side
+// can improve on what the other has picked. Rounds are capped because best response can
+// cycle rather than converge; the last completed round is returned, and no claim of
+// equilibrium is made about it.
+func runBestResponse(
 	ctx context.Context,
-	optimizer TeamSelectionOptimizer,
-	tsPool1, tsPool2 []teamselect.Player,
-	constraints teamselect.Constraints,
-	pool1, pool2 []db.PlayerPoolRow,
-	weights teamselect.ScoreWeights,
-	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	allFeats map[int64]map[string]float64,
+	optimize sideOptimizer,
+	in winProbSelectionInputs,
 ) ([]teamselect.Player, []teamselect.Player, error) {
-	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
-	nameToID1 := buildNameToIDMap(pool1)
-	nameToID2 := buildNameToIDMap(pool2)
+	// Greedy seeds, so the very first optimisation already plays against an XI. Seeding
+	// one side from its whole pool would reintroduce, for one round, the asymmetry this
+	// function exists to remove.
+	sel1, err := teamselect.Select(in.pool1, in.weights, in.constraints)
+	if err != nil {
+		return nil, nil, fmt.Errorf("seed team1: %w", err)
+	}
+	sel2, err := teamselect.Select(in.pool2, in.weights, in.constraints)
+	if err != nil {
+		return nil, nil, fmt.Errorf("seed team2: %w", err)
+	}
 
+	for round := 1; round <= bestResponseRounds(); round++ {
+		next1, err := optimize(ctx, in.team1Side(), sel2)
+		if err != nil {
+			return nil, nil, fmt.Errorf("optimize team1 (round %d): %w", round, err)
+		}
+		next2, err := optimize(ctx, in.team2Side(), next1)
+		if err != nil {
+			return nil, nil, fmt.Errorf("optimize team2 (round %d): %w", round, err)
+		}
+		settled := sameXI(sel1, next1) && sameXI(sel2, next2)
+		sel1, sel2 = next1, next2
+		if settled {
+			return sel1, sel2, nil
+		}
+	}
+	return sel1, sel2, nil
+}
+
+// bestResponseRounds returns the cap on alternating best-response rounds.
+func bestResponseRounds() int {
+	return config.SelectionBestResponseRounds(config.Load())
+}
+
+// newServerSideSideOptimizer runs one side's search inside ml-service, in a single
+// call per round: POST /optimize/team-selection does the whole hill-climb with batch
+// model inference rather than one round-trip per candidate.
+func newServerSideSideOptimizer(
+	optimizer TeamSelectionOptimizer,
+	in winProbSelectionInputs,
+) sideOptimizer {
 	cfg := config.Load()
 	maxIter := config.SelectionMaxWinProbSwapIterations(cfg)
 	maxEvals := config.SelectionMaxWinProbEvalBudget(cfg)
 
-	buildMatchContext := func() map[string]float64 {
-		// Match context is constant: team1_opposition_id is always team2's ID and vice versa.
-		// The TeamIsTeam1 flag in the request body tells the optimizer which team is being optimized.
-		t1OppID, t2OppID := opp2IDVal, opp1IDVal
-		return map[string]float64{
-			"format_id":                 float64(formatID),
-			"venue_id":                  float64(venueIDVal),
-			"team1_opposition_id":       float64(t1OppID),
-			"team2_opposition_id":       float64(t2OppID),
-			"toss_winner_opposition_id": 0,
-			"temp":                      float64(noWeather.Temp),
-			"wind":                      float64(noWeather.Wind),
-			"rain":                      float64(noWeather.Rain),
-			"humidity":                  float64(noWeather.Humidity),
-			"cloud":                     float64(noWeather.Cloud),
-			"pressure":                  float64(noWeather.Pressure),
-			"viscosity":                 0,
+	return func(
+		ctx context.Context,
+		s selectionSide,
+		opponentXI []teamselect.Player,
+	) ([]teamselect.Player, error) {
+		result, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
+			Pool:             buildOptPoolPlayers(s.pool, s.nameToID, in.allFeats),
+			OpponentFeatures: xiFeatures(opponentXI, s.opponentNameToID, in.allFeats),
+			MatchContext:     in.matchContext(),
+			Constraints:      in.constraints,
+			Weights:          in.weights,
+			TeamIsTeam1:      s.isTeam1,
+			Format:           in.format,
+			MaxIterations:    maxIter,
+			MaxEvals:         maxEvals,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return optimizationResultToPlayers(result, s.pool), nil
+	}
+}
+
+// newPerCallSideOptimizer is the fallback: the hill-climb runs here, and every
+// candidate costs one HTTP call to the win model.
+func newPerCallSideOptimizer(
+	enhanced EnhancedWinPredictor,
+	in winProbSelectionInputs,
+) sideOptimizer {
+	return func(
+		ctx context.Context,
+		s selectionSide,
+		opponentXI []teamselect.Player,
+	) ([]teamselect.Player, error) {
+		opponentFeats := xiFeatures(opponentXI, s.opponentNameToID, in.allFeats)
+
+		evalFunc := func(candidateNames []string) (float64, error) {
+			candidateFeats := namedFeatures(candidateNames, s.nameToID, in.allFeats)
+			t1Feats, t2Feats := candidateFeats, opponentFeats
+			if !s.isTeam1 {
+				t1Feats, t2Feats = opponentFeats, candidateFeats
+			}
+			// Opposition ids are fixed the way matchContext fixes them, so the two
+			// optimisers describe the same fixture. This path used to swap them when
+			// choosing for team2, which made the fallback score a different match from
+			// the one ml-service scored.
+			team1Probability, err := enhanced.PredictMatchWinEnhanced(ctx, buildEnhancedWinFeatures(
+				in.formatID, in.venueID, in.opp2ID, in.opp1ID, t1Feats, t2Feats, in.format,
+			))
+			if err != nil {
+				return 0, err
+			}
+			if s.isTeam1 {
+				return team1Probability, nil
+			}
+			return 1 - team1Probability, nil
+		}
+
+		return teamselect.SelectByWinProbability(s.pool, in.weights, in.constraints, evalFunc)
+	}
+}
+
+// xiFeatures returns the feature maps of exactly the players in xi.
+//
+// The whole of S-1 is the difference between this and "the feature maps of everyone in
+// the pool": the win model's *_count inputs make the two describe different matches.
+func xiFeatures(
+	xi []teamselect.Player,
+	nameToID map[string]int64,
+	allFeats map[int64]map[string]float64,
+) map[int64]map[string]float64 {
+	names := make([]string, 0, len(xi))
+	for _, p := range xi {
+		names = append(names, p.Name)
+	}
+	return namedFeatures(names, nameToID, allFeats)
+}
+
+// namedFeatures resolves player names to their feature maps, skipping names the pool
+// does not know and players with no features.
+func namedFeatures(
+	names []string,
+	nameToID map[string]int64,
+	allFeats map[int64]map[string]float64,
+) map[int64]map[string]float64 {
+	out := make(map[int64]map[string]float64, len(names))
+	for _, name := range names {
+		pid, ok := nameToID[name]
+		if !ok {
+			continue
+		}
+		if m := allFeats[pid]; m != nil {
+			out[pid] = m
 		}
 	}
+	return out
+}
 
-	pool1Opt := buildOptPoolPlayers(tsPool1, nameToID1, allFeats)
-	pool2Opt := buildOptPoolPlayers(tsPool2, nameToID2, allFeats)
-	opp2Feats := collectPlayerFeatures(nameToID2, allFeats)
-	opp1Feats := collectPlayerFeatures(nameToID1, allFeats)
-
-	result1, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
-		Pool:             pool1Opt,
-		OpponentFeatures: opp2Feats,
-		MatchContext:     buildMatchContext(),
-		Constraints:      constraints,
-		Weights:          weights,
-		TeamIsTeam1:      true,
-		Format:           fmtUpper,
-		MaxIterations:    maxIter,
-		MaxEvals:         maxEvals,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("optimize team1: %w", err)
+// sameXI reports whether two selections name the same players. Order is not
+// significant: the optimisers return name-sorted XIs, but a fixed-point test that
+// depended on that would break quietly the day one of them stopped.
+func sameXI(a, b []teamselect.Player) bool {
+	if len(a) != len(b) {
+		return false
 	}
-
-	result2, err := optimizer.OptimizeTeamSelection(ctx, TeamOptimizationRequest{
-		Pool:             pool2Opt,
-		OpponentFeatures: opp1Feats,
-		MatchContext:     buildMatchContext(),
-		Constraints:      constraints,
-		Weights:          weights,
-		TeamIsTeam1:      false,
-		Format:           fmtUpper,
-		MaxIterations:    maxIter,
-		MaxEvals:         maxEvals,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("optimize team2: %w", err)
+	names := make(map[string]bool, len(a))
+	for _, p := range a {
+		names[p.Name] = true
 	}
-
-	sel1 := optimizationResultToPlayers(result1, tsPool1)
-	sel2 := optimizationResultToPlayers(result2, tsPool2)
-	return sel1, sel2, nil
+	for _, p := range b {
+		if !names[p.Name] {
+			return false
+		}
+	}
+	return true
 }
 
 // buildOptPoolPlayers merges teamselect.Player data (roles, scores) with player
@@ -1128,20 +1317,6 @@ func buildOptPoolPlayers(
 	return out
 }
 
-// collectPlayerFeatures gathers features for all players in nameToID.
-func collectPlayerFeatures(
-	nameToID map[string]int64,
-	allFeats map[int64]map[string]float64,
-) map[int64]map[string]float64 {
-	out := make(map[int64]map[string]float64, len(nameToID))
-	for _, pid := range nameToID {
-		if m := allFeats[pid]; m != nil {
-			out[pid] = m
-		}
-	}
-	return out
-}
-
 // optimizationResultToPlayers converts the optimisation result back to
 // teamselect.Player values from the original pool, preserving all fields.
 func optimizationResultToPlayers(
@@ -1160,85 +1335,6 @@ func optimizationResultToPlayers(
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
-}
-
-// selectTeamsByWinProbabilityPerCall is the original per-HTTP-call hill-climb
-// approach, used as a fallback when server-side optimisation is unavailable.
-func selectTeamsByWinProbabilityPerCall(
-	ctx context.Context,
-	enhanced EnhancedWinPredictor,
-	tsPool1, tsPool2 []teamselect.Player,
-	constraints teamselect.Constraints,
-	pool1, pool2 []db.PlayerPoolRow,
-	weights teamselect.ScoreWeights,
-	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
-	allFeats map[int64]map[string]float64,
-) ([]teamselect.Player, []teamselect.Player, error) {
-	nameToID1 := buildNameToIDMap(pool1)
-	nameToID2 := buildNameToIDMap(pool2)
-	fmtUpper := strings.TrimSpace(strings.ToUpper(format))
-
-	buildEvalFunc := func(
-		nameToID map[string]int64,
-		opponentNameToID map[string]int64,
-		teamIsTeam1 bool,
-	) teamselect.WinProbEvalFunc {
-		return func(candidateNames []string) (float64, error) {
-			candidateIDs := make([]int64, 0, len(candidateNames))
-			for _, name := range candidateNames {
-				if id, ok := nameToID[name]; ok {
-					candidateIDs = append(candidateIDs, id)
-				}
-			}
-			candidateFeats := extractPlayerFeatures(candidateIDs, allFeats)
-			opponentIDs := make([]int64, 0, len(opponentNameToID))
-			for _, id := range opponentNameToID {
-				opponentIDs = append(opponentIDs, id)
-			}
-			opponentFeats := extractPlayerFeatures(opponentIDs, allFeats)
-
-			var t1Feats, t2Feats map[int64]map[string]float64
-			var team1OppID, team2OppID int64
-			if teamIsTeam1 {
-				team1OppID, team2OppID = opp2IDVal, opp1IDVal
-				t1Feats, t2Feats = candidateFeats, opponentFeats
-			} else {
-				team1OppID, team2OppID = opp1IDVal, opp2IDVal
-				t1Feats, t2Feats = opponentFeats, candidateFeats
-			}
-			feats := buildEnhancedWinFeatures(
-				formatID,
-				venueIDVal,
-				team1OppID,
-				team2OppID,
-				t1Feats,
-				t2Feats,
-				fmtUpper,
-			)
-			p, err := enhanced.PredictMatchWinEnhanced(ctx, feats)
-			if err != nil {
-				return 0, err
-			}
-			if teamIsTeam1 {
-				return p, nil
-			}
-			return 1 - p, nil
-		}
-	}
-
-	evalFunc1 := buildEvalFunc(nameToID1, nameToID2, true)
-	sel1, err := teamselect.SelectByWinProbability(tsPool1, weights, constraints, evalFunc1)
-	if err != nil {
-		return nil, nil, fmt.Errorf("win-prob select team1: %w", err)
-	}
-
-	evalFunc2 := buildEvalFunc(nameToID2, nameToID1, false)
-	sel2, err := teamselect.SelectByWinProbability(tsPool2, weights, constraints, evalFunc2)
-	if err != nil {
-		return nil, nil, fmt.Errorf("win-prob select team2: %w", err)
-	}
-
-	return sel1, sel2, nil
 }
 
 func buildNameToIDMap(pool []db.PlayerPoolRow) map[string]int64 {
