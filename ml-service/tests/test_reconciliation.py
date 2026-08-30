@@ -110,14 +110,7 @@ def test_rescale_player_predictions():
 
 def test_build_innings_feature_vector_uses_sidecar_feature_names():
     """When meta feature_names subset is provided, output columns match that order/shape."""
-    meta = {
-        "feature_names": ["inning_number", "bat_form_sum", "format_is_T20"],
-        "derived_weights": {
-            "weather_composite_rain_weight": 0.5,
-            "weather_composite_humidity_weight": 0.3,
-            "weather_composite_cloud_weight": 0.2,
-        },
-    }
+    meta = {"feature_names": ["inning_number", "bat_form_sum", "format_is_T20"]}
     X = build_innings_feature_vector(
         inning_number=2,
         bat_consistency_sum=0.0,
@@ -133,29 +126,26 @@ def test_build_innings_feature_vector_uses_sidecar_feature_names():
     assert X[0, 2] == 1.0  # format_is_T20
 
 
-def test_build_innings_feature_vector_uses_pinned_derived_weights():
-    """Weights in meta override the service config when computing weather_composite."""
-    meta = {
-        "feature_names": ["weather_composite"],
-        "derived_weights": {
-            "weather_composite_rain_weight": 1.0,
-            "weather_composite_humidity_weight": 0.0,
-            "weather_composite_cloud_weight": 0.0,
-        },
-    }
+def test_build_innings_feature_vector_unknown_sidecar_column_is_zero():
+    """A sidecar naming a column the feature dict no longer builds must not crash.
+
+    weather_composite was removed; an artifact trained before that would still name
+    it. Selection is by name with a 0.0 default, so such a sidecar degrades to a
+    zero column rather than raising -- which is what the constant-zero feature was
+    contributing anyway.
+    """
+    meta = {"feature_names": ["inning_number", "weather_composite"]}
     X = build_innings_feature_vector(
         inning_number=1,
         bat_consistency_sum=0.0,
         bowl_consistency_sum=0.0,
         bat_form_sum=0.0,
         bowl_form_sum=0.0,
-        rain=1,
-        humidity=100,
-        cloud=100,
         meta=meta,
     )
-    assert X.shape == (1, 1)
-    assert X[0, 0] == 1.0  # only rain weight applies (=1.0), humidity/cloud weights 0
+    assert X.shape == (1, 2)
+    assert X[0, 0] == 1.0
+    assert X[0, 1] == 0.0
 
 
 def test_rescale_player_predictions_player_with_no_balls():

@@ -22,10 +22,6 @@ DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
 MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT = 0.10
 MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT = 0.08
 MLQA_SENSITIVITY_TOP_N_FEATURES_DEFAULT = 3
-# Match-level derived features (see ml.match_level_derived in config.default.json).
-DEFAULT_WEATHER_COMPOSITE_RAIN_WEIGHT = 0.5
-DEFAULT_WEATHER_COMPOSITE_HUMIDITY_WEIGHT = 0.3
-DEFAULT_WEATHER_COMPOSITE_CLOUD_WEIGHT = 0.2
 # Permutation importance in tuning / MLQA (see ml.tuning in config.default.json).
 DEFAULT_PERMUTATION_IMPORTANCE_N_REPEATS = 5
 DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES = 6
@@ -570,21 +566,6 @@ def get_data_quality_config() -> Dict[str, float]:
     if thresh < 0.0:
         thresh = DEFAULT_LOW_VARIANCE_THRESHOLD
     return {"low_variance_threshold": float(thresh)}
-
-
-def get_match_level_derived_config() -> Dict[str, float]:
-    """Load weights for match-level derived features from ml.match_level_derived."""
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    block = (ml.get("match_level_derived") if isinstance(ml, dict) else None) or {}
-    rain_w = _load_numeric(block, "weather_composite_rain_weight", DEFAULT_WEATHER_COMPOSITE_RAIN_WEIGHT, float)
-    hum_w = _load_numeric(block, "weather_composite_humidity_weight", DEFAULT_WEATHER_COMPOSITE_HUMIDITY_WEIGHT, float)
-    cloud_w = _load_numeric(block, "weather_composite_cloud_weight", DEFAULT_WEATHER_COMPOSITE_CLOUD_WEIGHT, float)
-    return {
-        "weather_composite_rain_weight": float(rain_w),
-        "weather_composite_humidity_weight": float(hum_w),
-        "weather_composite_cloud_weight": float(cloud_w),
-    }
 
 
 def get_tuning_search_space(estimator_key: str) -> Optional[Dict[str, Any]]:

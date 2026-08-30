@@ -41,7 +41,6 @@ def _innings_feature_dict(
     pressure: int,
     viscosity: int,
     format_code: Optional[str],
-    derived_weights: Optional[Mapping[str, float]],
 ) -> Dict[str, float]:
     """Compute every potential innings feature as a name -> scalar mapping.
 
@@ -49,15 +48,11 @@ def _innings_feature_dict(
     ordering only the columns the trained model expects (via its sidecar).
     """
     one_hot = format_one_hot_from_code(format_code)
-    form_differential, consistency_differential, weather_composite = compute_match_level_derived_features_scalars(
+    form_differential, consistency_differential = compute_match_level_derived_features_scalars(
         bat_form_sum,
         bowl_form_sum,
         bat_consistency_sum,
         bowl_consistency_sum,
-        rain,
-        humidity,
-        cloud,
-        weights=derived_weights,
     )
     values: Dict[str, float] = {
         "venue_id": float(venue_id),
@@ -76,7 +71,6 @@ def _innings_feature_dict(
         "bowl_form_sum": float(bowl_form_sum),
         "form_differential": float(form_differential),
         "consistency_differential": float(consistency_differential),
-        "weather_composite": float(weather_composite),
     }
     for col, val in one_hot.items():
         values[col] = float(val)
@@ -113,15 +107,10 @@ def build_innings_feature_vector(
     """Build the innings-model feature vector.
 
     When *meta* (artifact sidecar) is provided, its ``feature_names`` drives
-    column order/selection and ``derived_weights`` are used when computing the
-    weather composite. Without sidecar metadata, uses :data:`LEGACY_INNINGS_FEATURE_COLS`
-    so older artifacts (trained before derived features) keep the expected layout.
+    column order and selection. Without sidecar metadata, uses
+    :data:`LEGACY_INNINGS_FEATURE_COLS` so older artifacts (trained before derived
+    features) keep the expected layout.
     """
-    derived_weights: Optional[Mapping[str, float]] = None
-    if meta is not None:
-        dw = meta.get("derived_weights")
-        if isinstance(dw, dict):
-            derived_weights = dw
     feature_dict = _innings_feature_dict(
         inning_number=inning_number,
         bat_consistency_sum=bat_consistency_sum,
@@ -138,7 +127,6 @@ def build_innings_feature_vector(
         pressure=pressure,
         viscosity=viscosity,
         format_code=format_code,
-        derived_weights=derived_weights,
     )
     order = _resolve_innings_feature_order(meta)
     values = [feature_dict.get(col, 0.0) for col in order]
@@ -167,8 +155,8 @@ def predict_innings(
 ) -> Tuple[float, float]:
     """Predict innings_runs and innings_wickets for one innings.
 
-    Pass *meta* (artifact sidecar) to pin feature order and derived-feature
-    weights to those used at training time. See :func:`build_innings_feature_vector`.
+    Pass *meta* (artifact sidecar) to pin feature order to that used at training
+    time. See :func:`build_innings_feature_vector`.
     """
     X = build_innings_feature_vector(
         inning_number=inning_number,
