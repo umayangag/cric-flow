@@ -34,15 +34,28 @@ type SquadMember struct {
 // this fires on a truncated or hand-edited file.
 var ErrNoSquad = fmt.Errorf("match file carries no info.players")
 
-// SquadFromInfo flattens info.players into a validated, deterministically ordered list.
+// SquadFromInfo flattens info.players into a validated, deterministically ordered list,
+// along with the names it could not attribute to one side.
 //
 // Order follows info.teams so two imports of the same file produce the same rows in
 // the same order; Go map iteration would not. Teams that appear only in info.players
 // are appended in name order rather than dropped, so a file whose two lists disagree
 // is still recorded in full and the mismatch is caught below rather than half-applied.
-func SquadFromInfo(info Info) ([]SquadMember, error) {
+//
+// A name appearing under both teams is two people who share a scorecard name, not a
+// corrupt file: Cricsheet's own registry is keyed by name, so it collapses them into
+// one identifier and the source cannot say which side each delivery belongs to. Since
+// this repository identifies players by name too, they are already one player_id, and
+// match_player's primary key cannot hold that id twice for one match. Guessing a side
+// would invent data, so the name is dropped from *both* squads and returned for the
+// caller to log. Two files in the current dataset are affected, each losing one player
+// from an eleven.
+//
+// The same name twice within one team is a different case and is deduplicated rather
+// than dropped: which side they played for is not in doubt.
+func SquadFromInfo(info Info) (members []SquadMember, ambiguous []string, err error) {
 	if len(info.Players) == 0 {
-		return nil, ErrNoSquad
+		return nil, nil, ErrNoSquad
 	}
 
 	teamOrder := make([]string, 0, len(info.Players))
@@ -66,31 +79,50 @@ func SquadFromInfo(info Info) ([]SquadMember, error) {
 	sort.Strings(extra)
 	teamOrder = append(teamOrder, extra...)
 
-	members := make([]SquadMember, 0, len(info.Players)*11)
-	// A player belongs to exactly one side, which is what match_player's primary key
-	// asserts. Catching the violation here names the player and both teams; letting
-	// the insert catch it would surface as a constraint error naming neither.
+	// Which side claimed each name, and the names more than one side claimed. Both are
+	// needed before any member is emitted: a name is only known to be ambiguous once
+	// the second team has been read, by which point the first team's entry is already
+	// built, so the drop has to happen in a second pass.
 	pickedBy := map[string]string{}
+	contested := map[string]bool{}
 	for _, team := range teamOrder {
 		for _, raw := range info.Players[team] {
 			player := strings.TrimSpace(raw)
 			if player == "" {
-				return nil, fmt.Errorf("team %q lists an empty player name", team)
+				return nil, nil, fmt.Errorf("team %q lists an empty player name", team)
 			}
-			if previous, ok := pickedBy[player]; ok {
-				if previous == team {
-					return nil, fmt.Errorf("player %q is listed twice for team %q", player, team)
-				}
-				return nil, fmt.Errorf("player %q is listed for both %q and %q", player, previous, team)
+			if previous, ok := pickedBy[player]; ok && previous != team {
+				contested[player] = true
 			}
 			pickedBy[player] = team
+		}
+	}
+
+	members = make([]SquadMember, 0, len(pickedBy))
+	emitted := map[string]bool{}
+	for _, team := range teamOrder {
+		for _, raw := range info.Players[team] {
+			player := strings.TrimSpace(raw)
+			// Deduplicate within a team: the same name twice is one player_id either
+			// way, and unlike the contested case there is no doubt about the side.
+			if contested[player] || emitted[player] {
+				continue
+			}
+			emitted[player] = true
 			members = append(members, SquadMember{Team: team, Player: player})
 		}
 	}
-	if len(members) == 0 {
-		return nil, ErrNoSquad
+
+	ambiguous = make([]string, 0, len(contested))
+	for player := range contested {
+		ambiguous = append(ambiguous, player)
 	}
-	return members, nil
+	sort.Strings(ambiguous)
+
+	if len(members) == 0 {
+		return nil, ambiguous, ErrNoSquad
+	}
+	return members, ambiguous, nil
 }
 
 // buildMatchPlayerRows resolves a match's squads into match_player rows.
@@ -107,7 +139,17 @@ func buildMatchPlayerRows(
 	path string,
 	dateISO string,
 ) ([]db.MatchPlayer, error) {
-	members, err := SquadFromInfo(info)
+	members, ambiguous, err := SquadFromInfo(info)
+	if len(ambiguous) > 0 {
+		// Not an error: the source cannot say which side these played for, so they are
+		// left out of both squads rather than guessed at. Logged because a squad of ten
+		// is a fact about the export's inputs that should be traceable to its cause.
+		slog.Warn("cricsheet: player named on both teams, omitted from both squads",
+			slog.String("file", path),
+			slog.Int64("match_id", matchID),
+			slog.String("match_date", dateISO),
+			slog.String("players", strings.Join(ambiguous, ", ")))
+	}
 	if err != nil {
 		if errors.Is(err, ErrNoSquad) {
 			slog.Warn("cricsheet: match has no info.players, squad not recorded",

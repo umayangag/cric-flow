@@ -66,8 +66,9 @@ const noSquadJSON = `{
   ]
 }`
 
-// duplicateSquadJSON lists the same player for both sides.
-const duplicateSquadJSON = `{
+// namesakeSquadJSON lists the same player name for both sides: two people sharing a
+// scorecard name, which Cricsheet's registry collapses into one identifier.
+const namesakeSquadJSON = `{
   "info": {
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
@@ -166,13 +167,14 @@ func TestImportMatchFile_WithoutPlayers_ImportsTheMatchAndRecordsNoSquad(t *test
 	assert.Zero(t, spy.insertCount, "no squad means no rows, not a side of nobody")
 }
 
-func TestImportMatchFile_PlayerOnBothTeams_FailsTheImport(t *testing.T) {
+func TestImportMatchFile_PlayerOnBothTeams_ImportsWithoutThatPlayer(t *testing.T) {
 	// Not parallel: uses package-level singletons (db.PoolAPI, SetRunInTxFn).
 	// Arrange + Act
-	spy, err := importWithSquadSpy(t, duplicateSquadJSON)
+	spy, err := importWithSquadSpy(t, namesakeSquadJSON)
 
 	// Assert
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "info.players")
-	assert.Zero(t, spy.deletes, "the transaction is never entered")
+	require.NoError(t, err, "an unresolvable name must not cost the whole match")
+	assert.Equal(t, 1, spy.insertCount)
+	// A1 is named by both sides and dropped from both, leaving A2 and B2.
+	assert.Len(t, spy.insertArgs, 2*3)
 }

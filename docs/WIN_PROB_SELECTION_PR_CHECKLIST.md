@@ -470,11 +470,23 @@ re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
 > handles absence — warn, record no squad, keep the ball-by-ball data — because a truncated
 > file must not become a side of nobody, but the export's exclusion path should be rare
 > enough that a non-zero count is a signal something is wrong.
+>
+> **Namesakes, found by running the re-import.** Two files name the same player on both
+> sides — `KV Sharma` (Vidarbha / Railways) and `J Butler` (Isle of Man / Guernsey). They
+> are two people who share a scorecard name, and Cricsheet cannot separate them either:
+> `info.registry.people` is keyed by name, so file 1130677 has 22 squad entries and 21
+> registry identifiers. Since this repo also identifies players by name, they are already
+> one `player_id`, which `match_player`'s primary key cannot hold twice for one match.
+> The importer drops such a name from **both** squads and warns, leaving two matches with
+> a ten-player side. Guessing a side would invent data; failing the match — which the first
+> cut of the validation did — cost its ball-by-ball record over an ambiguity in the source.
+> Fixed in `fix/squad-namesake-both-teams`.
 
 **Tests.** Importer ✅: squad parsed and persisted for both sides including players who
 never bat or bowl; a file with no `info.players` still imports and records no squad; a
-player listed for both teams fails the import before the transaction opens; a re-import
-replaces rather than accumulates. Export: a fixture where a team's squad and its scorecard
+player named by both teams is dropped from both and costs one row rather than the match;
+the same name twice in one team is deduplicated, since the side is not in doubt; a
+re-import replaces rather than accumulates. Export: a fixture where a team's squad and its scorecard
 differ produces equal counts on both sides, and the bowl group includes players who bowled
 no overs.
 

@@ -11,15 +11,24 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
+// emptyToNil lets a case omit wantAmbiguous when nothing is contested.
+func emptyToNil(v []string) []string {
+	if len(v) == 0 {
+		return nil
+	}
+	return v
+}
+
 func TestSquadFromInfo(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name        string
-		info        Info
-		wantMembers []SquadMember
-		wantErr     string
-		wantNoSquad bool
+		name          string
+		info          Info
+		wantMembers   []SquadMember
+		wantAmbiguous []string
+		wantErr       string
+		wantNoSquad   bool
 	}{
 		{
 			name: "both teams in info.teams order regardless of map order",
@@ -102,23 +111,42 @@ func TestSquadFromInfo(t *testing.T) {
 			wantErr: `team "India" lists an empty player name`,
 		},
 		{
-			name: "the same player twice in one team is refused",
+			// The side is not in doubt, so the player is kept once rather than dropped.
+			name: "the same player twice in one team is deduplicated",
 			info: Info{
 				Teams:   []string{"India"},
 				Players: map[string][]string{"India": {"V Kohli", "V Kohli"}},
 			},
-			wantErr: `player "V Kohli" is listed twice for team "India"`,
+			wantMembers: []SquadMember{{Team: "India", Player: "V Kohli"}},
 		},
 		{
-			name: "a player on both teams is refused",
+			// Two people sharing a scorecard name. Cricsheet's registry collapses them
+			// into one identifier, so which side each played for is unknowable.
+			name: "a player named on both teams is dropped from both",
 			info: Info{
 				Teams: []string{"India", "Sri Lanka"},
 				Players: map[string][]string{
-					"India":     {"V Kohli"},
-					"Sri Lanka": {"V Kohli"},
+					"India":     {"V Kohli", "R Sharma"},
+					"Sri Lanka": {"V Kohli", "K Mendis"},
 				},
 			},
-			wantErr: `player "V Kohli" is listed for both "India" and "Sri Lanka"`,
+			wantMembers: []SquadMember{
+				{Team: "India", Player: "R Sharma"},
+				{Team: "Sri Lanka", Player: "K Mendis"},
+			},
+			wantAmbiguous: []string{"V Kohli"},
+		},
+		{
+			name: "a squad of only contested names is the same as no squad",
+			info: Info{
+				Teams: []string{"India", "Sri Lanka"},
+				Players: map[string][]string{
+					"India":     {"J Butler"},
+					"Sri Lanka": {"J Butler"},
+				},
+			},
+			wantNoSquad:   true,
+			wantAmbiguous: []string{"J Butler"},
 		},
 	}
 
@@ -128,7 +156,7 @@ func TestSquadFromInfo(t *testing.T) {
 			t.Parallel()
 
 			// Act
-			got, err := SquadFromInfo(tc.info)
+			got, ambiguous, err := SquadFromInfo(tc.info)
 
 			// Assert
 			switch {
@@ -143,6 +171,7 @@ func TestSquadFromInfo(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, tc.wantMembers, got)
 			}
+			assert.Equal(t, tc.wantAmbiguous, emptyToNil(ambiguous))
 		})
 	}
 }
@@ -239,10 +268,10 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		assert.Zero(t, resolver.playerCalls, "nothing to resolve")
 	})
 
-	t.Run("an unusable squad fails the import rather than recording a partial one", func(t *testing.T) {
+	t.Run("an empty player name fails the import rather than recording a partial squad", func(t *testing.T) {
 		t.Parallel()
 		// Arrange
-		bad := Info{Teams: []string{"India"}, Players: map[string][]string{"India": {"V Kohli", "V Kohli"}}}
+		bad := Info{Teams: []string{"India"}, Players: map[string][]string{"India": {"V Kohli", " "}}}
 		resolver := &stubSquadResolver{}
 
 		// Act
@@ -252,6 +281,32 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read info.players")
 		assert.Nil(t, rows)
+	})
+
+	t.Run("a player named on both teams costs one row, not the match", func(t *testing.T) {
+		t.Parallel()
+		// Arrange
+		namesake := Info{
+			Teams: []string{"India", "Sri Lanka"},
+			Players: map[string][]string{
+				"India":     {"V Kohli", "R Sharma"},
+				"Sri Lanka": {"V Kohli", "K Mendis"},
+			},
+		}
+		resolver := &stubSquadResolver{
+			playerIDs:     map[string]int64{"R Sharma": 2, "K Mendis": 3},
+			oppositionIDs: map[string]int64{"India": 10, "Sri Lanka": 20},
+		}
+
+		// Act
+		rows, err := buildMatchPlayerRows(context.Background(), resolver, namesake, 99, "f.json", "2024-01-01")
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, []db.MatchPlayer{
+			{MatchID: 99, PlayerID: 2, OppositionID: 10},
+			{MatchID: 99, PlayerID: 3, OppositionID: 20},
+		}, rows)
 	})
 
 	t.Run("a failed player lookup is returned, not skipped", func(t *testing.T) {
