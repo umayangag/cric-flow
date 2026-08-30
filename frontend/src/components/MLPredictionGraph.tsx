@@ -79,7 +79,7 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'batting',
         type: 'stage',
-        position: { x: -250, y: 120 },
+        position: { x: -380, y: 140 },
         data: {
           label: 'Batting model',
           subtitle: 'per-player runs, balls, 4s/6s',
@@ -91,7 +91,7 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'bowling',
         type: 'stage',
-        position: { x: 0, y: 120 },
+        position: { x: -150, y: 140 },
         data: {
           label: 'Bowling model',
           subtitle: 'per-player runs conceded, wickets, econ',
@@ -103,23 +103,51 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'fielding',
         type: 'stage',
-        position: { x: 250, y: 120 },
-        data: { label: 'Fielding model (optional)', subtitle: 'catches, run outs, stumpings' },
+        position: { x: 80, y: 140 },
+        data: {
+          label: 'Fielding model',
+          subtitle: 'catches, run outs, stumpings',
+          variant: 'primary',
+        },
+        targetPosition: Position.Top,
+        sourcePosition: Position.Bottom,
+      },
+      {
+        id: 'innings',
+        type: 'stage',
+        position: { x: 320, y: 140 },
+        data: {
+          label: 'Innings model',
+          subtitle: 'match-level innings 1/2 runs & wickets',
+          variant: 'primary',
+        },
         targetPosition: Position.Top,
         sourcePosition: Position.Bottom,
       },
       {
         id: 'players',
         type: 'stage',
-        position: { x: 0, y: 240 },
-        data: { label: 'Per-player scores', subtitle: 'bat, bowl, field scores per player' },
+        position: { x: -150, y: 280 },
+        data: { label: 'Per-player predictions', subtitle: 'raw bat, bowl, field lines' },
+        targetPosition: Position.Top,
+        sourcePosition: Position.Bottom,
+      },
+      {
+        id: 'reconcile',
+        type: 'stage',
+        position: { x: 85, y: 410 },
+        data: {
+          label: 'Constraint reconciliation',
+          subtitle: 'player lines rescaled to the innings targets',
+          variant: 'primary',
+        },
         targetPosition: Position.Top,
         sourcePosition: Position.Bottom,
       },
       {
         id: 'team',
         type: 'stage',
-        position: { x: 0, y: 360 },
+        position: { x: 85, y: 540 },
         data: {
           label: 'Team aggregates + Extras model',
           subtitle: 'XI totals + predicted extras',
@@ -131,19 +159,29 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'win',
         type: 'stage',
-        position: { x: -260, y: 500 },
+        position: { x: -180, y: 670 },
         data: {
           label: 'Win model',
-          subtitle: 'probability & winner from team-level features',
+          subtitle: 'win probability from aggregated per-player features',
           variant: 'success',
         },
         targetPosition: Position.Top,
         sourcePosition: Position.Bottom,
       },
       {
+        id: 'combination_meta',
+        type: 'stage',
+        position: { x: 340, y: 670 },
+        data: {
+          label: 'Combination meta model (optional)',
+          subtitle: 'Ridge weights from backtest contributions; overrides configured score weights',
+        },
+        sourcePosition: Position.Bottom,
+      },
+      {
         id: 'feedback',
         type: 'stage',
-        position: { x: 0, y: 500 },
+        position: { x: -180, y: 800 },
         data: {
           label: 'Feedback loop',
           subtitle: 'rescale innings totals & player runs to match win probability',
@@ -155,7 +193,7 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'selection',
         type: 'stage',
-        position: { x: 260, y: 500 },
+        position: { x: -60, y: 930 },
         data: {
           label: 'Team selection & scorecard',
           subtitle: 'final XI, innings totals, winner',
@@ -167,7 +205,7 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'sim',
         type: 'stage',
-        position: { x: -80, y: 620 },
+        position: { x: 250, y: 930 },
         data: {
           label: 'Monte Carlo simulation',
           subtitle: 'sample outcomes over top‑k XIs',
@@ -179,7 +217,7 @@ const MLPredictionGraph: React.FC = () => {
       {
         id: 'sim_out',
         type: 'stage',
-        position: { x: 260, y: 620 },
+        position: { x: 250, y: 1060 },
         data: {
           label: 'Outcome distributions',
           subtitle: 'win prob, P10 / P50 / P90 totals',
@@ -190,21 +228,29 @@ const MLPredictionGraph: React.FC = () => {
     ];
 
     const edges: Edge[] = [
-      // Features → models
+      // Features feed the per-player models and the match-level innings model alike.
       { id: 'e-features-batting', source: 'features', target: 'batting', animated: true },
       { id: 'e-features-bowling', source: 'features', target: 'bowling', animated: true },
       { id: 'e-features-fielding', source: 'features', target: 'fielding', animated: true },
-      // Models → per-player scores
+      { id: 'e-features-innings', source: 'features', target: 'innings', animated: true },
+      // Per-player models -> raw player lines
       { id: 'e-batting-players', source: 'batting', target: 'players', animated: true },
       { id: 'e-bowling-players', source: 'bowling', target: 'players', animated: true },
       { id: 'e-fielding-players', source: 'fielding', target: 'players', animated: true },
-      // Per-player → team aggregates
-      { id: 'e-players-team', source: 'players', target: 'team', animated: true },
-      // Team aggregates → deterministic path (win model + feedback)
+      // Team totals are not a plain bottom-up sum: the innings model supplies the
+      // targets that reconciliation rescales every player line onto.
+      { id: 'e-players-reconcile', source: 'players', target: 'reconcile', animated: true },
+      { id: 'e-innings-reconcile', source: 'innings', target: 'reconcile', animated: true },
+      { id: 'e-reconcile-team', source: 'reconcile', target: 'team', animated: true },
+      // Team aggregates -> deterministic path (win model + feedback)
       { id: 'e-team-win', source: 'team', target: 'win', animated: true },
       { id: 'e-win-feedback', source: 'win', target: 'feedback', animated: true },
       { id: 'e-feedback-selection', source: 'feedback', target: 'selection', animated: true },
-      // Team aggregates → Monte Carlo path
+      // The meta model only supplies the bat/bowl/field weights, so it enters at the
+      // two places that score a pool: the final XI and the top-k XIs the sim samples.
+      { id: 'e-meta-selection', source: 'combination_meta', target: 'selection', animated: true },
+      { id: 'e-meta-sim', source: 'combination_meta', target: 'sim', animated: true },
+      // Team aggregates -> Monte Carlo path
       { id: 'e-team-sim', source: 'team', target: 'sim', animated: true },
       { id: 'e-sim-simout', source: 'sim', target: 'sim_out', animated: true },
     ];
@@ -240,7 +286,7 @@ const MLPredictionGraph: React.FC = () => {
     <Box
       sx={{
         width: '100%',
-        height: 760,
+        height: 980,
         bgcolor: 'grey.50',
         borderRadius: 1,
         border: '1px solid',
