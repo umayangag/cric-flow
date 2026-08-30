@@ -33,7 +33,6 @@ Config file: `go-app/config.json`
     A `_staging/` subdirectory under it holds downloaded archives (`POST /ops/data/fetch`).
     It is invisible to import, which skips directories and does not recurse, so a
     half-downloaded archive can never be mistaken for match data.
-  - `etl_dir` — default directory for curated CSVs (optional etl-importer path).
 - `outputs`
   - `export_dir` — where `export-dataset` writes CSVs.
 - `formats`

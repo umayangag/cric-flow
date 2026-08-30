@@ -1,4 +1,6 @@
-# Cric Info Scrapers
+# cric-flow
+
+Cricket match and player performance prediction: Cricsheet import, feature precompute, per-format ML models, and best-XI team selection.
 
 ## Quick start
 - **Bootstrap:** `make init` then `make dev-up` (Postgres, API, ML). Full pipeline: `make up-all`.
@@ -8,7 +10,7 @@
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
 - **Predict team:** `make team-predictor MATCH=<id> FORMAT=T20 SEASON=2019` (or `make team-select ...`). Requires ML + precomputed data.
 - **Team selection API:** `POST /api/predict/team-selection` — `format`, `team1`, `team2`, `match_date`; see **docs/apis-backtest-and-ops.md**.
-- **Frontend:** Ops Status, Evaluate DB, Accuracy Trend. `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
+- **Frontend:** six tabs — Health, Ops Status, ML model stats, Workbench, Evaluate (DB), Upcoming match prediction. `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
 
 ## System architecture
 For a high-level diagram of how components connect and the order of execution from raw data to the final team prediction, see **docs/overview.md**. Configuration and data (including export/DB schema) are in **docs/config-and-data.md**.

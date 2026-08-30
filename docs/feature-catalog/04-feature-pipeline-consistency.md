@@ -78,7 +78,7 @@ Gaps: (1) Export/API header order might not exactly match feature_vectors.json. 
 
 ### 4.6 Documentation
 
-**File:** `docs/feature-catalog.md` or `feature-catalog/README.md`
+**File:** `docs/feature-catalog/README.md`
 
 - State: feature_vectors.json is the single source of truth for feature names and order. Go export, training-data API, and prediction-time feature build all use this order and these names. ML training and prediction use the same. Weather features (batting_temp, etc.) are included; until weather data is ingested, they may be 0 in training.
 
@@ -93,7 +93,7 @@ Gaps: (1) Export/API header order might not exactly match feature_vectors.json. 
 | `go-app/internal/db/exportqueries/training_snapshot.go` | Ensure future-match map has all keys from contract; fill missing with 0. |
 | `ml-service/app/feature_config.py` or dataset_definitions | Use API headers or feature_vectors.json for column order; align names. |
 | `ml-service/app/train_on_the_fly.py` | Use headers from API or feature_vectors for column order. |
-| `docs/feature-catalog.md` or `feature-catalog/README.md` | Document feature contract and weather. |
+| `docs/feature-catalog/README.md` | Document feature contract and weather. |
 
 ---
 

@@ -16,7 +16,7 @@ Status key: `[ ]` pending, `[~]` in-progress, `[x]` done.
 > `ml.analyze_reconciliation_adjustments` unreachable from every live entrypoint, and they
 > were removed. Read `[x]` on those items as **"designed and prototyped"**, not "in use".
 >
-> What survives: the accounting rules in [docs/match-schema.md](docs/match-schema.md), and
+> What survives: the accounting rules in [match-schema.md](match-schema.md), and
 > `ml/win_coherence_metrics.py`, which `app/prediction_service/generate_match.py` imports.
 > The live reconciliation path is `ml/reconciliation_{core,solver,service,adapter}.py`.
 >

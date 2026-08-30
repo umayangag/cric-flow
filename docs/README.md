@@ -27,12 +27,12 @@ Plans with open items. Check these before starting related work.
 
 | Doc | Purpose |
 |-----|--------|
-| [../model-harmony-plan.md](../model-harmony-plan.md) | Cross-model consistency: the strategic plan (**65 items open**) |
-| [../model-harmony-implementation-plan.md](../model-harmony-implementation-plan.md) | Its implementation companion (**6 open**). Note the correction banner: `[x]` there means *designed and prototyped*, not in use |
-| [CONSUMER_SURFACES_PR_CHECKLIST.md](CONSUMER_SURFACES_PR_CHECKLIST.md) | Streamline Workbench, Evaluate and Prediction; remove dead model-selection paths (**17 items open**) |
-| [WIN_PROB_SELECTION_PR_CHECKLIST.md](WIN_PROB_SELECTION_PR_CHECKLIST.md) | Select the XI that maximises win probability — repair and switch on the optimiser that already exists (**8 items open**) |
-| [../feature-catalog/README.md](../feature-catalog/README.md) | Five numbered feature plans driving the three product goals |
-| [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md) | ML service architecture improvements (P0–P4) |
+| [model-harmony-plan.md](model-harmony-plan.md) | Cross-model consistency: the strategic plan (**65 items open**) |
+| [model-harmony-implementation-plan.md](model-harmony-implementation-plan.md) | Its implementation companion (**6 open**). Note the correction banner: `[x]` there means *designed and prototyped*, not in use |
+| [CONSUMER_SURFACES_PR_CHECKLIST.md](CONSUMER_SURFACES_PR_CHECKLIST.md) | Streamline Workbench, Evaluate and Prediction; remove dead model-selection paths (**19 of 21 done**; W3-4 and W4-2 are `partly`, each with its blocker recorded in the row) |
+| [WIN_PROB_SELECTION_PR_CHECKLIST.md](WIN_PROB_SELECTION_PR_CHECKLIST.md) | Select the XI that maximises win probability — repair and switch on the optimiser that already exists (**S-1 done, S-2…S-8 open**) |
+| [feature-catalog/README.md](feature-catalog/README.md) | Five numbered feature plans driving the three product goals |
+| [../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md](../ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md) | ML service architecture improvements, P0–P4 (**9 of 22 done**) |
 
 ## Decisions and completed work
 
