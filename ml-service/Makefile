@@ -136,6 +136,14 @@ EXPORT_METRICS ?=
 walk-forward: venv
 	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),) $(if $(EXPORT_METRICS),--export-metrics $(EXPORT_METRICS),)
 
+# Held-out discrimination report for the win model (AUC, Brier, reliability).
+# Usage: make win-discrimination TRAIN_CUTOFF=2024-01-01T00:00:00Z [EVAL_CUTOFF=...]
+TRAIN_CUTOFF ?=
+EVAL_CUTOFF ?=
+win-discrimination: venv
+	@test -n "$(TRAIN_CUTOFF)" || (echo "TRAIN_CUTOFF is required (the cutoff the win model was trained to)" && exit 1)
+	$(PY) -m ml.win_discrimination --train-cutoff "$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),--eval-cutoff "$(EVAL_CUTOFF)",)
+
 # Train combination meta-model (Ridge) from backtest CSV. See docs/ml-and-training.md.
 # Usage: make train-combination-meta CSV=path/to/backtest.csv OUT=output/ml-service/combination_meta.json
 CSV ?=
@@ -260,6 +268,7 @@ help:
 	@echo "  test               Run pytest"
 	@echo "  coverage           Run pytest with coverage (xml + term)"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
+	@echo "  win-discrimination Held-out AUC/Brier report for the win model (TRAIN_CUTOFF=...)"
 	@echo "  ci                 Run fmt-check, lint-check, check-reachability, and coverage gates"
 	@echo
 	@echo "[Quality]"

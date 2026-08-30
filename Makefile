@@ -14,7 +14,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: logs api migrate output-dirs export-dataset export-off export-on
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
 .PHONY: go-test go-test-int ml-serve team-predictor ml-install
-.PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward train-combination-meta full-pipeline
+.PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward win-discrimination train-combination-meta full-pipeline
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -238,6 +238,10 @@ WALK_FORMAT ?= T20
 WALK_MODEL ?= batting
 walk-forward:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
+
+# Held-out discrimination report for the win model (see docs/ml-and-training.md)
+win-discrimination:
+	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service win-discrimination TRAIN_CUTOFF="$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),EVAL_CUTOFF="$(EVAL_CUTOFF)",)
 
 # Train meta-model for score combination from backtest CSV (see docs/ml-and-training.md)
 train-combination-meta:
