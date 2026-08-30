@@ -45,6 +45,49 @@ type Input struct {
 	RequireKeeper          bool      `json:"require_keeper,omitempty"`           // default true
 	UseReconciledScorecard bool      `json:"use_reconciled_scorecard,omitempty"` // when true, primary scorecard is from generate-match (reconciled)
 	IncludeBothScorecards  bool      `json:"include_both_scorecards,omitempty"`  // when true, return both standard and reconciled scorecards for comparison
+	// SelectionMode overrides how the XI is chosen for this request only.
+	//
+	// Empty means "whatever the config says", which is what every ordinary caller wants.
+	// It exists so one process can run both arms of a comparison -- the selection
+	// backtest picks the same match twice, once each way -- without writing to the
+	// global config and hoping nothing else read it in between.
+	SelectionMode SelectionMode `json:"selection_mode,omitempty"`
+}
+
+// SelectionMode names a way of choosing the XI.
+type SelectionMode string
+
+const (
+	// SelectionModeDefault defers to selection.use_win_probability_selection in config.
+	SelectionModeDefault SelectionMode = ""
+	// SelectionModeGreedy scores each player independently and takes the best eleven.
+	SelectionModeGreedy SelectionMode = "greedy"
+	// SelectionModeWinProbability searches for the XI that maximises win probability.
+	SelectionModeWinProbability SelectionMode = "winprob"
+)
+
+// IsKnownSelectionMode reports whether the mode is one selection understands. Callers
+// validate before running rather than silently falling back to the config default,
+// because a typo that quietly selects the other arm would corrupt a comparison.
+func IsKnownSelectionMode(mode SelectionMode) bool {
+	switch mode {
+	case SelectionModeDefault, SelectionModeGreedy, SelectionModeWinProbability:
+		return true
+	default:
+		return false
+	}
+}
+
+// usesWinProbabilitySelection resolves the request override against config.
+func usesWinProbabilitySelection(mode SelectionMode, cfg *config.Config) bool {
+	switch mode {
+	case SelectionModeWinProbability:
+		return true
+	case SelectionModeGreedy:
+		return false
+	default:
+		return cfg != nil && cfg.Selection.UseWinProbabilitySelection
+	}
 }
 
 // SelectedPlayer is one player in the selected XI with predictions.
@@ -453,7 +496,7 @@ func predictTeamsWithIntermediates(
 		RequireKeeper: input.RequireKeeper,
 	}
 	useOptimizer := cfg != nil && cfg.Selection.UseOptimizer
-	useWinProbSelection := cfg != nil && cfg.Selection.UseWinProbabilitySelection
+	useWinProbSelection := usesWinProbabilitySelection(input.SelectionMode, cfg)
 
 	var sel1, sel2 []teamselect.Player
 	if useWinProbSelection {

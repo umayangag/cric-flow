@@ -57,6 +57,29 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 
 **Notes:** Features are always computed at match-date cutoff (no future leakage). Players list = those who actually played. Match aggregates: predicted runs/wickets = sum of player preds; predicted extras from historical average per format/venue (`db.GetAverageExtrasForFormat`); actuals from DB. Fielding metrics (player_catches_mae, player_run_outs_mae) when fielding artifacts are loaded.
 
+### Comparing selection strategies
+
+`POST /api/backtest/selection-comparison` — body: `format`, `team1`, `team2`, optional
+`limit` (default 10, max 50), `min_bowlers`, `require_keeper`. Selects each played match
+between the pair twice, once greedily and once by maximising win probability, and
+reports per arm: winner accuracy against the real result, mean predicted win
+probability, and mean overlap with the XI actually fielded — plus how many players the
+two arms chose differently.
+
+The limit is small and capped because each match costs two selections and one of them is
+a search; run larger windows in batches.
+
+**What the numbers mean.** Only **winner accuracy** is grounded in what happened. Mean
+predicted win probability says an arm moved its own objective, not that it moved
+somewhere true. Divergence says whether the search is doing anything at all — if the
+optimiser returns the greedy XI every time, no other number matters.
+
+**What cannot be measured.** "Would the optimiser's XI have won more often?" is not
+answerable from historical data: the match was played by the teams actually fielded, and
+replaying it with a different XI needs a simulator whose accuracy is the thing in doubt.
+Overlap with the fielded XI is reported for context only — real selectors are not
+optimal, so agreeing with them is not evidence of being right.
+
 ### ML backtest endpoint (used by Go backend)
 
 - **URL:** `POST $ML_SERVICE_URL/ml/backtest/predict`

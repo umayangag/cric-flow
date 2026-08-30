@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
 )
@@ -400,4 +401,65 @@ func TestSameXI(t *testing.T) {
 			assert.Equal(t, tc.want, sameXI(toPlayers(tc.a), toPlayers(tc.b)))
 		})
 	}
+}
+
+// TestUsesWinProbabilitySelection: a request-level override exists so one process can
+// run both arms of a comparison without writing to the global config and hoping nothing
+// else read it in between.
+func TestUsesWinProbabilitySelection(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		mode         SelectionMode
+		configSaysOn bool
+		want         bool
+	}{
+		{name: "default follows config when config is on", mode: SelectionModeDefault, configSaysOn: true, want: true},
+		{
+			name:         "default follows config when config is off",
+			mode:         SelectionModeDefault,
+			configSaysOn: false,
+			want:         false,
+		},
+		{
+			name:         "winprob overrides a config that is off",
+			mode:         SelectionModeWinProbability,
+			configSaysOn: false,
+			want:         true,
+		},
+		{name: "greedy overrides a config that is on", mode: SelectionModeGreedy, configSaysOn: true, want: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := &config.Config{}
+			cfg.Selection.UseWinProbabilitySelection = tc.configSaysOn
+
+			assert.Equal(t, tc.want, usesWinProbabilitySelection(tc.mode, cfg))
+		})
+	}
+}
+
+// TestUsesWinProbabilitySelection_NilConfigIsOff: no config cannot mean "run the hour-long
+// search".
+func TestUsesWinProbabilitySelection_NilConfigIsOff(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, usesWinProbabilitySelection(SelectionModeDefault, nil))
+	assert.True(t, usesWinProbabilitySelection(SelectionModeWinProbability, nil), "an explicit request still wins")
+}
+
+// TestIsKnownSelectionMode: a typo must be refused rather than silently falling back to
+// the config default, which would quietly run one arm of a comparison twice.
+func TestIsKnownSelectionMode(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, IsKnownSelectionMode(SelectionModeDefault))
+	assert.True(t, IsKnownSelectionMode(SelectionModeGreedy))
+	assert.True(t, IsKnownSelectionMode(SelectionModeWinProbability))
+	assert.False(t, IsKnownSelectionMode("win-prob"))
+	assert.False(t, IsKnownSelectionMode("GREEDY"))
 }

@@ -110,7 +110,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/admin/train/progress` |
 | GET | `/admin/train/auto-tune/progress` |
 
-**go-app** (44 routes, from `internal/server/router.go`):
+**go-app** (45 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
@@ -155,6 +155,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/api/backtest/accuracy-trend` |
 | POST | `/api/backtest/export-contributions` |
 | GET | `/api/backtest/export-contributions-status` |
+| POST | `/api/backtest/selection-comparison` |
 | GET | `/api/ml/tuned-params/list` |
 | GET | `/api/ml/tuned-params` |
 | POST | `/api/ml/tuned-params` |
