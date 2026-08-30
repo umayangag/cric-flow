@@ -119,6 +119,34 @@ Use this when setting up a new format, after major data changes, or when you wan
 
 **Summary:** Train = produce artifacts from current params (config + DB). Auto-tune = discover and persist params (and optionally artifacts). Avoid running train with defaults and then auto-tune for the same models; choose one of the two modes above.
 
+### How a single-train run is scored
+
+Mode A is the path you run most often, so it has to be falsifiable on its own: without a
+score, a model trained from a broken export is indistinguishable in the UI from a good one.
+
+Before fitting the model it ships, `TrainingPipeline.train_and_save` holds back the last
+`ml.pipeline_common.holdout_fraction` of the rows (default `0.2`), fits the same recipe on
+the rest, and scores the holdout. The split is positional, which is a **time** split
+because go-app exports every training CSV `ORDER BY match_date ASC` — the same assumption
+the tuning search's `walk_forward` CV already rests on. The scaler and the target clipping
+are fitted on the training slice only, and the holdout is scored against its **unclipped**
+targets, so the clipping under test cannot flatter the result.
+
+The scores land in the artifact's `<kind>_metadata_<FMT>.json` sidecar alongside
+`trained_at`, `duration_seconds` and the algorithm, and the ML Model Stats tab reads them
+when no tuning report exists. They are labelled `score_source: holdout` and shown with a
+`holdout` chip.
+
+**A holdout score and a tuned score are not comparable.** The tuned figure is
+cross-validated over the whole dataset; the holdout is one slice of recent rows. Compare
+holdout to holdout across retrains — never a holdout MAE against a tuned MAE. A `holdout`
+row is also not audited: the MLQA checks measure a search's fold behaviour, so the Audit
+column stays empty until the model is auto-tuned.
+
+**Cost:** one extra fit on ~80% of the rows, so roughly 1.8× the training time. Set
+`ml.pipeline_common.holdout_fraction` to `0` to skip it. Runs below 250 rows skip it
+automatically — a score from a handful of rows describes the split, not the model.
+
 ---
 
 ## Feature contract v2 (raw windowed stats)

@@ -139,6 +139,13 @@ export type MLModelStat = {
   /** Feature importance from auto-tuning (tree-based models only). */
   feature_importance?: Record<string, number>;
   accuracy_display?: string;
+  /**
+   * How `accuracy_display` was measured: `tuning_cv` from an auto-tune run's
+   * cross-validation, `holdout` from the trailing slice a single-train run held back.
+   * They share a column but are not comparable — the stronger CV score is computed over
+   * the whole dataset, the holdout over unseen recent rows only.
+   */
+  score_source?: 'tuning_cv' | 'holdout';
   /** MLQA audit (overfitting, stability, bias, sensitivity, complexity). */
   mlqa_audit?: MLQAAudit;
   /** Algorithms used in last auto-tune run for this model+format (for default selection in UI). */

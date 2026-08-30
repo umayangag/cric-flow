@@ -31,6 +31,18 @@ function getAccuracyDisplay(model: MLModelStat): string {
   return MISSING;
 }
 
+/** How the score was measured. Shown beside it so a holdout MAE is not read as a tuned one. */
+const SCORE_SOURCE_LABELS: Record<string, { label: string; title: string }> = {
+  tuning_cv: {
+    label: 'CV',
+    title: 'Cross-validated over the whole dataset during auto-tune',
+  },
+  holdout: {
+    label: 'holdout',
+    title: 'Scored on the most recent rows held back from a single-train run',
+  },
+};
+
 function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' | 'warning' {
   if (status === 'PASS') return 'success';
   if (status === 'FAIL') return 'error';
@@ -39,6 +51,11 @@ function statusColor(status: 'PASS' | 'FAIL' | 'WARNING'): 'success' | 'error' |
 
 export function MLModelRow({ model }: { model: MLModelStat }) {
   const [open, setOpen] = useState(false);
+  // Only labelled when there is a score to label — a chip beside "—" says nothing.
+  const scoreSource =
+    model.score_source && getAccuracyDisplay(model) !== MISSING
+      ? SCORE_SOURCE_LABELS[model.score_source]
+      : undefined;
   const hasDetails =
     (model.tuned_parameters && Object.keys(model.tuned_parameters).length > 0) ||
     (model.metrics && Object.keys(model.metrics).length > 0) ||
@@ -67,7 +84,18 @@ export function MLModelRow({ model }: { model: MLModelStat }) {
           <Chip label={model.match_format} size="small" variant="outlined" />
         </TableCell>
         <TableCell>{model.algorithm ?? '—'}</TableCell>
-        <TableCell>{getAccuracyDisplay(model)}</TableCell>
+        <TableCell>
+          {getAccuracyDisplay(model)}
+          {scoreSource && (
+            <Chip
+              label={scoreSource.label}
+              title={scoreSource.title}
+              size="small"
+              variant="outlined"
+              sx={{ ml: 1 }}
+            />
+          )}
+        </TableCell>
         <TableCell>
           {model.mlqa_audit ? (
             <Chip

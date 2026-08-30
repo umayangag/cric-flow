@@ -10,14 +10,8 @@ import numpy as np
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     accuracy_score,
-    explained_variance_score,
     f1_score,
-    max_error,
-    mean_absolute_error,
-    mean_squared_error,
-    median_absolute_error,
     precision_score,
-    r2_score,
     recall_score,
     roc_auc_score,
 )
@@ -37,6 +31,7 @@ from ml.config import (
     get_mlqa_config,
     get_tuning_config,
 )
+from ml.metrics import compute_regression_metrics
 from ml.tuning.types import (
     BATTING_FEATURE_COLS,
     BOWLING_FEATURE_COLS,
@@ -198,90 +193,29 @@ def _compute_metrics_regression(
 ) -> Dict[str, Any]:
     """Compute regression metrics from cross-validated predictions.
 
-    Returns dict with mae, rmse, r2, r2_pct, median_ae, max_error, explained_variance,
-    target_context (mean, std, min, max for MAE interpretation), baseline comparison
-    (naive MAE, improvement %), learning_curve summary, and per_target_mae when
-    target_names is provided for multi-output models.
-    - mae: mean absolute error (interpretable units)
-    - baseline_improvement_pct: top-level for UI (how much better than naive)
-    - mae_pct_of_mean: top-level for UI (MAE as % of target mean)
-    - per_target_mae: per-target MAE for multi-output (e.g. bowling runs, balls, wickets)
+    The scoring itself lives in ml.metrics so the training pipeline's holdout
+    evaluation reports the identical shape; this adds the cross-validated
+    predictions and the learning-curve summary, which only a CV run can produce.
     """
     try:
-        y_arr = np.asarray(y)
-        y_flat = y_arr.ravel()
         y_pred = cross_val_predict(pipe, X, y, cv=cv)
-        y_pred_flat = np.asarray(y_pred).ravel()
-        mae = float(mean_absolute_error(y_flat, y_pred_flat))
-        rmse = float(np.sqrt(mean_squared_error(y_flat, y_pred_flat)))
-        r2 = float(r2_score(y_flat, y_pred_flat))
-        # r2 can be negative; clamp for display
-        r2_pct = max(0.0, min(100.0, r2 * 100))
-        median_ae = float(median_absolute_error(y_flat, y_pred_flat))
-        worst_err = float(max_error(y_flat, y_pred_flat))
-        expl_var = float(explained_variance_score(y_flat, y_pred_flat))
-
-        # Target context: MAE vs target scale (e.g. extras mean 10–12, MAE 6 = ~50% error)
-        target_mean = float(np.mean(y_flat))
-        target_std = float(np.std(y_flat)) if len(y_flat) > 1 else 0.0
-        target_min = float(np.min(y_flat))
-        target_max = float(np.max(y_flat))
-        mae_pct_of_mean = round((mae / target_mean * 100), 2) if target_mean != 0 else None
-
-        # Baseline comparison: naive model predicts mean every time
-        naive_pred = np.full_like(y_flat, target_mean)
-        baseline_mae = float(mean_absolute_error(y_flat, naive_pred))
-        baseline_improvement_pct = round((baseline_mae - mae) / baseline_mae * 100, 2) if baseline_mae > 0 else 0.0
-
-        out: Dict[str, Any] = {
-            "mae": round(mae, 4),
-            "rmse": round(rmse, 4),
-            "r2": round(r2, 4),
-            "r2_pct": round(r2_pct, 2),
-            "median_ae": round(median_ae, 4),
-            "max_error": round(worst_err, 4),
-            "explained_variance": round(expl_var, 4),
-            # Top-level for UI: key tuning/eval metrics
-            "baseline_improvement_pct": baseline_improvement_pct,
-            "mae_pct_of_mean": mae_pct_of_mean,
-            "target_mean": round(target_mean, 4),
-            "target_std": round(target_std, 4),
-            "target_context": {
-                "target_mean": round(target_mean, 4),
-                "target_std": round(target_std, 4),
-                "target_min": round(target_min, 4),
-                "target_max": round(target_max, 4),
-                "mae_pct_of_mean": mae_pct_of_mean,
-            },
-            "baseline_comparison": {
-                "baseline_mae": round(baseline_mae, 4),
-                "baseline_improvement_pct": baseline_improvement_pct,
-            },
-        }
-
-        # Per-target MAE for multi-output (bowling: runs, balls, wickets; batting: runs, balls, etc.)
-        if target_names and y_arr.ndim == 2 and y_arr.shape[1] > 1:
-            y_pred_arr = np.asarray(y_pred)
-            n_t = y_arr.shape[1]
-            if y_pred_arr.ndim == 2 and y_pred_arr.shape[1] >= n_t:
-                per_target: Dict[str, float] = {}
-                for j in range(min(n_t, len(target_names))):
-                    mae_j = float(mean_absolute_error(y_arr[:, j], y_pred_arr[:, j]))
-                    per_target[f"mae_{target_names[j]}"] = round(mae_j, 4)
-                out["per_target_mae"] = per_target
-
-        # Learning curve: does validation still improve with more data? overfitting?
-        lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
-        if lc:
-            out["learning_curve"] = lc
-            # Top-level for UI
-            out["overfitting_gap"] = lc.get("overfitting_gap")
-            out["val_still_improving"] = lc.get("val_still_improving")
-
-        return out
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)
         return {}
+
+    out = compute_regression_metrics(y, y_pred, target_names=target_names)
+    if not out:
+        return {}
+
+    # Learning curve: does validation still improve with more data? overfitting?
+    lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
+    if lc:
+        out["learning_curve"] = lc
+        # Top-level for UI
+        out["overfitting_gap"] = lc.get("overfitting_gap")
+        out["val_still_improving"] = lc.get("val_still_improving")
+
+    return out
 
 
 def _compute_learning_curve_regression(

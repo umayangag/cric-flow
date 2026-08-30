@@ -117,6 +117,27 @@ def flatten_metrics_for_display(metrics: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _accuracy_display_from_metrics(metrics: Dict[str, Any]) -> Optional[str]:
+    """Build the one-line score for the model-stats table, or None when nothing is scored.
+
+    Shared by the tuning-report and training-sidecar readers so a holdout MAE and a
+    tuned CV MAE are at least formatted identically; `score_source` is what tells the
+    reader they were measured differently.
+    """
+    if "accuracy_pct" in metrics:
+        return f"{metrics['accuracy_pct']}%"
+    if "mae" in metrics:
+        parts = [f"MAE={metrics['mae']}"]
+        if "rmse" in metrics:
+            parts.append(f"RMSE={metrics['rmse']}")
+        if "r2_pct" in metrics:
+            parts.append(f"R²={metrics['r2_pct']}%")
+        return ", ".join(parts)
+    if "r2_pct" in metrics:
+        return f"R²={metrics['r2_pct']}%"
+    return None
+
+
 def _recompute_mlqa_audit_from_report(report: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Recompute MLQA audit using current thresholds and stored metrics.
 
@@ -339,20 +360,14 @@ def enrich_with_tuning_report(
             rec["mlqa_audit"] = mlqa
         # Set accuracy_display from metrics (preferred) or fallback for neg_mean_absolute_error
         scoring = rec.get("scoring", "neg_mean_absolute_error")
-        if "accuracy_pct" in (metrics or {}):
-            rec["accuracy_display"] = f"{metrics['accuracy_pct']}%"
-        elif "mae" in (metrics or {}):
-            parts = [f"MAE={metrics['mae']}"]
-            if "rmse" in metrics:
-                parts.append(f"RMSE={metrics['rmse']}")
-            if "r2_pct" in metrics:
-                parts.append(f"R²={metrics['r2_pct']}%")
-            rec["accuracy_display"] = ", ".join(parts)
-        elif "r2_pct" in (metrics or {}):
-            rec["accuracy_display"] = f"R²={metrics['r2_pct']}%"
+        display = _accuracy_display_from_metrics(metrics or {})
+        if display:
+            rec["accuracy_display"] = display
+            rec["score_source"] = "tuning_cv"
         elif scoring == "neg_mean_absolute_error" and rec.get("best_cv_score") is not None:
             mae_val = abs(float(rec["best_cv_score"]))
             rec["accuracy_display"] = f"MAE={mae_val:.2f} (neg_MAE={rec['best_cv_score']:.4f})"
+            rec["score_source"] = "tuning_cv"
     except Exception as e:
         logger.debug("model_stats.read_report_failed", path=report_path, error=str(e))
         rec["tuned"] = False
@@ -372,6 +387,28 @@ def _sidecar_candidates(kind: str, fmt: Optional[str]) -> List[str]:
     ]
 
 
+def _read_sidecars(models_dir: str, kind: str, fmt: Optional[str]) -> List[Dict[str, Any]]:
+    """Return every readable sidecar for this model, in preference order.
+
+    A missing or unparseable sidecar is skipped rather than fatal: it means one less
+    thing we can say about the model, not that the model is unreportable.
+    """
+    sidecars: List[Dict[str, Any]] = []
+    for name in _sidecar_candidates(kind, fmt):
+        path = os.path.join(models_dir, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                sidecar = json.load(f)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug("model_stats.sidecar_unreadable", path=path, error=str(e))
+            continue
+        if isinstance(sidecar, dict):
+            sidecars.append(sidecar)
+    return sidecars
+
+
 def enrich_with_provenance(
     rec: Dict[str, Any],
     models_dir: str,
@@ -385,21 +422,61 @@ def enrich_with_provenance(
     know what this model was trained on" is the answer, and it is the one worth
     flagging.
     """
-    for name in _sidecar_candidates(kind, fmt):
-        path = os.path.join(models_dir, name)
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                sidecar = json.load(f)
-        except (FileNotFoundError, NotADirectoryError):
-            continue
-        except (json.JSONDecodeError, OSError) as e:
-            logger.debug("model_stats.sidecar_unreadable", path=path, error=str(e))
-            continue
-
-        provenance = sidecar.get("provenance") if isinstance(sidecar, dict) else None
+    for sidecar in _read_sidecars(models_dir, kind, fmt):
+        provenance = sidecar.get("provenance")
         if isinstance(provenance, dict) and provenance:
             rec["provenance"] = provenance
             return
+
+
+def _sidecar_metrics(sidecar: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull the scored metrics out of a training sidecar.
+
+    Two keys because two writers: TrainingPipeline writes its trailing-holdout scores
+    under `metrics`, train_win its walk-forward scores under `cv_metrics`.
+    """
+    for key in ("metrics", "cv_metrics"):
+        block = sidecar.get(key)
+        if isinstance(block, dict) and block:
+            return block
+    return {}
+
+
+def enrich_with_training_metrics(
+    rec: Dict[str, Any],
+    models_dir: str,
+    kind: str,
+    fmt: Optional[str],
+) -> None:
+    """Report what a single-train run measured, for models that were never auto-tuned.
+
+    A tuning report always wins: its cross-validated score is the stronger measurement,
+    and overwriting it with a holdout would be a downgrade. This only fills the gap left
+    when there is no report — previously every column but size and mtime, which made a
+    trained-from-config model indistinguishable from a broken one in the UI.
+
+    `tuned` is deliberately left False. The score is labelled with `score_source` so a
+    holdout MAE and a tuned CV MAE are not read as the same number in the same column.
+    """
+    if rec.get("tuned"):
+        return
+    for sidecar in _read_sidecars(models_dir, kind, fmt):
+        metrics = _sidecar_metrics(sidecar)
+        if not metrics:
+            continue
+        rec["metrics"] = flatten_metrics_for_display(metrics)
+        rec["score_source"] = sidecar.get("score_source", "holdout")
+        display = _accuracy_display_from_metrics(metrics)
+        if display:
+            rec["accuracy_display"] = display
+        for key in ("validation_method", "n_samples", "n_features", "trained_at", "duration_seconds"):
+            value = sidecar.get(key)
+            if value is not None:
+                rec[key] = value
+        algorithm = sidecar.get("algorithm")
+        if algorithm is not None:
+            rec["algorithm"] = ALGORITHM_NAMES.get(str(algorithm).lower(), str(algorithm))
+        return
 
 
 def build_model_stats(models_dir: str) -> Dict[str, Any]:
@@ -427,6 +504,7 @@ def build_model_stats(models_dir: str) -> Dict[str, Any]:
             continue
 
         enrich_with_tuning_report(rec, models_dir, entries, kind, fmt)
+        enrich_with_training_metrics(rec, models_dir, kind, fmt)
         enrich_with_provenance(rec, models_dir, kind, fmt)
         stats.append(rec)
 

@@ -90,6 +90,11 @@ DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 1
 DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
 DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
 DEFAULT_MIN_ROWS_FOR_TRAINING = 10
+# Fraction of the (chronologically ordered) rows held back from a single-train run to
+# score the model. 0 disables the evaluation and its extra fit; capped at 0.5 because a
+# holdout larger than the training half stops measuring the model you ship.
+DEFAULT_HOLDOUT_FRACTION = 0.2
+MAX_HOLDOUT_FRACTION = 0.5
 # Near-constant feature removal (see ml.data_quality in config.default.json).
 DEFAULT_LOW_VARIANCE_THRESHOLD = 1e-6
 
@@ -635,11 +640,24 @@ def get_pipeline_common_config() -> Dict[str, Any]:
         min_rows = DEFAULT_MIN_ROWS_FOR_TRAINING
     min_rows = max(1, min_rows)
 
+    holdout_fraction = gp.get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION)
+    try:
+        holdout_fraction = float(holdout_fraction)
+    except (TypeError, ValueError):
+        logger.warning(
+            "config.get_pipeline_common_config.invalid_holdout_fraction value=%s default=%s",
+            gp.get("holdout_fraction"),
+            DEFAULT_HOLDOUT_FRACTION,
+        )
+        holdout_fraction = DEFAULT_HOLDOUT_FRACTION
+    holdout_fraction = max(0.0, min(MAX_HOLDOUT_FRACTION, holdout_fraction))
+
     return {
         "use_robust_scaler": bool(gp.get("use_robust_scaler", True)),
         "time_decay_halflife_years": float(gp.get("time_decay_halflife_years", 2.0)),
         "delta_threshold": float(gp.get("delta_threshold", 0.08)),
         "min_rows_for_training": min_rows,
+        "holdout_fraction": holdout_fraction,
     }
 
 
