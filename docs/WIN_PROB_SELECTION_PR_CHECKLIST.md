@@ -677,6 +677,49 @@ dropped. It is eight aggregation expressions in `exportqueries/win.go`, then the
 re-export/retrain/re-measure loop. Expect it to redistribute signal rather than add any:
 the best single column in this feature set is ~0.60.
 
+### The features the model does not have beat every feature it does
+
+Measured as-of (each match rated on earlier matches only) on the S-3c holdout, and
+verified twice — independently by two implementations agreeing to ~0.01:
+
+| feature | ODI | T20 | T20I | TEST |
+|---|---|---|---|---|
+| `elo_diff` alone | **0.645** | **0.652** | **0.726** | 0.535 |
+| `h2h_rate` alone | 0.639 | 0.670 | 0.714 | 0.509 |
+| **entire 63-feature player model** | 0.561 | 0.632 | 0.591 | **0.572** |
+
+**A single Elo number beats all 63 engineered player-aggregate features in every
+limited-overs format.** The win model is being asked to infer team strength from windowed
+batting and bowling averages when the match record states it directly. A 9-feature
+match-level model (Elo, form, h2h, venue batting-first bias, venue familiarity) reaches
+ODI 0.642, T20 0.677, T20I 0.707.
+
+TEST is the exception in both directions — Elo 0.535, h2h 0.509, player model 0.572. Test
+sides are few and stable, so head-to-head carries little and player quality matters more.
+
+All of these come from the `match` table alone: no new precompute, no schema change.
+
+### …but they cannot select a team
+
+**Elo, form and head-to-head are constant with respect to the XI.** They would raise
+outcome accuracy substantially and contribute *nothing* to choosing eleven players. A model
+reaching 0.72 on Elo would select no better than one at 0.56.
+
+**So this plan's goal is really two goals, and they need different work:**
+
+| goal | lever | status |
+|---|---|---|
+| Outcome accuracy — the probability we *display* | match-level features (Elo, form, h2h, venue, home) | large, cheap, measured above |
+| **Selection quality — which XI to pick** | XI-responsive features only | the actual blocker for S-4 and S-6 |
+
+Only the second unblocks S-4 and S-6. The candidates are weighting players by expected
+involvement (above) and player-level impact ratings — the individual analogue of Elo, which
+would respond to XI changes in the way team Elo cannot.
+
+**Naive concatenation is not automatically a win:** a quick combined fit gave T20 0.653
+against 0.650 player-only and 0.662 team-only. Preliminary — unweighted, no variance
+filter — but enough to say the combination needs real work rather than assumption.
+
 ### Responsiveness is not the problem — ranking is
 
 AUC measures ranking across *whole matches*, where the two sides are entirely different
