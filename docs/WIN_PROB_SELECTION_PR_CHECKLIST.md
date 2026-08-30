@@ -91,17 +91,23 @@ Two consequences that shape the whole plan:
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
-| S-3c | in_progress | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (1/3 and 2/3 done; 3/3 is the re-export and the numbers) |
-| S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
+| S-3c | done | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (all three parts; numbers below) |
+| S-9 | todo | `select/s-9-win-model-signal` | **The win model barely discriminates once the leak is gone.** Blocks S-4 and S-6 |
+| S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget (blocked on S-9) |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
-| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection |
+| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection (blocked on S-9) |
 | S-7 | blocked | `select/s-7-id-encoding` | Venue and opposition ID encoding (blocked on the identity plan) |
 | S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
 
-**S-4 and S-6 are blocked on S-3c.** The objective they improve and switch on is trained
+**S-4 and S-6 are now blocked on S-9, not on S-3c.** S-3c is done and the leak is gone.
+What it revealed is that the objective underneath was mostly leak: held-out AUC across the
+four formats is **0.56–0.63**, and Brier is *worse than predicting the base rate* in three
+of them. Open decision #3 said to stop in exactly this case, and that is the answer.
+
+**S-4 and S-6 were blocked on S-3c.** The objective they improve and switch on is trained
 on a feature set that encodes the result of the match being predicted. Tuning a search
 over that objective, or shipping it, would both be measuring the leak. S-5 is unaffected —
 it concerns the combination-meta seed, not the win model.
@@ -522,6 +528,90 @@ incomparable. That is the correct outcome: those baselines were measuring the sc
 
 ---
 
+## S-3c results — what the fix revealed
+
+Re-import → re-export → `make train-win CUTOFF=2025-09-01T00:00:00Z` →
+`make win-discrimination TRAIN_CUTOFF=2025-09-01T00:00:00Z`, on the same holdout as
+before (19,969 train / 2,456 held out).
+
+### Held-out discrimination, before and after
+
+| format | matches | pos rate | AUC **before** | AUC **after** | Brier after | base-rate Brier |
+|---|---|---|---|---|---|---|
+| ODI | 388 | 0.423 | 0.953 | **0.561** | 0.271 | 0.244 ❌ |
+| T20 | 1619 | 0.469 | 0.930 | **0.632** | 0.240 | 0.249 ✅ |
+| T20I | 188 | 0.473 | 0.955 | **0.591** | 0.276 | 0.249 ❌ |
+| TEST | 261 | 0.314 | 0.674 | **0.572** | 0.235 | 0.215 ❌ |
+
+Walk-forward CV accuracy moved the same way: ODI 0.874 → 0.580, T20 0.841 → 0.565,
+T20I 0.841 → 0.588, TEST 0.677 → 0.648. **TEST barely moves, and TEST is the format that
+never had the count leak.** That is the control behaving exactly as predicted, and it is
+the strongest evidence that the drop is the leak leaving rather than the fix breaking
+something.
+
+### How to read these numbers
+
+- **Only T20 is clearly better than chance.** z ≈ 9.5 against 0.5 on 1,619 matches. ODI
+  (z ≈ 2.1), T20I (z ≈ 2.2) and TEST (z ≈ 1.9) are barely distinguishable from a coin.
+- **Three of four formats have a Brier worse than predicting the base rate.** Calibration
+  does not affect an argmax, so this does not by itself condemn selection — but a model
+  that cannot beat a constant is not describing much.
+- The earlier 0.93–0.96 was the scoreboard. Those numbers are void and should never be
+  quoted again as a baseline.
+
+### The decision this forces
+
+**Open decision #3 asked exactly this question and answered it in advance: stop.** An
+argmax over candidate XIs is only as good as the model's ranking, and the ranking is now
+known to be weak. S-4 would be tuning a search over an objective that barely orders whole
+matches, let alone two XIs differing by one player. S-6 would be shipping it.
+
+So **S-4 and S-6 move from "blocked on S-3c" to "blocked on S-9"**, and S-9 is new work:
+make the win model discriminate, or establish that it cannot with these features.
+
+**This is the plan working, not failing.** S-3a and S-3b exist precisely so that this is a
+finding rather than an opinion, and the honest outcome S-6 named — "if it does not, the
+honest outcome is to leave the flag off and record why" — has arrived earlier than
+expected and for a better reason.
+
+---
+
+## S-9 — Make the win model discriminate
+
+**Problem.** With honest features the win model scores 0.56–0.63 held-out AUC. Team
+selection maximises this model, so the whole plan rests on it.
+
+**Why this is not surprising, stated plainly.** The model gets 68 numbers, all of them
+aggregates of *windowed player form* over two squads, plus venue and opposition ids. It
+has no innings state, no toss, no venue-conditioned scoring history, no batting order, no
+head-to-head, no home advantage. Predicting a cricket result from "how well have these
+22 players been batting and bowling lately" is a genuinely hard problem, and 0.63 in T20
+may be close to what this feature set can support.
+
+**Directions, cheapest first.**
+
+1. **Home advantage and venue history.** Neither is in the contract today. `venue_id` is
+   a raw integer (S-7), and whether a side is at home is not represented at all.
+2. **Head-to-head and recent team form.** Team-level, not player-level: the current
+   features cannot express "this side has won nine of its last ten".
+3. **Toss and innings state.** Unknowable before selection (S-2, S-8) — but a *marginalised*
+   prediction over both toss outcomes is available and is the statistically correct
+   treatment.
+4. **Player identity.** [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md): 163 names
+   hold 348 people, so ~1% of the roster has blended form. Small, but it is noise in
+   exactly the inputs this model consumes.
+5. **Accept the ceiling.** If the feature set tops out near 0.63, say so and decide whether
+   an argmax over it is worth shipping at all. That is a legitimate outcome.
+
+**Acceptance.** Held-out AUC materially above the numbers in the table above, measured by
+the same `make win-discrimination` command on the same holdout, with the improvement
+attributable to a named change rather than a re-roll.
+
+**Risk.** The honest risk is spending effort to discover the ceiling is real. Bound it:
+try the cheapest direction first and re-measure before continuing.
+
+---
+
 ## S-4 — Steepest-ascent, pair swaps, multi-start, real budget
 
 **Problem.** The search barely moves off its seed.
@@ -885,7 +975,7 @@ and costs one extra batch call.
 |---|---|---|---|
 | 1 | Are the three components of S-5's composite target summed with equal weight? Equal weighting says a 4-wicket spell at economy 6 is worth roughly 53 runs. **S-5b makes this measurable** — its per-match ranking objective scores a weighting against how well the resulting order matches what players actually did, so answer it there with a number rather than settling it by judgement in S-5 | S-5, revisited in S-5b | Equal weight, recorded in the S-5 PR body as an assumption |
 | 2 | Best-response rounds: fixed count or iterate to a fixed point with a cap? | S-1 | 3 rounds, cap, return last completed round |
-| 3 | ~~If S-3 shows win-model AUC near 0.5 on held-out matches, do we stop and improve the win model before S-4?~~ **Answered, and the question was too narrow.** Held-out AUC came back at 0.93–0.96, which the decision as written would have read as a green light. It was leakage — see S-3c. The gate should have been "does the model discriminate *using information available before the match*", and a headline AUC cannot answer that. Re-ask it after S-3c | S-3 | Stop. S-4 and S-6 are `blocked` |
+| 3 | ~~If S-3 shows win-model AUC near 0.5 on held-out matches, do we stop and improve the win model before S-4?~~ **Asked twice, answered twice.** The first run came back 0.93–0.96 and would have read as a green light; it was leakage (S-3c). Re-run on honest features: **0.56–0.63**, so the answer the decision named in advance now applies. **Stop.** S-4 and S-6 are blocked on the new S-9 | S-3, S-3c | Stopped. S-9 added |
 
 ---
 
