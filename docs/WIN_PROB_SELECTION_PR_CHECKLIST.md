@@ -94,6 +94,7 @@ Two consequences that shape the whole plan:
 | S-3c | todo | `select/s-3c-win-export-leak` | **The win export aggregates over who batted, not over the XI** |
 | S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
+| S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
 | S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection |
 | S-7 | todo | `select/s-7-id-encoding` | Venue and opposition ID encoding (deferred) |
 | S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
@@ -542,6 +543,16 @@ the team. So fix the target and stop. Do **not** build the out-of-fold machinery
 post-cutoff holdout, the freshness gating or the multi-fixture export redesign that a
 decision-making model would need. A seed heuristic does not earn that rigour.
 
+> **Reconsidered by S-5b, and the reason matters.** That note is conditional on S-6
+> landing: it is only *once win probability is the objective* that these weights demote to
+> a seed. **S-6 is `blocked` on S-3c**, which needs `info.players` parsed, a new
+> `match_player` table, the export changed, then a full re-import, re-export and re-train.
+> Until that completes the greedy path is not seeded by these weights — it *is* them, and
+> they are currently chosen by an untuned `alpha=1.0` on a fit nothing has ever scored.
+> That is what re-earns the rigour, and only that: the exclusions above still stand, minus
+> the two columns S-5b adds to the contributions CSV. No post-cutoff holdout, no freshness
+> gating, no non-linear meta model. See **S-5b**.
+
 **Change.** Build the target with the same normalisers the features use, applied to
 actuals instead of predictions:
 
@@ -573,6 +584,149 @@ fixture where bowlers demonstrably contributed.
 
 **Risk.** Low. The model is inert today — `meta_model_path` is set in no config file — so
 there is no behaviour to preserve.
+
+---
+
+## S-5b — Auto-tune the combination meta-model
+
+**Problem.** Nothing tunes the meta-model, and nothing measures it. `ml/tuning/cli.py:57`
+accepts `batting|bowling|fielding|extras|win|innings|all` — no meta.
+`training_orchestrator.py:185` invokes the trainer with only `--csv` and `--out`, so
+`alpha=1.0`, global-not-per-format and `normalize_weights=True` are frozen at their
+argparse defaults; the flags exist, nothing sets them. `train_and_export` fits one Ridge on
+the whole CSV: no CV, no held-out score, no fit metric in the output beyond `n_samples`.
+`registry_test.go:204` records the consequence in an assertion — "combination-meta has no
+tuned-params model".
+
+S-5 fixes what the model is asked to explain. This fixes how the answer is chosen, and
+whether it was any good.
+
+**Precedent.** `b9f29eb` switched the win model from `accuracy` to `roc_auc` because *"only
+the order the model puts them in can change which side gets picked."* The same argument one
+layer down: these weights rank a pool. A global MAE on `target` scores level-prediction,
+which they are never used for, and with no `match_id` to group on it splits one match's
+players across train and test folds. Two invariances follow and belong in the code: within
+a match, ranking is unchanged by `intercept` (a constant shift) and by `normalize_weights`
+(a uniform positive rescale). Neither enters the search; `normalize_weights` stays a
+presentation flag.
+
+**Change.** Four parts.
+
+**(a) The contributions CSV gains `match_id` and `match_date`.** Both are in hand at export
+time and thrown away; without them there is no grouping key and no temporal order, so any
+CV here leaks. `ContributionRow` (`services/backtest/types.go:98`) gains the two fields, and
+a `ContributionSource{Player, MatchID, MatchDate}` carries them — do **not** widen
+`PlayerResult`, which is serialised into `EvaluateResponse` and must not grow export-only
+fields. Both producers already have the values in scope: the batch path
+(`backtest_export_contributions.go:231-238`) has `p.matchID` and `p.cutoff`, which *is* the
+match date, from `getBacktestMatchDateFunc`; the fallback (`:265-276`) has `mid` and
+`resp.Match.MatchDate`. Two columns and a wrapper struct is not the multi-fixture export
+redesign S-5 declined.
+
+**(b) A `--tune` path in `ml/train_combination_meta.py`.** Self-contained; it does **not**
+route through `ml/tuning/`. The consumer contract — `accessors.go` reads
+`bat`/`bowl`/`field`/`keeper_bonus` — forces a linear model, so the Optuna two-phase screen,
+the PyCaret ranking, the AutoGluon comparison and every tree search space in
+`search_space.py` produce estimators that cannot satisfy it. Reusing that stack would mean
+threading a linear-only branch through each stage for a grid that runs in seconds.
+
+| Knob | Values |
+|---|---|
+| `alpha` | `np.logspace(-3, 3, 7)` |
+| `per_format` | `False`, `True` |
+| estimator | `Ridge(...)`, `Ridge(..., positive=True, solver="lbfgs")` |
+
+~24 fits. `positive=True` is available in the pinned sklearn (1.5.2, verified) and earns its
+place independently of tuning: a negative bowl coefficient is a selection weight that says
+*prefer worse bowlers*. S-5's acceptance criterion is a positive bowling coefficient — the
+constraint guarantees it structurally rather than hoping a better target produces it.
+
+*Objective:* mean per-match Spearman between `w·[bat, bowl, field, is_keeper]` and `target`
+over held-out matches. Skip a match with fewer than 3 rows, or zero variance in either
+vector, and report `n_matches_scored` beside the score so a number computed from almost
+nothing is visible rather than silent.
+
+*Validation:* an expanding window over **matches**, not rows — order unique `match_id` by
+`match_date`, split the match list, map back to row indices. Neither `TimeSeriesSplit` (not
+group-aware) nor `GroupKFold` (not time-aware) is correct alone; the helper is ~15 lines.
+Below `n_splits + 1` matches, fall back to `GroupKFold`. Below 2 matches, do not tune: log
+at error level and exit non-zero rather than emit a fitted-on-nothing result. Under
+`per_format=True`, a format absent from a fold's training portion falls back to that fold's
+global weights, logged.
+
+*Output:* the existing JSON plus a `tuning` block — chosen `alpha`, `per_format`,
+`positive`, `best_cv_score`, `scoring: "mean_per_match_spearman"`, `n_splits`, `n_matches`,
+`n_matches_scored`. Reports record their `scoring`, so a file from before this change
+identifies itself. New flags: `--tune`, `--tune-splits` (default 5), `--positive`.
+
+*Persistence:* reuse `save_tuned_params_to_go_app(url, "combination_meta", "", …)`
+(`ml/config.py:283`). Format key `""` — the meta model may be global, and `per_format` is a
+knob inside the params, not a row key. `ml_tuned_params_handlers.go:14` has no model
+whitelist, so no schema and no API change.
+
+**(c) Close the loop at training time.** `run_combination_meta_training` reads the stored
+params via `get_tuned_params_from_go_app(go_app_url, "combination_meta", "")`
+(`ml/config.py:252`) and passes `--alpha` / `--per-format` / `--positive`, falling back to
+argparse defaults when absent and logging which path it took. Deliberately **not**
+`get_training_params`: it gates on `TRAINING_MODELS` (`ml/config.py:239`) and demands
+`TRAINING_REQUIRED_KEYS` — `n_estimators`, `max_depth`, `joblib_compress` — none of which
+mean anything to a four-coefficient Ridge, and inventing a config block of inapplicable keys
+to reuse one function is the wrong trade. Argparse defaults are the config of record; the DB
+overlays them. The function gains a `tune: bool`, threaded from a `tune` query param on
+`POST /admin/train/combination-meta` (`app/main.py:844`), the way `auto-tune` takes
+`rescreen`.
+
+**(d) Wiring.** The step (`registry.go:296`) gains `Model: "combination_meta"` — it now has
+a tuned-params row, so `IsTraining()` should be true, which routes it through
+`confirmDefaultParams` (`pipeline_handlers.go:244`) and correctly warns when training on
+untuned defaults. **`registry_test.go:204` flips** from `assert.False` to `assert.True`,
+comment rewritten; the old comment was accurate when it was written.
+`ml-service/Makefile:151` passes `$(if $(TUNE),--tune,)`, root `Makefile:247` forwards
+`TUNE`, and the help text at `Makefile:684` mentions it. Docs: `docs/ml-and-training.md`
+§306 and §315-317, `README.md` for the flag, and `make gen-architecture-map` — the CSV
+column set is a contract.
+
+**Reused, not rebuilt:** `save_tuned_params_to_go_app` / `get_tuned_params_from_go_app`, the
+`ml_tuned_params` table and its handlers, `run_training_subprocess`.
+
+**Tests.**
+
+*Go* (`services/backtest`, external package, table-driven `testCases`, `for i := range`):
+rows carry the match id and the match date; the header lists all eight columns; both the
+batch and the fallback producer attribute a row to the right match.
+
+*Python* (new `tests/test_train_combination_meta.py` — the module has no test file today):
+the objective is invariant to a positive rescale of the weight vector and to the intercept;
+a match with <3 rows or zero variance is skipped and excluded from `n_matches_scored`; the
+splitter never puts one `match_id` on both sides of a split and the training side is always
+earlier by `match_date`; `positive=True` yields no negative coefficient on a fixture where
+an unconstrained Ridge does; fewer than 2 matches exits non-zero and writes no JSON;
+`--tune` writes the `tuning` block and its absence leaves the output shape unchanged;
+`training_orchestrator` passes stored params through and falls back cleanly when the lookup
+returns nothing. Seeded fixtures under `tests/fixtures/`, no network.
+
+Coverage ratchets up in all three places per component.
+
+**Acceptance.** The tuned fit beats the `alpha=1.0` global baseline on mean per-match
+Spearman over held-out matches, with both numbers and `n_matches_scored` in the PR body. No
+coefficient is negative. **If the tuned fit does not beat the baseline, that is the
+finding** — record it, keep the non-negativity constraint, which stands on its own, and say
+in the PR body that the grid bought nothing.
+
+**Depends on S-5.** Tuning against today's `target = actualRuns/batDiv` would select the
+`alpha` that best explains runs from predicted *bowling* quality — optimising a target S-5
+has already diagnosed as broken. Not blocked by S-3c: this concerns the combination-meta
+seed, not the win model.
+
+**Risk.** Low. The export writes two more columns; the tuner is opt-in behind `--tune`; the
+training path is unchanged when no tuned-params row exists. The one behavioural change
+outside the flag is `IsTraining()` becoming true, which adds a confirmation prompt to a step
+that previously had none.
+
+**Out of scope.** A non-linear meta model — `accessors.go` needs a weight vector. Adding
+`combination_meta` to the auto-tune CLI or the frontend `AUTO_TUNE_MODELS` list: a
+seconds-long grid with a different objective and a different artifact, surfaced beside the
+six Optuna models, would imply a uniformity that does not exist.
 
 ---
 
@@ -648,7 +802,7 @@ and costs one extra batch call.
 
 | # | Decision | Needed by | Default if unanswered |
 |---|---|---|---|
-| 1 | Are the three components of S-5's composite target summed with equal weight? Equal weighting says a 4-wicket spell at economy 6 is worth roughly 53 runs | S-5 | Equal weight, recorded in the PR body as an assumption |
+| 1 | Are the three components of S-5's composite target summed with equal weight? Equal weighting says a 4-wicket spell at economy 6 is worth roughly 53 runs. **S-5b makes this measurable** — its per-match ranking objective scores a weighting against how well the resulting order matches what players actually did, so answer it there with a number rather than settling it by judgement in S-5 | S-5, revisited in S-5b | Equal weight, recorded in the S-5 PR body as an assumption |
 | 2 | Best-response rounds: fixed count or iterate to a fixed point with a cap? | S-1 | 3 rounds, cap, return last completed round |
 | 3 | ~~If S-3 shows win-model AUC near 0.5 on held-out matches, do we stop and improve the win model before S-4?~~ **Answered, and the question was too narrow.** Held-out AUC came back at 0.93–0.96, which the decision as written would have read as a green light. It was leakage — see S-3c. The gate should have been "does the model discriminate *using information available before the match*", and a headline AUC cannot answer that. Re-ask it after S-3c | S-3 | Stop. S-4 and S-6 are `blocked` |
 
