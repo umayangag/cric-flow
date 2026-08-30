@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAsync } from './useAsync';
 
 export interface UseApiCallResult<T> {
@@ -27,15 +27,20 @@ export function useApiCall<T>(
     errorMessage: options?.defaultErrorMessage ?? 'Request failed',
   });
 
+  // `refetch` must not change identity when the state does: callers pass it as an
+  // effect dependency, and a `refetch` rebuilt on every response makes that effect
+  // re-fire on its own result — a self-sustaining refetch loop.
+  const refetch = useCallback(async () => {
+    await run();
+  }, [run]);
+
   return useMemo(
     () => ({
       data,
       loading,
       error: error ? error.message : null,
-      refetch: async () => {
-        await run();
-      },
+      refetch,
     }),
-    [data, loading, error, run],
+    [data, loading, error, refetch],
   );
 }
