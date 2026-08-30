@@ -25,16 +25,9 @@ from ml.config import CANONICAL_FORMAT_CODES
 # Minimal required feature presence (training schema includes outputs; inference excludes them).
 # These lists are used for NaN checks and presence validation in addition to header checks.
 BATTING_REQUIRED_FEATURES = [
-    # Raw stats (v2) + weather + context
+    # Raw stats (v2) + context
     "batting_mean_w5",
     "batting_std_w10",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
     "inning",
     "batting_session",
     "toss",
@@ -55,13 +48,6 @@ BATTING_REQUIRED_FEATURES = [
 BOWLING_REQUIRED_FEATURES = [
     "bowling_mean_w5",
     "bowling_std_w10",
-    "temp",
-    "wind",
-    "rain",
-    "humidity",
-    "cloud",
-    "pressure",
-    "viscosity",
     "inning",
     "bowling_session",
     "toss",
