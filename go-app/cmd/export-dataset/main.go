@@ -43,6 +43,10 @@ func run() int {
 	// CSVs run concurrently, and extras and win were cut off mid-write while batting,
 	// bowling and fielding had already landed. A partial export is worse than a slow
 	// one, because the next training run reads whatever CSVs happen to be on disk.
+	//
+	// Measured: a full unified + per-format export against a populated database took
+	// 4m06s. Five minutes clears that, but not by much -- if this starts tripping on a
+	// larger dataset or a slower host, raise the bound rather than trimming the export.
 	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Minute)
 	defer cancel()
 
