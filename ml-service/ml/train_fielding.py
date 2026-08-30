@@ -18,10 +18,12 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Optional
 
 import joblib
@@ -30,6 +32,7 @@ import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 
 from .config import (
+    DEFAULT_HOLDOUT_FRACTION,
     default_artifacts_dir,
     default_go_app_export_dir,
     get_pipeline_common_config,
@@ -39,7 +42,12 @@ from .config import (
 from .data_quality import drop_low_variance_columns
 from .export_csv import read_export_csv
 from .pipeline_common import compute_time_decay_weights, get_scaler
-from .training_pipeline import ModelSpec, TrainingPipeline
+from .training_pipeline import (
+    ModelSpec,
+    TrainingPipeline,
+    score_trailing_holdout,
+    training_metadata_fields,
+)
 from .training_progress import columns_dropped
 from .utils import make_base_estimator
 
@@ -182,7 +190,39 @@ def train_and_save(
         )
     params = get_training_params("fielding", format_code)
     pipe_cfg = get_pipeline_common_config()
-    scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))
+    use_robust = pipe_cfg.get("use_robust_scaler", True)
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.monotonic()
+
+    def _fit_and_predict(
+        X_train: np.ndarray,
+        Y_train: np.ndarray,
+        weights_train: Optional[np.ndarray],
+        X_holdout: np.ndarray,
+    ) -> np.ndarray:
+        """Fit exactly the recipe this function ships, so the score describes it."""
+        holdout_scaler = get_scaler(use_robust=use_robust)
+        X_train_scaled = holdout_scaler.fit_transform(X_train)
+        holdout_model = MultiOutputRegressor(make_base_estimator(params))
+        holdout_model.fit(X_train_scaled, Y_train, sample_weight=weights_train)
+        return holdout_model.predict(holdout_scaler.transform(X_holdout))
+
+    # Scored before the shipped model is fitted, so a train-only run reports something
+    # falsifiable rather than only its file size (see docs/ml-and-training.md).
+    holdout_metrics = score_trailing_holdout(
+        X,
+        Y,
+        fit_and_predict=_fit_and_predict,
+        target_names=FIELDING_TARGET_COLS,
+        clip_names=FIELDING_TARGET_COLS,
+        clip_percentile=params.get("target_clip_percentile", 99.0),
+        sample_weight=sample_weight,
+        holdout_fraction=pipe_cfg.get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION),
+        model_name="fielding",
+        format_code=format_code,
+    )
+
+    scaler = get_scaler(use_robust=use_robust)
     Xs = scaler.fit_transform(X)
     base = make_base_estimator(params)
     model = MultiOutputRegressor(base)
@@ -199,12 +239,21 @@ def train_and_save(
     code = format_code.replace(" ", "_")
     joblib.dump(scaler, os.path.join(out_dir, f"fielding_scaler_{code}.joblib"), compress=compress)
     joblib.dump(model, os.path.join(out_dir, f"fielding_model_{code}.joblib"), compress=compress)
+    metadata: dict = training_metadata_fields(
+        holdout_metrics,
+        started_at=started_at,
+        duration_seconds=time.monotonic() - started_monotonic,
+        algorithm=params.get("estimator", "rf"),
+        n_samples=int(X.shape[0]),
+        n_features=int(X.shape[1]),
+    )
     if feature_importance is not None:
-        try:
-            with open(os.path.join(out_dir, f"fielding_metadata_{code}.json"), "w", encoding="utf-8") as f:
-                json.dump({"feature_importance": feature_importance}, f, indent=2)
-        except OSError as e:
-            logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
+        metadata["feature_importance"] = feature_importance
+    try:
+        with open(os.path.join(out_dir, f"fielding_metadata_{code}.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+    except OSError as e:
+        logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
 
 
 def main() -> None:

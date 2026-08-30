@@ -4,6 +4,11 @@ Each trained model (innings, extras, per-format or legacy) writes a small JSON
 file alongside its ``.joblib`` files. The sidecar pins two things that would
 otherwise drift between training and inference:
 
+- ``training_fields``: what the run measured -- holdout ``metrics``, ``trained_at``,
+  ``duration_seconds`` and friends, built by
+  :func:`ml.training_pipeline.training_metadata_fields`. Top-level rather than nested,
+  because that is where ``app.model_stats_service`` looks.
+
 - ``feature_names``: the exact column order the scaler/model were fitted on.
   After introducing per-format ``drop_low_variance_columns`` and optional
   one-hot exclusion, different formats can end up with different feature lists
@@ -41,6 +46,7 @@ def write_artifact_meta(
     kind: str,
     format_code: Optional[str],
     feature_names: List[str],
+    training_fields: Optional[Dict[str, Any]] = None,
     extra: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Atomically write sidecar metadata alongside a trained model artifact.
@@ -61,6 +67,10 @@ def write_artifact_meta(
     provenance = provenance_for(default_csv_dir())
     if provenance:
         payload["provenance"] = provenance
+    # Merged at the top level, not nested under "extra", because that is where
+    # app.model_stats_service reads metrics, trained_at and duration_seconds from.
+    if training_fields:
+        payload.update(training_fields)
     if extra:
         payload["extra"] = dict(extra)
     tmp = f"{path}.tmp"

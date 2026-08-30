@@ -22,7 +22,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 if TYPE_CHECKING:
     from .consistency_checker import ReconciledPlayerStats
@@ -56,6 +56,115 @@ logger = logging.getLogger(__name__)
 # the split than about the model, so it is omitted rather than reported as a number.
 MIN_HOLDOUT_ROWS = 50
 MIN_HOLDOUT_TRAIN_ROWS = 200
+
+
+def score_trailing_holdout(
+    X: np.ndarray,
+    Y: np.ndarray,
+    *,
+    fit_and_predict: Callable[[np.ndarray, np.ndarray, Optional[np.ndarray], np.ndarray], np.ndarray],
+    target_names: Sequence[str],
+    clip_names: Sequence[str],
+    clip_percentile: float = 99.0,
+    sample_weight: Optional[np.ndarray] = None,
+    holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
+    model_name: str = "model",
+    format_code: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Score a training recipe on a trailing slice of the data. None when not evaluable.
+
+    The split is positional, which is a *time* split because go-app exports every
+    training CSV `ORDER BY match_date ASC` -- the same assumption the tuning search's
+    walk_forward CV already rests on. Costs one extra fit on ~(1 - fraction) of the rows;
+    set ml.pipeline_common.holdout_fraction to 0 to skip it.
+
+    Target clipping is fitted on the training slice alone and the holdout is scored
+    against its *unclipped* targets: clipping is part of the recipe under test, so
+    letting it touch the answer key would flatter the score.
+
+    *fit_and_predict* is what keeps this honest across models that do not share a
+    recipe. train_extras fits a bare RandomForestRegressor with no scaler, train_innings
+    a StandardScaler, train_fielding the robust scaler, and TrainingPipeline its spec's
+    combination. Each passes its own closure, so what is scored is what that trainer
+    actually ships rather than a stand-in that happens to be nearby.
+    """
+    n_rows = int(X.shape[0])
+    n_holdout = int(round(n_rows * holdout_fraction))
+    n_train = n_rows - n_holdout
+    if holdout_fraction <= 0 or n_holdout < MIN_HOLDOUT_ROWS or n_train < MIN_HOLDOUT_TRAIN_ROWS:
+        logger.info(
+            "training_pipeline.holdout_skipped model=%s format=%s rows=%s fraction=%s",
+            model_name,
+            format_code,
+            n_rows,
+            holdout_fraction,
+        )
+        return None
+
+    Y_train, _ = clip_target_outliers(
+        Y[:n_train],
+        percentile=clip_percentile,
+        target_names=list(clip_names)[: Y.shape[1]],
+    )
+    weights_train = sample_weight[:n_train] if sample_weight is not None else None
+
+    try:
+        predictions = fit_and_predict(X[:n_train], Y_train, weights_train, X[n_train:])
+    except (ValueError, TypeError, MemoryError) as e:
+        logger.warning(
+            "training_pipeline.holdout_failed model=%s format=%s error=%s",
+            model_name,
+            format_code,
+            e,
+        )
+        return None
+
+    metrics = compute_regression_metrics(Y[n_train:], predictions, target_names=list(target_names))
+    if not metrics:
+        return None
+    metrics["holdout_rows"] = n_holdout
+    metrics["holdout_train_rows"] = n_train
+    logger.info(
+        "training_pipeline.holdout_scored model=%s format=%s train_rows=%s holdout_rows=%s mae=%s r2_pct=%s",
+        model_name,
+        format_code,
+        n_train,
+        n_holdout,
+        metrics.get("mae"),
+        metrics.get("r2_pct"),
+    )
+    return metrics
+
+
+def training_metadata_fields(
+    holdout_metrics: Optional[Dict[str, Any]],
+    *,
+    started_at: datetime,
+    duration_seconds: float,
+    algorithm: str,
+    n_samples: int,
+    n_features: int,
+) -> Dict[str, Any]:
+    """The keys app.model_stats_service reads off a sidecar to describe a single-train run.
+
+    Built in one place so every writer -- TrainingPipeline and the three trainers with
+    their own save paths -- reports the same shape. trained_at and duration_seconds go on
+    the artifact rather than the DB because only auto-tune writes ml_tuned_params rows.
+    """
+    fields: Dict[str, Any] = {
+        "algorithm": algorithm,
+        "n_samples": int(n_samples),
+        "n_features": int(n_features),
+        "trained_at": started_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "duration_seconds": round(duration_seconds, 2),
+    }
+    if holdout_metrics:
+        # Names the provenance of the score, not just its value: a trailing-holdout MAE
+        # and a tuned cross-validated MAE sit in the same UI column.
+        fields["metrics"] = holdout_metrics
+        fields["score_source"] = "holdout"
+        fields["validation_method"] = "trailing_holdout"
+    return fields
 
 
 @dataclass
@@ -320,75 +429,37 @@ class TrainingPipeline:
         use_robust_scaler: bool = True,
         suffix: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Score the training recipe on a trailing slice of the data. None when not evaluable.
+        """Score this spec's training recipe on a trailing slice. None when not evaluable."""
 
-        The split is positional, which is a *time* split because go-app exports every
-        training CSV `ORDER BY match_date ASC` — the same assumption the tuning search's
-        walk_forward CV already rests on. Costs one extra fit on ~(1 - fraction) of the
-        rows; set ml.pipeline_common.holdout_fraction to 0 to skip it.
-
-        The scaler and the target clipping are fitted on the training slice alone, and
-        the holdout is scored against its *unclipped* targets: clipping is part of the
-        recipe under test, so letting it touch the answer key would flatter the score.
-        """
-        n_rows = int(X.shape[0])
-        n_holdout = int(round(n_rows * holdout_fraction))
-        n_train = n_rows - n_holdout
-        if holdout_fraction <= 0 or n_holdout < MIN_HOLDOUT_ROWS or n_train < MIN_HOLDOUT_TRAIN_ROWS:
-            logger.info(
-                "training_pipeline.holdout_skipped model=%s format=%s rows=%s fraction=%s",
-                self.spec.name,
-                suffix,
-                n_rows,
-                holdout_fraction,
-            )
-            return None
-
-        clip_percentile = training_params.get("target_clip_percentile", 99.0)
-        clip_names = self.spec.target_names_for_clip or self.spec.target_cols
-        Y_train, _ = clip_target_outliers(
-            Y[:n_train],
-            percentile=clip_percentile,
-            target_names=clip_names[: Y.shape[1]],
-        )
-        weights_train = sample_weight[:n_train] if sample_weight is not None else None
-
-        try:
+        def fit_and_predict(
+            X_train: np.ndarray,
+            Y_train: np.ndarray,
+            weights_train: Optional[np.ndarray],
+            X_holdout: np.ndarray,
+        ) -> np.ndarray:
             scaler, model = self._fit_scaled_estimator(
-                X[:n_train],
+                X_train,
                 Y_train,
                 training_params,
                 sample_weight=weights_train,
                 use_robust_scaler=use_robust_scaler,
             )
-            X_holdout = X[n_train:]
             if scaler is not None:
                 X_holdout = scaler.transform(X_holdout)
-            predictions = model.predict(X_holdout)
-        except (ValueError, TypeError, MemoryError) as e:
-            logger.warning(
-                "training_pipeline.holdout_failed model=%s format=%s error=%s",
-                self.spec.name,
-                suffix,
-                e,
-            )
-            return None
+            return model.predict(X_holdout)
 
-        metrics = compute_regression_metrics(Y[n_train:], predictions, target_names=list(self.spec.target_cols))
-        if not metrics:
-            return None
-        metrics["holdout_rows"] = n_holdout
-        metrics["holdout_train_rows"] = n_train
-        logger.info(
-            "training_pipeline.holdout_scored model=%s format=%s train_rows=%s holdout_rows=%s mae=%s r2_pct=%s",
-            self.spec.name,
-            suffix,
-            n_train,
-            n_holdout,
-            metrics.get("mae"),
-            metrics.get("r2_pct"),
+        return score_trailing_holdout(
+            X,
+            Y,
+            fit_and_predict=fit_and_predict,
+            target_names=list(self.spec.target_cols),
+            clip_names=list(self.spec.target_names_for_clip or self.spec.target_cols),
+            clip_percentile=training_params.get("target_clip_percentile", 99.0),
+            sample_weight=sample_weight,
+            holdout_fraction=holdout_fraction,
+            model_name=self.spec.name,
+            format_code=suffix,
         )
-        return metrics
 
     def train_and_save(
         self,
@@ -468,20 +539,16 @@ class TrainingPipeline:
                 metadata["feature_transforms"] = transform_config
             if clip_info:
                 metadata["target_clip_info"] = clip_info
-            metadata["algorithm"] = training_params.get("estimator", "rf")
-            metadata["n_samples"] = int(X.shape[0])
-            metadata["n_features"] = int(X.shape[1])
-            # Recorded on the artifact rather than left to the DB: only auto-tune writes
-            # ml_tuned_params rows, so a single-train run has nothing in Postgres to date it.
-            metadata["trained_at"] = started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
-            metadata["duration_seconds"] = round(time.monotonic() - started_monotonic, 2)
-            if holdout_metrics:
-                metadata["metrics"] = holdout_metrics
-                # Names the provenance of the score, not just its value: a trailing-holdout
-                # MAE and a tuned cross-validated MAE sit in the same UI column and must not
-                # be read as the same measurement.
-                metadata["score_source"] = "holdout"
-                metadata["validation_method"] = "trailing_holdout"
+            metadata.update(
+                training_metadata_fields(
+                    holdout_metrics,
+                    started_at=started_at,
+                    duration_seconds=time.monotonic() - started_monotonic,
+                    algorithm=training_params.get("estimator", "rf"),
+                    n_samples=int(X.shape[0]),
+                    n_features=int(X.shape[1]),
+                )
+            )
             meta_path = os.path.join(out_dir, f"{prefix}_metadata_{suffix or 'LEGACY'}.json")
             try:
                 with open(meta_path, "w", encoding="utf-8") as f:
