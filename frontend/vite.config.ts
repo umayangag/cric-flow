@@ -27,6 +27,10 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Fail loudly instead of falling back to the next free port: a second server
+    // on 5174 leaves the browser talking to the original one, whose dep cache
+    // `dev:clean` has just deleted — which presents as a blank page.
+    strictPort: true,
   },
   test: {
     globals: true,
