@@ -96,7 +96,7 @@ Two consequences that shape the whole plan:
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
 | S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection |
-| S-7 | todo | `select/s-7-id-encoding` | Venue and opposition ID encoding (deferred) |
+| S-7 | blocked | `select/s-7-id-encoding` | Venue and opposition ID encoding (blocked on the identity plan) |
 | S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
@@ -105,6 +105,11 @@ Two consequences that shape the whole plan:
 on a feature set that encodes the result of the match being predicted. Tuning a search
 over that objective, or shipping it, would both be measuring the leak. S-5 is unaffected —
 it concerns the combination-meta seed, not the win model.
+
+**S-7 is blocked on [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md).** The IDs it
+would encode are themselves split (one franchise under two ids after a rename) and merged
+(130 team names shared by a men's and a women's side). Encoding those first only makes the
+error smoother.
 
 ---
 
@@ -480,7 +485,10 @@ re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
 > The importer drops such a name from **both** squads and warns, leaving two matches with
 > a ten-player side. Guessing a side would invent data; failing the match — which the first
 > cut of the validation did — cost its ball-by-ball record over an ambiguity in the source.
-> Fixed in `fix/squad-namesake-both-teams`.
+> Fixed in `fix/squad-namesake-both-teams`. The underlying defect — player identity keyed
+> by name — is [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md); this behaviour stays
+> even after it, because the registry genuinely cannot separate two namesakes inside one
+> match.
 
 **Tests.** Importer ✅: squad parsed and persisted for both sides including players who
 never bat or bowl; a file with no `info.players` still imports and records no squad; a
@@ -814,10 +822,16 @@ the trained artifacts (TEST 0.050, T20I 0.019, T20 0.016). So S-7 is not only ab
 frequency encoding fitted before the split is resolved learns the rename as a new team
 with 63 matches of history.
 
-There are 394 opposition rows; a name-similarity scan surfaces more candidate pairs, but
-separating a rename (Barbados Tridents → Barbados Royals) from two genuinely different
-teams (Birmingham Bears vs Birmingham Phoenix) needs domain judgement, not a heuristic.
-RCB is the one confirmed case.
+There are 394 opposition rows, and it is worse than one rename: **130 of the 394 names are
+used by both a men's and a women's side**, sharing a single `opposition_id`, while 20% of
+matches are women's cricket and the win export applies no gender filter.
+
+**This is now [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md), and S-7 is `blocked`
+on its I-3 and I-4.** Encoding an identity that is itself split or merged just launders the
+error into a smoother representation. That plan also covers the player side of the same
+problem — 163 names holding 348 people — which is the larger defect and the one that
+reaches these features. Run it **after** S-3c: the leak is the dominant effect, and
+sequencing the two gives a measurement of each rather than one confounded jump.
 
 **Not a problem, recorded so it is not re-litigated:** player form features are not
 team-scoped — the win export reads `scope = 'overall'`, so a player's T20 form blends
