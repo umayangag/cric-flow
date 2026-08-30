@@ -68,7 +68,7 @@ jobs:
       - name: Enforce coverage threshold
         env:
           # Keep aligned with ml-service/Makefile COV_MIN. Raise together once coverage improves.
-          COV_MIN: "81"
+          COV_MIN: "82"
           REQUIREMENTS_FILE: requirements-serve.txt
         run: make -C ml-service coverage-check
 

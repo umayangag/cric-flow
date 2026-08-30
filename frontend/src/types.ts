@@ -1,3 +1,5 @@
+import type { ArtifactKind, ArtifactUnit } from './utils/artifactKinds';
+
 // --- Upcoming match prediction ---
 export type PredictTeamSelectedPlayer = {
   player_id: number;
@@ -59,13 +61,12 @@ export type HealthResponse = {
   loaded_fielding_formats?: string[];
   loaded_extras_formats?: string[];
   loaded_win_formats?: string[];
+  loaded_innings_formats?: string[];
   models_dir: string;
-  artifacts: {
-    batting: { file: string; size_bytes?: number; modified?: number }[];
-    bowling: { file: string; size_bytes?: number; modified?: number }[];
-    fielding?: { file: string; size_bytes?: number; modified?: number }[];
-    extras?: { file: string; size_bytes?: number; modified?: number }[];
-    win?: { file: string; size_bytes?: number; modified?: number }[];
+  /** One entry per artifact kind; see ARTIFACT_KINDS for the kinds the UI reports on. */
+  artifacts: Partial<Record<ArtifactKind, ArtifactFile[]>> & {
+    batting: ArtifactFile[];
+    bowling: ArtifactFile[];
   };
   metadata: {
     batting: string[];
@@ -73,6 +74,8 @@ export type HealthResponse = {
     fielding?: string[];
   };
 };
+
+export type ArtifactFile = { file: string; size_bytes?: number; modified?: number };
 
 /** Model metadata from ml-service GET /model-metadata (via go-app proxy). One source of truth for Workbench UI. */
 export type ModelMetadataEntry = {
@@ -329,19 +332,7 @@ export type OpsStatusDTO = {
     formats?: Record<string, { files?: Array<{ name?: string; exists?: boolean }> } | undefined>;
   };
   artifacts?: {
-    formats?:
-      | Record<
-          string,
-          | {
-              batting?: { exists?: boolean; loaded?: boolean };
-              bowling?: { exists?: boolean; loaded?: boolean };
-              fielding?: { exists?: boolean; loaded?: boolean };
-              extras?: { exists?: boolean; loaded?: boolean };
-              win?: { exists?: boolean; loaded?: boolean };
-            }
-          | undefined
-        >
-      | undefined;
+    formats?: Record<string, Partial<Record<ArtifactKind, ArtifactUnit>> | undefined> | undefined;
   };
   /** Pipeline step running state from backend */
   pipeline?: {

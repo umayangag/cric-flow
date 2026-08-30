@@ -7,16 +7,17 @@ import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
 import { MISSING, formatBytes, formatEpochSeconds, formatWhen } from '../utils/format';
 import { usePolling } from '../hooks/usePolling';
+import { ARTIFACT_KINDS, type ArtifactKind } from '../utils/artifactKinds';
 
-const MODEL_TYPES = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
 const HEALTH_REFRESH_MS = Number(import.meta.env.VITE_HEALTH_REFRESH_MS ?? 60000) || 60000;
 
-const ARTIFACT_LABELS: Record<(typeof MODEL_TYPES)[number], string> = {
+const ARTIFACT_LABELS: Record<ArtifactKind, string> = {
   batting: 'bat',
   bowling: 'bowl',
   fielding: 'field',
   extras: 'extras',
   win: 'win',
+  innings: 'innings',
 };
 
 type ArtifactItem = { file: string; size_bytes?: number; modified?: number };
@@ -78,7 +79,7 @@ const HealthTab: React.FC = () => {
   );
 
   const loadedFormatsItems = useMemo(() => {
-    return MODEL_TYPES.map((t) => {
+    return ARTIFACT_KINDS.map((t) => {
       const formats = mlData?.[`loaded_${t}_formats` as keyof HealthResponse] as
         string[] | undefined;
       const value = !mlData ? '—' : formats && formats.length > 0 ? formats.join(', ') : 'None';
@@ -88,7 +89,7 @@ const HealthTab: React.FC = () => {
 
   const artifactsCountValue = useMemo(() => {
     if (!mlData) return '—';
-    const parts = MODEL_TYPES.map((t) => {
+    const parts = ARTIFACT_KINDS.map((t) => {
       const arr = mlData.artifacts?.[t];
       return Array.isArray(arr) && arr.length ? `${ARTIFACT_LABELS[t]}: ${arr.length}` : null;
     }).filter(Boolean);
@@ -97,7 +98,7 @@ const HealthTab: React.FC = () => {
 
   const allArtifacts = useMemo(() => {
     if (!mlData) return [];
-    return MODEL_TYPES.flatMap((t) => mlData.artifacts?.[t] || []) as ArtifactItem[];
+    return ARTIFACT_KINDS.flatMap((t) => mlData.artifacts?.[t] || []) as ArtifactItem[];
   }, [mlData]);
 
   const totalSizeValue = useMemo(() => {
