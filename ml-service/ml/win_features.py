@@ -71,12 +71,14 @@ _GROUP_TO_PLAYER_KEY: List[Tuple[str, str, int]] = [
 ]
 
 # Base match context columns (before categorical expansion of format).
+# The toss is deliberately absent. Team selection happens before the toss, so the
+# winner is not merely missing at inference, it is unknowable in principle; training on
+# it taught the model to lean on a value the serving path could only ever send as zero.
 MATCH_CONTEXT_BASE_COLS = [
     "format_id",  # kept for compatibility but excluded from model features
     "venue_id",
     "team1_opposition_id",
     "team2_opposition_id",
-    "toss_winner_opposition_id",
 ]
 
 # Full context column list including one-hot encoded format indicators. This is

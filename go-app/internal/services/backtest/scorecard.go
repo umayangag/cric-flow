@@ -260,7 +260,6 @@ func BuildBacktestWinFeatures(
 		VenueID:                 venueID,
 		Team1OppositionID:       int(winCtx.Team1OppositionID),
 		Team2OppositionID:       int(winCtx.Team2OppositionID),
-		TossWinnerOppositionID:  int(winCtx.TossWinnerOppositionID),
 		Team1BatConsistencySum:  sumForTeam(team1, "batting_consistency"),
 		Team1BowlConsistencySum: sumForTeam(team1, "bowling_consistency"),
 		Team2BatConsistencySum:  sumForTeam(team2, "batting_consistency"),

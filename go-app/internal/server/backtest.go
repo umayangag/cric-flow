@@ -228,7 +228,6 @@ func init() {
 			VenueID:                 w.VenueID,
 			Team1OppositionID:       w.Team1OppositionID,
 			Team2OppositionID:       w.Team2OppositionID,
-			TossWinnerOppositionID:  w.TossWinnerOppositionID,
 			Temp:                    w.Temp,
 			Wind:                    w.Wind,
 			Rain:                    w.Rain,
@@ -261,21 +260,20 @@ func init() {
 			t2Feats[strconv.FormatInt(pid, 10)] = feats
 		}
 		return mlClient.PredictMatchWinEnhanced(ctx, mlWinFeaturesEnhanced{
-			FormatID:               w.FormatID,
-			VenueID:                w.VenueID,
-			Team1OppositionID:      w.Team1OppositionID,
-			Team2OppositionID:      w.Team2OppositionID,
-			TossWinnerOppositionID: w.TossWinnerOppositionID,
-			Temp:                   w.Temp,
-			Wind:                   w.Wind,
-			Rain:                   w.Rain,
-			Humidity:               w.Humidity,
-			Cloud:                  w.Cloud,
-			Pressure:               w.Pressure,
-			Viscosity:              w.Viscosity,
-			Team1PlayerFeatures:    t1Feats,
-			Team2PlayerFeatures:    t2Feats,
-			Format:                 w.Format,
+			FormatID:            w.FormatID,
+			VenueID:             w.VenueID,
+			Team1OppositionID:   w.Team1OppositionID,
+			Team2OppositionID:   w.Team2OppositionID,
+			Temp:                w.Temp,
+			Wind:                w.Wind,
+			Rain:                w.Rain,
+			Humidity:            w.Humidity,
+			Cloud:               w.Cloud,
+			Pressure:            w.Pressure,
+			Viscosity:           w.Viscosity,
+			Team1PlayerFeatures: t1Feats,
+			Team2PlayerFeatures: t2Feats,
+			Format:              w.Format,
 		})
 	}
 	mlOptimizeTeamSelectionFunc = func(ctx context.Context, req predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
