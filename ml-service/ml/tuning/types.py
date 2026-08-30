@@ -87,13 +87,6 @@ except (ImportError, RuntimeError):  # noqa: S110 (allow broad except for option
 BATTING_FEATURE_COLS = (
     BAT_RAW_STAT_COLS
     + [
-        "temp",
-        "wind",
-        "rain",
-        "humidity",
-        "cloud",
-        "pressure",
-        "viscosity",
         "inning",
         "batting_session",
         "toss",
@@ -111,13 +104,6 @@ BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
 BOWLING_FEATURE_COLS = (
     BOWL_RAW_STAT_COLS
     + [
-        "temp",
-        "wind",
-        "rain",
-        "humidity",
-        "cloud",
-        "pressure",
-        "viscosity",
         "inning",
         "bowling_session",
         "toss",

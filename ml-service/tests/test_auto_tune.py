@@ -66,9 +66,26 @@ def test_batting_feature_cols_contains_required():
     """BATTING_FEATURE_COLS includes raw stat features, context, and sequence cols."""
     assert "batting_mean_w3" in BATTING_FEATURE_COLS
     assert "batting_mean_w5" in BATTING_FEATURE_COLS
-    assert "temp" in BATTING_FEATURE_COLS
+    assert "batting_venue" in BATTING_FEATURE_COLS
     for c in BAT_SEQ_COLS:
         assert c in BATTING_FEATURE_COLS
+
+
+def test_tuning_feature_cols_match_the_training_ones():
+    """Auto-tune must tune the feature matrix training actually fits.
+
+    These lists are separate copies of one contract. When C2-2b removed the seven
+    weather columns from the exports and from train_batting/train_bowling, this copy
+    kept them; the loader materialises any missing column as 0.0, so tuning searched
+    a 42-column matrix for hyperparameters that training then applied to 35 columns.
+    Anything sized off the feature count -- max_features above all -- was tuned
+    against the wrong width.
+    """
+    from ml.train_batting import FEATURE_COLS as BATTING_TRAINING_FEATURE_COLS
+    from ml.train_bowling import FEATURE_COLS as BOWLING_TRAINING_FEATURE_COLS
+
+    assert list(BATTING_FEATURE_COLS) == list(BATTING_TRAINING_FEATURE_COLS)
+    assert list(BOWLING_FEATURE_COLS) == list(BOWLING_TRAINING_FEATURE_COLS)
 
 
 def test_bowling_feature_cols_contains_required():
