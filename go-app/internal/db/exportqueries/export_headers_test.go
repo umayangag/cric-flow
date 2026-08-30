@@ -184,14 +184,29 @@ func TestTrainingExportsAgreeWithEachOther(t *testing.T) {
 			// The four cyclical columns are computed from match_date by the cross-format
 			// row builder; the per-format export does not emit them at all. Pre-existing
 			// gap, tracked separately -- adding names there without values would misalign it.
-			extraOnly: []string{"innings_runs", "match_date", "match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"},
+			extraOnly: []string{
+				"innings_runs",
+				"match_date",
+				"match_month_sin",
+				"match_month_cos",
+				"match_day_of_week_sin",
+				"match_day_of_week_cos",
+			},
 		},
 		{
 			name:      "bowling",
 			perFormat: eq.BowlingFormatHeaders(),
 			crossFmt:  eq.BowlingTrainingHeaders(),
 			// the bowling cross-format export carries both innings totals for reconciliation
-			extraOnly: []string{"innings_runs", "innings_wickets", "match_date", "match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"},
+			extraOnly: []string{
+				"innings_runs",
+				"innings_wickets",
+				"match_date",
+				"match_month_sin",
+				"match_month_cos",
+				"match_day_of_week_sin",
+				"match_day_of_week_cos",
+			},
 		},
 	}
 
