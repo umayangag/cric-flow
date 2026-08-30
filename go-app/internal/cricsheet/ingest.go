@@ -571,6 +571,11 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		}
 		allBowlBatches = append(allBowlBatches, bowlBatch)
 	}
+	// Resolve the squads each side picked (requires cache; done before tx).
+	matchPlayerRows, err := buildMatchPlayerRows(ctx, cache, info, mid, path, dateISO)
+	if err != nil {
+		return err
+	}
 	// Build ball event rows (requires cache; done before tx)
 	ballEventRows, err := BuildBallEventRows(ctx, m, int(formatID), mid)
 	if err != nil {
@@ -631,6 +636,16 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				slog.String("match_type", info.MatchType),
 				slog.Any("err", err))
 			return fmt.Errorf("upsert match: %w", err)
+		}
+		if err := db.ReplaceMatchPlayersTx(ctx, tx, mid, matchPlayerRows); err != nil {
+			slog.Error("replace match_player failed",
+				slog.String("file", matchCtx.file),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", matchCtx.date),
+				slog.String("teams", matchCtx.teams),
+				slog.Int("squad_size", len(matchPlayerRows)),
+				slog.Any("err", err))
+			return fmt.Errorf("replace match_player: %w", err)
 		}
 		for i := range allMatchInnings {
 			inn := allMatchInnings[i]
