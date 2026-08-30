@@ -20,9 +20,11 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Optional
 
 import joblib
@@ -35,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.artifact_sidecar import write_artifact_meta
 from ml.config import (
+    DEFAULT_HOLDOUT_FRACTION,
     default_artifacts_dir,
     default_go_app_export_dir,
     get_pipeline_common_config,
@@ -48,6 +51,7 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.training_pipeline import score_trailing_holdout, training_metadata_fields
 from ml.training_progress import columns_dropped, data_loaded, format_done, set_total_formats
 from ml.training_progress import finish as progress_finish
 from ml.training_progress import start as progress_start
@@ -224,6 +228,43 @@ def train_and_save(
             f"train_innings.train_and_save.feature_mismatch X.shape[1]={X.shape[1]} names={len(feature_names)}"
         )
     params = get_training_params("innings", format_code)
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.monotonic()
+
+    # X arrives already standardised by a scaler fitted over every row, holdout
+    # included. Undoing that (StandardScaler inverts exactly) lets the holdout fit its
+    # own scaler on the training slice alone, so the score is not flattered by
+    # standardisation statistics that had already seen the rows being predicted.
+    X_unscaled = scaler.inverse_transform(X)
+
+    def _fit_and_predict(
+        X_train: np.ndarray,
+        Y_train: np.ndarray,
+        weights_train: Optional[np.ndarray],
+        X_holdout: np.ndarray,
+    ) -> np.ndarray:
+        """Fit exactly the recipe this function ships: StandardScaler, then multi-output."""
+        holdout_scaler = StandardScaler()
+        X_train_scaled = holdout_scaler.fit_transform(X_train)
+        holdout_model = MultiOutputRegressor(make_base_estimator(params), n_jobs=params.get("n_jobs", -1))
+        holdout_model.fit(X_train_scaled, Y_train, sample_weight=weights_train)
+        return holdout_model.predict(holdout_scaler.transform(X_holdout))
+
+    # Scored before the shipped model is fitted, so a train-only run reports something
+    # falsifiable rather than only its file size (see docs/ml-and-training.md).
+    holdout_metrics = score_trailing_holdout(
+        X_unscaled,
+        Y,
+        fit_and_predict=_fit_and_predict,
+        target_names=INNINGS_TARGET_COLS,
+        clip_names=INNINGS_TARGET_COLS,
+        clip_percentile=params.get("target_clip_percentile", 99.0),
+        sample_weight=sample_weight,
+        holdout_fraction=get_pipeline_common_config().get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION),
+        model_name="innings",
+        format_code=format_code,
+    )
+
     base_estimator = make_base_estimator(params)
     model = MultiOutputRegressor(base_estimator, n_jobs=params.get("n_jobs", -1))
     if sample_weight is not None:
@@ -240,6 +281,14 @@ def train_and_save(
         "innings",
         format_code,
         feature_names,
+        training_fields=training_metadata_fields(
+            holdout_metrics,
+            started_at=started_at,
+            duration_seconds=time.monotonic() - started_monotonic,
+            algorithm=params.get("estimator", "rf"),
+            n_samples=int(X.shape[0]),
+            n_features=int(X.shape[1]),
+        ),
     )
     logger.info("train_innings.saved format=%s n=%s out_dir=%s", format_code, X.shape[0], out_dir)
 

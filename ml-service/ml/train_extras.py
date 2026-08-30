@@ -17,9 +17,11 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Optional
 
 import joblib
@@ -31,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ml.artifact_sidecar import write_artifact_meta
 from ml.config import (
+    DEFAULT_HOLDOUT_FRACTION,
     default_artifacts_dir,
     default_go_app_export_dir,
     get_pipeline_common_config,
@@ -44,6 +47,7 @@ from ml.match_level_derived_features import (
     add_match_level_derived_features_to_df,
 )
 from ml.pipeline_common import compute_time_decay_weights
+from ml.training_pipeline import score_trailing_holdout, training_metadata_fields
 from ml.training_progress import columns_dropped, data_loaded, format_done, set_total_formats
 from ml.training_progress import finish as progress_finish
 from ml.training_progress import start as progress_start
@@ -211,12 +215,45 @@ def train_and_save(
             f"train_extras.train_and_save.feature_mismatch X.shape[1]={X.shape[1]} names={len(feature_names)}"
         )
     params = get_training_params("extras", format_code)
-    model = RandomForestRegressor(
-        n_estimators=params["n_estimators"],
-        max_depth=params["max_depth"],
-        random_state=params["random_state"],
-        n_jobs=params.get("n_jobs", -1),
+    started_at = datetime.now(timezone.utc)
+    started_monotonic = time.monotonic()
+
+    def _build_estimator() -> RandomForestRegressor:
+        return RandomForestRegressor(
+            n_estimators=params["n_estimators"],
+            max_depth=params["max_depth"],
+            random_state=params["random_state"],
+            n_jobs=params.get("n_jobs", -1),
+        )
+
+    def _fit_and_predict(
+        X_train: np.ndarray,
+        Y_train: np.ndarray,
+        weights_train: Optional[np.ndarray],
+        X_holdout: np.ndarray,
+    ) -> np.ndarray:
+        """Fit exactly the recipe this function ships: no scaler, one raveled target."""
+        holdout_model = _build_estimator()
+        holdout_model.fit(X_train, Y_train.ravel(), sample_weight=weights_train)
+        # Back to a column so the score compares like with like against Y's (n, 1).
+        return holdout_model.predict(X_holdout).reshape(-1, 1)
+
+    # Scored before the shipped model is fitted, so a train-only run reports something
+    # falsifiable rather than only its file size (see docs/ml-and-training.md).
+    holdout_metrics = score_trailing_holdout(
+        X,
+        Y,
+        fit_and_predict=_fit_and_predict,
+        target_names=[EXTRAS_TARGET_COL],
+        clip_names=[EXTRAS_TARGET_COL],
+        clip_percentile=params.get("target_clip_percentile", 99.0),
+        sample_weight=sample_weight,
+        holdout_fraction=get_pipeline_common_config().get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION),
+        model_name="extras",
+        format_code=format_code,
     )
+
+    model = _build_estimator()
     if sample_weight is not None:
         model.fit(X, Y.ravel(), sample_weight=sample_weight)
     else:
@@ -230,6 +267,14 @@ def train_and_save(
         "extras",
         format_code,
         feature_names,
+        training_fields=training_metadata_fields(
+            holdout_metrics,
+            started_at=started_at,
+            duration_seconds=time.monotonic() - started_monotonic,
+            algorithm=params.get("estimator", "rf"),
+            n_samples=int(X.shape[0]),
+            n_features=int(X.shape[1]),
+        ),
     )
 
 
