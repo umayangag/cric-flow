@@ -181,14 +181,17 @@ func TestTrainingExportsAgreeWithEachOther(t *testing.T) {
 			name:      "batting",
 			perFormat: eq.BattingFormatHeaders(),
 			crossFmt:  eq.BattingTrainingHeaders(),
-			extraOnly: []string{"innings_runs", "match_date"},
+			// The four cyclical columns are computed from match_date by the cross-format
+			// row builder; the per-format export does not emit them at all. Pre-existing
+			// gap, tracked separately -- adding names there without values would misalign it.
+			extraOnly: []string{"innings_runs", "match_date", "match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"},
 		},
 		{
 			name:      "bowling",
 			perFormat: eq.BowlingFormatHeaders(),
 			crossFmt:  eq.BowlingTrainingHeaders(),
 			// the bowling cross-format export carries both innings totals for reconciliation
-			extraOnly: []string{"innings_runs", "innings_wickets", "match_date"},
+			extraOnly: []string{"innings_runs", "innings_wickets", "match_date", "match_month_sin", "match_month_cos", "match_day_of_week_sin", "match_day_of_week_cos"},
 		},
 	}
 
@@ -242,17 +245,23 @@ func TestHeaderCountsAreStable(t *testing.T) {
 
 	// Counts dropped by 7 across every export in C2-2b, when the weather features were
 	// removed from configs/feature_vectors.json and the export queries together.
+	//
+	// The fielding counts are 16 and the two training counts 40, not 12 and 36: every
+	// one of those row builders emits the four cyclical time columns added in v3, and
+	// the header lists were never widened to name them. That is what shipped fielding
+	// CSVs with 12 headers over 16-field rows, and what made the batting and bowling
+	// sections of the training-data API hand back rows four fields too wide.
 	want := map[string]int{
 		"batting_inference": 29,
 		"batting_format":    34,
-		"batting_training":  36,
+		"batting_training":  40,
 		"bowling_inference": 29,
 		"bowling_format":    33,
-		"bowling_training":  36,
+		"bowling_training":  40,
 		"extras_training":   9,
 		"innings_training":  12,
-		"fielding_training": 12,
-		"fielding_holdout":  12,
+		"fielding_training": 16,
+		"fielding_holdout":  16,
 	}
 	got := map[string]int{
 		"batting_inference": len(eq.BattingInferenceHeaders()),

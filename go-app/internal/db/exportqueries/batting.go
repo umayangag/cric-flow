@@ -278,13 +278,6 @@ type battingTrainingRowRaw struct {
 	fours        string
 	sixes        string
 	pos          string
-	temp         string
-	wind         string
-	rain         string
-	humidity     string
-	cloud        string
-	pressure     string
-	viscosity    string
 	inning       string
 	sess         string
 	toss         string
@@ -309,7 +302,6 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.inningsRuns, &r.balls, &r.fours, &r.sixes, &r.pos,
-			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
 			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 		)
@@ -415,13 +407,6 @@ func battingTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []
 		row = append(row, rawStrs...)
 		row = append(
 			row,
-			r.temp,
-			r.wind,
-			r.rain,
-			r.humidity,
-			r.cloud,
-			r.pressure,
-			r.viscosity,
 			r.inning,
 			r.sess,
 			r.toss,
@@ -525,7 +510,6 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		if err := rows.Scan(
 			&r.matchDate, &r.playerID, &r.formatID, &r.venueID, &r.oppositionID,
 			&r.runs, &r.inningsRuns, &r.balls, &r.fours, &r.sixes, &r.pos,
-			&r.temp, &r.wind, &r.rain, &r.humidity, &r.cloud, &r.pressure, &r.viscosity,
 			&r.inning, &r.sess, &r.toss, &r.playerName,
 			&r.catches, &r.runOuts, &r.stumpings, &r.runoutsDH, &r.fieldingInv,
 		); err != nil {
@@ -622,13 +606,6 @@ func battingHoldoutRowsImpl(ctx context.Context, _ []int64, matchIDs []int64, cu
 		row = append(row, rawStrs...)
 		row = append(
 			row,
-			r.temp,
-			r.wind,
-			r.rain,
-			r.humidity,
-			r.cloud,
-			r.pressure,
-			r.viscosity,
 			r.inning,
 			r.sess,
 			r.toss,
