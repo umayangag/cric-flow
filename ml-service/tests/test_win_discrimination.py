@@ -299,3 +299,58 @@ def test_reports_to_json_carries_the_window_and_every_format() -> None:
     assert payload["train_cutoff"] == "2024-01-01T00:00:00Z"
     assert payload["eval_cutoff"] == "2024-09-01T00:00:00Z"
     assert [f["format_code"] for f in payload["formats"]] == ["T20"]
+
+
+# --- CLI ---------------------------------------------------------------------
+
+
+def test_main_refuses_without_a_go_app_url(monkeypatch) -> None:
+    """The report is useless without somewhere to fetch matches from; say so, do not traceback."""
+    from ml import win_discrimination
+
+    monkeypatch.delenv("GO_APP_URL", raising=False)
+
+    assert win_discrimination.main(["--train-cutoff", "2024-01-01T00:00:00Z"]) == 2
+
+
+def test_main_reports_when_the_export_is_empty(monkeypatch) -> None:
+    """An export with no rows is an operator problem, not a crash."""
+    from ml import win_discrimination
+
+    monkeypatch.setattr(win_discrimination, "fetch_win_data", lambda *a, **k: {"headers": [], "rows": []})
+
+    exit_code = win_discrimination.main(["--train-cutoff", "2024-01-01T00:00:00Z", "--go-app-url", "http://go-app"])
+
+    assert exit_code == 1
+
+
+def test_main_writes_a_report_naming_the_window(tmp_path, monkeypatch) -> None:
+    """The written report must record which window produced it, and every format in it."""
+    from ml import win_discrimination
+
+    headers = _export_headers()
+    rows = _holdout_rows(headers)
+    _write_model(tmp_path, ["team1_bat_form_sum", "team2_bat_form_sum"], [0.5] * len(rows))
+    monkeypatch.setattr(win_discrimination, "fetch_win_data", lambda *a, **k: {"headers": headers, "rows": rows})
+    out_path = tmp_path / "report.json"
+
+    exit_code = win_discrimination.main(
+        [
+            "--train-cutoff",
+            "2024-01-01T00:00:00Z",
+            "--eval-cutoff",
+            "2024-09-01T00:00:00Z",
+            "--go-app-url",
+            "http://go-app",
+            "--artifacts-dir",
+            str(tmp_path),
+            "--out",
+            str(out_path),
+        ]
+    )
+
+    assert exit_code == 0
+    written = json.loads(out_path.read_text())
+    assert written["train_cutoff"] == "2024-01-01T00:00:00Z"
+    assert written["eval_cutoff"] == "2024-09-01T00:00:00Z"
+    assert [f["format_code"] for f in written["formats"]] == ["T20"]

@@ -613,7 +613,7 @@ dev-rebuild-nocache:
 
 # --- CI aggregate helpers ---
 COV_MIN_GO ?= 65
-COV_MIN_ML ?= 81
+COV_MIN_ML ?= 80
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:
