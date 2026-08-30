@@ -22,7 +22,7 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 		assert  assertFn
 	}{
 		{
-			name: "defaults applied (format T20, fromDB=true, size=11, minBowlers=5)",
+			name: "defaults applied (format T20, size=11, minBowlers=5)",
 			arrange: func() (*flag.FlagSet, []string) {
 				return flag.NewFlagSet("test", flag.ContinueOnError), []string{"-match=262039498036", "-season=2025"}
 			},
@@ -34,16 +34,15 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 					Season:     "2025",
 					TeamSize:   11,
 					MinBowlers: 5,
-					FromDB:     true,
 				}, got)
 			},
 		},
 		{
-			name: "overrides respected (ODI, csv pool, keeper)",
+			name: "overrides respected (ODI, keeper)",
 			arrange: func() (*flag.FlagSet, []string) {
 				return flag.NewFlagSet("test", flag.ContinueOnError), []string{
-					"-match=1", "-season=2019", "-format=ODI", "-pool=/tmp/pool.csv",
-					"-size=9", "-min-bowlers=4", "-require-keeper", "-from-db=false",
+					"-match=1", "-season=2019", "-format=ODI",
+					"-size=9", "-min-bowlers=4", "-require-keeper",
 				}
 			},
 			assert: func(t *testing.T, got cli.Options, err error) {
@@ -52,11 +51,9 @@ func TestParseArgs_DefaultsAndOverrides(t *testing.T) {
 					MatchID:       1,
 					Format:        "ODI",
 					Season:        "2019",
-					PoolPath:      "/tmp/pool.csv",
 					TeamSize:      9,
 					MinBowlers:    4,
 					RequireKeeper: true,
-					FromDB:        false,
 				}, got)
 			},
 		},

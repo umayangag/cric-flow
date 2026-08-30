@@ -2,7 +2,6 @@ package teamselect_test
 
 import (
 	"flag"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,8 +19,6 @@ func assertNoErrorOpts(want svc.Options) optsAssertFn {
 		require.Equal(t, want.TeamSize, got.TeamSize)
 		require.Equal(t, want.MinBowlers, got.MinBowlers)
 		require.Equal(t, want.RequireKeeper, got.RequireKeeper)
-		require.Equal(t, want.FromDB, got.FromDB)
-		require.Equal(t, want.PoolPath, got.PoolPath)
 	}
 }
 
@@ -36,13 +33,11 @@ func TestParseArgs_Basic(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
 		name   string
-		setup  func()
 		args   []string
 		assert optsAssertFn
 	}{
 		{
-			name:  "happy path from DB",
-			setup: func() { os.Unsetenv("TEAM_SELECT_FROM_DB") },
+			name: "happy path",
 			args: []string{
 				"-match",
 				"1193505",
@@ -64,81 +59,62 @@ func TestParseArgs_Basic(t *testing.T) {
 					TeamSize:      11,
 					MinBowlers:    5,
 					RequireKeeper: true,
-					FromDB:        true,
 				},
 			),
 		},
 		{
-			name:  "happy path from CSV",
-			setup: func() {},
+			name: "format alias is canonicalised",
 			args: []string{
 				"-match",
 				"1193505",
 				"-format",
-				"ODI",
+				"IT20",
 				"-season",
 				"2019",
 				"-size",
 				"11",
 				"-min-bowlers",
 				"4",
-				"-from-db=false",
-				"-pool",
-				"/tmp/pool.csv",
 			},
 			assert: assertNoErrorOpts(
 				svc.Options{
 					MatchID:    1193505,
-					Format:     "ODI",
+					Format:     "T20I",
 					Season:     "2019",
 					TeamSize:   11,
 					MinBowlers: 4,
-					FromDB:     false,
-					PoolPath:   "/tmp/pool.csv",
 				},
 			),
 		},
 		{
 			name:   "invalid match",
-			setup:  func() {},
 			args:   []string{"-match", "0", "-format", "T20", "-season", "2019"},
 			assert: assertErrorContains("match is required and must be a positive number"),
 		},
 		{
 			name:   "invalid format",
-			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "X", "-season", "2019"},
 			assert: assertErrorContains("invalid format"),
 		},
 		{
 			name:   "missing season",
-			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "T20"},
 			assert: assertErrorContains("season is required"),
 		},
 		{
 			name:   "invalid size",
-			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "T20", "-season", "2019", "-size", "0"},
 			assert: assertErrorContains("team size must be a positive number"),
 		},
 		{
 			name:   "invalid min-bowlers",
-			setup:  func() {},
 			args:   []string{"-match", "1", "-format", "T20", "-season", "2019", "-min-bowlers", "-1"},
 			assert: assertErrorContains("min-bowlers must be a non-negative number"),
-		},
-		{
-			name:   "from csv requires pool",
-			setup:  func() {},
-			args:   []string{"-match", "1", "-format", "T20", "-season", "2019", "-from-db=false"},
-			assert: assertErrorContains("pool csv"),
 		},
 	}
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			os.Unsetenv("TEAM_SELECT_FROM_DB")
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 			got, err := svc.ParseArgs(fs, tc.args)
 			tc.assert(t, got, err)
