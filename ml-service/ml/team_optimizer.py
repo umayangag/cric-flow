@@ -216,9 +216,6 @@ def _compute_derived_features_batch(feature_matrix: np.ndarray) -> None:
     feature_matrix[:, _COL_INDEX["bat_cons_matchup_ratio_team2"]] = _safe_ratio(
         _col("team2_bat_consistency_mean"), _col("team1_bowl_consistency_mean")
     )
-    feature_matrix[:, _COL_INDEX["bowl_depth_diff"]] = _col("team1_bowl_consistency_count") - _col(
-        "team2_bowl_consistency_count"
-    )
     feature_matrix[:, _COL_INDEX["bat_form_top3_diff"]] = _col("team1_bat_form_top3_mean") - _col(
         "team2_bat_form_top3_mean"
     )

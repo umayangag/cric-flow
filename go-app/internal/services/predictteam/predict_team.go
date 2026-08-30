@@ -1103,11 +1103,15 @@ type sideOptimizer func(
 // selectTeamsByWinProbability picks both XIs by alternating best response.
 //
 // Each side is optimised against the other side's currently selected XI, never against
-// the other side's whole pool. That distinction is the point of this function. The win
-// model reads the size of each side directly — every feature group carries a *_count,
-// and bowl_depth_diff is the difference between two of them — so scoring an eleven
-// against an eighteen-man squad evaluates a match that cannot happen, and does it
+// the other side's whole pool. That distinction is the point of this function. Every
+// feature group is an aggregate over one side's players, so the size of that side leaks
+// into the values: _sum scales with it directly, and _std, _max, _min and _top3_mean are
+// all drawn from a differently sized population. Scoring an eleven against an
+// eighteen-man squad therefore evaluates a match that cannot happen, and does it
 // identically for every candidate, which is worse than a bias: it is a constant.
+//
+// The *_count columns that used to make this obvious were dropped in S-3c, along with
+// bowl_depth_diff. The argument does not depend on them.
 //
 // When the predictor implements TeamSelectionOptimizer the per-round search runs inside
 // ml-service (batch inference, one call per side per round); otherwise every candidate
@@ -1272,7 +1276,8 @@ func newPerCallSideOptimizer(
 // xiFeatures returns the feature maps of exactly the players in xi.
 //
 // The whole of S-1 is the difference between this and "the feature maps of everyone in
-// the pool": the win model's *_count inputs make the two describe different matches.
+// the pool": every win feature is an aggregate over the set passed here, so the two
+// describe different matches.
 func xiFeatures(
 	xi []teamselect.Player,
 	nameToID map[string]int64,
