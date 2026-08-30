@@ -17,6 +17,36 @@ import (
 // formats supported for reporting (canonical order from internal/formats)
 var artifactFormats = formatsPkg.CanonicalCodes()
 
+// artifactKind names one family of per-format model artifacts and how it is named on disk.
+// A kind with a scaler needs both files before it counts as present: the model alone cannot
+// be loaded for inference.
+type artifactKind struct {
+	name         string
+	modelPrefix  string
+	scalerPrefix string // empty when the kind trains without one
+}
+
+// artifactKinds is the single list this package reports on: the models `make train-models`
+// produces. Everything below derives from it, so a model kind cannot be trained by the
+// pipeline and stay invisible in /ops/status -- which is what happened to innings.
+var artifactKinds = []artifactKind{
+	{name: "batting", modelPrefix: "batting_model_", scalerPrefix: "batting_scaler_"},
+	{name: "bowling", modelPrefix: "bowling_model_", scalerPrefix: "bowling_scaler_"},
+	{name: "fielding", modelPrefix: "fielding_model_", scalerPrefix: "fielding_scaler_"},
+	{name: "extras", modelPrefix: "extras_model_"},
+	{name: "win", modelPrefix: "win_model_"},
+	{name: "innings", modelPrefix: "innings_model_", scalerPrefix: "innings_scaler_"},
+}
+
+func artifactKindByName(name string) (artifactKind, bool) {
+	for _, k := range artifactKinds {
+		if k.name == name {
+			return k, true
+		}
+	}
+	return artifactKind{}, false
+}
+
 // ArtifactsFallbackRoot returns the filesystem root for the artifacts fallback scan
 // when the ML service is unreachable. GO_APP_ARTIFACTS_ROOT overrides the default.
 func ArtifactsFallbackRoot() string {
@@ -44,13 +74,11 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	}
 	fm := map[string]any{}
 	for _, f := range artifactFormats {
-		fm[f] = map[string]any{
-			"batting":  map[string]any{"exists": false},
-			"bowling":  map[string]any{"exists": false},
-			"fielding": map[string]any{"exists": false},
-			"extras":   map[string]any{"exists": false},
-			"win":      map[string]any{"exists": false},
+		row := map[string]any{}
+		for _, kind := range artifactKinds {
+			row[kind.name] = map[string]any{"exists": false}
 		}
+		fm[f] = row
 	}
 	section["formats"] = fm
 
@@ -67,13 +95,14 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	if resp, code, err := httpGetRaw(client, base+"/artifacts/status"); err == nil && code >= 200 && code < 300 {
 		if err := json.Unmarshal(resp, &art); err == nil {
 			if formatsAny, ok := art["formats"].(map[string]any); ok {
-				perFormatKeys := []string{"batting", "bowling", "fielding", "extras", "win"}
 				for _, f := range artifactFormats {
 					if fa, ok := formatsAny[f].(map[string]any); ok {
 						tgt := fm[f].(map[string]any)
-						for _, key := range perFormatKeys {
-							if b, ok := fa[key].(map[string]any); ok {
-								tgt[key] = b
+						// Copied whole, so whatever the ML service reports per cell -- including
+						// its `loaded` and `stale` verdicts -- reaches the console unflattened.
+						for _, kind := range artifactKinds {
+							if b, ok := fa[kind.name].(map[string]any); ok {
+								tgt[kind.name] = b
 							}
 						}
 						fm[f] = tgt
@@ -87,13 +116,13 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 
 	entries, _ := os.ReadDir(fsRoot)
 	for _, f := range artifactFormats {
-		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
-			if p, mod, ok := findPerFormatArtifact(entries, fsRoot, f, kind); ok {
-				m := fm[f].(map[string]any)[kind].(map[string]any)
+		for _, kind := range artifactKinds {
+			if p, mod, ok := findPerFormatArtifact(entries, fsRoot, f, kind.name); ok {
+				m := fm[f].(map[string]any)[kind.name].(map[string]any)
 				m["exists"] = true
 				m["path"] = p
 				m["modified"] = mod.UTC().Format(time.RFC3339)
-				fm[f].(map[string]any)[kind] = m
+				fm[f].(map[string]any)[kind.name] = m
 			}
 		}
 	}
@@ -146,21 +175,11 @@ func findPerFormatArtifact(
 	format string,
 	kind string,
 ) (path string, mod time.Time, ok bool) {
-	var needScaler, modelPrefix string
-	switch kind {
-	case "batting":
-		needScaler, modelPrefix = "batting_scaler_", "batting_model_"
-	case "bowling":
-		needScaler, modelPrefix = "bowling_scaler_", "bowling_model_"
-	case "fielding":
-		needScaler, modelPrefix = "fielding_scaler_", "fielding_model_"
-	case "extras":
-		modelPrefix = "extras_model_"
-	case "win":
-		modelPrefix = "win_model_"
-	default:
+	ak, known := artifactKindByName(kind)
+	if !known {
 		return "", time.Time{}, false
 	}
+	needScaler, modelPrefix := ak.scalerPrefix, ak.modelPrefix
 	modelSuffix := format + ".joblib"
 	scalerSuffix := format + ".joblib"
 	hasScaler := needScaler == ""

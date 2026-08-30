@@ -282,7 +282,9 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 
 def _reload_artifacts() -> dict:
-    """Rescan MODELS_DIR and reload registries using artifacts module."""
+    """Rescan MODELS_DIR, reload the registries, and drop the model-stats cache it feeds."""
+    global _model_stats_cache
+    _model_stats_cache = None
     reload_artifacts(MODELS_DIR)
     return artifacts_summary()
 
@@ -693,8 +695,6 @@ async def admin_reload(request: Request):
         )
     _verify_admin_api_key(request)
     logger.info("admin.reload.start", models_dir=MODELS_DIR)
-    global _model_stats_cache
-    _model_stats_cache = None
     try:
         summary = _reload_artifacts()
         logger.info("admin.reload.success", models_dir=MODELS_DIR, summary=summary)
@@ -725,7 +725,7 @@ def _require_admin_train(step: str, fail_message: str):
                 )
             _verify_admin_api_key(request)
             try:
-                return await f(request, *args, **kwargs)
+                response = await f(request, *args, **kwargs)
             except ValueError as e:
                 logger.error("admin.train.failed", step=step, error=str(e), exc_info=True)
                 raise HTTPException(
@@ -736,6 +736,21 @@ def _require_admin_train(step: str, fail_message: str):
                         hint="Check server logs with the provided request_id for details.",
                     ),
                 ) from e
+            # Training just wrote new artifact files. Without this the process keeps serving
+            # the objects it loaded at startup, so a COMPLETED run never reaches inference.
+            # A reload failure does not fail the run: the artifacts are on disk either way.
+            try:
+                summary = await asyncio.to_thread(_reload_artifacts)
+                logger.info("admin.train.artifacts_reloaded", step=step, summary=summary)
+            except Exception as e:
+                logger.error(
+                    "admin.train.artifacts_reload_failed",
+                    step=step,
+                    models_dir=MODELS_DIR,
+                    error=str(e),
+                    exc_info=True,
+                )
+            return response
 
         return wrapped
 

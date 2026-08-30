@@ -69,6 +69,30 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 	}))
 	defer tsUnhealthy.Close()
 
+	// Case 3: ML reports an innings model that is loaded from an older file than the one on disk
+	tsInnings := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+		case "/artifacts/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"formats": map[string]any{
+					"T20": map[string]any{
+						"innings": map[string]any{
+							"exists": true,
+							"loaded": true,
+							"stale":  true,
+							"path":   "/innings_model_T20.joblib",
+						},
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer tsInnings.Close()
+
 	testCases := []struct {
 		name   string
 		setup  func(t *testing.T) (*http.Client, string) // client, fsRoot
@@ -137,6 +161,36 @@ func TestBuildArtifactsSection_Table(t *testing.T) {
 					require.False(t, ent["batting"].(map[string]any)["exists"].(bool), "batting exists for %s", f)
 					require.False(t, ent["bowling"].(map[string]any)["exists"].(bool), "bowling exists for %s", f)
 				}
+			},
+		},
+		{
+			name: "innings_reported_via_filesystem_fallback",
+			setup: func(t *testing.T) (*http.Client, string) {
+				client := newHTTPClientForServer(tsUnhealthy)
+				root := t.TempDir()
+				writeFileWithLines(t, root, "innings_scaler_T20.joblib", 1)
+				writeFileWithLines(t, root, "innings_model_T20.joblib", 1)
+				return client, root
+			},
+			assert: func(t *testing.T, sec map[string]any, _ bool) {
+				fm := sec["formats"].(map[string]any)
+				t20 := fm["T20"].(map[string]any)["innings"].(map[string]any)
+				require.True(t, t20["exists"].(bool), "T20 innings via FS fallback")
+				odi := fm["ODI"].(map[string]any)["innings"].(map[string]any)
+				require.False(t, odi["exists"].(bool), "ODI innings has no artifacts")
+			},
+		},
+		{
+			name: "ml_innings_cell_including_stale_verdict_passed_through",
+			setup: func(t *testing.T) (*http.Client, string) {
+				return newHTTPClientForServer(tsInnings), t.TempDir()
+			},
+			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
+				require.True(t, mlOK)
+				cell := sec["formats"].(map[string]any)["T20"].(map[string]any)["innings"].(map[string]any)
+				require.True(t, cell["exists"].(bool))
+				require.True(t, cell["loaded"].(bool))
+				require.True(t, cell["stale"].(bool), "stale verdict must reach the ops console")
 			},
 		},
 	}

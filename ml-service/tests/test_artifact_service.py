@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from app.artifact_service import (
+    ARTIFACT_KIND_NAMES,
     build_artifacts_status,
     build_health_response,
     find_artifact,
@@ -118,3 +119,38 @@ def test_build_health_response_metadata_info_listdir_oserror():
         resp = build_health_response("/nonexistent")
     assert resp["metadata"]["batting"] == []
     assert resp["metadata"]["bowling"] == []
+
+
+def test_build_artifacts_status_covers_every_artifact_kind(tmp_path):
+    """Every kind the loader knows about has a cell in the matrix — innings included."""
+    status = build_artifacts_status(str(tmp_path))
+    assert "innings" in ARTIFACT_KIND_NAMES
+    for fmt, row in status["formats"].items():
+        assert sorted(row) == sorted(ARTIFACT_KIND_NAMES), f"missing kinds for {fmt}"
+
+
+def test_build_health_response_covers_every_artifact_kind(tmp_path):
+    """Health reports loaded formats, files and counters for every kind, innings included."""
+    resp = build_health_response(str(tmp_path))
+    for name in ARTIFACT_KIND_NAMES:
+        assert f"loaded_{name}_formats" in resp
+        assert name in resp["artifacts"]
+        assert f"{name}_formats" in resp["counters"]
+
+
+def test_build_artifacts_status_reports_innings_files_on_disk(tmp_path):
+    """An innings scaler+model pair on disk is reported as existing."""
+    (tmp_path / "innings_scaler_T20.joblib").write_bytes(b"x")
+    (tmp_path / "innings_model_T20.joblib").write_bytes(b"y")
+    cell = build_artifacts_status(str(tmp_path))["formats"]["T20"]["innings"]
+    assert cell["exists"] is True
+    assert cell["path"].endswith("innings_model_T20.joblib")
+
+
+def test_build_health_response_keeps_share_artifacts_out_of_batting(tmp_path):
+    """batting_share_* belongs to its own kind, not to the batting group."""
+    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"x")
+    (tmp_path / "batting_share_model_ODI.joblib").write_bytes(b"y")
+    resp = build_health_response(str(tmp_path))
+    assert [a["file"] for a in resp["artifacts"]["batting"]] == ["batting_model_ODI.joblib"]
+    assert [a["file"] for a in resp["artifacts"]["batting_share"]] == ["batting_share_model_ODI.joblib"]

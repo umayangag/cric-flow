@@ -8,7 +8,6 @@ def test_build_win_features_standardized_sets_fields_and_normalizes_format():
         format_code="  t20  ",
         format_id=3,
         venue_id=10,
-        season_id=2024,
         team1_opposition_id=1,
         team2_opposition_id=2,
         team1_bat_consistency_sum=10.0,

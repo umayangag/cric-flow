@@ -10,7 +10,7 @@
 This module defines a single helper that constructs `WinFeatures` from the
 canonical inputs used by the legacy (sum-only) win model:
 
-- Format / venue / season
+- Format / venue
 - Opposition ids (team1, team2, toss winner)
 - Aggregated batting/bowling consistency and form sums per team
 """
@@ -25,7 +25,6 @@ def build_win_features_standardized(
     format_code: str,
     format_id: int,
     venue_id: int,
-    season_id: int,
     team1_opposition_id: int,
     team2_opposition_id: int,
     team1_bat_consistency_sum: float,

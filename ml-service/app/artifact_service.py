@@ -4,6 +4,9 @@ Extracted from app.main. Provides:
 - Per-format artifact file discovery
 - Artifact status endpoint logic (formats × kinds matrix)
 - Health endpoint artifact/metadata info helpers
+
+Every kind reported here comes from `app.artifacts.ARTIFACT_KINDS`, so a model family
+cannot exist in the loader and be invisible to these endpoints.
 """
 
 import os
@@ -12,19 +15,17 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ml.config import get_format_codes
 
-from .artifacts import (
-    BAT_MODELS,
-    BOWL_MODELS,
-    EXTRAS_MODELS,
-    FIELD_MODELS,
-    WIN_MODELS,
-)
+from .artifacts import ARTIFACT_KINDS, ARTIFACT_KINDS_BY_NAME, ArtifactKind, loaded_model_mtime
 from .logging import get_struct_logger
 
 logger = get_struct_logger()
 
 SUPPORTED_FORMATS = get_format_codes()
-ARTIFACT_KINDS = ["batting", "bowling", "fielding", "extras", "win"]
+ARTIFACT_KIND_NAMES = [kind.name for kind in ARTIFACT_KINDS]
+
+
+def _iso(epoch_seconds: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_seconds))
 
 
 def find_per_format_artifact(
@@ -32,11 +33,13 @@ def find_per_format_artifact(
     fmt: str,
     kind: str,
 ) -> Optional[Tuple[str, float]]:
-    """Return (path, mtime) for per-format artifact of given kind.
+    """Return (path, mtime) of the model file for a per-format artifact, or None.
 
-    kind in: batting, bowling, fielding, extras, win.
-    Batting/bowling/fielding require both scaler and model.
+    A kind that has a scaler needs both files present: the model alone cannot be loaded.
     """
+    artifact_kind = ARTIFACT_KINDS_BY_NAME.get(kind)
+    if artifact_kind is None:
+        return None
     try:
         entries = os.listdir(models_dir)
     except OSError as e:
@@ -48,25 +51,10 @@ def find_per_format_artifact(
             error=str(e),
         )
         return None
-    if kind == "batting":
-        scaler_name = f"batting_scaler_{fmt}.joblib"
-        model_name = f"batting_model_{fmt}.joblib"
-    elif kind == "bowling":
-        scaler_name = f"bowling_scaler_{fmt}.joblib"
-        model_name = f"bowling_model_{fmt}.joblib"
-    elif kind == "fielding":
-        scaler_name = f"fielding_scaler_{fmt}.joblib"
-        model_name = f"fielding_model_{fmt}.joblib"
-    elif kind == "extras":
-        model_name = f"extras_model_{fmt}.joblib"
-        scaler_name = None
-    elif kind == "win":
-        model_name = f"win_model_{fmt}.joblib"
-        scaler_name = None
-    else:
+    scaler_name = artifact_kind.scaler_filename(fmt)
+    if scaler_name is not None and scaler_name not in entries:
         return None
-    if scaler_name and scaler_name not in entries:
-        return None
+    model_name = artifact_kind.model_filename(fmt)
     if model_name not in entries:
         return None
     path = os.path.join(models_dir, model_name)
@@ -87,81 +75,86 @@ def find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[st
 def build_artifacts_status(models_dir: str) -> Dict[str, Any]:
     """Build the full artifacts status response (formats × kinds)."""
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    loaded_registries: Dict[str, Any] = {
-        "batting": BAT_MODELS,
-        "bowling": BOWL_MODELS,
-        "fielding": FIELD_MODELS,
-        "extras": EXTRAS_MODELS,
-        "win": WIN_MODELS,
+    formats_out: Dict[str, Dict[str, Any]] = {
+        fmt: {kind.name: _artifact_cell(models_dir, fmt, kind) for kind in ARTIFACT_KINDS} for fmt in SUPPORTED_FORMATS
     }
-    formats_out: Dict[str, Dict[str, Any]] = {}
-    for fmt in SUPPORTED_FORMATS:
-        row: Dict[str, Dict[str, Any]] = {}
-        for kind in ARTIFACT_KINDS:
-            obj: Dict[str, Any] = {"exists": False}
-            hit = find_per_format_artifact(models_dir, fmt, kind)
-            if hit is not None:
-                p, mt = hit
-                obj["exists"] = True
-                obj["path"] = p
-                obj["modified"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(mt))
-            try:
-                reg = loaded_registries.get(kind)
-                if reg is not None and fmt in reg:
-                    obj["loaded"] = True
-            except Exception as e:
-                logger.debug("artifacts_status.loaded_check", fmt=fmt, kind=kind, error=str(e))
-            row[kind] = obj
-        formats_out[fmt] = row
-
     return {"timestamp": ts, "root": models_dir, "formats": formats_out}
+
+
+def _artifact_cell(models_dir: str, fmt: str, kind: ArtifactKind) -> Dict[str, Any]:
+    """Presence, loaded state and staleness for one (format, kind) cell.
+
+    `loaded` means the registry holds an object for that format. `stale` means the file on
+    disk is newer than the one that object was loaded from — the state a finished training
+    run leaves behind in a long-running process until the artifacts are reloaded, and the
+    reason "loaded" alone cannot answer "is the current model serving?".
+    """
+    cell: Dict[str, Any] = {"exists": False}
+    hit = find_per_format_artifact(models_dir, fmt, kind.name)
+    if hit is not None:
+        path, mtime = hit
+        cell["exists"] = True
+        cell["path"] = path
+        cell["modified"] = _iso(mtime)
+    if fmt not in kind.registry:
+        return cell
+    cell["loaded"] = True
+    served_mtime = loaded_model_mtime(kind.name, fmt)
+    if served_mtime is None:
+        # In the registry but not attributable to a file this process loaded, so being current
+        # cannot be claimed. Report stale: a reload is cheap and idempotent.
+        cell["stale"] = True
+        return cell
+    cell["loaded_modified"] = _iso(served_mtime)
+    cell["stale"] = hit is not None and hit[1] > served_mtime
+    return cell
 
 
 def build_health_response(models_dir: str) -> Dict[str, Any]:
     """Build the /health endpoint response with artifact and metadata info."""
-    model_registries = {
-        "batting": BAT_MODELS,
-        "bowling": BOWL_MODELS,
-        "fielding": FIELD_MODELS,
-        "extras": EXTRAS_MODELS,
-        "win": WIN_MODELS,
-    }
-    response: dict = {
+    response: Dict[str, Any] = {
         "status": "ok",
         "models_dir": models_dir,
         "artifacts": {},
         "metadata": {},
         "counters": {},
     }
-    for name, registry in model_registries.items():
-        loaded = sorted(registry.keys())
-        response[f"loaded_{name}_formats"] = loaded
-        response["artifacts"][name] = _artifacts_info(models_dir, f"{name}_")
-        if name in ("batting", "bowling", "fielding"):
-            response["metadata"][name] = _metadata_info(models_dir, f"{name}_metadata_")
-        response["counters"][f"{name}_formats"] = len(loaded)
+    for kind in ARTIFACT_KINDS:
+        loaded = sorted(kind.registry.keys())
+        response[f"loaded_{kind.name}_formats"] = loaded
+        response["artifacts"][kind.name] = _artifacts_info(models_dir, kind)
+        if kind.metadata_prefix is not None:
+            response["metadata"][kind.name] = _metadata_info(models_dir, kind.metadata_prefix)
+        response["counters"][f"{kind.name}_formats"] = len(loaded)
     return response
 
 
-def _artifacts_info(models_dir: str, prefix: str) -> List[dict]:
-    """List .joblib artifact files matching prefix with size and mtime."""
+def _artifacts_info(models_dir: str, kind: ArtifactKind) -> List[dict]:
+    """List a kind's .joblib files with size and mtime.
+
+    Matching the kind's own filename prefixes rather than its bare name is what keeps
+    `batting_share_*` out of the `batting` group.
+    """
+    prefixes = kind.joblib_prefixes()
     out = []
     try:
         for fname in os.listdir(models_dir):
-            if fname.lower().startswith(prefix) and fname.lower().endswith(".joblib"):
-                fpath = os.path.join(models_dir, fname)
-                try:
-                    st = os.stat(fpath)
-                    out.append(
-                        {
-                            "file": fname,
-                            "size_bytes": st.st_size,
-                            "modified": int(st.st_mtime),
-                        }
-                    )
-                except OSError as e:
-                    logger.warning("health.artifacts_info.stat_failed", file=fname, error=str(e))
-                    out.append({"file": fname})
+            lf = fname.lower()
+            if not lf.endswith(".joblib") or not any(lf.startswith(p) for p in prefixes):
+                continue
+            fpath = os.path.join(models_dir, fname)
+            try:
+                st = os.stat(fpath)
+                out.append(
+                    {
+                        "file": fname,
+                        "size_bytes": st.st_size,
+                        "modified": int(st.st_mtime),
+                    }
+                )
+            except OSError as e:
+                logger.warning("health.artifacts_info.stat_failed", file=fname, error=str(e))
+                out.append({"file": fname})
     except OSError as e:
         logger.warning("health.artifacts_info.listdir_failed", models_dir=models_dir, error=str(e))
     return sorted(out, key=lambda x: x.get("file", ""))

@@ -1,4 +1,5 @@
 import type { DatasetStatus } from '../types';
+import type { ArtifactKind, ArtifactUnit } from './artifactKinds';
 
 /** Format code (e.g. TEST, ODI, T20, T20I). Canonical list is fetched from API via useCanonicalFormats(). */
 export type FormatCode = string;
@@ -38,11 +39,7 @@ type PrecomputeFormats = Record<
 export type ExportFile = { name?: string; exists?: boolean };
 type ExportFormats = Record<string, { files?: ExportFile[] } | undefined>;
 
-type ArtifactUnit = { exists?: boolean; loaded?: boolean };
-type ArtifactFormats = Record<
-  string,
-  { batting?: ArtifactUnit; bowling?: ArtifactUnit } | undefined
->;
+type ArtifactFormats = Record<string, Partial<Record<ArtifactKind, ArtifactUnit>> | undefined>;
 
 export type OpsStatus = {
   timestamp: string;

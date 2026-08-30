@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
+import { ARTIFACT_KINDS, type ArtifactUnit } from '../utils/artifactKinds';
 
 type MatrixType = 'precompute' | 'exports' | 'artifacts';
 
@@ -11,15 +12,7 @@ type ExportFile = { name?: string; exists?: boolean; rows?: number };
 type ExportsData = {
   formats?: Record<string, { files?: ExportFile[] } | undefined>;
 };
-type ArtifactUnit = { exists?: boolean; loaded?: boolean };
-const ARTIFACT_KINDS = ['batting', 'bowling', 'fielding', 'extras', 'win'] as const;
-type FormatArtifacts = {
-  batting?: ArtifactUnit;
-  bowling?: ArtifactUnit;
-  fielding?: ArtifactUnit;
-  extras?: ArtifactUnit;
-  win?: ArtifactUnit;
-};
+type FormatArtifacts = Partial<Record<(typeof ARTIFACT_KINDS)[number], ArtifactUnit>>;
 type ArtifactsData = {
   formats?: Record<string, FormatArtifacts | undefined>;
 };
@@ -172,7 +165,7 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
     </Box>
   );
 
-  const subCell = (ok: boolean, loaded?: boolean) => (
+  const subCell = (ok: boolean, loaded?: boolean, stale?: boolean) => (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <Box
         sx={{
@@ -188,8 +181,13 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
       </Typography>
       {loaded && (
         <Box
-          title="loaded"
-          sx={{ width: 6, height: 6, bgcolor: 'success.light', borderRadius: '50%' }}
+          title={stale ? 'loaded, but an older file than the one on disk' : 'loaded'}
+          sx={{
+            width: 6,
+            height: 6,
+            bgcolor: stale ? 'warning.main' : 'success.light',
+            borderRadius: '50%',
+          }}
         />
       )}
     </Box>
@@ -203,7 +201,8 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
     const units = ARTIFACT_KINDS.map((k) => ({ kind: k, u: row?.[k] ?? {} }));
     const allOk = units.every(({ u }) => u?.exists === true);
     const anyOk = units.some(({ u }) => u?.exists === true);
-    const state = allOk ? 'ok' : anyOk ? 'stale' : 'error';
+    const anyStale = units.some(({ u }) => u?.stale === true);
+    const state = allOk && !anyStale ? 'ok' : anyOk ? 'stale' : 'error';
     return (
       <Box sx={cellSx(state)} data-testid={testId}>
         <Typography component="strong" variant="body2" fontWeight={600}>
@@ -212,7 +211,7 @@ export const OpsMatrix: React.FC<Props> = ({ type, title, data, formats }) => {
         <Box sx={{ display: 'grid', gap: 0.5, mt: 0.75 }}>
           {units.map(({ kind, u }) => (
             <Box key={kind} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              {subCell(u?.exists === true, u?.loaded === true)}
+              {subCell(u?.exists === true, u?.loaded === true, u?.stale === true)}
               <Typography
                 component="small"
                 variant="caption"

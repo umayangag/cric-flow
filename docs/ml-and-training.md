@@ -374,6 +374,32 @@ Historical rows remain at `inning_number = 1` until operators run a full re-impo
 
 ---
 
+## Artifact kinds, reload, and staleness
+
+`app.artifacts.ARTIFACT_KINDS` is the single source of truth for which model families exist
+and how they are named on disk (`<kind>_model_<FMT>.joblib`, plus `<kind>_scaler_<FMT>.joblib`
+where the kind has one). The loader, `/health` and `/artifacts/status` all derive from it, and
+go-app (`opsstatus.artifactKinds`) and the frontend (`utils/artifactKinds.ts`) mirror the list
+for the models `make train-models` produces. **Adding a model kind means adding one entry per
+layer** — not editing every reader. Innings artifacts were trained, written and loadable while
+all three readers still carried a five-kind list that omitted them, so a completed run looked
+like a missing model.
+
+**A finished `/admin/train/*` run reloads the artifacts before it returns.** Training runs in a
+subprocess and writes to `MODELS_DIR`; the serving process holds its registries in memory. Without
+that reload the run is recorded `COMPLETED` in `data_migrations` and changes nothing about what
+the service predicts with until a restart. A reload failure is logged
+(`admin.train.artifacts_reload_failed`) but does not fail the run — the artifacts are on disk
+either way. `POST /admin/reload` still does the same thing on demand.
+
+**`/artifacts/status` reports `stale`.** `loaded` only says the registry holds an object for a
+format; `stale` says the file on disk is newer than the one that object was loaded from. A
+registry entry that cannot be attributed to a file this process loaded also reports `stale`,
+because being current cannot be claimed for it. The verdict passes through go-app `/ops/status`
+to the ops console, where a stale kind shows an amber loaded dot.
+
+---
+
 ## Loader contract: `LoaderResult`
 
 All tuning data loaders in `ml.tuning.data_loaders` return a typed envelope:
