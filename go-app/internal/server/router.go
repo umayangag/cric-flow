@@ -116,6 +116,9 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/api/backtest/export-contributions-status", a.backtestExportContributionsStatusHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	// Compare selection strategies over already-played matches (S-3b)
+	admin.HandleFunc("/api/backtest/selection-comparison", a.backtestSelectionComparisonHandler).
+		Methods(http.MethodPost, http.MethodOptions)
 
 	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)
 	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).

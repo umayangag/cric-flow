@@ -85,7 +85,7 @@ Two consequences that shape the whole plan:
 | S-1 | done | `select/s-1-opponent-xi` | Optimise against the opponent's XI, not their whole pool |
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
-| S-3b | todo | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
+| S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
 | S-4 | todo | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-6 | todo | `select/s-6-enable-winprob` | Turn on win-probability selection |
@@ -239,6 +239,23 @@ measures nothing. (b) shipped first as **S-3a**; (a) is **S-3b**.
 Report per arm: mean predicted win probability of the chosen XI, and — the metric that
 matters — **realised win rate of the team whose XI the optimiser preferred**.
 
+> **Correction, found while building S-3b.** That last metric is not measurable. The
+> match was played by the teams that were actually fielded; asking how our XI would have
+> fared means replaying it, which needs a simulator whose accuracy is exactly what is in
+> doubt. Any number claiming to answer it would be the simulator grading itself.
+>
+> What S-3b reports instead, and what each is worth:
+>
+> - **Winner accuracy** — how often the arm's predicted winner was the real one. The only
+>   metric here grounded in ground truth, and the one S-6 should be decided on.
+> - **Mean predicted win probability** — how far an arm moves its own objective. An
+>   internal consistency check: an arm can win this and be worse in reality.
+> - **Divergence between arms** — how many players the two arms choose differently. If
+>   the optimiser returns the greedy XI, the search is not doing anything, and neither of
+>   the other numbers changes that.
+> - **Overlap with the fielded XI** — context only. Real selectors are not optimal, so
+>   agreeing with them is not evidence of being right.
+
 **(b) Win-model discrimination.** On matches after the training cutoff: **AUC**, **Brier
 score** and a reliability curve for the win model.
 
@@ -257,6 +274,14 @@ metric computation and the cutoff filter with fixtures. No network in tests.
 
 **Acceptance.** One command produces each report for a named format and window. The
 numbers go in the PR body and become the baseline every later item is measured against.
+
+**S-3b as shipped.** `POST /api/backtest/selection-comparison`, not a CLI: the driver needs
+the prediction path's ML adapter and DB seams, which live in the server package, and every
+other backtest capability in this repo is already exposed the same way. The comparison
+logic itself is in `internal/services/selectionbacktest`, free of HTTP and the database,
+driven through a `Selector` function so it is testable without an ML service or a trained
+model. `predictteam.Input` gained a `SelectionMode` override so one process can run both
+arms without writing to the global config and hoping nothing else read it in between.
 
 **S-3a as shipped.** `make win-discrimination TRAIN_CUTOFF=<RFC3339>` → `ml.win_discrimination`.
 It carves the holdout out of the training-data export by `match_date`, builds features with
