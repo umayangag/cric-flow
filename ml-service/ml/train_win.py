@@ -113,15 +113,19 @@ def _available_feature_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in WIN_ENHANCED_FEATURE_COLS if c in df.columns]
 
 
-def rows_to_xy_by_format(
-    headers: list, rows: list[list]
-) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]]:
-    """Build X, Y, weights, feature_names per format_code.
+def build_win_feature_frame(headers: list, rows: list[list]) -> tuple[pd.DataFrame, list[str]]:
+    """Turn raw export rows into a feature frame, and name the feature columns in it.
 
-    Returns dict format_code -> (X, Y, sample_weight, feature_cols).
+    Everything here is a pure function of one row: numeric coercion, the format one-hot,
+    and the derived matchup features. Nothing is fitted on the batch, which is what makes
+    the frame safe to reuse for evaluating a model that was trained on a different batch.
+
+    The variance filter deliberately lives in the caller. It *is* fitted on the data at
+    hand, so re-deriving it at evaluation time would select a different set of columns
+    than the model was trained on, and silently score the wrong matrix.
     """
     if not headers or not rows:
-        return {}
+        return pd.DataFrame(), []
     df = pd.DataFrame(rows, columns=headers)
     # Only convert truly numeric columns; leave format_code and match_date as-is for grouping and time weights.
     _numeric_set = (
@@ -154,6 +158,19 @@ def rows_to_xy_by_format(
     feature_cols = _available_feature_cols(df)
     for c in feature_cols:
         df[c] = df[c].fillna(0.0)
+    return df, feature_cols
+
+
+def rows_to_xy_by_format(
+    headers: list, rows: list[list]
+) -> dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]]:
+    """Build X, Y, weights, feature_names per format_code.
+
+    Returns dict format_code -> (X, Y, sample_weight, feature_cols).
+    """
+    df, feature_cols = build_win_feature_frame(headers, rows)
+    if df.empty:
+        return {}
 
     pipe_cfg = get_pipeline_common_config()
     halflife = pipe_cfg.get("time_decay_halflife_years", 2.0)

@@ -193,6 +193,31 @@ Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.c
 
 ---
 
+## Win-model discrimination report
+
+**Purpose:** answer "does the win model rank teams at all?" on matches it never trained on,
+before spending effort on the search that maximises its output.
+
+**Run:** `make win-discrimination TRAIN_CUTOFF=2024-01-01T00:00:00Z` (optionally
+`EVAL_CUTOFF=...`; needs `GO_APP_URL`). Writes `win_discrimination.json` next to the
+artifacts and logs a per-format table of **AUC**, **Brier** and a reliability curve.
+
+The holdout is every exported match on or after `TRAIN_CUTOFF`. Features come from the
+trainer's own frame builder, and the columns come from each model's
+`win_model_<FMT>_metadata.json` — not re-derived, because the trainer's low-variance filter
+is fitted on the training batch and would select differently here.
+
+**Reading it.** AUC is the number that matters for selection: the optimiser takes an argmax,
+so only the model's *ranking* affects which XI it picks. An AUC near 0.5 means the search is
+maximising noise. Brier and the reliability curve describe the probability that gets
+*displayed*; no monotone recalibration can change an argmax, so poor calibration alone is not
+a reason to distrust a selection.
+
+Formats that cannot be scored — no artifact, no metadata sidecar, a one-sided window, a model
+returning one constant probability — are listed with the reason rather than omitted.
+
+---
+
 ## Walk-forward
 
 **Purpose:** Evaluate temporal performance: train on data before cutoff → predict next X matches (holdout) → score (e.g. MAE) → record in registry → advance cutoff and repeat. Builds a registry (e.g. `walk_forward_registry.json`) of model type, format, cutoff, window_x, params, metrics.

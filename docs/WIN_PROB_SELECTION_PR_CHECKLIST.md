@@ -84,7 +84,8 @@ Two consequences that shape the whole plan:
 |----|--------|----------------------|-------|
 | S-1 | done | `select/s-1-opponent-xi` | Optimise against the opponent's XI, not their whole pool |
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
-| S-3 | todo | `select/s-3-selection-backtest` | Selection backtest harness and win-model discrimination report |
+| S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
+| S-3b | todo | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
 | S-4 | todo | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-6 | todo | `select/s-6-enable-winprob` | Turn on win-probability selection |
@@ -215,6 +216,12 @@ look worse and be more honest.
 
 ## S-3 — Selection backtest harness and win-model discrimination report
 
+**Split into S-3a and S-3b while implementing.** The two deliverables below are one
+concern only in the sense that both measure. (b) is a Python report over held-out win
+rows; (a) is a go-app CLI that drives selection over historical matches. They share no
+code, and (b) gates (a) — a selection comparison run against a model that ranks nothing
+measures nothing. (b) shipped first as **S-3a**; (a) is **S-3b**.
+
 **Problem.** Every metric in the system is player-level MAE. Nothing measures whether a
 *selection* was good, so S-4, S-5 and S-6 have no acceptance criterion.
 
@@ -248,8 +255,17 @@ recalibration leaves the argmax unchanged. Calibration matters for the probabili
 **Tests.** Harness is a CLI plus a thin service; unit-test the arm assignment, the
 metric computation and the cutoff filter with fixtures. No network in tests.
 
-**Acceptance.** One command produces both reports for a named format and window. The
+**Acceptance.** One command produces each report for a named format and window. The
 numbers go in the PR body and become the baseline every later item is measured against.
+
+**S-3a as shipped.** `make win-discrimination TRAIN_CUTOFF=<RFC3339>` → `ml.win_discrimination`.
+It carves the holdout out of the training-data export by `match_date`, builds features with
+the trainer's own `build_win_feature_frame`, and selects the columns the model recorded in
+its metadata sidecar rather than re-deriving them — the trainer's variance filter is fitted
+on its batch, so re-running it on the holdout would score a different matrix than the model
+expects. Every way the question cannot be asked (no artifact, no sidecar, a column the export
+no longer carries, a one-sided window, a single-class model) is reported per format as a
+named reason rather than raised or, worse, returned as an empty report.
 
 **Risk.** Runtime. Bound the match count and reuse the existing
 `export-contributions` concurrency configuration rather than inventing another knob.
