@@ -52,10 +52,10 @@ export default defineConfig({
       // keys are silently ignored, so the numbers below had never failed a run.
       // Set to the measured figures rounded down; raise them, never lower them.
       thresholds: {
-        lines: 70,
-        functions: 66,
-        statements: 70,
-        branches: 74,
+        lines: 73,
+        functions: 67,
+        statements: 73,
+        branches: 75,
       },
     },
   },

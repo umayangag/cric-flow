@@ -208,7 +208,7 @@ export function MLModelStatsSection({
 
           <SectionCard
             title="Prediction model flow"
-            subtitle="Features at cutoff → per-player models (batting, bowling, fielding) → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation."
+            subtitle="Features at cutoff → per-player models (batting, bowling, fielding) and the match-level innings model → player lines reconciled to the innings targets → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation, scored with the combination meta weights when one is configured."
           >
             <MLPredictionGraph />
           </SectionCard>
