@@ -29,6 +29,24 @@ module.exports = {
     'react/react-in-jsx-scope': 'off',
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/no-explicit-any': 'warn',
+    // Each distinct specifier into a package is its own Vite pre-bundle entry.
+    // Many entries make esbuild code-split the package across shared chunks, and
+    // a re-optimization then re-splits them, leaving an open tab with chunk URLs
+    // whose files no longer agree — a blank page and `styled_default is not a
+    // function`. Barrel imports keep @mui/material at exactly one entry.
+    // @mui/icons-material is exempt: it is far too large to barrel-import.
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: ['@mui/material/*'],
+            message:
+              "Import from the @mui/material barrel instead: import { Button } from '@mui/material'. Subpath imports add Vite pre-bundle entries and cause blank-page dep-cache crashes.",
+          },
+        ],
+      },
+    ],
   },
   ignorePatterns: ['dist/', 'node_modules/', '**/*.config.*', '**/vite.*'],
 };

@@ -1,4 +1,4 @@
-import createTheme from '@mui/material/styles/createTheme';
+import { createTheme } from '@mui/material';
 
 /** Multi-color gradient accent (pink → orange → yellow → green → blue → purple) for active tab and list highlights. */
 export const accentGradient =

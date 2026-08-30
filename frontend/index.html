@@ -10,6 +10,68 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Bootstrap guard. Module-evaluation failures (a bad Vite dep chunk, a syntax
+      // error, a failed dynamic import) happen before React mounts, so the React
+      // error boundary cannot catch them and the page would otherwise stay blank.
+      // The stale-cache patterns are duplicated from src/lib/startupDiagnostics.ts
+      // because this has to run before any module is fetched.
+      (function () {
+        var STALE_DEP_CACHE_PATTERNS = [
+          /\b\w+_default is not a function\b/,
+          /Failed to fetch dynamically imported module/i,
+          /Importing a module script failed/i,
+          /outdated optimize dep/i,
+          /does not provide an export named/i,
+        ];
+
+        function render(message) {
+          if (window.__cricFlowMounted) return;
+          var root = document.getElementById('root');
+          if (!root || root.getAttribute('data-bootstrap-error') === 'true') return;
+          root.setAttribute('data-bootstrap-error', 'true');
+
+          var isStale = STALE_DEP_CACHE_PATTERNS.some(function (p) {
+            return p.test(message);
+          });
+          var hint = isStale
+            ? 'This is a stale Vite dependency cache, not a bug in the page. Vite re-optimized its pre-bundled dependencies while this tab was open, so the chunks no longer agree.'
+            : 'The app failed to start. Check the browser console for the full stack trace.';
+          var command = isStale ? 'npm run dev:clean   # from frontend/' : '';
+
+          root.innerHTML =
+            '<div style="font-family:Inter,system-ui,sans-serif;max-width:820px;margin:48px auto;padding:24px;' +
+            'border:1px solid #e0e0e0;border-radius:8px;background:#fff">' +
+            '<h2 style="margin:0 0 12px;color:#d32f2f;font-size:18px">The app failed to start</h2>' +
+            '<pre style="white-space:pre-wrap;word-break:break-word;background:#fafafa;padding:12px;' +
+            'border-radius:4px;font-size:13px;margin:0 0 12px">' +
+            String(message).replace(/[<>&]/g, function (c) {
+              return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
+            }) +
+            '</pre>' +
+            '<p style="font-size:14px;color:#555;margin:0 0 12px">' +
+            hint +
+            '</p>' +
+            (command
+              ? '<pre style="background:#263238;color:#aed581;padding:12px;border-radius:4px;' +
+                'font-size:13px;margin:0 0 12px">' +
+                command +
+                '</pre>'
+              : '') +
+            '<button onclick="window.location.reload()" style="background:#1976d2;color:#fff;border:0;' +
+            'padding:8px 16px;border-radius:4px;font-size:14px;cursor:pointer">Reload</button>' +
+            '</div>';
+        }
+
+        window.addEventListener('error', function (event) {
+          render((event.error && event.error.message) || event.message || 'Unknown error');
+        });
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event.reason;
+          render((reason && reason.message) || String(reason) || 'Unhandled promise rejection');
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

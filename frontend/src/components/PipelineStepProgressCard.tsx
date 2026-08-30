@@ -1,7 +1,5 @@
 import React from 'react';
-import { Box } from '@mui/material';
-import LinearProgress from '@mui/material/LinearProgress';
-import Typography from '@mui/material/Typography';
+import { Box, LinearProgress, Typography } from '@mui/material';
 import type { PipelineStepProgress } from '../types';
 import {
   formatBytes,

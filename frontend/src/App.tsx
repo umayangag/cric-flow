@@ -1,8 +1,20 @@
 import React, { useMemo, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { Box } from '@mui/material';
-import CircularProgress from '@mui/material/CircularProgress';
+import {
+  AppBar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Container,
+  Fade,
+  Paper,
+  Tab,
+  Tabs,
+  Toolbar,
+  Typography,
+} from '@mui/material';
 
 const HealthTab = lazy(() => import('./components/HealthTab'));
 const EvaluateDbTab = lazy(() => import('./components/EvaluateDbTab'));
@@ -11,16 +23,6 @@ const MLModelStatsTab = lazy(() => import('./components/MLModelStatsTab'));
 const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
 const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
 const Login = lazy(() => import('./pages/Login'));
-import AppBar from '@mui/material/AppBar';
-import Toolbar from '@mui/material/Toolbar';
-import Typography from '@mui/material/Typography';
-import Container from '@mui/material/Container';
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
-import Paper from '@mui/material/Paper';
-import Chip from '@mui/material/Chip';
-import Fade from '@mui/material/Fade';
-import Button from '@mui/material/Button';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();

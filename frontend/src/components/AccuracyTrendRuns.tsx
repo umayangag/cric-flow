@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
-import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import Typography from '@mui/material/Typography';
+import {
+  Chip,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
 import { formatWhen } from '../utils/format';
 import { derivePipelineSteps } from '../utils/pipelineSteps';
 import type { AccuracyTrendItem, Migration } from '../types';

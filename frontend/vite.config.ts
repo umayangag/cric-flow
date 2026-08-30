@@ -5,14 +5,20 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    // Pre-bundle React/MUI CJS deps so they provide expected ESM exports (prop-types default, react-is ForwardRef, etc.)
+    // Every distinct specifier into a package is its own pre-bundle entry. Many
+    // entries force esbuild to code-split the package across shared chunks, and a
+    // re-optimization then re-splits them all — which is how an open tab ends up
+    // holding chunk URLs whose files no longer agree (`styled_default is not a
+    // function`, a blank page). Source imports go through the `@mui/material`
+    // barrel for exactly this reason; keep them that way and this list short.
     include: [
       '@emotion/react',
       '@emotion/styled',
+      // CJS deps that need interop to expose the exports MUI reaches for
+      // (prop-types default, react-is ForwardRef).
       'prop-types',
       'react-is',
       '@mui/material',
-      '@mui/material/styles',
     ],
   },
   build: {
@@ -42,9 +48,9 @@ export default defineConfig({
       // keys are silently ignored, so the numbers below had never failed a run.
       // Set to the measured figures rounded down; raise them, never lower them.
       thresholds: {
-        lines: 66,
+        lines: 70,
         functions: 66,
-        statements: 66,
+        statements: 70,
         branches: 74,
       },
     },

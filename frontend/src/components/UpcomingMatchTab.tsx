@@ -1,7 +1,10 @@
 import React from 'react';
 import {
+  Autocomplete,
   Box,
   Button,
+  CircularProgress,
+  createFilterOptions,
   FormControl,
   FormControlLabel,
   InputLabel,
@@ -10,12 +13,10 @@ import {
   Select,
   Stack,
   Switch,
-  Typography,
-  CircularProgress,
+  type SxProps,
   TextField,
+  Typography,
 } from '@mui/material';
-import type { SxProps } from '@mui/material';
-import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import TeamTable from './TeamTable';
 import ErrorNotice from './common/ErrorNotice';
 import PredictionReadiness from './PredictionReadiness';

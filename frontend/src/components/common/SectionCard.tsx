@@ -1,6 +1,5 @@
 import React from 'react';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
+import { Paper, Typography } from '@mui/material';
 
 type Props = {
   title: string;

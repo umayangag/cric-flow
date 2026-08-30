@@ -4,14 +4,16 @@ import type { AutoTuneRunDetailsEntry } from '../types';
 import { Migration } from '../types';
 import AutoTuneRunCard from './AutoTuneRunCard';
 import StatusPill from './common/StatusPill';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import Button from '@mui/material/Button';
-import { Box } from '@mui/material';
-import Chip from '@mui/material/Chip';
-import Typography from '@mui/material/Typography';
+import {
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Typography,
+} from '@mui/material';
 import JsonCollapse from './common/JsonCollapse';
 import RunSummaryPanel from './RunSummaryPanel';
 import { asRunMetadata, findPreviousRun, flattenMetrics, parseFailure } from '../utils/runMetadata';

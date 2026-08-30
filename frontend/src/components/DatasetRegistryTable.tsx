@@ -1,13 +1,15 @@
 import React from 'react';
-import { Box } from '@mui/material';
-import Chip from '@mui/material/Chip';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
+import {
+  Box,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Tooltip,
+  Typography,
+} from '@mui/material';
 import SectionCard from './common/SectionCard';
 import { formatBytes, formatWhen, shortDigest } from '../utils/format';
 import type { DatasetRegistryResponse } from '../types';

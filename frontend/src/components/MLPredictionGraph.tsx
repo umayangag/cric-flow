@@ -1,9 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactFlow, { Background, Edge, Node, Position, Handle } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Box } from '@mui/material';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
+import { Box, Paper, Typography } from '@mui/material';
 
 type StageVariant = 'default' | 'primary' | 'success' | 'warning';
 

@@ -1,7 +1,6 @@
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
+import { Table, TableBody } from '@mui/material';
 import MLModelRow from './MLModelRow';
 import type { MLModelStat } from '../types';
 
