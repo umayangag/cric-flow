@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -53,5 +53,35 @@ describe('MLModelRow score source', () => {
     renderRow(model({ score_source: 'holdout' }));
 
     expect(screen.queryByText('holdout')).toBeNull();
+  });
+});
+
+describe('MLModelRow details toggle', () => {
+  afterEach(cleanup);
+
+  it('expands to reveal the details panel when the model has details', () => {
+    renderRow(model({ metrics: { mae: 6.5 }, accuracy_display: 'MAE=6.50' }));
+
+    fireEvent.click(screen.getByLabelText('show details'));
+
+    expect(screen.getByText('Metrics')).toBeDefined();
+    expect(screen.getByText('mae=6.5')).toBeDefined();
+    expect(screen.getByLabelText('hide details')).toBeDefined();
+  });
+
+  it('collapses again on a second click', () => {
+    renderRow(model({ metrics: { mae: 6.5 } }));
+
+    fireEvent.click(screen.getByLabelText('show details'));
+    fireEvent.click(screen.getByLabelText('hide details'));
+
+    expect(screen.getByLabelText('show details')).toBeDefined();
+  });
+
+  // Nothing to expand into, so the control is not offered at all.
+  it('offers no toggle for a model with no tuned params, metrics or audit', () => {
+    renderRow(model({ accuracy_display: 'MAE=6.50' }));
+
+    expect(screen.queryByLabelText('show details')).toBeNull();
   });
 });
