@@ -106,13 +106,14 @@ class TestGetModelArtifactStats:
         assert rec["model_kind"] == "batting_share"
         assert rec["model_name"] == "Batting Share"
 
-    def test_unified_model_format(self, tmp_path: Path) -> None:
+    def test_artifact_without_format_reports_no_format(self, tmp_path: Path) -> None:
+        """An unsuffixed file can only be a stale leftover now; it is reported with no format."""
         p = tmp_path
         (p / "innings_model.joblib").write_bytes(b"m" * 60)
         entries = os.listdir(str(p))
         rec = get_model_artifact_stats(str(p), entries, "innings", None, "innings_model.joblib")
         assert rec is not None
-        assert rec["match_format"] == "Unified"
+        assert rec["match_format"] == ""
 
 
 class TestBuildModelStats:
@@ -135,7 +136,7 @@ class TestBuildModelStats:
         assert ("innings", "ODI") in names
         assert ("batting_share", "T20") in names
         assert ("bowling_share", "ODI") in names
-        assert ("extras", "Unified") in names
+        assert ("extras", "") in names
         assert ("win", "T20") in names
 
     def test_ignores_non_model_files(self, tmp_path: Path) -> None:

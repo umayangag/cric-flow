@@ -4,45 +4,11 @@ Model metadata for the Workbench UI: features, outputs, level, artifacts pattern
 Generated from the source of truth: feature_vectors.json (batting, bowling, fielding),
 train_extras.EXTRAS_FEATURE_COLS, win_features.WIN_ENHANCED_FEATURE_COLS, and static metadata.
 Served by GET /model-metadata so the frontend stays in sync with the backend.
-
-Model mode registry: central list of prediction/artifact modes (legacy vs per-format)
-so UIs and callers can show mode names, deprecation, and descriptions without hardcoding.
 """
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List
 
 from .feature_config import get_feature_names
-
-# --- Model mode registry (single source of truth for legacy vs per-format vs unified) ---
-
-
-class ModelModeEntry(TypedDict, total=False):
-    name: str
-    available: bool
-    deprecated: bool
-    description: str
-
-
-MODEL_MODE_REGISTRY: List[ModelModeEntry] = [
-    {
-        "name": "legacy",
-        "available": True,
-        "deprecated": False,
-        "description": "Legacy unified model (no format suffix); used when format is omitted or no per-format artifact is loaded.",
-    },
-    {
-        "name": "per_format",
-        "available": True,
-        "deprecated": False,
-        "description": "Per-format model (e.g. T20, ODI); used when format is provided and matching artifacts are loaded.",
-    },
-]
-
-
-def get_model_modes() -> List[Dict[str, Any]]:
-    """Return the model mode registry for UIs and API. Safe to extend with runtime availability later."""
-    return [dict(entry) for entry in MODEL_MODE_REGISTRY]
-
 
 # Output column names per model (aligned with prediction response and training scripts)
 BATTING_OUTPUTS = [
@@ -65,52 +31,46 @@ _STATIC: Dict[str, Dict[str, Any]] = {
         "hasScaler": True,
         "artifactsPattern": {
             "perFormat": "batting_scaler_<FMT>.joblib + batting_model_<FMT>.joblib",
-            "legacy": "batting_scaler.joblib + batting_model.joblib",
         },
-        "note": "Player-level; same feature families used for match-level models. Prediction uses per-format model when format (e.g. T20) is provided and loaded; otherwise legacy.",
+        "note": "Player-level; same feature families used for match-level models. Prediction requires a format (e.g. T20) with its artifacts loaded.",
     },
     "bowling": {
         "level": "player",
         "hasScaler": True,
         "artifactsPattern": {
             "perFormat": "bowling_scaler_<FMT>.joblib + bowling_model_<FMT>.joblib",
-            "legacy": "bowling_scaler.joblib + bowling_model.joblib",
         },
-        "note": "Player-level; aggregates feed into extras and win. Per-format and legacy same as batting.",
+        "note": "Player-level; aggregates feed into extras and win. Per-format artifacts, same as batting.",
     },
     "fielding": {
         "level": "player",
         "hasScaler": True,
         "artifactsPattern": {
             "perFormat": "fielding_scaler_<FMT>.joblib + fielding_model_<FMT>.joblib",
-            "legacy": "fielding_scaler.joblib + fielding_model.joblib",
         },
-        "note": "Player-level; combined with batting/bowling for team selection. Per-format and legacy same as batting.",
+        "note": "Player-level; combined with batting/bowling for team selection. Per-format artifacts, same as batting.",
     },
     "extras": {
         "level": "match",
         "hasScaler": False,
         "artifactsPattern": {
             "perFormat": "extras_model_<FMT>.joblib",
-            "legacy": "extras_model.joblib",
         },
-        "note": "Match-level; uses same weather + aggregates of player consistency/form from batting/bowling snapshot data. One model per format or legacy.",
+        "note": "Match-level; uses same weather + aggregates of player consistency/form from batting/bowling snapshot data. One model per format.",
     },
     "win": {
         "level": "match",
         "hasScaler": False,
         "artifactsPattern": {
             "perFormat": "win_model_<FMT>.joblib",
-            "legacy": "win_model.joblib",
         },
-        "note": "Match-level; team1 = batting first, team2 = bowling first. Same feature families as batting/bowling/fielding. One model per format or legacy.",
+        "note": "Match-level; team1 = batting first, team2 = bowling first. Same feature families as batting/bowling/fielding. One model per format.",
     },
     "combination_meta": {
         "level": "meta",
         "hasScaler": False,
         "artifactsPattern": {
             "perFormat": "Optional per-format weights in combination_meta.json",
-            "legacy": "combination_meta.json (unified weights)",
         },
         "note": "Optional. Learns weights to combine batting/bowling/fielding scores from backtest outcomes. Uses CSV with bat_score, bowl_score, field_score, is_keeper, format, target. Output is JSON (not joblib); go-app can load via selection.meta_model_path.",
     },
@@ -136,10 +96,8 @@ def _win_feature_cols() -> List[str]:
 
 
 def get_model_metadata() -> Dict[str, Any]:
-    """Build model metadata from feature config and training modules. One source of truth for the UI.
-    Includes model_modes (registry of legacy/per_format) for frontend display and deprecation hints.
-    """
-    out: Dict[str, Any] = {"model_modes": get_model_modes()}
+    """Build model metadata from feature config and training modules. One source of truth for the UI."""
+    out: Dict[str, Any] = {}
 
     for kind in ("batting", "bowling", "fielding"):
         try:

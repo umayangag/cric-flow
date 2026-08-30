@@ -2,8 +2,7 @@
 Train fielding model (catches, run_outs, stumpings) from go-app export CSV or training-data API.
 
 Thin wrapper around TrainingPipeline for core training logic. The main() entrypoint
-retains fielding-specific behavior: grouping by format_code from a single CSV/API response,
-and training a legacy unified model on all data combined.
+retains fielding-specific behavior: grouping by format_code from a single CSV/API response.
 
 Usage:
   python -m ml.train_fielding                          # use fielding_encoded_all.csv
@@ -74,14 +73,7 @@ FIELDING_SPEC = ModelSpec(
 )
 
 
-# ── Fielding-specific helpers (format grouping, legacy model) ────────────
-
-
-def _concat_weights(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
-    """Concatenate per-format weights for unified model. Returns None if any format lacks weights."""
-    if not weights_list or any(w is None for w in weights_list):
-        return None
-    return np.concatenate(weights_list)
+# ── Fielding-specific helpers (format grouping) ──────────────────────────
 
 
 def fetch_fielding_data(go_app_url: str, cutoff_iso: str, api_key=None):
@@ -124,11 +116,6 @@ def rows_to_xy_by_format(
     Returns dict format_code -> (X, Y, sample_weight, feature_column_names).
     ``feature_column_names`` matches ``X.shape[1]`` after scale-aware low-variance
     drops (aligned with ``train_extras`` / ``train_win``).
-
-    When ``format_code`` is present and at least one format group qualifies, a
-    ``"_LEGACY_"`` entry holds the pooled rows with a single low-variance pass
-    for the unified fielding model (same column width as ``np.vstack`` of per-format
-    matrices would require).
     """
     if not headers or not rows:
         return {}
@@ -159,10 +146,6 @@ def rows_to_xy_by_format(
         w = _weights(df)
         return {"_ALL_": (X, Y, w, feat_cols)}
     out: dict[str, tuple[np.ndarray, np.ndarray, Optional[np.ndarray], list[str]]] = {}
-    legacy_feat_cols = [c for c in FIELDING_FEATURE_COLS if c in df.columns]
-    legacy_X_blocks: list[np.ndarray] = []
-    legacy_Y_blocks: list[np.ndarray] = []
-    legacy_w_blocks: list[Optional[np.ndarray]] = []
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in FIELDING_FEATURE_COLS if c in g.columns])
@@ -177,17 +160,6 @@ def rows_to_xy_by_format(
             continue
         w = _weights(g)
         out[fmt] = (X, Y, w, feat_cols)
-        legacy_X_blocks.append(g[legacy_feat_cols].astype(float).values)
-        legacy_Y_blocks.append(Y)
-        legacy_w_blocks.append(w)
-    if legacy_X_blocks:
-        all_X = np.vstack(legacy_X_blocks)
-        all_Y = np.vstack(legacy_Y_blocks)
-        pooled_cols = list(legacy_feat_cols)
-        all_X, pooled_cols, dropped = drop_low_variance_columns(all_X, pooled_cols)
-        columns_dropped("fielding", "_LEGACY_", dropped, len(pooled_cols))
-        all_w = _concat_weights(legacy_w_blocks)
-        out["_LEGACY_"] = (all_X, all_Y, all_w, pooled_cols)
     return out
 
 
@@ -232,27 +204,6 @@ def train_and_save(
                 json.dump({"feature_importance": feature_importance}, f, indent=2)
         except OSError as e:
             logger.warning("train_fielding.metadata_save_failed path=%s error=%s", out_dir, e)
-
-
-def train_and_save_legacy(
-    X: np.ndarray, Y: np.ndarray, out_dir: str, sample_weight: Optional[np.ndarray] = None
-) -> None:
-    """Train one unified fielding model on all data (legacy/fallback artifacts)."""
-    params = get_training_params("fielding", None)
-    pipe_cfg = get_pipeline_common_config()
-    scaler = get_scaler(use_robust=pipe_cfg.get("use_robust_scaler", True))
-    Xs = scaler.fit_transform(X)
-    base = make_base_estimator(params)
-    model = MultiOutputRegressor(base)
-    if sample_weight is not None:
-        model.fit(Xs, Y, sample_weight=sample_weight)
-    else:
-        model.fit(Xs, Y)
-    os.makedirs(out_dir, exist_ok=True)
-    compress = params["joblib_compress"]
-    joblib.dump(scaler, os.path.join(out_dir, "fielding_scaler.joblib"), compress=compress)
-    joblib.dump(model, os.path.join(out_dir, "fielding_model.joblib"), compress=compress)
-    logger.info("train_fielding.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
 def main() -> None:
@@ -309,7 +260,6 @@ def main() -> None:
         logger.error("train_fielding.no_data hint=empty or insufficient rows")
         sys.exit(1)
 
-    legacy_pack = by_format.pop("_LEGACY_", None)
     formats_items = list(by_format.items())
     max_workers = min(
         len(formats_items),
@@ -325,17 +275,8 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         list(executor.map(_train_one_format, formats_items))
 
-    # Unified (overall) model: train on all data combined for legacy/fallback
-    if legacy_pack is not None:
-        all_X, all_Y, all_weights, _legacy_feats = legacy_pack
-    else:
-        all_X = np.vstack([X for _, (X, _, _, _) in by_format.items()])
-        all_Y = np.vstack([Y for _, (_, Y, _, _) in by_format.items()])
-        all_weights = _concat_weights([w for _, (_, _, w, _) in by_format.items()])
     del by_format
     gc.collect()
-    if all_X.shape[0] >= 10:
-        train_and_save_legacy(all_X, all_Y, out_dir, sample_weight=all_weights)
 
 
 if __name__ == "__main__":

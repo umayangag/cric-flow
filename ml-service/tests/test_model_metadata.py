@@ -9,29 +9,12 @@ from app.model_metadata import (
     FIELDING_OUTPUTS,
     WIN_OUTPUTS,
     get_model_metadata,
-    get_model_modes,
 )
 
 
-def test_get_model_modes_registry():
-    """Model mode registry includes legacy and per_format with name, available, deprecated, description."""
-    modes = get_model_modes()
-    assert len(modes) >= 2
-    names = [m["name"] for m in modes]
-    assert "legacy" in names
-    assert "per_format" in names
-    for m in modes:
-        assert "name" in m
-        assert "available" in m
-        assert "deprecated" in m
-        assert "description" in m
-
-
 def test_get_model_metadata_returns_all_kinds():
-    """get_model_metadata returns model_modes, batting, bowling, fielding, extras, win, combination_meta."""
+    """get_model_metadata returns batting, bowling, fielding, extras, win, combination_meta."""
     meta = get_model_metadata()
-    assert "model_modes" in meta
-    assert isinstance(meta["model_modes"], list)
     assert "batting" in meta
     assert "bowling" in meta
     assert "fielding" in meta
@@ -51,7 +34,7 @@ def test_get_model_metadata_batting_structure():
     assert bat["hasScaler"] is True
     assert "artifactsPattern" in bat
     assert "perFormat" in bat["artifactsPattern"]
-    assert "legacy" in bat["artifactsPattern"]
+    assert "legacy" not in bat["artifactsPattern"], "the unsuffixed artifact tier was removed"
     assert "note" in bat
 
 

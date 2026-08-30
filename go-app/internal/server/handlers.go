@@ -147,11 +147,7 @@ func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
 		if !ok {
 			continue
 		}
-		matchFormat, _ := modelMap["match_format"].(string)
-		formatKey := matchFormat
-		if matchFormat == "Unified" || matchFormat == "" {
-			formatKey = ""
-		}
+		formatKey, _ := modelMap["match_format"].(string)
 		// model_kind is the machine-readable kind (e.g. "batting_share");
 		// fall back to lowercased model_name for backward compatibility.
 		kindStr, ok := modelMap["model_kind"].(string)

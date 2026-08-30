@@ -41,7 +41,7 @@ describe('WorkbenchTab', () => {
       batting: {
         level: 'player',
         hasScaler: false,
-        artifactsPattern: { perFormat: 'pf', legacy: 'lg' },
+        artifactsPattern: { perFormat: 'pf' },
         features: ['x_feature'],
         outputs: ['y_output'],
         note: 'from-backend',

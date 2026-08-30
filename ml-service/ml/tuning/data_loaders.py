@@ -189,11 +189,7 @@ def load_fielding_csv(path: str, format_code: Optional[str] = None) -> Dict[str,
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_fielding_pack(pack) for fmt, pack in by_format.items()}
     if format_code and format_code in wrapped:
-        legacy = wrapped.get("_LEGACY_")
-        out = {format_code: wrapped[format_code]}
-        if legacy is not None:
-            out["_LEGACY_"] = legacy
-        return out
+        return {format_code: wrapped[format_code]}
     return wrapped
 
 
@@ -208,12 +204,7 @@ def load_extras_csv(path: str, format_code: Optional[str] = None) -> Dict[str, L
     by_format = _train_extras.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_extras_pack(pack) for fmt, pack in by_format.items()}
     if format_code and format_code in wrapped:
-        # Preserve any special legacy entry so callers can still access it when filtering.
-        legacy = wrapped.get("_LEGACY_")
-        out = {format_code: wrapped[format_code]}
-        if legacy is not None:
-            out["_LEGACY_"] = legacy
-        return out
+        return {format_code: wrapped[format_code]}
     return wrapped
 
 
@@ -270,11 +261,7 @@ def load_fielding_from_api(
     by_format = _train_fielding.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_fielding_pack(pack) for fmt, pack in by_format.items()}
     if format_filter and format_filter in wrapped:
-        legacy = wrapped.get("_LEGACY_")
-        out = {format_filter: wrapped[format_filter]}
-        if legacy is not None:
-            out["_LEGACY_"] = legacy
-        return out
+        return {format_filter: wrapped[format_filter]}
     return wrapped
 
 
@@ -290,11 +277,7 @@ def load_extras_from_api(
     by_format = _train_extras.rows_to_xy_by_format(headers, rows)
     wrapped = {fmt: _wrap_extras_pack(pack) for fmt, pack in by_format.items()}
     if format_filter and format_filter in wrapped:
-        legacy = wrapped.get("_LEGACY_")
-        out = {format_filter: wrapped[format_filter]}
-        if legacy is not None:
-            out["_LEGACY_"] = legacy
-        return out
+        return {format_filter: wrapped[format_filter]}
     return wrapped
 
 

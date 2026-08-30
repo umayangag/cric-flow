@@ -875,7 +875,6 @@ async def admin_train_auto_tune(
     model: str = "all",
     format: str = "",
     all_formats: str = "",
-    unified: str = "",
     rescreen: str = "",
     algorithms: str = "",
 ):
@@ -891,7 +890,6 @@ async def admin_train_auto_tune(
             ),
         )
     use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
-    use_unified = (unified or "").strip().lower() in ("1", "true", "yes")
     do_rescreen = (rescreen or "").strip().lower() in ("1", "true", "yes")
     async with _get_training_semaphore():
         await asyncio.to_thread(
@@ -900,7 +898,6 @@ async def admin_train_auto_tune(
             _settings.go_app_url,
             model,
             use_all_formats,
-            use_unified,
             (format or "").strip(),
             do_rescreen,
             (algorithms or "").strip(),

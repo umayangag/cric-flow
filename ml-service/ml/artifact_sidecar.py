@@ -14,9 +14,10 @@ otherwise drift between training and inference:
   effect at training time. Re-tuning those weights in config must not silently
   invalidate an already-trained model.
 
-Files are named ``{kind}_meta_{FMT}.json`` per-format and ``{kind}_meta.json``
-for legacy (unified) artifacts. Readers must tolerate missing files (old
-artifacts predate this convention).
+Files are named ``{kind}_meta_{FMT}.json``. Readers must tolerate missing files
+(old artifacts predate this convention), and the unsuffixed ``{kind}_meta.json``
+name is still resolved so a stale sidecar left by the removed unified models can
+be read rather than crashing a scan.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 def meta_filename(kind: str, format_code: Optional[str]) -> str:
     """Return the sidecar filename for (kind, format_code)."""
     safe_fmt = (format_code or "").replace(" ", "_")
-    if safe_fmt and safe_fmt != "_LEGACY_":
+    if safe_fmt:
         return f"{kind}_meta_{safe_fmt}.json"
     return f"{kind}_meta.json"
 
@@ -55,7 +56,7 @@ def write_artifact_meta(
     path = os.path.join(out_dir, meta_filename(kind, format_code))
     payload: Dict[str, Any] = {
         "kind": kind,
-        "format_code": format_code or "_LEGACY_",
+        "format_code": format_code,
         "feature_names": list(feature_names),
     }
     # Provenance sits beside feature_names because it answers the same kind of

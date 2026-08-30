@@ -15,10 +15,10 @@ import (
 // sending it. Body-only parameters are not visible here; the handler that decodes the
 // body refuses those (see rejectRetiredBodyField).
 //
-// Note this deliberately does not touch auto_tune's own `unified` flag: that is a
-// training mode (train one model across formats), not a serving tier, and it is a
-// different parameter with a different name. Two same-named concepts caught the last
-// refactor out; keeping the rule keyed on the exact parameter keeps them apart.
+// The rule matches the exact parameter name and value, never a substring: "unified"
+// named both a serving tier and, separately, an auto-tune training mode, and a rule
+// that matched the word would have refused requests that had nothing to do with the
+// retired parameter.
 func rejectRemovedParams(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()

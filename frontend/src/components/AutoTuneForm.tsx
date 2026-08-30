@@ -57,7 +57,6 @@ const AutoTuneForm: React.FC<AutoTuneFormProps> = ({
 }) => {
   const { formats: canonicalFormats } = useCanonicalFormats();
   const formatOptions = [
-    { value: 'unified', label: 'Unified only' },
     { value: '', label: 'All formats' },
     ...canonicalFormats.map((f) => ({ value: f, label: f })),
   ];

@@ -763,6 +763,16 @@ def _run_search_classification(
     return best_pipe, best_params, report
 
 
+def _require_format_suffix(model_kind: str, format_suffix: Optional[str]) -> None:
+    """Refuse to write an artifact with no format suffix.
+
+    app.artifacts loads by the `<kind>_model_<FMT>` prefix only, so an unsuffixed
+    file is one nothing can serve — a silent no-op that reads as a successful run.
+    """
+    if not format_suffix:
+        raise ValueError(f"auto_tune.{model_kind}.missing_format_suffix: artifacts must be written per format")
+
+
 def _save_artifacts_model_only(
     pipeline: Pipeline,
     out_dir: str,
@@ -772,14 +782,11 @@ def _save_artifacts_model_only(
     report: Dict[str, Any],
 ) -> None:
     """Save model only (no scaler) for extras/win; plus tuning report."""
+    _require_format_suffix(model_kind, format_suffix)
     os.makedirs(out_dir, exist_ok=True)
     model = pipeline.named_steps["est"]
-    if format_suffix:
-        model_path = os.path.join(out_dir, f"{model_kind}_model_{format_suffix}.joblib")
-        report_path = os.path.join(out_dir, f"tuning_report_{model_kind}_{format_suffix}.json")
-    else:
-        model_path = os.path.join(out_dir, f"{model_kind}_model.joblib")
-        report_path = os.path.join(out_dir, f"tuning_report_{model_kind}.json")
+    model_path = os.path.join(out_dir, f"{model_kind}_model_{format_suffix}.joblib")
+    report_path = os.path.join(out_dir, f"tuning_report_{model_kind}_{format_suffix}.json")
     joblib.dump(model, model_path, compress=joblib_compress)
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
@@ -1294,18 +1301,14 @@ def _save_artifacts(
     report: Dict[str, Any],
 ) -> None:
     """Extract scaler and model from pipeline; save as existing train_* scripts do."""
+    _require_format_suffix(model_kind, format_suffix)
     os.makedirs(out_dir, exist_ok=True)
     scaler = pipeline.named_steps["scaler"]
     model = pipeline.named_steps["est"]
 
-    if format_suffix:
-        scaler_path = os.path.join(out_dir, f"{model_kind}_scaler_{format_suffix}.joblib")
-        model_path = os.path.join(out_dir, f"{model_kind}_model_{format_suffix}.joblib")
-        report_path = os.path.join(out_dir, f"tuning_report_{model_kind}_{format_suffix}.json")
-    else:
-        scaler_path = os.path.join(out_dir, f"{model_kind}_scaler.joblib")
-        model_path = os.path.join(out_dir, f"{model_kind}_model.joblib")
-        report_path = os.path.join(out_dir, f"tuning_report_{model_kind}.json")
+    scaler_path = os.path.join(out_dir, f"{model_kind}_scaler_{format_suffix}.joblib")
+    model_path = os.path.join(out_dir, f"{model_kind}_model_{format_suffix}.joblib")
+    report_path = os.path.join(out_dir, f"tuning_report_{model_kind}_{format_suffix}.json")
 
     import joblib
 

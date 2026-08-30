@@ -35,7 +35,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
   const [runSkipped, setRunSkipped] = useState<Record<string, string>>({});
   const [importRefresh, setImportRefresh] = useState(false);
   const [autoTuneModel, setAutoTuneModel] = useState('all');
-  const [autoTuneFormat, setAutoTuneFormat] = useState('unified');
+  const [autoTuneFormat, setAutoTuneFormat] = useState('');
   const [autoTuneRescreen, setAutoTuneRescreen] = useState(false);
   const [autoTuneCutoff, setAutoTuneCutoff] = useState('');
   const [autoTuneAlgorithms, setAutoTuneAlgorithms] = useState<Set<string>>(
@@ -44,7 +44,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
 
   const modelNameForLookup = (m: string) =>
     m === 'all' ? '' : m.charAt(0).toUpperCase() + m.slice(1);
-  const formatForLookup = (f: string) => (f === 'unified' ? 'Unified' : f || '');
+  const formatForLookup = (f: string) => f || '';
 
   const loadDefaultAlgorithms = useCallback(async () => {
     const modelName = modelNameForLookup(autoTuneModel);
@@ -80,11 +80,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     if (s.id === 'auto_tune') {
       return {
         model: autoTuneModel,
-        ...(autoTuneFormat === 'unified'
-          ? { unified: '1' }
-          : autoTuneFormat === ''
-            ? { all_formats: '1' }
-            : { format: autoTuneFormat }),
+        ...(autoTuneFormat === '' ? { all_formats: '1' } : { format: autoTuneFormat }),
         ...(autoTuneRescreen ? { rescreen: '1' } : {}),
         ...(autoTuneCutoff.trim() ? { cutoff: autoTuneCutoff.trim() } : {}),
         ...(autoTuneAlgorithms.size > 0
@@ -140,9 +136,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
 
   const getAutoTuneCommand = () => {
     const parts = [`MODEL=${autoTuneModel}`];
-    if (autoTuneFormat === 'unified') {
-      /* no flag */
-    } else if (autoTuneFormat === '') parts.push('ALL_FORMATS=1');
+    if (autoTuneFormat === '') parts.push('ALL_FORMATS=1');
     else parts.push(`FORMAT=${autoTuneFormat}`);
     if (autoTuneRescreen) parts.push('RESCREEN=1');
     if (autoTuneCutoff.trim()) parts.push(`CUTOFF="${autoTuneCutoff.trim()}"`);

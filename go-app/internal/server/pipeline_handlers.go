@@ -192,7 +192,7 @@ func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
 
 // autoTuneQueryParams are the extra query params auto_tune forwards to ml-service.
 // No other step forwards anything beyond cutoff.
-var autoTuneQueryParams = []string{"model", "format", "all_formats", "unified", "rescreen", "algorithms"}
+var autoTuneQueryParams = []string{"model", "format", "all_formats", "rescreen", "algorithms"}
 
 // makeMLTrainHandler returns the handler for a step executed by ml-service.
 //

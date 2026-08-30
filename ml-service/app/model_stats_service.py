@@ -89,7 +89,7 @@ def get_model_artifact_stats(
     return {
         "model_kind": kind,
         "model_name": _kind_display_name(kind),
-        "match_format": fmt or "Unified",
+        "match_format": fmt or "",
         "size_bytes": size_bytes,
         "modified": modified_iso,
     }
@@ -494,7 +494,7 @@ def build_model_stats(models_dir: str) -> Dict[str, Any]:
         if not parsed:
             continue
         kind, fmt = parsed
-        key = (kind, fmt or "Unified")
+        key = (kind, fmt or "")
         if key in seen:
             continue
         seen.add(key)
