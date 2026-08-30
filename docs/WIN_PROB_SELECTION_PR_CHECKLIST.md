@@ -797,6 +797,33 @@ Options: target or frequency encoding fitted on training folds only; or drop ven
 favour of venue-level aggregates already computed elsewhere. Deferred because it changes
 the feature contract and is best measured on S-3's harness once that exists.
 
+**Team identity fragments on rename — found while checking the re-import.** A player's
+team is per-match, which `match_player.opposition_id` records correctly (26% of the 13,419
+players have played for more than one team; one for 31). But a *team* is not stable either:
+
+```
+ id  |       opposition_name       | matches | first_match | last_match
+  292| Royal Challengers Bangalore |     258 | 2008-04-18  | 2024-03-17
+ 1038| Royal Challengers Bengaluru |      63 | 2024-03-22  | 2026-05-31
+```
+
+One franchise, two `opposition_id`s, non-overlapping dates. The model sees two unrelated
+teams sitting at two arbitrary integers, and `team1_opposition_id` carries real weight in
+the trained artifacts (TEST 0.050, T20I 0.019, T20 0.016). So S-7 is not only about
+*encoding* the IDs — the identities being encoded are themselves split. Any target or
+frequency encoding fitted before the split is resolved learns the rename as a new team
+with 63 matches of history.
+
+There are 394 opposition rows; a name-similarity scan surfaces more candidate pairs, but
+separating a rename (Barbados Tridents → Barbados Royals) from two genuinely different
+teams (Birmingham Bears vs Birmingham Phoenix) needs domain judgement, not a heuristic.
+RCB is the one confirmed case.
+
+**Not a problem, recorded so it is not re-litigated:** player form features are not
+team-scoped — the win export reads `scope = 'overall'`, so a player's T20 form blends
+every T20 side they have played for. Form is a property of the player, and unlike the
+S-3c count leak it is not conditioned on the outcome.
+
 ---
 
 ## S-8 — Base-model features unavailable at decision time (deferred)
