@@ -23,6 +23,22 @@ Input dimensions, estimators, and aggregation (e.g. sum runs, win prob) are in [
 
 **Training commands (from repo root or ml-service):** `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=<RFC3339>`, `make train-extras`, `make train-win`, or `make train-all` to run all train steps in sequence. Each step uses params from config and, when `GO_APP_URL` is set, from the go-app tuned-params DB. Fielding/extras/win need `GO_APP_URL` (and optionally `CUTOFF` or CSV path).
 
+> **`CUTOFF` bounds the training data, on the CSV path as well as the API one.** Rows
+> with `match_date` on or after it are dropped, matching the export's own
+> `match_date < cutoff` and leaving everything from the cutoff onward as a holdout.
+>
+> It did not always. The trainers prefer the export CSV over the API and used to read it
+> whole, so `CUTOFF` governed only the fallback nobody takes: a run asked to train to a
+> cutoff trained on every exported match. Artifacts built before this fix were trained on
+> all available data — check `n_samples` in `win_model_<FMT>_metadata.json` against the
+> row count for that format in the export; if they match, there is no holdout and any
+> evaluation of that artifact is in-sample.
+>
+> **To produce a model you can honestly evaluate**, train with a cutoff that leaves a
+> window behind it, then pass the same value to `make win-discrimination TRAIN_CUTOFF=`.
+> The two are complementary by construction: training keeps rows strictly before, the
+> report keeps rows on or after.
+
 **Artifacts:** Always per-format: `batting_scaler_<FMT>.joblib`, `batting_model_<FMT>.joblib` (same for bowling, fielding, extras, win).
 
 **Combined prediction flow:** (1) Player predictions from batting/bowling/fielding models; (2) match aggregates = sum of player preds + extras model if loaded (else historical average); (3) winner from win model or from team totals; (4) team selection = greedy selection with batting/bowling/fielding scores and constraints. When fielding artifacts are not loaded, go-app falls back to **enrichFieldingFromHistory** (EWM of historical fielding).

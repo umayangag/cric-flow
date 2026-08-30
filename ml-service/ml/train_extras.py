@@ -252,7 +252,9 @@ def _main() -> None:
 
     if os.path.isfile(csv_path):
         logger.info("train_extras.loading_csv path=%s (prefer CSV over API)", csv_path)
-        df = read_export_csv(csv_path)
+        # The cutoff governs the CSV path too. Without it a run asked to train to a
+        # cutoff trained on every exported match, leaving no holdout to evaluate on.
+        df = read_export_csv(csv_path, cutoff=args.cutoff or None)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)
