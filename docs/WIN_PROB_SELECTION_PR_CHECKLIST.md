@@ -603,9 +603,50 @@ may be close to what this feature set can support.
 5. **Accept the ceiling.** If the feature set tops out near 0.63, say so and decide whether
    an argmax over it is worth shipping at all. That is a legitimate outcome.
 
-**Acceptance.** Held-out AUC materially above the numbers in the table above, measured by
-the same `make win-discrimination` command on the same holdout, with the improvement
-attributable to a named change rather than a re-roll.
+### Two directions already tested and closed
+
+**Pooling the formats into one model: no.** Tested on the same holdout.
+
+*Cross-format transfer is nil* — train on T20, evaluate elsewhere:
+
+| holdout | T20 model | own-format model |
+|---|---|---|
+| ODI | 0.530 | 0.553 |
+| T20I | 0.532 | 0.591 |
+| TEST | **0.484** | 0.572 |
+
+TEST lands below chance. The formats do not share exploitable structure in these features.
+
+*A unified model (19,969 rows, format one-hots) does not beat per-format models once noise
+is accounted for:* ODI +0.027, T20 +0.012, T20I +0.033, TEST **−0.018**. Every positive
+delta is inside one standard error of its holdout, and the T20 gain is illusory — see
+below. TEST's loss is the only clean signal, and it is negative.
+
+**"T20 only looks better because it has more matches": partly, and it does not rescue the
+others.** T20 trained on subsamples, evaluated on the same T20 holdout:
+
+| training rows | AUC (3 seeds) |
+|---|---|
+| 1,918 (= T20I's size) | 0.610 ± 0.010 |
+| 4,808 (= ODI's size) | 0.628 ± 0.005 |
+| 10,403 (full) | 0.648 ± 0.009 |
+
+Sample size is worth ~0.04 AUC across a 5.4× range. At equal data T20 (0.610) and T20I
+(0.591) are indistinguishable, so that gap is a data-volume artefact — but T20 on 1,918
+rows still beats ODI on 4,808 (0.553), so **ODI is genuinely harder, not merely
+data-starved.** More data is not the lever.
+
+### Measure with multiple seeds
+
+Refitting T20 on identical data with only the row order changed moves held-out AUC by
+**±0.009**, because `subsample=0.8` draws a different sample. So **any difference under
+~0.02 is not evidence** — including TEST's 0.572 against ODI's 0.561 in the table above.
+Report a mean and spread over seeds, not a single fit.
+
+**Acceptance.** Held-out AUC materially above the numbers in the table above — by more
+than the ±0.01 single-fit noise, over multiple seeds — measured by the same
+`make win-discrimination` command on the same holdout, with the improvement attributable
+to a named change rather than a re-roll.
 
 **Risk.** The honest risk is spending effort to discover the ceiling is real. Bound it:
 try the cheapest direction first and re-measure before continuing.
