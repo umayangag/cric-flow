@@ -636,6 +636,47 @@ Sample size is worth ~0.04 AUC across a 5.4× range. At equal data T20 (0.610) a
 rows still beats ODI on 4,808 (0.553), so **ODI is genuinely harder, not merely
 data-starved.** More data is not the lever.
 
+**Selecting a subset of players instead of averaging over the XI: not as posed, but the
+observation behind it is right.** The dilution is structural, not noise —
+`bowling_mean_w5` averaged over eleven players includes the five who never bowl and sit
+near zero, so a bowling statistic is being averaged over non-bowlers.
+
+The cheapest form of the idea is already in the export and is a wash. `_top3_mean` is a
+"only the players who matter" aggregate; against `_mean` on the T20 holdout it is inside
+the noise band, and the two strongest single columns in the whole feature set are
+full-squad means:
+
+| group (T20 holdout, n=1619) | `_mean` | `_top3_mean` |
+|---|---|---|
+| team2_bat_consistency | **0.603** | 0.596 |
+| team2_bat_form | **0.588** | 0.580 |
+| team1_bowl_consistency | 0.538 | **0.560** |
+
+Three reasons not to select a subset by *predicted* performance:
+
+1. **It puts the base models on the critical path**, which this plan deliberately keeps
+   them off — see "The architectural insight this plan rests on". Win-model quality would
+   become bounded by batting/bowling-model quality, which is measured by player-level MAE
+   and never by anything resembling ranking skill.
+2. **A hard subset makes the objective discontinuous.** Swapping one player changes which
+   players fall inside the subset, so the score jumps rather than moves, and S-4 is a
+   hill-climb.
+3. **It discards batting depth**, which is real signal — `_min` and `_std` over eleven
+   currently capture "the #8 can bat" by accident.
+
+**If it is built anyway, the training side must use the same predicted-subset rule.** The
+natural implementation mistake is to train on the batsmen who actually batted, which is
+the S-3c leak wearing a different hat: it would look like a large gain and mean nothing.
+
+**The version worth trying instead: weight, do not truncate.** Keep all eleven and weight
+each player by expected involvement — batting groups by expected balls faced, bowling
+groups by expected overs, both from historical batting position and bowling workload,
+which are known at selection time. That captures the insight without putting the base
+models on the critical path, stays continuous for S-4, and keeps depth because nobody is
+dropped. It is eight aggregation expressions in `exportqueries/win.go`, then the same
+re-export/retrain/re-measure loop. Expect it to redistribute signal rather than add any:
+the best single column in this feature set is ~0.60.
+
 ### Measure with multiple seeds
 
 Refitting T20 on identical data with only the row order changed moves held-out AUC by
