@@ -6,14 +6,18 @@ Architecture, data flow, and how to run the pipeline. For a concise data-flow an
 
 ## Components
 
-- **Data:** Cricsheet JSON under `data/go-app/cricsheet`; optional curated CSVs under `data/go-app/createdb`.
+- **Data:** Cricsheet JSON under `data/go-app/cricsheet`.
 - **go-app (Go):**
+  - `cmd/migrate` — apply SQL migrations
   - `cmd/cricsheet-importer` — import Cricsheet JSON into Postgres
-  - `cmd/etl-importer` — import curated CSVs (optional)
-  - `cmd/precompute` — form, venue, opposition, consistency, sequences
+  - `cmd/precompute-all` — run every precompute stage for a format
+  - `cmd/precompute-features` — form, venue, opposition, consistency
+  - `cmd/precompute-sequence-features` — sequence (recent-innings) features
   - `cmd/export-dataset` — export model-ready CSVs to output dir
   - `cmd/api` — HTTP API and pipeline orchestration
   - `cmd/team-predictor` — CLI: features → ML → team selection
+  - `cmd/team-select` — CLI: select an XI from an explicit player pool
+  - `cmd/print_canonical` — print the canonical format codes
 - **Postgres** — system of record
 - **ml-service (Python):**
   - `ml/train_*.py` — train from exported CSVs or go-app API
@@ -36,7 +40,7 @@ flowchart LR
 
   subgraph GoApp[go-app]
     CI[cricsheet-importer]
-    PRE[precompute]
+    PRE[precompute-*]
     EXP[export-dataset]
     API[api]
     TP[team-predictor]
@@ -71,9 +75,9 @@ Detailed flow (backtest, team prediction, Monte Carlo) is in [ARCHITECTURE_MAP.m
 
 **Pipeline order:** Precompute → export-dataset → train models → run/restart ML service. Batting/bowling use CSVs; fielding/extras/win can use API with cutoff. See [ml-and-training.md](ml-and-training.md).
 
-**Team prediction (per match):** go-app gets players and context from DB, builds feature vectors, calls ML `/predict/batting`, `/predict/bowling`, `/predict/fielding`, then selects best XI (e.g. ≥5 bowlers, ≥1 keeper).
+**Team prediction (per match):** go-app gets players and context from DB, builds feature vectors, and calls the ML service's combined `POST /ml/backtest/predict`, which returns batting, bowling and fielding for every player in one request. When no fielding model is loaded for the format, go-app fills catches and run-outs from historical fielding form instead. It then selects the best XI (e.g. ≥5 bowlers, ≥1 keeper).
 
-**Formats:** Features and export are per-format (`TEST`, `ODI`, `T20`, `T20I`). Export can produce per-format and unified CSVs; ML trains both; prediction uses format when present.
+**Formats:** Features, export, and models are all per-format (`TEST`, `ODI`, `T20`, `T20I`). `export-dataset` can still merge every format into one CSV with `-unified`, but no trainer consumes it — the unified batting/bowling trainers were removed.
 
 ---
 
@@ -91,7 +95,7 @@ make up-all
 
 1. `make migrate`
 2. `make cricsheet-import`
-3. `make precompute SEASON=2019` (or `make precompute-all-all-formats`)
+3. `make precompute-all FORMAT=T20` (or `make precompute-all-all-formats` for every format; `make precompute` triggers the same work through a running API)
 4. `make export-dataset`
 5. `make train-all` (see [ml-and-training.md](ml-and-training.md))
 6. `make ml-serve` if not using Docker
