@@ -45,9 +45,11 @@ func run() int {
 	// one, because the next training run reads whatever CSVs happen to be on disk.
 	//
 	// Measured: a full unified + per-format export against a populated database took
-	// 4m06s. Five minutes clears that, but not by much -- if this starts tripping on a
-	// larger dataset or a slower host, raise the bound rather than trimming the export.
-	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Minute)
+	// 4m06s. Fifteen minutes is roughly 3.5x that, chosen so a larger dataset or a
+	// slower host does not silently start producing partial exports. This bound is not
+	// a performance target -- nothing waits on it in the happy path, and a run that
+	// reaches it has gone wrong in a way worth failing on.
+	ctx, cancel := context.WithTimeout(baseCtx, 15*time.Minute)
 	defer cancel()
 
 	if _, err := db.Connect(ctx); err != nil {
