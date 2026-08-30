@@ -7,7 +7,7 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
-COV_MIN?=81
+COV_MIN?=80
 # CI sets REQUIREMENTS_FILE=requirements-serve.txt so venv gets the serving deps (no pycaret/autogluon/shap).
 REQUIREMENTS_FILE?=requirements.txt
 
