@@ -33,8 +33,12 @@ CREATE TABLE IF NOT EXISTS public.match_player (
     -- of the match and not of the player.
     opposition_id bigint NOT NULL,
 
-    -- One row per player per match. A player appears for exactly one side, so this
-    -- also refuses a file that lists the same name under both teams.
+    -- One row per player per match. Players are identified by name here as everywhere
+    -- else in this schema, so two people sharing a scorecard name are one player_id --
+    -- which this key then cannot hold twice for one match. Two files in the current
+    -- dataset do name the same player on both sides; the importer drops such a name
+    -- from both squads rather than guessing a side, since Cricsheet's own registry is
+    -- keyed by name and collapses them into one identifier too.
     PRIMARY KEY (match_id, player_id)
 );
 

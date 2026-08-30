@@ -470,11 +470,23 @@ re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
 > handles absence — warn, record no squad, keep the ball-by-ball data — because a truncated
 > file must not become a side of nobody, but the export's exclusion path should be rare
 > enough that a non-zero count is a signal something is wrong.
+>
+> **Namesakes, found by running the re-import.** Two files name the same player on both
+> sides — `KV Sharma` (Vidarbha / Railways) and `J Butler` (Isle of Man / Guernsey). They
+> are two people who share a scorecard name, and Cricsheet cannot separate them either:
+> `info.registry.people` is keyed by name, so file 1130677 has 22 squad entries and 21
+> registry identifiers. Since this repo also identifies players by name, they are already
+> one `player_id`, which `match_player`'s primary key cannot hold twice for one match.
+> The importer drops such a name from **both** squads and warns, leaving two matches with
+> a ten-player side. Guessing a side would invent data; failing the match — which the first
+> cut of the validation did — cost its ball-by-ball record over an ambiguity in the source.
+> Fixed in `fix/squad-namesake-both-teams`.
 
 **Tests.** Importer ✅: squad parsed and persisted for both sides including players who
 never bat or bowl; a file with no `info.players` still imports and records no squad; a
-player listed for both teams fails the import before the transaction opens; a re-import
-replaces rather than accumulates. Export: a fixture where a team's squad and its scorecard
+player named by both teams is dropped from both and costs one row rather than the match;
+the same name twice in one team is deduplicated, since the side is not in doubt; a
+re-import replaces rather than accumulates. Export: a fixture where a team's squad and its scorecard
 differ produces equal counts on both sides, and the bowl group includes players who bowled
 no overs.
 
@@ -784,6 +796,33 @@ unseen in training lands wherever its integer happens to sit.
 Options: target or frequency encoding fitted on training folds only; or drop venue in
 favour of venue-level aggregates already computed elsewhere. Deferred because it changes
 the feature contract and is best measured on S-3's harness once that exists.
+
+**Team identity fragments on rename — found while checking the re-import.** A player's
+team is per-match, which `match_player.opposition_id` records correctly (26% of the 13,419
+players have played for more than one team; one for 31). But a *team* is not stable either:
+
+```
+ id  |       opposition_name       | matches | first_match | last_match
+  292| Royal Challengers Bangalore |     258 | 2008-04-18  | 2024-03-17
+ 1038| Royal Challengers Bengaluru |      63 | 2024-03-22  | 2026-05-31
+```
+
+One franchise, two `opposition_id`s, non-overlapping dates. The model sees two unrelated
+teams sitting at two arbitrary integers, and `team1_opposition_id` carries real weight in
+the trained artifacts (TEST 0.050, T20I 0.019, T20 0.016). So S-7 is not only about
+*encoding* the IDs — the identities being encoded are themselves split. Any target or
+frequency encoding fitted before the split is resolved learns the rename as a new team
+with 63 matches of history.
+
+There are 394 opposition rows; a name-similarity scan surfaces more candidate pairs, but
+separating a rename (Barbados Tridents → Barbados Royals) from two genuinely different
+teams (Birmingham Bears vs Birmingham Phoenix) needs domain judgement, not a heuristic.
+RCB is the one confirmed case.
+
+**Not a problem, recorded so it is not re-litigated:** player form features are not
+team-scoped — the win export reads `scope = 'overall'`, so a player's T20 form blends
+every T20 side they have played for. Form is a property of the player, and unlike the
+S-3c count leak it is not conditioned on the outcome.
 
 ---
 
