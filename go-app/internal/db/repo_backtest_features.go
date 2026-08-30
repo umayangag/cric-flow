@@ -106,14 +106,13 @@ func GetMatchFeatureContext(ctx context.Context, matchID int64) (*MatchFeatureCo
 
 // MatchWinContext holds match-level IDs needed to call the win model (team1 = batting first, team2 = bowling first).
 type MatchWinContext struct {
-	FormatID               int64
-	VenueID                int64
-	Team1OppositionID      int64
-	Team2OppositionID      int64
-	TossWinnerOppositionID int64
+	FormatID          int64
+	VenueID           int64
+	Team1OppositionID int64
+	Team2OppositionID int64
 }
 
-// GetMatchWinContext returns format_id, venue_id, team1_opposition_id, team2_opposition_id, toss_winner_opposition_id
+// GetMatchWinContext returns format_id, venue_id, team1_opposition_id, team2_opposition_id
 // for the match (team1 = batting in inning 1). Used to build win model features for backtest.
 func GetMatchWinContext(ctx context.Context, matchID int64) (*MatchWinContext, error) {
 	if defaultDB == nil {
@@ -124,12 +123,11 @@ func GetMatchWinContext(ctx context.Context, matchID int64) (*MatchWinContext, e
 		SELECT m.format_id,
 			COALESCE(m.venue_id, 0),
 			COALESCE(mi.batting_team_opposition_id, 0),
-			COALESCE(mi.bowling_team_opposition_id, 0),
-			COALESCE(m.toss_winner_opposition_id, 0)
+			COALESCE(mi.bowling_team_opposition_id, 0)
 		FROM match m
 		LEFT JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
 		WHERE m.match_id = $1
-	`, matchID).Scan(&out.FormatID, &out.VenueID, &out.Team1OppositionID, &out.Team2OppositionID, &out.TossWinnerOppositionID)
+	`, matchID).Scan(&out.FormatID, &out.VenueID, &out.Team1OppositionID, &out.Team2OppositionID)
 	if err != nil {
 		return nil, err
 	}

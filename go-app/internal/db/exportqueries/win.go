@@ -104,7 +104,6 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 		SELECT m.match_id, m.format_id, COALESCE(m.venue_id, 0) AS venue_id,
 			mi.batting_team_opposition_id AS team1_opposition_id,
 			mi.bowling_team_opposition_id AS team2_opposition_id,
-			COALESCE(m.toss_winner_opposition_id, 0) AS toss_winner_opposition_id,
 			CASE WHEN m.outcome_winner_opposition_id IS NULL THEN 0 WHEN m.outcome_winner_opposition_id = mi.batting_team_opposition_id THEN 1 ELSE 0 END AS team1_wins,
 			COALESCE(mf.code, '') AS format_code,
 			m.match_date
@@ -169,7 +168,7 @@ func winTrainingRowsImpl(ctx context.Context, cutoff time.Time, formatIDs []int6
 	),
 	` + buildWinAggAndTop3CTEs() + `
 	/* main */
-	SELECT m.match_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.toss_winner_opposition_id, m.team1_wins, m.format_code,
+	SELECT m.match_id, m.venue_id, m.team1_opposition_id, m.team2_opposition_id, m.team1_wins, m.format_code,
 		m.match_date,
 		` + buildWinFeatureSelectColumns() + `
 	FROM matches_filtered m
@@ -241,19 +240,27 @@ var winFeatureGroupNames = []string{
 // winDistStatSuffixes lists the distribution stat suffixes in export order.
 var winDistStatSuffixes = []string{"_sum", "_mean", "_std", "_max", "_min", "_top3_mean", "_count"}
 
+// winBaseHeaders are the win export's non-feature columns, in emission order.
+//
+// It is a named list because the header builder and the row scanner must agree on it,
+// and for a long time they did not: the scanner emitted a duplicate Unix match_date and
+// seven weather zeros that the header never named. Pandas resolves a short header by
+// consuming the surplus as an index, so the win CSV silently mapped its eight leading
+// data columns onto nothing and shifted every named column eight places -- including
+// team1_wins, the training target, which became a constant.
+var winBaseHeaders = []string{
+	"match_id",
+	"venue_id",
+	"team1_opposition_id",
+	"team2_opposition_id",
+	"team1_wins",
+	"format_code",
+	"match_date",
+}
+
 func winEnhancedHeaders() []string {
-	base := make([]string, 0, 17+len(winDistStatSuffixes)*len(winFeatureGroupNames))
-	base = append(
-		base,
-		"match_id",
-		"venue_id",
-		"team1_opposition_id",
-		"team2_opposition_id",
-		"toss_winner_opposition_id",
-		"team1_wins",
-		"format_code",
-		"match_date",
-	)
+	base := make([]string, 0, len(winBaseHeaders)+len(winDistStatSuffixes)*len(winFeatureGroupNames))
+	base = append(base, winBaseHeaders...)
 	for _, group := range winFeatureGroupNames {
 		for _, suffix := range winDistStatSuffixes {
 			base = append(base, group+suffix)
@@ -263,18 +270,17 @@ func winEnhancedHeaders() []string {
 }
 
 func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, error) {
-	var matchID, venueID, team1, team2, tossWinner int64
+	var matchID, venueID, team1, team2 int64
 	var team1Wins int
 	var formatCode string
 	var matchDate time.Time
-	var temp, wind, rain, humidity, cloud, pressure, viscosity int
 
 	var groups [8]featureDistStats
 
-	dest := make([]any, 0, 16+7*len(groups))
+	dest := make([]any, 0, len(winBaseHeaders)+len(winDistStatSuffixes)*len(groups))
 	dest = append(
 		dest,
-		&matchID, &venueID, &team1, &team2, &tossWinner, &team1Wins, &formatCode,
+		&matchID, &venueID, &team1, &team2, &team1Wins, &formatCode,
 		&matchDate,
 	)
 	for i := range groups {
@@ -295,18 +301,17 @@ func scanWinEnhancedRow(rows interface{ Scan(dest ...any) error }) ([]string, er
 		}
 	}
 
+	// One value per name in winBaseHeaders, in that order. The two lists are asserted
+	// equal in width by TestWinExportRowMatchesItsHeader; they were not, and the eight
+	// surplus values silently shifted every column of every row.
 	row := []string{
 		strconv.FormatInt(matchID, 10),
 		strconv.FormatInt(venueID, 10),
 		strconv.FormatInt(team1, 10),
 		strconv.FormatInt(team2, 10),
-		strconv.FormatInt(tossWinner, 10),
 		strconv.Itoa(team1Wins),
 		formatCode,
 		matchDate.Format("2006-01-02"),
-		strconv.FormatInt(matchDate.Unix(), 10),
-		strconv.Itoa(temp), strconv.Itoa(wind), strconv.Itoa(rain), strconv.Itoa(humidity),
-		strconv.Itoa(cloud), strconv.Itoa(pressure), strconv.Itoa(viscosity),
 	}
 	for i := range groups {
 		g := &groups[i] //nolint:gosec // fixed-size array indexed by range

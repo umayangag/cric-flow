@@ -58,7 +58,7 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 | **Bowling** | Player | 35 | 3 — `runs`, `balls`, `wickets` | `configs/feature_vectors.json` → `bowling` |
 | **Fielding** | Player | 10 | 3 — `catches`, `run_outs`, `stumpings` | `configs/feature_vectors.json` → `fielding` |
 | **Extras** | Match | 17 | 1 — `total_extras` | `ml.train_extras.EXTRAS_FEATURE_COLS` |
-| **Win** | Match | 78 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` |
+| **Win** | Match | 77 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` |
 | **Innings** | Innings | 19 | 2 — `innings_runs`, `innings_wickets` | `ml.train_innings.INNINGS_FEATURE_COLS` |
 
 Input feature names, in order:
@@ -67,7 +67,7 @@ Input feature names, in order:
 - **Bowling** (35): `bowling_mean_w3`, `bowling_mean_w5`, `bowling_mean_w10`, `bowling_mean_w20`, `bowling_std_w5`, `bowling_std_w10`, `bowling_max_w10`, `bowling_min_w10`, `bowling_median_w10`, `bowling_last_1`, `bowling_last_2`, `bowling_last_3`, `bowling_career_mean`, `bowling_career_count`, `bowling_pct_zero_w10`, `bowling_trend_w5`, `bowling_days_since_last`, `bowling_innings_in_last_90d`, `batting_inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`
 - **Fielding** (10): `fielding_consistency`, `fielding_form`, `inning`, `toss`, `fielding_venue`, `fielding_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`
 - **Extras** (17): `venue_id`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential`, `consistency_differential`, `weather_composite` … (+5 more, see `ml.train_extras`)
-- **Win** (78): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `toss_winner_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std` … (+66 more, see `ml.win_features`)
+- **Win** (77): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std`, `team1_bat_consistency_max` … (+65 more, see `ml.win_features`)
 - **Innings** (19): `venue_id`, `inning_number`, `opposition_id`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential` … (+7 more, see `ml.train_innings`)
 
 <!-- END GENERATED: models -->

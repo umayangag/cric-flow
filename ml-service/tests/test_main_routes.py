@@ -165,7 +165,6 @@ def test_predict_win_route_success(tmp_path):
         "venue_id": 0,
         "team1_opposition_id": 0,
         "team2_opposition_id": 0,
-        "toss_winner_opposition_id": 0,
         "temp": 0,
         "wind": 0,
         "rain": 0,
