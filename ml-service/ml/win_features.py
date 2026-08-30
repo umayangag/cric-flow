@@ -3,7 +3,7 @@
 This module replaces the old sum-only approach (ml.win_features_from_reconciled)
 with distribution-aware features: for each of 8 feature groups
 (team1/team2 x bat/bowl x consistency/form), the model receives sum, mean, std,
-max, min, top3_mean, and count -- plus derived matchup and depth features.
+max, min and top3_mean -- plus derived matchup and spread features.
 
 Two entry points:
 1. **Training**: Features come from the Go-app CSV export, which now includes
@@ -52,9 +52,15 @@ _FEATURE_GROUPS = [
     "team2_bowl_form",
 ]
 
-_DIST_SUFFIXES = ["_sum", "_mean", "_std", "_max", "_min", "_top3_mean", "_count"]
+# _count is deliberately absent, and so is the bowl_depth_diff it fed. Both sides are now
+# aggregated over the squad each team picked rather than over the scorecard, so a count is
+# the squad size: 11 for all but the ~3% of sides carrying a replacement. At selection time
+# it is identical for every candidate XI, so it cannot separate them -- and while the export
+# read the scorecard it was the channel the match result leaked through, at held-out AUC
+# 0.89-0.94 on its own. See exportqueries/win.go.
+_DIST_SUFFIXES = ["_sum", "_mean", "_std", "_max", "_min", "_top3_mean"]
 
-_DIST_STAT_KEYS = ["sum", "mean", "std", "max", "min", "top3_mean", "count"]
+_DIST_STAT_KEYS = ["sum", "mean", "std", "max", "min", "top3_mean"]
 
 # Maps each export feature group to (player-level feature key, team number).
 # team number is 1 or 2; used at inference time to look up the correct team's
@@ -93,7 +99,6 @@ DERIVED_FEATURE_COLS = [
     "bat_form_matchup_ratio_team2",
     "bat_cons_matchup_ratio_team1",
     "bat_cons_matchup_ratio_team2",
-    "bowl_depth_diff",
     "bat_form_top3_diff",
     "bowl_form_top3_diff",
     "bat_cons_top3_diff",
@@ -147,9 +152,6 @@ def compute_derived_features(row: Mapping[str, float]) -> Dict[str, float]:
     bat_cons_matchup_t1 = _safe_ratio(g("team1_bat_consistency_mean", 0.0), g("team2_bowl_consistency_mean", 0.0))
     bat_cons_matchup_t2 = _safe_ratio(g("team2_bat_consistency_mean", 0.0), g("team1_bowl_consistency_mean", 0.0))
 
-    # Bowling depth: difference in number of bowlers between teams.
-    bowl_depth_diff = g("team1_bowl_consistency_count", 0.0) - g("team2_bowl_consistency_count", 0.0)
-
     # Top-3 quality differences: which team has stronger top performers.
     bat_form_top3_diff = g("team1_bat_form_top3_mean", 0.0) - g("team2_bat_form_top3_mean", 0.0)
     bowl_form_top3_diff = g("team1_bowl_form_top3_mean", 0.0) - g("team2_bowl_form_top3_mean", 0.0)
@@ -167,7 +169,6 @@ def compute_derived_features(row: Mapping[str, float]) -> Dict[str, float]:
         "bat_form_matchup_ratio_team2": bat_form_matchup_t2,
         "bat_cons_matchup_ratio_team1": bat_cons_matchup_t1,
         "bat_cons_matchup_ratio_team2": bat_cons_matchup_t2,
-        "bowl_depth_diff": bowl_depth_diff,
         "bat_form_top3_diff": bat_form_top3_diff,
         "bowl_form_top3_diff": bowl_form_top3_diff,
         "bat_cons_top3_diff": bat_cons_top3_diff,
@@ -185,9 +186,9 @@ def compute_derived_features(row: Mapping[str, float]) -> Dict[str, float]:
 
 
 def _dist_stats_from_values(values: Sequence[float]) -> Dict[str, float]:
-    """Compute sum, mean, std, max, min, top3_mean, count from a list of floats."""
+    """Compute sum, mean, std, max, min, top3_mean from a list of floats."""
     if not values:
-        return {"sum": 0.0, "mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "top3_mean": 0.0, "count": 0.0}
+        return {"sum": 0.0, "mean": 0.0, "std": 0.0, "max": 0.0, "min": 0.0, "top3_mean": 0.0}
     arr = np.array(values, dtype=np.float64)
     top3 = np.sort(arr)[-3:] if len(arr) >= 3 else arr
     return {
@@ -197,7 +198,6 @@ def _dist_stats_from_values(values: Sequence[float]) -> Dict[str, float]:
         "max": float(np.max(arr)),
         "min": float(np.min(arr)),
         "top3_mean": float(np.mean(top3)),
-        "count": float(len(arr)),
     }
 
 

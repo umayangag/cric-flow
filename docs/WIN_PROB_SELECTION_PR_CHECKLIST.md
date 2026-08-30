@@ -91,7 +91,7 @@ Two consequences that shape the whole plan:
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
-| S-3c | in_progress | `select/s-3c-import-playing-xi` | **The win export aggregates over who batted, not over the XI** (1/3: importer + migration) |
+| S-3c | in_progress | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (1/3 and 2/3 done; 3/3 is the re-export and the numbers) |
 | S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
@@ -453,9 +453,11 @@ end of its output range, ranking XIs by the residue.
 1. **Store the squad each side picked.** ✅ `select/s-3c-import-playing-xi` — migration
    `0003_match_player.sql`, `Info.Players`, `SquadFromInfo`, `ReplaceMatchPlayersTx`.
 2. **Aggregate over that squad on both sides**, for bat *and* bowl groups, so the export's
-   population is the same set the serving path aggregates over.
+   population is the same set the serving path aggregates over. ✅
+   `select/s-3c-export-over-squad`.
 3. **Drop the `_count` columns** — once the population is the squad they are near-constant,
-   carry almost nothing, and invite exactly this class of bug back.
+   carry almost nothing, and invite exactly this class of bug back. ✅ `bowl_depth_diff`
+   went with them, being the difference of two counts. Win features 77 → 68.
 4. Re-import, re-export, re-train, re-run S-3a.
 
 Split across PRs: (1) importer + migration, (2) export query + feature contract, (3) the
@@ -475,6 +477,17 @@ re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
 > handles absence — warn, record no squad, keep the ball-by-ball data — because a truncated
 > file must not become a side of nobody, but the export's exclusion path should be rare
 > enough that a non-zero count is a signal something is wrong.
+>
+> **The export was never reproducible, found while proving 2/3 correct.**
+> `feature_raw_stats_snapshots` holds **443,308 duplicate `(player_id, format_id,
+> as_of_date)` groups** for `scope='overall'` — 1.81M of its 2.32M rows. Its unique
+> constraint includes `scope_id`, which is NULL for that scope, and Postgres treats NULLs
+> as distinct, so the constraint never fires. **2,361 of those groups carry conflicting
+> values**, which makes "the latest snapshot before the match" ambiguous: two equivalent
+> formulations of the same query disagreed on 411 matches. The export query now breaks
+> the tie explicitly (`ORDER BY as_of_date DESC, id DESC`) so it is at least reproducible.
+> **The duplicates themselves are a precompute defect and are not fixed here** — they
+> predate this plan and affect every model that reads a snapshot, not just win.
 >
 > **Namesakes, found by running the re-import.** Two files name the same player on both
 > sides — `KV Sharma` (Vidarbha / Railways) and `J Butler` (Isle of Man / Guernsey). They

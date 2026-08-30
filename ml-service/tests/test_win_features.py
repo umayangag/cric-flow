@@ -26,7 +26,7 @@ class TestDistStatsFromValues:
         stats = _dist_stats_from_values([])
         assert stats["sum"] == 0.0
         assert stats["mean"] == 0.0
-        assert stats["count"] == 0.0
+        assert "count" not in stats
 
     def test_single_value(self) -> None:
         stats = _dist_stats_from_values([5.0])
@@ -36,7 +36,6 @@ class TestDistStatsFromValues:
         assert stats["max"] == 5.0
         assert stats["min"] == 5.0
         assert stats["top3_mean"] == 5.0
-        assert stats["count"] == 1.0
 
     def test_multiple_values_computes_correct_stats(self) -> None:
         values = [10.0, 20.0, 30.0, 40.0, 50.0]
@@ -45,7 +44,6 @@ class TestDistStatsFromValues:
         assert stats["mean"] == 30.0
         assert stats["max"] == 50.0
         assert stats["min"] == 10.0
-        assert stats["count"] == 5.0
         assert stats["top3_mean"] == pytest.approx(40.0)
         assert stats["std"] > 0
 
@@ -67,12 +65,13 @@ class TestComputeDerivedFeatures:
         assert derived["bat_form_matchup_ratio_team1"] == 1.0
         assert derived["bat_cons_matchup_ratio_team2"] == 1.0
 
-    def test_bowl_depth_diff(self) -> None:
+    def test_no_count_derived_feature(self) -> None:
+        """bowl_depth_diff went with the counts (S-3c): over a squad it is ~always zero,
+        and while the export read the scorecard it was a channel for the result."""
         row = {col: 0.0 for col in MATCH_CONTEXT_COLS + _DIST_FEATURE_COLS}
-        row["team1_bowl_consistency_count"] = 5.0
-        row["team2_bowl_consistency_count"] = 3.0
         derived = compute_derived_features(row)
-        assert derived["bowl_depth_diff"] == 2.0
+        assert "bowl_depth_diff" not in derived
+        assert not any(key.endswith("_count") for key in derived)
 
     def test_spread_calculation(self) -> None:
         row = {col: 0.0 for col in MATCH_CONTEXT_COLS + _DIST_FEATURE_COLS}
@@ -107,7 +106,7 @@ class TestAggregateTeamFeatures:
         ctx = {col: 0.0 for col in MATCH_CONTEXT_COLS}
         result = aggregate_team_features_from_player_maps({}, {}, ctx)
         assert result["team1_bat_consistency_sum"] == 0.0
-        assert result["team1_bat_consistency_count"] == 0.0
+        assert "team1_bat_consistency_count" not in result
 
 
 class TestBuildFeatureVector:
@@ -150,7 +149,13 @@ class TestFeatureColumnDefinitions:
         assert len(WIN_ENHANCED_FEATURE_COLS) == len(set(WIN_ENHANCED_FEATURE_COLS))
 
     def test_dist_feature_count(self) -> None:
-        assert len(_DIST_FEATURE_COLS) == 8 * 7
+        # Six stats per group, not seven: the count was dropped with S-3c.
+        assert len(_DIST_FEATURE_COLS) == 8 * 6
 
     def test_derived_feature_count(self) -> None:
-        assert len(DERIVED_FEATURE_COLS) == 13
+        assert len(DERIVED_FEATURE_COLS) == 12
+
+    def test_no_feature_column_is_a_count(self) -> None:
+        """The guard for S-3c. A count over a squad is the squad size: constant across
+        candidate XIs, and the column the match result leaked through."""
+        assert not any(col.endswith("_count") for col in WIN_ENHANCED_FEATURE_COLS)
