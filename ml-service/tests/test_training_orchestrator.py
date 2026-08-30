@@ -220,7 +220,6 @@ def test_run_auto_tune_invokes_training_subprocess_with_expected_args(monkeypatc
         go_app_url="http://localhost:8080",
         model="batting",
         use_all_formats=False,
-        use_unified=True,
         fmt="T20",
         rescreen=True,
         algorithms="xgboost,lightgbm",
@@ -232,7 +231,7 @@ def test_run_auto_tune_invokes_training_subprocess_with_expected_args(monkeypatc
     # Core flags should be threaded through
     assert "--model" in args and "batting" in args
     assert "--from-api" in args and "--cutoff" in args and "--go-app-url" in args
-    assert "--unified" in args
+    assert "--format" in args and "T20" in args
     assert "--rescreen" in args
     assert "--algorithms" in args
     # When single_task is true we set AUTO_TUNE_N_JOBS

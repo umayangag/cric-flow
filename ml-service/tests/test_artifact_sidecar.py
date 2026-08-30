@@ -9,11 +9,10 @@ from ml.artifact_sidecar import meta_filename, read_artifact_meta, write_artifac
 
 
 def test_meta_filename_per_format() -> None:
-    """Per-format artifacts include the format code; legacy/None omit it."""
+    """Per-format artifacts include the format code; a missing code resolves the stale name."""
     assert meta_filename("innings", "T20") == "innings_meta_T20.json"
     assert meta_filename("extras", "T20I") == "extras_meta_T20I.json"
     assert meta_filename("innings", None) == "innings_meta.json"
-    assert meta_filename("extras", "_LEGACY_") == "extras_meta.json"
 
 
 def test_write_then_read_roundtrip(tmp_path: Path) -> None:
@@ -61,9 +60,10 @@ def test_read_rejects_non_object_root(tmp_path: Path) -> None:
     assert read_artifact_meta(str(tmp_path), "innings", None) is None
 
 
-def test_legacy_alias_write_reads_as_legacy_filename(tmp_path: Path) -> None:
-    """_LEGACY_ sentinel and None should both produce the same legacy file."""
-    write_artifact_meta(str(tmp_path), "extras", "_LEGACY_", ["x"])
+def test_unsuffixed_sidecar_is_still_readable(tmp_path: Path) -> None:
+    """A stale sidecar left by the removed unified models reads back, rather than breaking a scan."""
+    write_artifact_meta(str(tmp_path), "extras", None, ["x"])
+    assert (tmp_path / "extras_meta.json").exists()
     meta = read_artifact_meta(str(tmp_path), "extras", None)
     assert meta is not None
     assert meta["feature_names"] == ["x"]

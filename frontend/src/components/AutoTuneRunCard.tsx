@@ -37,7 +37,7 @@ const AutoTuneRunCard: React.FC<AutoTuneRunCardProps> = ({ run }) => {
       }}
     >
       <strong>
-        {run.model} — {run.format || 'Unified'} (saved at{' '}
+        {run.model} — {run.format || 'no format'} (saved at{' '}
         {new Date(run.created_at).toLocaleString()})
       </strong>
       <Box component="div" sx={{ mt: 1 }}>

@@ -347,13 +347,17 @@ def run_auto_tune(
     go_app_url: str,
     model: str,
     use_all_formats: bool,
-    use_unified: bool,
     fmt: str,
     rescreen: bool,
     algorithms: str,
     logger: Optional[Logger] = None,
 ) -> None:
-    """Run auto-tune subprocess. Raises ValueError on failure."""
+    """Run auto-tune subprocess. Raises ValueError on failure.
+
+    A format is required: artifacts and tuned-params rows are both keyed by it.
+    """
+    if not use_all_formats and not fmt.strip():
+        raise ValueError("auto-tune requires a format: pass format=<CODE> or all_formats=1")
     extra = [
         "--model",
         model,
@@ -365,9 +369,7 @@ def run_auto_tune(
     ]
     if use_all_formats:
         extra.append("--all-formats")
-    elif use_unified:
-        extra.append("--unified")
-    elif not use_unified:
+    else:
         extra.extend(["--format", fmt])
     if rescreen:
         extra.append("--rescreen")
@@ -375,7 +377,7 @@ def run_auto_tune(
         extra.extend(["--algorithms", algorithms.strip()])
     extra.append("--parallel")
     subprocess_env: Optional[Dict[str, str]] = None
-    single_task = model != "all" and (not use_all_formats or use_unified)
+    single_task = model != "all" and not use_all_formats
     if single_task:
         subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}
     if logger:
@@ -386,7 +388,6 @@ def run_auto_tune(
             go_app_url=go_app_url,
             model=model,
             all_formats=use_all_formats,
-            unified=use_unified,
             format=fmt or None,
             rescreen=rescreen,
             algorithms=algorithms.strip() or None,
