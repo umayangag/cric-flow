@@ -61,6 +61,16 @@ You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or
 
 ---
 
+## Export width contract
+
+Every trainer and tuning loader reads its `*_encoded_all.csv` through `ml.export_csv.read_export_csv`, which compares the header against the first data row and raises `MisalignedExportError` when the two disagree.
+
+The check exists because pandas stays silent about the one corruption that matters here: a header naming fewer columns than the rows carry makes `read_csv` absorb the surplus leading fields as an index and shift every named column left by that many places. The win export shipped 64 header names over 72-field rows, so `team1_wins` took the values of `team1_bat_consistency_top3_mean`, the target collapsed to a single class, and the run died minutes later inside GradientBoosting complaining about class counts — nowhere near the cause.
+
+If a train step now fails with `header names N columns but the first data row has M fields`, the CSV on disk predates the current exporter. Re-run `make export-dataset`, then re-run the train step.
+
+---
+
 ## Test coverage and CI gates (ML service)
 
 **Goal:** ML‑service coverage gates should reflect the quality of **API and inference‑time code**, without being dominated by long‑running offline training/tuning CLIs.

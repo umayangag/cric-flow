@@ -37,6 +37,7 @@ from .config import (
     get_training_params,
 )
 from .data_quality import drop_low_variance_columns
+from .export_csv import read_export_csv
 from .pipeline_common import compute_time_decay_weights, get_scaler
 from .training_pipeline import ModelSpec, TrainingPipeline
 from .training_progress import columns_dropped
@@ -231,7 +232,7 @@ def main() -> None:
 
     if os.path.isfile(csv_path):
         logger.info("train_fielding.loading_csv path=%s (prefer CSV over API)", csv_path)
-        df = pd.read_csv(csv_path)
+        df = read_export_csv(csv_path)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)

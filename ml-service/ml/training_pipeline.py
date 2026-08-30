@@ -36,6 +36,7 @@ from . import config as svc_config
 from .config import DEFAULT_HOLDOUT_FRACTION, get_pipeline_common_config, get_training_params
 from .data_quality import clip_target_outliers, impute_features
 from .dataset_provenance import attach as attach_provenance
+from .export_csv import read_export_csv
 from .feature_transforms import apply_transforms, get_transform_config
 from .metrics import compute_regression_metrics
 from .pipeline_common import compute_time_decay_weights, get_scaler
@@ -207,7 +208,7 @@ class TrainingPipeline:
                 path,
             )
             raise FileNotFoundError(path)
-        df = pd.read_csv(path)
+        df = read_export_csv(path)
         df = self.prepare_dataframe(df)
         return self.dataframe_to_xy(df, share_targets=share_targets)
 

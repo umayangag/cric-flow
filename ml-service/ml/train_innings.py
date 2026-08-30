@@ -43,6 +43,7 @@ from ml.config import (
     get_training_params,
 )
 from ml.data_quality import drop_low_variance_columns
+from ml.export_csv import read_export_csv
 from ml.match_level_derived_features import (
     MATCH_LEVEL_DERIVED_FEATURE_COLS,
     add_match_level_derived_features_to_df,
@@ -262,7 +263,7 @@ def _main() -> None:
 
     if os.path.isfile(csv_path):
         logger.info("train_innings.loading_csv path=%s (prefer CSV over API)", csv_path)
-        df = pd.read_csv(csv_path)
+        df = read_export_csv(csv_path)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
         by_format = rows_to_xy_by_format(headers, rows)

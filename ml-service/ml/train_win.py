@@ -41,6 +41,7 @@ from ml.config import (
 )
 from ml.data_quality import drop_low_variance_columns
 from ml.dataset_provenance import attach as attach_provenance
+from ml.export_csv import read_export_csv
 from ml.pipeline_common import compute_time_decay_weights
 from ml.training_progress import (
     artifact_written,
@@ -424,7 +425,7 @@ def _main() -> None:
     by_format = {}
     if os.path.isfile(csv_path):
         logger.info("train_win.loading_csv path=%s (prefer CSV over API)", csv_path)
-        df = pd.read_csv(csv_path)
+        df = read_export_csv(csv_path)
         csv_total_rows = len(df)
         csv_formats = df["format_code"].unique().tolist() if "format_code" in df.columns else []
         logger.info(
