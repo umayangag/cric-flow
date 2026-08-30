@@ -196,7 +196,10 @@ func TestListRespectsTheLimit_Integration(t *testing.T) {
 
 	for i := range 5 {
 		sha := string(rune('a'+i)) + "-limit"
-		require.NoError(t, RecordFetch(ctx, FetchRecord{SHA256: sha, Filename: sha + ".zip", FetchedAt: time.Now().UTC()}))
+		require.NoError(
+			t,
+			RecordFetch(ctx, FetchRecord{SHA256: sha, Filename: sha + ".zip", FetchedAt: time.Now().UTC()}),
+		)
 	}
 
 	got, err := List(ctx, 2, "")
