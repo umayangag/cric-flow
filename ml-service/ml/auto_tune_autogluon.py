@@ -86,12 +86,17 @@ def run_autogluon_classification(
     y: np.ndarray,
     time_limit_seconds: int = 300,
     presets: str = "medium_quality",
+    eval_metric: str = "roc_auc",
 ) -> Tuple[Optional[TabularPredictor], Optional[float], Optional[str], bool]:
     """
     Fit AutoGluon TabularPredictor for binary classification.
 
+    ``eval_metric`` comes from the caller because the score is compared against the
+    Optuna search's, and whichever is higher wins. The two must measure the same thing;
+    comparing an AUC with an accuracy would decide the win model on a category error.
+
     Returns:
-        (predictor, accuracy_score, save_path, success)
+        (predictor, score_on_eval_metric, save_path, success)
     """
     if not _HAS_AUTOGLUON:
         return None, None, None, False
@@ -103,16 +108,16 @@ def run_autogluon_classification(
         predictor = TabularPredictor(
             label="_target",
             problem_type="binary",
-            eval_metric="accuracy",
+            eval_metric=eval_metric,
             path=persist_path,
         )
         predictor.fit(df, time_limit=time_limit_seconds, presets=presets, verbosity=1)
         leaderboard = predictor.leaderboard(silent=True)
         if leaderboard is None or leaderboard.empty:
             return None, None, None, False
-        acc = float(leaderboard["score_val"].iloc[0])
+        score = float(leaderboard["score_val"].iloc[0])
         predictor.save()
-        return predictor, acc, persist_path, True
+        return predictor, score, persist_path, True
     except Exception as e:
         logger.warning("auto_tune_autogluon.classification_failed error=%s", e, exc_info=True)
         return None, None, None, False
