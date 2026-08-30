@@ -15,11 +15,13 @@ import argparse
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
@@ -31,10 +33,11 @@ import pandas as pd
 from sklearn.multioutput import MultiOutputRegressor
 
 from . import config as svc_config
-from .config import get_pipeline_common_config, get_training_params
+from .config import DEFAULT_HOLDOUT_FRACTION, get_pipeline_common_config, get_training_params
 from .data_quality import clip_target_outliers, impute_features
 from .dataset_provenance import attach as attach_provenance
 from .feature_transforms import apply_transforms, get_transform_config
+from .metrics import compute_regression_metrics
 from .pipeline_common import compute_time_decay_weights, get_scaler
 from .training_progress import (
     artifact_written,
@@ -47,6 +50,11 @@ from .training_progress import start as progress_start
 from .utils import extract_feature_importance_from_estimator, make_base_estimator
 
 logger = logging.getLogger(__name__)
+
+# Floors for the single-train holdout evaluation. Below these a score says more about
+# the split than about the model, so it is omitted rather than reported as a number.
+MIN_HOLDOUT_ROWS = 50
+MIN_HOLDOUT_TRAIN_ROWS = 200
 
 
 @dataclass
@@ -277,6 +285,110 @@ class TrainingPipeline:
 
     # ── Training and saving ──────────────────────────────────────────────
 
+    def _fit_scaled_estimator(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        training_params: dict,
+        sample_weight: Optional[np.ndarray] = None,
+        use_robust_scaler: bool = True,
+    ) -> Tuple[Any, Any]:
+        """Scale (when the spec asks for it) and fit one estimator. Returns (scaler, model).
+
+        The single place the estimator is constructed and fitted, so the holdout
+        evaluation scores the same recipe that `train_and_save` ships.
+        """
+        if self.spec.use_scaler:
+            scaler = get_scaler(use_robust=use_robust_scaler)
+            X_scaled = scaler.fit_transform(X)
+        else:
+            scaler = None
+            X_scaled = X
+        base_est = make_base_estimator(training_params)
+        model = MultiOutputRegressor(base_est) if self.spec.use_multi_output else base_est
+        model.fit(X_scaled, Y, sample_weight=sample_weight)
+        return scaler, model
+
+    def evaluate_holdout(
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        training_params: dict,
+        sample_weight: Optional[np.ndarray] = None,
+        holdout_fraction: float = DEFAULT_HOLDOUT_FRACTION,
+        use_robust_scaler: bool = True,
+        suffix: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Score the training recipe on a trailing slice of the data. None when not evaluable.
+
+        The split is positional, which is a *time* split because go-app exports every
+        training CSV `ORDER BY match_date ASC` — the same assumption the tuning search's
+        walk_forward CV already rests on. Costs one extra fit on ~(1 - fraction) of the
+        rows; set ml.pipeline_common.holdout_fraction to 0 to skip it.
+
+        The scaler and the target clipping are fitted on the training slice alone, and
+        the holdout is scored against its *unclipped* targets: clipping is part of the
+        recipe under test, so letting it touch the answer key would flatter the score.
+        """
+        n_rows = int(X.shape[0])
+        n_holdout = int(round(n_rows * holdout_fraction))
+        n_train = n_rows - n_holdout
+        if holdout_fraction <= 0 or n_holdout < MIN_HOLDOUT_ROWS or n_train < MIN_HOLDOUT_TRAIN_ROWS:
+            logger.info(
+                "training_pipeline.holdout_skipped model=%s format=%s rows=%s fraction=%s",
+                self.spec.name,
+                suffix,
+                n_rows,
+                holdout_fraction,
+            )
+            return None
+
+        clip_percentile = training_params.get("target_clip_percentile", 99.0)
+        clip_names = self.spec.target_names_for_clip or self.spec.target_cols
+        Y_train, _ = clip_target_outliers(
+            Y[:n_train],
+            percentile=clip_percentile,
+            target_names=clip_names[: Y.shape[1]],
+        )
+        weights_train = sample_weight[:n_train] if sample_weight is not None else None
+
+        try:
+            scaler, model = self._fit_scaled_estimator(
+                X[:n_train],
+                Y_train,
+                training_params,
+                sample_weight=weights_train,
+                use_robust_scaler=use_robust_scaler,
+            )
+            X_holdout = X[n_train:]
+            if scaler is not None:
+                X_holdout = scaler.transform(X_holdout)
+            predictions = model.predict(X_holdout)
+        except (ValueError, TypeError, MemoryError) as e:
+            logger.warning(
+                "training_pipeline.holdout_failed model=%s format=%s error=%s",
+                self.spec.name,
+                suffix,
+                e,
+            )
+            return None
+
+        metrics = compute_regression_metrics(Y[n_train:], predictions, target_names=list(self.spec.target_cols))
+        if not metrics:
+            return None
+        metrics["holdout_rows"] = n_holdout
+        metrics["holdout_train_rows"] = n_train
+        logger.info(
+            "training_pipeline.holdout_scored model=%s format=%s train_rows=%s holdout_rows=%s mae=%s r2_pct=%s",
+            self.spec.name,
+            suffix,
+            n_train,
+            n_holdout,
+            metrics.get("mae"),
+            metrics.get("r2_pct"),
+        )
+        return metrics
+
     def train_and_save(
         self,
         X: np.ndarray,
@@ -291,31 +403,38 @@ class TrainingPipeline:
     ) -> None:
         """Train model, save artifacts (scaler + model + metadata)."""
         os.makedirs(out_dir, exist_ok=True)
+        started_at = datetime.now(timezone.utc)
+        started_monotonic = time.monotonic()
 
-        # Scale features
-        if self.spec.use_scaler:
-            pipe_cfg = get_pipeline_common_config()
-            use_robust = pipe_cfg.get("use_robust_scaler", True)
-            scaler = get_scaler(use_robust=use_robust)
-            Xs = scaler.fit_transform(X)
-        else:
-            scaler = None
-            Xs = X
+        pipe_cfg = get_pipeline_common_config()
+        use_robust = pipe_cfg.get("use_robust_scaler", True)
+
+        # Score the model before fitting the one we ship, so a single-train run reports
+        # something falsifiable instead of only its file size (see docs/ml-and-training.md).
+        holdout_metrics = self.evaluate_holdout(
+            X,
+            Y,
+            training_params,
+            sample_weight=sample_weight,
+            holdout_fraction=pipe_cfg.get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION),
+            use_robust_scaler=use_robust,
+            suffix=suffix,
+        )
 
         # Outlier clipping on targets
         clip_percentile = training_params.get("target_clip_percentile", 99.0)
         clip_names = self.spec.target_names_for_clip or self.spec.target_cols
         Y, clip_info = clip_target_outliers(Y, percentile=clip_percentile, target_names=clip_names[: Y.shape[1]])
 
-        # Build and fit model
         compress = training_params["joblib_compress"]
-        base_est = make_base_estimator(training_params)
-        if self.spec.use_multi_output:
-            model = MultiOutputRegressor(base_est)
-        else:
-            model = base_est
         fitting(self.spec.name, suffix, int(X.shape[0]), int(X.shape[1]))
-        model.fit(Xs, Y, sample_weight=sample_weight)
+        scaler, model = self._fit_scaled_estimator(
+            X,
+            Y,
+            training_params,
+            sample_weight=sample_weight,
+            use_robust_scaler=use_robust,
+        )
 
         # Extract feature importance
         feature_names_for_importance = (metadata.get("feature_names") if metadata else None) or self.spec.feature_cols
@@ -348,6 +467,20 @@ class TrainingPipeline:
                 metadata["feature_transforms"] = transform_config
             if clip_info:
                 metadata["target_clip_info"] = clip_info
+            metadata["algorithm"] = training_params.get("estimator", "rf")
+            metadata["n_samples"] = int(X.shape[0])
+            metadata["n_features"] = int(X.shape[1])
+            # Recorded on the artifact rather than left to the DB: only auto-tune writes
+            # ml_tuned_params rows, so a single-train run has nothing in Postgres to date it.
+            metadata["trained_at"] = started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+            metadata["duration_seconds"] = round(time.monotonic() - started_monotonic, 2)
+            if holdout_metrics:
+                metadata["metrics"] = holdout_metrics
+                # Names the provenance of the score, not just its value: a trailing-holdout
+                # MAE and a tuned cross-validated MAE sit in the same UI column and must not
+                # be read as the same measurement.
+                metadata["score_source"] = "holdout"
+                metadata["validation_method"] = "trailing_holdout"
             meta_path = os.path.join(out_dir, f"{prefix}_metadata_{suffix or 'LEGACY'}.json")
             try:
                 with open(meta_path, "w", encoding="utf-8") as f:
@@ -368,18 +501,7 @@ class TrainingPipeline:
     ) -> Tuple[Any, Any]:
         """Train model in memory and return (scaler, model). Used by train_on_the_fly."""
         params = get_training_params(self.spec.name, format_code)
-        if self.spec.use_scaler:
-            scaler = get_scaler(use_robust=False)
-            Xs = scaler.fit_transform(X)
-        else:
-            scaler = None
-            Xs = X
-        base_est = make_base_estimator(params)
-        if self.spec.use_multi_output:
-            model = MultiOutputRegressor(base_est)
-        else:
-            model = base_est
-        model.fit(Xs, Y)
+        scaler, model = self._fit_scaled_estimator(X, Y, params, use_robust_scaler=False)
         return scaler, model
 
     # ── Consistency evaluation hooks (Stage 2 scaffolding) ────────────────

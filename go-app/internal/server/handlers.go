@@ -214,6 +214,10 @@ func enrichWithDBMetrics(modelMap map[string]any, metrics json.RawMessage) {
 	}
 	if disp := formatAccuracyDisplayFromMetrics(m); disp != "" {
 		modelMap["accuracy_display"] = disp
+		// The DB row comes from an auto-tune run, so it re-labels a score ml-service may
+		// have reported as a single-train holdout. Without this the value changes but the
+		// label does not, which is worse than either alone.
+		modelMap["score_source"] = "tuning_cv"
 	}
 }
 
