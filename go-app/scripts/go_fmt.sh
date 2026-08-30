@@ -3,14 +3,10 @@ set -euo pipefail
 
 # Format Go code using gofumpt and golines. Self-bootstrap tools if missing.
 
-GOBIN="$(go env GOPATH)/bin"
-export PATH="${GOBIN}:$PATH"
+# shellcheck source=./go_fmt_common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/go_fmt_common.sh"
 
-if ! command -v gofumpt >/dev/null 2>&1 || ! command -v golines >/dev/null 2>&1; then
-  echo "Installing gofumpt and golines to ${GOBIN}..."
-  go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }
-  go install github.com/segmentio/golines@latest || { echo "Failed to install golines"; exit 1; }
-fi
+ensure_fmt_tools
 
 gofumpt -w .
-golines -w -m 120 .
+golines -w -m "${GOLINES_MAX_LEN}" .

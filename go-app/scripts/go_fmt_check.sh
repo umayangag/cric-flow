@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Check formatting using gofumpt; install if missing.
+# Check formatting without writing. Runs the same two tools as go_fmt.sh so that
+# anything `make fmt` would rewrite fails here instead of drifting silently.
 
-GOBIN="$(go env GOPATH)/bin"
-export PATH="${GOBIN}:$PATH"
+# shellcheck source=./go_fmt_common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/go_fmt_common.sh"
 
-if ! command -v gofumpt >/dev/null 2>&1; then
-  echo "Installing gofumpt to ${GOBIN}..."
-  go install mvdan.cc/gofumpt@latest || { echo "Failed to install gofumpt"; exit 1; }
+ensure_fmt_tools
+
+unformatted="$(
+  {
+    gofumpt -l .
+    golines -l -m "${GOLINES_MAX_LEN}" .
+  } | sort -u
+)"
+
+if [ -n "${unformatted}" ]; then
+  echo "These files are not formatted. Run 'make -C go-app fmt':" >&2
+  echo "${unformatted}" >&2
+  exit 1
 fi
-
-# List files that would be changed; fail if any are listed (awk END runs after exit so we use a flag)
-gofumpt -l . | tee /dev/stderr | awk 'NR>0{found=1} END{exit(found?1:0)}'

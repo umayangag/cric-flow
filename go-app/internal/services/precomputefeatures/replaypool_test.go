@@ -186,7 +186,11 @@ func TestRunReplayPool_MultipleProducers_AllItemsProcessedOnce(t *testing.T) {
 	for i := range got {
 		perFormat[got[i].FormatCode]++
 	}
-	require.Equal(t, map[string]int{"TEST": perProducer, "ODI": perProducer, "T20": perProducer, "T20I": perProducer}, perFormat)
+	require.Equal(
+		t,
+		map[string]int{"TEST": perProducer, "ODI": perProducer, "T20": perProducer, "T20I": perProducer},
+		perFormat,
+	)
 }
 
 func TestRunReplayPool_NonPositiveSizes_StillRun(t *testing.T) {

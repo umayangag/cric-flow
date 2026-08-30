@@ -227,7 +227,11 @@ func (a *App) dataDatasetsHandler(w http.ResponseWriter, r *http.Request) {
 	datasets, err := datasetregistry.List(r.Context(), limit, liveSHA)
 	if err != nil {
 		slog.Error("ops datasets: list failed", slog.Any("err", err))
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read the dataset registry"})
+		respondJSON(
+			w,
+			http.StatusInternalServerError,
+			map[string]string{"error": "could not read the dataset registry"},
+		)
 		return
 	}
 

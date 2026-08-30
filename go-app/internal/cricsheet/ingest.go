@@ -54,8 +54,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	}
 	if len(files) == 0 {
 		slog.Error("cricsheet.ImportDir found no match files", slog.String("dir", dir))
-		return 0, fmt.Errorf("%w in %s (set %s or inputs.cricsheet_dir to the directory holding the *.json match files)",
-			ErrNoMatchFiles, dir, dataset.DirEnvVar)
+		return 0, fmt.Errorf(
+			"%w in %s (set %s or inputs.cricsheet_dir to the directory holding the *.json match files)",
+			ErrNoMatchFiles,
+			dir,
+			dataset.DirEnvVar,
+		)
 	}
 
 	slog.Info("pipeline: cricsheet import scanning complete",

@@ -40,7 +40,10 @@ func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
 		return
 	}
 	if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "no rows") {
-		hint := "Ensure migrations are applied and match_format is populated (" + strings.Join(formatsPkg.CanonicalCodes(), ", ") + ")."
+		hint := "Ensure migrations are applied and match_format is populated (" + strings.Join(
+			formatsPkg.CanonicalCodes(),
+			", ",
+		) + ")."
 		// Echo the requested format only when it is a known code, to avoid reflecting input.
 		if formatsPkg.IsCanonical(format) || format == "all" {
 			hint += " Format requested: " + format
