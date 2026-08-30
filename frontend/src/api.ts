@@ -350,7 +350,7 @@ export const api = {
   },
   /**
    * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).
-   * For auto_tune, pass params: { model?, format?, all_formats?, unified?, rescreen?, cutoff?, algorithms? } (query string).
+   * For auto_tune, pass params: { model?, format?, all_formats?, rescreen?, cutoff?, algorithms? } (query string).
    * Returns status and body so UI can handle 202 (started), 501 (run from root), or error.
    */
   async opsPipelineRun(

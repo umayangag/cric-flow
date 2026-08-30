@@ -188,7 +188,7 @@ def _maybe_run_autogluon_and_compare(
     if not ok or not ag_better or not persist_path:
         return False, None, {"autogluon_tried": True, "autogluon_score": ag_score, "autogluon_wins": False}
 
-    fmt = (format_suffix or "LEGACY").replace(" ", "_")
+    fmt = format_suffix.replace(" ", "_")
     ag_dir = os.path.join(out_dir, f"autogluon_{model_kind}_{fmt}")
     os.makedirs(out_dir, exist_ok=True)
     if os.path.isdir(ag_dir):
@@ -240,7 +240,7 @@ def run_auto_tune(
         logger.info(
             "auto_tune.using_prior_algorithm model=%s format=%s algorithm=%s (skipping screening, fine-tune only)",
             model_kind,
-            format_suffix or "(unified)",
+            format_suffix,
             prior_algo,
         )
     if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
@@ -329,7 +329,7 @@ def run_auto_tune_extras(
             prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
         logger.info(
             "auto_tune.using_prior_algorithm model=extras format=%s algorithm=%s (fine-tune only)",
-            format_suffix or "(unified)",
+            format_suffix,
             prior_algo,
         )
     if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
@@ -374,11 +374,11 @@ def run_auto_tune_extras(
             os.makedirs(out_dir, exist_ok=True)
             model_path = os.path.join(
                 out_dir,
-                f"extras_model_{format_suffix.replace(' ', '_')}.joblib" if format_suffix else "extras_model.joblib",
+                f"extras_model_{format_suffix.replace(' ', '_')}.joblib",
             )
             joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
             report_path = os.path.join(
-                out_dir, f"tuning_report_extras_{format_suffix}.json" if format_suffix else "tuning_report_extras.json"
+                out_dir, f"tuning_report_extras_{format_suffix}.json"
             )
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
@@ -715,7 +715,7 @@ def run_auto_tune_win(
             prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
         logger.info(
             "auto_tune.using_prior_algorithm model=win format=%s algorithm=%s (fine-tune only)",
-            format_suffix or "(unified)",
+            format_suffix,
             prior_algo,
         )
     if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
@@ -752,11 +752,11 @@ def run_auto_tune_win(
             os.makedirs(out_dir, exist_ok=True)
             model_path = os.path.join(
                 out_dir,
-                f"win_model_{format_suffix.replace(' ', '_')}.joblib" if format_suffix else "win_model.joblib",
+                f"win_model_{format_suffix.replace(' ', '_')}.joblib",
             )
             joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
             report_path = os.path.join(
-                out_dir, f"tuning_report_win_{format_suffix}.json" if format_suffix else "tuning_report_win.json"
+                out_dir, f"tuning_report_win_{format_suffix}.json"
             )
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)

@@ -59,7 +59,10 @@ func TestRejectRemovedParams(t *testing.T) {
 			"",
 		},
 		{
-			"auto_tune unified training flag is untouched",
+			// The rule refuses use_unified_model and model=unified. A bare "unified"
+			// param is a different name and must pass through: matching the word
+			// rather than the parameter is how this rule would start over-refusing.
+			"a bare unified param is not refused by name matching",
 			"/ops/pipeline/run/auto_tune?model=all&unified=1",
 			http.StatusOK,
 			"",

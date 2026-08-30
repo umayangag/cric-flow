@@ -563,14 +563,13 @@ def test_save_artifacts_writes_scaler_model_and_report(tmp_path):
     assert loaded["best_algorithm"] == "rf"
 
 
-def test_save_artifacts_without_format_suffix(tmp_path):
-    """_save_artifacts with format_suffix=None uses unscoped filenames."""
+def test_save_artifacts_without_format_suffix_refuses(tmp_path):
+    """_save_artifacts refuses an unsuffixed write: app.artifacts could never load it."""
     pipe = _minimal_batting_pipeline()
     pipe.fit(np.random.rand(10, 3), np.random.rand(10, 2))
-    _save_artifacts(pipe, str(tmp_path), "bowling", None, joblib_compress=0, report={})
-    assert (tmp_path / "bowling_scaler.joblib").exists()
-    assert (tmp_path / "bowling_model.joblib").exists()
-    assert (tmp_path / "tuning_report_bowling.json").exists()
+    with pytest.raises(ValueError, match="missing_format_suffix"):
+        _save_artifacts(pipe, str(tmp_path), "bowling", None, joblib_compress=0, report={})
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_save_artifacts_model_only_writes_model_and_report(tmp_path):
@@ -588,13 +587,13 @@ def test_save_artifacts_model_only_writes_model_and_report(tmp_path):
     assert loaded["best_algorithm"] == "gb"
 
 
-def test_save_artifacts_model_only_without_format_suffix(tmp_path):
-    """_save_artifacts_model_only with format_suffix=None uses unscoped filenames."""
+def test_save_artifacts_model_only_without_format_suffix_refuses(tmp_path):
+    """_save_artifacts_model_only refuses an unsuffixed write, same as _save_artifacts."""
     pipe = _minimal_model_only_pipeline(regression=False)
     pipe.fit(np.random.rand(10, 3), np.random.randint(0, 2, 10))
-    _save_artifacts_model_only(pipe, str(tmp_path), "win", None, joblib_compress=0, report={})
-    assert (tmp_path / "win_model.joblib").exists()
-    assert (tmp_path / "tuning_report_win.json").exists()
+    with pytest.raises(ValueError, match="missing_format_suffix"):
+        _save_artifacts_model_only(pipe, str(tmp_path), "win", None, joblib_compress=0, report={})
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_get_prior_tuned_algorithm_from_report_file(tmp_path):

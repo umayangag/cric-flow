@@ -81,7 +81,6 @@ const CMD_FORMATTERS: Record<string, ArgFormatter> = {
     if (args.model) parts.push(`model=${args.model}`);
     if (args.format) parts.push(`format=${args.format}`);
     if (args.all_formats && String(args.all_formats) !== '0') parts.push('all_formats');
-    if (args.unified && String(args.unified) !== '0') parts.push('unified');
     if (args.algorithms) parts.push(`algorithms=${args.algorithms}`);
     if (args.cutoff) parts.push(`cutoff=${formatCutoff(args.cutoff)}`);
     if (args.rescreen && String(args.rescreen) !== '0') parts.push('rescreen');

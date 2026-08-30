@@ -85,7 +85,6 @@ train-models: train-batting train-bowling train-fielding train-extras train-win 
 MODEL ?= batting
 FORMAT ?=
 ALL_FORMATS ?=
-UNIFIED ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
@@ -99,13 +98,6 @@ endif
 ifeq ($(ALL_FORMATS),1)
 AUTO_TUNE_ARGS += --all-formats
 ifeq ($(MODEL),all)
-AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
-endif
-endif
-ifeq ($(UNIFIED),1)
-AUTO_TUNE_ARGS += --unified
-# extras, win, innings require API; model=all includes them
-ifneq ($(filter extras win innings all,$(MODEL)),)
 AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
 endif
 endif
