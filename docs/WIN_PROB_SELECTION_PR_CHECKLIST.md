@@ -72,6 +72,11 @@ Two consequences that shape the whole plan:
 1. **Win probability is directly computable for any candidate XI.** No additive
    player-score proxy is needed. This is the property that makes the goal reachable at
    all, and most systems do not have it.
+
+   > **Qualified by S-3c.** The property holds, but the *training* side does not honour
+   > it: the export aggregates each group over the players who appear in the scorecard,
+   > not over the eleven who were picked. So the function the model learned is not the
+   > function the optimiser evaluates, and the difference is the match result.
 2. **The base player models are not on the critical path for the objective.** They feed
    the greedy *seed*, the displayed scorecard and the team-score aggregates — but not the
    quantity being maximised. That is why S-5 shrinks and S-8 is deferred.
@@ -86,13 +91,19 @@ Two consequences that shape the whole plan:
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
-| S-4 | todo | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
+| S-3c | todo | `select/s-3c-win-export-leak` | **The win export aggregates over who batted, not over the XI** |
+| S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
-| S-6 | todo | `select/s-6-enable-winprob` | Turn on win-probability selection |
+| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection |
 | S-7 | todo | `select/s-7-id-encoding` | Venue and opposition ID encoding (deferred) |
 | S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
+
+**S-4 and S-6 are blocked on S-3c.** The objective they improve and switch on is trained
+on a feature set that encodes the result of the match being predicted. Tuning a search
+over that objective, or shipping it, would both be measuring the leak. S-5 is unaffected —
+it concerns the combination-meta seed, not the win model.
 
 ---
 
@@ -264,6 +275,14 @@ ranking. If AUC is near 0.5 on held-out matches, hill-climbing on it is choosing
 and S-4's search improvements would be measuring how thoroughly we can find the noise's
 maximum. Establish this number before spending effort on search.
 
+> **What running it actually showed.** A held-out AUC of 0.95 does not mean the objective
+> is sound either. The first real run cleared the gate comfortably and the number was the
+> match result leaking through the export — **S-3c**. A single AUC is a necessary check,
+> not a sufficient one: it is computed on the same contaminated columns the model trains
+> on, so no holdout, however clean its dates, can reveal a leak that lives in the feature
+> definitions. What exposed it was comparing the model against one raw column, and against
+> the format where that column carries nothing.
+
 **Note on calibration.** The win model is uncalibrated (`docs/ml-and-training.md` —
 calibration was removed in C1-4/C1-6). This does **not** affect selection: any monotone
 recalibration leaves the argmax unchanged. Calibration matters for the probability we
@@ -294,6 +313,163 @@ named reason rather than raised or, worse, returned as an empty report.
 
 **Risk.** Runtime. Bound the match count and reuse the existing
 `export-contributions` concurrency configuration rather than inventing another knob.
+
+---
+
+## S-3c — The win export aggregates over who batted, not over the XI
+
+**Found while running the S-3a report that was supposed to gate S-4.** The report passed
+its gate. The gate was measuring the wrong thing.
+
+### What the report said
+
+Win model re-trained to a real cutoff (`make train-win CUTOFF=2025-09-01T00:00:00Z`,
+19,969 rows kept, 2,456 held out), then `make win-discrimination
+TRAIN_CUTOFF=2025-09-01T00:00:00Z`:
+
+| format | matches | pos rate | AUC | Brier |
+|---|---|---|---|---|
+| ODI | 388 | 0.423 | **0.953** | 0.082 |
+| T20 | 1619 | 0.468 | **0.930** | 0.107 |
+| T20I | 188 | 0.473 | **0.955** | 0.076 |
+| TEST | 261 | 0.314 | **0.674** | 0.219 |
+
+Open decision #3 asked whether an AUC near 0.5 should stop the plan. These are near 0.95.
+On the plan as written, S-4 was cleared to start.
+
+### What the number actually is
+
+**A single raw column from the export scores nearly the same, out of sample, on its own:**
+
+| format | AUC of `team2_bat_form_count` alone | AUC of the whole 69-feature model |
+|---|---|---|
+| ODI | 0.939 | 0.953 |
+| T20 | 0.893 | 0.930 |
+| T20I | 0.925 | 0.955 |
+| TEST | **0.539** | 0.674 |
+
+That column is the number of team-2 players who came to the crease in innings 2, and it
+is set by the result:
+
+```
+T20, team1 win rate by team2_bat_form_count
+  count=2   n= 323   0.025      count=8   n=1148   0.513
+  count=3   n= 673   0.037      count=9   n=1205   0.722
+  count=4   n=1013   0.047      count=10  n=1420   0.861
+  count=5   n=1162   0.071      count=11  n=2020   0.966
+```
+
+Team 2 chases with wickets in hand, four batters bat, team 1 loses. Team 2 is bowled out,
+eleven bat, team 1 wins. The export is handing the model the scoreboard.
+
+**TEST is the control that proves it.** Both sides bat their innings out regardless of who
+wins, so the same column is flat there (0.539 — noise) — and TEST is exactly where the
+model falls to 0.674. The gap between 0.95 and 0.67 is not a gap in difficulty between
+formats. It is the size of the leak.
+
+### Reproducing the two tables above
+
+```bash
+make train-win CUTOFF=2025-09-01T00:00:00Z
+GO_APP_API_KEY=dev-local-key make win-discrimination TRAIN_CUTOFF=2025-09-01T00:00:00Z
+```
+
+```python
+# the single-column baseline, against the same holdout the report uses
+import pandas as pd
+from sklearn.metrics import roc_auc_score
+
+df = pd.read_csv("output/go-app/win_encoded_all.csv", low_memory=False)
+df["md"] = pd.to_datetime(df["match_date"], errors="coerce")
+hold = df[df["md"] >= "2025-09-01"]
+for fmt, g in hold.groupby("format_code"):
+    print(fmt, len(g), round(roc_auc_score(g["team1_wins"], g["team2_bat_form_count"]), 3))
+```
+
+**Worth folding into `ml.win_discrimination` as a follow-up:** report the best single-column
+AUC alongside the model's. A model that cannot beat its own best raw column by a clear
+margin is not being measured, and the check costs one pass over the holdout.
+
+### Where it comes from
+
+```sql
+-- exportqueries/win.go:116-119
+t1_bat  AS (SELECT ... FROM batting_data bd ... WHERE bd.inning_number = 1),
+t1_bowl AS (SELECT ... FROM bowling_data bw ... WHERE bw.inning_number = 2),
+t2_bat  AS (SELECT ... FROM batting_data bd ... WHERE bd.inning_number = 2),
+t2_bowl AS (SELECT ... FROM bowling_data bw ... WHERE bw.inning_number = 1),
+```
+
+Every one of the 8 feature groups is aggregated over **the players who appear in the
+scorecard**, not over the eleven who were picked. Who appears in `batting_data` is decided
+by how many wickets fell; who appears in `bowling_data` is decided by how long the innings
+lasted.
+
+**It is not confined to the `_count` columns.** Every statistic of the bat groups inherits
+the same conditioning — in a comfortable chase only the top order bats, and top-order
+players have better windowed form, so the surviving team's *mean* form is higher:
+
+| holdout AUC, alone | T20 | ODI | TEST (control) |
+|---|---|---|---|
+| `team2_bat_form_mean` | 0.259 | 0.233 | 0.499 |
+| `team2_bat_consistency_mean` | 0.243 | 0.227 | 0.501 |
+| `team2_bat_form_sum` | 0.616 | 0.664 | 0.530 |
+
+0.259 is 0.741 read the other way up. Dropping the `_count` columns would not fix this.
+
+### The other half: the serving path sends something else entirely
+
+`aggregate_team_features_from_player_maps` (`win_features.py:232-238`) aggregates **every
+group over all eleven players of the proposed XI**, bowling groups included. So:
+
+| | training | serving |
+|---|---|---|
+| `team1_bat_*` population | players who batted (T20 mean 8.1) | 11 |
+| `team1_bowl_*` population | players who bowled (T20 mean 5.7) | 11 |
+| `team2_bat_*_count` | 0–11, and it *is* the result | always 11 |
+
+Feeding the model what the serving path actually sends — the same holdout rows with every
+`_count` set to 11 — moves it to the corner of its training distribution that means "team
+bowled out":
+
+| format | mean p(team1 wins) as exported | with counts = 11 | sd as exported | sd with counts = 11 |
+|---|---|---|---|---|
+| ODI | 0.435 | **0.880** | 0.446 | **0.157** |
+| T20 | 0.476 | 0.685 | 0.405 | 0.290 |
+| TEST | 0.232 | 0.186 | 0.222 | 0.198 |
+
+The spread across real, differing matches collapses by two-thirds in ODI. TEST — no leak —
+barely moves. This is what the optimiser has been hill-climbing on: a model pinned near one
+end of its output range, ranking XIs by the residue.
+
+### Change
+
+1. **Store the playing XI.** `info.players` in the Cricsheet JSON gives it per team, and
+   the importer does not parse it today — `cricsheet.Info` (`cricsheet.go:22-35`) has no
+   `Players` field and there is no `match_player` table in `migrations/0001_baseline.sql`.
+   Add both.
+2. **Aggregate over that XI on both sides**, for bat *and* bowl groups, so the export's
+   population is the same eleven the serving path aggregates over.
+3. **Drop the `_count` columns** — once the population is the XI they are a constant 11,
+   carrying no information and inviting exactly this class of bug back.
+4. Re-import, re-export, re-train, re-run S-3a.
+
+Split across PRs: (1) importer + migration, (2) export query + feature contract, (3) the
+re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
+
+**Tests.** Importer: the XI is parsed and persisted for both teams, and a match whose JSON
+omits `info.players` is recorded as such rather than silently yielding a 0-player side.
+Export: a fixture where a team's XI and its scorecard differ produces counts of 11 on both
+sides, and the bowl group includes players who bowled no overs.
+
+**Acceptance.** Re-run S-3a on the re-exported data. **The honest expectation is that AUC
+falls sharply — toward the TEST figure.** A number that stays near 0.95 after this change
+means the leak was not removed, not that the model is good. Only after that does open
+decision #3 have a real answer, and only then are S-4 and S-6 worth doing.
+
+**Risk.** The full slow loop (re-import → re-precompute is not required, but re-export and
+re-train are), and every win-model baseline recorded before this item becomes
+incomparable. That is the correct outcome: those baselines were measuring the scoreboard.
 
 ---
 
@@ -474,7 +650,7 @@ and costs one extra batch call.
 |---|---|---|---|
 | 1 | Are the three components of S-5's composite target summed with equal weight? Equal weighting says a 4-wicket spell at economy 6 is worth roughly 53 runs | S-5 | Equal weight, recorded in the PR body as an assumption |
 | 2 | Best-response rounds: fixed count or iterate to a fixed point with a cap? | S-1 | 3 rounds, cap, return last completed round |
-| 3 | If S-3 shows win-model AUC near 0.5 on held-out matches, do we stop and improve the win model before S-4? | S-3 | Yes — stop. Search quality is meaningless on a non-discriminative objective |
+| 3 | ~~If S-3 shows win-model AUC near 0.5 on held-out matches, do we stop and improve the win model before S-4?~~ **Answered, and the question was too narrow.** Held-out AUC came back at 0.93–0.96, which the decision as written would have read as a green light. It was leakage — see S-3c. The gate should have been "does the model discriminate *using information available before the match*", and a headline AUC cannot answer that. Re-ask it after S-3c | S-3 | Stop. S-4 and S-6 are `blocked` |
 
 ---
 
