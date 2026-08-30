@@ -99,9 +99,9 @@ Evaluate DB tab: load candidates by filters, select match, choose **model tempor
 
 **Go-app training-data API:** `GET /api/backtest/training-data?cutoff=...&format=...` (cutoff required; format=all or specific). Response: batting, bowling (headers + rows); only matches with match_date < cutoff. Used by ML train-on-the-fly.
 
-**SSE stream:** `GET /api/backtest/evaluate-stream?format&team1&team2&match_id` (optional `use_latest_model=1`, `use_unified_model=1`). Events: `progress` (step, message), then `result` (BacktestEvaluateResponse) or `error` (message). Frontend: `backtestEvaluateStream()` in api.ts.
+**SSE stream:** `GET /api/backtest/evaluate-stream?format&team1&team2&match_id` (optional `use_latest_model=1`). Events: `progress` (step, message), then `result` (BacktestEvaluateResponse) or `error` (message). Frontend: `backtestEvaluateStream()` in api.ts.
 
-**Evaluate job:** `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id, optional use_latest_model, use_unified_model). Returns 202 `{ "job_id": "..." }`. Poll `GET /api/backtest/evaluate-status?job_id=...` for status, steps, and result. EvaluateDbTab uses this flow.
+**Evaluate job:** `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id, optional use_latest_model). Returns 202 `{ "job_id": "..." }`. Poll `GET /api/backtest/evaluate-status?job_id=...` for status, steps, and result. EvaluateDbTab uses this flow.
 
 **Scorecards:** Actual: `GET /api/backtest/scorecard?match_id=N` (repo_scorecard.GetMatchScorecard). Predicted: built in go-app from actual layout + ML predictions, returned in evaluate response.
 

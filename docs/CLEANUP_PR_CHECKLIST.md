@@ -29,6 +29,7 @@ Scope: dead code removal, retirement of CLI paths superseded by the API, removal
 | C2-2b-pre | done | `test/c2-2b-header-alignment` | Export header-alignment tests — the guard C2-2b needs |
 | C3-1 | done | `cleanup/c3-1-drop-unified-trainers` | Delete `train_batting_model` / `train_bowling_model` |
 | C3-2 | done | `cleanup/c3-2-remove-legacy-registry` | Remove the `_LEGACY_` artifact tier |
+| C3-3 | done | `chore/drop-unified-artifact-tier` | Remove the unified artifact tier for good (4 trainers, auto-tune, ops UI) |
 | C4-1 | done | — | **Decision:** squash migrations to a baseline — **Option A approved** |
 | C4-2 | done | `cleanup/c4-2-squash-migrations` | Collapse migrations into `0001_baseline.sql` |
 | C5-1 | done | `cleanup/c5-1-canonical-formats` | Single source of truth for canonical format codes |
@@ -574,7 +575,7 @@ batting_metadata_ODI.json   n_features: 38   weather in trained model: NONE
 
 **Not a regression:** the per-format CSVs still lack the 4 cyclical and 8 sequence features the trainer's `FEATURE_COLS` names. That predates this change — it is the same omission set `C2-2b-pre` documented — and the relationship is unchanged, just 7 smaller on both sides.
 
-**Noted, not fixed:** `train_fielding` still writes an unsuffixed `fielding_model.joblib` alongside the per-format ones. Nothing loads it since C3-2 removed the `_LEGACY_` registry, so it is now write-only dead weight. Worth a follow-up.
+**Noted here, fixed in C3-3:** `train_fielding` still wrote an unsuffixed `fielding_model.joblib` alongside the per-format ones. Nothing loaded it since C3-2 removed the `_LEGACY_` registry. The follow-up turned out to cover four trainers and the auto-tune path, not one — see C3-3.
 
 ---
 
@@ -1226,6 +1227,32 @@ The recovered weights were `bat 0.476 / bowl 0.295 / field 0.210` against synthe
 - **`export.split_by_format` removed.** C3-1 left it inert, and this confirmed it at both call sites: in `runExportHandler` both branches reach `formatsPkg.CanonicalCodes()`, and in `precomputeHandler` an empty format list makes `discoverFormatCodes` query `match_format`, which holds exactly the canonical codes. Removed from `config/types.go`, both handlers, `go-app/config.json` and the docs.
 
 **Also corrected here:** three C3-2 boxes were left unticked while C3-2 was marked done. One was actually done; the other two were deliberate decisions explained in the PR but never recorded. Both are now written down — see C3-2.
+
+---
+
+### C3-3 — Remove the unified artifact tier for good
+
+**Why:** C3-1 stopped the batting/bowling trainers writing unsuffixed artifacts and C3-2 removed the registry that loaded them, but three producers survived, and the ops UI still reported the tier as if it existed.
+
+**What the sweep found, beyond the one trainer C2-2 noted:**
+
+- `train_fielding`, `train_extras`, `train_win` and `train_innings` each kept a `train_and_save_legacy` and the cross-format pooling that fed it — four unsuffixed models plus two unsuffixed sidecars and `win_model_metadata.json`, none loadable by `app.artifacts`.
+- **Auto-tune `--unified` was a third producer** and could recreate `batting_model.joblib` / `bowling_model.joblib`, the exact files C3-1 stopped the trainers writing. Its tuned params were saved under format `""`, which no trainer's per-format lookup can return, so that output was dead too.
+- For batting and bowling it was tuning on the wrong data: `batting_encoded_all.csv` is a different schema, not a concatenation of the per-format CSVs, and `load_batting_csv` zero-fills absent columns — roughly 30 of 38 features constant zero, with a score reported for it.
+- `/ops/status` seeded a hardcoded `unified` block and read `art["legacy"]`, a key `build_artifacts_status` stopped returning at C3-2. With the ML service reachable the block stayed all-false, so the grid rendered a permanent red "Unified (all)" cell.
+- The `model_modes` registry (`legacy` vs `per_format`) was still served by `/model-metadata`; its only frontend consumer, `getModelModes`, had no callers left.
+
+**Decisions taken:**
+
+- Auto-tune now **requires** `--format` or `--all-formats`. `[None]` was the default, so `make -C ml-service auto-tune MODEL=batting` silently took the pooled path.
+- `_save_artifacts` / `_save_artifacts_model_only` raise on a missing format suffix rather than writing a file nothing can load.
+- The pipeline dialog's format selector defaulted to `unified`; it now defaults to all formats.
+
+**Left alone, deliberately:**
+
+- `format_is_*` in the extras and innings feature lists is now inert (per-format groups exclude it; the pool that used it is gone). Removing it is a feature-contract change reaching inference and tuning.
+- `walk_forward` and `app.train_on_the_fly` still call `get_training_params(model)` with no format, so they read the `format=""` key that nothing writes any more and fall back to `config.json`. Threading format through their in-memory trainers is a separate change; until then, any `format=''` rows left in `ml_tuned_params` are stale and can be deleted.
+- `batting_encoded_all.csv` / `bowling_encoded_all.csv` now have **no** consumer — the tuning fallback that read them was the last one, and it was reading the wrong schema. Dropping them from the exporter touches `DatasetRepo`, the mocks and the header tests, so it wants its own PR.
 
 ---
 

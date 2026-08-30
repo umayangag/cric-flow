@@ -224,7 +224,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastTrainBatting == nil || lastTrainBatting.StartedAt.Before(lastExport.StartedAt) {
 		trainSuggestions = append(trainSuggestions, Suggestion{
 			Title:       "Train Batting Model",
-			Description: "New dataset exported. Run from project root. Produces per-format and unified (legacy) artifacts. Run make ml-install first if venv deps are missing.",
+			Description: "New dataset exported. Run from project root. Produces one model per format. Run make ml-install first if venv deps are missing.",
 			Command:     "make train-batting",
 			Priority:    "MEDIUM",
 		})
@@ -233,7 +233,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	if lastTrainBowling == nil || lastTrainBowling.StartedAt.Before(lastExport.StartedAt) {
 		trainSuggestions = append(trainSuggestions, Suggestion{
 			Title:       "Train Bowling Model",
-			Description: "New dataset exported. Run from project root. Produces per-format and unified (legacy) artifacts. Run make ml-install first if venv deps are missing.",
+			Description: "New dataset exported. Run from project root. Produces one model per format. Run make ml-install first if venv deps are missing.",
 			Command:     "make train-bowling",
 			Priority:    "MEDIUM",
 		})

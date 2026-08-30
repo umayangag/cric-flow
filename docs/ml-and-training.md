@@ -1,6 +1,6 @@
 # ML models and training
 
-ML models, data normalization, pipeline training (per-format and unified), auto-tune, walk-forward, calibration, and the combination meta-model. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+ML models, data normalization, per-format pipeline training, auto-tune, walk-forward, calibration, and the combination meta-model. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
@@ -47,7 +47,7 @@ At prediction time, to use the trained extras or win model, callers must supply 
 
 ---
 
-## Pipeline: per-format and unified training
+## Pipeline: per-format training
 
 You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or from the **command line**. Each train step produces per-format models.
 
@@ -159,7 +159,7 @@ Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.c
 - **algorithms** — `"all"` or a list like `["rf", "gb"]`. Available: `rf` (RandomForest), `gb` (GradientBoosting), `et` (ExtraTrees), `hgb` (HistGradientBoosting), `quantile` (regression only), `stacked` (batting/bowling/fielding only). Extras and win support `rf`, `gb`, `et`, `hgb`.
 - **validation_method** — `"walk_forward"` (default; TimeSeriesSplit, temporal validation) or `"kfold"`.
 
-**Run:** From ml-service: `python -m ml.auto_tune --model batting --format T20` (or from CSV with `--csv`). From repo root: `make ml-auto-tune MODEL=batting FORMAT=T20` or `MODEL=all ALL_FORMATS=1`. **Unified model:** `--unified` tunes one model on all formats combined (saves to legacy names like `win_model.joblib`, `tuning_report_win.json`). Example: `make ml-auto-tune MODEL=win UNIFIED=1 CUTOFF=... ALGORITHMS=mlp` or via API with `unified=1`. Options: `--algorithms rf,gb --validation-method walk_forward` or `make ml-auto-tune MODEL=batting ALGORITHMS="rf,gb" VALIDATION_METHOD=walk_forward`. Use `--parallel` to run multiple (model, format) tasks in parallel, using up to 80% of available CPUs (each subprocess uses one job to avoid oversubscription). Use `--fast` to reduce Optuna trials and skip PyCaret/AutoGluon; `--no-pycaret` to skip PyCaret ranking; `--no-autogluon` to skip AutoGluon. Can also be triggered via API (e.g. pipeline UI). Copy `config_snippet` into config and re-run normal training. When `GO_APP_URL` is set, best params (including `algorithms` and `validation_method`) are saved to the DB.
+**Run:** From ml-service: `python -m ml.auto_tune --model batting --format T20` (or from CSV with `--csv`). From repo root: `make ml-auto-tune MODEL=batting FORMAT=T20` or `MODEL=all ALL_FORMATS=1`. **A format is required** — pass `--format` or `--all-formats`; a run without one exits with a hint, because both the artifact name and the tuned-params row are keyed by format. Options: `--algorithms rf,gb --validation-method walk_forward` or `make ml-auto-tune MODEL=batting ALGORITHMS="rf,gb" VALIDATION_METHOD=walk_forward`. Use `--parallel` to run multiple (model, format) tasks in parallel, using up to 80% of available CPUs (each subprocess uses one job to avoid oversubscription). Use `--fast` to reduce Optuna trials and skip PyCaret/AutoGluon; `--no-pycaret` to skip PyCaret ranking; `--no-autogluon` to skip AutoGluon. Can also be triggered via API (e.g. pipeline UI). Copy `config_snippet` into config and re-run normal training. When `GO_APP_URL` is set, best params (including `algorithms` and `validation_method`) are saved to the DB.
 
 **Resources:** Auto-tune and training use up to **80%** of available memory (config `ml.resources.memory_usage_fraction_percent`, default 80) and resource-aware `n_jobs` from `ml.resources` and `ml.tuning.n_jobs` (-1 = auto from CPU and memory). Set `AUTO_TUNE_N_JOBS` or `ML_N_JOBS` to override.
 
@@ -251,14 +251,14 @@ The three `weather_composite_*_weight` values live under `ml.match_level_derived
 **Caveats — `weather_composite`:**
 
 1. It is a **linear, hand-picked blend** of three raw weather features that are *also* kept in the feature list. Tree models can learn interactions from the raw features on their own; the composite is justified only for linear/kernel models that can’t. Treat it as optional and A/B-test whether dropping the raw weather cols (or the composite) improves validation MAE before committing to it.
-2. Because the weights are config-driven, they must match between training and inference. From this change onward each trained artifact writes a **sidecar file** next to the joblib (e.g. `innings_meta_T20.json` / `extras_meta.json`) containing `feature_names` and `derived_weights`. `app/reconciliation.build_innings_feature_vector` reads this sidecar at inference time, so retuning the config after training does not silently drift predictions.
+2. Because the weights are config-driven, they must match between training and inference. From this change onward each trained artifact writes a **sidecar file** next to the joblib (e.g. `innings_meta_T20.json`) containing `feature_names` and `derived_weights`. `app/reconciliation.build_innings_feature_vector` reads this sidecar at inference time, so retuning the config after training does not silently drift predictions.
 
 **Artifact sidecars (`ml.artifact_sidecar`)**:
 
 | File | Written by | Read by |
 |------|------------|---------|
-| `innings_meta_<FMT>.json` / `innings_meta.json` | `ml.train_innings.train_and_save(_legacy)` | `app.artifacts.reload` → `app.reconciliation.predict_innings` |
-| `extras_meta_<FMT>.json` / `extras_meta.json` | `ml.train_extras.train_and_save(_legacy)` | `app.artifacts.reload` (available to prediction code as `EXTRAS_META`) |
+| `innings_meta_<FMT>.json` | `ml.train_innings.train_and_save` | `app.artifacts.reload` → `app.reconciliation.predict_innings` |
+| `extras_meta_<FMT>.json` | `ml.train_extras.train_and_save` | `app.artifacts.reload` (available to prediction code as `EXTRAS_META`) |
 
 The sidecar pins two things:
 
@@ -290,7 +290,7 @@ Historical rows remain at `inning_number = 1` until operators run a full re-impo
 All tuning data loaders in `ml.tuning.data_loaders` return a typed envelope:
 
 - Single-pack loaders (batting, bowling): `LoaderResult(X, Y, feature_names, sample_weight=None)`.
-- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). Extras and fielding additionally emit a `_LEGACY_` key holding the **pooled cross-format rows**. Note this key is unrelated to the removed `_LEGACY_` artifact registry — it is a data-loader pooling key, and is a name collision worth renaming.
+- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). The `_LEGACY_` pooling key these once emitted is gone with the unified models it fed, so the name no longer collides with the removed artifact registry.
 
 Call sites in `ml.tuning.cli` consume `result.X / result.Y / result.feature_names / result.sample_weight` directly; the previous `unpack_xy_with_feature_names` / `_extras_feature_names_if_consistent` helpers have been removed. To add a new loader, return a `LoaderResult` (or `Dict[str, LoaderResult]`) from the outset — it keeps optional fields explicit and prevents shape drift between training and tuning.
 

@@ -80,24 +80,14 @@ export type ModelMetadataEntry = {
   outputs: string[];
   level: 'player' | 'match' | 'meta';
   hasScaler?: boolean;
-  artifactsPattern: { perFormat: string; legacy: string };
+  artifactsPattern: { perFormat: string };
   note?: string;
 };
 
-/** Model mode (legacy vs per_format) from model-metadata; used for Prediction model selector labels/descriptions. */
-export type ModelModeEntry = {
-  name: string;
-  description?: string;
-  available?: boolean;
-  deprecated?: boolean;
-};
+/** Full API response: one entry per model kind (batting, bowling, etc.). */
+export type ModelMetadataApiResponse = Record<string, ModelMetadataEntry | undefined>;
 
-/** Full API response: model_modes + one entry per model kind (batting, bowling, etc.). */
-export type ModelMetadataApiResponse = {
-  model_modes?: ModelModeEntry[];
-} & Record<string, ModelMetadataEntry | ModelModeEntry[] | undefined>;
-
-/** Map of model kind -> entry only (no model_modes). Used where we iterate model entries. */
+/** Map of model kind -> entry. Used where we iterate model entries. */
 export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
 
 /** MLQA audit from auto_tune MLQA Agent. */

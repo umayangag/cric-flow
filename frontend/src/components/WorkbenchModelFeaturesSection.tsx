@@ -73,7 +73,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
   return (
     <SectionCard
       title="Model features & interconnection"
-      subtitle="All model types, per-format vs unified artifacts, features, outputs, and how they connect."
+      subtitle="All model types, their per-format artifacts, features, outputs, and how they connect."
     >
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         The pipeline trains <strong>player-level</strong> models ({playerKeys.join(', ')}) and{' '}
@@ -89,32 +89,20 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
         influences extras and win probability.
       </Typography>
 
-      {/* Per-format vs unified (legacy) */}
+      {/* Per-format artifacts */}
       <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
         <Typography variant="subtitle2" fontWeight={600} gutterBottom>
-          Per-format and unified (legacy) models
+          Per-format models
         </Typography>
         <Typography variant="body2" color="text.secondary" component="span">
-          For each model type we train <strong>both</strong>:
+          Every model type is trained once per format &mdash; one model, and a scaler where
+          applicable, for each of <strong>T20</strong>, <strong>ODI</strong>, <strong>TEST</strong>{' '}
+          and <strong>T20I</strong>. Artifacts carry the format code, e.g.{' '}
+          <code>batting_scaler_T20.joblib</code> and <code>batting_model_T20.joblib</code>.
         </Typography>
-        <Box component="ul" sx={{ m: 0.5, pl: 2.5 }}>
-          <li>
-            <strong>Per-format:</strong> one model (and scaler where applicable) per format.
-            Artifacts are named with the format code, e.g. <code>batting_scaler_T20.joblib</code>,{' '}
-            <code>batting_model_T20.joblib</code>. Typical formats: <strong>T20</strong>,{' '}
-            <strong>ODI</strong>, <strong>TEST</strong>, <strong>T20I</strong>.
-          </li>
-          <li>
-            <strong>Unified (legacy):</strong> one model trained on all formats, e.g.{' '}
-            <code>batting_scaler.joblib</code>, <code>batting_model.joblib</code>. Used when no
-            per-format model is loaded or when the request does not specify a format.
-          </li>
-        </Box>
-        <Typography variant="body2" color="text.secondary">
-          At prediction time: if the request includes a format (e.g. T20) and that format&apos;s
-          model is loaded, it is used; otherwise the legacy model is used. The Workbench
-          &quot;Prediction model&quot; selector above lets you compare{' '}
-          <strong>format-specific</strong> vs <strong>unified</strong> for accuracy trend.
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          There is no pooled model spanning the formats: a prediction request must name a format,
+          and that format&apos;s artifacts must be loaded, or the request is refused.
         </Typography>
       </Paper>
 
@@ -206,7 +194,7 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
               )}
               <Box sx={{ mb: 1.5 }}>
                 <Typography variant="caption" fontWeight={600} color="text.secondary">
-                  Artifacts (per-format &amp; legacy)
+                  Artifacts
                 </Typography>
                 <Box
                   component="ul"
@@ -215,9 +203,6 @@ const WorkbenchModelFeaturesSection: React.FC<WorkbenchModelFeaturesSectionProps
                   <li>
                     <strong>Per-format:</strong> {m.artifactsPattern.perFormat} — FMT = T20, ODI,
                     TEST, T20I, etc.
-                  </li>
-                  <li>
-                    <strong>Legacy (unified):</strong> {m.artifactsPattern.legacy}
                   </li>
                 </Box>
               </Box>

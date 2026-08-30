@@ -274,7 +274,7 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
 
 - **Training / auto-tune / backtest**
   - Logs include:
-    - `model_name`, `match_format`, `mode` (legacy vs per-format).
+    - `model_name`, `match_format` — every model is per-format, so the format is the mode.
     - `pipeline_id` / `run_id` equivalents where available.
     - Tuning CV scores, baseline comparison metrics.
   - **Where**: ML service process logs (stdout/stderr) for training and backtest workloads.
