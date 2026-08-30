@@ -39,7 +39,11 @@ func run() int {
 	baseCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	ctx, cancel := context.WithTimeout(baseCtx, 90*time.Second)
+	// 90 seconds was not enough for a full export on a cold cache: the five unified
+	// CSVs run concurrently, and extras and win were cut off mid-write while batting,
+	// bowling and fielding had already landed. A partial export is worse than a slow
+	// one, because the next training run reads whatever CSVs happen to be on disk.
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Minute)
 	defer cancel()
 
 	if _, err := db.Connect(ctx); err != nil {
