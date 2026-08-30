@@ -41,13 +41,6 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 	section = map[string]any{
 		"root":    fsRoot,
 		"formats": map[string]any{},
-		"unified": map[string]any{
-			"batting":  map[string]any{"exists": false},
-			"bowling":  map[string]any{"exists": false},
-			"fielding": map[string]any{"exists": false},
-			"extras":   map[string]any{"exists": false},
-			"win":      map[string]any{"exists": false},
-		},
 	}
 	fm := map[string]any{}
 	for _, f := range artifactFormats {
@@ -87,9 +80,6 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 					}
 				}
 				section["formats"] = fm
-				if legacyAny, ok := art["legacy"].(map[string]any); ok {
-					section["unified"] = legacyAny
-				}
 				return section, mlHealth
 			}
 		}
@@ -108,18 +98,6 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		}
 	}
 	section["formats"] = fm
-	if unif, ok := section["unified"].(map[string]any); ok {
-		for _, kind := range []string{"batting", "bowling", "fielding", "extras", "win"} {
-			if p, mod, ok := findLegacyArtifactByKind(entries, fsRoot, kind); ok {
-				m := unif[kind].(map[string]any)
-				m["exists"] = true
-				m["path"] = p
-				m["modified"] = mod.UTC().Format(time.RFC3339)
-				unif[kind] = m
-			}
-		}
-		section["unified"] = unif
-	}
 	return section, mlHealth
 }
 
@@ -214,54 +192,6 @@ func findPerFormatArtifact(
 		}
 	}
 	if hasScaler && modelPath != "" {
-		return modelPath, modelMod, true
-	}
-	return "", time.Time{}, false
-}
-
-func findLegacyArtifactByKind(entries []os.DirEntry, root string, kind string) (path string, mod time.Time, ok bool) {
-	var needScaler, modelName string
-	switch kind {
-	case "batting":
-		needScaler, modelName = "batting_scaler.joblib", "batting_model.joblib"
-	case "bowling":
-		needScaler, modelName = "bowling_scaler.joblib", "bowling_model.joblib"
-	case "fielding":
-		needScaler, modelName = "fielding_scaler.joblib", "fielding_model.joblib"
-	case "extras":
-		modelName = "extras_model.joblib"
-	case "win":
-		modelName = "win_model.joblib"
-	default:
-		return "", time.Time{}, false
-	}
-	hasScaler := needScaler == ""
-	hasModel := false
-	var modelPath string
-	var modelMod time.Time
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		lower := strings.ToLower(name)
-		if needScaler != "" && lower == strings.ToLower(needScaler) {
-			hasScaler = true
-			continue
-		}
-		if lower == strings.ToLower(modelName) {
-			full := filepath.Join(root, name)
-			info, err := os.Stat(full)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			modelPath = full
-			modelMod = info.ModTime()
-			hasModel = true
-			break
-		}
-	}
-	if hasScaler && hasModel {
 		return modelPath, modelMod, true
 	}
 	return "", time.Time{}, false

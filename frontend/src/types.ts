@@ -345,13 +345,6 @@ export type OpsStatusDTO = {
           | undefined
         >
       | undefined;
-    unified?: {
-      batting?: { exists?: boolean; loaded?: boolean };
-      bowling?: { exists?: boolean; loaded?: boolean };
-      fielding?: { exists?: boolean; loaded?: boolean };
-      extras?: { exists?: boolean; loaded?: boolean };
-      win?: { exists?: boolean; loaded?: boolean };
-    };
   };
   /** Pipeline step running state from backend */
   pipeline?: {
