@@ -1,8 +1,5 @@
 import React from 'react';
-import Alert from '@mui/material/Alert';
-import AlertTitle from '@mui/material/AlertTitle';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
+import { Alert, AlertTitle, Box, Typography } from '@mui/material';
 import { ApiError } from '../../lib/apiError';
 
 /**

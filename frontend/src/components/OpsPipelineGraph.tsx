@@ -1,9 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import type { OpsStatus } from './OpsStatusTab';
-import { Box } from '@mui/material';
-import Paper from '@mui/material/Paper';
-import Typography from '@mui/material/Typography';
-import CircularProgress from '@mui/material/CircularProgress';
+import { Box, CircularProgress, Paper, Typography } from '@mui/material';
 import PipelineStepDialog from './PipelineStepDialog';
 import { derivePipelineSteps, statusIcon, getStatusColor } from '../utils/pipelineSteps';
 import type { PipelineStep, StepStatus } from '../utils/pipelineSteps';

@@ -1,7 +1,5 @@
 import React from 'react';
-import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import Grid from '@mui/material/Grid';
+import { Grid, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
 import SectionCard from './common/SectionCard';
 import OpsStatusDataGrid from './OpsStatusDataGrid';

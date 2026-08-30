@@ -1,10 +1,6 @@
 import React, { useState } from 'react';
 import type { MLModelStat } from '../types';
-import TableCell from '@mui/material/TableCell';
-import TableRow from '@mui/material/TableRow';
-import Chip from '@mui/material/Chip';
-import Collapse from '@mui/material/Collapse';
-import IconButton from '@mui/material/IconButton';
+import { Chip, Collapse, IconButton, TableCell, TableRow } from '@mui/material';
 import KeyboardArrowDown from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUp from '@mui/icons-material/KeyboardArrowUp';
 import MLModelRowDetails from './MLModelRowDetails';

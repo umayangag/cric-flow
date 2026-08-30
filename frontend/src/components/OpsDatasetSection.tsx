@@ -1,5 +1,5 @@
 import React from 'react';
-import Typography from '@mui/material/Typography';
+import { Typography } from '@mui/material';
 import SectionCard from './common/SectionCard';
 import SimpleStatTiles from './common/SimpleStatTiles';
 import type { DatasetStatus } from '../types';

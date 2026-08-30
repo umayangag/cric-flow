@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import Button from '@mui/material/Button';
-import Collapse from '@mui/material/Collapse';
-import { Box } from '@mui/material';
+import { Box, Button, Collapse } from '@mui/material';
 
 type Props = {
   data: unknown;

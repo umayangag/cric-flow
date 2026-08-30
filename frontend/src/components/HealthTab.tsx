@@ -1,12 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../api';
 import type { HealthResponse } from '../types';
-import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Button from '@mui/material/Button';
-import Typography from '@mui/material/Typography';
-import Grid from '@mui/material/Grid';
-import Divider from '@mui/material/Divider';
+import { Button, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';

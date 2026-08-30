@@ -1,5 +1,5 @@
 import React from 'react';
-import Chip from '@mui/material/Chip';
+import { Chip } from '@mui/material';
 
 export type StatusState = 'ok' | 'error' | 'warn' | 'pending' | 'unknown' | 'missing' | 'stale';
 

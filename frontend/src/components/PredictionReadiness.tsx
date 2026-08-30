@@ -1,7 +1,5 @@
 import React from 'react';
-import Alert from '@mui/material/Alert';
-import AlertTitle from '@mui/material/AlertTitle';
-import Typography from '@mui/material/Typography';
+import { Alert, AlertTitle, Typography } from '@mui/material';
 import { derivePipelineSteps } from '../utils/pipelineSteps';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 

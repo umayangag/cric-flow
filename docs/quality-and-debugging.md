@@ -9,6 +9,7 @@ Go unit testing standards, mandatory quality steps (check-all, coverage, CI, hoo
 These standards define the gold-standard unit test style for the Go codebase (based on `go-app/internal/services/weatherimport/service_test.go`). All new and refactored tests must follow this guidance.
 
 **Core principles:**
+
 - Table-driven tests with subtests via `t.Run` and `t.Parallel()` at the test level.
 - External test packages (`package xxx_test`) to validate the public API and reduce coupling.
 - Clear 3-phase structure per subtest: Arrange → Act → Assert.
@@ -37,24 +38,30 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 **Goal:** Local `make check-all` matches CI; consistent coverage gates; config changes trigger checks; pre-commit and branch protection in place.
 
 **1. Local vs CI**
+
 - Frontend: check-all runs lint, format:check, typecheck, build, test; CI should include lint + typecheck (done in repo).
 - go-app: check-all includes vet, fmt-check, lint, coverage-check; CI runs vet, fmt-check, tests, coverage-check (COV_MIN=60). go-app-check includes coverage-check (done).
 - ml-service: lint-check, fmt-check, coverage, coverage-check (80%); CI 80% (OK).
 
 **2. Coverage thresholds**
+
 - go-app: Makefile default COV_MIN_GO=60; CI workflow uses COV_MIN=60.
 - ml-service: 80% everywhere (OK).
 
 **3. CI on config changes**
+
 - The root `Makefile` is now a trigger path for the go-app and ml-service workflows (C7-2). `configs/` is still excluded — a change touching only `configs/feature_vectors.json` runs no checks, despite it being the shared feature contract. Worth adding.
 
 **4. Pre-commit hooks**
+
 - `.githooks/pre-commit` runs gofumpt/golines/golangci-lint (Go), ruff (Python), prettier/eslint (frontend) on staged files. Run `make install-hooks` after clone.
 
 **5. Branch protection**
+
 - Require status checks before merge: e.g. Go App Lint, Go App Tests, ML Service Tests, Frontend Tests. Optional: aggregated “check-all” workflow.
 
 **6. PR template**
+
 - `.github/PULL_REQUEST_TEMPLATE.md` includes Go unit test standards checklist and reminders to run go-app and ml-service tests. Optional: add “Ran `make check-all` (or component checks) and all passed.”
 
 **Checklist:** go-app-check includes coverage-check (done); frontend CI runs lint and typecheck (done); go-app CI COV_MIN set and documented (pending); root `Makefile` path filter (done, C7-2), `configs/` still pending; branch protection (pending); PR template “make check-all” checkbox (optional).
@@ -65,16 +72,16 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 
 Two checks stop unreachable code accumulating. Both run in CI and are available locally.
 
-| Check | Command | Runs in |
-|---|---|---|
-| Go, whole-program | `make -C go-app deadcode` | `go-app-ci.yml` |
+| Check                | Command                                 | Runs in                                          |
+| -------------------- | --------------------------------------- | ------------------------------------------------ |
+| Go, whole-program    | `make -C go-app deadcode`               | `go-app-ci.yml`                                  |
 | Python, import graph | `make -C ml-service check-reachability` | `ml-service-ci.yml`, and `make -C ml-service ci` |
 
-**Why the existing linters do not cover this.** `golangci-lint`'s `unused` only reports *unexported* identifiers within a package, so an exported repository method that nothing calls passes it. On the Python side, `ruff` and `pytest` both stay quiet about a module nothing imports, because the module's own tests keep it "used". That combination is how the repo accumulated roughly 8,000 lines of unreachable code before the cleanup tracked in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md).
+**Why the existing linters do not cover this.** `golangci-lint`'s `unused` only reports _unexported_ identifiers within a package, so an exported repository method that nothing calls passes it. On the Python side, `ruff` and `pytest` both stay quiet about a module nothing imports, because the module's own tests keep it "used". That combination is how the repo accumulated roughly 8,000 lines of unreachable code before the cleanup tracked in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md).
 
 ### Go — `deadcode`
 
-Runs `golang.org/x/tools/cmd/deadcode -test ./...` and fails on any output. `-test` means test files count as roots, so a function kept alive only by its own test is *not* reported — deliberately, since deleting test seams like `db.SetDB` would be wrong. The consequence is a blind spot: production-dead code that has tests still passes. `db.InsertBallEvents` is a known example (the live path is `InsertBallEventsTx`).
+Runs `golang.org/x/tools/cmd/deadcode -test ./...` and fails on any output. `-test` means test files count as roots, so a function kept alive only by its own test is _not_ reported — deliberately, since deleting test seams like `db.SetDB` would be wrong. The consequence is a blind spot: production-dead code that has tests still passes. `db.InsertBallEvents` is a known example (the live path is `InsertBallEventsTx`).
 
 Pinned via `DEADCODE_VERSION` in `go-app/Makefile`.
 
@@ -83,7 +90,7 @@ Pinned via `DEADCODE_VERSION` in `go-app/Makefile`.
 Parses every module under `app/` and `ml/` with `ast`, resolves absolute and relative imports, and walks the graph from two kinds of root. Tests are **not** roots.
 
 - **`MODULE_ENTRYPOINTS`** — `app.main` plus the modules invoked as `python -m ml.<mod>` by `app/training_orchestrator.py` and the Makefiles.
-- **`SCRIPT_ENTRYPOINTS`** — modules executed directly rather than imported, e.g. `ml.validate_exports` (`make -C ml-service validate-exports`) and `ml.baselines` (`make train-batting-baseline`). These must be *roots*, not allowlist entries: allowlisting silences the module itself but leaves everything it uniquely imports looking dead.
+- **`SCRIPT_ENTRYPOINTS`** — modules executed directly rather than imported, e.g. `ml.validate_exports` (`make -C ml-service validate-exports`) and `ml.baselines` (`make train-batting-baseline`). These must be _roots_, not allowlist entries: allowlisting silences the module itself but leaves everything it uniquely imports looking dead.
 
 It fails on three things:
 
@@ -95,7 +102,7 @@ Run it without `--check` to see the full picture, or with `--json` for tooling.
 
 **Adding an entrypoint.** If you add a `python -m ml.something` call site, add it to `ENTRYPOINTS`. Otherwise everything it uniquely imports starts failing the check.
 
-**The allowlist is empty, and that is the healthy state.** `ALLOWED_UNREACHABLE` is a last resort for something unreachable on purpose that is not executed at all. If a module *is* run, add it to `SCRIPT_ENTRYPOINTS` instead so its imports stay reachable too.
+**The allowlist is empty, and that is the healthy state.** `ALLOWED_UNREACHABLE` is a last resort for something unreachable on purpose that is not executed at all. If a module _is_ run, add it to `SCRIPT_ENTRYPOINTS` instead so its imports stay reachable too.
 
 ### Version pinning
 
@@ -119,6 +126,7 @@ The go-api logs “memory stats” at startup (`heap_alloc_mb`, `heap_sys_mb`, `
 
 **3. Watcher container**  
 The stack includes a **watcher** service that monitors **cric-go-api** and **cric-ml-service** for crashes. On any container exit (die event), it logs:
+
 - **Which service crashed** — clear header `CRASH DETECTED: cric-go-api` or `CRASH DETECTED: cric-ml-service`
 - **Diagnostics** — `exit_code`, `OOMKilled`, `image`, `memory_limit_bytes`, `started_at`, `finished_at`, `state_error`
 - **Service-specific hints** — e.g. for ml-service: increase `mem_limit`, set `n_jobs=1` for fielding/extras/win training
@@ -130,6 +138,7 @@ Start: `docker compose up -d`. View: `docker logs -f cric-watcher`. Set `WATCH_L
 Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATCH_CONTAINERS=cric-go-api,cric-ml-service`, `WATCH_LOG=/path/to/file`, `WATCH_TAIL_LOGS=50`.
 
 **5. After a crash**
+
 - Exit code: `docker inspect cric-go-api --format '{{.State.ExitCode}}'` (or `cric-ml-service`); 137 → likely OOM.
 - OOMKilled: `docker inspect cric-go-api --format '{{.State.OOMKilled}}'` (valid for current exited instance; watcher captures at die time).
 - Last logs: `docker logs cric-go-api 2>&1 | tail -100` or `docker logs cric-ml-service 2>&1 | tail -100`
@@ -138,3 +147,48 @@ Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATC
 - **ml-service (Training):** Fielding/extras/win training fetches large datasets. Increase `mem_limit` (e.g. 4g) or set `n_jobs=1` in `ml.training.fielding` in `ml-service/config.json`.
 
 **Summary:** Exit code 137, OOMKilled=true, and the watcher's "CRASH DETECTED" output (including which service and last logs) support OOM diagnosis. Use MEM_STATS_INTERVAL for go-api and the watcher for visibility.
+
+## Frontend blank page
+
+A white page in the dev server has two possible causes; read the browser console before changing
+anything.
+
+`frontend/index.html` carries a bootstrap guard that paints a diagnostic panel when startup
+fails. A module-evaluation failure happens before React mounts, so the React error boundary
+(`src/components/common/RootErrorBoundary.tsx`) cannot catch it — the guard covers that gap, and
+the boundary covers render-time throws. If you get a truly blank page, the guard itself did not
+run.
+
+**1. Stale Vite dependency cache.** The console shows `<name>_default is not a function` (usually
+`styled_default`), `Failed to fetch dynamically imported module`, `504 (Outdated Optimize Dep)`,
+or `does not provide an export named`. Fix:
+
+```sh
+cd frontend && npm run dev:clean
+```
+
+Then hard-reload the tab (Cmd+Shift+R) — a normal reload can reuse the stale module graph.
+
+_Why it happens:_ every distinct specifier into a package is its own esbuild pre-bundle entry.
+Many entries force the package to be code-split across shared chunks; a re-optimization re-splits
+them all, and because Vite serves dep chunks by path while ignoring the `?v=` hash, an already-open
+tab receives newly-split files at its old chunk URLs. A lazy `init_` binding then goes missing and
+the module throws at evaluation time.
+
+_Why it used to recur after batches of frontend work:_ re-optimization is triggered when Vite
+discovers a **new** dependency entry — which is exactly what adding one more `@mui/material/X`
+import did.
+
+_Why it should not recur:_ MUI now has exactly one pre-bundle entry (the barrel), enforced by
+`no-restricted-imports` in `frontend/.eslintrc.cjs`. Adding a component to an existing barrel
+import creates no new entry, so nothing triggers a re-optimization. Check the cache is healthy
+with:
+
+```sh
+ls frontend/node_modules/.vite/deps/chunk-*.js | wc -l   # ~10 is healthy; ~90 means split
+```
+
+**2. A real application error.** Any other console error — a `TypeError` in a component, a bad
+import path. `dev:clean` will not help; fix the code.
+
+The `fix-frontend-blank-page` skill walks through this triage.

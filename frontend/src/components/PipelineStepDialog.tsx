@@ -1,15 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { MLModelStat, ModelStatsResponse } from '../types';
 import { api } from '../api';
-import { Box } from '@mui/material';
-import Typography from '@mui/material/Typography';
-import Dialog from '@mui/material/Dialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogContent from '@mui/material/DialogContent';
-import DialogActions from '@mui/material/DialogActions';
-import Button from '@mui/material/Button';
-import Checkbox from '@mui/material/Checkbox';
-import FormControlLabel from '@mui/material/FormControlLabel';
+import {
+  Box,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  Typography,
+} from '@mui/material';
 import AutoTuneForm from './AutoTuneForm';
 import type { PipelineStep } from '../utils/pipelineSteps';
 

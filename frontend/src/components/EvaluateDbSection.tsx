@@ -1,7 +1,11 @@
 import React from 'react';
 import {
+  Alert,
+  Autocomplete,
   Box,
   Button,
+  CircularProgress,
+  createFilterOptions,
   FormControl,
   Grid,
   InputLabel,
@@ -14,13 +18,10 @@ import {
   Paper,
   Select,
   Stack,
-  Typography,
-  Alert,
-  CircularProgress,
   TextField,
+  Typography,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import Autocomplete, { createFilterOptions } from '@mui/material/Autocomplete';
 import { accentGradient } from '../theme';
 import type {
   BacktestCandidate,
