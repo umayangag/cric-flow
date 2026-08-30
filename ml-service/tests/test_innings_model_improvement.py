@@ -82,16 +82,16 @@ class TestInningsFormatOneHotExclusion:
             row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), "T20I", f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
-        by_format, _, _, _, _ = rows_to_xy_by_format(headers, rows)
+        by_format = rows_to_xy_by_format(headers, rows)
         assert "T20I" in by_format
         _, _, _, _, feat_names = by_format["T20I"]
         for col in INNINGS_FORMAT_ONE_HOT_COLS:
             assert col not in feat_names, f"format one-hot col {col} should be excluded for per-format"
 
-    def test_unified_keeps_format_one_hot(self):
+    def test_missing_format_code_yields_all_bucket(self):
         from ml.train_innings import INNINGS_FEATURE_COLS, rows_to_xy_by_format
 
-        # Build data WITHOUT format_code → unified _ALL_ model
+        # Build data WITHOUT format_code → single _ALL_ bucket
         base_cols = [c for c in INNINGS_FEATURE_COLS if not c.startswith("format_is_")]
         headers = base_cols + ["innings_runs", "innings_wickets", "match_date"]
         n_rows = 20
@@ -102,10 +102,10 @@ class TestInningsFormatOneHotExclusion:
             row += [str(100 + rng.rand() * 50), str(int(rng.randint(3, 10))), f"2024-01-{i + 1:02d}"]
             rows.append(row)
 
-        by_format, _, _, _, _ = rows_to_xy_by_format(headers, rows)
+        by_format = rows_to_xy_by_format(headers, rows)
         assert "_ALL_" in by_format
-        # Unified model may still drop format one-hot via low-variance (all zeros),
-        # but the key point is they weren't explicitly excluded.
+        # The _ALL_ bucket keeps whatever columns survive the low-variance drop:
+        # nothing is excluded up front, because there is no format to be constant within.
 
 
 class TestExtrasFormatOneHotExclusion:

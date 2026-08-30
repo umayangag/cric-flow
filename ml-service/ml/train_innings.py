@@ -136,23 +136,10 @@ def fetch_innings_data(go_app_url: str, cutoff_iso: str, api_key=None):
 
 def rows_to_xy_by_format(
     headers: list, rows: list[list]
-) -> tuple[
-    dict[str, tuple[np.ndarray, np.ndarray, StandardScaler, Optional[np.ndarray], list[str]]],
-    Optional[np.ndarray],
-    Optional[np.ndarray],
-    Optional[StandardScaler],
-    Optional[list[str]],
-]:
-    """Build X, Y, scaler, weights, feature_names per format_code.
-
-    Also returns ``(all_X_raw, all_Y, legacy_scaler, legacy_feature_names)`` for the
-    legacy unified model. The legacy pool **retains** ``format_is_*`` columns (each
-    per-format group drops them because they are constant within the group, but the
-    unified model must see formats), and a single low-variance drop is applied on
-    the aggregated matrix so the pool is rectangular.
-    """
+) -> dict[str, tuple[np.ndarray, np.ndarray, StandardScaler, Optional[np.ndarray], list[str]]]:
+    """Build X, Y, scaler, weights, feature_names per format_code."""
     if not headers or not rows:
-        return {}, None, None, None, None
+        return {}
     df = pd.DataFrame(rows, columns=headers)
     # Compute derived features from base columns.
     _add_derived_features(df)
@@ -196,13 +183,8 @@ def rows_to_xy_by_format(
         scaler = StandardScaler()
         X = scaler.fit_transform(X_raw)
         w = _weights(df)
-        return {"_ALL_": (X, Y, scaler, w, feat_cols)}, X_raw, Y, scaler, list(feat_cols)
+        return {"_ALL_": (X, Y, scaler, w, feat_cols)}
     out = {}
-    # The legacy (unified) pool keeps the full feature list including format_is_*.
-    legacy_feat_cols = [c for c in INNINGS_FEATURE_COLS if c in df.columns]
-    legacy_rows: list[np.ndarray] = []
-    all_Y_list = []
-    all_weights_list = []
     # Per-format: exclude format one-hot cols (constant within a single format group).
     per_format_exclude = frozenset(INNINGS_FORMAT_ONE_HOT_COLS)
     for fmt, g in df.groupby("format_code"):
@@ -219,19 +201,7 @@ def rows_to_xy_by_format(
         X = scaler.fit_transform(X_raw)
         w = _weights(g)
         out[fmt] = (X, Y, scaler, w, feat_cols_fmt)
-        legacy_rows.append(g[legacy_feat_cols].astype(float).values)
-        all_Y_list.append(Y)
-        all_weights_list.append(w)
-    if not out:
-        return {}, None, None, None, None
-    all_X_raw = np.vstack(legacy_rows)
-    all_Y = np.vstack(all_Y_list)
-    # Single low-variance drop on the aggregated pool so legacy_feat_cols matches all_X_raw width.
-    all_X_raw, legacy_feat_cols, dropped_legacy = drop_low_variance_columns(all_X_raw, legacy_feat_cols)
-    columns_dropped("innings", "_LEGACY_", dropped_legacy, len(legacy_feat_cols))
-    legacy_scaler = StandardScaler()
-    legacy_scaler.fit(all_X_raw)
-    return out, all_X_raw, all_Y, legacy_scaler, legacy_feat_cols
+    return out
 
 
 def train_and_save(
@@ -270,40 +240,6 @@ def train_and_save(
     logger.info("train_innings.saved format=%s n=%s out_dir=%s", format_code, X.shape[0], out_dir)
 
 
-def train_and_save_legacy(
-    X: np.ndarray,
-    Y: np.ndarray,
-    scaler: StandardScaler,
-    out_dir: str,
-    feature_names: list[str],
-    sample_weight: Optional[np.ndarray] = None,
-) -> None:
-    """Train unified innings model on all data and save legacy artifacts + sidecar."""
-    if X.shape[1] != len(feature_names):
-        raise ValueError(
-            f"train_innings.train_and_save_legacy.feature_mismatch X.shape[1]={X.shape[1]} names={len(feature_names)}"
-        )
-    params = get_training_params("innings", None)
-    base_estimator = make_base_estimator(params)
-    model = MultiOutputRegressor(base_estimator, n_jobs=params.get("n_jobs", -1))
-    if sample_weight is not None:
-        model.fit(X, Y, sample_weight=sample_weight)
-    else:
-        model.fit(X, Y)
-    os.makedirs(out_dir, exist_ok=True)
-    compress = params.get("joblib_compress", 3)
-    joblib.dump(scaler, os.path.join(out_dir, "innings_scaler.joblib"), compress=compress)
-    joblib.dump(model, os.path.join(out_dir, "innings_model.joblib"), compress=compress)
-    write_artifact_meta(
-        out_dir,
-        "innings",
-        None,
-        feature_names,
-        derived_weights=get_match_level_derived_config(),
-    )
-    logger.info("train_innings.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
-
-
 def _main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -329,7 +265,7 @@ def _main() -> None:
         df = pd.read_csv(csv_path)
         headers = list(df.columns)
         rows = df.values.astype(str).tolist()
-        by_format, all_X_raw, all_Y, legacy_scaler, legacy_feat_names = rows_to_xy_by_format(headers, rows)
+        by_format = rows_to_xy_by_format(headers, rows)
     else:
         if not args.go_app_url or not args.cutoff:
             logger.error(
@@ -349,7 +285,7 @@ def _main() -> None:
             sys.exit(1)
         headers = innings.get("headers") or []
         rows = innings.get("rows") or []
-        by_format, all_X_raw, all_Y, legacy_scaler, legacy_feat_names = rows_to_xy_by_format(headers, rows)
+        by_format = rows_to_xy_by_format(headers, rows)
 
     if not by_format:
         logger.error("train_innings.no_data hint=empty or insufficient rows")
@@ -360,19 +296,6 @@ def _main() -> None:
         data_loaded("innings", fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
         train_and_save(X, Y, scaler, out_dir, fmt, feat_names, sample_weight=w)
         format_done("innings", fmt, {"rows": int(X.shape[0])})
-
-    # Unified (legacy) model: train on all data combined
-    if (
-        all_X_raw is not None
-        and all_Y is not None
-        and legacy_scaler is not None
-        and legacy_feat_names is not None
-        and all_X_raw.shape[0] >= MIN_SAMPLES_FOR_FORMAT
-    ):
-        all_X = legacy_scaler.transform(all_X_raw)
-        all_weights_list = [w for _, (_, _, _, w, _fn) in by_format.items()]
-        all_weights = np.concatenate(all_weights_list) if all(w is not None for w in all_weights_list) else None
-        train_and_save_legacy(all_X, all_Y, legacy_scaler, out_dir, legacy_feat_names, sample_weight=all_weights)
 
 
 def main() -> None:

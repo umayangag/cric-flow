@@ -67,13 +67,6 @@ WIN_FEATURE_COLS = WIN_ENHANCED_FEATURE_COLS
 logger = logging.getLogger(__name__)
 
 
-def _concat_weights_win(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
-    """Concatenate per-format weights for unified model. Returns None if any format lacks weights."""
-    if not weights_list or any(w is None for w in weights_list):
-        return None
-    return np.concatenate(weights_list)
-
-
 def fetch_win_data(go_app_url: str, cutoff_iso: str, api_key=None):
     """Fetch training data from go-app; return dict with win headers and rows."""
     base = go_app_url.rstrip("/")
@@ -144,7 +137,7 @@ def rows_to_xy_by_format(
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     # One-hot encode format_code into categorical format_is_* columns so that
-    # unified and per-format models treat format as a categorical feature.
+    # per-format models treat format as a categorical feature.
     if "format_code" in df.columns:
         fmt_series = df["format_code"].astype(str).str.strip().str.upper()
         from ml.win_features import get_format_codes
@@ -391,28 +384,6 @@ def train_and_save(
     )
 
 
-def train_and_save_legacy(
-    X: np.ndarray,
-    Y: np.ndarray,
-    out_dir: str,
-    feature_cols: list[str],
-    sample_weight: Optional[np.ndarray] = None,
-) -> None:
-    """Train one unified GradientBoosting win model on all data and save as legacy (win_model.joblib)."""
-    params = _get_gb_params("_ALL_")
-    model = _fit_gradient_boosting(X, Y, params, sample_weight)
-    metadata = _build_model_metadata(model, X, feature_cols, "_ALL_", params)
-    _save_model_and_metadata(
-        model,
-        metadata,
-        out_dir,
-        "win_model.joblib",
-        "win_model_metadata.json",
-        params["joblib_compress"],
-    )
-    logger.info("train_win.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
-
-
 def _main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -492,18 +463,10 @@ def _main() -> None:
         sys.exit(1)
 
     set_total_formats(len(by_format))
-    feature_cols: list[str] = []
     for fmt, (X, Y, w, fc) in by_format.items():
-        feature_cols = fc
         logger.info("pipeline: train_win processing format=%s n=%s features=%s", fmt, X.shape[0], X.shape[1])
         train_and_save(X, Y, out_dir, fmt, fc, sample_weight=w)
         logger.info("train_win.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
-
-    all_X = np.vstack([X for _, (X, _, _, _) in by_format.items()])
-    all_Y = np.concatenate([Y.ravel() for _, (_, Y, _, _) in by_format.items()])
-    all_weights = _concat_weights_win([w for _, (_, _, w, _) in by_format.items()])
-    if all_X.shape[0] >= 10:
-        train_and_save_legacy(all_X, all_Y, out_dir, feature_cols, sample_weight=all_weights)
 
 
 def main() -> None:

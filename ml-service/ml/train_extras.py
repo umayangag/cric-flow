@@ -51,8 +51,8 @@ from ml.win_features import get_format_codes, get_format_one_hot_columns
 
 logger = logging.getLogger(__name__)
 
-# Minimum number of samples to train the unified (legacy) extras model
-MIN_SAMPLES_FOR_LEGACY = 10
+# Minimum number of samples for a format group to be worth training
+MIN_SAMPLES_FOR_FORMAT = 10
 
 WIN_FORMAT_CODES = get_format_codes()
 EXTRAS_FORMAT_ONE_HOT_COLS = get_format_one_hot_columns()
@@ -89,13 +89,6 @@ LEGACY_EXTRAS_FEATURE_COLS = [
 EXTRAS_TARGET_COL = "total_extras"
 
 _add_derived_features = add_match_level_derived_features_to_df
-
-
-def _concat_weights_extras(weights_list: list[Optional[np.ndarray]]) -> Optional[np.ndarray]:
-    """Concatenate per-format weights for unified model. Returns None if any format lacks weights."""
-    if not weights_list or any(w is None for w in weights_list):
-        return None
-    return np.concatenate(weights_list)
 
 
 def fetch_extras_data(go_app_url: str, cutoff_iso: str, api_key=None):
@@ -137,10 +130,6 @@ def rows_to_xy_by_format(
 
     Returns dict format_code -> (X, Y, sample_weight, feature_column_names).
     feature_column_names matches X.shape[1] (subset of EXTRAS_FEATURE_COLS present in the frame).
-
-    The special key ``"_LEGACY_"`` (when multiple formats are present) carries the
-    aggregated pool used to fit the unified legacy model, retaining ``format_is_*``
-    columns so the unified model can learn format-specific behaviour.
     """
     if not headers or not rows:
         return {}
@@ -183,14 +172,10 @@ def rows_to_xy_by_format(
     out = {}
     # Per-format: exclude format one-hot cols (constant within a single format group).
     per_format_exclude = frozenset(EXTRAS_FORMAT_ONE_HOT_COLS)
-    legacy_feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in df.columns]
-    legacy_rows: list[np.ndarray] = []
-    legacy_Y: list[np.ndarray] = []
-    legacy_w: list[Optional[np.ndarray]] = []
     for fmt, g in df.groupby("format_code"):
         fmt = str(fmt).strip().upper() or "_ALL_"
         g = g.dropna(subset=[c for c in EXTRAS_FEATURE_COLS if c in g.columns] + [EXTRAS_TARGET_COL])
-        if g.empty or len(g) < MIN_SAMPLES_FOR_LEGACY:
+        if g.empty or len(g) < MIN_SAMPLES_FOR_FORMAT:
             continue
         feat_cols = [c for c in EXTRAS_FEATURE_COLS if c in g.columns and c not in per_format_exclude]
         X = g[feat_cols].astype(float).values
@@ -199,17 +184,6 @@ def rows_to_xy_by_format(
         Y = g[EXTRAS_TARGET_COL].astype(float).values.reshape(-1, 1)
         w = _weights(g)
         out[fmt] = (X, Y, w, feat_cols)
-        legacy_rows.append(g[legacy_feat_cols].astype(float).values)
-        legacy_Y.append(Y)
-        legacy_w.append(w)
-    if legacy_rows:
-        all_X = np.vstack(legacy_rows)
-        all_Y = np.vstack(legacy_Y)
-        # Single low-variance drop on the aggregated legacy pool so column width is consistent.
-        all_X, legacy_feat_cols, dropped = drop_low_variance_columns(all_X, legacy_feat_cols)
-        columns_dropped("extras", "_LEGACY_", dropped, len(legacy_feat_cols))
-        all_w = _concat_weights_extras(legacy_w)
-        out["_LEGACY_"] = (all_X, all_Y, all_w, legacy_feat_cols)
     return out
 
 
@@ -253,42 +227,6 @@ def train_and_save(
         feature_names,
         derived_weights=get_match_level_derived_config(),
     )
-
-
-def train_and_save_legacy(
-    X: np.ndarray,
-    Y: np.ndarray,
-    out_dir: str,
-    feature_names: list[str],
-    sample_weight: Optional[np.ndarray] = None,
-) -> None:
-    """Train unified extras model on all data and save legacy artifacts + sidecar."""
-    if X.shape[1] != len(feature_names):
-        raise ValueError(
-            f"train_extras.train_and_save_legacy.feature_mismatch X.shape[1]={X.shape[1]} names={len(feature_names)}"
-        )
-    params = get_training_params("extras", None)
-    model = RandomForestRegressor(
-        n_estimators=params["n_estimators"],
-        max_depth=params["max_depth"],
-        random_state=params["random_state"],
-        n_jobs=params.get("n_jobs", -1),
-    )
-    if sample_weight is not None:
-        model.fit(X, Y.ravel(), sample_weight=sample_weight)
-    else:
-        model.fit(X, Y.ravel())
-    os.makedirs(out_dir, exist_ok=True)
-    compress = params["joblib_compress"]
-    joblib.dump(model, os.path.join(out_dir, "extras_model.joblib"), compress=compress)
-    write_artifact_meta(
-        out_dir,
-        "extras",
-        None,
-        feature_names,
-        derived_weights=get_match_level_derived_config(),
-    )
-    logger.info("train_extras.saved_unified out_dir=%s rows=%s", out_dir, X.shape[0])
 
 
 def _main() -> None:
@@ -343,18 +281,12 @@ def _main() -> None:
         sys.exit(1)
 
     set_total_formats(len(by_format))
-    legacy_pack = by_format.pop("_LEGACY_", None)
     for fmt, (X, Y, w, feat_names) in by_format.items():
         logger.info("pipeline: train_extras processing format=%s n=%s", fmt, X.shape[0])
         data_loaded("extras", fmt, int(X.shape[0]), int(X.shape[1]), int(Y.shape[1]))
         train_and_save(X, Y, out_dir, fmt, feat_names, sample_weight=w)
         logger.info("train_extras.saved format=%s n=%s out_dir=%s", fmt, X.shape[0], out_dir)
         format_done("extras", fmt, {"rows": int(X.shape[0])})
-
-    if legacy_pack is not None:
-        all_X, all_Y, all_weights, legacy_feat_names = legacy_pack
-        if all_X.shape[0] >= MIN_SAMPLES_FOR_LEGACY:
-            train_and_save_legacy(all_X, all_Y, out_dir, legacy_feat_names, sample_weight=all_weights)
 
 
 def main() -> None:
