@@ -677,6 +677,34 @@ dropped. It is eight aggregation expressions in `exportqueries/win.go`, then the
 re-export/retrain/re-measure loop. Expect it to redistribute signal rather than add any:
 the best single column in this feature set is ~0.60.
 
+### Responsiveness is not the problem — ranking is
+
+AUC measures ranking across *whole matches*, where the two sides are entirely different
+teams. Selection needs something finer: ordering XIs that differ by one player. Measured
+directly on the S-3c models (upgrade team1's weakest batsman to match its best, moving
+`_sum`, `_mean` and `_min`):
+
+| | T20 (n=1619) | ODI (n=388) |
+|---|---|---|
+| predicted p | 0.029–0.983, sd 0.200 | 0.022–0.946, sd 0.223 |
+| Δp from the swap | median +0.009, p90 +0.100, max +0.300 | median +0.057, p90 +0.163, max +0.333 |
+| matches moving >0.05 | 39% | 60% |
+
+**The model responds strongly to a one-player change.** That rules out one hypothesis —
+the objective is not so flat that the optimiser is choosing between indistinguishable
+candidates.
+
+**This makes the case for blocking S-4 and S-6 stronger, not weaker.** A flat model would
+be self-limiting: unable to express a preference, its choices would be arbitrary but
+harmless. What exists instead swings by up to 0.30 on one substitution while ranking whole
+matches at 0.56–0.63 — it will make *confident* selections on weak evidence. Improving the
+search would find the maximum of that surface more thoroughly, which is not the same as
+finding a better XI.
+
+Worth keeping as a cheap diagnostic in S-9 regardless: a candidate feature set that does
+*not* move p in response to a one-player swap cannot drive selection whatever its AUC. It
+is not what fails here, but it is a fast way to rule a feature set out.
+
 ### Measure with multiple seeds
 
 Refitting T20 on identical data with only the row order changed moves held-out AUC by
