@@ -11,6 +11,7 @@ from ml.win_features_from_reconciled import build_win_features_standardized
 
 from ..logging import get_struct_logger
 from ..models.backtest import InningsSummary, MatchContext
+from ..models.predict import WinFeaturesEnhanced
 from ..prediction_settings import GenerateMatchSettings
 from .endpoints import run_win_prediction, run_win_prediction_enhanced
 from .innings import sum_team_feature
@@ -60,10 +61,10 @@ def generate_match(
     ]
     p_team1 = 0.5
     if features_map:
-        t1_feats = {pid: features_map.get(pid, {}) for pid in team1_ids if pid in features_map}
-        t2_feats = {pid: features_map.get(pid, {}) for pid in team2_ids if pid in features_map}
-        from .models.predict import WinFeaturesEnhanced
-
+        # features_map is keyed by player id as a string (see GenerateMatchRequest.features),
+        # so the team id sets have to be stringified to hit it.
+        t1_feats = {str(pid): features_map[str(pid)] for pid in team1_ids if str(pid) in features_map}
+        t2_feats = {str(pid): features_map[str(pid)] for pid in team2_ids if str(pid) in features_map}
         match_ctx_for_win = WinFeaturesEnhanced(
             format_id=match_context.format_id,
             venue_id=match_context.venue_id,
@@ -76,8 +77,8 @@ def generate_match(
             result = run_win_prediction_enhanced(
                 fmt=(fmt or "").strip().upper(),
                 match_context=match_ctx_for_win,
-                team1_player_features={str(k): v for k, v in t1_feats.items()},
-                team2_player_features={str(k): v for k, v in t2_feats.items()},
+                team1_player_features=t1_feats,
+                team2_player_features=t2_feats,
             )
             p_team1 = result.team1_win_probability
         except Exception:
