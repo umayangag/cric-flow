@@ -91,7 +91,7 @@ Two consequences that shape the whole plan:
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
-| S-3c | todo | `select/s-3c-win-export-leak` | **The win export aggregates over who batted, not over the XI** |
+| S-3c | in_progress | `select/s-3c-import-playing-xi` | **The win export aggregates over who batted, not over the XI** (1/3: importer + migration) |
 | S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
@@ -445,23 +445,38 @@ end of its output range, ranking XIs by the residue.
 
 ### Change
 
-1. **Store the playing XI.** `info.players` in the Cricsheet JSON gives it per team, and
-   the importer does not parse it today — `cricsheet.Info` (`cricsheet.go:22-35`) has no
-   `Players` field and there is no `match_player` table in `migrations/0001_baseline.sql`.
-   Add both.
-2. **Aggregate over that XI on both sides**, for bat *and* bowl groups, so the export's
-   population is the same eleven the serving path aggregates over.
-3. **Drop the `_count` columns** — once the population is the XI they are a constant 11,
-   carrying no information and inviting exactly this class of bug back.
+1. **Store the squad each side picked.** ✅ `select/s-3c-import-playing-xi` — migration
+   `0003_match_player.sql`, `Info.Players`, `SquadFromInfo`, `ReplaceMatchPlayersTx`.
+2. **Aggregate over that squad on both sides**, for bat *and* bowl groups, so the export's
+   population is the same set the serving path aggregates over.
+3. **Drop the `_count` columns** — once the population is the squad they are near-constant,
+   carry almost nothing, and invite exactly this class of bug back.
 4. Re-import, re-export, re-train, re-run S-3a.
 
 Split across PRs: (1) importer + migration, (2) export query + feature contract, (3) the
 re-run and its numbers. Item (1) needs a full re-import of ~22.7k match files.
 
-**Tests.** Importer: the XI is parsed and persisted for both teams, and a match whose JSON
-omits `info.players` is recorded as such rather than silently yielding a 0-player side.
-Export: a fixture where a team's XI and its scorecard differ produces counts of 11 on both
-sides, and the bowl group includes players who bowled no overs.
+> **Two corrections from building (1), both worth knowing before (2).**
+>
+> **`info.players` is not always eleven, and the table is `match_player`, not `match_xi`.**
+> Across the 22,734 files in the current dataset: 44,105 sides of 11, **1,337 of 12**, 20
+> of 13, one of 14 and five of 10 — concussion and injury replacements, which Cricsheet
+> lists in full. So step 3's columns become *near*-constant rather than constant. Dropping
+> them is still right (they would encode "did someone get concussed"), but a test asserting
+> a flat 11 would be wrong.
+>
+> **Coverage is total, so no match has to be excluded.** Every one of the 22,734 files
+> carries `info.players`, and its team names always match `info.teams`. The importer still
+> handles absence — warn, record no squad, keep the ball-by-ball data — because a truncated
+> file must not become a side of nobody, but the export's exclusion path should be rare
+> enough that a non-zero count is a signal something is wrong.
+
+**Tests.** Importer ✅: squad parsed and persisted for both sides including players who
+never bat or bowl; a file with no `info.players` still imports and records no squad; a
+player listed for both teams fails the import before the transaction opens; a re-import
+replaces rather than accumulates. Export: a fixture where a team's squad and its scorecard
+differ produces equal counts on both sides, and the bowl group includes players who bowled
+no overs.
 
 **Acceptance.** Re-run S-3a on the re-exported data. **The honest expectation is that AUC
 falls sharply — toward the TEST figure.** A number that stays near 0.95 after this change

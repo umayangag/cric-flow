@@ -33,6 +33,11 @@ type Info struct {
 	Outcome      *Outcome `json:"outcome"`
 	Gender       string   `json:"gender"`
 	Overs        int      `json:"overs"`
+
+	// Players maps a team name to the players it fielded. This is the only record of
+	// who was picked: the scorecard shows only whoever batted or bowled, and both of
+	// those are decided by how the match went. See migration 0003_match_player.sql.
+	Players map[string][]string `json:"players"`
 }
 
 // MatchDate returns the primary match date (the first entry in Dates).
