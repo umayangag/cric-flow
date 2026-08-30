@@ -43,6 +43,22 @@ class TestCyclicalTemporalFeatures:
         for c in self.CYCLICAL:
             assert c in FIELDING_FEATURE_COLS
 
+    def test_innings_and_extras_feature_cols_omit_cyclical_time(self):
+        """The innings and extras exports do not carry the cyclical columns.
+
+        Only the batting, bowling and fielding row builders compute them (in Go), so
+        naming them in these two lists selected nothing -- both loaders filter with
+        `c in df.columns`. Reinstating them here would also skew inference, because
+        `app.reconciliation` has no date to compute them from and would feed 0.0.
+        Adding them for real means deriving from `match_date` in both paths.
+        """
+        from ml.train_extras import EXTRAS_FEATURE_COLS
+        from ml.train_innings import INNINGS_FEATURE_COLS
+
+        for c in self.CYCLICAL:
+            assert c not in INNINGS_FEATURE_COLS
+            assert c not in EXTRAS_FEATURE_COLS
+
 
 # ---------------------------------------------------------------------------
 # P1: Derived features for extras and innings

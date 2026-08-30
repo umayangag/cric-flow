@@ -57,18 +57,23 @@ MIN_SAMPLES_FOR_FORMAT = 10
 WIN_FORMAT_CODES = get_format_codes()
 EXTRAS_FORMAT_ONE_HOT_COLS = get_format_one_hot_columns()
 
-# Same feature families as batting/bowling/fielding: format (categorical one-hot),
-# venue, season, weather, and match-level aggregates of player consistency/form.
+# Format (categorical one-hot), venue, and match-level aggregates of player
+# consistency/form.
+#
+# The four cyclical time columns (match_month_sin/cos, match_day_of_week_sin/cos) are
+# deliberately absent. This export has never carried them -- only batting, bowling and
+# fielding compute them in Go -- so naming them here selected nothing: the loaders
+# filter with `c in df.columns`. Worse, `app.reconciliation` has no date to compute them
+# from at inference, so adding them to training alone would feed 0.0 at serve time.
+# Supplying them properly means deriving from the `match_date` this export already
+# carries *and* threading a date through inference: a feature change with a retrain and
+# a measurement attached, not a contract fix. See docs/ml-and-training.md.
 # Derived feature columns: shared with innings / reconciliation (see match_level_derived_features).
 EXTRAS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
 EXTRAS_FEATURE_COLS = (
     [
         "venue_id",
-        "match_month_sin",
-        "match_month_cos",
-        "match_day_of_week_sin",
-        "match_day_of_week_cos",
         "bat_consistency_sum",
         "bowl_consistency_sum",
         "bat_form_sum",

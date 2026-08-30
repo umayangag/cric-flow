@@ -66,17 +66,22 @@ INNINGS_FORMAT_ONE_HOT_COLS = get_format_one_hot_columns()
 # Derived feature columns: shared with extras / reconciliation (see match_level_derived_features).
 INNINGS_DERIVED_COLS = list(MATCH_LEVEL_DERIVED_FEATURE_COLS)
 
-# Feature columns for innings model: season, venue, inning_number, opposition,
-# weather, team sums, derived features, then format one-hot.
+# Feature columns for innings model: venue, inning_number, opposition, team sums,
+# derived features, then format one-hot.
+#
+# The four cyclical time columns (match_month_sin/cos, match_day_of_week_sin/cos) are
+# deliberately absent. This export has never carried them -- only batting, bowling and
+# fielding compute them in Go -- so naming them here selected nothing: the loaders
+# filter with `c in df.columns`. Worse, `app.reconciliation` has no date to compute them
+# from at inference, so adding them to training alone would feed 0.0 at serve time.
+# Supplying them properly means deriving from the `match_date` this export already
+# carries *and* threading a date through inference: a feature change with a retrain and
+# a measurement attached, not a contract fix. See docs/ml-and-training.md.
 INNINGS_FEATURE_COLS = (
     [
         "venue_id",
         "inning_number",
         "opposition_id",
-        "match_month_sin",
-        "match_month_cos",
-        "match_day_of_week_sin",
-        "match_day_of_week_cos",
         "bat_consistency_sum",
         "bowl_consistency_sum",
         "bat_form_sum",
