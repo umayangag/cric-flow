@@ -11,6 +11,12 @@ The win export shipped exactly that -- 64 header names over 72-field rows -- so
 collapsed to a single class, and the only complaint came from GradientBoosting minutes
 into the run, phrased as a class-count problem far from its cause. Comparing two
 integers at the door turns that into an immediate, self-explanatory failure.
+
+The same reasoning covers the training cutoff. Every trainer here prefers the export CSV
+over the API and used to read it whole, so ``--cutoff`` governed only the fallback path
+nobody takes. A run asked to train to a cutoff trained on everything instead, which is
+not a smaller mistake than the width one: it silently destroys the holdout that any
+honest evaluation of the model depends on.
 """
 
 from __future__ import annotations
@@ -23,9 +29,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# The column every dated export carries, and the one a cutoff is applied to.
+MATCH_DATE_COLUMN = "match_date"
+
 
 class MisalignedExportError(ValueError):
     """An export CSV whose header width disagrees with its data rows."""
+
+
+class UndatedExportError(ValueError):
+    """A cutoff was requested of an export that carries no match date."""
 
 
 def _header_and_row_widths(path: str) -> Optional[Tuple[int, int]]:
@@ -45,11 +58,52 @@ def _header_and_row_widths(path: str) -> Optional[Tuple[int, int]]:
         return len(header), len(first_row)
 
 
-def read_export_csv(path: str) -> pd.DataFrame:
+def filter_before_cutoff(df: pd.DataFrame, cutoff: str, path: str = "") -> pd.DataFrame:
+    """Keep only the rows strictly before ``cutoff``.
+
+    Strictly before, matching the export's own ``WHERE m.match_date < $1`` and the
+    no-future-leakage rule, so that what this drops is exactly what a holdout evaluation
+    keeps: the two are complementary by construction.
+
+    Raises:
+        UndatedExportError: The export has no match date, so the cutoff cannot be
+            honoured. Training on everything instead is what this function exists to
+            stop, so it refuses rather than warning.
+    """
+    if MATCH_DATE_COLUMN not in df.columns:
+        logger.error("export_csv.cutoff_without_dates path=%s cutoff=%s", path, cutoff)
+        raise UndatedExportError(
+            f"{path or 'export'}: a cutoff of {cutoff!r} was requested but the export has no "
+            f"{MATCH_DATE_COLUMN!r} column, so the rows on or after it cannot be excluded. "
+            "Re-export, or train without a cutoff and accept that there is no holdout."
+        )
+
+    boundary = pd.to_datetime(cutoff, utc=True, errors="coerce")
+    if pd.isna(boundary):
+        raise ValueError(f"unparseable cutoff: {cutoff!r}")
+
+    dates = pd.to_datetime(df[MATCH_DATE_COLUMN], utc=True, errors="coerce", format="ISO8601")
+    kept = df[dates.notna() & (dates < boundary)]
+    logger.info(
+        "export_csv.cutoff_applied path=%s cutoff=%s kept=%s dropped=%s undated=%s",
+        path,
+        cutoff,
+        len(kept),
+        len(df) - len(kept),
+        int(dates.isna().sum()),
+    )
+    return kept
+
+
+def read_export_csv(path: str, cutoff: Optional[str] = None) -> pd.DataFrame:
     """Read a go-app export CSV, refusing one whose header and rows disagree in width.
 
     Args:
         path: Path to the export CSV.
+        cutoff: When set, drop rows on or after this RFC3339 timestamp. Trainers pass
+            their ``--cutoff`` so the CSV path honours it; without this the flag governed
+            only the API fallback and a run asked to train to a cutoff trained on
+            everything.
 
     Returns:
         The parsed DataFrame.
@@ -57,6 +111,7 @@ def read_export_csv(path: str) -> pd.DataFrame:
     Raises:
         MisalignedExportError: The header names a different number of columns than the
             first data row carries, so every column mapping is suspect.
+        UndatedExportError: A cutoff was requested of an export with no match date.
     """
     widths = _header_and_row_widths(path)
     if widths is not None:
@@ -73,4 +128,7 @@ def read_export_csv(path: str) -> pd.DataFrame:
                 f"{row_fields} fields, so column mapping is unreliable. The export is stale or "
                 f"its writer is out of contract; re-run `make export-dataset` before training."
             )
-    return pd.read_csv(path)
+    df = pd.read_csv(path)
+    if cutoff:
+        df = filter_before_cutoff(df, cutoff, path)
+    return df

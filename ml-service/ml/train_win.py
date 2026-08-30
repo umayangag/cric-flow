@@ -425,7 +425,9 @@ def _main() -> None:
     by_format = {}
     if os.path.isfile(csv_path):
         logger.info("train_win.loading_csv path=%s (prefer CSV over API)", csv_path)
-        df = read_export_csv(csv_path)
+        # The cutoff governs the CSV path too. Without it a run asked to train to a
+        # cutoff trained on every exported match, leaving no holdout to evaluate on.
+        df = read_export_csv(csv_path, cutoff=args.cutoff or None)
         csv_total_rows = len(df)
         csv_formats = df["format_code"].unique().tolist() if "format_code" in df.columns else []
         logger.info(
