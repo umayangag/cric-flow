@@ -147,8 +147,14 @@ def _maybe_run_autogluon_and_compare(
     format_suffix: Optional[str],
     out_dir: str,
     optuna_best_score: float,
+    scoring: Optional[str] = None,
 ) -> Tuple[bool, Optional[Any], Dict[str, Any]]:
-    """Run AutoGluon when enabled; compare to Optuna score. Returns (autogluon_wins, wrapper_or_none, report_updates)."""
+    """Run AutoGluon when enabled; compare to Optuna score. Returns (autogluon_wins, wrapper_or_none, report_updates).
+
+    ``scoring`` is the metric the Optuna search optimised. It is passed to AutoGluon so
+    both numbers measure the same thing -- the comparison below is a plain ``>``, and
+    two different metrics either side of it is a category error, not a close call.
+    """
 
     if use_autogluon is False or AutogluonPredictorWrapper is None:
         return False, None, {}
@@ -181,7 +187,7 @@ def _maybe_run_autogluon_and_compare(
         )
     else:
         _, ag_score, persist_path, ok = _autogluon.run_autogluon_classification(
-            X, y, time_limit_seconds=time_limit, presets=presets
+            X, y, time_limit_seconds=time_limit, presets=presets, eval_metric=scoring or "roc_auc"
         )
 
     ag_better = ok and ag_score is not None and ag_score > optuna_best_score
@@ -699,7 +705,15 @@ def run_auto_tune_win(
     n_iter = int(tuning["n_iter"])
     if fast_mode:
         n_iter = min(n_iter, 15)
-    scoring = "accuracy"
+    # Ranking, not accuracy. Team selection takes an argmax over candidate XIs, so only
+    # the order the model puts them in can change which side is picked -- a threshold
+    # metric is blind to every improvement that does not cross 0.5, and rewards leaning
+    # on the majority outcome. Tuning for accuracy can therefore buy a worse selector.
+    #
+    # ml.tuning.scoring is not consulted: it holds a regression metric for the other
+    # models, and silently applying neg_mean_absolute_error to a classifier would be
+    # worse than ignoring it.
+    scoring = "roc_auc"
     params = get_training_params("win")
     random_state = tuning.get("random_state") or params.get("random_state", 42)
     joblib_compress = params["joblib_compress"]
@@ -743,7 +757,7 @@ def run_auto_tune_win(
     optuna_score = report.get("best_cv_score")
     if optuna_score is not None:
         ag_wins, ag_wrapper, ag_updates = _maybe_run_autogluon_and_compare(
-            X, y, "classification", use_autogluon, "win", format_suffix, out_dir, float(optuna_score)
+            X, y, "classification", use_autogluon, "win", format_suffix, out_dir, float(optuna_score), scoring
         )
         report.update(ag_updates)
         if ag_wins and ag_wrapper is not None:

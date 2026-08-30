@@ -194,6 +194,21 @@ Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.c
 
 **Config:** In `ml-service/config.json`, optional `ml.tuning`: `cv_splits`, `n_iter`, `scoring` (e.g. `neg_mean_absolute_error`), `algorithms`, `validation_method`.
 
+> **`scoring` applies to the regression models only.** The win model is a classifier and
+> is tuned for **`roc_auc`**, set in code rather than read from here. Team selection takes
+> an argmax over candidate XIs, so only the model's *ranking* of them can change which
+> side is picked: a threshold metric like accuracy is blind to every improvement that
+> does not cross 0.5, and rewards leaning on the majority outcome. Tuning the win model
+> for accuracy can buy a model that selects worse than the one it replaced.
+>
+> AutoGluon, when enabled, is given the same metric — the two scores are compared with a
+> plain `>`, so a different metric on either side would decide the win model on a
+> category error rather than a close call.
+>
+> Tuning reports carry the metric that produced them in their `scoring` field. A report
+> from before this change says `accuracy`, and its `best_cv_score` is not comparable with
+> a newer one.
+
 - **algorithms** — `"all"` or a list like `["rf", "gb"]`. Available: `rf` (RandomForest), `gb` (GradientBoosting), `et` (ExtraTrees), `hgb` (HistGradientBoosting), `quantile` (regression only), `stacked` (batting/bowling/fielding only). Extras and win support `rf`, `gb`, `et`, `hgb`.
 - **validation_method** — `"walk_forward"` (default; TimeSeriesSplit, temporal validation) or `"kfold"`.
 
