@@ -3,12 +3,6 @@ inpackage: false
 filename: "{{.InterfaceName}}.go"
 formatter: goimports
 packages:
-  github.com/umayangag/cric-flow/go-app/internal/predictor:
-    config:
-      dir: internal/predictor/internal/mocks
-      pkgname: mocks
-    interfaces:
-      Predictor: { }
   github.com/umayangag/cric-flow/go-app/internal/services/teampredictor:
     config:
       dir: internal/services/teampredictor/internal/mocks

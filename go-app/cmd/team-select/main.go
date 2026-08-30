@@ -1,5 +1,5 @@
 // Command team-select selects a team for a given match by applying simple
-// constraints to a candidate player pool loaded from DB or CSV.
+// constraints to a candidate player pool loaded from the DB.
 // Thin wrapper: parse via internal CLI, wire deps, delegate to internal runner.
 package main
 
@@ -29,7 +29,6 @@ func run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// Build runner with selector adapter and DB connector (only used when FromDB)
 	runner := svc.NewRunner(svc.NewSelectionAdapter(), db.RealConnector{})
 	if runErr := runner.Run(ctx, opts, os.Stdout); runErr != nil {
 		slog.Error("team-select failed", slog.Any("err", runErr))

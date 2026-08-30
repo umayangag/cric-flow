@@ -87,27 +87,18 @@ Prerequisites:
 
 Using the Makefile convenience target (recommended):
 ```
-# DB-backed selection (build features from DB)
-make team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
-
-# CSV-backed selection (use pre-generated ml-service/ml/pool.csv)
-make team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+make team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1
 ```
 Direct invocation of the CLI:
 ```
-# DB-backed
-go run ./cmd/team-select -match 262039498036 -format T20 -season 2025 -size 11 -min-bowlers 5 -require-keeper --from-db=true
-
-# CSV-backed
-go run ./cmd/team-select -match 262039498036 -format T20 -season 2025 -pool ../ml-service/ml/pool.csv --from-db=false
+go run ./cmd/team-select -match 262039498036 -format T20 -season 2025 -size 11 -min-bowlers 5 -require-keeper
 ```
 Flags:
-- `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
+- `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`
 
-### Team predictor (uses ml-service predictions and ml/pool.csv)
+### Team predictor (uses ml-service predictions)
 Prerequisites:
 - ML service running: `make -C ../ml-service run` (or `make ml-serve` from repo root)
-- For CSV-backed selection, use a pre-generated pool CSV (see team-select `POOL` and `FROM_DB=0`). Pool generation via go-app/DB + ML predict is the supported path.
 
 Using the Makefile convenience target:
 ```
@@ -126,16 +117,13 @@ Notes:
 `make fmt`, `make fmt-check`, `make vet`, `make test`. Inputs: `data/go-app/...`, outputs: `output/go-app`. See root README and **docs/overview.md**.
 
 ### CLI quick reference (team-select, team-predictor)
-- team-select flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`, `-pool`, `-from-db`
+- team-select flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-size`, `-min-bowlers`, `-require-keeper`
 - team-predictor flags: `-match` (required), `-season` (required), `-format` (TEST|ODI|T20I|T20), `-bat`, `-bowl`
 
 Examples:
 ```
-# DB-backed selection
-make -C go-app team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1 FROM_DB=1
-
-# CSV-backed selection
-make -C go-app team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 FROM_DB=0 POOL=../ml-service/ml/pool.csv
+# Team selection
+make -C go-app team-select MATCH=262039498036 SEASON=2025 FORMAT=T20 SIZE=11 MIN_BOWLERS=5 REQUIRE_KEEPER=1
 
 # Team predictor using ml-service predictions
 make -C go-app team-predictor MATCH=1193505 SEASON=2025 FORMAT=T20 BAT=6 BOWL=5

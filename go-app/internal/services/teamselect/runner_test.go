@@ -24,8 +24,6 @@ func (f *fakeConnector) Connect(_ context.Context) error {
 
 type fakeSelector struct {
 	calledDB   int
-	calledCSV  int
-	lastPool   string
 	lastMatch  int64
 	lastFormat string
 	lastOpts   selection.Options
@@ -44,16 +42,6 @@ func (f *fakeSelector) SelectTeam(
 	return f.res, f.err
 }
 
-func (f *fakeSelector) SelectTeamFromCSV(
-	_ context.Context,
-	poolPath string,
-	opts selection.Options,
-) (selection.Result, error) {
-	f.calledCSV++
-	f.lastPool, f.lastOpts = poolPath, opts
-	return f.res, f.err
-}
-
 func sampleResult() selection.Result {
 	return selection.Result{
 		Players: []predictor.PlayerPrediction{
@@ -64,45 +52,41 @@ func sampleResult() selection.Result {
 	}
 }
 
-func TestRunner_FromDB_Success(t *testing.T) {
+func TestRunner_Success(t *testing.T) {
 	fs := &fakeSelector{res: sampleResult()}
 	fc := &fakeConnector{}
 	r := svc.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
-	opts := svc.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
+	opts := svc.Options{MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11, MinBowlers: 5}
 	require.NoError(t, r.Run(context.Background(), opts, buf))
 	require.Equal(t, 1, fc.called, "connector called once")
 	require.Equal(t, 1, fs.calledDB, "selector DB call")
-	require.Equal(t, 0, fs.calledCSV, "selector CSV call")
+	require.Equal(t, int64(1), fs.lastMatch)
+	require.Equal(t, "T20", fs.lastFormat)
+	require.Equal(t, selection.Options{TeamSize: 11, MinBowlers: 5}, fs.lastOpts)
 	out := buf.String()
 	require.Contains(t, out, "Selected Team (size=2)", "header")
 	require.Contains(t, out, "1. A")
 	require.Contains(t, out, "2. B")
 }
 
-func TestRunner_FromDB_ConnectError(t *testing.T) {
+func TestRunner_ConnectError(t *testing.T) {
 	fs := &fakeSelector{res: sampleResult()}
 	fc := &fakeConnector{err: errors.New("boom")}
 	r := svc.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
-	err := r.Run(context.Background(), svc.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}, buf)
+	err := r.Run(context.Background(), svc.Options{MatchID: 1, Format: "T20", Season: "2025"}, buf)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "db connect failed")
+	require.Equal(t, 0, fs.calledDB, "selection not attempted after connect failure")
 }
 
-func TestRunner_FromCSV_Success(t *testing.T) {
-	fs := &fakeSelector{res: sampleResult()}
+func TestRunner_SelectError(t *testing.T) {
+	fs := &fakeSelector{err: errors.New("select boom")}
 	fc := &fakeConnector{}
 	r := svc.NewRunner(fs, fc)
 	buf := &bytes.Buffer{}
-	opts := svc.Options{
-		FromDB:   false,
-		PoolPath: "/tmp/pool.csv",
-		TeamSize: 11,
-	}
-	require.NoError(t, r.Run(context.Background(), opts, buf))
-	require.Equal(t, 0, fc.called, "connector not called for CSV")
-	require.Equal(t, 1, fs.calledCSV)
-	require.Equal(t, 0, fs.calledDB)
-	require.Equal(t, "/tmp/pool.csv", fs.lastPool)
+	err := r.Run(context.Background(), svc.Options{MatchID: 1, Format: "T20", Season: "2025"}, buf)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "select boom")
 }

@@ -46,21 +46,17 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		matchID int64
 		format  string
 		season  string
-		pool    string
 		size    int
 		minB    int
 		reqK    bool
-		fromDB  bool
 	)
 	// Seed defaults from env first
 	matchID = getenvInt64("TEAM_SELECT_MATCH", 0)
 	format = getenv("TEAM_SELECT_FORMAT", "T20")
 	season = getenv("TEAM_SELECT_SEASON", "")
-	pool = getenv("TEAM_SELECT_POOL", "")
 	size = getenvInt("TEAM_SELECT_SIZE", 11)
 	minB = getenvInt("TEAM_SELECT_MIN_BOWLERS", 5)
 	reqK = getenvBool("TEAM_SELECT_REQUIRE_KEEPER", false)
-	fromDB = getenvBool("TEAM_SELECT_FROM_DB", true)
 
 	fs.Int64Var(&matchID, "match", matchID, "match_id to build predictions for")
 	fs.StringVar(
@@ -70,11 +66,9 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		"match format code (TEST, ODI, T20, T20I). Aliases: MDM→TEST, ODM→ODI, IT20→T20I",
 	)
 	fs.StringVar(&season, "season", season, "season name (e.g. 2019)")
-	fs.StringVar(&pool, "pool", pool, "path to prepared pool CSV")
 	fs.IntVar(&size, "size", size, "team size to select")
 	fs.IntVar(&minB, "min-bowlers", minB, "minimum number of bowlers to include")
 	fs.BoolVar(&reqK, "require-keeper", reqK, "require at least one wicket-keeper")
-	fs.BoolVar(&fromDB, "from-db", fromDB, "build features from DB instead of CSV pool")
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
@@ -83,11 +77,9 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 		MatchID:       matchID,
 		Format:        format,
 		Season:        season,
-		PoolPath:      pool,
 		TeamSize:      size,
 		MinBowlers:    minB,
 		RequireKeeper: reqK,
-		FromDB:        fromDB,
 	}
 	if err := opts.Validate(); err != nil {
 		return Options{}, err

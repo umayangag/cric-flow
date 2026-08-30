@@ -12,11 +12,9 @@ type Options struct {
 	MatchID       int64
 	Format        string
 	Season        string
-	PoolPath      string
 	TeamSize      int
 	MinBowlers    int
 	RequireKeeper bool
-	FromDB        bool
 }
 
 // Validate checks the option values and normalizes where appropriate.
@@ -43,9 +41,6 @@ func (o *Options) Validate() error {
 	}
 	if o.MinBowlers < 0 {
 		return errors.New("min-bowlers must be a non-negative number")
-	}
-	if !o.FromDB && strings.TrimSpace(o.PoolPath) == "" {
-		return errors.New("pool csv is required when from-db=false")
 	}
 	return nil
 }

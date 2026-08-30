@@ -13,7 +13,7 @@ import (
 )
 
 // These are orchestration-style tests that live next to the cmd but use the public Runner API.
-// They ensure the thin wiring prints the expected output and respects DB vs CSV paths.
+// They ensure the thin wiring connects, prints the expected output, and surfaces failures.
 
 type fakeConnector struct {
 	err    error
@@ -33,14 +33,6 @@ type fakeSelector struct {
 func (f fakeSelector) SelectTeam(
 	_ context.Context,
 	_ int64,
-	_ string,
-	_ selection.Options,
-) (selection.Result, error) {
-	return f.res, f.err
-}
-
-func (f fakeSelector) SelectTeamFromCSV(
-	_ context.Context,
 	_ string,
 	_ selection.Options,
 ) (selection.Result, error) {
@@ -69,14 +61,13 @@ func TestOrch_Table(t *testing.T) {
 		assert  assertFn
 	}{
 		{
-			name: "FromDB success prints team and connects once",
+			name: "success prints team and connects once",
 			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
 				fs := fakeSelector{res: sampleResult()}
 				fc := &fakeConnector{}
 				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
 				opts := ts.Options{
-					FromDB:     true,
 					MatchID:    1,
 					Format:     "T20",
 					Season:     "2025",
@@ -95,13 +86,13 @@ func TestOrch_Table(t *testing.T) {
 			},
 		},
 		{
-			name: "FromDB connect error surfaces",
+			name: "connect error surfaces",
 			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
 				fs := fakeSelector{res: sampleResult()}
 				fc := &fakeConnector{err: errors.New("boom")}
 				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := ts.Options{FromDB: true, MatchID: 1, Format: "T20", Season: "2025"}
+				opts := ts.Options{MatchID: 1, Format: "T20", Season: "2025"}
 				return r, opts, buf, fc
 			},
 			assert: func(t *testing.T, _ *bytes.Buffer, err error, _ *fakeConnector) {
@@ -110,27 +101,19 @@ func TestOrch_Table(t *testing.T) {
 			},
 		},
 		{
-			name: "FromCSV success prints team and does not connect",
+			name: "selection error surfaces",
 			arrange: func() (ts.Runner, ts.Options, *bytes.Buffer, *fakeConnector) {
-				fs := fakeSelector{res: sampleResult()}
+				fs := fakeSelector{err: errors.New("select boom")}
 				fc := &fakeConnector{}
 				r := ts.NewRunner(fs, fc)
 				buf := &bytes.Buffer{}
-				opts := ts.Options{
-					FromDB:   false,
-					PoolPath: "/tmp/pool.csv",
-					MatchID:  1,
-					Format:   "T20",
-					Season:   "2025",
-					TeamSize: 11,
-				}
+				opts := ts.Options{MatchID: 1, Format: "T20", Season: "2025", TeamSize: 11}
 				return r, opts, buf, fc
 			},
-			assert: func(t *testing.T, buf *bytes.Buffer, err error, fc *fakeConnector) {
-				require.NoError(t, err)
-				require.Equal(t, 0, fc.called)
-				out := buf.String()
-				require.Contains(t, out, "Selected Team (size=2)")
+			assert: func(t *testing.T, buf *bytes.Buffer, err error, _ *fakeConnector) {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "select boom")
+				require.Empty(t, buf.String())
 			},
 		},
 	}
@@ -150,8 +133,7 @@ func TestOrch_Table(t *testing.T) {
 
 // capturingSelector records last call parameters to validate option propagation.
 type capturingSelector struct {
-	lastFromDB bool
-	lastOpts   selection.Options
+	lastOpts selection.Options
 }
 
 func (c *capturingSelector) SelectTeam(
@@ -160,29 +142,17 @@ func (c *capturingSelector) SelectTeam(
 	_ string,
 	opts selection.Options,
 ) (selection.Result, error) {
-	c.lastFromDB = true
 	c.lastOpts = opts
 	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "X", WinningProbability: 0.1}}}, nil
 }
 
-func (c *capturingSelector) SelectTeamFromCSV(
-	_ context.Context,
-	_ string,
-	opts selection.Options,
-) (selection.Result, error) {
-	c.lastFromDB = false
-	c.lastOpts = opts
-	return selection.Result{Players: []predictor.PlayerPrediction{{PlayerName: "Y", WinningProbability: 0.2}}}, nil
-}
-
-func TestOrch_OptionPropagation_DB(t *testing.T) {
+func TestOrch_OptionPropagation(t *testing.T) {
 	t.Parallel()
 	sel := &capturingSelector{}
 	fc := &fakeConnector{}
 	r := ts.NewRunner(sel, fc)
 	buf := &bytes.Buffer{}
 	opts := ts.Options{
-		FromDB:        true,
 		MatchID:       1,
 		Format:        "T20",
 		Season:        "2025",
@@ -192,31 +162,7 @@ func TestOrch_OptionPropagation_DB(t *testing.T) {
 	}
 	err := r.Run(context.Background(), opts, buf)
 	require.NoError(t, err)
-	require.True(t, sel.lastFromDB)
 	require.True(t, sel.lastOpts.RequireKeeper)
 	require.Equal(t, 6, sel.lastOpts.MinBowlers)
 	require.Equal(t, 11, sel.lastOpts.TeamSize)
-}
-
-func TestOrch_OptionPropagation_CSV(t *testing.T) {
-	t.Parallel()
-	sel := &capturingSelector{}
-	fc := &fakeConnector{}
-	r := ts.NewRunner(sel, fc)
-	buf := &bytes.Buffer{}
-	opts := ts.Options{
-		FromDB:     false,
-		PoolPath:   "/tmp/pool.csv",
-		MatchID:    1,
-		Format:     "T20",
-		Season:     "2025",
-		TeamSize:   9,
-		MinBowlers: 4,
-	}
-	err := r.Run(context.Background(), opts, buf)
-	require.NoError(t, err)
-	require.False(t, sel.lastFromDB)
-	require.False(t, sel.lastOpts.RequireKeeper)
-	require.Equal(t, 4, sel.lastOpts.MinBowlers)
-	require.Equal(t, 9, sel.lastOpts.TeamSize)
 }

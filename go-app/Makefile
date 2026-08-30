@@ -39,20 +39,16 @@ SEASON ?= 2025
 SIZE ?= 11
 MIN_BOWLERS ?= 5
 REQUIRE_KEEPER ?= 0
-FROM_DB ?= 1
-POOL ?= ../ml-service/ml/pool.csv
 BAT ?= 0
 BOWL ?= 0
 
 # Run team selection pipeline
-# Examples:
+# Example:
 #  make team-select MATCH=1193505 SEASON=2019 FORMAT=T20
-#  make team-select MATCH=1193505 SEASON=2019 FROM_DB=0 POOL=../ml-service/ml/pool.csv
 team-select:
 	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ]; then echo "Please set MATCH=<id> and SEASON=<name> (e.g., 2019)"; exit 2; fi
 	REQ_FLAG=""; if [ "$(REQUIRE_KEEPER)" = "1" ]; then REQ_FLAG="-require-keeper"; fi; \
-	FROM_FLAG="-from-db=true"; if [ "$(FROM_DB)" = "0" ]; then FROM_FLAG="-from-db=false -pool=$(POOL)"; fi; \
-	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG $$FROM_FLAG
+	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG
 
 # Run team predictor (requires ml-service running for predict)
 # Examples:
@@ -229,7 +225,7 @@ help:
 	@echo "  migrate            Build + run DB migrator against POSTGRES_* envs"
 	@echo
 	@echo "[Data & CLIs]"
-	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, FROM_DB, POOL, etc.)"
+	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, SIZE, MIN_BOWLERS, etc.)"
 	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
@@ -244,7 +240,7 @@ help:
 	@echo
 	@echo "Variables (with defaults):"
 	@echo "  MATCH=$(MATCH)  SEASON=$(SEASON)  FORMAT=$(FORMAT)  SIZE=$(SIZE)  MIN_BOWLERS=$(MIN_BOWLERS)  REQUIRE_KEEPER=$(REQUIRE_KEEPER)"
-	@echo "  FROM_DB=$(FROM_DB)  POOL=$(POOL)  BAT=$(BAT)  BOWL=$(BOWL)"
+	@echo "  BAT=$(BAT)  BOWL=$(BOWL)"
 	@echo "  COV_MIN=$(COV_MIN)"
 	@echo "  COVERAGE_PACKAGES=$(COVERAGE_PACKAGES)"
 	@echo "\nTip: use 'make list' to see all phony targets."
