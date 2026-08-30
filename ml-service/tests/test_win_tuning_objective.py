@@ -1,5 +1,11 @@
 """The win model is tuned for ranking, not for accuracy.
 
+``TabularPredictor`` is patched with ``create=True`` throughout: the real name exists only
+when AutoGluon is installed, and CI installs ``requirements-serve.txt``, which omits it.
+Standing in for the missing attribute is what lets these guards run in the environment
+where the dependency is absent -- the one where a metric drifting out of step would go
+unnoticed the longest.
+
 Team selection takes an argmax over candidate XIs, so only the order the model puts them
 in can change which side is picked. A threshold metric is blind to every improvement
 that does not cross 0.5 and rewards leaning on the majority outcome, so tuning for
@@ -10,6 +16,7 @@ import inspect
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 
 from ml.auto_tune_autogluon import run_autogluon_classification
 from ml.tuning import runners
@@ -32,11 +39,11 @@ def test_win_search_ignores_the_regression_scoring_in_config() -> None:
 
 
 @patch("ml.auto_tune_autogluon._HAS_AUTOGLUON", True)
-@patch("ml.auto_tune_autogluon.TabularPredictor")
+@patch("ml.auto_tune_autogluon.TabularPredictor", create=True)
 def test_autogluon_classification_uses_the_metric_it_is_given(predictor_cls) -> None:
     """The caller passes the search's metric so the two scores are comparable."""
     predictor = MagicMock()
-    predictor.leaderboard.return_value = __import__("pandas").DataFrame({"score_val": [0.72]})
+    predictor.leaderboard.return_value = pd.DataFrame({"score_val": [0.72]})
     predictor_cls.return_value = predictor
 
     _, score, _, ok = run_autogluon_classification(
@@ -52,11 +59,11 @@ def test_autogluon_classification_uses_the_metric_it_is_given(predictor_cls) -> 
 
 
 @patch("ml.auto_tune_autogluon._HAS_AUTOGLUON", True)
-@patch("ml.auto_tune_autogluon.TabularPredictor")
+@patch("ml.auto_tune_autogluon.TabularPredictor", create=True)
 def test_autogluon_classification_defaults_to_ranking(predictor_cls) -> None:
     """A caller that names no metric still gets the ranking one, never accuracy."""
     predictor = MagicMock()
-    predictor.leaderboard.return_value = __import__("pandas").DataFrame({"score_val": [0.6]})
+    predictor.leaderboard.return_value = pd.DataFrame({"score_val": [0.6]})
     predictor_cls.return_value = predictor
 
     run_autogluon_classification(np.array([[1.0], [2.0]]), np.array([0, 1]), time_limit_seconds=1)
