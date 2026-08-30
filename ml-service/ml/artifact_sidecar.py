@@ -10,10 +10,6 @@ otherwise drift between training and inference:
   than the canonical ``*_FEATURE_COLS`` tuple, and reconciliation cannot assume
   a fixed shape.
 
-- ``derived_weights``: the ``ml.match_level_derived`` weights that were in
-  effect at training time. Re-tuning those weights in config must not silently
-  invalidate an already-trained model.
-
 Files are named ``{kind}_meta_{FMT}.json``. Readers must tolerate missing files
 (old artifacts predate this convention), and the unsuffixed ``{kind}_meta.json``
 name is still resolved so a stale sidecar left by the removed unified models can
@@ -45,7 +41,6 @@ def write_artifact_meta(
     kind: str,
     format_code: Optional[str],
     feature_names: List[str],
-    derived_weights: Optional[Dict[str, float]] = None,
     extra: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Atomically write sidecar metadata alongside a trained model artifact.
@@ -66,8 +61,6 @@ def write_artifact_meta(
     provenance = provenance_for(default_csv_dir())
     if provenance:
         payload["provenance"] = provenance
-    if derived_weights is not None:
-        payload["derived_weights"] = {k: float(v) for k, v in derived_weights.items()}
     if extra:
         payload["extra"] = dict(extra)
     tmp = f"{path}.tmp"

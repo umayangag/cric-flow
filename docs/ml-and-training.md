@@ -338,14 +338,8 @@ For classifiers (e.g. the win model), predicted probabilities can be **calibrate
 
 - `form_differential = bat_form_sum - bowl_form_sum`
 - `consistency_differential = bat_consistency_sum - bowl_consistency_sum`
-- `weather_composite = wr · rain + wh · (humidity / 100) + wc · (cloud / 100)`
 
-The three `weather_composite_*_weight` values live under `ml.match_level_derived` in config.
-
-**Caveats — `weather_composite`:**
-
-1. It is a **linear, hand-picked blend** of three raw weather features that are *also* kept in the feature list. Tree models can learn interactions from the raw features on their own; the composite is justified only for linear/kernel models that can’t. Treat it as optional and A/B-test whether dropping the raw weather cols (or the composite) improves validation MAE before committing to it.
-2. Because the weights are config-driven, they must match between training and inference. From this change onward each trained artifact writes a **sidecar file** next to the joblib (e.g. `innings_meta_T20.json`) containing `feature_names` and `derived_weights`. `app/reconciliation.build_innings_feature_vector` reads this sidecar at inference time, so retuning the config after training does not silently drift predictions.
+There was a third, `weather_composite`, a configurable blend of `rain`, `humidity` and `cloud`. C2-2b removed those three inputs from every export because nothing has ever populated `weather_data`, which left the composite computing a constant zero from columns that were no longer there; the low-variance filter then discarded it on every fit, so no trained artifact ever named it. It is gone, along with the `ml.match_level_derived` config block that only it used.
 
 **Artifact sidecars (`ml.artifact_sidecar`)**:
 
@@ -357,7 +351,8 @@ The three `weather_composite_*_weight` values live under `ml.match_level_derived
 The sidecar pins two things:
 
 - `feature_names`: exact column order the scaler/model were fitted on, so per-format `drop_low_variance_columns` and format one-hot exclusion cannot cause a shape mismatch at inference.
-- `derived_weights`: the `ml.match_level_derived` block as it was at training time.
+
+A sidecar written before this change may still name `weather_composite`. Feature selection is by name with a `0.0` default, so such an artifact degrades to a zero column rather than raising — which is exactly what the constant-zero feature contributed anyway.
 
 **Operational note:** old artifacts without sidecars still load; `build_innings_feature_vector` falls back to `LEGACY_INNINGS_FEATURE_COLS` + the current config. Retrain any per-format model whose training data included format-only columns that were dropped during low-variance filtering so its sidecar is written and inference stops relying on the fallback.
 
@@ -367,7 +362,7 @@ The sidecar pins two things:
 
 `ml.data_quality.drop_low_variance_columns` removes effectively constant columns before fitting. The threshold is **scale-aware**: a column is dropped when `std ≤ threshold · (|mean| + 1)`. The `+ 1` term gives a sensible bar for zero-mean features (like `form_differential`) while still flagging tiny noise on large-mean ones (like a raw venue or season id). The knob lives under `ml.data_quality.low_variance_threshold` (default `1e-6`); values are coefficients, not absolute variance thresholds.
 
-This is what will absorb `weather_composite`: the inputs it is derived from were removed in C2-2b, so it is now constant zero in every row and the low-variance filter discards it at fit time. Dropping it from `EXTRAS_FEATURE_COLS` and `INNINGS_FEATURE_COLS` outright is a feature-contract change needing its own re-export and retrain.
+This is what absorbed `weather_composite` for as long as it survived: its inputs were removed in C2-2b, so it computed a constant zero and the filter discarded it at every fit. That is also why removing it needed no retrain — no artifact had ever named it.
 
 ---
 
@@ -401,4 +396,4 @@ The following is **not** yet verified in this branch and is deliberately left as
 
   If transforms help, migrate the block from `config.json` (environment-local override) to `config.default.json` so it ships with defaults. If they don't, remove them to avoid the redundant feature-name plumbing cost at inference.
 
-- **Weather-composite ablation**: `weather_composite = wr · rain + wh · (humidity / 100) + wc · (cloud / 100)` is a hand-picked linear blend. The `form_differential` and `consistency_differential` columns are pure subtractions of features the model also sees. Tree-based models can (and usually do) recover these from raw columns on their own. Run the same auto-tune sweep with and without `form_differential` / `consistency_differential` / `weather_composite` and keep only the ones that improve hold-out MAE or MLQA stability; drop the rest from `MATCH_LEVEL_DERIVED_FEATURE_COLS`. Note that `resolve_weights` now logs a warning if the resolved weight sum falls outside `[0, 1.5]`, to catch accidental weight drift during experimentation.
+- **Derived-feature ablation**: the `form_differential` and `consistency_differential` columns are pure subtractions of features the model also sees, and tree-based models can (and usually do) recover them from the raw columns on their own. Run the same auto-tune sweep with and without each and keep only the ones that improve hold-out MAE or MLQA stability; drop the rest from `MATCH_LEVEL_DERIVED_FEATURE_COLS`. (`weather_composite` was the third such column and is already gone — it was constant zero.)

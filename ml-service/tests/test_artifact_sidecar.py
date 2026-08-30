@@ -18,19 +18,14 @@ def test_meta_filename_per_format() -> None:
 def test_write_then_read_roundtrip(tmp_path: Path) -> None:
     """write_artifact_meta should produce a file that read_artifact_meta returns as dict."""
     feature_names = ["venue_id", "form_differential", "format_is_T20"]
-    weights = {
-        "weather_composite_rain_weight": 0.5,
-        "weather_composite_humidity_weight": 0.3,
-        "weather_composite_cloud_weight": 0.2,
-    }
-    write_artifact_meta(str(tmp_path), "innings", "T20", feature_names, derived_weights=weights)
+    write_artifact_meta(str(tmp_path), "innings", "T20", feature_names)
 
     meta = read_artifact_meta(str(tmp_path), "innings", "T20")
     assert meta is not None
     assert meta["kind"] == "innings"
     assert meta["format_code"] == "T20"
     assert meta["feature_names"] == feature_names
-    assert meta["derived_weights"] == weights
+    assert "derived_weights" not in meta
 
 
 def test_write_is_atomic(tmp_path: Path) -> None:

@@ -37,7 +37,6 @@ from ml.artifact_sidecar import write_artifact_meta
 from ml.config import (
     default_artifacts_dir,
     default_go_app_export_dir,
-    get_match_level_derived_config,
     get_pipeline_common_config,
     get_training_data_fetch_timeout_sec,
     get_training_params,
@@ -236,7 +235,6 @@ def train_and_save(
         "innings",
         format_code,
         feature_names,
-        derived_weights=get_match_level_derived_config(),
     )
     logger.info("train_innings.saved format=%s n=%s out_dir=%s", format_code, X.shape[0], out_dir)
 

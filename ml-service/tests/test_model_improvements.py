@@ -67,7 +67,7 @@ class TestDerivedFeatures:
             assert col in INNINGS_FEATURE_COLS
 
     def test_extras_add_derived_features(self):
-        """_add_derived_features computes form_differential, consistency_differential, weather_composite."""
+        """_add_derived_features computes form_differential and consistency_differential."""
         from ml.train_extras import _add_derived_features
 
         df = pd.DataFrame(
@@ -76,9 +76,6 @@ class TestDerivedFeatures:
                 "bowl_form_sum": [3.0, 8.0],
                 "bat_consistency_sum": [7.0, 4.0],
                 "bowl_consistency_sum": [2.0, 6.0],
-                "rain": [1.0, 0.0],
-                "humidity": [80.0, 50.0],
-                "cloud": [60.0, 20.0],
             }
         )
         _add_derived_features(df)
@@ -88,9 +85,6 @@ class TestDerivedFeatures:
         # consistency_differential = bat - bowl
         assert df["consistency_differential"].iloc[0] == pytest.approx(5.0)
         assert df["consistency_differential"].iloc[1] == pytest.approx(-2.0)
-        # weather_composite = 0.5*rain + 0.3*(humidity/100) + 0.2*(cloud/100)
-        expected_0 = 0.5 * 1.0 + 0.3 * (80.0 / 100.0) + 0.2 * (60.0 / 100.0)
-        assert df["weather_composite"].iloc[0] == pytest.approx(expected_0)
 
     def test_innings_add_derived_features(self):
         """_add_derived_features in innings computes same derived features."""
@@ -102,16 +96,11 @@ class TestDerivedFeatures:
                 "bowl_form_sum": [4.0],
                 "bat_consistency_sum": [8.0],
                 "bowl_consistency_sum": [3.0],
-                "rain": [0.0],
-                "humidity": [60.0],
-                "cloud": [40.0],
             }
         )
         _add_derived_features(df)
         assert df["form_differential"].iloc[0] == pytest.approx(8.0)
         assert df["consistency_differential"].iloc[0] == pytest.approx(5.0)
-        expected_wc = 0.5 * 0.0 + 0.3 * (60.0 / 100.0) + 0.2 * (40.0 / 100.0)
-        assert df["weather_composite"].iloc[0] == pytest.approx(expected_wc)
 
     def test_derived_features_handle_missing_columns(self):
         """_add_derived_features fills 0.0 when base columns are missing."""
@@ -121,7 +110,6 @@ class TestDerivedFeatures:
         _add_derived_features(df)
         assert (df["form_differential"] == 0.0).all()
         assert (df["consistency_differential"] == 0.0).all()
-        assert (df["weather_composite"] == 0.0).all()
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +264,8 @@ class TestReconciliationFeatureVector:
         )
         fd_idx = INNINGS_FEATURE_COLS.index("form_differential")
         cd_idx = INNINGS_FEATURE_COLS.index("consistency_differential")
-        wc_idx = INNINGS_FEATURE_COLS.index("weather_composite")
         assert X[0, fd_idx] == pytest.approx(6.0)
         assert X[0, cd_idx] == pytest.approx(5.0)
-        assert X[0, wc_idx] == pytest.approx(0.0)
 
     def test_build_innings_feature_vector_no_season_id_param(self):
         """build_innings_feature_vector no longer exposes season_id (replaced by cyclical time)."""
