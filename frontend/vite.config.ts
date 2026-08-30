@@ -38,11 +38,15 @@ export default defineConfig({
         '**/*.d.ts',
         'src/types/papaparse.d.ts',
       ],
-      // Soft gate: fail if coverage drops below this (raise over time)
-      lines: 65,
-      functions: 66,
-      statements: 65,
-      branches: 74,
+      // Vitest 2 reads the gate from coverage.thresholds. Set at the top level these
+      // keys are silently ignored, so the numbers below had never failed a run.
+      // Set to the measured figures rounded down; raise them, never lower them.
+      thresholds: {
+        lines: 66,
+        functions: 66,
+        statements: 66,
+        branches: 74,
+      },
     },
   },
 });

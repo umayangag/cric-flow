@@ -53,9 +53,11 @@ jobs:
         working-directory: frontend
         run: npm run -s build
 
-      - name: Test (vitest)
+      # Runs the coverage variant so the thresholds in vite.config.ts are enforced here,
+      # the way go-app-ci and ml-service-ci enforce theirs. `npm test` skips the gate.
+      - name: Test (vitest, coverage-gated)
         working-directory: frontend
-        run: npm -s test
+        run: npm -s run test:coverage
 
       - name: Upload test artifacts (if present)
         if: always()

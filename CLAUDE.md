@@ -158,8 +158,9 @@ helpers instead.
   rounded down. The thresholds live in three places per component and must move together:
   `go-app/Makefile` (`COV_MIN`) + root `Makefile` (`COV_MIN_GO`) + `.github/workflows/go-app-ci.yml`;
   `ml-service/Makefile` (`COV_MIN`) + root `Makefile` (`COV_MIN_ML`) +
-  `.github/workflows/ml-service-ci.yml`; `frontend/vite.config.ts` (`test.coverage`: lines,
-  functions, statements, branches). Never lower them to make a run pass — add tests instead.
+  `.github/workflows/ml-service-ci.yml`; `frontend/vite.config.ts`
+  (`test.coverage.thresholds`: lines, functions, statements, branches). Never lower them to
+  make a run pass — add tests instead.
 
 ## Before submitting changes
 
