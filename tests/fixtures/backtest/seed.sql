@@ -22,8 +22,12 @@ INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOT
 
 INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
 
-INSERT INTO opposition(opposition_name) VALUES ('IND') ON CONFLICT (opposition_name) DO NOTHING;
-INSERT INTO opposition(opposition_name) VALUES ('AUS') ON CONFLICT (opposition_name) DO NOTHING;
+-- A team is (name, gender) since migration 0004_identity.sql: 130 of the 394 names in the
+-- real dataset belong to both a men's and a women's side.
+INSERT INTO opposition(opposition_name, gender) VALUES ('IND', 'male')
+ON CONFLICT (opposition_name, gender) DO NOTHING;
+INSERT INTO opposition(opposition_name, gender) VALUES ('AUS', 'male')
+ON CONFLICT (opposition_name, gender) DO NOTHING;
 
 -- Match header
 WITH s AS (
@@ -75,13 +79,14 @@ SELECT 9000111, 2, (SELECT aus_id FROM aus), (SELECT ind_id FROM ind),
   140, 9, 20.0, 120, 7.0, 151, 8, (SELECT ind_id FROM ind)
 WHERE NOT EXISTS (SELECT 1 FROM match_inning WHERE match_id = 9000111 AND inning_number = 2);
 
--- Players
-INSERT INTO player(player_name, is_wicket_keeper, is_retired)
-VALUES ('IND_Player_1', 0, 0),
-       ('IND_Player_2', 0, 0),
-       ('AUS_Player_1', 0, 0),
-       ('AUS_Player_2', 0, 0)
-ON CONFLICT (player_name) DO NOTHING;
+-- Players. external_id is the identity (the Cricsheet person identifier); player_name is a
+-- display attribute and is no longer unique, so the conflict target is the identifier.
+INSERT INTO player(external_id, player_name, name_as_of, is_wicket_keeper, is_retired)
+VALUES ('e2e00001', 'IND_Player_1', '2024-05-01', 0, 0),
+       ('e2e00002', 'IND_Player_2', '2024-05-01', 0, 0),
+       ('e2e00003', 'AUS_Player_1', '2024-05-01', 0, 0),
+       ('e2e00004', 'AUS_Player_2', '2024-05-01', 0, 0)
+ON CONFLICT (external_id) DO NOTHING;
 
 -- Batting actuals: inning 1 = IND batsmen, inning 2 = AUS batsmen
 WITH p AS (
