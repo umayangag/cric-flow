@@ -889,6 +889,52 @@ and costs one extra batch call.
 
 ---
 
+## Where this stands, and what to do next
+
+**Everything through S-3c is merged** (#214, #216, #218; the identity plan is #217). The
+database has been re-imported, the export rebuilt over squads, and the win models
+retrained to `CUTOFF=2025-09-01T00:00:00Z` — `output/ml-service/win_model_*.joblib` and
+`win_discrimination.json` currently hold exactly that run.
+
+**S-4 and S-6 are blocked on S-9**, and S-9's work is ordered by measured cost and payoff:
+
+| order | action | expected | why first |
+|---|---|---|---|
+| 1 | `make auto-tune MODEL=win` | **+0.021 AUC** | No contract change. The machinery exists and has never been run since #199 fixed it to optimise `roc_auc` |
+| 2 | Match-level features (Elo, form, h2h, venue, home) | **0.677 T20 / 0.707 T20I** vs 0.632 / 0.591 today | From the `match` table alone — no precompute, no schema change. **But it does nothing for selection** |
+| 3 | XI-responsive features (weighted involvement, player impact ratings) | unknown | The *only* route that unblocks S-4 and S-6 |
+
+**Closed with evidence — do not re-open without new information:** pooling the formats
+into one model, neural networks, and selecting a subset of players by predicted
+performance. All three were tested on this holdout and are recorded above with numbers.
+
+**Two rules that now govern any further measurement here:**
+
+1. **Report a mean over seeds.** A single fit's AUC moves ±0.01 from row ordering alone, so
+   differences under ~0.02 are not evidence. This caught a mis-stated gain twice.
+2. **Check the artifact's provenance, not just the arithmetic.** Read `n_samples` and
+   `model_type` from the metadata sidecar before trusting a measurement — see D-3.
+
+---
+
+## Known defects found along the way, not owned by any item
+
+Each was found while doing something else, verified, and left unfixed because it is out of
+scope for the item that surfaced it. Recorded here so they are not rediscovered a third
+time.
+
+| # | Defect | Evidence | Impact |
+|---|---|---|---|
+| D-1 | **`feature_raw_stats_snapshots` holds duplicate rows.** 443,308 duplicate `(player_id, format_id, as_of_date)` groups for `scope='overall'` — 1.81M of 2.32M rows. The unique constraint includes `scope_id`, which is NULL there, and Postgres treats NULLs as distinct, so it never fires. **2,361 groups carry conflicting values.** | Two equivalent formulations of the win export disagreed on 411 matches | Every model that reads a snapshot. The win export now breaks the tie on `id DESC` so it is at least reproducible; nothing else does |
+| D-2 | **The per-format win exports are wrong and unread.** `win_encoded_T20.csv` and `win_encoded_T20I.csv` are byte-identical and each contain *both* formats' rows | `SELECT format_code` over each file: both give `{T20: 12022, T20I: 2106}` | None today — only `win_encoded_all.csv` is consumed. It is a trap for the first person who reads the per-format files |
+| D-3 | **`output/ml-service/` is shared mutable state with no run identity.** A concurrent job silently replaced the win artifacts behind a reported measurement; the `.joblib` and its metadata sidecar disagreed with each other for twelve minutes | Artifacts rewritten mid-session with full-data models while the metadata still described the cutoff-trained ones | Any measurement can be invalidated by an unrelated job. Detected only by checking `n_samples` in the sidecar |
+
+D-1 is the one with real consequences and should be fixed before the identity work in
+[IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md), since that plan rebuilds the same
+tables.
+
+---
+
 ## Out of scope
 
 - Probability calibration of the win model. Monotone recalibration cannot change an
