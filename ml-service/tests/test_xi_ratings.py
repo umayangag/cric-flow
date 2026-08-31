@@ -179,3 +179,19 @@ def test_build_skips_undecided_matches_as_rows_but_folds_them_into_state() -> No
     assert list(result.frame.match_id) == ["m"]
     assert result.frame.iloc[0]["d_imp_bat_sum"] > 0, "the no-result's deliveries still rate the players"
     assert result.frame.iloc[0]["team_elo_diff"] == pytest.approx(0.0), "but no result moves no Elo"
+
+
+def test_same_day_matches_do_not_see_each_other() -> None:
+    """Two matches on one date are applied at day close: neither row reflects the other."""
+    t1, t2 = _xi("a"), _xi("b")
+    heavy = _deliveries([t1[0]] * 24, [t2[5]] * 24, [6] * 24, [0] * 24)
+    m1 = _match("m1", 0, "A", t1, t2, heavy)
+    m2 = _match("m2", 0, "A", t1, t2, heavy)  # same day as m1
+    m3 = _match("m3", 1, "A", t1, t2, heavy)  # next day
+
+    frame = build(_ListSource([m1, m2, m3])).frame.set_index("match_id")
+
+    assert frame.loc["m2", "d_imp_bat_sum"] == pytest.approx(frame.loc["m1", "d_imp_bat_sum"])
+    assert frame.loc["m2", "team_elo_diff"] == pytest.approx(0.0)
+    assert frame.loc["m3", "d_imp_bat_sum"] > 0
+    assert frame.loc["m3", "team_elo_diff"] > 0

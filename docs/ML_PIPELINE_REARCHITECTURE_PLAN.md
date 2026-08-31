@@ -224,28 +224,16 @@ Ordered so selection quality improves first and nothing is deleted before its re
 is measured. One PR each, branch `arch/<id>-<slug>`, same conventions as the selection
 checklist.
 
-| id | PR | acceptance | model |
-|---|---|---|---|
-| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | selection-comparison: `xi` ≥ `greedy` on winner accuracy | Fable |
-| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | E4 delta recorded; re-import reproducible | Opus |
-| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20) | Fable |
-| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal | Fable |
-| P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused | Fable |
-| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet | Opus |
-| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min | Opus |
-| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report | Fable |
-
-**Which model to implement each PR with.** The `model` column is a recommendation, not a
-rule. *Fable* for the items where the risk is a plausible-looking wrong answer — designing
-the distributional performance model and the simulator, reading experiment decision rules
-against noisy numbers, and the acceptance runs where a surprise has to be noticed rather
-than reported (the pooled-metrics artifact and the batting-order assumption in the health
-checklist were both found that way, with the code running and the numbers looking fine).
-*Opus* for the items that are fully specified by this document and the checklists —
-identity columns and re-import, re-pointing consumers, migrations and deletions, coverage
-ratchets, frontend trims — where the work is large but the acceptance criterion is
-mechanical. Experiments E1–E7 follow their PR. Start every PR in a fresh chat linked to the
-repo, with the instruction to read this plan's row for it first.
+| id | PR | acceptance |
+|---|---|---|
+| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | selection-comparison: `xi` ≥ `greedy` on winner accuracy |
+| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | E4 delta recorded; re-import reproducible |
+| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20) |
+| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
+| P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
+| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet |
+| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min |
+| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report |
 
 Each of P-2 … P-6 removes more than it adds. The end state is smaller than the current tree.
 
@@ -295,9 +283,12 @@ names the experiment that will.
 | H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run | open |
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
+| H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
+| H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | open (P-0 reports, P-2 implements) |
+| H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | open (P-3) |
 
-Items marked *open* are folded into the migration: H-7 and H-8 into P-2, H-5 and H-12 into
-P-3, H-11 and H-15 into P-6 alongside H-16. Nothing in the list needs new modelling; it is
+Items marked *open* are folded into the migration: H-7, H-8 and H-19 into P-2, H-5, H-12 and
+H-20 into P-3, H-11 and H-15 into P-6 alongside H-16. Nothing in the list needs new modelling; it is
 measurement, guards and two small serving rules.
 
 ---
@@ -371,6 +362,57 @@ Six training steps and two feature steps become three: import → retrain → re
 What is *not* worth doing: normalising `ball_event` further, moving to a columnar store, or
 rewriting the importer. The event core is the right shape; the problems were all downstream
 of it.
+
+---
+
+## 10. Leakage and ML-standards audit
+
+"No leaks" is a property of mechanisms and gates, not of intentions. This section lists each
+leak channel that exists in a system like this, how the plan closes it, and what is *still
+open*. The last part matters most: three items below are not yet closed, and the numbers
+quoted in this document should be read with them in mind.
+
+### 10.1 Leak channels and their closure
+
+| channel | how it leaked before | closure | status |
+|---|---|---|---|
+| **Feature sees its own outcome** (S-3c: scoreboard membership as a feature) | export read who batted, which the result decides | features are read from state accumulated over *prior days only*, then the match is folded in; no snapshot table exists to query wrongly. Unit test H-1 | closed, tested |
+| **Same-day ordering** | matches on one date processed in id order, so a match could see a same-day result it may have preceded (78% of matches share a date with another in their format) | **day-close batching** in `ml.xi.builder.build`: every match on a date reads prior dates only, the whole day is applied afterwards. Cost ≤ 0.003 AUC (measured). Unit test `test_same_day_matches_do_not_see_each_other` | closed, tested |
+| **Future data in as-of state** (D-1 snapshot ambiguity) | duplicate snapshot rows, "latest before match" undefined | no snapshots; state is the pass itself | closed by construction |
+| **Outcome-conditioned training population** | rows exist only for players who batted/bowled — decided by the result — and the model learns the population, not the quantity | **rule H-20**: the performance model's training rows are *all XI players*, with involvement predicted as-of (expected balls faced/bowled), never rows selected by what happened. A two-part target (P(bats) × runs given bats) is allowed only if both parts are trained on the unconditional population. The experiment in §1 conditioned on "batted" and is therefore an upper bound for the given-batted quantity, not the deliverable | open — P-3 |
+| **Unknowable-at-decision inputs** (toss, innings, batting order) | trained on real values, served constants (S-2, S-8) | marginalised on the serving path (H-3); the display model accepts the toss once known | closed for win; P-3 for performance |
+| **Target leakage through team context** | none found: Elo, form, h2h, venue bat-first rate all update *after* the day closes | — | closed |
+| **Train / serve skew** | serving aggregated over 11, training over the scorecard | same code path; parity test H-8 turns it into a permanent check | test open — P-2 |
+| **Identity leakage** (two people as one, one person as two) | name-keyed ids; men's and women's sides share team ids | P-1; the JSON-path numbers use registry ids and are unaffected | open — P-1 |
+| **Holdout reuse** (model-selection leakage) | — new — | the 2025-09-01 holdout was used in this session to choose feature families, model class, monotone constraints and marginalisation. Every reported number is therefore mildly optimistic as an estimate of *future* performance, even though each individual comparison is valid. Closure: **rule H-19** — L4 evaluates by rolling-origin walk-forward over several cutoffs (e.g. quarterly from 2024-01 to 2025-09) and reports mean ± spread; and a **locked final window** (matches after the latest cutoff, 2025-09-01 → present) is scored once per release, never used for choices. The numbers in this document are the *development* numbers; P-0 reports the first locked-window numbers | open — P-0 / P-2 |
+| **Leak canaries** | S-3c was found by comparing the model to one raw column and to the TEST format as control | H-2: best-single-column AUC (done) plus the TEST-control check: a feature whose AUC collapses in TEST but not in limited-overs formats is suspect | partly |
+
+### 10.2 ML standards, and where the plan stands
+
+| standard | plan | status |
+|---|---|---|
+| Temporal validation, no random splits | rolling-origin walk-forward + locked window (H-19) | rule set; harness in P-2 |
+| Reported with uncertainty | ≥ 3 seeds, mean ± spread (H-14); walk-forward spread across cutoffs | done / P-2 |
+| Baselines that are hard to beat | base-rate Brier, best single column, career mean, team Elo — all reported beside the model | done |
+| Metric matches the consumer | AUC + monotonicity for an argmax; Spearman/top-k/coverage for a ranking or interval; per target, never pooled (H-12, H-13) | rule; P-3 retires the pooled metric |
+| Calibration of any probability shown | reliability + Brier; isotonic recalibration on a temporal fold if needed; interval coverage (H-5) | partly |
+| Distribution-aware losses | quantile / Poisson for counts; MAE-optimal points are not the deliverable | P-3 |
+| Reproducibility | dataset sha, cutoff, git sha, hyperparameters and metrics in a run manifest (H-16); deterministic seeds; the pass is a pure function of the event table | P-6 |
+| Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | P-6 |
+| Serving = training | same feature code, parity test (H-8); ids in, features computed inside | S-10 / P-2 |
+| Monitoring in use | staleness of ratings (H-11); prediction-distribution drift per format between runs (add to the manifest diff) | P-6 |
+| Hyperparameters not tuned on the test window | grid inside the walk-forward folds only; the locked window never sees a choice | H-19 |
+| Sample size honesty | T20I (182) and TEST (157) holdouts cannot resolve differences under ~0.03 AUC; the plan says so wherever they are quoted | done |
+
+### 10.3 What this means for the numbers quoted here
+
+The development numbers (0.73–0.75 AUC objective, 0.74–0.76 display) are leak-free with
+respect to features — the mechanism admits no future information — but they are
+*selection-optimistic* because one holdout guided several choices. The right expectation
+for the first locked-window report in P-0 is a small drop (0.01–0.02 is typical for this
+degree of reuse), not a large one; a large one would say something was wrong with the
+window rather than the model. The walk-forward spread in P-2 replaces this guess with a
+measurement.
 
 ---
 

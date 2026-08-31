@@ -232,7 +232,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         source = CricsheetJsonSource(args.cricsheet_dir, _international_teams_from_config(), args.formats)
     else:
         from ml.db import get_db_connection
-
         from ml.xi.sources import PostgresSource
 
         source = PostgresSource(get_db_connection(), args.formats)
