@@ -351,7 +351,7 @@ names the experiment that will.
 | H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | open (P-3) |
 | H-13 | **Consumer metric first.** AUC for an argmax, Spearman/top-k for a ranking, coverage for an interval | all | Every model in L4 has a named consumer and its metric is the one that gates | rule |
 | H-14 | **Seeds and noise floor.** Differences under the seed spread are not evidence | all | Every reported number is a mean over ≥ 3 seeds with the spread (done for win) | done |
-| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run; **add match count vs source file count** — that one comparison would have caught §10.4 in 2024 | open. Two known items waiting for it: 469 dismissals credit an unnamed substitute fielder, which the JSON path folds into one fictional player key (§10.4) |
+| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run; **add match count vs source file count**, and **player-key count against the other source** — the first would have caught §10.4's match identity in 2024, the second its unnamed-fielder key | open (P-6). Both defects §10.4 found are fixed; what is missing is the gate that would have found them without someone looking |
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
@@ -552,14 +552,21 @@ Recovering the 309 matches moved the report by less than the holdouts resolve �
 is what 1.4% more data should do. The point of the fix is not the AUC; it is that the
 measurement now names data that actually exists.
 
-**One difference remains, and it is the JSON path's.** Its rating state holds 13,570 player
-keys to Postgres's 13,569, and the extra one is the literal key `name:` — Cricsheet records
-469 dismissals with an unnamed substitute fielder (`{"substitute": true}`), and
-`_deliveries_from_cricsheet` folds all of them into one key, so the JSON path carries a
-single fictional cricketer accumulating fielding credit across 469 deliveries. The Postgres
-path stores no fielder there and has no such key. It is a two-line fix in `ml/xi/sources.py`
-and it is **not** made here, because it is a data-quality defect rather than a match-identity
-one: it belongs with **H-15**'s replacement-player count in P-6.
+**One difference remained, and it was the JSON path's** — fixed in
+`fix/unnamed-substitute-fielder`. Its rating state held 13,570 player keys to Postgres's
+13,569, and the extra one was the literal key `name:`. Cricsheet records 469 dismissals
+(451 caught, 13 run out, 5 stumped, across 365 matches) whose fielder is
+`{"substitute": true}` and nothing else, and `_deliveries_from_cricsheet` keyed all of them
+on the empty name, so the JSON path carried one fictional cricketer with a fielding record
+assembled from 365 different matches. A fielder the source cannot name is credited to
+nobody, which is what the go-app importer has always done
+(`Collection.UnmarshalJSON` keeps only entries with a name). The 3,324 substitute fielders
+that *are* named keep their credit — a substitute is a person; only an unnamed one is
+nobody — and the dismissal itself was never at stake, since it is counted from its kind.
+
+With that, the two sources produce **identical player key sets**: 13,569 on both, none on
+either side alone, and no metric moves, because the phantom was absorbing credit no real
+player would have received.
 
 Recorded here rather than in P-1 because it is a different kind of error: player and team
 identity were read from the wrong *field*, match identity was not read at all. It still

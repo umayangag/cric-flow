@@ -105,6 +105,29 @@ def detect_format(match_type: str, teams: Sequence[str], international_teams: Se
     return ""
 
 
+def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
+    """Player keys for the fielders credited on one delivery.
+
+    A fielder Cricsheet cannot name is credited to nobody. 469 dismissals in the current
+    dataset -- 451 caught, 13 run out, 5 stumped -- record their fielder as
+    ``{"substitute": true}`` and nothing else, and keying those on the empty name folded
+    all 469 into a single rating slot: one fictional cricketer with a fielding record built
+    from 365 different matches. The wicket itself is unaffected; it is counted from the
+    dismissal kind, not from who took it.
+
+    The go-app importer has always dropped them (``Collection.UnmarshalJSON`` keeps only
+    entries with a name), so this is also what makes the two sources agree key for key.
+    """
+    keys: List[str] = []
+    for wicket in wickets:
+        for fielder in wicket.get("fielders", []):
+            name = fielder.get("name")
+            if not name:
+                continue
+            keys.append(registry.get(name, "name:" + name))
+    return keys
+
+
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
     over, inn, bat, bowl, rb, rt, wk, bwk, st, fld = [], [], [], [], [], [], [], [], [], []
     for inning_index, inning in enumerate(innings):
@@ -120,13 +143,7 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
                 wk.append(1.0 if wickets else 0.0)
                 bwk.append(1.0 if any(w["kind"] in BOWLER_CREDITED_KINDS for w in wickets) else 0.0)
                 st.append(1.0 if any(w["kind"] == "stumped" for w in wickets) else 0.0)
-                fld.append(
-                    [
-                        registry.get(f.get("name", ""), "name:" + f.get("name", ""))
-                        for w in wickets
-                        for f in w.get("fielders", [])
-                    ]
-                )
+                fld.append(_credited_fielder_keys(wickets, registry))
     return Deliveries(
         np.asarray(over, dtype=int),
         np.asarray(inn, dtype=int),

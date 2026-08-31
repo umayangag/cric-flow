@@ -259,3 +259,76 @@ def test_train_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:
     assert all("skipped_reason" in f for f in report["formats"])
     assert (out / "xi_ratings.joblib").exists()
     assert frame_out.exists()
+
+
+# ---------------------------------------------------------------------------
+# Fielder credit
+# ---------------------------------------------------------------------------
+
+
+def test_credited_fielder_keys_skips_a_fielder_the_source_cannot_name() -> None:
+    """469 dismissals in the dataset name their fielder as {"substitute": true} and nothing
+    else. Keyed on the empty name they became one rating slot -- a fictional cricketer with
+    a fielding record built from 365 matches."""
+    from ml.xi.sources import _credited_fielder_keys
+
+    wickets = [{"kind": "caught", "fielders": [{"substitute": True}]}]
+
+    assert _credited_fielder_keys(wickets, {}) == []
+
+
+def test_credited_fielder_keys_still_credits_a_named_substitute() -> None:
+    """3,324 substitute fielders in the dataset *are* named, and every one has a registry
+    entry. A substitute is a person; only an unnamed one is nobody."""
+    from ml.xi.sources import _credited_fielder_keys
+
+    wickets = [{"kind": "caught", "fielders": [{"name": "KH Sciver-Brunt", "substitute": True}]}]
+
+    assert _credited_fielder_keys(wickets, {"KH Sciver-Brunt": "6a434bd3"}) == ["6a434bd3"]
+
+
+def test_credited_fielder_keys_falls_back_to_the_name_without_a_registry_entry() -> None:
+    from ml.xi.sources import _credited_fielder_keys
+
+    wickets = [{"kind": "run out", "fielders": [{"name": "Unregistered Fielder"}]}]
+
+    assert _credited_fielder_keys(wickets, {}) == ["name:Unregistered Fielder"]
+
+
+def test_credited_fielder_keys_keeps_the_named_fielders_of_a_mixed_dismissal() -> None:
+    """A run out can credit two fielders and Cricsheet may name only one of them."""
+    from ml.xi.sources import _credited_fielder_keys
+
+    wickets = [{"kind": "run out", "fielders": [{"substitute": True}, {"name": "MM Ali"}]}]
+
+    assert _credited_fielder_keys(wickets, {"MM Ali": "abc12345"}) == ["abc12345"]
+
+
+def test_an_unnamed_substitute_costs_the_fielding_credit_and_not_the_wicket() -> None:
+    """The dismissal is counted from its kind, so dropping the fielder loses who took the
+    catch and nothing else."""
+    from ml.xi.sources import _deliveries_from_cricsheet
+
+    innings = [
+        {
+            "overs": [
+                {
+                    "over": 0,
+                    "deliveries": [
+                        {
+                            "batter": "A1",
+                            "bowler": "B1",
+                            "runs": {"batter": 0, "total": 0},
+                            "wickets": [{"kind": "caught", "fielders": [{"substitute": True}]}],
+                        }
+                    ],
+                }
+            ]
+        }
+    ]
+
+    d = _deliveries_from_cricsheet(innings, {"A1": "aaa", "B1": "bbb"})
+
+    assert list(d.wicket) == [1.0]
+    assert list(d.bowler_wicket) == [1.0]
+    assert d.fielders == [[]]
