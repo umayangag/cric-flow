@@ -53,7 +53,9 @@ type TeamRename struct {
 // boundary legitimately has only the old one. That is reported rather than treated as an
 // error: the mapping describes cricket, not this particular import.
 //
-// Returns the number of rows linked. Idempotent: re-running writes the same links.
+// Returns the number of rows it *changed*, not the number linked: a row already pointing at
+// the right club is left alone, so a second run over an unchanged dataset returns zero and
+// that is the healthy answer, not a missing link.
 func ApplyTeamLineage(ctx context.Context, renames []TeamRename) (int, error) {
 	if Pool == nil {
 		return 0, errors.New("db pool not initialized")

@@ -238,5 +238,5 @@ func TestApplyTeamLineage_IsIdempotentAndSkipsARenameThisDatasetDoesNotHave_Inte
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, first)
-	assert.Zero(t, second, "re-running writes the same links, so there is nothing left to change")
+	assert.Zero(t, second, "the count is rows changed, so a second run over the same data changes none")
 }

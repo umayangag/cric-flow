@@ -169,7 +169,7 @@ func applyTeamLineage(ctx context.Context, dir string) error {
 	for _, r := range mapping.Renames {
 		renames = append(renames, db.TeamRename{FromName: r.From, ToName: r.To, Gender: r.Gender})
 	}
-	linked, err := cricDB.ApplyTeamLineage(ctx, renames)
+	changed, err := cricDB.ApplyTeamLineage(ctx, renames)
 	if err != nil {
 		slog.Error("cricsheet.ImportDir could not apply the team lineage mapping",
 			slog.String("dir", dir),
@@ -178,7 +178,7 @@ func applyTeamLineage(ctx context.Context, dir string) error {
 	}
 	slog.Info("cricsheet: team lineage applied",
 		slog.Int("renames", len(renames)),
-		slog.Int("rows_linked", linked))
+		slog.Int("rows_changed", changed))
 	return nil
 }
 
