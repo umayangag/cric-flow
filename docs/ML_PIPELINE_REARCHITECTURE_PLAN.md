@@ -234,7 +234,12 @@ seed. Only the identity in the data differs — no model code, no hyperparameter
 cutoff changes between arms, which is what makes the delta attributable.
 
 Ratings: 13,428 player keys before, 13,568 after. Frame: 20,722 rows before, 20,723 after
-(that one row is the `StableMatchID` non-determinism below, not identity).
+(that one row is the `StableMatchID` non-determinism, §10.4, not identity).
+
+Both arms were built before §10.4's fix, so both are missing the same 309 matches. That
+does not weaken the comparison — the two arms differ only in identity, which is what E4
+asks — but the absolute AUCs are from a database 1.4% smaller than the source. §10.4
+records what the repair alone did to the same report.
 
 **Aggregate, held-out (2025-09-01 → 2026-08-25).** Objective is the serving,
 toss-marginalised figure — the number the optimiser's argmax is judged on. `± resolvable`
@@ -293,7 +298,7 @@ checklist.
 | id | PR | acceptance |
 |---|---|---|
 | P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches gives `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stays off. The gate is also mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
-| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content, *not* in per-match squads — see the `StableMatchID` finding. Franchise lineage (I-4) is not in this PR |
+| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content; per-match squads became reproducible one PR later, with §10.4's match-identity fix. Franchise lineage (I-4) is not in this PR |
 | P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20); a backtest at date D provably cannot see D or later (P-0 had to freeze the artifact by hand — `scripts/experiments/xi/freeze_ratings.py` — because the serving store holds one state through today) |
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
@@ -346,7 +351,7 @@ names the experiment that will.
 | H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | open (P-3) |
 | H-13 | **Consumer metric first.** AUC for an argmax, Spearman/top-k for a ranking, coverage for an interval | all | Every model in L4 has a named consumer and its metric is the one that gates | rule |
 | H-14 | **Seeds and noise floor.** Differences under the seed spread are not evidence | all | Every reported number is a mean over ≥ 3 seeds with the spread (done for win) | done |
-| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run | open |
+| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run; **add match count vs source file count** — that one comparison would have caught §10.4 in 2024 | open. Two known items waiting for it: 469 dismissals credit an unnamed substitute fielder, which the JSON path folds into one fictional player key (§10.4) |
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
@@ -497,34 +502,70 @@ data that guided no decision. P-2's rolling origin is still the whole of the ans
 numbers. What P-0 read as "the source costs nothing at the aggregate" turns out to be true
 of every subset the holdout can resolve.
 
-### 10.4 A reproducibility defect found while running P-1, not caused by it
+### 10.4 Match identity — found while running P-1, fixed in `fix/match-id-from-source`
 
 The re-import was run three times over the same 22,734 files to check it is reproducible.
-Row counts are stable to the row, and `player` and `opposition` — every identifier, display
-name and gender — are byte-identical between runs. **Per-match squads are not.** Across two
-runs, 80 `match_player` rows on 14 matches differ.
+Row counts were stable and `player` and `opposition` were byte-identical between runs, but
+**per-match squads were not**: 80 `match_player` rows on 14 matches differed between two
+runs of the same directory.
 
-The cause is `StableMatchID(date, teams[0], teams[1])`. That key is claimed by more than one
-file for **309 of the 22,734 files**, which is why the database holds 22,425 matches and not
-22,734: a two-match series on one day between the same two sides is one match id. The
-importer runs files concurrently and each writes its match in one transaction that replaces
-the squad, so *which file's squad survives is decided by goroutine scheduling*. Both surviving
-squads are correct records of a real match; the database just cannot say which match it is
-holding.
+The cause was `StableMatchID(date, teams[0], teams[1])` — a hash of the match's *content*,
+which is not an identity. Two sides can play twice in a day, and **618 of the 22,734 files
+shared a (date, team, team) with another file**, in 309 pairs. That is why the database held
+22,425 matches for 22,734 files: 309 real matches had no row of their own.
 
-It is worth naming precisely because it is easy to mistake for identity work:
+What the collision did to the data was worse than losing them, because the writes are not
+uniform. `match_player` is delete-then-insert per match, so the squad was whichever file's
+transaction committed last — scheduling, hence the non-determinism. `ball_event` inserts
+`ON CONFLICT (match_id, innings, over, ball) DO NOTHING`, so the *first* file won ball for
+ball and the second file's longer innings appended its tail: **63,725 deliveries were lost
+and 6,223 were filed under a match they did not belong to** — a splice of two real matches,
+read by the rating pass as one. `batting_data` and `bowling_data` upsert on
+`(match_id, inning_number, player_id)`, so a collided scorecard held the union of two
+matches' players.
 
-- It exists on `main` and is untouched by P-1. Player and team identity are keyed off the
-  source; match identity is keyed off a hash that is not unique.
-- Its blast radius is small — 309 files, and the two arms of E4 differ by one training row
-  because of it — but it is unbounded in principle, and it makes "the same dataset produces
-  the same database" false.
-- Fixing it means putting something file-unique into the hash (`info.event.match_number`, or
-  the Cricsheet file id), which changes **every** `match_id` in the database and every stored
-  reference to one. That is its own PR, not a rider on this one.
+**Fixed by keying on the source.** Cricsheet names each file by its own match id
+(`1130677.json`) and that is the only match identity the source publishes — nothing inside
+the JSON names the match — so `match_id` is now that number, for 22,709 of the 22,734 files.
+The 25 named with a prefix (`wi_211824`) cannot be a bigint and keep a hash, which now
+includes the file identifier and is logged; derived ids start at `100000000000`, above every
+Cricsheet id, so the two spaces cannot be confused. The database now holds **22,734 matches**,
+and two imports of the same directory produce byte-identical `match_player` and `ball_event`.
 
-It belongs to **H-16** (run identity: a measurement must name the artifact it measured) and
-**H-15** (data-quality gate: the per-run counts that would have caught it). P-6 owns both.
+**The check that proves it.** Build the training frame from Postgres and from the raw JSON
+directory at the same cutoff and compare. Before the fix, Postgres gave 20,723 rows against
+the JSON path's 21,024. After it the two agree exactly — 21,024 rows, 1,710 undecided, and
+per format:
+
+| format | n_train | n_holdout | objective AUC, Postgres | objective AUC, JSON |
+|---|---:|---:|---:|---:|
+| T20  | 10,313 | 1,635 | 0.7208 | 0.7208 |
+| T20I |  1,865 |   182 | 0.7466 | 0.7466 |
+| ODI  |  4,570 |   375 | 0.6832 | 0.6831 |
+| TEST |  1,927 |   157 | 0.5823 | 0.5823 |
+
+The database now holds what the source holds. Note the T20I holdout is 182, which is the
+number §10.2 has always quoted from the JSON path; the Postgres path had been reporting 178.
+
+Recovering the 309 matches moved the report by less than the holdouts resolve — objective
++0.001 T20, +0.005 T20I, +0.002 ODI, −0.000 TEST against the same run before the fix — which
+is what 1.4% more data should do. The point of the fix is not the AUC; it is that the
+measurement now names data that actually exists.
+
+**One difference remains, and it is the JSON path's.** Its rating state holds 13,570 player
+keys to Postgres's 13,569, and the extra one is the literal key `name:` — Cricsheet records
+469 dismissals with an unnamed substitute fielder (`{"substitute": true}`), and
+`_deliveries_from_cricsheet` folds all of them into one key, so the JSON path carries a
+single fictional cricketer accumulating fielding credit across 469 deliveries. The Postgres
+path stores no fielder there and has no such key. It is a two-line fix in `ml/xi/sources.py`
+and it is **not** made here, because it is a data-quality defect rather than a match-identity
+one: it belongs with **H-15**'s replacement-player count in P-6.
+
+Recorded here rather than in P-1 because it is a different kind of error: player and team
+identity were read from the wrong *field*, match identity was not read at all. It still
+belongs to **H-16** (run identity) and **H-15** (the per-run counts that would have caught
+it), which P-6 owns — a gate comparing match count to file count would have found this in
+2024.
 
 ---
 

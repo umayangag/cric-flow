@@ -62,7 +62,9 @@ filter, so both train the same model:
 | TEST | 24 | 3,077 |
 
 **4,489 of 22,425 matches — 20% — are women's cricket**, sharing team identities with the
-men's game.
+men's game. (The 22,425 is the match count the database held when this was written; it is
+22,734 since the match-identity fix in §10.4 of the rearchitecture plan, which does not
+change the proportion.)
 
 ---
 
