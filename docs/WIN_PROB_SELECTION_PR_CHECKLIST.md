@@ -95,13 +95,15 @@ Two consequences that shape the whole plan:
 | S-9 | done | `select/s-9-xi-win-model` | **The win model barely discriminates once the leak is gone.** Answered: XI-responsive ratings reach 0.73 T20 / 0.69 ODI / 0.75 T20I (numbers below) |
 | S-10 | in_progress | `select/s-10-xi-win-model` | **XI-responsive win model behind `selection.win_model: "xi"`** — code and tests delivered; DB run and `make check-all` pending |
 | S-4 | skipped | — | Steepest-ascent, pair swaps, real budget — superseded by S-10's optimiser (`ml/xi/optimizer.py`) |
-| S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
-| S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
-| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection (blocked on S-10's acceptance run) |
-| S-7 | blocked | `select/s-7-id-encoding` | Venue and opposition ID encoding (blocked on the identity plan) |
-| S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
+| S-5 | cancelled | — | Composite target for the combination-meta seed — the meta-model is deleted in P-5 of the re-architecture plan; the greedy seed no longer decides anything |
+| S-5b | cancelled | — | Auto-tune the combination meta-model — same reason as S-5 |
+| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection — **kept as the gate**: after S-10's DB acceptance run, set `selection.win_model: "xi"` for limited-overs formats if the S-3b comparison favours it (= P-0 of the re-architecture plan) |
+| S-7 | superseded | — | Venue and opposition ID encoding — the XI model never feeds raw ids to a tree (venue and teams enter only through as-of context keyed by id); the identity half is IDENTITY I-3/I-4 = P-1 |
+| S-8 | superseded | — | Base-model features unavailable at decision time — the toss/innings case is solved for the win model by marginalising over batting order (H-3, done); the performance model in P-3 marginalises innings the same way; the base models themselves are replaced |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
+
+**Disposition under the re-architecture plan** ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md)). This checklist is not discarded: S-1…S-3c and S-9/S-10 are the foundation the plan builds on, and S-6 is its P-0 gate. What changes is that the items written to improve the *old* objective's inputs (S-5, S-5b, S-7, S-8) lose their reason to exist once that objective and the base models behind it are replaced, so they are marked cancelled or superseded with the plan item that covers the underlying concern. Open decision #1 is moot with S-5; #2 (best-response rounds) still applies — the XI optimiser is called inside the same alternating loop. Known defects D-1 and D-2 are closed by dropping the tables and exports (P-6); D-3 by run identity (H-16, P-6).
 
 **S-9 is answered and S-10 carries the fix.** See "S-9 results" and "S-10" below; the
 paragraphs that follow are the history that led there.
