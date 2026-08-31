@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
@@ -33,6 +34,9 @@ type XIOptimizationRequest struct {
 	TeamIsTeam1       bool
 	Constraints       teamselect.Constraints
 	MaxEvaluations    int
+	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
+	// means the serving state through today.
+	AsOf time.Time
 }
 
 // XIOptimizationResult is the Go-side response from POST /xi/optimize.
@@ -53,6 +57,9 @@ type XIWinRequest struct {
 	Team1ID        int64
 	Team2ID        int64
 	VenueID        int64
+	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
+	// means the serving state through today.
+	AsOf time.Time
 }
 
 // selectionUsesXIWinModel reports whether selection and the displayed probability should
@@ -83,6 +90,7 @@ func newXISideOptimizer(optimizer XISelectionOptimizer, in winProbSelectionInput
 			TeamIsTeam1:       s.isTeam1,
 			Constraints:       in.constraints,
 			MaxEvaluations:    maxEvals,
+			AsOf:              in.asOf,
 		})
 		if err != nil {
 			return nil, err

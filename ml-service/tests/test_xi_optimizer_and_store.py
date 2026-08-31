@@ -118,6 +118,15 @@ def test_store_round_trip_preserves_state(tmp_path) -> None:
     assert loaded.last_date == state.last_date
 
 
+def test_store_round_trip_preserves_the_gender_split_flag(tmp_path) -> None:
+    """The E7 flag is part of the feature definition, so an artifact must carry it."""
+    matches, _, _ = _synthetic_history(n_matches=5)
+    state = build(_ListSource(matches), gender_split_context=True).state
+    save_ratings(state, str(tmp_path))
+
+    assert load_ratings(str(tmp_path)).gender_split_context is True
+
+
 def test_select_xi_respects_constraints_and_beats_seed(trained_store) -> None:
     store, squad_a, squad_b, matches = trained_store
     opponent = matches[-1].team2_players

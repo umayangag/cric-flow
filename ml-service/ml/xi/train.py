@@ -125,7 +125,11 @@ def best_single_column(frame_te: pd.DataFrame, cols: Sequence[str]) -> Dict[str,
 
 
 def train_format(
-    frame: pd.DataFrame, format_code: str, cutoff: pd.Timestamp, seeds: Sequence[int] = (0, 1, 2)
+    frame: pd.DataFrame,
+    format_code: str,
+    cutoff: pd.Timestamp,
+    seeds: Sequence[int] = (0, 1, 2),
+    gender_split_context: bool = False,
 ) -> tuple:
     """Fit both models for one format; return (FormatModels, report dict)."""
     d = frame[frame.format_code == format_code]
@@ -176,6 +180,7 @@ def train_format(
             "k_team_elo": C.K_TEAM_ELO,
             "k_player_elo": C.K_PLAYER_ELO,
         },
+        "gender_split_context": gender_split_context,
         "report": report,
     }
     models = FormatModels(
@@ -197,8 +202,9 @@ def train_all(
 ) -> Dict:
     os.makedirs(artifacts_dir, exist_ok=True)
     reports = []
+    gender_split_context = result.state.gender_split_context
     for fmt in formats:
-        models, report = train_format(result.frame, fmt, cutoff)
+        models, report = train_format(result.frame, fmt, cutoff, gender_split_context=gender_split_context)
         reports.append(report)
         if models is not None:
             path = save_models(models, artifacts_dir)
@@ -217,6 +223,7 @@ def train_all(
     summary = {
         "cutoff": cutoff.date().isoformat(),
         "n_rows": int(len(result.frame)),
+        "n_player_rows": int(len(result.player_frame)),
         "n_undecided": result.n_undecided,
         quality.REPORT_KEY: result.quality.as_dict(),
         "data_quality_failures": gate.failures,
@@ -251,6 +258,14 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--formats", nargs="+", default=list(C.FORMAT_CODES))
     p.add_argument("--frame-out", default=None, help="optional path to also write the training frame as CSV")
     p.add_argument(
+        "--player-frame-out", default=None, help="optional path to also write the player-match frame as CSV (L1)"
+    )
+    p.add_argument(
+        "--gender-split-context",
+        action="store_true",
+        help="E7 (H-7): split the context baselines (runs/wickets per format x over) by gender",
+    )
+    p.add_argument(
         "--accept-data-quality",
         action="store_true",
         help="record this run's data-quality counts as the baseline even if the gate failed (H-15)",
@@ -276,9 +291,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from ml.config import default_artifacts_dir
 
         out_dir = default_artifacts_dir()
-    result = build(source, progress=lambda i: logger.info("rating pass: %d matches", i))
+    result = build(
+        source,
+        progress=lambda i: logger.info("rating pass: %d matches", i),
+        gender_split_context=args.gender_split_context,
+    )
     if args.frame_out:
         result.frame.to_csv(args.frame_out, index=False)
+    if args.player_frame_out:
+        result.player_frame.to_csv(args.player_frame_out, index=False)
     summary = train_all(result, out_dir, cutoff, args.formats)
     for r in summary["formats"]:
         if "objective" in r:

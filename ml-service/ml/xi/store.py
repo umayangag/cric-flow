@@ -47,6 +47,7 @@ class FormatModels:
 def _state_to_payload(state: RatingState) -> Dict:
     return {
         "keys": list(state.players.keys),
+        "gender_split_context": state.gender_split_context,
         "arrays": {
             name: getattr(state, name)
             for name in (
@@ -62,6 +63,13 @@ def _state_to_payload(state: RatingState) -> Dict:
                 "career_all",
                 "keeper",
                 "pelo",
+                "bat_pos_sum",
+                "bat_pos_n",
+                "xi_n",
+                "bat_ph_rae",
+                "bat_ph_balls",
+                "bowl_ph_rse",
+                "bowl_ph_balls",
                 "ctx_balls",
                 "ctx_runs",
                 "ctx_wickets",
@@ -78,7 +86,7 @@ def _state_to_payload(state: RatingState) -> Dict:
 
 
 def _state_from_payload(payload: Dict) -> RatingState:
-    state = RatingState()
+    state = RatingState(gender_split_context=bool(payload.get("gender_split_context", False)))
     for k in payload["keys"]:
         state.players.slot(k)
     for name, arr in payload["arrays"].items():
@@ -132,6 +140,16 @@ class XiStore:
 
     def has_format(self, format_code: str) -> bool:
         return format_code in self.models
+
+    def with_state(self, state: RatingState) -> "XiStore":
+        """The same models over a different rating state -- how a backtest serves
+        "ratings as of date D" (see ``ml.xi.asof``) instead of "through today"."""
+        return XiStore(state, self.models)
+
+    def covers_as_of(self, as_of) -> bool:
+        """Whether the loaded through-today state already is the as-of state for ``as_of``:
+        true when every match it holds is strictly before that date."""
+        return self.state.last_date is None or as_of > self.state.last_date
 
     def known_players(self, keys: Sequence[str]) -> List[bool]:
         return [k in self.state.players.key_to_slot for k in keys]

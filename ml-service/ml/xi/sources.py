@@ -14,7 +14,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Iterator, List, Optional, Protocol, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 
@@ -40,6 +40,10 @@ class Deliveries:
     bowler_wicket: np.ndarray  # float 0/1, dismissal credited to the bowler
     stumping: np.ndarray  # float 0/1
     fielders: List[Sequence[str]] = field(default_factory=list)  # per ball, keys of credited fielders
+    # Key of the player dismissed on the ball, "" when nobody was. The first-listed wicket
+    # only, which is all the go-app importer stores (ball_event.player_out_id), so the two
+    # sources produce the same player-match rows.
+    player_out: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
 
     def __len__(self) -> int:
         return int(len(self.over))
@@ -47,9 +51,21 @@ class Deliveries:
     @staticmethod
     def empty() -> "Deliveries":
         z = np.zeros(0)
-        return Deliveries(
-            z.astype(int), z.astype(int), np.array([], dtype=object), np.array([], dtype=object), z, z, z, z, z, []
-        )
+        empty_keys = np.array([], dtype=object)
+        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, [], empty_keys.copy())
+
+
+def batting_positions(deliveries: Deliveries) -> Dict[str, int]:
+    """1-based batting position per player key: the order of first appearance on strike in
+    the player's first batting innings. A player who never faced a ball has no entry --
+    the source does not record a batting order, only who actually batted."""
+    positions: Dict[str, int] = {}
+    for inning in np.unique(deliveries.innings):
+        batters = deliveries.batter[deliveries.innings == inning]
+        unique_keys, first_index = np.unique(batters, return_index=True)
+        for position, i in enumerate(np.argsort(first_index), start=1):
+            positions.setdefault(unique_keys[i], position)
+    return positions
 
 
 @dataclass
@@ -161,7 +177,7 @@ def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
 
 
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
-    over, inn, bat, bowl, rb, rt, wk, bwk, st, fld = [], [], [], [], [], [], [], [], [], []
+    over, inn, bat, bowl, rb, rt, wk, bwk, st, fld, out = [], [], [], [], [], [], [], [], [], [], []
     for inning_index, inning in enumerate(innings):
         for ov in inning.get("overs", []):
             for b in ov.get("deliveries", []):
@@ -176,6 +192,9 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
                 bwk.append(1.0 if any(w["kind"] in BOWLER_CREDITED_KINDS for w in wickets) else 0.0)
                 st.append(1.0 if any(w["kind"] == "stumped" for w in wickets) else 0.0)
                 fld.append(_credited_fielder_keys(wickets, registry))
+                # The first-listed wicket only, mirroring the go-app importer.
+                out_name = (wickets[0].get("player_out") or "").strip() if wickets else ""
+                out.append(registry.get(out_name, "name:" + out_name) if out_name else "")
     return Deliveries(
         np.asarray(over, dtype=int),
         np.asarray(inn, dtype=int),
@@ -187,6 +206,7 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
         np.asarray(bwk, dtype=float),
         np.asarray(st, dtype=float),
         fld,
+        np.asarray(out, dtype=object),
     )
 
 
@@ -330,10 +350,12 @@ SELECT be.innings, be.over,
        be.runs_batter, be.runs_total, be.wicket_kind,
        (SELECT array_agg({_player_key("f")} ORDER BY u.position)
         FROM unnest(be.fielder_ids) WITH ORDINALITY AS u(fielder_id, position)
-        JOIN player f ON f.id = u.fielder_id)
+        JOIN player f ON f.id = u.fielder_id),
+       {_player_key("pout")}
 FROM ball_event be
 LEFT JOIN player striker ON striker.id = be.striker_id
 LEFT JOIN player bowler ON bowler.id = be.bowler_id
+LEFT JOIN player pout ON pout.id = be.player_out_id
 WHERE be.match_id = %s
 ORDER BY be.innings, be.ball_seq
 """
@@ -410,4 +432,5 @@ def _deliveries_from_rows(rows) -> Deliveries:
         bowler_wicket=np.asarray([1.0 if k in BOWLER_CREDITED_KINDS else 0.0 for k in kinds]),
         stumping=np.asarray([1.0 if k == "stumped" else 0.0 for k in kinds]),
         fielders=[list(r[7] or []) for r in rows],
+        player_out=np.asarray([r[8] or "" for r in rows], dtype=object),
     )

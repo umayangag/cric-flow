@@ -18,11 +18,20 @@ from app.models.xi import (
     XiWinRequest,
     XiWinResponse,
 )
+from ml.xi.asof import AsOfServer
 from ml.xi.optimizer import Constraints, marginal_values, select_xi
 from ml.xi.store import RATINGS_ARTIFACT, XiStore
 from ml.xi.train import REPORT_NAME
 
 logger = get_struct_logger()
+
+
+def _postgres_as_of_source():
+    """Default source for as-of serving: the go-app database, all formats."""
+    from ml.db import get_db_connection
+    from ml.xi.sources import PostgresSource
+
+    return PostgresSource(get_db_connection())
 
 
 class XiUnavailable(Exception):
@@ -42,10 +51,14 @@ class XiRegistry:
         self._store: Optional[XiStore] = None
         self._report: Optional[dict] = None
         self._lock = threading.Lock()
+        self._as_of_server: Optional[AsOfServer] = None
+        # A seam, so tests can serve the as-of pass from an in-memory source.
+        self.as_of_source_factory = _postgres_as_of_source
 
     def reload(self, models_dir: str) -> dict:
         with self._lock:
             self._store, self._report = None, None
+            self._as_of_server = None
             if not os.path.exists(os.path.join(models_dir, RATINGS_ARTIFACT)):
                 logger.info("xi.artifacts.absent", models_dir=models_dir)
                 return self.status().model_dump()
@@ -70,6 +83,24 @@ class XiRegistry:
         if not s.has_format(format_code):
             raise XiUnavailable(f"no XI win model for format {format_code!r}; loaded: {sorted(s.models)}")
         return s
+
+    def store_as_of(self, format_code: str, as_of) -> XiStore:
+        """The store serving ratings as they stood strictly before ``as_of`` (a backtest's
+        view). ``None``, or a date past everything the loaded state holds, serves the
+        loaded through-today state unchanged. The advancing pass is shared and sequential:
+        a backtest walking matches in date order pays one sweep of the source in total.
+        """
+        store = self.store(format_code)
+        if as_of is None or store.covers_as_of(as_of):
+            return store
+        with self._lock:
+            if self._as_of_server is None:
+                self._as_of_server = AsOfServer(
+                    self.as_of_source_factory, gender_split_context=store.state.gender_split_context
+                )
+            state = self._as_of_server.state_as_of(as_of)
+            logger.info("xi.as_of.served", as_of=str(as_of), players=len(state.players))
+            return store.with_state(state)
 
     def status(self) -> XiStatusResponse:
         s = self._store
@@ -102,7 +133,7 @@ def _constraints(c: XiConstraints) -> Constraints:
 
 
 def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptimizeResponse:
-    store = registry.store(req.format)
+    store = registry.store_as_of(req.format, req.as_of)
     pool, opponent = _keys(req.pool_player_ids), _keys(req.opponent_player_ids)
     unknown = [pid for pid, known in zip(req.pool_player_ids, store.known_players(pool)) if not known]
     if unknown:
@@ -135,7 +166,7 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
 
 
 def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResponse:
-    store = registry.store(req.format)
+    store = registry.store_as_of(req.format, req.as_of)
     t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
     objective = store.objective_probability(
         req.format, store.side_vectors(req.format, t1), store.side_vectors(req.format, t2)

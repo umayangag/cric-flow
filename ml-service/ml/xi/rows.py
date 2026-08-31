@@ -1,0 +1,125 @@
+"""Row assembly for the training frames: one win row per decided match, and one row per
+(match, player) for every XI member (L1 -> L2-B).
+
+Both the training pass (``ml.xi.builder``) and the serving-parity check (H-8,
+``ml.xi.asof``) build rows through this module, always from a ``RatingState`` that has not
+yet folded the match in. Player rows cover ALL XI players -- never only those who batted
+or bowled, because who got to bat is decided by the result (H-20); a player without a
+delivery gets zero targets, which is what happened to them.
+"""
+
+from __future__ import annotations
+
+from typing import Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+
+from ml.xi import contract as C
+from ml.xi.ratings import RatingState, aggregate_side, match_features
+from ml.xi.sources import MatchRecord, batting_positions
+
+_ZERO_ACTUALS: Dict[str, float] = {name: 0.0 for name in C.PLAYER_MATCH_TARGET_COLS}
+
+
+def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
+    """What each player did in the match, keyed by player key (``PLAYER_MATCH_TARGET_COLS``).
+
+    Counts are over deliveries, wides included -- the same definition the as-of
+    ``exp_balls_*`` vectors use -- and ``wickets`` / ``runs_conceded`` follow
+    ``bowl_wrate`` / ``bowl_rate`` (bowler-credited kinds; total runs off the ball).
+    """
+    d = match.deliveries
+    out: Dict[str, Dict[str, float]] = {}
+    if not len(d):
+        return out
+
+    def entry(key: str) -> Dict[str, float]:
+        return out.setdefault(key, dict(_ZERO_ACTUALS))
+
+    unique_batters, batter_inverse = np.unique(d.batter, return_inverse=True)
+    runs = np.bincount(batter_inverse, weights=d.runs_batter)
+    fours = np.bincount(batter_inverse, weights=(d.runs_batter == 4).astype(float))
+    sixes = np.bincount(batter_inverse, weights=(d.runs_batter == 6).astype(float))
+    balls_faced = np.bincount(batter_inverse).astype(float)
+    positions = batting_positions(d)
+    for i, key in enumerate(unique_batters):
+        e = entry(key)
+        e["balls_faced"] = float(balls_faced[i])
+        e["runs"] = float(runs[i])
+        e["fours"] = float(fours[i])
+        e["sixes"] = float(sixes[i])
+        e["batting_position"] = float(positions.get(key, 0))
+
+    unique_bowlers, bowler_inverse = np.unique(d.bowler, return_inverse=True)
+    balls_bowled = np.bincount(bowler_inverse).astype(float)
+    runs_conceded = np.bincount(bowler_inverse, weights=d.runs_total)
+    wickets = np.bincount(bowler_inverse, weights=d.bowler_wicket)
+    for i, key in enumerate(unique_bowlers):
+        e = entry(key)
+        e["balls_bowled"] = float(balls_bowled[i])
+        e["runs_conceded"] = float(runs_conceded[i])
+        e["wickets"] = float(wickets[i])
+
+    # A source built before player_out existed (hand-made test Deliveries) records no
+    # dismissals; both real sources always fill the column.
+    if len(d.player_out) == len(d):
+        dismissed = d.player_out[d.player_out != ""]
+        unique_out, out_counts = np.unique(dismissed, return_counts=True)
+        for key, count in zip(unique_out, out_counts):
+            entry(key)["dismissals"] = float(count)
+    return out
+
+
+def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
+    """The win-frame row and the player-match rows for one decided match, computed from
+    the state as of the match date. The caller guarantees the match is not folded in yet."""
+    vectors1 = state.side_vectors(match.format_code, match.team1_players)
+    vectors2 = state.side_vectors(match.format_code, match.team2_players)
+    side1 = aggregate_side(vectors1, match.format_code)
+    side2 = aggregate_side(vectors2, match.format_code)
+    context = state.team_context(match)
+
+    win_row = {
+        "match_id": match.match_id,
+        "match_date": pd.Timestamp(match.match_date),
+        "format_code": match.format_code,
+        "gender": match.gender,
+        "team1": match.team1,
+        "team2": match.team2,
+        "venue": match.venue,
+        C.TARGET_COL: match.outcome,
+    }
+    win_row.update(match_features(side1, side2))
+    win_row.update(context)
+
+    actuals = match_actuals(match)
+    player_rows: List[Dict] = []
+    sides = (
+        (1, match.team1_players, vectors1, side1, side2, match.team1, match.team2, 1.0),
+        (2, match.team2_players, vectors2, side2, side1, match.team2, match.team1, -1.0),
+    )
+    for side, keys, vectors, own, opp, own_team, opp_team, elo_sign in sides:
+        for i, key in enumerate(keys):
+            row = {
+                "match_id": match.match_id,
+                "match_date": pd.Timestamp(match.match_date),
+                "format_code": match.format_code,
+                "gender": match.gender,
+                "side": side,
+                "team": own_team,
+                "opponent": opp_team,
+                "venue": match.venue,
+                "player_key": key,
+            }
+            for name in C.PLAYER_VECTOR_KEYS + C.PLAYER_ROLE_KEYS:
+                row[name] = float(vectors[name][i])
+            for stem in C.SIDE_FEATURE_STEMS:
+                row[f"own_{stem}"] = own[stem]
+                row[f"opp_{stem}"] = opp[stem]
+            row["venue_bf_rate"] = context["venue_bf_rate"]
+            row["venue_n"] = context["venue_n"]
+            row["elo_edge"] = elo_sign * context["team_elo_diff"]
+            row.update(actuals.get(key, _ZERO_ACTUALS))
+            player_rows.append(row)
+    return win_row, player_rows

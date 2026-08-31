@@ -354,6 +354,53 @@ non-zero if any count or the player-key sets differ. It needs the archive as wel
 database, which is why it is a separate command rather than part of a retrain. Run it after
 changing the importer or either source.
 
+### Player-match rows (L1, P-2)
+
+The same day-close pass also emits one row per (match, player) — the training frame for the
+performance model (L2-B). Each row carries the player's as-of vectors, the expected role
+(`exp_bat_position`: decayed mean batting slot shrunk toward 7; `bat_innings_share`; batting
+and bowling impact split by powerplay / middle / death, `contract.PHASE_BOUNDS`), the own-side
+and opponent-side aggregates, and venue context — joined with what the player then did
+(balls, runs, fours, sixes, dismissals, actual batting position, balls bowled, wickets,
+runs conceded). Rows cover **all XI players**, never only those who batted: who got to bat
+is decided by the result, and a population selected by the outcome is a leak (H-20).
+`ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
+two cannot spell a column differently. `python -m ml.xi.train --player-frame-out <path>`
+writes the frame as CSV when wanted; the harness consumes it in memory.
+
+### As-of serving (`ratings_as_of`, P-2)
+
+The serving artifact holds ratings **through today** — right for a live prediction, wrong
+for a backtest, whose team Elo would carry the results of the matches being scored (P-0 had
+to freeze the artifact by hand; `freeze_ratings.py` is retired). `ml/xi/asof.py` advances a
+fresh state through a match source and answers "ratings as of date D": every match strictly
+before D folded in, nothing at or after it — asking for a date the pass has already crossed
+raises rather than guesses. `/xi/predict-win` and `/xi/optimize` accept an optional
+`as_of` date; the go-app selection comparison sends the match date (its match list is
+date-ascending, so the whole run costs one pass over the source), and its report now
+carries per-match rows so the arms can be compared pairwise and filtered by date. Live
+predictions omit `as_of` and are served from the loaded state unchanged.
+
+### Evaluation harness (`make xi-evaluate`, L4 / H-19)
+
+One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
+quarterly cutoffs 2024-01 … 2025-06 for every choice-facing number, and the **locked
+window** (matches ≥ 2025-09-01) scored once per release, labeled, never used for a choice.
+Per format it reports, with mean ± spread over cutoffs (and seeds where a model has one):
+objective/display AUC and Brier against the base rate; the specific-XI-beyond-typical-XI
+delta and swap monotonicity (the selection gates that replace P-0's winner accuracy); the
+best-single-column leak canary with the TEST-format control (H-2); and the performance
+baselines from the player-match rows — within-match Spearman, top-3 hit and per-target MAE
+for the career-mean and rating-expectation predictors, with interval width and coverage
+columns that stay empty until P-3 (H-22). It ends with the train/serve parity check (H-8):
+the last 50 matches rebuilt from the as-of serving path and compared with the training
+frame, and the run fails if they differ.
+
+```bash
+make xi-evaluate                                        # the database
+make xi-evaluate CRICSHEET_DIR=data/go-app/cricsheet    # the raw archive
+```
+
 ---
 
 ## Walk-forward

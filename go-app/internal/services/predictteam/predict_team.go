@@ -52,6 +52,12 @@ type Input struct {
 	// backtest picks the same match twice, once each way -- without writing to the
 	// global config and hoping nothing else read it in between.
 	SelectionMode SelectionMode `json:"selection_mode,omitempty"`
+	// AsOf, when set, asks the XI win model to score with ratings as they stood strictly
+	// before this date instead of "through today". Backtests over played matches set it to
+	// the match date, so a prediction provably cannot see the match's own result or any
+	// later one; live predictions leave it zero (the serving state is already as-of for a
+	// future date, and asking for one costs the ML service a pass over history).
+	AsOf time.Time `json:"as_of,omitempty"`
 }
 
 // SelectionMode names a way of choosing the XI.
@@ -527,6 +533,7 @@ func predictTeamsWithIntermediates(
 				opp1IDVal,
 				opp2IDVal,
 				allFeats,
+				input.AsOf,
 			)
 			if err != nil {
 				slog.WarnContext(ctx, "win-prob selection failed, falling back to standard", slog.Any("err", err))
@@ -629,6 +636,7 @@ func predictTeamsWithIntermediates(
 		sel1,
 		sel2,
 		allFeats,
+		input.AsOf,
 	)
 	if err == nil {
 		summary.Team1WinProbability = p
@@ -807,6 +815,7 @@ func getMatchWinProbability(
 	nameToID1, nameToID2 map[string]int64,
 	sel1, sel2 []teamselect.Player,
 	allFeats map[int64]map[string]float64,
+	asOf time.Time,
 ) (float64, error) {
 	ids1 := selectedPlayerIDs(sel1, nameToID1)
 	ids2 := selectedPlayerIDs(sel2, nameToID2)
@@ -818,6 +827,7 @@ func getMatchWinProbability(
 			Team1ID:        opp1IDVal,
 			Team2ID:        opp2IDVal,
 			VenueID:        venueIDVal,
+			AsOf:           asOf,
 		})
 		if err == nil {
 			return p, nil
@@ -1066,6 +1076,7 @@ type winProbSelectionInputs struct {
 	opp1ID               int64
 	opp2ID               int64
 	allFeats             map[int64]map[string]float64
+	asOf                 time.Time
 }
 
 // selectionSide names which team a selection call is choosing for.
@@ -1155,6 +1166,7 @@ func selectTeamsByWinProbability(
 	weights teamselect.ScoreWeights,
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
 	allFeats map[int64]map[string]float64,
+	asOf time.Time,
 ) ([]teamselect.Player, []teamselect.Player, error) {
 	inputs := winProbSelectionInputs{
 		pool1:       tsPool1,
@@ -1169,6 +1181,7 @@ func selectTeamsByWinProbability(
 		opp1ID:      opp1IDVal,
 		opp2ID:      opp2IDVal,
 		allFeats:    allFeats,
+		asOf:        asOf,
 	}
 
 	// The XI-responsive model (S-10) when config asks for it and the predictor speaks it. On

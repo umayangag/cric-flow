@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
@@ -27,6 +28,8 @@ type mlXIOptimizeRequest struct {
 	TeamIsTeam1       bool            `json:"team_is_team1"`
 	Constraints       mlXIConstraints `json:"constraints"`
 	MaxEvaluations    int             `json:"max_evaluations"`
+	// AsOf (YYYY-MM-DD) asks for ratings as of that date; omitted = through today.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 type mlXIOptimizeResponse struct {
@@ -45,6 +48,8 @@ type mlXIWinRequest struct {
 	Team1ID        *int64  `json:"team1_id,omitempty"`
 	Team2ID        *int64  `json:"team2_id,omitempty"`
 	VenueID        *int64  `json:"venue_id,omitempty"`
+	// AsOf (YYYY-MM-DD) asks for ratings as of that date; omitted = through today.
+	AsOf string `json:"as_of,omitempty"`
 }
 
 type mlXIWinResponse struct {
@@ -75,6 +80,7 @@ func (c *BacktestMLClient) OptimizeXI(
 			MustExclude:   []int64{},
 		},
 		MaxEvaluations: maxEvals,
+		AsOf:           asOfParam(req.AsOf),
 	})
 	if err != nil {
 		return nil, err
@@ -108,6 +114,7 @@ func (c *BacktestMLClient) PredictMatchWinXI(ctx context.Context, req predicttea
 		Team1ID:        optionalID(req.Team1ID),
 		Team2ID:        optionalID(req.Team2ID),
 		VenueID:        optionalID(req.VenueID),
+		AsOf:           asOfParam(req.AsOf),
 	})
 	if err != nil {
 		return 0, err
@@ -117,6 +124,15 @@ func (c *BacktestMLClient) PredictMatchWinXI(ctx context.Context, req predicttea
 		return 0, err
 	}
 	return out.Team1WinProbability, nil
+}
+
+// asOfParam renders an as-of date for the wire; the zero time means "through today"
+// and is omitted.
+func asOfParam(asOf time.Time) string {
+	if asOf.IsZero() {
+		return ""
+	}
+	return asOf.Format("2006-01-02")
 }
 
 func optionalID(id int64) *int64 {

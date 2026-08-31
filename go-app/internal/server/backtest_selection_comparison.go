@@ -150,6 +150,10 @@ func newSelectionComparisonSelector(minBowlers int, requireKeeper bool) sb.Selec
 			MinBowlers:    minBowlers,
 			RequireKeeper: requireKeeper,
 			SelectionMode: mode,
+			// The match has been played: score with ratings from before it, never with a
+			// state whose team Elo already contains its result. The match list is date-
+			// ascending, so the ML service's as-of pass advances once over the run.
+			AsOf: match.MatchDate,
 		}, mlPredictorAdapter{}, nil)
 		if err != nil {
 			return sb.ArmSelection{}, err

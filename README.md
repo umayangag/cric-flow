@@ -137,7 +137,7 @@ Tolerant Python readers for exporter CSVs (with or without optional sequence col
 
 ## XI-responsive win model (team selection)
 
-`make train-xi CUTOFF=2025-09-01` builds player impact ratings by one as-of pass over ball-by-ball history and trains the win model that team selection maximises (`ml-service/ml/xi/`); add `CRICSHEET_DIR=data/go-app/cricsheet` to read the raw JSON instead of the database. Serve via `POST /xi/optimize` and `POST /xi/predict-win` (player ids in), enabled in go-app with `selection.win_model: "xi"`. See **docs/ml-and-training.md** § XI-responsive win model and **docs/WIN_PROB_SELECTION_PR_CHECKLIST.md** (S-9, S-10).
+`make train-xi CUTOFF=2025-09-01` builds player impact ratings by one as-of pass over ball-by-ball history and trains the win model that team selection maximises (`ml-service/ml/xi/`); add `CRICSHEET_DIR=data/go-app/cricsheet` to read the raw JSON instead of the database. The same pass emits one row per (match, player) — the training frame for the performance model. Serve via `POST /xi/optimize` and `POST /xi/predict-win` (player ids in; optional `as_of` date for backtests, which are answered from ratings as they stood before that date), enabled in go-app with `selection.win_model: "xi"`. `make xi-evaluate` runs the walk-forward evaluation harness — selection and performance metrics, leak canaries, and the train/serve parity check — into one JSON report. See **docs/ml-and-training.md** § XI-responsive win model and **docs/ML_PIPELINE_REARCHITECTURE_PLAN.md** (P-2, H-19).
 
 ## Backtesting on played matches
 

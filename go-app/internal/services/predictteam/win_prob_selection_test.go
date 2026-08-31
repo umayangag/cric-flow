@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -139,7 +140,7 @@ func TestSelectTeamsByWinProbability_ServerSide_ScoresAgainstOpponentXINotPool(t
 	sel1, sel2, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert
@@ -172,7 +173,7 @@ func TestSelectTeamsByWinProbability_PerCall_ScoresAgainstOpponentXINotPool(t *t
 	_, _, err := selectTeamsByWinProbability(
 		context.Background(), predictor, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert
@@ -200,11 +201,11 @@ func TestSelectTeamsByWinProbability_BothPathsDescribeTheSameFixture(t *testing.
 	// Act
 	_, _, errPerCall := selectTeamsByWinProbability(
 		context.Background(), predictor, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats,
+		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats, time.Time{},
 	)
 	_, _, errServer := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats,
+		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats, time.Time{},
 	)
 
 	// Assert
@@ -344,7 +345,7 @@ func TestSelectTeamsByWinProbability_FallsBackWhenServerSideFails(t *testing.T) 
 	sel1, sel2, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert

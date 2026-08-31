@@ -295,3 +295,73 @@ func TestSummarize_CountsDistinctMatches(t *testing.T) {
 	assert.Equal(t, 2, report.Matches)
 	assert.Equal(t, []string{"greedy", "winprob"}, sb.SortedArmNames(report))
 }
+
+func TestSummarize_EmitsPerMatchRowsWithArmsSideBySide(t *testing.T) {
+	t.Parallel()
+
+	// Arrange: two matches, two arms; one arm fails on the second match.
+	selections := []sb.Selection{
+		{
+			MatchID:   1,
+			Arm:       "greedy",
+			Match:     match(1, "A"),
+			Selection: sb.ArmSelection{Team1WinProbability: 0.6, PredictedWinner: "A"},
+		},
+		{
+			MatchID:   1,
+			Arm:       "winprob",
+			Match:     match(1, "A"),
+			Selection: sb.ArmSelection{Team1WinProbability: 0.4, PredictedWinner: "B"},
+		},
+		{
+			MatchID:   2,
+			Arm:       "greedy",
+			Match:     match(2, "B"),
+			Selection: sb.ArmSelection{Team1WinProbability: 0.7, PredictedWinner: "A"},
+		},
+		{MatchID: 2, Arm: "winprob", Match: match(2, "B"), Err: errors.New("no squad")},
+	}
+
+	// Act
+	report := sb.Summarize(selections)
+
+	// Assert: one row per match in selection order, arms side by side.
+	require.Len(t, report.PerMatch, 2)
+	first := report.PerMatch[0]
+	assert.Equal(t, int64(1), first.MatchID)
+	assert.Equal(t, "A", first.ActualWinner)
+	require.Len(t, first.Arms, 2)
+	require.NotNil(t, first.Arms[0].Team1WinProbability)
+	assert.InDelta(t, 0.6, *first.Arms[0].Team1WinProbability, 1e-9)
+	require.NotNil(t, first.Arms[0].Correct)
+	assert.True(t, *first.Arms[0].Correct)
+	require.NotNil(t, first.Arms[1].Correct)
+	assert.False(t, *first.Arms[1].Correct, "the arms disagree on the same match, which aggregates cannot show")
+
+	second := report.PerMatch[1]
+	require.Len(t, second.Arms, 2)
+	assert.Equal(t, "no squad", second.Arms[1].Error)
+	assert.Nil(t, second.Arms[1].Team1WinProbability)
+	assert.Nil(t, second.Arms[1].Correct)
+}
+
+func TestSummarize_PerMatchLeavesCorrectUnsetWithoutAResult(t *testing.T) {
+	t.Parallel()
+
+	// Arrange
+	selections := []sb.Selection{
+		{
+			MatchID:   1,
+			Arm:       "greedy",
+			Match:     match(1, ""),
+			Selection: sb.ArmSelection{Team1WinProbability: 0.6, PredictedWinner: "A"},
+		},
+	}
+
+	// Act
+	report := sb.Summarize(selections)
+
+	// Assert
+	require.Len(t, report.PerMatch, 1)
+	assert.Nil(t, report.PerMatch[0].Arms[0].Correct, "no result means nothing to be correct about")
+}

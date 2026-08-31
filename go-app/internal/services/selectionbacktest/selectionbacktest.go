@@ -139,11 +139,34 @@ type Divergence struct {
 	MeanDifferentPlayers float64 `json:"mean_different_players"`
 }
 
+// MatchArmRow is one arm's result for one match, reduced to what a paired comparison
+// needs.
+type MatchArmRow struct {
+	Arm string `json:"arm"`
+	// Team1WinProbability is nil when the arm failed on this match.
+	Team1WinProbability *float64 `json:"team1_win_probability,omitempty"`
+	PredictedWinner     string   `json:"predicted_winner,omitempty"`
+	// Correct is set only when the match had a result and the arm named a winner.
+	Correct *bool  `json:"correct,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// MatchRow is one match's comparison across every arm. Aggregates hide whether two arms
+// disagree on the same matches or different ones; per-match rows are what make a paired
+// test — and filtering by date — possible (re-architecture plan, P-2).
+type MatchRow struct {
+	MatchID      int64         `json:"match_id"`
+	MatchDate    time.Time     `json:"match_date"`
+	ActualWinner string        `json:"actual_winner,omitempty"`
+	Arms         []MatchArmRow `json:"arms"`
+}
+
 // Report is the whole comparison.
 type Report struct {
 	Matches     int          `json:"matches"`
 	Arms        []ArmReport  `json:"arms"`
 	Divergences []Divergence `json:"divergences"`
+	PerMatch    []MatchRow   `json:"per_match"`
 }
 
 // Summarize aggregates raw selections into the report.
@@ -168,7 +191,45 @@ func Summarize(selections []Selection) Report {
 			report.Divergences = append(report.Divergences, compareArms(byArm, armOrder[i], armOrder[j]))
 		}
 	}
+	report.PerMatch = perMatchRows(selections)
 	return report
+}
+
+// perMatchRows lays the selections out one row per match, arms side by side, in the
+// order the matches were selected (ascending date for the API's match listing).
+func perMatchRows(selections []Selection) []MatchRow {
+	rowIndex := map[int64]int{}
+	rows := []MatchRow{}
+	for _, s := range selections {
+		i, seen := rowIndex[s.MatchID]
+		if !seen {
+			i = len(rows)
+			rowIndex[s.MatchID] = i
+			rows = append(rows, MatchRow{
+				MatchID:      s.MatchID,
+				MatchDate:    s.Match.MatchDate,
+				ActualWinner: s.Match.ActualWinner,
+			})
+		}
+		rows[i].Arms = append(rows[i].Arms, matchArmRow(s))
+	}
+	return rows
+}
+
+func matchArmRow(s Selection) MatchArmRow {
+	row := MatchArmRow{Arm: s.Arm}
+	if s.Err != nil {
+		row.Error = s.Err.Error()
+		return row
+	}
+	probability := s.Selection.Team1WinProbability
+	row.Team1WinProbability = &probability
+	row.PredictedWinner = s.Selection.PredictedWinner
+	if s.Match.ActualWinner != "" && s.Selection.PredictedWinner != "" {
+		correct := s.Selection.PredictedWinner == s.Match.ActualWinner
+		row.Correct = &correct
+	}
+	return row
 }
 
 func summarizeArm(arm string, selections []Selection) ArmReport {
