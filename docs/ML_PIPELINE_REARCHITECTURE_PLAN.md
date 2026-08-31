@@ -290,6 +290,78 @@ measurement, guards and two small serving rules.
 
 ---
 
+## 9. Database schema and pipeline steps: what changes, what does not
+
+The short answer is that the schema is not torn apart; it is *pruned by consequence*. The
+event core stays exactly as it is, two identity columns are added, and roughly half the
+tables lose their last reader as the models that read them go. Deletions happen in the
+migration PR that removes the reader, never before, and always as a migration (the repo's
+no-backward-compatibility rule applies: no shims, no views kept "just in case").
+
+### 9.1 Tables
+
+| table | today | target | when |
+|---|---|---|---|
+| `match`, `match_inning`, `match_format`, `match_player`, `ball_event`, `opposition`, `player`, `venue`, `season` | the event core | **keep, unchanged.** `ball_event` already carries striker, bowler, runs split, extras kind, wicket kind, `player_out_id`, `fielder_ids`, `is_legal`, `ball_seq` — everything the rating pass and the performance model need. No column is added to it | — |
+| `player.external_id` (new), `opposition.gender` (new) | player identity is by name; 130 team names span both genders | **add**: Cricsheet registry id on `player`, gender on the team key. The importer already reads both from `info.registry` / `info.gender` | P-1 |
+| `datasets`, `data_migrations` | import provenance, migration ledger | **keep** | — |
+| `feature_raw_stats_snapshots` (2.32M rows, 1.81M duplicates, D-1) | read by precompute, exports, base models | **drop** | P-6, after P-5 re-points the last consumer |
+| `player_window_features` | rolling windows for the sequence exports | **drop** | P-6 |
+| nine `*_features` tables from `seqcalc` (`batting_transition`, `bowling_sequence`, `bowling_spell`, `dot_streak`, `event_reaction`, `extras_discipline`, `wicket_mode`, `over_boundary_wicket`, `over_end_pressure`) | precomputed sequence features, read only by the sequence exports and one repo | **drop as tables**. Any family that survives E1 is re-implemented as an as-of accumulator inside the rating pass, which is where the same numbers were computed from anyway | P-6 (E1 decides which calculators live on in code) |
+| `batting_data`, `bowling_data`, `fielding_data`, `fielding_event` | scorecard tables derived from `ball_event` at import; read by backtest metrics, scorecard display, feature history, the S-3c-era exports | **keep for now, then derive.** They are redundant with `ball_event` (the leak in S-3c came from reading them as if they were squads). Once L4 computes actuals from `ball_event` (P-2) and the scorecard view reads the simulator (P-4), they have no reader and go in P-6. Until then they are the cheapest way to show a real scorecard | P-6 |
+| `match_prediction_aggregates` | backtest aggregates cache | **drop**; L4 writes its report to the run directory | P-5 |
+| `weather_data`, `weather_job` | nothing populates them (`weather-not-implemented.md`); read by ops probes, the training snapshot export and prediction defaults | **drop**, and with them the seven `temp/wind/rain/…` columns the win contract still carries as constants | P-6 |
+| `ml_tuned_params` | Optuna / combination-meta parameter store | **drop** with the auto-tune stack; tuned values live in the run manifest | P-6 |
+
+Net: 30 tables → about 13. Nothing in the kept set changes shape, so the importer, the
+ops status probes and the backtest match listing keep working throughout.
+
+### 9.2 Why the event core is enough
+
+Everything the rating pass reads — and everything the performance model and simulator will
+read — is a function of `(match, match_player, ball_event)` ordered by date. The
+S-10 pass reproduces its numbers from the raw JSON in ~100 s; over Postgres it is one
+ordered scan of `ball_event` (11.5M rows, ~1.6 GB with indexes on `(match_id, innings,
+ball_seq)`, which exist). There is no feature table to keep in sync, so there is no
+precompute step to schedule, no snapshot-date ambiguity and no duplicate rows to reconcile.
+The one thing the DB does not carry that the JSON does is the registry identifier, which is
+P-1.
+
+### 9.3 Pipeline steps (ops console)
+
+| step today | target |
+|---|---|
+| `fetch`, `extract`, `import` | **keep** (import gains the identity columns, P-1) |
+| `precompute` | **remove** (P-6) |
+| `export` | **remove** (P-6); L1 writes training frames into the run directory |
+| `train_batting`, `train_bowling`, `train_fielding`, `train_extras`, `train_innings`, `train_win`, `train_combination_meta` | **replace by one `retrain`** step: rating pass → XI win models → performance models → L4 report → run manifest (P-3 introduces it beside the old steps; P-6 deletes them) |
+| `auto_tune` | **remove**; a fixed small grid runs inside `retrain` and records its choice in the manifest |
+| (new) `evaluate` | L4 on demand for an arbitrary cutoff, without retraining `current` |
+| (new) `reload` | swap `current` to a named run; `/admin/reload` |
+
+Six training steps and two feature steps become three: import → retrain → reload, with
+`evaluate` beside them. The step registry's `Requires` graph shrinks accordingly and the
+"confirm untuned defaults" prompt (`confirmDefaultParams`) has nothing left to confirm.
+
+### 9.4 Other steps in the request path
+
+- **Pool construction** (`GetBacktestSquadPlayerIDs`, `default_pool_csv`) stays in go-app:
+  availability is the caller's knowledge, not the model's.
+- **Per-player feature assembly** (`ComputeFeaturesAtCutoffForMatch`, the `allFeats` maps
+  threaded through `predictteam`) goes: the ML side computes features from ids. This is the
+  largest simplification in `predict_team.go` (~2,500 lines today) and lands with P-5.
+- **Reconciliation / rescaling** of player predictions to the win probability goes with
+  P-4; the scorecard and the probability come from one simulator.
+- **Frontend**: the Workbench, Evaluate and Prediction surfaces keep their routes; the
+  auto-tune and per-model training controls disappear (CONSUMER_SURFACES has the pattern),
+  and the scorecard gains ranges and marginal values.
+
+What is *not* worth doing: normalising `ball_event` further, moving to a columnar store, or
+rewriting the importer. The event core is the right shape; the problems were all downstream
+of it.
+
+---
+
 ## Appendix — experiment record (T20 / ODI batting, 2025-09-01 holdout, batters with ≥ 3 prior innings)
 
 | predictor | T20 MAE | T20 Spearman/match | T20 top-3 hit | ODI MAE | ODI Spearman/match |
