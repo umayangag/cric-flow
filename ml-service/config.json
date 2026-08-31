@@ -8,7 +8,7 @@
     "artifacts_dir": "../output/ml-service"
   },
   "ml": {
-    "use_share_models": true,
+    "use_share_models": false,
     "formats": [
       "TEST",
       "ODI",

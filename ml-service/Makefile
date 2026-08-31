@@ -7,7 +7,11 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
-COV_MIN?=82
+# This is the figure CI measures, and CI installs requirements-serve.txt. A local venv built
+# from requirements.in also has shap, so tests/test_shap_explanations.py runs instead of
+# skipping and `make coverage` reports ~0.9 points higher here than the gate will. Ratchet
+# from the CI number, not the local one.
+COV_MIN?=84
 # CI sets REQUIREMENTS_FILE=requirements-serve.txt so venv gets the serving deps (no pycaret/autogluon/shap).
 REQUIREMENTS_FILE?=requirements.txt
 
@@ -73,6 +77,10 @@ train-extras:
 
 train-win:
 	$(PY) -m ml.train_win
+
+train-xi: venv
+	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make train-xi CUTOFF=2025-09-01" && exit 1)
+	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",)
 
 train-innings:
 	$(PY) -m ml.train_innings

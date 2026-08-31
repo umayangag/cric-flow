@@ -121,6 +121,7 @@
         "field_divisor": 6
       }
     },
-    "score_weights_by_format": {}
+    "score_weights_by_format": {},
+    "win_model": "xi"
   }
 }

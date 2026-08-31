@@ -66,6 +66,13 @@ var (
 	mlOptimizeTeamSelectionFunc = func(_ context.Context, _ predictteam.TeamOptimizationRequest) (*predictteam.TeamOptimizationResult, error) {
 		return nil, sql.ErrNoRows
 	}
+	// OptimizeXI / PredictMatchWinXI: the XI-responsive win model (POST /xi/optimize, POST /xi/predict-win).
+	mlOptimizeXIFunc = func(_ context.Context, _ predictteam.XIOptimizationRequest) (*predictteam.XIOptimizationResult, error) {
+		return nil, sql.ErrNoRows
+	}
+	mlPredictMatchWinXIFunc = func(_ context.Context, _ predictteam.XIWinRequest) (float64, error) {
+		return 0, sql.ErrNoRows
+	}
 	// Batch prediction: multiple predict-player calls in a single HTTP request.
 	mlBacktestPredictBatchFunc = func(_ context.Context, _ []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
 		return nil, sql.ErrNoRows

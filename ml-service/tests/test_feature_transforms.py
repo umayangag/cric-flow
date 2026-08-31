@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 from ml.feature_transforms import (
     CSV_COLUMN_MAP,
@@ -228,15 +229,34 @@ def test_build_extended_vector_from_features_with_interactions():
     assert out[2] == 2.0
 
 
-def test_build_extended_vector_from_features_invalid_interaction_skipped():
-    """When interaction value cannot be converted to float, that interaction skipped (lines 203-204)."""
+def test_build_extended_vector_from_features_invalid_interaction_raises():
+    """A non-numeric operand raises rather than yielding a vector one column short."""
     base = [1.0, 2.0]
     names = ["a", "b"]
     feat_map = {"a": 1.0, "b": "not-a-number"}
     config = {"add_interactions": [("a", "b")], "add_log1p": []}
+    with pytest.raises(ValueError, match="non-numeric operand"):
+        build_extended_vector_from_features(base, names, feat_map, config)
+
+
+def test_build_extended_vector_from_features_missing_operand_raises():
+    """A missing operand raises here, naming it, instead of failing later in the scaler."""
+    base = [1.0, 2.0]
+    names = ["a", "b"]
+    config = {"add_interactions": [("a", "absent")], "add_log1p": []}
+    with pytest.raises(ValueError, match="absent"):
+        build_extended_vector_from_features(base, names, {"a": 1.0}, config)
+
+
+def test_build_extended_vector_from_features_resolves_training_name_alias():
+    """Interactions recorded under the training name `inning` find the served `batting_inning`."""
+    base = [2.0, 3.0]
+    names = ["batting_trend_w5", "batting_inning"]
+    feat_map = {"batting_trend_w5": 2.0, "batting_inning": 3.0}
+    config = {"add_interactions": [("batting_trend_w5", "inning")], "add_log1p": []}
     out = build_extended_vector_from_features(base, names, feat_map, config)
-    assert len(out) == 2
-    assert out == [1.0, 2.0]
+    assert len(out) == 3
+    assert out[2] == 6.0
 
 
 def test_load_transform_config_from_metadata_missing_file(tmp_path):

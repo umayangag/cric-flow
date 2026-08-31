@@ -169,6 +169,30 @@ def extend_feature_map(
     return out
 
 
+def _training_to_serving_names() -> Dict[str, str]:
+    """CSV_COLUMN_MAP read the other way: training column name -> serving feature name.
+
+    An interaction is recorded in the model's metadata under the names the *training*
+    frame used, but at prediction the operands are looked up in the map go-app sends,
+    which uses the serving names. ``inning`` / ``batting_inning`` is the pair that
+    actually differs today; deriving the rest from the same table keeps one source of
+    truth for the correspondence.
+    """
+    out: Dict[str, str] = {}
+    for by_kind in CSV_COLUMN_MAP.values():
+        for serving_name, csv_name in by_kind.items():
+            out.setdefault(csv_name, serving_name)
+    return out
+
+
+def _interaction_operand(name: str, feature_map: Dict[str, float]) -> Any:
+    """Look an interaction operand up under its own name, then its serving alias."""
+    value = feature_map.get(name)
+    if value is None:
+        value = feature_map.get(_training_to_serving_names().get(name, name))
+    return value
+
+
 def build_extended_vector_from_features(
     base_values: List[float],
     base_names: List[str],
@@ -179,6 +203,11 @@ def build_extended_vector_from_features(
     Build extended feature vector at prediction: base_values + log1p + interactions.
     base_values and base_names are from the canonical feature vector (get_feature_names).
     feature_map has canonical keys (venue, opposition, etc.) for interaction lookup.
+
+    Every interaction the model was trained with must be produced. Dropping one silently
+    yields a vector one column too narrow, which surfaces far away as an unreadable
+    "X has N features, but ... is expecting N+1" from the scaler; so a missing or
+    non-numeric operand raises here, where the name that is missing is still known.
     """
     arr = np.array([base_values], dtype=np.float64)
     names = list(base_names)
@@ -192,15 +221,20 @@ def build_extended_vector_from_features(
 
     # interactions
     for a, b in transform_config.get("add_interactions") or []:
-        va = feature_map.get(a)
-        vb = feature_map.get(b)
-        if va is not None and vb is not None:
-            try:
-                val = float(va) * float(vb)
-                arr = np.hstack([arr, np.array([[val]], dtype=np.float64)])
-                names.append(f"{a}_x_{b}")
-            except (TypeError, ValueError):
-                pass
+        va = _interaction_operand(a, feature_map)
+        vb = _interaction_operand(b, feature_map)
+        missing = [name for name, value in ((a, va), (b, vb)) if value is None]
+        if missing:
+            raise ValueError(
+                f"interaction {a}_x_{b} cannot be built: operand(s) {missing} are absent from the "
+                f"feature map; the model expects this column, so the vector would be short"
+            )
+        try:
+            val = float(va) * float(vb)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"interaction {a}_x_{b} has a non-numeric operand: {va!r}, {vb!r}") from exc
+        arr = np.hstack([arr, np.array([[val]], dtype=np.float64)])
+        names.append(f"{a}_x_{b}")
 
     return arr.ravel().tolist()
 
