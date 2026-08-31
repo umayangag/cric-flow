@@ -135,6 +135,10 @@ Exporter can append sequence columns: `-enable-seq=1` or `ENABLE_SEQ_FEATURES=1`
 
 Tolerant Python readers for exporter CSVs (with or without optional sequence columns). `make ml-test` — scoped reader/baseline tests; `make train-batting-baseline`, `make train-bowling-baseline` — tiny T20 baselines from fixtures.
 
+## XI-responsive win model (team selection)
+
+`make train-xi CUTOFF=2025-09-01` builds player impact ratings by one as-of pass over ball-by-ball history and trains the win model that team selection maximises (`ml-service/ml/xi/`); add `CRICSHEET_DIR=data/go-app/cricsheet` to read the raw JSON instead of the database. Serve via `POST /xi/optimize` and `POST /xi/predict-win` (player ids in), enabled in go-app with `selection.win_model: "xi"`. See **docs/ml-and-training.md** § XI-responsive win model and **docs/WIN_PROB_SELECTION_PR_CHECKLIST.md** (S-9, S-10).
+
 ## Backtesting on played matches
 
 A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.

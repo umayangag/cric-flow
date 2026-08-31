@@ -259,6 +259,52 @@ returning one constant probability — are listed with the reason rather than om
 
 ---
 
+## XI-responsive win model (`ml.xi`)
+
+**Purpose:** a win model whose every input is a function of the two elevens, so it can rank
+candidate XIs — the objective for team selection. It replaces the windowed-form aggregates
+of `ml.win_features` for that job (held-out AUC 0.73 T20 / 0.69 ODI / 0.75 T20I against
+0.63 / 0.56 / 0.59; see `docs/WIN_PROB_SELECTION_PR_CHECKLIST.md`, S-9 results and S-10).
+
+**How it works.** One chronological pass over match history (`ml/xi/ratings.py`): for each
+match in date order, features are read from state built over earlier matches only, then the
+match is folded in. There is no snapshot table; the as-of guarantee is structural. Per
+(player, format) the state holds ball-level impact ratings (runs above the format×over
+expectation per ball faced, dismissals below expectation, runs saved per ball bowled,
+bowler-credited wickets above expectation; forgotten at 0.9 per match, shrunk with a 60-ball
+prior), expected involvement (balls faced / bowled per match), experience, a keeper flag and
+a player Elo. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
+bowling impact weighted by involvement, top-6 / top-5 sums, role coverage (bowling options,
+keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, form,
+head-to-head, venue bat-first bias, venue familiarity) is kept in a separate column list
+because it cannot distinguish two XIs.
+
+**Two models per format.** `objective` — logistic regression on the XI columns, additive and
+so monotone in practice (a one-player upgrade lowers p in <1% of cases vs 12% for
+unconstrained boosting); this is what `/xi/optimize` maximises. `display` —
+monotone-constrained gradient boosting on XI + team-context columns; the probability shown.
+
+**Run:** `make train-xi CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
+`CRICSHEET_DIR=data/go-app/cricsheet` it reads the raw Cricsheet JSON instead (same format
+taxonomy as `format.go`, ~2 minutes for the full archive). Writes `xi_win_<FMT>.joblib`,
+`xi_ratings.joblib` and `xi_win_report.json` (AUC and Brier for both models over three seeds,
+base-rate Brier, and the best single column's AUC — a model that cannot beat its own best
+column is not being measured). `POST /admin/reload` picks the artifacts up; `GET /xi/status`
+shows what is loaded.
+
+**Serving:** `POST /xi/predict-win` and `POST /xi/optimize` take player ids, not feature maps.
+The optimiser (`ml/xi/optimizer.py`) seeds greedily, then steepest-ascent single swaps, then
+pair swaps, under constraints expressed through the same vectors the model reads (a bowling
+option is a player whose expected balls bowled clears the format threshold). go-app uses
+these endpoints when `selection.win_model` is `"xi"` and falls back to the windowed-form
+model otherwise or on error.
+
+**Identity caveat.** Ratings are keyed by the id the source provides: go-app `player_id` from
+Postgres (inherits the name-keyed merges in `IDENTITY_PR_CHECKLIST.md`), the Cricsheet
+registry id from JSON.
+
+---
+
 ## Walk-forward
 
 **Purpose:** Evaluate temporal performance: train on data before cutoff → predict next X matches (holdout) → score (e.g. MAE) → record in registry → advance cutoff and repeat. Builds a registry (e.g. `walk_forward_registry.json`) of model type, format, cutoff, window_x, params, metrics.

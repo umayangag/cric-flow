@@ -77,6 +77,17 @@ func (mlPredictorAdapter) OptimizeTeamSelection(
 	return mlOptimizeTeamSelectionFunc(ctx, req)
 }
 
+func (mlPredictorAdapter) OptimizeXI(
+	ctx context.Context,
+	req predictteam.XIOptimizationRequest,
+) (*predictteam.XIOptimizationResult, error) {
+	return mlOptimizeXIFunc(ctx, req)
+}
+
+func (mlPredictorAdapter) PredictMatchWinXI(ctx context.Context, req predictteam.XIWinRequest) (float64, error) {
+	return mlPredictMatchWinXIFunc(ctx, req)
+}
+
 // predictTeamRequest holds the parsed request body for team-selection prediction.
 type predictTeamRequest struct {
 	Format             string `json:"format"`

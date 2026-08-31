@@ -799,6 +799,20 @@ func getMatchWinProbability(
 ) (float64, error) {
 	ids1 := selectedPlayerIDs(sel1, nameToID1)
 	ids2 := selectedPlayerIDs(sel2, nameToID2)
+	if xi, ok := predictor.(XIWinPredictor); ok && selectionUsesXIWinModel() {
+		p, err := xi.PredictMatchWinXI(ctx, XIWinRequest{
+			Format:         strings.TrimSpace(strings.ToUpper(format)),
+			Team1PlayerIDs: ids1,
+			Team2PlayerIDs: ids2,
+			Team1ID:        opp1IDVal,
+			Team2ID:        opp2IDVal,
+			VenueID:        venueIDVal,
+		})
+		if err == nil {
+			return p, nil
+		}
+		slog.WarnContext(ctx, "xi win prediction failed, falling back to the windowed-form win model", slog.Any("err", err))
+	}
 	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
 		t1Feats := extractPlayerFeatures(ids1, allFeats)
 		t2Feats := extractPlayerFeatures(ids2, allFeats)
@@ -1142,6 +1156,16 @@ func selectTeamsByWinProbability(
 		allFeats:    allFeats,
 	}
 
+	// The XI-responsive model (S-10) when config asks for it and the predictor speaks it. On
+	// failure the windowed-form paths below still produce both XIs, from one search each.
+	if xiOptimizer, ok := enhanced.(XISelectionOptimizer); ok && selectionUsesXIWinModel() {
+		sel1, sel2, err := runBestResponse(ctx, newXISideOptimizer(xiOptimizer, inputs), inputs)
+		if err == nil {
+			return sel1, sel2, nil
+		}
+		slog.WarnContext(ctx, "xi selection unavailable, falling back to the windowed-form win model",
+			slog.Any("err", err))
+	}
 	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
 		sel1, sel2, err := runBestResponse(ctx, newServerSideSideOptimizer(optimizer, inputs), inputs)
 		if err == nil {

@@ -92,17 +92,21 @@ Two consequences that shape the whole plan:
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
 | S-3c | done | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (all three parts; numbers below) |
-| S-9 | todo | `select/s-9-win-model-signal` | **The win model barely discriminates once the leak is gone.** Blocks S-4 and S-6 |
-| S-4 | blocked | `select/s-4-search-upgrade` | Steepest-ascent, pair swaps, multi-start, real budget (blocked on S-9) |
+| S-9 | done | `select/s-9-xi-win-model` | **The win model barely discriminates once the leak is gone.** Answered: XI-responsive ratings reach 0.73 T20 / 0.69 ODI / 0.75 T20I (numbers below) |
+| S-10 | in_progress | `select/s-10-xi-win-model` | **XI-responsive win model behind `selection.win_model: "xi"`** — code and tests delivered; DB run and `make check-all` pending |
+| S-4 | skipped | — | Steepest-ascent, pair swaps, real budget — superseded by S-10's optimiser (`ml/xi/optimizer.py`) |
 | S-5 | todo | `select/s-5-meta-seed-target` | Composite target for the combination-meta seed |
 | S-5b | todo | `select/s-5b-meta-auto-tune` | Auto-tune the combination meta-model |
-| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection (blocked on S-9) |
+| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection (blocked on S-10's acceptance run) |
 | S-7 | blocked | `select/s-7-id-encoding` | Venue and opposition ID encoding (blocked on the identity plan) |
 | S-8 | todo | `select/s-8-unknowable-features` | Base-model features unavailable at decision time (deferred) |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
 
-**S-4 and S-6 are now blocked on S-9, not on S-3c.** S-3c is done and the leak is gone.
+**S-9 is answered and S-10 carries the fix.** See "S-9 results" and "S-10" below; the
+paragraphs that follow are the history that led there.
+
+**S-4 and S-6 were blocked on S-9, not on S-3c.** S-3c is done and the leak is gone.
 What it revealed is that the objective underneath was mostly leak: held-out AUC across the
 four formats is **0.56–0.63**, and Brier is *worse than predicting the base rate* in three
 of them. Open decision #3 said to stop in exactly this case, and that is the answer.
@@ -801,6 +805,160 @@ try the cheapest direction first and re-measure before continuing.
 
 ---
 
+## S-9 results — the ceiling was the feature set, not the problem
+
+**Method.** Rebuilt the win features from scratch, directly from the Cricsheet JSON, as one
+chronological pass: for every match in date order, read features from state accumulated over
+*earlier* matches only, then fold the match in. Nothing a feature reads can have seen the
+match it describes, so the S-3c class of leak cannot exist by construction — there is no
+snapshot table and no "latest as-of before the match" query to get wrong. Same format
+taxonomy as `format.go`, same holdout (`2025-09-01`), three seeds, reported as mean ± sd.
+The pass runs in ~100 s over all 22,734 files. Implementation: `ml-service/ml/xi/`.
+
+### Held-out AUC by feature family
+
+| feature family | T20 (n=1635) | ODI (n=375) | T20I (n=182) | TEST (n=157) |
+|---|---|---|---|---|
+| repo today, S-3c (68 windowed-form aggregates) | 0.632 | 0.561 | 0.591 | 0.572 |
+| team-level only: Elo, form, h2h, venue (constant w.r.t. the XI) | 0.688 | 0.678 | 0.739 | 0.606 |
+| player Elo only (XI-responsive) | 0.676 | 0.637 | 0.703 | 0.585 |
+| ball-level impact ratings only (XI-responsive) | 0.687 | 0.642 | 0.682 | 0.559 |
+| impact ratings + role coverage (XI-responsive) | **0.725** | **0.681** | **0.731** | 0.594 |
+| all XI-responsive (player Elo + impact + roles) — the *objective* | **0.729** | **0.691** | **0.748** | 0.591 |
+| everything (XI-responsive + team-level) — the *display* model | **0.741** | **0.716** | **0.755** | 0.601 |
+
+Brier beats the base rate in every limited-overs format (T20 0.205 vs 0.250; ODI 0.210 vs
+0.247; T20I 0.200 vs 0.250). TEST stays near chance for every family, as it did for Elo and
+h2h in S-9's first table: Test sides are few, stable, and decided by things no lineup
+feature carries. Leave TEST on the windowed-form model or, better, do not select for it.
+
+**What the XI-responsive features are.** Every column is a function of the two elevens and
+nothing else:
+
+- **Ball-level impact ratings.** Per (player, format): runs above the context expectation per
+  ball faced, dismissals below expectation, runs saved per ball bowled, bowler-credited
+  wickets above expectation. The context expectation is the running average for (format,
+  over number), so a death-overs 150 strike rate is worth more than a powerplay one and the
+  ratings are venue- and era-neutral in the mean. Exponentially forgotten per match played
+  (0.9) and shrunk toward zero with a 60-ball prior. Each is multiplied by the player's
+  *expected involvement* — expected balls faced / bowled, known before the match — which is
+  the "weight, do not truncate" idea from the S-9 plan: a bowling statistic is no longer
+  averaged over the six players who never bowl.
+- **Role coverage.** Number of bowling options (expected balls bowled ≥ 12 T20 / 30 ODI / 60
+  TEST), keeper present (ever credited with a stumping), all-rounders, debutants, mean
+  experience. Adding these to the impact ratings is the single largest jump in the ablation
+  (T20 0.687 → 0.725). This is the *combination* signal the selector exists to use.
+- **Player Elo.** Each player carries a rating in each format, moved by the results of the
+  matches they played in — the individual analogue of the team Elo that beat the old model.
+
+### The specific XI carries signal beyond the team's usual strength
+
+The question a selector needs answered is not "can we predict matches" but "does *which
+eleven* was fielded, as opposed to which team, change the outcome in a way the model sees".
+Held-out AUC with team-level features plus:
+
+| | T20 | ODI |
+|---|---|---|
+| the team's **typical** XI features (rolling mean of its previous five lineups) | 0.697 | 0.675 |
+| the **actual** XI's features | **0.738** | **0.716** |
+
+Knowing the actual lineup is worth +0.04 AUC over knowing the team's usual one. That is the
+composition effect, and the features capture it. (T20I's 182 matches cannot resolve a 0.04
+difference; its numbers are omitted rather than over-read.)
+
+### Selection diagnostics (the S-9 "cheap diagnostic", extended)
+
+- **One-player swap** (upgrade team1's weakest batter's batting to its best, everything else
+  fixed): median Δp +0.026 T20 / +0.033 ODI, p90 +0.10 / +0.13. The objective moves on a
+  single change, as the old model did — but now from a ranking of 0.73 rather than 0.63.
+- **Objective must be monotone.** Unconstrained boosting lowers p for 12% of those upgrades
+  (T20) and 20% (ODI) — tree interactions, not cricket. Monotone constraints cut that to
+  6.5% / 16%; **logistic regression on the same columns is 0.4% / 3.7% at −0.005 AUC.** So the
+  selection objective is the additive logistic model, and the boosted model is only the
+  displayed probability. The old objective swung by up to 0.30 on one substitution while
+  ranking whole matches at 0.56–0.63; this one is smaller per swap and better ranked, which
+  is the right way round.
+- **Cold start.** Replacing a player with a debutant moves p by a median −0.003 (p10 −0.05):
+  unknown players regress to neutral, they do not explode.
+- **Marginal value vs what the player then did.** Per holdout match, remove each team1 player
+  (replace by an average one) and correlate Δp with the player's actual runs + wickets in
+  that match: within-match Spearman +0.07 (T20, n=1633). Weak in absolute terms — one
+  match's performance is mostly noise — but positive and grounded in ground truth, which no
+  previous selection metric was.
+
+### Closed by evidence
+
+- The S-9 direction "player-level impact ratings — the individual analogue of Elo" is the
+  answer; the direction "match-level features raise accuracy but cannot select" is confirmed
+  (team-level only: 0.688; it adds +0.012 on top of the XI features for display).
+- Model class is still not the constraint: logistic ≈ boosting on these columns too.
+- The old export path (precompute snapshots → export CSV → train) is not on the critical path
+  for selection any more. D-1 (duplicate snapshots) no longer affects the win objective.
+
+---
+
+## S-10 — The XI-responsive win model, wired behind a flag
+
+**Change.** A new model family that owns its own features, so the objective the optimiser
+maximises is the same function of the same eleven names at training and serving time.
+
+| piece | location |
+|---|---|
+| Feature contract, monotone directions, rating hyperparameters | `ml-service/ml/xi/contract.py` |
+| Match sources: Postgres (go-app schema) and Cricsheet JSON directory | `ml-service/ml/xi/sources.py` |
+| The chronological rating pass, per-player vectors, side aggregation | `ml-service/ml/xi/ratings.py`, `builder.py` |
+| Training + holdout report (both models, 3 seeds, base-rate Brier, best single column) | `ml-service/ml/xi/train.py` → `xi_win_<FMT>.joblib`, `xi_ratings.joblib`, `xi_win_report.json` |
+| Serving store | `ml-service/ml/xi/store.py` |
+| Optimiser: greedy seed → steepest-ascent single swaps → pair swaps, constraints via the same vectors the model reads | `ml-service/ml/xi/optimizer.py` |
+| Endpoints `GET /xi/status`, `POST /xi/predict-win`, `POST /xi/optimize` (player ids in, no feature maps) | `ml-service/app/xi_service.py`, `app/models/xi.py`, routes in `app/main.py` |
+| go-app: `XISelectionOptimizer` / `XIWinPredictor`, side optimiser, config `selection.win_model` | `predictteam/xi_selection.go`, `config/win_model.go`, `server/ml_xi_client.go`, seams + adapter |
+| Make | `make train-xi CUTOFF=2025-09-01` (DB) or `CRICSHEET_DIR=data/go-app/cricsheet` (raw JSON) |
+
+**Player identity.** The ML side keys ratings by the id string the source gives it: go-app
+`player_id` from Postgres, the Cricsheet registry identifier from JSON. The Postgres path
+therefore inherits [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md)'s name-keyed merges
+(163 names / 348 people; men's and women's sides sharing team ids). The JSON path does not,
+which is why the numbers above are the cleaner measurement and why I-3/I-4 should land
+before the DB-trained artifacts are trusted for women's cricket.
+
+**What the flag does.** `selection.win_model: "xi"` in `go-app/config.json` routes
+`selectTeamsByWinProbability` to `/xi/optimize` (still alternating best response, still
+against the opponent's XI — S-1 holds) and `getMatchWinProbability` to `/xi/predict-win`.
+Anything else, or any error from the XI path, falls back to the windowed-form model and logs
+why. **Nothing changes until the flag is set.**
+
+**S-4 is superseded.** The XI optimiser already does steepest ascent, pair swaps when single
+swaps stall, and a real budget (default 20,000 evaluations; a pool of 22 converges in ~3,000
+and 0.4 s). It runs entirely inside ml-service, so the per-call path is not needed on this
+objective.
+
+**Tests.** `tests/unit/test_xi_ratings.py` (as-of property: a match's row is identical with
+or without later matches and unaffected by its own result; per-format isolation; role
+coverage; monotone directions; source ordering enforced; undecided matches rate players but
+move no Elo) and `tests/unit/test_xi_optimizer_and_store.py` (store round trip; constraints,
+must-include/exclude, infeasible pools; optimised ≥ fielded; marginal values; Cricsheet
+parsing incl. bowler-credited vs run-out wickets and the format taxonomy). Go:
+`predictteam/xi_selection_test.go` (ids not features are sent, opponent is an XI, fallback,
+flag off means no call, name→id resolution).
+
+**Acceptance — to run on the database (not yet done; this session had no DB access):**
+
+1. `make train-xi CUTOFF=2025-09-01` → `output/ml-service/xi_win_report.json`. Expect T20
+   objective AUC ≈ 0.72 and display ≈ 0.74; a large shortfall against the JSON-path numbers
+   above means the Postgres source or player identity is dropping information, not that the
+   model is worse.
+2. `POST /admin/reload`, `GET /xi/status` shows the formats and the report.
+3. Set `selection.win_model: "xi"`, run the S-3b selection comparison. Ship for limited-overs
+   formats only if `winprob` beats `greedy` on winner accuracy; leave TEST on greedy.
+4. `make check-all` (the Go side was written without a compiler in reach — see the S-10 note
+   in "Where this stands").
+
+**Risk.** Latency is one HTTP call per side per best-response round; measured in-process at
+0.4–0.6 s per side for a 22–23 player pool. The rating state is ~13.6k players × 4 formats of
+small arrays, loaded once.
+
+---
+
 ## S-4 — Steepest-ascent, pair swaps, multi-start, real budget
 
 **Problem.** The search barely moves off its seed.
@@ -1175,7 +1333,10 @@ database has been re-imported, the export rebuilt over squads, and the win model
 retrained to `CUTOFF=2025-09-01T00:00:00Z` — `output/ml-service/win_model_*.joblib` and
 `win_discrimination.json` currently hold exactly that run.
 
-**S-4 and S-6 are blocked on S-9**, and S-9's work is ordered by measured cost and payoff:
+**S-9 is done and S-10 is in the tree.** What remains is to run S-10's acceptance on the
+database and to compile and test the Go side, which was written without a compiler in
+reach: `make check-all`, then `make train-xi CUTOFF=2025-09-01`, then the S-3b comparison
+with `selection.win_model: "xi"`. The order S-9 was going to follow, kept for the record:
 
 | order | action | expected | why first |
 |---|---|---|---|

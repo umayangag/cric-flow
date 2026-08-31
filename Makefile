@@ -239,6 +239,12 @@ WALK_MODEL ?= batting
 walk-forward:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
 
+# Train the XI-responsive win model + ratings (see docs/ml-and-training.md, S-10). Reads the DB
+# (POSTGRES_* from the environment or .env) or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory.
+train-xi:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service train-xi CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",)
+
 # Held-out discrimination report for the win model (see docs/ml-and-training.md)
 win-discrimination:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service win-discrimination TRAIN_CUTOFF="$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),EVAL_CUTOFF="$(EVAL_CUTOFF)",)
@@ -679,6 +685,7 @@ help:
 	@echo "  train-fielding     Train fielding (from export CSV, or CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
 	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
 	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
+	@echo "  train-xi           Train the XI-responsive win model + player ratings (CUTOFF=YYYY-MM-DD; DB, or CRICSHEET_DIR=)"
 	@echo "  train-batting-bowling  Train batting + bowling"
 	@echo "  train-innings      Train innings model (used for hybrid reconciliation)"
 	@echo "  train-combination-meta  Fit bat/bowl/field weights from backtest_contributions.csv"

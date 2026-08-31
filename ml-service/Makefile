@@ -74,6 +74,10 @@ train-extras:
 train-win:
 	$(PY) -m ml.train_win
 
+train-xi: venv
+	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make train-xi CUTOFF=2025-09-01" && exit 1)
+	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",)
+
 train-innings:
 	$(PY) -m ml.train_innings
 

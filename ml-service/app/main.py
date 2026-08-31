@@ -30,6 +30,7 @@ from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
 from . import training_orchestrator
+from . import xi_service
 from .artifact_service import build_artifacts_status, build_health_response
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
@@ -66,6 +67,7 @@ from .models.predict import (
     WinFeaturesEnhanced,
     WinPrediction,
 )
+from .models.xi import XiOptimizeRequest, XiOptimizeResponse, XiStatusResponse, XiWinRequest, XiWinResponse
 from .prediction_service.endpoints import (
     run_batting_prediction,
     run_bowling_prediction,
@@ -286,12 +288,16 @@ def _reload_artifacts() -> dict:
     global _model_stats_cache
     _model_stats_cache = None
     reload_artifacts(MODELS_DIR)
-    return artifacts_summary()
+    xi_service.REGISTRY.reload(MODELS_DIR)
+    summary = artifacts_summary()
+    summary.update(xi_service.loaded_formats())
+    return summary
 
 
 try:
     logger.info("startup.artifacts.load.start", models_dir=MODELS_DIR)
     reload_artifacts(MODELS_DIR)
+    xi_service.REGISTRY.reload(MODELS_DIR)
     logger.info("startup.artifacts.load.done", models_dir=MODELS_DIR)
 except Exception as e:
     logger.error("startup.artifacts.load.failed", models_dir=MODELS_DIR, error=str(e), exc_info=True)
@@ -945,3 +951,46 @@ async def admin_train_auto_tune_progress(request: Request):
     """
     _verify_admin_api_key(request)
     return training_orchestrator.get_auto_tune_progress()
+
+
+# ---------------------------------------------------------------------------
+# XI-responsive win model (S-10): every input is a function of the two elevens.
+# ---------------------------------------------------------------------------
+
+
+@app.get("/xi/status", response_model=XiStatusResponse)
+async def xi_status():
+    """Which formats have an XI win model loaded, how far the ratings run, and the last training report."""
+    return xi_service.status()
+
+
+@app.post("/xi/predict-win", response_model=XiWinResponse)
+async def xi_predict_win(request: XiWinRequest):
+    """P(team1 wins) for two elevens given by player id. team1 is the side batting first."""
+    try:
+        return xi_service.predict_win(request)
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+
+
+@app.post("/xi/optimize", response_model=XiOptimizeResponse)
+async def xi_optimize(request: XiOptimizeRequest):
+    """Pick the XI from a pool that maximises P(win) against a fixed opponent XI.
+
+    The objective is a function of the eleven ids only (plus the opponent's), so the search
+    inside is exact with respect to what the model can express; everything the caller decides
+    -- availability, format, who the opponent fields -- comes in as the pool and the opponent list.
+    """
+    try:
+        return xi_service.optimize(request)
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_error_payload(
+                code="OPTIMIZATION_CONSTRAINT_ERROR",
+                message=str(exc),
+                hint="Check the pool satisfies the constraints (size, bowling options, keeper).",
+            ),
+        ) from exc
