@@ -811,7 +811,11 @@ func getMatchWinProbability(
 		if err == nil {
 			return p, nil
 		}
-		slog.WarnContext(ctx, "xi win prediction failed, falling back to the windowed-form win model", slog.Any("err", err))
+		slog.WarnContext(
+			ctx,
+			"xi win prediction failed, falling back to the windowed-form win model",
+			slog.Any("err", err),
+		)
 	}
 	if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
 		t1Feats := extractPlayerFeatures(ids1, allFeats)

@@ -29,8 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from . import settings as app_settings
-from . import training_orchestrator
-from . import xi_service
+from . import training_orchestrator, xi_service
 from .artifact_service import build_artifacts_status, build_health_response
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary

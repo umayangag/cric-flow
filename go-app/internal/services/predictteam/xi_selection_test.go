@@ -31,7 +31,10 @@ func (o *recordingXIOptimizer) OptimizeXI(_ context.Context, req XIOptimizationR
 	if len(req.PoolPlayerIDs) < n {
 		n = len(req.PoolPlayerIDs)
 	}
-	return &XIOptimizationResult{SelectedPlayerIDs: append([]int64(nil), req.PoolPlayerIDs[:n]...), WinProbability: 0.6}, nil
+	return &XIOptimizationResult{
+		SelectedPlayerIDs: append([]int64(nil), req.PoolPlayerIDs[:n]...),
+		WinProbability:    0.6,
+	}, nil
 }
 
 func withXIWinModel(t *testing.T, enabled bool) {

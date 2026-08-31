@@ -507,8 +507,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 65)..."
-	COV_MIN=$${COV_MIN_GO:-65} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 66)..."
+	COV_MIN=$${COV_MIN_GO:-66} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -618,8 +618,8 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 65
-COV_MIN_ML ?= 82
+COV_MIN_GO ?= 66
+COV_MIN_ML ?= 85
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
 ci-ml:

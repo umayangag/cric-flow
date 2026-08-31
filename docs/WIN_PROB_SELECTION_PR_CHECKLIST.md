@@ -93,15 +93,15 @@ Two consequences that shape the whole plan:
 | S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
 | S-3c | done | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (all three parts; numbers below) |
 | S-9 | done | `select/s-9-xi-win-model` | **The win model barely discriminates once the leak is gone.** Answered: XI-responsive ratings reach 0.73 T20 / 0.69 ODI / 0.75 T20I (numbers below) |
-| S-10 | in_progress | `select/s-10-xi-win-model` | **XI-responsive win model behind `selection.win_model: "xi"`** — code and tests delivered; DB run and `make check-all` pending |
+| S-10 | done | `select/s-10-xi-win-model` | **XI-responsive win model behind `selection.win_model: "xi"`** — DB acceptance run; the model reproduces its JSON-path numbers (0.72–0.75 objective, 0.72–0.75 display), the S-3b selection gate does not pass (numbers in "S-10 results") |
 | S-4 | skipped | — | Steepest-ascent, pair swaps, real budget — superseded by S-10's optimiser (`ml/xi/optimizer.py`) |
 | S-5 | cancelled | — | Composite target for the combination-meta seed — the meta-model is deleted in P-5 of the re-architecture plan; the greedy seed no longer decides anything |
 | S-5b | cancelled | — | Auto-tune the combination meta-model — same reason as S-5 |
-| S-6 | blocked | `select/s-6-enable-winprob` | Turn on win-probability selection — **kept as the gate**: after S-10's DB acceptance run, set `selection.win_model: "xi"` for limited-overs formats if the S-3b comparison favours it (= P-0 of the re-architecture plan) |
+| S-6 | not_shipped | — | Turn on win-probability selection — **the gate was run and not met**: pooled winner accuracy 0.560 (`winprob`) vs 0.569 (`greedy`) over 332 locked-window matches, T20 5 points the wrong way. The flag stays off and the reason is recorded ("S-10 results" §3); the gate itself needs replacing, because winner accuracy cannot be won by an arm that strengthens both sides |
 | S-7 | superseded | — | Venue and opposition ID encoding — the XI model never feeds raw ids to a tree (venue and teams enter only through as-of context keyed by id); the identity half is IDENTITY I-3/I-4 = P-1 |
 | S-8 | superseded | — | Base-model features unavailable at decision time — the toss/innings case is solved for the win model by marginalising over batting order (H-3, done); the performance model in P-3 marginalises innings the same way; the base models themselves are replaced |
 
-**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
+**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked` | `not_shipped` (built and measured, deliberately not turned on)
 
 **Disposition under the re-architecture plan** ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md)). This checklist is not discarded: S-1…S-3c and S-9/S-10 are the foundation the plan builds on, and S-6 is its P-0 gate. What changes is that the items written to improve the *old* objective's inputs (S-5, S-5b, S-7, S-8) lose their reason to exist once that objective and the base models behind it are replaced, so they are marked cancelled or superseded with the plan item that covers the underlying concern. Open decision #1 is moot with S-5; #2 (best-response rounds) still applies — the XI optimiser is called inside the same alternating loop. Known defects D-1 and D-2 are closed by dropping the tables and exports (P-6); D-3 by run identity (H-16, P-6).
 
@@ -945,7 +945,7 @@ parsing incl. bowler-credited vs run-out wickets and the format taxonomy). Go:
 `predictteam/xi_selection_test.go` (ids not features are sent, opponent is an XI, fallback,
 flag off means no call, name→id resolution).
 
-**Acceptance — to run on the database (not yet done; this session had no DB access):**
+**Acceptance — to run on the database.** Run; see "S-10 results" below.
 
 1. `make train-xi CUTOFF=2025-09-01` → `output/ml-service/xi_win_report.json`. Expect T20
    objective AUC ≈ 0.72 and display ≈ 0.74; a large shortfall against the JSON-path numbers
@@ -960,6 +960,140 @@ flag off means no call, name→id resolution).
 **Risk.** Latency is one HTTP call per side per best-response round; measured in-process at
 0.4–0.6 s per side for a 22–23 player pool. The rating state is ~13.6k players × 4 formats of
 small arrays, loaded once.
+
+---
+
+## S-10 results — the model reproduces on Postgres; the selection gate does not pass
+
+This is P-0 of [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md), run
+end to end against the database. Two things were measured, and they came out differently: the
+**model** reproduced its JSON-path numbers almost exactly, and the **selection gate** — does
+`winprob` beat `greedy` on winner accuracy — did not pass.
+
+### 1. `make train-xi CUTOFF=2025-09-01` on Postgres
+
+22,425 matches read, 20,725 decided training rows, 1,700 undecided, 13,427 players, rating
+state through 2026-08-25. The pass takes ~55 s; training all four formats ~5 s.
+
+Serving-path numbers (both batting orders averaged, H-3) beside the JSON-path development
+numbers this plan has been quoting:
+
+| format | n train / holdout | objective AUC (JSON) | display AUC (JSON) | display Brier | base-rate Brier | best single column |
+|---|---|---|---|---|---|---|
+| T20 | 10,100 / 1,578 | **0.723** (0.73) | **0.751** (0.747) | 0.201 | 0.250 | `d_pelo_top3` 0.661 |
+| ODI | 4,565 / 375 | **0.684** (0.69) | **0.726** (0.730) | 0.210 | 0.247 | `d_exp_mean_matches_all` 0.662 |
+| T20I | 1,848 / 178 | **0.744** (0.75) | **0.721** (0.731) | 0.218 | 0.250 | `team_elo_diff` 0.727 |
+| TEST | 1,924 / 157 | 0.585 | 0.585 | 0.258 | 0.250 | `t1_imp_bat_wk` 0.624 |
+
+Every limited-overs figure lands within 0.01 of the JSON-path number. **There is no
+Postgres shortfall**, so the name-keyed identity defect (I-3/I-4) is not costing the
+aggregate what it might have; E4 still owes the women's-subset split, where it should show.
+
+Two things the table says that are worth naming:
+
+- **T20I display does not beat its own best single column** (0.721 vs `team_elo_diff` 0.727).
+  On 178 matches that is inside the noise, but it is an H-2 canary and should be re-read at
+  the next cutoff rather than waved through. The T20I *objective* does clear it (0.744).
+- **TEST is 0.585.** Below the 0.65 floor in H-17, so TEST stays on greedy, as planned.
+
+### 2. First locked-window report (H-19)
+
+These *are* the locked-window numbers: trained strictly before 2025-09-01, scored on
+2025-09-01 → 2026-08-25. The caveat §10.3 of the plan predicted a 0.01–0.02 drop from
+holdout reuse; what the run actually isolates is the **source** delta (Postgres vs Cricsheet
+JSON) at the *same* cutoff and the *same* window, because that window is the one that guided
+the development choices. So it is the first locked-window *report*, not yet a locked-window
+*measurement of unseen data*. The rolling-origin walk-forward in P-2 is what turns it into one.
+
+### 3. S-3b selection comparison — the gate
+
+`POST /api/backtest/selection-comparison` over every team pair with ≥ 5 decided matches in
+the locked window: 55 pairs, 339 matches, both arms on every match, `selection.win_model:
+"xi"`. One match failed for both arms (no squad recorded); the rest ran.
+
+| format | decided matches | greedy | winprob (xi) | Δ |
+|---|---|---|---|---|
+| T20 | 179 | **0.598** | 0.548 | −0.050 |
+| ODI | 51 | 0.471 | 0.471 | 0.000 |
+| T20I | 102 | 0.569 | **0.628** | +0.059 |
+| pooled | 332 | 0.569 (189) | 0.560 (186) | −0.009 |
+
+**The gate is not met.** It asks for `winprob ≥ greedy` in limited-overs formats; T20 — the
+largest sample — is 5 points the other way. Pooled, the two arms are three matches apart in
+332, which is a tie.
+
+Read honestly, none of the three format-level differences is resolvable at these sample
+sizes: ±0.05 on 179 matches is ~1.3 standard errors, and T20 losing by 0.050 while T20I wins
+by 0.059 is what noise looks like. The harness reports only aggregates, so a paired
+(McNemar) test — the right one, since both arms saw the same matches — cannot be computed
+from its output at all. **That is a gap in the harness, not a result.**
+
+Supporting numbers: the two arms genuinely choose differently (31–36 of 44 selected players
+differ per match; 5 identical XIs out of 339), so this is not a search that failed to move.
+Both arms' probabilities come from the same XI display model — the arm changes *which XI*,
+not which model scores it — so the comparison isolates the selection rule. The winprob arm's
+probabilities are systematically less extreme (mean |p − 0.5| 0.153 vs 0.180 across pairs):
+optimising *both* sides moves the matchup toward even, which costs winner accuracy without
+saying the XIs are worse.
+
+**Which is the deeper problem with the gate.** Winner accuracy asks whether the predicted
+winner of a *counterfactual* fixture — our two chosen XIs — matches the result of the *real*
+one, which was played by different teams. An arm that strengthens both sides toward parity
+must lose on that metric even if every XI it picks is better. S-3b's own preamble already
+warns that this metric "scores the win model and the selection jointly"; this run shows the
+sharper version. The metrics that survive both sides being optimised are the ones the
+re-architecture plan's L4 already lists: specific-XI-beyond-typical-XI, swap monotonicity,
+and the E5 natural experiment (consecutive matches of the same side with 1–3 changes).
+
+**Disposition.** Per S-6's own rule — "if it does not, the honest outcome is to leave the
+flag off and record why" — win-probability selection stays off.
+`selection.win_model: "xi"` is left set in `go-app/config.json`: with
+`use_win_probability_selection` false it changes only which model reports P(win) and the
+predicted winner, and that model is measured (0.72–0.75 AUC, Brier below base rate in every
+limited-overs format) where the windowed-form model it replaces is 0.56–0.63. Turning the
+*selection* on waits for a gate that can be passed by a working optimiser.
+
+### 4. Two defects that blocked the run, both fixed here
+
+Neither is S-10's; both stopped the acceptance dead and are repaired in this PR.
+
+- **`ml-service/config.json` had `use_share_models: true` with no share artifacts and no way
+  to build them.** Every prediction carrying match context — which is every backtest
+  selection and every team prediction from the app — returned
+  `503 TRAIN_ON_THE_FLY_FAILED: No artifacts loaded for format=…`. `batting_share_*` /
+  `bowling_share_*` have never been trained here, and they cannot be: the trainer's
+  `--share-targets` path needs an `innings_runs` column that the current export no longer
+  carries. Set to `false`, which is what `config.default.json` ships and the only value the
+  repo can actually serve. The reconciliation layer these models feed is deleted in P-4.
+- **An interaction term was silently dropped at prediction, making every feature vector one
+  column short.** The models are trained with three interactions, one of them
+  `batting_trend_w5 × inning`; the serving contract (`configs/feature_vectors.json`, and the
+  per-player map go-app sends) calls that column `batting_inning`. The lookup missed, the
+  interaction was skipped without a word, and the 37-wide vector met a 38-wide scaler as
+  `X has 37 features, but RobustScaler is expecting 38 features as input` — a message that
+  names neither the model nor the column. `build_extended_vector_from_features` now resolves
+  the operand through `CSV_COLUMN_MAP` (the same table training already uses, read the other
+  way) and **raises** when an operand is genuinely absent, naming it, instead of returning a
+  short vector.
+
+### 5. What the harness could not do, and what P-2 owes it
+
+Recorded so the next person does not rediscover them:
+
+- **No as-of ratings on the serving path.** `XiStore` holds one rating state — through today
+  — which is right for a live prediction and wrong for a backtest: scoring a 2025-11 match
+  with ratings through 2026-08 lets team Elo carry that match's own result. This run worked
+  around it with `scripts/experiments/xi/freeze_ratings.py`, which rebuilds the state with
+  `PostgresSource(before=…)` and rewrites `xi_ratings.joblib`; the comparison above ran with
+  ratings frozen at 2025-08-31, so the XI arm is *handicapped* (stale by up to a year) rather
+  than flattered. An as-of serving path belongs in L4 (P-2).
+- **The report is aggregate-only.** No per-match rows, so no paired test, no date filter, and
+  no way to ask which matches the arms disagreed on. The endpoint also takes one team pair at
+  a time with a limit of 50, so a window has to be assembled pair by pair from outside.
+- **Pools are large.** `GetBacktestSquadPlayerIDs` returns 180–230 players, not the 22–23 the
+  S-10 latency note assumed. The optimiser still converges in ~1,500–2,000 evaluations and
+  110–150 ms, so the budget holds; but "overlap with the fielded XI" is near-meaningless when
+  the pool is ten times the XI.
 
 ---
 
@@ -1337,10 +1471,13 @@ database has been re-imported, the export rebuilt over squads, and the win model
 retrained to `CUTOFF=2025-09-01T00:00:00Z` — `output/ml-service/win_model_*.joblib` and
 `win_discrimination.json` currently hold exactly that run.
 
-**S-9 is done and S-10 is in the tree.** What remains is to run S-10's acceptance on the
-database and to compile and test the Go side, which was written without a compiler in
-reach: `make check-all`, then `make train-xi CUTOFF=2025-09-01`, then the S-3b comparison
-with `selection.win_model: "xi"`. The order S-9 was going to follow, kept for the record:
+**S-9 and S-10 are both done, and P-0 has been run.** `make check-all` is green (the Go side
+needed only `gofumpt`; nothing failed to compile), `make train-xi CUTOFF=2025-09-01` on
+Postgres reproduces the JSON-path numbers within 0.01, and the S-3b comparison ran over 332
+locked-window matches with `selection.win_model: "xi"`. **The selection gate did not pass**
+and win-probability selection stays off — see "S-10 results" for the numbers, the two
+defects that had to be fixed to run it at all, and why winner accuracy is the wrong gate for
+an arm that optimises both sides. The order S-9 was going to follow, kept for the record:
 
 | order | action | expected | why first |
 |---|---|---|---|
@@ -1372,10 +1509,14 @@ time.
 | D-1 | **`feature_raw_stats_snapshots` holds duplicate rows.** 443,308 duplicate `(player_id, format_id, as_of_date)` groups for `scope='overall'` — 1.81M of 2.32M rows. The unique constraint includes `scope_id`, which is NULL there, and Postgres treats NULLs as distinct, so it never fires. **2,361 groups carry conflicting values.** | Two equivalent formulations of the win export disagreed on 411 matches | Every model that reads a snapshot. The win export now breaks the tie on `id DESC` so it is at least reproducible; nothing else does |
 | D-2 | **The per-format win exports are wrong and unread.** `win_encoded_T20.csv` and `win_encoded_T20I.csv` are byte-identical and each contain *both* formats' rows | `SELECT format_code` over each file: both give `{T20: 12022, T20I: 2106}` | None today — only `win_encoded_all.csv` is consumed. It is a trap for the first person who reads the per-format files |
 | D-3 | **`output/ml-service/` is shared mutable state with no run identity.** A concurrent job silently replaced the win artifacts behind a reported measurement; the `.joblib` and its metadata sidecar disagreed with each other for twelve minutes | Artifacts rewritten mid-session with full-data models while the metadata still described the cutoff-trained ones | Any measurement can be invalidated by an unrelated job. Detected only by checking `n_samples` in the sidecar |
+| D-4 | **An interaction term was silently dropped at prediction, so every feature vector was one column short.** The models carry `batting_trend_w5 × inning`; the serving contract calls that column `batting_inning`, the lookup missed, and the skip was unlogged | `503 X has 37 features, but RobustScaler is expecting 38 features as input` on every match-context prediction | **Fixed in S-10's PR** — it blocked the acceptance run. The operand now resolves through `CSV_COLUMN_MAP` and a genuinely missing one raises, naming it |
+| D-5 | **`ml-service/config.json` asked for share models that cannot exist.** `use_share_models: true`, but no `batting_share_*` / `bowling_share_*` artifact has ever been built here and the trainer's `--share-targets` path needs an `innings_runs` column the current export no longer carries | `503 TRAIN_ON_THE_FLY_FAILED: No artifacts loaded for format=…` on every prediction with match context | **Fixed in S-10's PR** — set to `false`, matching `config.default.json`. The reconciliation layer these models feed goes in P-4 |
 
 D-1 is the one with real consequences and should be fixed before the identity work in
 [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md), since that plan rebuilds the same
-tables.
+tables. D-4 and D-5 together meant *no* prediction carrying match context had worked for some
+time; nothing measured them because every metric in the repo is computed from exports rather
+than through the serving path (H-8, train/serve parity, is exactly this hole).
 
 ---
 
