@@ -104,13 +104,21 @@ stays: the source genuinely does not know.
 
 | ID | Status | PR branch (when done) | Title |
 |----|--------|----------------------|-------|
-| I-1 | todo | `identity/i-1-person-id` | Capture the Cricsheet person identifier at import |
-| I-2 | todo | `identity/i-2-key-players-by-person` | Key players by that identifier, not by name |
-| I-3 | todo | `identity/i-3-team-gender` | Team identity includes gender |
+| I-1 | done | `arch/p-1-identity` | Capture the Cricsheet person identifier at import |
+| I-2 | done | `arch/p-1-identity` | Key players by that identifier, not by name |
+| I-3 | done | `arch/p-1-identity` | Team identity includes gender |
 | I-4 | todo | `identity/i-4-team-lineage` | Franchise renames are one club, not two |
-| I-5 | todo | `identity/i-5-rebuild-and-measure` | Rebuild the derived data and price the change |
+| I-5 | partly | `arch/p-1-identity` | Rebuild the derived data and price the change |
 
-**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked`
+**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked` | `partly`
+
+I-1, I-2 and I-3 landed together as **P-1** of
+[ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md), which is the
+active plan; splitting them would have meant three re-imports of the same 22,734 files to
+measure one change. The column is named `player.external_id` there rather than
+`cricsheet_person_id`. I-5 is `partly` because the XI path is rebuilt and priced (E4
+below) while the legacy base models still need `precompute-features` re-run — see its
+section.
 
 **Dependency order is strict.** I-2 needs I-1's column populated. I-5 needs everything
 above it, and nothing above it is measurable until I-5 runs.
@@ -178,6 +186,18 @@ IS NULL` is small and every null is explainable. Report the number in the PR bod
 
 **Risk.** Low. Nothing reads the column yet.
 
+> **Measured (P-1, `arch/p-1-identity`).** The column is `player.external_id`.
+> `SELECT count(*) FROM player WHERE external_id IS NULL` is **0** of 13,623 rows: every
+> name used in a squad or on a delivery across the 22,734 files has a registry entry. The
+> fallback path exists and is logged, and never fired on this dataset.
+>
+> **The lookup has to trim both sides.** Four registry *keys* in the dataset carry a
+> trailing space -- `"Lalchhuanliana "` -- while the squad and delivery entries naming the
+> same person do not. An exact-match lookup dropped that person onto the name-keyed
+> fallback and split one career across two rows, which is the bug this item removes. No
+> file has two identifiers whose names differ only by surrounding space, so trimming
+> cannot merge two people.
+
 ---
 
 ## I-2 — Key players by that identifier, not by name
@@ -215,6 +235,26 @@ back and logs; the in-match namesake still yields no `match_player` row for eith
 **Risk.** This invalidates every precomputed feature and every model artifact. That is
 what I-5 is for. Do not run it on a day when a model number is needed.
 
+> **Measured (P-1).** `player` holds **13,623** rows, from **13,483** on the same dataset
+> under name-keying: **140 people recovered**. 13,568 is the count of registry ids that
+> appear in a *squad*; the extra 55 are people who appear only on a delivery, as
+> substitute fielders.
+>
+> The spot-checks resolve: `SR Taylor` → 2 rows, `Rashid Khan` → 3, `Shahid Afridi` → 2,
+> `A Mishra` → 3. `NR Sciver-Brunt` is one row under her current name.
+>
+> **The database is not the source's own count of shared names.** In the source, 163 squad
+> names cover 348 people. In `player` afterwards, **162 names are still shared by 345
+> people** -- because the display name settles to the *most recent* spelling, so a person
+> whose current name differs from their namesake's no longer shares the string.
+>
+> **Display name.** `player.player_name` is the spelling from the player's latest match,
+> with `player.name_as_of` recording which date it came from. The rule cannot be "first
+> written": the import is concurrent, so first-writer-wins makes two runs of the same
+> dataset disagree on a name. It is settled once at the end of the import from a rule
+> that does not depend on arrival order (latest date, then the greater string), and rows
+> on the name-keyed fallback are excluded, because for those the name *is* the identity.
+
 ---
 
 ## I-3 — Team identity includes gender
@@ -241,6 +281,27 @@ opposition gender disagrees with `match.gender` — assert it as a query in the 
 
 **Risk.** Low in isolation; it changes the meaning of an existing model feature, which I-5
 measures.
+
+> **Measured (P-1).** `opposition` went from **394** rows to **524** — exactly the
+> predicted **+130**, split 364 men's and 160 women's. The disagreement query returns
+> zero:
+>
+> ```sql
+> SELECT count(*) FROM match_player mp
+> JOIN match m ON m.match_id = mp.match_id
+> JOIN opposition o ON o.id = mp.opposition_id
+> WHERE o.gender IS DISTINCT FROM m.gender;   -- 0
+> ```
+>
+> Open decision 1 keeps its default: identities only. The models still mix genders, but
+> now because nobody has decided otherwise rather than because the schema could not tell
+> them apart.
+>
+> **One serving-path consequence.** `PredictTeams` takes a team *name* and a format and no
+> gender, so a name alone can no longer name one team. `db.FindOppositionIDForFormat`
+> resolves it to the side that has actually played that format, most recently, and logs
+> when the name was ambiguous. The proper fix is for the caller to carry the gender, which
+> arrives with P-5's ids-in serving path.
 
 ---
 
@@ -336,14 +397,34 @@ can only be justified by a metric win will quietly rot the moment the metric dis
 **Risk.** Long-running and hard to interrupt cleanly; `precompute-features` has been
 cancelled mid-run before. Run it when nothing else needs the box.
 
+> **Measured (P-1) — that is what happened.** E4 in
+> [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md) trains the XI
+> win models on two databases built from the same 22,734 files by the same model code at
+> the same cutoff, differing only in identity. No format and no gender subset moves by
+> more than its own holdout can resolve; the largest observed delta, T20I women +0.042
+> display AUC, sits on 70 matches whose 95% resolution is ±0.154. The full table is in the
+> plan's P-1 row.
+>
+> The identity is still wrong without this change, and the rebuild is what makes the
+> claim checkable at all. It is a correctness change that does not pay in discrimination,
+> and saying so here is the point of writing the expectation down first.
+>
+> **Still to do for I-5:** only the XI path is rebuilt. `precompute-features`,
+> `export-dataset` and the legacy base models read tables the migration truncates, so
+> **no batting/bowling/fielding number can be quoted until precompute is re-run**. That is
+> deliberate: those tables and their models are deleted by P-5/P-6, and spending three
+> hours of precompute to price a model that is being removed is not worth the box time.
+> The player-level MAE half of this item's acceptance is therefore not measured, and the
+> plan's migration sequence is where it would be if it were.
+
 ---
 
 ## Open decisions
 
 | # | Decision | Needed by | Default if unanswered |
 |---|---|---|---|
-| 1 | Should the models also be **split** by gender, or only the identities? 20% of matches are women's cricket, and a T20 model currently learns both | I-3 | Identities only. Splitting the models halves the data for every format and is a modelling decision this plan should not smuggle in |
-| 2 | When the source has no registry entry for a name, fall back to name-keying or refuse the row? | I-2 | Fall back **and log**. Refusing costs real matches over a source gap, which is the trade S-3c already rejected |
+| 1 | Should the models also be **split** by gender, or only the identities? 20% of matches are women's cricket, and a T20 model currently learns both | I-3 | Identities only. Splitting the models halves the data for every format and is a modelling decision this plan should not smuggle in — **taken as the default in P-1**; the XI report now splits its *metrics* by gender (E4) so the question can be answered with numbers when H-7's E7 asks it |
+| 2 | When the source has no registry entry for a name, fall back to name-keying or refuse the row? | I-2 | Fall back **and log**. Refusing costs real matches over a source gap, which is the trade S-3c already rejected — **implemented in P-1**; it never fired on this dataset |
 | 3 | Should `canonical_id` merge a franchise that was *replaced* rather than renamed — Deccan Chargers → Sunrisers Hyderabad was a new owner and a new squad, not a rebrand | I-4 | Merge it. The alternative is a judgement about corporate continuity that the data cannot settle; record the assumption in the PR body |
 
 ---

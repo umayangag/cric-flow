@@ -14,8 +14,9 @@ type CricsheetDB interface {
 	UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error
 	GetOrCreateVenue(ctx context.Context, name string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
-	GetOrCreateOpposition(ctx context.Context, name string) (int64, error)
-	GetOrCreateByName(ctx context.Context, name string) (int64, error)
+	GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, error)
+	GetOrCreatePlayer(ctx context.Context, externalID, name, nameAsOf string) (int64, string, error)
+	UpdatePlayerDisplayNames(ctx context.Context, names []db.PlayerDisplayName) error
 	UpsertBatting(ctx context.Context, b *db.Batting) error
 	UpsertBattingBatch(ctx context.Context, rows []db.Batting) error
 	UpsertBowling(ctx context.Context, b *db.Bowling) error
@@ -67,12 +68,16 @@ func (realDB) GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	return db.GetOrCreateSeason(ctx, name)
 }
 
-func (realDB) GetOrCreateOpposition(ctx context.Context, name string) (int64, error) {
-	return db.GetOrCreateOpposition(ctx, name)
+func (realDB) GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, error) {
+	return db.GetOrCreateOpposition(ctx, name, gender)
 }
 
-func (realDB) GetOrCreateByName(ctx context.Context, name string) (int64, error) {
-	return db.GetOrCreateByName(ctx, name)
+func (realDB) GetOrCreatePlayer(ctx context.Context, externalID, name, nameAsOf string) (int64, string, error) {
+	return db.GetOrCreatePlayer(ctx, externalID, name, nameAsOf)
+}
+
+func (realDB) UpdatePlayerDisplayNames(ctx context.Context, names []db.PlayerDisplayName) error {
+	return db.UpdatePlayerDisplayNames(ctx, names)
 }
 
 func (realDB) UpsertBatting(ctx context.Context, b *db.Batting) error {

@@ -188,7 +188,7 @@ type stubSquadResolver struct {
 
 var errStubResolver = errors.New("resolver unavailable")
 
-func (s *stubSquadResolver) GetPlayerID(_ context.Context, name string) (int64, error) {
+func (s *stubSquadResolver) PlayerID(_ context.Context, name string) (int64, error) {
 	s.playerCalls++
 	if name == s.failPlayer {
 		return 0, errStubResolver
@@ -196,7 +196,7 @@ func (s *stubSquadResolver) GetPlayerID(_ context.Context, name string) (int64, 
 	return s.playerIDs[name], nil
 }
 
-func (s *stubSquadResolver) GetOppositionID(_ context.Context, name string) (int64, error) {
+func (s *stubSquadResolver) OppositionID(_ context.Context, name string) (int64, error) {
 	s.teamCalls++
 	if name == s.failTeam {
 		return 0, errStubResolver

@@ -214,7 +214,7 @@ to two model families and one derived simulator, all fed by one pass over one ta
 | E1 | Do sequence features add to L2-B? | Ablate `seqcalc` families as extra as-of accumulators in L1; measure Spearman / pinball on the holdout | Keep a family only if it moves pinball loss by > 1% over three seeds; otherwise drop it and its tables |
 | E2 | Is the simulator consistent with the display model? | Simulated P(win) vs display P(win) on holdout matches; calibration of each | If simulated P(win) is worse-calibrated by > 0.01 Brier, keep it as a display-only distribution and never as a probability |
 | E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain |
-| E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most |
+| E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
 | E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way |
 | E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's |
 | E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) |
@@ -222,6 +222,65 @@ to two model families and one derived simulator, all fed by one pass over one ta
 Already answered by S-9/S-10 (do not re-run): pooling formats for the win model (no),
 neural nets (no gain), subset-by-prediction (no; weight by involvement instead), monotone
 objective (logistic wins for the argmax).
+
+### 5.1 E4, run — what identity is worth
+
+**Design.** Two Postgres databases built from the same 22,734 Cricsheet files. *Before* is
+the pre-P-1 importer: players keyed by name, one `opposition` row per name. *After* is the
+P-1 importer: players keyed by the Cricsheet registry id, teams keyed by (name, gender).
+Both are then read by the *same* `ml.xi.train` at `--cutoff 2025-09-01`, with the same
+seeds `(0, 1, 2)` for the display model; the objective is a logistic regression and has no
+seed. Only the identity in the data differs — no model code, no hyperparameter and no
+cutoff changes between arms, which is what makes the delta attributable.
+
+Ratings: 13,428 player keys before, 13,568 after. Frame: 20,722 rows before, 20,723 after
+(that one row is the `StableMatchID` non-determinism below, not identity).
+
+**Aggregate, held-out (2025-09-01 → 2026-08-25).** Objective is the serving,
+toss-marginalised figure — the number the optimiser's argmax is judged on. `± resolvable`
+is the smallest difference the holdout can distinguish at 95% (Hanley–McNeil SE on the AUC
+difference), which is the column that decides whether any of these deltas mean anything.
+
+| format | n | objective before | after | Δ | display before | after | Δ | ± resolvable |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| T20  | 1577 | 0.723 | 0.719 | −0.004 | 0.737 ± 0.003 | 0.737 ± 0.002 | −0.001 | 0.035 |
+| T20I |  178 | 0.742 | 0.741 | −0.000 | 0.693 ± 0.000 | 0.726 ± 0.000 | +0.033 | 0.105 |
+| ODI  |  375 | 0.684 | 0.682 | −0.003 | 0.723 ± 0.000 | 0.706 ± 0.000 | −0.017 | 0.076 |
+| TEST |  157 | 0.585 | 0.583 | −0.002 | 0.588 ± 0.000 | 0.601 ± 0.000 | +0.013 | 0.125 |
+
+**By gender**, which is where the plan expected the gain, since 20% of the dataset is
+women's cricket and it carried both defects — shared team ids and blended careers:
+
+| format | subset | n | objective before | after | Δ | display before | after | Δ | ± resolvable |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| T20  | women | 533 | 0.767 | 0.766 | −0.000 | 0.795 | 0.803 | +0.007 | 0.053 |
+| T20  | men  | 1044 | 0.698 | 0.692 | −0.006 | 0.714 | 0.706 | −0.008 | 0.045 |
+| T20I | women |  70 | 0.769 | 0.772 | +0.003 | 0.740 | 0.781 | +0.042 | 0.154 |
+| T20I | men  |  108 | 0.730 | 0.729 | −0.001 | 0.700 | 0.701 | +0.000 | 0.139 |
+| ODI  | women | 141 | 0.776 | 0.773 | −0.003 | 0.808 | 0.813 | +0.005 | 0.104 |
+| ODI  | men   | 234 | 0.620 | 0.617 | −0.003 | 0.671 | 0.649 | −0.022 | 0.101 |
+| TEST | women |   2 | — | — | — | — | — | — | — |
+| TEST | men   | 155 | 0.581 | 0.580 | −0.001 | 0.578 | 0.582 | +0.004 | 0.127 |
+
+**Reading it.** Every delta is inside its holdout's resolution, most of them by a factor of
+three or more, and the signs are inconsistent across formats and subsets. The objective —
+the model that actually selects — moves by at most 0.006 anywhere, with a seed spread of
+zero because it is deterministic. The largest number in the table, T20I women +0.042, sits
+on 70 matches that cannot resolve less than ±0.154. **The honest conclusion is that P-1
+buys no measurable discrimination, in the aggregate or in women's cricket.**
+
+That is the outcome IDENTITY_PR_CHECKLIST I-5 wrote down in advance as the likely one: 163
+collisions out of 13,568 people is about 1% of the roster, and the affected players are not
+the ones being selected. It does not make the change wrong. Two people sharing one rating
+is a defect whether or not the aggregate notices, and the rest of the plan — the
+performance model in P-3, the simulator in P-4, and any per-player number the UI shows —
+attributes to a *person*. The reason to record this is so nobody later justifies the work
+with a metric that never moved.
+
+**What it does not say.** These are two arms on one holdout window, not a walk-forward, so
+they price identity for *this* window only. The women's subsets are too small to resolve
+anything, which is itself the finding to carry into E7: gender-split context baselines
+cannot be evaluated on the women's holdout of a format until there are more of them.
 
 ---
 
@@ -234,7 +293,7 @@ checklist.
 | id | PR | acceptance |
 |---|---|---|
 | P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches gives `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stays off. The gate is also mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
-| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | E4 delta recorded; re-import reproducible |
+| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content, *not* in per-match squads — see the `StableMatchID` finding. Franchise lineage (I-4) is not in this PR |
 | P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20); a backtest at date D provably cannot see D or later (P-0 had to freeze the artifact by hand — `scripts/experiments/xi/freeze_ratings.py` — because the serving store holds one state through today) |
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
@@ -281,7 +340,7 @@ names the experiment that will.
 | H-6 | **Rating hyperparameters are not load-bearing.** decay and prior were chosen by judgement | rating pass | Measured sweep (`health_experiment.py`): decay 0.80–0.97 and prior 20–150 move objective AUC by ≤ 0.01 in T20 and ODI — flat. Keep 0.90 / 60; re-run the sweep when the pass changes | done |
 | H-7 | **Gender- and competition-aware baselines.** Context expectations (runs per ball per over) are per format only; women's and men's matches share them, and so do the IPL and a club league | rating pass | E7: split the context baseline by gender (cheap, gender is on every match); measure the women's-subset AUC before/after. Competition tiers only if E7 shows gender matters | open (E7) |
 | H-8 | **Train / serve parity.** The serving store must compute the same features the training frame holds | all | Harness: for the last 50 holdout matches, rebuild the row from the serving store *as of that date* and assert equality with the training frame (the S-3c defect, made a test) | open — and P-0 found what its absence costs: the legacy batting/bowling path had been serving a 37-wide vector to a 38-wide scaler because an interaction operand is spelled `inning` in training and `batting_inning` in serving, and the mismatch was silently skipped. Every match-context prediction 503'd. See D-4/D-5 in the selection checklist |
-| H-9 | **Identity.** Ratings keyed by name merge people | all | P-1 (IDENTITY I-3/I-4); E4 measures the delta. Until then the JSON-path numbers are the trusted ones | open |
+| H-9 | **Identity.** Ratings keyed by name merge people | all | P-1 (IDENTITY I-3/I-4); E4 measures the delta | **done (P-1)**: players key off the Cricsheet registry id, teams off (name, gender), on both the JSON and the Postgres source, so the two paths produce the same keys and their artifacts are comparable. E4 found the correction worth ≤ 0.01 AUC everywhere it can be resolved. Franchise lineage (I-4) is still open and is what S-7's opposition encoding waits on |
 | H-10 | **Cold start is bounded.** A player with no history must regress to neutral, never explode | win, performance | Measured: replacing a player by a debutant moves p by a median −0.003, p10 −0.05. Unit test on `side_vectors` for an unseen key | done |
 | H-11 | **Staleness.** Ratings are only as fresh as the last import | rating pass | `/xi/status` reports `ratings_through`; the ops step fails a prediction request with a clear code if it is older than N days (config, default 14). Retrain is one command and ~2 minutes, so the cadence is "after every import" | open |
 | H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | open (P-3) |
@@ -315,7 +374,7 @@ no-backward-compatibility rule applies: no shims, no views kept "just in case").
 | table | today | target | when |
 |---|---|---|---|
 | `match`, `match_inning`, `match_format`, `match_player`, `ball_event`, `opposition`, `player`, `venue`, `season` | the event core | **keep, unchanged.** `ball_event` already carries striker, bowler, runs split, extras kind, wicket kind, `player_out_id`, `fielder_ids`, `is_legal`, `ball_seq` — everything the rating pass and the performance model need. No column is added to it | — |
-| `player.external_id` (new), `opposition.gender` (new) | player identity is by name; 130 team names span both genders | **add**: Cricsheet registry id on `player`, gender on the team key. The importer already reads both from `info.registry` / `info.gender` | P-1 |
+| `player.external_id` (new), `player.name_as_of` (new), `opposition.gender` (new) | player identity is by name; 130 team names span both genders | **done (P-1, migration `0004_identity.sql`)**: Cricsheet registry id on `player`, gender on the team key. `player_name`'s unique constraint is gone — the name is a display attribute now, settled to the spelling of the player's latest match, which `name_as_of` records. `external_id` is nullable-unique with a partial unique index on `player_name` for the rows that have no registry entry (0 today). The migration truncates the match-derived and precomputed tables and the importer writes them again: re-pointing 20 player-bearing columns across 17 tables in place would need the per-match source to say which of two namesakes each row belongs to, which makes the backfill a re-import in disguise | P-1 |
 | `datasets`, `data_migrations` | import provenance, migration ledger | **keep** | — |
 | `feature_raw_stats_snapshots` (2.32M rows, 1.81M duplicates, D-1) | read by precompute, exports, base models | **drop** | P-6, after P-5 re-points the last consumer |
 | `player_window_features` | rolling windows for the sequence exports | **drop** | P-6 |
@@ -393,7 +452,7 @@ quoted in this document should be read with them in mind.
 | **Unknowable-at-decision inputs** (toss, innings, batting order) | trained on real values, served constants (S-2, S-8) | marginalised on the serving path (H-3); the display model accepts the toss once known | closed for win; P-3 for performance |
 | **Target leakage through team context** | none found: Elo, form, h2h, venue bat-first rate all update *after* the day closes | — | closed |
 | **Train / serve skew** | serving aggregated over 11, training over the scorecard | same code path; parity test H-8 turns it into a permanent check | test open — P-2 |
-| **Identity leakage** (two people as one, one person as two) | name-keyed ids; men's and women's sides share team ids | P-1; the JSON-path numbers use registry ids and are unaffected | open — P-1 |
+| **Identity leakage** (two people as one, one person as two) | name-keyed ids; men's and women's sides share team ids | P-1; the JSON-path numbers use registry ids and are unaffected | **closed for players and gender (P-1)**; a franchise that renames is still two clubs (I-4) |
 | **Holdout reuse** (model-selection leakage) | — new — | the 2025-09-01 holdout was used in this session to choose feature families, model class, monotone constraints and marginalisation. Every reported number is therefore mildly optimistic as an estimate of *future* performance, even though each individual comparison is valid. Closure: **rule H-19** — L4 evaluates by rolling-origin walk-forward over several cutoffs (e.g. quarterly from 2024-01 to 2025-09) and reports mean ± spread; and a **locked final window** (matches after the latest cutoff, 2025-09-01 → present) is scored once per release, never used for choices. The numbers in this document are the *development* numbers; P-0 reports the first locked-window numbers | partly — P-0 reported (§10.3) and found no drop, but on the same window that guided the choices, so the reuse is recorded rather than closed; P-2 closes it |
 | **Leak canaries** | S-3c was found by comparing the model to one raw column and to the TEST format as control | H-2: best-single-column AUC (done) plus the TEST-control check: a feature whose AUC collapses in TEST but not in limited-overs formats is suspect | partly |
 
@@ -433,6 +492,39 @@ Cricsheet registry ids, so E4's delta, if there is one, lives in the women's sub
 than overall. It is **not** the drop this paragraph was predicting, because the window that
 was scored is the same window the choices were made on. Nothing has yet been evaluated on
 data that guided no decision. P-2's rolling origin is still the whole of the answer.
+
+**P-0's E4 guess was right.** The delta is not in the women's subset either; §5.1 has the
+numbers. What P-0 read as "the source costs nothing at the aggregate" turns out to be true
+of every subset the holdout can resolve.
+
+### 10.4 A reproducibility defect found while running P-1, not caused by it
+
+The re-import was run three times over the same 22,734 files to check it is reproducible.
+Row counts are stable to the row, and `player` and `opposition` — every identifier, display
+name and gender — are byte-identical between runs. **Per-match squads are not.** Across two
+runs, 80 `match_player` rows on 14 matches differ.
+
+The cause is `StableMatchID(date, teams[0], teams[1])`. That key is claimed by more than one
+file for **309 of the 22,734 files**, which is why the database holds 22,425 matches and not
+22,734: a two-match series on one day between the same two sides is one match id. The
+importer runs files concurrently and each writes its match in one transaction that replaces
+the squad, so *which file's squad survives is decided by goroutine scheduling*. Both surviving
+squads are correct records of a real match; the database just cannot say which match it is
+holding.
+
+It is worth naming precisely because it is easy to mistake for identity work:
+
+- It exists on `main` and is untouched by P-1. Player and team identity are keyed off the
+  source; match identity is keyed off a hash that is not unique.
+- Its blast radius is small — 309 files, and the two arms of E4 differ by one training row
+  because of it — but it is unbounded in principle, and it makes "the same dataset produces
+  the same database" false.
+- Fixing it means putting something file-unique into the hash (`info.event.match_number`, or
+  the Cricsheet file id), which changes **every** `match_id` in the database and every stored
+  reference to one. That is its own PR, not a rider on this one.
+
+It belongs to **H-16** (run identity: a measurement must name the artifact it measured) and
+**H-15** (data-quality gate: the per-run counts that would have caught it). P-6 owns both.
 
 ---
 

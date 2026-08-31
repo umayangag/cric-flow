@@ -30,8 +30,11 @@ func getUniqueStringsWithParams(ctx context.Context, query string, args ...any) 
 }
 
 // GetUniqueTeams returns a list of unique team names from the opposition table.
+//
+// DISTINCT because a team is (name, gender) and 130 names hold two sides; this list feeds
+// a name-only picker, so it lists each name once.
 func GetUniqueTeams(ctx context.Context) ([]string, error) {
-	return getUniqueStringsWithParams(ctx, "SELECT opposition_name FROM opposition ORDER BY opposition_name")
+	return getUniqueStringsWithParams(ctx, "SELECT DISTINCT opposition_name FROM opposition ORDER BY opposition_name")
 }
 
 // GetUniqueFormats returns a list of unique match format codes from the match_format table.

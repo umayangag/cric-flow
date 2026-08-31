@@ -17,7 +17,7 @@ func TestEntityCache_WhenPoolNil(t *testing.T) {
 	cache := GetGlobalCache()
 
 	// When Pool is nil, cache returns 0, nil (fallback for tests)
-	id, err := cache.GetPlayerID(ctx, "any")
+	id, err := cache.GetPlayerID(ctx, "abc12345", "any", "2024-01-01")
 	require.NoError(t, err)
 	require.Equal(t, int64(0), id)
 
@@ -41,7 +41,7 @@ func TestEntityCache_WhenPoolNil(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ids, 1)
 
-	id, err = cache.GetOppositionID(ctx, "India")
+	id, err = cache.GetOppositionID(ctx, "India", "male")
 	require.NoError(t, err)
 	require.Equal(t, int64(0), id)
 }
@@ -109,4 +109,23 @@ func TestGetGlobalCache_Singleton(t *testing.T) {
 	c1 := GetGlobalCache()
 	c2 := GetGlobalCache()
 	require.Same(t, c1, c2)
+}
+
+func TestPlayerKey_ExternalIDAndNameNeverCollide(t *testing.T) {
+	t.Parallel()
+
+	// The whole point of the identity work: a registry identifier and a name are
+	// different kinds of key and must not share a namespace.
+	require.NotEqual(t, playerKey("SR Taylor", ""), playerKey("", "SR Taylor"))
+	require.Equal(t, playerKey("92cf79a8", "SR Taylor"), playerKey("92cf79a8", "S Taylor"))
+	require.NotEqual(t, playerKey("92cf79a8", "SR Taylor"), playerKey("a9231c3f", "SR Taylor"))
+}
+
+func TestOppositionKey_SameNameDifferentGenderAreDifferentTeams(t *testing.T) {
+	t.Parallel()
+
+	require.NotEqual(t, oppositionKey("Australia", "male"), oppositionKey("Australia", "female"))
+	// The separator has to be a character no team name contains, or "Indi"+"a" and
+	// "India"+"" would be one team.
+	require.NotEqual(t, oppositionKey("Indi", "a"), oppositionKey("India", ""))
 }

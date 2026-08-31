@@ -91,13 +91,18 @@ func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string)
 	return out, rows.Err()
 }
 
-// ListPlayerPoolByTeam returns players who have played for the given team (opposition name) in the format,
+// ListPlayerPoolByOpposition returns players who have played for the given team in the format,
 // with at least one batting or bowling record before the cutoff date. Uses feature snapshots for form/consistency
 // when available. Optionally include extra player IDs (e.g. IPL auction players with no prior team history).
-func ListPlayerPoolByTeam(
+//
+// It takes an opposition id rather than a team name because a name is no longer one
+// team: 130 of the 394 names in the dataset belong to both a men's and a women's side.
+// Resolving the name is the caller's job (FindOppositionIDForFormat), which also stops
+// this read path from creating a team row as a side effect of a prediction request.
+func ListPlayerPoolByOpposition(
 	ctx context.Context,
 	formatCode string,
-	teamName string,
+	oppID int64,
 	cutoff time.Time,
 	extraPlayerIDs []int64,
 ) ([]PlayerPoolRow, error) {
@@ -105,10 +110,6 @@ func ListPlayerPoolByTeam(
 		return nil, errors.New("db pool not initialized")
 	}
 	formatID, err := GetOrCreateMatchFormat(ctx, formatCode)
-	if err != nil {
-		return nil, err
-	}
-	oppID, err := GetOrCreateOpposition(ctx, teamName)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +147,7 @@ func ListPlayerPoolByTeam(
 			LIMIT 1
 		) latest ON true
 		WHERE p.is_retired = 0
-		ORDER BY p.player_name
+		ORDER BY p.player_name, p.id
 	`, formatID, cutoffDate, oppID)
 	if err != nil {
 		return nil, err
