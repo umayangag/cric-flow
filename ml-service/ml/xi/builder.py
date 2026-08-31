@@ -9,8 +9,9 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from ml.xi import contract as C
+from ml.xi.quality import DataQuality
 from ml.xi.ratings import RatingState, aggregate_side, match_features
-from ml.xi.sources import MatchSource
+from ml.xi.sources import MatchSource, SourceCounts
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class BuildResult:
     frame: pd.DataFrame  # one row per match with a decided winner (plus metadata columns)
     state: RatingState  # as-of the end of the source: what the serving path predicts from
     n_undecided: int  # matches folded into the state but not usable as a training row
+    quality: DataQuality  # what the pass dropped and what it found odd (H-15)
 
 
 META_COLS: List[str] = ["match_id", "match_date", "format_code", "gender", "team1", "team2", "venue", C.TARGET_COL]
@@ -34,9 +36,15 @@ def build(source: MatchSource, progress: Optional[Callable[[int], None]] = None)
     state = RatingState()
     rows = []
     n_undecided = 0
+    n_seen = 0
+    namesake_sides = 0
+    oversized_squads = 0
     pending: List = []
     current_date = None
     for i, match in enumerate(source.iter_matches()):
+        n_seen += 1
+        namesake_sides += _namesake_sides(match)
+        oversized_squads += _oversized_squads(match)
         if current_date is not None and match.match_date < current_date:
             raise ValueError(f"source is not in date order: {match.match_id} ({match.match_date}) after {current_date}")
         if current_date is not None and match.match_date != current_date:
@@ -69,10 +77,67 @@ def build(source: MatchSource, progress: Optional[Callable[[int], None]] = None)
     for done in pending:
         state.update(done)
     frame = pd.DataFrame(rows)
+    counts = _source_counts(source, n_seen=n_seen)
+    quality = DataQuality(
+        source=type(source).__name__,
+        offered_matches=counts.offered,
+        out_of_scope_matches=counts.out_of_scope,
+        unusable_matches=counts.unusable,
+        matches_read=counts.yielded,
+        undecided_matches=n_undecided,
+        namesake_sides=namesake_sides,
+        oversized_squads=oversized_squads,
+        unknown_player_keys=_unknown_player_keys(state),
+        player_keys=len(state.players),
+    )
     logger.info(
-        "rating pass: %d training rows, %d undecided matches, %d players",
+        "rating pass: %d training rows, %d undecided matches, %d players "
+        "(%d namesake sides, %d sides over eleven, %d unresolved player keys)",
         len(frame),
         n_undecided,
-        len(state.players),
+        quality.player_keys,
+        quality.namesake_sides,
+        quality.oversized_squads,
+        quality.unknown_player_keys,
     )
-    return BuildResult(frame=frame, state=state, n_undecided=n_undecided)
+    return BuildResult(frame=frame, state=state, n_undecided=n_undecided, quality=quality)
+
+
+def _source_counts(source: MatchSource, n_seen: int) -> SourceCounts:
+    """What the source says it did, or what the pass saw if it does not say.
+
+    A source that reports nothing is described by what arrived rather than by zeros: zeros
+    would make the gate's accounting identity hold vacuously, which is the opposite of what
+    it is for. Only a source that tracks its own drops can report them.
+    """
+    counts = getattr(source, "counts", None)
+    if isinstance(counts, SourceCounts) and counts.offered:
+        return counts
+    return SourceCounts(offered=n_seen, yielded=n_seen)
+
+
+def _namesake_sides(match) -> int:
+    """Sides of this match holding a player key the other side also holds.
+
+    One person cannot play for both teams, so a shared key means two people the source
+    cannot tell apart -- Cricsheet's registry is keyed by name within a file. The go-app
+    importer drops such a name from both squads; a source that does not will hand the same
+    ratings to both sides.
+    """
+    shared = set(match.team1_players) & set(match.team2_players)
+    return 2 if shared else 0
+
+
+def _oversized_squads(match) -> int:
+    """Sides of more than eleven: concussion and injury replacements, listed in full."""
+    return sum(1 for side in (match.team1_players, match.team2_players) if len(side) > 11)
+
+
+def _unknown_player_keys(state: RatingState) -> int:
+    """Keys the source could not resolve to a person.
+
+    Both sources spell such a key ``name:<name>``, so counting the prefix counts the
+    fallbacks. Zero on the current dataset from either source, which is what makes it worth
+    gating: the fallback is the path that quietly goes back to identifying people by name.
+    """
+    return sum(1 for key in state.players.key_to_slot if str(key).startswith("name:"))

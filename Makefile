@@ -243,7 +243,13 @@ walk-forward:
 # (POSTGRES_* from the environment or .env) or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory.
 train-xi:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service train-xi CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",)
+	$(MAKE) -C ml-service train-xi CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
+
+# Compare the database against the Cricsheet archive (H-15). See ml-service/Makefile.
+XI_PARITY_DIR ?= data/go-app/cricsheet
+xi-parity:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service xi-parity CRICSHEET_DIR="$(abspath $(XI_PARITY_DIR))"
 
 # Held-out discrimination report for the win model (see docs/ml-and-training.md)
 win-discrimination:
@@ -686,6 +692,7 @@ help:
 	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
 	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
 	@echo "  train-xi           Train the XI-responsive win model + player ratings (CUTOFF=YYYY-MM-DD; DB, or CRICSHEET_DIR=)"
+	@echo "  xi-parity          Check the database against the Cricsheet archive (H-15; XI_PARITY_DIR=)"
 	@echo "  train-batting-bowling  Train batting + bowling"
 	@echo "  train-innings      Train innings model (used for hybrid reconciliation)"
 	@echo "  train-combination-meta  Fit bat/bowl/field weights from backtest_contributions.csv"

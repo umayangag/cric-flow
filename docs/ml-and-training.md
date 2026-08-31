@@ -311,6 +311,49 @@ format or on either gender subset. A franchise that renames is still two clubs �
 `xi_win_report.json` splits its holdout discrimination by gender, for information rather than as
 a gate: 20% of the dataset is women's cricket, and the men's subset dominates any aggregate.
 
+### Data-quality gate (H-15)
+
+Every rating pass counts what it dropped and what it found odd, and `train-xi` fails on the
+counts before the artifacts are worth anything. `ml/xi/quality.py` holds two rules:
+
+- **Everything is accounted for.** A source offers N matches; N must equal the matches it
+  yielded plus those out of scope plus those it could not use. A match dropped for a reason
+  nothing names fails the run. This is the check that would have caught the database holding
+  22,425 matches for 22,734 files.
+- **Nothing doubles quietly.** Any quality count over twice the last accepted run's — or one
+  that was zero and is not any more — fails. Data does not usually get twice as broken
+  between two runs of the same pipeline.
+
+The counts go into `xi_win_report.json` under `data_quality`, with any failures beside them.
+The *accepted* counts live separately in `xi_data_quality_baseline.json`, and a failing run
+does **not** update it, so re-running cannot clear the gate. When the new numbers are right,
+say so explicitly:
+
+```bash
+make train-xi CUTOFF=2025-09-01 ACCEPT_DATA_QUALITY=1
+```
+
+Current baseline on the full dataset: 22,734 matches offered and 22,734 read, 1,710
+undecided, 0 namesake sides, 1,358 sides of more than eleven (concussion and injury
+replacements, which Cricsheet lists in full), 0 unresolved player keys, 13,569 players.
+
+### Source parity (`make xi-parity`)
+
+The two rating sources are supposed to describe the same cricket, and three times they did
+not — a hashed match id that lost 309 matches, an unnamed substitute fielder folded into a
+fictional player, and a namesake rule implemented on one side only. Each was a one-line
+difference in a count that nobody was printing.
+
+```bash
+make xi-parity                                    # defaults to data/go-app/cricsheet
+make xi-parity XI_PARITY_DIR=path/to/cricsheet
+```
+
+It runs the rating pass over both sources, prints their counts side by side and exits
+non-zero if any count or the player-key sets differ. It needs the archive as well as the
+database, which is why it is a separate command rather than part of a retrain. Run it after
+changing the importer or either source.
+
 ---
 
 ## Walk-forward

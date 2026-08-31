@@ -80,7 +80,14 @@ train-win:
 
 train-xi: venv
 	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make train-xi CUTOFF=2025-09-01" && exit 1)
-	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",)
+	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
+
+# Check the database against the Cricsheet archive: both rating sources are supposed to
+# describe the same cricket, and twice they did not (H-15). Needs both, so it is not part
+# of a retrain. Usage: make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet
+xi-parity: venv
+	@test -n "$(CRICSHEET_DIR)" || (echo "CRICSHEET_DIR is required, e.g. make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet" && exit 1)
+	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)"
 
 train-innings:
 	$(PY) -m ml.train_innings

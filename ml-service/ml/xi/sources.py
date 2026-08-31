@@ -14,7 +14,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Iterator, List, Optional, Protocol, Sequence
+from typing import Iterator, List, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 
@@ -77,7 +77,39 @@ class MatchRecord:
         return None
 
 
+@dataclass
+class SourceCounts:
+    """What a source did with every match its store holds.
+
+    A source that quietly drops a match is the failure mode this exists to make visible:
+    the database ran for two years holding 22,425 matches for 22,734 files and nothing
+    said so (§10.4 of the rearchitecture plan). Every match is therefore accounted for --
+    yielded, out of scope, or unusable -- and the data-quality gate asserts the three add
+    up to what was offered.
+    """
+
+    offered: int = 0  # matches the store holds, before this run's filters
+    out_of_scope: int = 0  # a format or date range this run did not ask for
+    unusable: int = 0  # in scope, but not a two-team match with two recorded squads
+    yielded: int = 0
+
+    @property
+    def accounted(self) -> int:
+        return self.out_of_scope + self.unusable + self.yielded
+
+    def as_dict(self) -> dict:
+        return {
+            "offered": self.offered,
+            "out_of_scope": self.out_of_scope,
+            "unusable": self.unusable,
+            "yielded": self.yielded,
+        }
+
+
 class MatchSource(Protocol):
+    #: Populated while iterating; read by the rating pass once iteration is done.
+    counts: SourceCounts
+
     def iter_matches(self) -> Iterator[MatchRecord]:
         """Yield matches in ascending date order."""
         ...
@@ -175,6 +207,7 @@ def parse_cricsheet_file(path: str, international_teams: Sequence[str]) -> Optio
     if team1 not in players or team2 not in players:
         return None
     outcome = info.get("outcome") or {}
+    squad1, squad2 = _squads(players[team1], players[team2], registry)
     return MatchRecord(
         match_id=os.path.basename(path).rsplit(".", 1)[0],
         match_date=date.fromisoformat(info["dates"][0]),
@@ -183,12 +216,35 @@ def parse_cricsheet_file(path: str, international_teams: Sequence[str]) -> Optio
         team2=team2,
         venue=info.get("venue") or "",
         gender=info.get("gender") or "",
-        team1_players=[registry.get(n, "name:" + n) for n in players[team1]],
-        team2_players=[registry.get(n, "name:" + n) for n in players[team2]],
+        team1_players=squad1,
+        team2_players=squad2,
         winner=outcome.get("winner"),
         result=outcome.get("result"),
         deliveries=_deliveries_from_cricsheet(innings, registry),
     )
+
+
+def _squads(names1: Sequence[str], names2: Sequence[str], registry: dict) -> Tuple[List[str], List[str]]:
+    """Both sides as player keys, with a person named on both sides left out of both.
+
+    ``info.registry`` is keyed by name *within a file*, so two people who share a scorecard
+    name collapse into one identifier and the source cannot say which side each delivery
+    belongs to. Two files in the current dataset do this -- KV Sharma for Vidarbha and
+    Railways, J Butler for the Isle of Man and Guernsey -- and keeping the key in both
+    squads hands one player's ratings to both teams at once.
+
+    The go-app importer has always dropped them from both sides rather than guessing
+    (S-3c in the win-probability checklist); this is that rule, applied to the other source.
+    Both matches lose one player from an eleven, which is the honest reading of a source
+    that does not know.
+    """
+    squad1 = [registry.get(n, "name:" + n) for n in names1]
+    squad2 = [registry.get(n, "name:" + n) for n in names2]
+    contested = set(squad1) & set(squad2)
+    if not contested:
+        return squad1, squad2
+    logger.warning("player key on both sides, omitted from both squads: %s", ", ".join(sorted(contested)))
+    return [k for k in squad1 if k not in contested], [k for k in squad2 if k not in contested]
 
 
 class CricsheetJsonSource:
@@ -198,18 +254,32 @@ class CricsheetJsonSource:
         self.directory = directory
         self.international_teams = list(international_teams)
         self.formats = set(formats)
+        self.counts = SourceCounts()
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         names = sorted(n for n in os.listdir(self.directory) if n.endswith(".json"))
+        self.counts = SourceCounts(offered=len(names))
         records: List[MatchRecord] = []
-        skipped = 0
         for n in names:
             rec = parse_cricsheet_file(os.path.join(self.directory, n), self.international_teams)
-            if rec is None or rec.format_code not in self.formats:
-                skipped += 1
+            # The two reasons a file yields nothing are worth telling apart: a format this
+            # run did not ask for is expected, a file that will not parse into a two-team
+            # match with two squads is a fact about the archive.
+            if rec is None:
+                self.counts.unusable += 1
+                continue
+            if rec.format_code not in self.formats:
+                self.counts.out_of_scope += 1
                 continue
             records.append(rec)
-        logger.info("cricsheet source: %d matches, %d skipped", len(records), skipped)
+        self.counts.yielded = len(records)
+        logger.info(
+            "cricsheet source: %d matches from %d files (%d out of scope, %d unusable)",
+            self.counts.yielded,
+            self.counts.offered,
+            self.counts.out_of_scope,
+            self.counts.unusable,
+        )
         records.sort(key=lambda r: (r.match_date, r.match_id))
         yield from records
 
@@ -227,6 +297,10 @@ JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
 WHERE mf.code = ANY(%s) AND m.match_date < %s
 ORDER BY m.match_date, m.match_id
 """
+
+# Every match in the date range, whatever its format, so a run can say how many it left
+# out on purpose. Without it "22,425 matches" is a number with nothing to check it against.
+_MATCH_COUNT_SQL = "SELECT count(*) FROM match WHERE match_date < %s"
 
 
 def _player_key(alias: str) -> str:
@@ -280,12 +354,16 @@ class PostgresSource:
         self.connection = connection
         self.formats = list(formats)
         self.before = before or date(9999, 1, 1)
+        self.counts = SourceCounts()
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         with self.connection.cursor() as cur:
+            cur.execute(_MATCH_COUNT_SQL, (self.before,))
+            offered = int(cur.fetchone()[0])
             cur.execute(_MATCH_SQL, (self.formats, self.before))
             matches = cur.fetchall()
-        logger.info("postgres source: %d matches", len(matches))
+        self.counts = SourceCounts(offered=offered, out_of_scope=offered - len(matches))
+        logger.info("postgres source: %d matches of %d in the date range", len(matches), offered)
         for match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id in matches:
             with self.connection.cursor() as cur:
                 cur.execute(_PLAYERS_SQL, (match_id,))
@@ -296,7 +374,9 @@ class PostgresSource:
             t2 = [key for key, opp in players if opp == team2_id]
             if not t1 or not t2:
                 logger.warning("match %s has no recorded squad for a side; skipped", match_id)
+                self.counts.unusable += 1
                 continue
+            self.counts.yielded += 1
             yield MatchRecord(
                 match_id=str(match_id),
                 match_date=match_date,

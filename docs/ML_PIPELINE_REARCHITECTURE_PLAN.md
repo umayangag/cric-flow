@@ -351,7 +351,7 @@ names the experiment that will.
 | H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | open (P-3) |
 | H-13 | **Consumer metric first.** AUC for an argmax, Spearman/top-k for a ranking, coverage for an interval | all | Every model in L4 has a named consumer and its metric is the one that gates | rule |
 | H-14 | **Seeds and noise floor.** Differences under the seed spread are not evidence | all | Every reported number is a mean over ≥ 3 seeds with the spread (done for win) | done |
-| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Harness reports counts per retrain and fails on a jump > 2× the previous run; **add match count vs source file count**, and **player-key count against the other source** — the first would have caught §10.4's match identity in 2024, the second its unnamed-fielder key | open (P-6). Both defects §10.4 found are fixed; what is missing is the gate that would have found them without someone looking |
+| H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Two checks, both in `ml/xi/quality.py`. **Accounting:** a source offers N matches and must yield, scope out or reject exactly N — a match dropped for a reason nothing names fails the run. **Doubling:** any quality count over twice the last accepted run's, or one that was zero and is not, fails. The accepted counts live in `xi_data_quality_baseline.json`, which a *failing* run does not update, so re-running cannot clear the gate; `--accept-data-quality` is the one way to move it. Beside it, `make xi-parity` runs both sources and compares every count and the player-key sets | **done**. Measured baseline: 22,734 offered = 22,734 read, 1,710 undecided, 0 namesake sides, 1,358 sides over eleven, 0 unresolved player keys, 13,569 player keys — identical from both sources. Its first real run found a third defect; see §10.4 |
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
@@ -361,7 +361,7 @@ names the experiment that will.
 | H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | rule (P-3) |
 
 Items marked *open* are folded into the migration: H-7, H-8 and H-19 into P-2, H-5, H-12 and
-H-20 into P-3, H-11 and H-15 into P-6 alongside H-16. Nothing in the list needs new modelling; it is
+H-20 into P-3 and H-11 into P-6 alongside H-16 (H-15 is done). Nothing in the list needs new modelling; it is
 measurement, guards and two small serving rules.
 
 ---
@@ -473,7 +473,7 @@ quoted in this document should be read with them in mind.
 | Distribution-aware losses | quantile / Poisson for counts; MAE-optimal points are not the deliverable | P-3 |
 | Progress measured as sharpness at fixed calibration | interval width tracked beside coverage across releases; proper scores (CRPS / pinball / Brier) are the headline, never MAE (H-22) | P-3 |
 | Reproducibility | dataset sha, cutoff, git sha, hyperparameters and metrics in a run manifest (H-16); deterministic seeds; the pass is a pure function of the event table | P-6 |
-| Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | P-6 |
+| Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | **done** — `ml/xi/quality.py` gates the retrain, `make xi-parity` compares the two sources |
 | Serving = training | same feature code, parity test (H-8); ids in, features computed inside | S-10 / P-2 |
 | Monitoring in use | staleness of ratings (H-11); prediction-distribution drift per format between runs (add to the manifest diff) | P-6 |
 | Hyperparameters not tuned on the test window | grid inside the walk-forward folds only; the locked window never sees a choice | H-19 |
@@ -570,9 +570,32 @@ player would have received.
 
 Recorded here rather than in P-1 because it is a different kind of error: player and team
 identity were read from the wrong *field*, match identity was not read at all. It still
-belongs to **H-16** (run identity) and **H-15** (the per-run counts that would have caught
-it), which P-6 owns — a gate comparing match count to file count would have found this in
-2024.
+belongs to **H-16** (run identity), which P-6 owns.
+
+**H-15 now exists, and found a third defect on its first real run.** `make xi-parity`
+reported `namesake_sides` as 0 from Postgres and **4** from the archive. Cricsheet's
+registry is keyed by name within a file, so two people who share a scorecard name collapse
+into one identifier: `KV Sharma` for Vidarbha and Railways, `J Butler` for the Isle of Man
+and Guernsey. The go-app importer has always dropped such a name from both squads rather
+than guessing a side (S-3c). The JSON source did not, so in those two matches it handed one
+player's ratings to *both teams at once*. The rule was written down and implemented on one
+side only; the gate is what noticed. The JSON source now applies it too, and the two
+sources agree on every count:
+
+```
+  count                   postgres   cricsheet
+  offered_matches            22734       22734
+  matches_read               22734       22734
+  undecided_matches           1710        1710
+  namesake_sides                 0           0
+  oversized_squads            1358        1358
+  unknown_player_keys            0           0
+  player_keys                13569       13569
+```
+
+Three defects in this area have now been found by comparing two numbers — 22,425 against
+22,734, 13,570 against 13,569, and 4 against 0. That is the argument for the gate: none of
+them was subtle, and none of them was visible.
 
 ---
 
