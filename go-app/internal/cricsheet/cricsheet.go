@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -297,9 +299,49 @@ func Parse(r io.Reader) (*Match, error) {
 	return &m, nil
 }
 
-// StableMatchID returns a deterministic int64 based on date + team names.
-func StableMatchID(dateISO, teamA, teamB string) int64 {
-	arr := []byte(fmt.Sprintf("%s|%s|%s", dateISO, teamA, teamB))
+// derivedMatchIDBase is the low end of the space match ids get when they have to be
+// derived rather than read from the source. Cricsheet's own match ids are six and seven
+// digits and have been growing by roughly 20,000 a year since 2004, so the two spaces
+// cannot meet, and an id below this bound is a number you can look the match up by.
+const derivedMatchIDBase = 100000000000
+
+// SourceRef returns the identifier a Cricsheet file carries in its name: "1130677" for
+// 1130677.json. That name is Cricsheet's own match id, and it is the only match identity
+// the source publishes -- nothing inside the JSON names the match.
+func SourceRef(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+// MatchIDFromSource returns the match_id for one Cricsheet file.
+//
+// It is the file's own Cricsheet match id whenever that id is a number, which is 22,709
+// of the 22,734 files in the current dataset. Deriving the id from the *content* instead
+// -- a hash of date and team names, which is what this did until now -- is not an identity
+// at all: two sides can play twice in a day, and 309 files in the dataset share a
+// (date, team, team) with another. Every one of those pairs collapsed into a single match
+// row whose squad and scorecard were whichever file's transaction committed last, so the
+// database held 22,425 matches for 22,734 files and two imports of the same directory
+// could disagree about which match a row described.
+//
+// The remaining 25 files are named with a prefix -- "wi_211824" -- and cannot be a bigint.
+// Those fall back to a hash, which now includes the file identifier, so it distinguishes
+// two matches the old key could not. The fallback is logged: it is the path that would
+// quietly go back to inventing identities if the archive changed shape.
+func MatchIDFromSource(sourceRef, dateISO, teamA, teamB string) int64 {
+	if id, err := strconv.ParseInt(sourceRef, 10, 64); err == nil && id > 0 && id < derivedMatchIDBase {
+		return id
+	}
+	slog.Warn("cricsheet: file name is not a Cricsheet match id, deriving one",
+		slog.String("source_ref", sourceRef),
+		slog.String("match_date", dateISO),
+		slog.String("teams", teamA+" vs "+teamB))
+	return derivedMatchID(sourceRef, dateISO, teamA, teamB)
+}
+
+// derivedMatchID hashes the fields that identify a match when the file name cannot.
+func derivedMatchID(sourceRef, dateISO, teamA, teamB string) int64 {
+	arr := []byte(fmt.Sprintf("%s|%s|%s|%s", sourceRef, dateISO, teamA, teamB))
 	h := sha256.Sum256(arr)
 	hex10 := hex.EncodeToString(h[:])[:10]
 	var v uint64
@@ -307,8 +349,8 @@ func StableMatchID(dateISO, teamA, teamB string) int64 {
 		// Fallback to zero if parsing fails; unlikely given fixed hex source
 		v = 0
 	}
-	// bound into 12-digit space
-	v = (v % 900000000000) + 100000000000
+	// bound into the derived space, which starts above every Cricsheet match id
+	v = (v % 900000000000) + derivedMatchIDBase
 	// guard uint64 -> int64 conversion (gosec G115)
 	if v > math.MaxInt64 {
 		v = uint64(math.MaxInt64)
