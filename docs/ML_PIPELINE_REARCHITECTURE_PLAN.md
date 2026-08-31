@@ -224,16 +224,28 @@ Ordered so selection quality improves first and nothing is deleted before its re
 is measured. One PR each, branch `arch/<id>-<slug>`, same conventions as the selection
 checklist.
 
-| id | PR | acceptance |
-|---|---|---|
-| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | selection-comparison: `xi` ≥ `greedy` on winner accuracy |
-| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | E4 delta recorded; re-import reproducible |
-| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20) |
-| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
-| P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
-| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet |
-| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min |
-| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report |
+| id | PR | acceptance | model |
+|---|---|---|---|
+| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | selection-comparison: `xi` ≥ `greedy` on winner accuracy | Fable |
+| P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | E4 delta recorded; re-import reproducible | Opus |
+| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20) | Fable |
+| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal | Fable |
+| P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused | Fable |
+| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet | Opus |
+| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min | Opus |
+| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report | Fable |
+
+**Which model to implement each PR with.** The `model` column is a recommendation, not a
+rule. *Fable* for the items where the risk is a plausible-looking wrong answer — designing
+the distributional performance model and the simulator, reading experiment decision rules
+against noisy numbers, and the acceptance runs where a surprise has to be noticed rather
+than reported (the pooled-metrics artifact and the batting-order assumption in the health
+checklist were both found that way, with the code running and the numbers looking fine).
+*Opus* for the items that are fully specified by this document and the checklists —
+identity columns and re-import, re-pointing consumers, migrations and deletions, coverage
+ratchets, frontend trims — where the work is large but the acceptance criterion is
+mechanical. Experiments E1–E7 follow their PR. Start every PR in a fresh chat linked to the
+repo, with the instruction to read this plan's row for it first.
 
 Each of P-2 … P-6 removes more than it adds. The end state is smaller than the current tree.
 
