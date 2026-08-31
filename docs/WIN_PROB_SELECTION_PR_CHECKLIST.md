@@ -927,6 +927,8 @@ against the opponent's XI — S-1 holds) and `getMatchWinProbability` to `/xi/pr
 Anything else, or any error from the XI path, falls back to the windowed-form model and logs
 why. **Nothing changes until the flag is set.**
 
+**Batting order is marginalised.** The training label makes team1 the side batting first, which is unknown when the XI is chosen. Both models are therefore scored in both orientations and averaged on the serving path, so `P(A, B) == 1 - P(B, A)` (unit-tested) and the optimiser's objective does not depend on the toss. Measured on the holdout this is also better: display AUC T20 0.741 -> 0.747, ODI 0.720 -> 0.730, T20I 0.715 -> 0.731 (`xi_win_report.json` reports both the oriented and the serving-path numbers). Once the toss is known `/xi/predict-win` accepts `team1_bats_first`. See ML_PIPELINE_REARCHITECTURE_PLAN.md, H-3.
+
 **S-4 is superseded.** The XI optimiser already does steepest ascent, pair swaps when single
 swaps stall, and a real budget (default 20,000 evaluations; a pool of 22 converges in ~3,000
 and 0.4 s). It runs entirely inside ml-service, so the per-call path is not needed on this

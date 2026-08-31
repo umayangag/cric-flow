@@ -298,3 +298,28 @@ def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> N
     assert result.n_undecided == 1 and len(result.frame) == 1
     assert result.state.keeper[result.state.players.slot("id_Y0")] == 1.0, "the stumping marks the keeper"
     assert os.path.exists(tmp_path)
+
+
+def test_predictions_are_symmetric_in_batting_order(trained_store) -> None:
+    """Before the toss P(A beats B) must equal 1 - P(B beats A): both models marginalise over
+    who bats first, so the optimiser's objective does not depend on an unknown."""
+    store, _, _, matches = trained_store
+    last = matches[-1]
+    a, b = last.team1_players, last.team2_players
+    p_ab = store.objective_probability("T20", store.side_vectors("T20", a), store.side_vectors("T20", b))
+    p_ba = store.objective_probability("T20", store.side_vectors("T20", b), store.side_vectors("T20", a))
+    assert p_ab == pytest.approx(1.0 - p_ba)
+    d_ab = store.display_probability("T20", a, b, team1_name="A", team2_name="B", venue="V")
+    d_ba = store.display_probability("T20", b, a, team1_name="B", team2_name="A", venue="V")
+    assert d_ab == pytest.approx(1.0 - d_ba)
+    known = store.display_probability("T20", a, b, team1_name="A", team2_name="B", venue="V", team1_bats_first=True)
+    chase = store.display_probability("T20", a, b, team1_name="A", team2_name="B", venue="V", team1_bats_first=False)
+    assert d_ab == pytest.approx(0.5 * (known + chase))
+    res_t1 = select_xi(
+        store, "T20", a + b[:3], b, Constraints(team_size=11, min_bowlers=0, require_keeper=False), team_is_team1=True
+    )
+    res_t2 = select_xi(
+        store, "T20", a + b[:3], b, Constraints(team_size=11, min_bowlers=0, require_keeper=False), team_is_team1=False
+    )
+    assert res_t1.win_probability == pytest.approx(res_t2.win_probability)
+    assert sorted(res_t1.selected) == sorted(res_t2.selected)

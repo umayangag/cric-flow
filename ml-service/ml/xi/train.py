@@ -70,6 +70,26 @@ def _score(model, x_te: np.ndarray, y_te: np.ndarray) -> Dict[str, float]:
     return {"auc": float(roc_auc_score(y_te, p)), "brier": float(brier_score_loss(y_te, p))}
 
 
+def swap_orientation(frame: pd.DataFrame) -> pd.DataFrame:
+    """The same fixtures with the sides exchanged (team2 bats first). Used to score the
+    serving path, which averages both batting orders because the toss is unknown."""
+    out = frame.copy()
+    for stem in C.SIDE_FEATURE_STEMS:
+        out[f"t1_{stem}"], out[f"t2_{stem}"] = frame[f"t2_{stem}"], frame[f"t1_{stem}"]
+        out[f"d_{stem}"] = -frame[f"d_{stem}"]
+    for col in ("team_elo_diff", "team_form_diff", "venue_fam_diff"):
+        out[col] = -frame[col]
+    out["team_h2h"] = 1.0 - frame["team_h2h"]
+    return out
+
+
+def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, float]:
+    x_a, y = _xy(te, cols)
+    x_b, _ = _xy(swap_orientation(te), cols)
+    p = 0.5 * (model.predict_proba(x_a)[:, 1] + (1.0 - model.predict_proba(x_b)[:, 1]))
+    return {"auc": float(roc_auc_score(y, p)), "brier": float(brier_score_loss(y, p))}
+
+
 def best_single_column(frame_te: pd.DataFrame, cols: Sequence[str]) -> Dict[str, float]:
     y = frame_te[C.TARGET_COL].to_numpy(dtype=float)
     best = ("", 0.5)
@@ -109,6 +129,8 @@ def train_format(
             {
                 "holdout_positive_rate": float(y_te.mean()),
                 "objective": obj,
+                "objective_marginalised": _score_marginalised(objective, te, C.XI_FEATURE_COLS),
+                "display_marginalised": _score_marginalised(display_models[0], te, C.DISPLAY_FEATURE_COLS),
                 "display": {
                     "auc_mean": float(np.mean([r["auc"] for r in dis])),
                     "auc_sd": float(np.std([r["auc"] for r in dis])),
@@ -210,6 +232,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         source = CricsheetJsonSource(args.cricsheet_dir, _international_teams_from_config(), args.formats)
     else:
         from ml.db import get_db_connection
+
         from ml.xi.sources import PostgresSource
 
         source = PostgresSource(get_db_connection(), args.formats)
@@ -225,9 +248,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for r in summary["formats"]:
         if "objective" in r:
             logger.info(
-                "%-5s n_tr=%5d n_te=%4d | objective AUC %.3f Brier %.3f | display AUC %.3f±%.3f Brier %.3f | base Brier %.3f | best column %s %.3f",
-                r["format_code"], r["n_train"], r["n_holdout"], r["objective"]["auc"], r["objective"]["brier"],
-                r["display"]["auc_mean"], r["display"]["auc_sd"], r["display"]["brier_mean"], r["base_rate_brier"],
+                "%-5s n_tr=%5d n_te=%4d | objective AUC %.3f (serving, toss unknown: %.3f) | display AUC %.3f±%.3f "
+                "(serving: %.3f) Brier %.3f | base Brier %.3f | best column %s %.3f",
+                r["format_code"], r["n_train"], r["n_holdout"], r["objective"]["auc"], r["objective_marginalised"]["auc"],
+                r["display"]["auc_mean"], r["display"]["auc_sd"], r["display_marginalised"]["auc"],
+                r["display_marginalised"]["brier"], r["base_rate_brier"],
                 r["best_single_column"]["column"], r["best_single_column"]["auc"],
             )  # fmt: skip
     return 0

@@ -81,16 +81,18 @@ class _Pool:
         return True
 
     def score_many(self, candidates: Sequence[Sequence[int]]) -> np.ndarray:
+        """P(our side wins) for each candidate XI, marginalised over who bats first: the
+        objective is scored with the candidate as team1 and as team2 and the two are
+        averaged. ``team_is_team1`` then only says which orientation is reported first;
+        the number is the same either way, which is what an argmax over XIs should rely on."""
         rows = []
         for idx in candidates:
             side = aggregate_side({k: v[list(idx)] for k, v in self.vectors.items()}, self.fmt)
-            if self.team_is_team1:
-                rows.append(xi_feature_vector(side, self.opponent, self.models.objective_cols))
-            else:
-                rows.append(xi_feature_vector(self.opponent, side, self.models.objective_cols))
-        self.evaluations += len(rows)
+            rows.append(xi_feature_vector(side, self.opponent, self.models.objective_cols))
+            rows.append(xi_feature_vector(self.opponent, side, self.models.objective_cols))
+        self.evaluations += len(candidates)
         p = self.models.objective_proba(np.vstack(rows))
-        return p if self.team_is_team1 else 1.0 - p
+        return 0.5 * (p[0::2] + (1.0 - p[1::2]))
 
     def score(self, idx: Sequence[int]) -> float:
         return float(self.score_many([idx])[0])

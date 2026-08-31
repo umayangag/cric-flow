@@ -147,6 +147,7 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         team1_name=None if req.team1_id is None else str(req.team1_id),
         team2_name=None if req.team2_id is None else str(req.team2_id),
         venue=None if req.venue_id is None else str(req.venue_id),
+        team1_bats_first=req.team1_bats_first,
     )
     return XiWinResponse(team1_win_probability=display, objective_probability=objective)
 

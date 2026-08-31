@@ -59,6 +59,9 @@ class XiWinRequest(BaseModel):
     )
     team2_id: Optional[int] = None
     venue_id: Optional[int] = None
+    team1_bats_first: Optional[bool] = Field(
+        default=None, description="Known after the toss; omit before it to average both batting orders"
+    )
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
