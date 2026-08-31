@@ -299,9 +299,17 @@ option is a player whose expected balls bowled clears the format threshold). go-
 these endpoints when `selection.win_model` is `"xi"` and falls back to the windowed-form
 model otherwise or on error.
 
-**Identity caveat.** Ratings are keyed by the id the source provides: go-app `player_id` from
-Postgres (inherits the name-keyed merges in `IDENTITY_PR_CHECKLIST.md`), the Cricsheet
-registry id from JSON.
+**Identity.** Both sources key ratings by the Cricsheet registry identifier: `player.external_id`
+from Postgres, `info.registry.people` from JSON, with the same `name:<name>` fallback for a
+person the source has no entry for. The two paths therefore produce the same key for the same
+person and their artifacts are comparable. Teams are keyed by `opposition_id`, which is one row
+per (team name, gender) since migration `0004_identity.sql`. What that change bought is measured
+in E4 (§5.1 of `ML_PIPELINE_REARCHITECTURE_PLAN.md`): nothing the holdout can resolve, in any
+format or on either gender subset. A franchise that renames is still two clubs — I-4 in
+`IDENTITY_PR_CHECKLIST.md`.
+
+`xi_win_report.json` splits its holdout discrimination by gender, for information rather than as
+a gate: 20% of the dataset is women's cricket, and the men's subset dominates any aggregate.
 
 ---
 
