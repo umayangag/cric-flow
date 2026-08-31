@@ -2,8 +2,9 @@
 
 A source yields matches in date order, each with both elevens and its deliveries. Two
 implementations: Postgres (the go-app schema -- production) and a Cricsheet JSON directory
-(offline reproduction and tests). Player keys are strings so both can share one code path:
-``str(player_id)`` for Postgres, the Cricsheet registry identifier for JSON.
+(offline reproduction and tests). Both key players by the Cricsheet registry identifier --
+``player.external_id`` for Postgres, ``info.registry.people`` for JSON -- so the two paths
+produce the same keys for the same people and their artifacts are comparable (P-1).
 """
 
 from __future__ import annotations
@@ -210,11 +211,38 @@ WHERE mf.code = ANY(%s) AND m.match_date < %s
 ORDER BY m.match_date, m.match_id
 """
 
-_PLAYERS_SQL = "SELECT player_id, opposition_id FROM match_player WHERE match_id = %s"
 
-_BALLS_SQL = """
-SELECT be.innings, be.over, be.striker_id, be.bowler_id, be.runs_batter, be.runs_total, be.wicket_kind, be.fielder_ids
+def _player_key(alias: str) -> str:
+    """The player key expression for one joined ``player`` alias.
+
+    The key is the Cricsheet registry identifier, exactly as the JSON path builds it, so
+    a rating artifact trained from Postgres and one trained from the raw files describe
+    the same people and are comparable row for row (P-1). ``external_id`` is unique, so
+    joining player changes no cardinality, and the fallback mirrors the JSON path's for a
+    person the source has no registry entry for.
+    """
+    return f"COALESCE({alias}.external_id, 'name:' || {alias}.player_name)"
+
+
+_PLAYERS_SQL = f"""
+SELECT {_player_key("p")}, mp.opposition_id
+FROM match_player mp
+JOIN player p ON p.id = mp.player_id
+WHERE mp.match_id = %s
+"""
+
+# Fielders are stored as an array of ids, so their keys are looked up in a lateral join
+# that preserves the array's order -- the rating pass credits them positionally.
+_BALLS_SQL = f"""
+SELECT be.innings, be.over,
+       {_player_key("striker")}, {_player_key("bowler")},
+       be.runs_batter, be.runs_total, be.wicket_kind,
+       (SELECT array_agg({_player_key("f")} ORDER BY u.position)
+        FROM unnest(be.fielder_ids) WITH ORDINALITY AS u(fielder_id, position)
+        JOIN player f ON f.id = u.fielder_id)
 FROM ball_event be
+LEFT JOIN player striker ON striker.id = be.striker_id
+LEFT JOIN player bowler ON bowler.id = be.bowler_id
 WHERE be.match_id = %s
 ORDER BY be.innings, be.ball_seq
 """
@@ -224,7 +252,11 @@ class PostgresSource:
     """Reads match, match_player and ball_event from the go-app database.
 
     ``winner`` is the opposition id as a string, matching the team keys, so Elo and
-    head-to-head state are keyed the way the go-app identifies teams.
+    head-to-head state are keyed the way the go-app identifies teams -- which, since the
+    identity migration, is one id per (team name, gender) rather than one per name.
+
+    Players are keyed by ``player.external_id``, the Cricsheet registry identifier, so
+    this source and the JSON one produce the same key for the same person (P-1).
     """
 
     def __init__(self, connection, formats: Sequence[str] = FORMAT_CODES, before: Optional[date] = None):
@@ -243,8 +275,8 @@ class PostgresSource:
                 players = cur.fetchall()
                 cur.execute(_BALLS_SQL, (match_id,))
                 balls = cur.fetchall()
-            t1 = [str(pid) for pid, opp in players if opp == team1_id]
-            t2 = [str(pid) for pid, opp in players if opp == team2_id]
+            t1 = [key for key, opp in players if opp == team1_id]
+            t2 = [key for key, opp in players if opp == team2_id]
             if not t1 or not t2:
                 logger.warning("match %s has no recorded squad for a side; skipped", match_id)
                 continue
@@ -273,12 +305,12 @@ def _deliveries_from_rows(rows) -> Deliveries:
     return Deliveries(
         over=np.asarray([r[1] for r in rows], dtype=int),
         innings=innings,
-        batter=np.asarray([str(r[2]) for r in rows], dtype=object),
-        bowler=np.asarray([str(r[3]) for r in rows], dtype=object),
+        batter=np.asarray([r[2] if r[2] else "" for r in rows], dtype=object),
+        bowler=np.asarray([r[3] if r[3] else "" for r in rows], dtype=object),
         runs_batter=np.asarray([r[4] for r in rows], dtype=float),
         runs_total=np.asarray([r[5] for r in rows], dtype=float),
         wicket=np.asarray([1.0 if k else 0.0 for k in kinds]),
         bowler_wicket=np.asarray([1.0 if k in BOWLER_CREDITED_KINDS else 0.0 for k in kinds]),
         stumping=np.asarray([1.0 if k == "stumped" else 0.0 for k in kinds]),
-        fielders=[[str(f) for f in (r[7] or [])] for r in rows],
+        fielders=[list(r[7] or []) for r in rows],
     )

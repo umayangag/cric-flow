@@ -90,6 +90,28 @@ def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, f
     return {"auc": float(roc_auc_score(y, p)), "brier": float(brier_score_loss(y, p))}
 
 
+def gender_breakdown(objective, display_models: Sequence, te: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+    """Holdout discrimination split by the gender of the match.
+
+    20% of the dataset is women's cricket, and until P-1 it shared team identities with
+    the men's game and blended careers wherever two people spelled their name the same.
+    An aggregate AUC cannot show what that cost, because the men's subset dominates it --
+    so identity work is measured here (E4) or not at all. Reported for information, never
+    as a gate: the women's holdouts are small enough that a difference under ~0.03 is not
+    resolvable.
+    """
+    out: Dict[str, Dict[str, float]] = {}
+    for gender, rows in te.groupby("gender", sort=True):
+        entry: Dict[str, float] = {"n_holdout": int(len(rows))}
+        if len(rows) >= 20 and rows[C.TARGET_COL].nunique() == 2:
+            entry["objective_auc"] = _score_marginalised(objective, rows, C.XI_FEATURE_COLS)["auc"]
+            display_aucs = [_score_marginalised(m, rows, C.DISPLAY_FEATURE_COLS)["auc"] for m in display_models]
+            entry["display_auc_mean"] = float(np.mean(display_aucs))
+            entry["display_auc_sd"] = float(np.std(display_aucs))
+        out[str(gender)] = entry
+    return out
+
+
 def best_single_column(frame_te: pd.DataFrame, cols: Sequence[str]) -> Dict[str, float]:
     y = frame_te[C.TARGET_COL].to_numpy(dtype=float)
     best = ("", 0.5)
@@ -138,6 +160,7 @@ def train_format(
                 },
                 "base_rate_brier": float(brier_score_loss(y_te, np.full(len(y_te), y_tr.mean()))),
                 "best_single_column": best_single_column(te, C.DISPLAY_FEATURE_COLS),
+                "by_gender": gender_breakdown(objective, display_models, te),
             }
         )
     else:

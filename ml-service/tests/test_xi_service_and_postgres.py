@@ -181,18 +181,19 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
             (2, date(2024, 1, 2), "T20", "male", 5, 10, 20, None),
             (3, date(2024, 1, 3), "T20", "male", 5, 10, 20, 10),
         ],
+        # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
-            1: [(100 + i, 10) for i in range(11)] + [(200 + i, 20) for i in range(11)],
-            2: [(100 + i, 10) for i in range(11)],  # side 20 has no squad -> skipped
-            3: [(100 + i, 10) for i in range(11)] + [(200 + i, 20) for i in range(11)],
+            1: [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)],
+            2: [(f"a{i:07x}", 10) for i in range(11)],  # side 20 has no squad -> skipped
+            3: [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)],
         },
         "balls": {
             1: [
-                (1, 0, 100, 210, 4, 4, None, None),
-                (1, 0, 100, 210, 0, 0, "caught", [205]),
-                (2, 0, 200, 110, 0, 1, "run out", [105]),
+                (1, 0, "a0000000", "b0000000", 4, 4, None, None),
+                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"]),
+                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"]),
             ],
-            3: [(1, 3, 101, 210, 1, 1, None, None)],
+            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None)],
         },
     }
     recs = list(PostgresSource(_FakeConnection(tables), formats=["T20"]).iter_matches())
@@ -200,14 +201,35 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert [r.match_id for r in recs] == ["1", "3"]
     first = recs[0]
     assert first.team1 == "10" and first.team2 == "20" and first.winner == "20" and first.outcome == 0.0
-    assert first.team1_players[0] == "100" and len(first.team2_players) == 11
+    assert first.team1_players[0] == "a0000000" and len(first.team2_players) == 11
     d = first.deliveries
     assert list(d.innings) == [0, 0, 1]
     assert list(d.bowler_wicket) == [0.0, 1.0, 0.0]
     assert list(d.wicket) == [0.0, 1.0, 1.0]
-    assert d.fielders[1] == ["205"]
+    assert d.fielders[1] == ["b0000005"]
     assert recs[1].outcome == 1.0
     assert "caught" in BOWLER_CREDITED_KINDS and "run out" not in BOWLER_CREDITED_KINDS
+
+
+def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
+    """The Postgres and JSON paths must produce the same key for the same person, so a
+    rating artifact built from either is comparable (P-1). The SQL is what enforces it."""
+    from ml.xi.sources import _BALLS_SQL, _PLAYERS_SQL
+
+    assert "p.external_id" in _PLAYERS_SQL
+    assert "striker.external_id" in _BALLS_SQL and "bowler.external_id" in _BALLS_SQL
+    # A person the source has no registry entry for falls back the same way the JSON path
+    # does, rather than silently keying on an integer the other path cannot produce.
+    assert "'name:' || p.player_name" in _PLAYERS_SQL
+
+
+def test_postgres_source_carries_missing_delivery_players_as_empty_keys() -> None:
+    """striker_id and bowler_id are nullable, so the join can yield NULL. That must become
+    an empty key, not the string "None", which would become a rated player."""
+    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None)])
+
+    assert list(d.batter) == [""] and list(d.bowler) == [""]
+    assert d.fielders == [[]]
 
 
 def test_deliveries_from_rows_handles_empty() -> None:
