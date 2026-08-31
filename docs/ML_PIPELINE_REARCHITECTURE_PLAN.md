@@ -287,6 +287,7 @@ names the experiment that will.
 | H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | open (P-0 reports, P-2 implements) |
 | H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | open (P-3) |
 | H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | rule (P-3, P-4) |
+| H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | rule (P-3) |
 
 Items marked *open* are folded into the migration: H-7, H-8 and H-19 into P-2, H-5, H-12 and
 H-20 into P-3, H-11 and H-15 into P-6 alongside H-16. Nothing in the list needs new modelling; it is
@@ -399,6 +400,7 @@ quoted in this document should be read with them in mind.
 | Metric matches the consumer | AUC + monotonicity for an argmax; Spearman/top-k/coverage for a ranking or interval; per target, never pooled (H-12, H-13) | rule; P-3 retires the pooled metric |
 | Calibration of any probability shown | reliability + Brier; isotonic recalibration on a temporal fold if needed; interval coverage (H-5) | partly |
 | Distribution-aware losses | quantile / Poisson for counts; MAE-optimal points are not the deliverable | P-3 |
+| Progress measured as sharpness at fixed calibration | interval width tracked beside coverage across releases; proper scores (CRPS / pinball / Brier) are the headline, never MAE (H-22) | P-3 |
 | Reproducibility | dataset sha, cutoff, git sha, hyperparameters and metrics in a run manifest (H-16); deterministic seeds; the pass is a pure function of the event table | P-6 |
 | Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | P-6 |
 | Serving = training | same feature code, parity test (H-8); ids in, features computed inside | S-10 / P-2 |
