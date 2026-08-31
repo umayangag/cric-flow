@@ -349,19 +349,30 @@ func predictTeamsWithIntermediates(
 		}
 	}
 
-	// Opposition IDs for feature context (when team1 bats, they face team2)
-	opp1ID, _ := db.GetGlobalCache().GetOppositionID(ctx, team1)
-	opp2ID, _ := db.GetGlobalCache().GetOppositionID(ctx, team2)
+	// Opposition IDs for feature context (when team1 bats, they face team2). A team name
+	// alone can now name two sides -- a men's and a women's -- and this request carries no
+	// gender, so the resolver picks the side that has actually played the format and logs
+	// when the name was ambiguous.
+	opp1ID, err := db.FindOppositionIDForFormat(ctx, team1, format)
+	if err != nil {
+		slog.Error("predictteam.PredictTeams resolve team1 failed", slog.String("team1", team1), slog.Any("err", err))
+		return nil, nil, fmt.Errorf("resolve team1 %q: %w", team1, err)
+	}
+	opp2ID, err := db.FindOppositionIDForFormat(ctx, team2, format)
+	if err != nil {
+		slog.Error("predictteam.PredictTeams resolve team2 failed", slog.String("team2", team2), slog.Any("err", err))
+		return nil, nil, fmt.Errorf("resolve team2 %q: %w", team2, err)
+	}
 	opp1IDVal := opp1ID
 	opp2IDVal := opp2ID
 
 	// Player pools
-	pool1, err := db.ListPlayerPoolByTeam(ctx, format, team1, cutoff, input.ExtraTeam1)
+	pool1, err := db.ListPlayerPoolByOpposition(ctx, format, opp1ID, cutoff, input.ExtraTeam1)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team1 pool failed", slog.String("team1", team1), slog.Any("err", err))
 		return nil, nil, fmt.Errorf("team1 pool: %w", err)
 	}
-	pool2, err := db.ListPlayerPoolByTeam(ctx, format, team2, cutoff, input.ExtraTeam2)
+	pool2, err := db.ListPlayerPoolByOpposition(ctx, format, opp2ID, cutoff, input.ExtraTeam2)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams team2 pool failed", slog.String("team2", team2), slog.Any("err", err))
 		return nil, nil, fmt.Errorf("team2 pool: %w", err)

@@ -20,7 +20,7 @@ func TestGetUniqueTeams(t *testing.T) {
 		expectedTeams := []string{"Australia", "India", "England"}
 		rows := stringRowsForOptions(expectedTeams)
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+		mockDB.On("Query", mock.Anything, "SELECT DISTINCT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(rows, nil)
 
 		teams, err := db.GetUniqueTeams(context.Background())
@@ -34,7 +34,7 @@ func TestGetUniqueTeams(t *testing.T) {
 		db.SetDB(mockDB)
 		t.Cleanup(func() { db.SetDB(nil) })
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+		mockDB.On("Query", mock.Anything, "SELECT DISTINCT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(nil, errors.New("query failed"))
 
 		teams, err := db.GetUniqueTeams(context.Background())
@@ -52,7 +52,7 @@ func TestGetUniqueTeams(t *testing.T) {
 		rows := stringRowsForOptions(nil).(*optionsStringRows)
 		rows.err = errors.New("rows error")
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+		mockDB.On("Query", mock.Anything, "SELECT DISTINCT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(rows, nil)
 
 		_, err := db.GetUniqueTeams(context.Background())
@@ -69,7 +69,7 @@ func TestGetUniqueTeams(t *testing.T) {
 		rows := stringRowsForOptions([]string{"Australia"}).(*optionsStringRows)
 		rows.scanErr = errors.New("scan failed")
 
-		mockDB.On("Query", mock.Anything, "SELECT opposition_name FROM opposition ORDER BY opposition_name").
+		mockDB.On("Query", mock.Anything, "SELECT DISTINCT opposition_name FROM opposition ORDER BY opposition_name").
 			Return(rows, nil)
 
 		_, err := db.GetUniqueTeams(context.Background())
