@@ -748,6 +748,42 @@ Worth keeping as a cheap diagnostic in S-9 regardless: a candidate feature set t
 *not* move p in response to a one-player swap cannot drive selection whatever its AUC. It
 is not what fails here, but it is a fast way to rule a feature set out.
 
+### Model class is not the constraint — but the shipped params are miscalibrated
+
+T20, same holdout, same 63 features, three seeds each:
+
+| model | held-out AUC |
+|---|---|
+| GradientBoosting, shallower + regularised (`max_depth=2`, `lr=0.03`, 300 trees) | **0.665 ± 0.000** |
+| LogisticRegression | 0.651 |
+| GradientBoosting **as shipped** (`max_depth=6`, `lr=0.1`, 100 trees) | 0.644 ± 0.004 |
+| MLP (128, 64, 32) | 0.651 |
+| MLP (64, 32) | 0.641 |
+
+**Neural networks land at or below the linear baseline**, which is the expected result for
+10,403 rows of 63 tabular features. Capacity is not the constraint; do not spend effort
+there.
+
+**Logistic regression beats the shipped boosted ensemble.** When a linear model
+outperforms depth-6 boosting, there is no rich interaction structure to exploit — the
+signal is weak and essentially additive. That is independent corroboration, from a
+different direction, of one Elo number beating all 63 features.
+
+**The nearly-free gain: `make auto-tune MODEL=win`.** The shipped configuration is
+over-parameterised for this much signal and overfits; a shallower regularised fit is worth
+**+0.021 AUC for no new data or features**. The repo already has the machinery, and
+[#199](https://github.com/umayangag/cric-flow/pull/199) fixed it to optimise `roc_auc`
+rather than accuracy precisely so tuning could not select a worse-ranking model — **it has
+never been run for the win model since that fix.** Do this before any feature work, since
+it needs no contract change.
+
+Keep the scale in view: tuning reaches ~0.665, while match-level features alone already
+reach 0.677 (T20) and 0.707 (T20I). **The feature gap dominates the model-class gap.**
+
+*Note on the number:* the gain is +0.021 against the shipped config's three-seed mean of
+0.644, not +0.028 against the single 0.632 draw recorded in the S-3c table. Same lesson as
+the seeds section below.
+
 ### Measure with multiple seeds
 
 Refitting T20 on identical data with only the row order changed moves held-out AUC by
