@@ -271,8 +271,10 @@ def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
 
     assert rec is not None
     assert rec.format_code == "T20I"
-    assert rec.team1 == "India" and rec.team2 == "Australia"
-    assert rec.outcome == 0.0
+    # A team key carries the gender: 130 names in the dataset belong to both a men's and a
+    # women's side, and one key for both gave them one Elo.
+    assert rec.team1 == "India|male" and rec.team2 == "Australia|male"
+    assert rec.outcome == 0.0, "the winner is keyed the same way, or it matches neither side"
     assert rec.team1_players[0] == "id_I0" and len(rec.team2_players) == 11
     d = rec.deliveries
     assert len(d) == 3

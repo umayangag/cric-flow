@@ -41,6 +41,10 @@ services:
       # Dataset dir Import reads and the acquire step downloads into (must be writable
       # in container; mount ./data below). Absolute so it does not depend on the cwd.
       GO_APP_CRICSHEET_DIR: /data/go-app/cricsheet
+      # Reviewed franchise renames (I-4). The build context is ./go-app, so this cannot be
+      # baked into the image the way config.json is; it is mounted below. Absolute so the
+      # importer does not have to find it by searching upwards from the cwd.
+      GO_APP_TEAM_LINEAGE: /configs/team_lineage.json
       # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
@@ -60,6 +64,7 @@ services:
     volumes:
       - ./output:/output
       - ./data:/data
+      - ./configs:/configs:ro
 
   ml-service:
     build:

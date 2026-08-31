@@ -99,6 +99,8 @@ func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string)
 // team: 130 of the 394 names in the dataset belong to both a men's and a women's side.
 // Resolving the name is the caller's job (FindOppositionIDForFormat), which also stops
 // this read path from creating a team row as a side effect of a prediction request.
+//
+// The id is a *club*: the pool spans every name the club has played under.
 func ListPlayerPoolByOpposition(
 	ctx context.Context,
 	formatCode string,
@@ -120,18 +122,25 @@ func ListPlayerPoolByOpposition(
 	// bowling_team_opposition_id = team that bowled (bowlers in bowling_data play for that team).
 	// Use a CTE to get distinct player_ids via JOINs (avoids EXISTS per-row); then join with player and consistency.
 	rows, err := Pool.Query(ctx, `
-		WITH eligible AS (
+		WITH club AS (
+		  -- Every opposition row belonging to the same club, so a rename does not halve
+		  -- the pool: Royal Challengers Bengaluru's players include the ones who only ever
+		  -- appear under Bangalore.
+		  SELECT id FROM opposition WHERE COALESCE(canonical_id, id) = $3
+		), eligible AS (
 		  SELECT bd.player_id AS id
 		  FROM batting_data bd
 		  JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
 		  JOIN match m ON m.match_id = bd.match_id
-		  WHERE m.format_id = $1 AND m.match_date < $2 AND mi.batting_team_opposition_id = $3
+		  WHERE m.format_id = $1 AND m.match_date < $2
+		    AND mi.batting_team_opposition_id IN (SELECT id FROM club)
 		  UNION
 		  SELECT bw.player_id
 		  FROM bowling_data bw
 		  JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
 		  JOIN match m ON m.match_id = bw.match_id
-		  WHERE m.format_id = $1 AND m.match_date < $2 AND mi.bowling_team_opposition_id = $3
+		  WHERE m.format_id = $1 AND m.match_date < $2
+		    AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
 		)
 		SELECT p.id, p.player_name, p.is_wicket_keeper,
 		       COALESCE(latest.batting_std_w10, 0)::real AS batting_consistency,
