@@ -9,9 +9,20 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/phase"
 )
 
+// playerIDResolver is the slice of match identity that ball events need: every name on a
+// delivery belongs to a person the match file's registry can name.
+type playerIDResolver interface {
+	PlayerID(ctx context.Context, name string) (int64, error)
+}
+
 // BuildBallEventRows builds ball_event rows for all innings. Used by both EmitBallEvents and transactional import.
-func BuildBallEventRows(ctx context.Context, m *Match, formatID int, matchID int64) ([]db.BallEventRow, error) {
-	cache := db.GetGlobalCache()
+func BuildBallEventRows(
+	ctx context.Context,
+	identity playerIDResolver,
+	m *Match,
+	formatID int,
+	matchID int64,
+) ([]db.BallEventRow, error) {
 	var allRows []db.BallEventRow
 	for i, inng := range m.Innings {
 		inningNo := i + 1
@@ -43,20 +54,20 @@ func BuildBallEventRows(ctx context.Context, m *Match, formatID int, matchID int
 				if legal {
 					ballSeq++
 				}
-				// Resolve IDs (best-effort; use cache; keep nils on error)
+				// Resolve IDs (best-effort; keep nils on error)
 				var strikerID, nonStrikerID, bowlerID *int64
 				if s := strings.TrimSpace(d.Batter); s != "" {
-					if id, err := cache.GetPlayerID(ctx, s); err == nil {
+					if id, err := identity.PlayerID(ctx, s); err == nil {
 						strikerID = &id
 					}
 				}
 				if s := strings.TrimSpace(d.NonStriker); s != "" {
-					if id, err := cache.GetPlayerID(ctx, s); err == nil {
+					if id, err := identity.PlayerID(ctx, s); err == nil {
 						nonStrikerID = &id
 					}
 				}
 				if s := strings.TrimSpace(d.Bowler); s != "" {
-					if id, err := cache.GetPlayerID(ctx, s); err == nil {
+					if id, err := identity.PlayerID(ctx, s); err == nil {
 						bowlerID = &id
 					} else {
 						slog.Error("get/create bowler failed", slog.String("name", s), slog.Any("err", err))
@@ -90,7 +101,7 @@ func BuildBallEventRows(ctx context.Context, m *Match, formatID int, matchID int
 					}
 					name := strings.TrimSpace((*d.Wickets)[0].PlayerOut)
 					if name != "" {
-						if id, err := cache.GetPlayerID(ctx, name); err == nil {
+						if id, err := identity.PlayerID(ctx, name); err == nil {
 							playerOutID = &id
 						} else {
 							slog.Error("get/create player failed", slog.String("name", name), slog.Any("err", err))

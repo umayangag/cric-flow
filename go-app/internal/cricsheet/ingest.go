@@ -70,6 +70,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	var count int64
 	var failedMu sync.Mutex
 	var failedFiles []string
+	// Which spelling of a name each player ends up displayed under is decided across the
+	// whole import, not per file, so it cannot depend on which goroutine finished first.
+	names := newDisplayNames()
+	// errgroup's context is cancelled as soon as Wait returns, success or not, so the
+	// flush below has to run on the caller's context rather than the workers'.
+	parentCtx := ctx
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
 
@@ -81,7 +87,7 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 				return nil
 			}
 			slog.Info("importing match file", slog.String("file", filepath.Base(f)))
-			if err := ImportMatchFile(ctx, f, opts); err != nil {
+			if err := importMatchFile(ctx, f, opts, names); err != nil {
 				if opts.FailFast {
 					slog.Error("import failed, stopping",
 						slog.String("file", filepath.Base(f)),
@@ -113,6 +119,16 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 		return int(count), err
 	}
 	resources.RecordWorkerMemorySample(resources.KindImport, concurrency)
+	// Settle display names once every file has been read. A failure here leaves the
+	// identities correct and some names stale, which is worth a loud log but not worth
+	// discarding a completed import for.
+	if err := cricDB.UpdatePlayerDisplayNames(parentCtx, names.rows()); err != nil {
+		slog.Error("cricsheet.ImportDir could not settle player display names",
+			slog.String("dir", dir),
+			slog.Int("players", len(names.rows())),
+			slog.Any("err", err))
+		return int(count), fmt.Errorf("settle player display names: %w", err)
+	}
 	if len(failedFiles) > 0 {
 		slog.Warn("cricsheet.ImportDir finished with skipped files",
 			slog.String("dir", dir),
@@ -125,6 +141,13 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 
 // ImportMatchFile parses a single Cricsheet JSON file and upserts stats into DB.
 func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
+	return importMatchFile(ctx, path, opts, nil)
+}
+
+// importMatchFile is ImportMatchFile with the import-wide display-name collector, which
+// only a directory import has. A single-file import stores the name that file gives and
+// has nothing to reconcile it against.
+func importMatchFile(ctx context.Context, path string, opts *Options, names *displayNames) error {
 	cache := db.GetGlobalCache()
 	fh, err := os.Open(path)
 	if err != nil {
@@ -145,6 +168,16 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	info := m.Info
 	dateISO := info.MatchDate()
+	// Every name below is resolved through this: it carries the file's person registry
+	// and the match's gender, which are the two things that turn a name into an identity.
+	identity := &matchIdentity{
+		entities: cache,
+		registry: info.Registry.PersonIDsByName(),
+		gender:   strings.TrimSpace(info.Gender),
+		dateISO:  dateISO,
+		path:     path,
+		names:    names,
+	}
 	teamA, teamB := "Team A", "Team B"
 	if len(info.Teams) >= 1 {
 		teamA = info.Teams[0]
@@ -198,7 +231,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if info.Outcome != nil {
 		winner = strings.TrimSpace(info.Outcome.Winner)
 		if winner != "" {
-			if id, e := cache.GetOppositionID(ctx, winner); e == nil {
+			if id, e := identity.OppositionID(ctx, winner); e == nil {
 				winnerID = &id
 			} else {
 				slog.Error("get/create opposition for winner failed",
@@ -218,7 +251,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	}
 	var tossWinnerOppositionID *int64
 	if toss != "" {
-		if id, e := cache.GetOppositionID(ctx, toss); e == nil {
+		if id, e := identity.OppositionID(ctx, toss); e == nil {
 			tossWinnerOppositionID = &id
 		}
 	}
@@ -273,7 +306,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				slog.String("match_teams", fmt.Sprintf("%q and %q", teamA, teamB)))
 			return fmt.Errorf("inning %d team %q does not match match teams %q and %q", inningNo, batTeam, teamA, teamB)
 		}
-		battingTeamOppositionID, err := cache.GetOppositionID(ctx, batTeam)
+		battingTeamOppositionID, err := identity.OppositionID(ctx, batTeam)
 		if err != nil {
 			slog.Error("get/create opposition for batting team failed",
 				slog.String("file", path),
@@ -284,7 +317,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 				slog.Any("err", err))
 			return fmt.Errorf("get/create opposition for batting team %q: %w", batTeam, err)
 		}
-		bowlingTeamOppositionID, err := cache.GetOppositionID(ctx, oppTeam)
+		bowlingTeamOppositionID, err := identity.OppositionID(ctx, oppTeam)
 		if err != nil {
 			slog.Error("get/create opposition for bowling team failed",
 				slog.String("file", path),
@@ -353,7 +386,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 						}
 
 						if len(fNames) > 0 {
-							batterID, err := cache.GetPlayerID(ctx, w.PlayerOut)
+							batterID, err := identity.PlayerID(ctx, w.PlayerOut)
 							if err != nil {
 								slog.Error("get/create player for batter (fielding_event) failed",
 									slog.String("file", path),
@@ -368,7 +401,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 							var bowlerID *int64
 							// Bowler is only associated with 'caught' dismissals.
 							if isCaught && d.Bowler != "" {
-								bid, err := cache.GetPlayerID(ctx, d.Bowler)
+								bid, err := identity.PlayerID(ctx, d.Bowler)
 								if err != nil {
 									slog.Error("get/create player for bowler (fielding_event) failed",
 										slog.String("file", path),
@@ -382,7 +415,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 								bowlerID = &bid
 							}
 							for _, fn := range fNames {
-								fid, err := cache.GetPlayerID(ctx, fn)
+								fid, err := identity.PlayerID(ctx, fn)
 								if err != nil {
 									slog.Error("get/create player for fielder failed",
 										slog.String("file", path),
@@ -497,7 +530,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		var batBatch []db.Batting
 		for _, name := range order {
 			b := batAgg[name]
-			pid, err := cache.GetPlayerID(ctx, name)
+			pid, err := identity.PlayerID(ctx, name)
 			if err != nil {
 				slog.Error("get/create player for batting failed",
 					slog.String("file", path),
@@ -540,7 +573,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 			if s.Balls > 0 {
 				econ = float32(float64(s.Runs) / float64(s.Balls) * float64(ballsPerOver))
 			}
-			pid, err := cache.GetPlayerID(ctx, name)
+			pid, err := identity.PlayerID(ctx, name)
 			if err != nil {
 				slog.Error("get/create player for bowling failed",
 					slog.String("file", path),
@@ -572,12 +605,12 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 		allBowlBatches = append(allBowlBatches, bowlBatch)
 	}
 	// Resolve the squads each side picked (requires cache; done before tx).
-	matchPlayerRows, err := buildMatchPlayerRows(ctx, cache, info, mid, path, dateISO)
+	matchPlayerRows, err := buildMatchPlayerRows(ctx, identity, info, mid, path, dateISO)
 	if err != nil {
 		return err
 	}
 	// Build ball event rows (requires cache; done before tx)
-	ballEventRows, err := BuildBallEventRows(ctx, m, int(formatID), mid)
+	ballEventRows, err := BuildBallEventRows(ctx, identity, m, int(formatID), mid)
 	if err != nil {
 		slog.Error("failed to build ball_event rows",
 			slog.String("file", path),
@@ -593,7 +626,7 @@ func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	if opts != nil && opts.PlaceholdersFielding {
 		zero := 0
 		for name := range playersSeen {
-			pid, err := cache.GetPlayerID(ctx, name)
+			pid, err := identity.PlayerID(ctx, name)
 			if err != nil {
 				slog.Error("get/create player for fielding placeholder failed",
 					slog.String("file", path),

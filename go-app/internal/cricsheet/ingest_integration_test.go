@@ -282,8 +282,9 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	mdb.On("GetMatchFormatIDByCode", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("GetOrCreateVenue", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
-	mdb.On("GetOrCreateOpposition", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
-	mdb.On("GetOrCreateByName", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
+	mdb.On("GetOrCreateOpposition", anyCtx, mock.Anything, mock.Anything).Return(int64(1), nil)
+	mdb.On("GetOrCreatePlayer", anyCtx, mock.Anything, mock.Anything, mock.Anything).Return(int64(1), "", nil)
+	mdb.On("UpdatePlayerDisplayNames", anyCtx, mock.Anything).Return(nil)
 	mdb.On("UpsertMatch", anyCtx, mock.MatchedBy(func(m *db.MatchInsert) bool { return m != nil })).Return(nil)
 	mdb.On("UpsertMatchInning", anyCtx, mock.MatchedBy(func(mi *db.MatchInningInsert) bool { return mi != nil })).
 		Return(nil)

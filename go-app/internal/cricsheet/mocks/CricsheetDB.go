@@ -176,75 +176,9 @@ func (_c *MockCricsheetDB_GetMatchFormatIDByCode_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
-// GetOrCreateByName provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) GetOrCreateByName(ctx context.Context, name string) (int64, error) {
-	ret := _mock.Called(ctx, name)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetOrCreateByName")
-	}
-
-	var r0 int64
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return returnFunc(ctx, name)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = returnFunc(ctx, name)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, name)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockCricsheetDB_GetOrCreateByName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrCreateByName'
-type MockCricsheetDB_GetOrCreateByName_Call struct {
-	*mock.Call
-}
-
-// GetOrCreateByName is a helper method to define mock.On call
-//   - ctx context.Context
-//   - name string
-func (_e *MockCricsheetDB_Expecter) GetOrCreateByName(ctx interface{}, name interface{}) *MockCricsheetDB_GetOrCreateByName_Call {
-	return &MockCricsheetDB_GetOrCreateByName_Call{Call: _e.mock.On("GetOrCreateByName", ctx, name)}
-}
-
-func (_c *MockCricsheetDB_GetOrCreateByName_Call) Run(run func(ctx context.Context, name string)) *MockCricsheetDB_GetOrCreateByName_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCricsheetDB_GetOrCreateByName_Call) Return(n int64, err error) *MockCricsheetDB_GetOrCreateByName_Call {
-	_c.Call.Return(n, err)
-	return _c
-}
-
-func (_c *MockCricsheetDB_GetOrCreateByName_Call) RunAndReturn(run func(ctx context.Context, name string) (int64, error)) *MockCricsheetDB_GetOrCreateByName_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetOrCreateOpposition provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) GetOrCreateOpposition(ctx context.Context, name string) (int64, error) {
-	ret := _mock.Called(ctx, name)
+func (_mock *MockCricsheetDB) GetOrCreateOpposition(ctx context.Context, name string, gender string) (int64, error) {
+	ret := _mock.Called(ctx, name, gender)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrCreateOpposition")
@@ -252,16 +186,16 @@ func (_mock *MockCricsheetDB) GetOrCreateOpposition(ctx context.Context, name st
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int64, error)); ok {
+		return returnFunc(ctx, name, gender)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int64); ok {
+		r0 = returnFunc(ctx, name, gender)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, name, gender)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -276,11 +210,12 @@ type MockCricsheetDB_GetOrCreateOpposition_Call struct {
 // GetOrCreateOpposition is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *MockCricsheetDB_Expecter) GetOrCreateOpposition(ctx interface{}, name interface{}) *MockCricsheetDB_GetOrCreateOpposition_Call {
-	return &MockCricsheetDB_GetOrCreateOpposition_Call{Call: _e.mock.On("GetOrCreateOpposition", ctx, name)}
+//   - gender string
+func (_e *MockCricsheetDB_Expecter) GetOrCreateOpposition(ctx interface{}, name interface{}, gender interface{}) *MockCricsheetDB_GetOrCreateOpposition_Call {
+	return &MockCricsheetDB_GetOrCreateOpposition_Call{Call: _e.mock.On("GetOrCreateOpposition", ctx, name, gender)}
 }
 
-func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) Run(run func(ctx context.Context, name string)) *MockCricsheetDB_GetOrCreateOpposition_Call {
+func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) Run(run func(ctx context.Context, name string, gender string)) *MockCricsheetDB_GetOrCreateOpposition_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -290,9 +225,14 @@ func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) Run(run func(ctx context.C
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -303,7 +243,91 @@ func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) Return(n int64, err error)
 	return _c
 }
 
-func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) RunAndReturn(run func(ctx context.Context, name string) (int64, error)) *MockCricsheetDB_GetOrCreateOpposition_Call {
+func (_c *MockCricsheetDB_GetOrCreateOpposition_Call) RunAndReturn(run func(ctx context.Context, name string, gender string) (int64, error)) *MockCricsheetDB_GetOrCreateOpposition_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOrCreatePlayer provides a mock function for the type MockCricsheetDB
+func (_mock *MockCricsheetDB) GetOrCreatePlayer(ctx context.Context, externalID string, name string, nameAsOf string) (int64, string, error) {
+	ret := _mock.Called(ctx, externalID, name, nameAsOf)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrCreatePlayer")
+	}
+
+	var r0 int64
+	var r1 string
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (int64, string, error)); ok {
+		return returnFunc(ctx, externalID, name, nameAsOf)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) int64); ok {
+		r0 = returnFunc(ctx, externalID, name, nameAsOf)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) string); ok {
+		r1 = returnFunc(ctx, externalID, name, nameAsOf)
+	} else {
+		r1 = ret.Get(1).(string)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, string) error); ok {
+		r2 = returnFunc(ctx, externalID, name, nameAsOf)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// MockCricsheetDB_GetOrCreatePlayer_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrCreatePlayer'
+type MockCricsheetDB_GetOrCreatePlayer_Call struct {
+	*mock.Call
+}
+
+// GetOrCreatePlayer is a helper method to define mock.On call
+//   - ctx context.Context
+//   - externalID string
+//   - name string
+//   - nameAsOf string
+func (_e *MockCricsheetDB_Expecter) GetOrCreatePlayer(ctx interface{}, externalID interface{}, name interface{}, nameAsOf interface{}) *MockCricsheetDB_GetOrCreatePlayer_Call {
+	return &MockCricsheetDB_GetOrCreatePlayer_Call{Call: _e.mock.On("GetOrCreatePlayer", ctx, externalID, name, nameAsOf)}
+}
+
+func (_c *MockCricsheetDB_GetOrCreatePlayer_Call) Run(run func(ctx context.Context, externalID string, name string, nameAsOf string)) *MockCricsheetDB_GetOrCreatePlayer_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCricsheetDB_GetOrCreatePlayer_Call) Return(n int64, s string, err error) *MockCricsheetDB_GetOrCreatePlayer_Call {
+	_c.Call.Return(n, s, err)
+	return _c
+}
+
+func (_c *MockCricsheetDB_GetOrCreatePlayer_Call) RunAndReturn(run func(ctx context.Context, externalID string, name string, nameAsOf string) (int64, string, error)) *MockCricsheetDB_GetOrCreatePlayer_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -436,6 +460,63 @@ func (_c *MockCricsheetDB_GetOrCreateVenue_Call) Return(n int64, err error) *Moc
 }
 
 func (_c *MockCricsheetDB_GetOrCreateVenue_Call) RunAndReturn(run func(ctx context.Context, name string) (int64, error)) *MockCricsheetDB_GetOrCreateVenue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdatePlayerDisplayNames provides a mock function for the type MockCricsheetDB
+func (_mock *MockCricsheetDB) UpdatePlayerDisplayNames(ctx context.Context, names []db.PlayerDisplayName) error {
+	ret := _mock.Called(ctx, names)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdatePlayerDisplayNames")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.PlayerDisplayName) error); ok {
+		r0 = returnFunc(ctx, names)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCricsheetDB_UpdatePlayerDisplayNames_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdatePlayerDisplayNames'
+type MockCricsheetDB_UpdatePlayerDisplayNames_Call struct {
+	*mock.Call
+}
+
+// UpdatePlayerDisplayNames is a helper method to define mock.On call
+//   - ctx context.Context
+//   - names []db.PlayerDisplayName
+func (_e *MockCricsheetDB_Expecter) UpdatePlayerDisplayNames(ctx interface{}, names interface{}) *MockCricsheetDB_UpdatePlayerDisplayNames_Call {
+	return &MockCricsheetDB_UpdatePlayerDisplayNames_Call{Call: _e.mock.On("UpdatePlayerDisplayNames", ctx, names)}
+}
+
+func (_c *MockCricsheetDB_UpdatePlayerDisplayNames_Call) Run(run func(ctx context.Context, names []db.PlayerDisplayName)) *MockCricsheetDB_UpdatePlayerDisplayNames_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []db.PlayerDisplayName
+		if args[1] != nil {
+			arg1 = args[1].([]db.PlayerDisplayName)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpdatePlayerDisplayNames_Call) Return(err error) *MockCricsheetDB_UpdatePlayerDisplayNames_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCricsheetDB_UpdatePlayerDisplayNames_Call) RunAndReturn(run func(ctx context.Context, names []db.PlayerDisplayName) error) *MockCricsheetDB_UpdatePlayerDisplayNames_Call {
 	_c.Call.Return(run)
 	return _c
 }

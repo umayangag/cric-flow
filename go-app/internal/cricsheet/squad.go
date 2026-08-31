@@ -11,11 +11,11 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// squadIDResolver is the slice of the entity cache that squad rows need. Narrow so
+// squadIDResolver is the slice of match identity that squad rows need. Narrow so
 // the row builder can be tested without a database.
 type squadIDResolver interface {
-	GetPlayerID(ctx context.Context, name string) (int64, error)
-	GetOppositionID(ctx context.Context, name string) (int64, error)
+	PlayerID(ctx context.Context, name string) (int64, error)
+	OppositionID(ctx context.Context, name string) (int64, error)
 }
 
 // SquadMember is one entry of info.players: a player and the side that picked them.
@@ -172,7 +172,7 @@ func buildMatchPlayerRows(
 	for _, member := range members {
 		oppositionID, ok := oppositionIDs[member.Team]
 		if !ok {
-			oppositionID, err = resolver.GetOppositionID(ctx, member.Team)
+			oppositionID, err = resolver.OppositionID(ctx, member.Team)
 			if err != nil {
 				slog.Error("get/create opposition for squad failed",
 					slog.String("file", path),
@@ -184,7 +184,7 @@ func buildMatchPlayerRows(
 			}
 			oppositionIDs[member.Team] = oppositionID
 		}
-		playerID, err := resolver.GetPlayerID(ctx, member.Player)
+		playerID, err := resolver.PlayerID(ctx, member.Player)
 		if err != nil {
 			slog.Error("get/create player for squad failed",
 				slog.String("file", path),

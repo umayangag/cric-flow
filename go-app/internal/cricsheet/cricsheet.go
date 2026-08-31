@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // Structures matching Cricsheet v1.1 JSON (subset we need)
@@ -38,6 +39,45 @@ type Info struct {
 	// who was picked: the scorecard shows only whoever batted or bowled, and both of
 	// those are decided by how the match went. See migration 0003_match_player.sql.
 	Players map[string][]string `json:"players"`
+
+	// Registry holds Cricsheet's own identifiers for the people named in this file.
+	// It is the only thing in the source that tells two people who share a scorecard
+	// name apart, and the only thing that recognises one person under two spellings.
+	// See migration 0004_identity.sql.
+	Registry Registry `json:"registry"`
+}
+
+// Registry is info.registry: Cricsheet's person identifiers for one match file.
+//
+// People maps a name *as spelled in this file* to a dataset-wide identifier. The
+// mapping is per file and keyed by name, which is why it cannot separate two namesakes
+// who appear in the same match -- see PersonID.
+type Registry struct {
+	People map[string]string `json:"people"`
+}
+
+// PersonIDsByName returns the file's identifiers keyed by trimmed name.
+//
+// Trimming both sides matters: four registry keys in the current dataset carry a trailing
+// space ("Lalchhuanliana ") while the squad and delivery entries naming the same person
+// do not, so an exact-match lookup silently drops them onto the name-keyed fallback --
+// and two spellings of one name is exactly the split career this work removes. No file
+// in the dataset has two identifiers whose names differ only by surrounding space, so
+// trimming cannot merge two people; if one ever did, the later key wins and the drop from
+// both squads that already covers in-match namesakes applies.
+//
+// Built once per match rather than looked up per name, because a match resolves the same
+// handful of names hundreds of times.
+func (r Registry) PersonIDsByName() map[string]string {
+	out := make(map[string]string, len(r.People))
+	for name, id := range r.People {
+		name, id = strings.TrimSpace(name), strings.TrimSpace(id)
+		if name == "" || id == "" {
+			continue
+		}
+		out[name] = id
+	}
+	return out
 }
 
 // MatchDate returns the primary match date (the first entry in Dates).
