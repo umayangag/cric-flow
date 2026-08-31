@@ -153,7 +153,9 @@ class _FakeCursor:
         return False
 
     def execute(self, sql, params):
-        if "FROM match m" in sql:
+        if "count(*) FROM match" in sql:
+            self.rows = [(len(self.tables["matches"]),)]
+        elif "FROM match m" in sql:
             self.rows = self.tables["matches"]
         elif "FROM match_player" in sql:
             self.rows = self.tables["players"].get(params[0], [])
@@ -164,6 +166,9 @@ class _FakeCursor:
 
     def fetchall(self):
         return self.rows
+
+    def fetchone(self):
+        return self.rows[0]
 
 
 class _FakeConnection:

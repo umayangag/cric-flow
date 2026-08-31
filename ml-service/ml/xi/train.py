@@ -37,6 +37,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml.xi import contract as C
+from ml.xi import quality
 from ml.xi.builder import BuildResult, build
 from ml.xi.store import FormatModels, save_models, save_ratings
 
@@ -189,7 +190,10 @@ def train_format(
 
 
 def train_all(
-    result: BuildResult, artifacts_dir: str, cutoff: pd.Timestamp, formats: Sequence[str] = C.FORMAT_CODES
+    result: BuildResult,
+    artifacts_dir: str,
+    cutoff: pd.Timestamp,
+    formats: Sequence[str] = C.FORMAT_CODES,
 ) -> Dict:
     os.makedirs(artifacts_dir, exist_ok=True)
     reports = []
@@ -208,10 +212,14 @@ def train_all(
         else:
             logger.warning("%s: skipped (%s)", fmt, report.get("skipped_reason"))
     save_ratings(result.state, artifacts_dir)
+    # Read before anything is written: the baseline is the last accepted run's counts.
+    gate = quality.check(result.quality, quality.load_baseline(artifacts_dir))
     summary = {
         "cutoff": cutoff.date().isoformat(),
         "n_rows": int(len(result.frame)),
         "n_undecided": result.n_undecided,
+        quality.REPORT_KEY: result.quality.as_dict(),
+        "data_quality_failures": gate.failures,
         "formats": reports,
     }
     with open(os.path.join(artifacts_dir, REPORT_NAME), "w") as fh:
@@ -242,6 +250,11 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p.add_argument("--out", default=None, help="artifacts directory (default: ml.config.default_artifacts_dir())")
     p.add_argument("--formats", nargs="+", default=list(C.FORMAT_CODES))
     p.add_argument("--frame-out", default=None, help="optional path to also write the training frame as CSV")
+    p.add_argument(
+        "--accept-data-quality",
+        action="store_true",
+        help="record this run's data-quality counts as the baseline even if the gate failed (H-15)",
+    )
     return p.parse_args(argv)
 
 
@@ -277,6 +290,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 r["display_marginalised"]["brier"], r["base_rate_brier"],
                 r["best_single_column"]["column"], r["best_single_column"]["auc"],
             )  # fmt: skip
+    failures = summary["data_quality_failures"]
+    if failures and not args.accept_data_quality:
+        # The artifacts and the report are written either way: an operator has to see what
+        # the run produced in order to judge whether the new counts are right. What a
+        # failure withholds is the baseline, so re-running cannot clear the gate on its own.
+        for failure in failures:
+            logger.error("data-quality gate: %s", failure)
+        logger.error(
+            "data-quality gate failed (%d %s). Artifacts and %s are written but the baseline is "
+            "unchanged, so a re-run will fail the same way. Review the counts; if they are right, "
+            "re-run with --accept-data-quality.",
+            len(failures),
+            "check" if len(failures) == 1 else "checks",
+            REPORT_NAME,
+        )
+        return 1
+    if failures:
+        logger.warning("data-quality gate failed but --accept-data-quality was given; recording the new baseline")
+    path = quality.save_baseline(out_dir, result.quality)
+    logger.info("data-quality gate passed; baseline at %s", path)
     return 0
 
 
