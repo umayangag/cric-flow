@@ -491,7 +491,7 @@ checklist.
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | **done** (`arch/p-3-performance-model`). `ml/xi/performance.py`: per format, quantile (0.1 / 0.5 / 0.9) models of runs, balls faced and runs conceded, a two-part zero-inflated Poisson of wickets, a Poisson rate of catches, and P(bats) / P(bowls) — all on the unconditional population (H-20), innings marginalised at prediction, three seeds, a three-point grid tuned inside the folds (flat), E1 (no family kept) and E6 (separate) in §5.3. Walk-forward over 7 folds, 3 seeds (§8.2): **runs** beat the career mean on Spearman (+0.040 ± 0.007 T20, +0.048 ± 0.013 ODI) and pinball (2.93 vs 5.09, 4.59 vs 7.96), median MAE −9 %; **wickets** beat it on pinball (0.141 vs 0.260, 0.163 vs 0.302) and tie on Spearman in ODI (+0.001 ± 0.012) but **trail it by 0.029 ± 0.012 in T20** — a tie-averaging artifact of the unconditional metric, recorded below rather than gamed; among the players who bowled the model ranks better in both. Locked window: per-end coverage inside ±0.03 everywhere, no recalibration triggered (H-5); width reported beside coverage (H-22). `POST /performance/predict` serves it; H-8 parity holds for rows and predictions on both sources at 0.0 — after it found the fifth defect, §10.4 |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | **done** (`arch/p-4-simulator`). Design written first (§3, "The innings sample"); `ml/xi/simulator.py` draws whole matches from L2-B's forecasts — sequential by expected slot under the as-of innings length, chase ended at the target, bowlers attributed, toss marginalised — with one shared as-of match factor (deconvolved residuals of the calibration fold) that the folds showed was needed (§8.3: dispersion ratio 1.42 → 1.02 T20, 1.36 → 1.02 ODI; coverage 0.64 → 0.76, 0.58 → 0.74; before/after recorded). Locked window (§8.3): first-innings 10–90 coverage **0.786 T20 / 0.790 ODI** (acceptance ±0.03 met), dispersion ratio 0.98 / 1.02, width 90.6 / 154.1 runs; 9.4–9.9 ms per fixture at 2,000 draws. E2 within tolerance (+0.003 / +0.003 Brier on the folds), so the simulated P(win) is served as a probability beside the display model, which stays the headline. `POST /simulate`; the go-app xi scorecard reads it (totals, points and ranges from the draws; extras / innings models and the rescale unused on that path); L3 explanation = marginal values + spread shares. H-8 parity extended to the draws at a fixed seed: max abs difference 0.0 over 39 simulated matches on both sources, and the two sources agree on every locked-window figure (T20 coverage 0.786 / 0.786, ODI 0.790 / 0.787, Brier to 0.0004) |
 | P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete the greedy weights, the meta-model, the rescaling layers, the Normal Monte Carlo and the per-call optimiser | **done** (`arch/p-5-repoint-surfaces`). A limited-overs `/api/predict/*` response now carries the display model's P(win) with `source` on the wire, the simulated totals with their 10-90 ranges, per-player ranges and marginal values, and a `scorecard` block whose lines and extras sum to the total by construction; nothing rescales a simulated total toward anything, on any path. **S-6 ships here**: the XI path is the only selection path for T20 / T20I / ODI, on the gate P-2 measured (specific-XI-beyond-typical-XI +0.045 ± 0.021 AUC T20, swap violations 0.3 %), not on P-0's mis-specified winner accuracy. **TEST** gets `objective: "ratings"` on `/xi/optimize` — the search's own seed order under the same constraints, evaluating no model — labelled `optimised: false` in the API and shown as a *Not optimised* notice in the UI (H-17); its per-player numbers come from `/performance/predict`, and it has no innings total because it has no innings length. The backtest surface is L4's report, served by the new `GET /xi/evaluate-report` and proxied at `/api/backtest/report`: walk-forward folds with the locked window labelled beside them, the two selection metrics with a labelled slot for E5, per-target performance with width beside coverage, the E2 section and the serving-parity verdict. `ml/metrics.py` and both its callers are gone (H-12). Migration `0007` drops `match_prediction_aggregates`, the one table whose last reader and last writer both died here; nothing else was orphaned by P-5 that P-6 does not already own. Coverage ratcheted: Go 68, ml-service 86, frontend 74/69/74/77 |
-| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min |
+| P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min. **Carries one defect found while smoke-testing P-5 (D-6, §10.4).** A rating artifact written before P-2 loads without complaint and then raises `IndexError` on the first request that touches a player past slot 1024, because `_state_from_payload` assigns only the arrays the payload happens to carry and leaves the nine P-2/P-3 added (`bat_pos_sum`, `bat_pos_n`, `xi_n`, the four phase splits, `seq_num`, `seq_den`) at the constructor's initial width — while `/xi/status` reports `loaded: true`. The guard belongs here rather than in P-5: it is the same question H-16 asks (an artifact must name what produced it), and a run manifest is what lets the loader say *which* run the artifact is from instead of guessing from the arrays it holds |
 | P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report |
 
 Each of P-2 … P-6 removes more than it adds. The end state is smaller than the current tree.
@@ -1078,6 +1078,31 @@ path credits such a catch to nobody (§10.4 above); the importer now does the sa
 replaces a match's fielding events on re-import rather than inserting with `ON CONFLICT DO
 NOTHING`, which would have kept the 452 rows through every re-import that no longer wrote
 them. Re-imported; the two sources now agree on catches and keepers row for row.
+
+### 10.5 Stale rating artifact — found while smoke-testing P-5, deferred to P-6 (D-6)
+
+The sixth defect, and the first found by pointing a browser at a rebuilt container rather
+than by comparing two numbers.
+
+`POST /xi/predict-win` — a path P-5 does not touch — returned
+`500 index 13433 is out of bounds for axis 1 with size 1024`. The artifact on the box was
+written before P-2, so it carries none of the nine arrays P-2 and P-3 added (`bat_pos_sum`,
+`bat_pos_n`, `xi_n`, the four phase splits, `seq_num`, `seq_den`). `_state_from_payload`
+builds a fresh `RatingState` — every array at the constructor's initial width — registers
+the 13,427 saved keys, and then assigns *only the arrays the payload happens to carry*. The
+nine it does not carry stay at that initial width, so the first request touching a player
+past slot 1024 raises, while `/xi/status` reports `loaded: true, players: 13427`.
+
+Two things are wrong and only one is the array. The other is that **an artifact is trusted
+because it loaded**: nothing asks which run produced it or whether that run's state has the
+shape this code expects. That is H-16's question, so the guard goes with the run manifest in
+P-6 rather than being patched here — the fix is for the loader to say *which run* the
+artifact is from and refuse a shape it cannot serve, not to zero-fill nine arrays and hope.
+
+Until then the symptom is entirely operational: `make train-xi` regenerates the state and
+the serving path works. It is recorded because the failure mode is the plan's own recurring
+theme — a check that answers "loaded?" when the question is "current?", the same gap
+`/artifacts/status` grew a `stale` verdict for (H-16, §8).
 
 ---
 
