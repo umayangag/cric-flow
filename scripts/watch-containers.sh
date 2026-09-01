@@ -3,7 +3,7 @@
 # Run on the host: ./scripts/watch-containers.sh, or as a container (see docker-compose watcher service).
 # Logs to stdout and optionally to a file (set WATCH_LOG=/path/to/log).
 #
-# Monitors cric-go-api and cric-ml-service by default. Use WATCH_CONTAINERS=c1,c2 to override.
+# Monitors cric-go-api, cric-ml-service and cricket-postgres by default. Use WATCH_CONTAINERS=c1,c2 to override.
 # Legacy: WATCH_CONTAINER=cric-go-api for a single container.
 #
 # Exit code 137 = SIGKILL, typically OOM kill. Docker sets "OOMKilled: true" in container state.
@@ -11,7 +11,7 @@
 set -e
 
 # Default: both go-api and ml-service
-WATCH_CONTAINERS="${WATCH_CONTAINERS:-cric-go-api,cric-ml-service}"
+WATCH_CONTAINERS="${WATCH_CONTAINERS:-cric-go-api,cric-ml-service,cricket-postgres}"
 if [ -n "${WATCH_CONTAINER}" ]; then
   WATCH_CONTAINERS="${WATCH_CONTAINER}"
 fi
@@ -76,6 +76,10 @@ report_die() {
         ;;
       cric-ml-service)
         log "  hint=Check ml-service logs; increase mem_limit for ml-service; set n_jobs=1 for fielding/extras/win training"
+        ;;
+      cricket-postgres)
+        # Postgres rarely causes the exhaustion it dies from; suspect a concurrent pipeline or training run.
+        log "  hint=Postgres is usually the victim, not the cause; check cric-go-api/cric-ml-service memory at the same timestamp, then raise POSTGRES_MEM_LIMIT or the Docker VM memory"
         ;;
       *)
         log "  hint=Check container logs and memory limit"
