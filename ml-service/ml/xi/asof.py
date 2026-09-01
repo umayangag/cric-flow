@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
+from ml.xi import simulator
 from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
@@ -120,7 +121,8 @@ def serving_parity(
 
     With ``performance_models`` (per format) the check extends to what is served: the
     model's pre-toss prediction for the rebuilt rows must equal its prediction for the
-    frame's rows, output by output.
+    frame's rows, output by output, and so must the simulator's draws from them at a fixed
+    seed (every total and every player's runs).
     """
     ordered = frame.sort_values(["match_date", "match_id"], kind="stable")
     wanted = list(ordered.match_id.tail(last_n))
@@ -131,12 +133,13 @@ def serving_parity(
         for match_id, group in player_frame[player_frame.match_id.isin(wanted_set)].groupby("match_id", sort=False)
     }
 
-    win_cols = C.XI_FEATURE_COLS + C.TEAM_CONTEXT_COLS
+    win_cols = C.XI_FEATURE_COLS + C.TEAM_CONTEXT_COLS + C.SIMULATION_CONTEXT_COLS + C.INNINGS_OUTCOME_COLS
     player_cols = C.PLAYER_MATCH_FEATURE_COLS + C.PLAYER_MATCH_TARGET_COLS
     matches_compared = 0
     win_rows_compared = 0
     player_rows_compared = 0
     predictions_compared = 0
+    simulations_compared = 0
     max_abs_difference = 0.0
     mismatches: List[str] = []
     performance_models = performance_models or {}
@@ -179,6 +182,14 @@ def serving_parity(
             predictions_compared += len(rebuilt_players)
             if diff > PARITY_TOLERANCE:
                 mismatches.append(f"match {match.match_id} performance prediction: {diff:.3g}")
+            if match.format_code in simulator.SIMULATED_FORMATS:
+                diff = _simulation_difference(
+                    model, rebuilt_win, expected, pd.DataFrame(rebuilt_players), expected_players
+                )
+                max_abs_difference = max(max_abs_difference, diff)
+                simulations_compared += 1
+                if diff > PARITY_TOLERANCE:
+                    mismatches.append(f"match {match.match_id} simulation: {diff:.3g}")
 
     if matches_compared < len(wanted_set):
         mismatches.append(f"source yielded {matches_compared} of {len(wanted_set)} matches the frame holds")
@@ -187,15 +198,18 @@ def serving_parity(
         "win_rows_compared": win_rows_compared,
         "player_rows_compared": player_rows_compared,
         "performance_predictions_compared": predictions_compared,
+        "simulations_compared": simulations_compared,
         "max_abs_difference": float(max_abs_difference),
         "mismatches": mismatches[:20],
         "passed": not mismatches,
     }
     logger.info(
-        "serving parity (H-8): %d matches, %d player rows, %d performance predictions, max diff %.3g, %s",
+        "serving parity (H-8): %d matches, %d player rows, %d performance predictions, %d simulations, "
+        "max diff %.3g, %s",
         matches_compared,
         player_rows_compared,
         predictions_compared,
+        simulations_compared,
         max_abs_difference,
         "passed" if report["passed"] else f"FAILED ({len(mismatches)} mismatches)",
     )
@@ -215,4 +229,33 @@ def _prediction_difference(model: PerformanceModels, rebuilt: pd.DataFrame, expe
                 largest = max(largest, float(np.max(np.abs(arr - frame[name][output]))))
         else:
             largest = max(largest, float(np.max(np.abs(value - frame[name]))))
+    return largest
+
+
+#: Draws per parity simulation: the outputs are deterministic given the inputs and the
+#: seed, so a small draw count proves as much as a large one.
+PARITY_SIMULATION_SAMPLES = 200
+
+
+def _simulation_difference(
+    model: PerformanceModels, rebuilt_win: Dict, expected_win, rebuilt: pd.DataFrame, expected: pd.DataFrame
+) -> float:
+    """Largest difference between the simulator's draws (fixed seed, toss known) from the
+    rebuilt rows and from the frame's rows: both sides' totals and every player's runs."""
+    key = ["side", "player_key"]
+    aligned = expected.set_index(key).loc[list(zip(rebuilt.side, rebuilt.player_key))].reset_index()
+    expected_win_row = pd.DataFrame([expected_win._asdict()])
+    largest = 0.0
+    draws = []
+    for players, win_row in ((rebuilt, pd.DataFrame([rebuilt_win])), (aligned, expected_win_row)):
+        fixture = simulator.fixtures_from_rows(players, win_row, model.predict_oriented)[0]
+        draws.append(
+            simulator.simulate_match(
+                fixture.team1, fixture.team2, fixture.context, PARITY_SIMULATION_SAMPLES, 0, True, model.simulation
+            )
+        )
+    served, frame = draws
+    for team_a, team_b in ((served.team1, frame.team1), (served.team2, frame.team2)):
+        largest = max(largest, float(np.max(np.abs(team_a.total - team_b.total))))
+        largest = max(largest, float(np.max(np.abs(team_a.runs - team_b.runs))))
     return largest

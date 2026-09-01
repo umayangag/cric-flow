@@ -73,6 +73,10 @@ var (
 	mlPredictMatchWinXIFunc = func(_ context.Context, _ predictteam.XIWinRequest) (float64, error) {
 		return 0, sql.ErrNoRows
 	}
+	// SimulateMatchXI: the match simulator derived from the performance model (POST /simulate).
+	mlSimulateMatchXIFunc = func(_ context.Context, _ predictteam.XISimulationRequest) (*predictteam.XISimulationResult, error) {
+		return nil, sql.ErrNoRows
+	}
 	// Batch prediction: multiple predict-player calls in a single HTTP request.
 	mlBacktestPredictBatchFunc = func(_ context.Context, _ []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
 		return nil, sql.ErrNoRows

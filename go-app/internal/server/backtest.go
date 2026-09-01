@@ -294,6 +294,12 @@ func init() {
 		}
 		return mlClient.PredictMatchWinXI(ctx, req)
 	}
+	mlSimulateMatchXIFunc = func(ctx context.Context, req predictteam.XISimulationRequest) (*predictteam.XISimulationResult, error) {
+		if mlClient == nil {
+			return nil, errors.New("ml client not initialized")
+		}
+		return mlClient.SimulateMatchXI(ctx, req)
+	}
 	mlBacktestPredictBatchFunc = func(ctx context.Context, inputs []BatchPredictPlayersInput) ([]map[int64]playerPredictions, error) {
 		if mlClient == nil {
 			return nil, errors.New("ml client not initialized")

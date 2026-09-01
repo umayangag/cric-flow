@@ -54,7 +54,7 @@ func TestSelectTeamsByWinProbability_XIModel_SendsIDsNotFeatures(t *testing.T) {
 	optimizer := &recordingXIOptimizer{}
 
 	// Act
-	sel1, sel2, err := selectTeamsByWinProbability(
+	sel1, sel2, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "t20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},
@@ -84,7 +84,7 @@ func TestSelectTeamsByWinProbability_XIModel_FallsBackWhenUnavailable(t *testing
 	optimizer := &recordingXIOptimizer{err: errors.New("xi artifacts not loaded")}
 
 	// Act
-	sel1, sel2, err := selectTeamsByWinProbability(
+	sel1, sel2, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},
@@ -105,7 +105,7 @@ func TestSelectTeamsByWinProbability_XIModel_IgnoredWhenConfigSaysWindowedForm(t
 	optimizer := &recordingXIOptimizer{}
 
 	// Act
-	_, _, err := selectTeamsByWinProbability(
+	_, _, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},
@@ -167,7 +167,7 @@ func TestSelectTeamsByWinProbability_XIModel_CarriesAsOfToEveryOptimizeCall(t *t
 	asOf := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
 
 	// Act
-	_, _, err := selectTeamsByWinProbability(
+	_, _, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), asOf,

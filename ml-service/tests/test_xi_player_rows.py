@@ -218,3 +218,22 @@ def test_undecided_matches_produce_no_player_rows_but_update_state() -> None:
     assert set(result.player_frame.match_id) == {"m2"}
     row = result.player_frame[result.player_frame.player_key == "a0"].iloc[0]
     assert row.bat_rate > 0  # the undecided match still fed the as-of state
+
+
+def test_win_row_carries_innings_outcomes_and_simulation_context() -> None:
+    """E2's targets (what each innings did) and the simulator's as-of inputs travel on the
+    win row; the outcomes are never on the player rows, where they would be a leak."""
+    source = _two_match_source()
+
+    frame = build(source).frame
+
+    assert set(C.INNINGS_OUTCOME_COLS) <= set(frame.columns)
+    assert set(C.SIMULATION_CONTEXT_COLS) <= set(frame.columns)
+    first = frame[frame.match_id == "m1"].iloc[0]
+    second = frame[frame.match_id == "m2"].iloc[0]
+    d = source.matches[0].deliveries
+    assert first.innings1_runs == d.runs_total[d.innings == 0].sum()
+    assert first.innings1_deliveries == (d.innings == 0).sum()
+    assert first.ctx_innings_deliveries == 120.0  # nothing before the first match: the law
+    assert second.ctx_innings_deliveries != 120.0  # the first match has been folded in
+    assert not set(C.INNINGS_OUTCOME_COLS) & set(C.PLAYER_MATCH_COLS)

@@ -28,6 +28,8 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from ml.xi.simulator import SimulationUnavailable
+
 from . import settings as app_settings
 from . import training_orchestrator, xi_service
 from .artifact_service import build_artifacts_status, build_health_response
@@ -69,6 +71,8 @@ from .models.predict import (
 from .models.xi import (
     PerformancePredictRequest,
     PerformancePredictResponse,
+    SimulateRequest,
+    SimulateResponse,
     XiOptimizeRequest,
     XiOptimizeResponse,
     XiStatusResponse,
@@ -990,6 +994,23 @@ async def performance_predict(request: PerformancePredictRequest):
         return xi_service.predict_performance(request)
     except xi_service.XiUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.payload) from exc
+
+
+@app.post("/simulate", response_model=SimulateResponse)
+async def simulate(request: SimulateRequest):
+    """Draw the match from the performance model's forecasts for two elevens (L2-C): each
+    side's total (median, 10-90), per-player ranges and the median-band scorecard that sums
+    to the total, the margin, P(win) by simulation beside the display model's, and each
+    player's contribution to the total's spread. Limited-overs formats only."""
+    try:
+        return xi_service.simulate(request)
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+    except SimulationUnavailable as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_error_payload(code="SIMULATION_UNSUPPORTED_FORMAT", message=str(exc), hint="use T20, T20I or ODI"),
+        ) from exc
 
 
 @app.post("/xi/optimize", response_model=XiOptimizeResponse)

@@ -69,10 +69,39 @@ var selectionUsesXIWinModel = func() bool {
 	return config.SelectionUsesXIWinModel(config.Load())
 }
 
+// xiMarginalValues keeps each side's marginal values from its latest /xi/optimize round,
+// so the response can explain the final XIs (L3) without another call.
+type xiMarginalValues struct {
+	bySide map[bool]map[int64]float64
+}
+
+func (m *xiMarginalValues) record(isTeam1 bool, values map[int64]float64) {
+	if m.bySide == nil {
+		m.bySide = map[bool]map[int64]float64{}
+	}
+	m.bySide[isTeam1] = values
+}
+
+// values merges both sides' marginal values; player ids are unique across sides.
+func (m *xiMarginalValues) values() map[int64]float64 {
+	out := map[int64]float64{}
+	for _, side := range m.bySide {
+		for pid, v := range side {
+			out[pid] = v
+		}
+	}
+	return out
+}
+
 // newXISideOptimizer runs one side's search inside ml-service against the XI-responsive
 // model. The pool and the opposing XI are sent as player ids; names are resolved back
 // against the pool so the returned players carry the scores the scorecard displays.
-func newXISideOptimizer(optimizer XISelectionOptimizer, in winProbSelectionInputs) sideOptimizer {
+// Each round's marginal values are recorded on “marginals“ when it is non-nil.
+func newXISideOptimizer(
+	optimizer XISelectionOptimizer,
+	in winProbSelectionInputs,
+	marginals *xiMarginalValues,
+) sideOptimizer {
 	maxEvals := config.SelectionMaxWinProbEvalBudget(config.Load())
 	return func(ctx context.Context, s selectionSide, opponentXI []teamselect.Player) ([]teamselect.Player, error) {
 		poolIDs, idToPlayer := poolPlayerIDs(s.pool, s.nameToID)
@@ -98,6 +127,9 @@ func newXISideOptimizer(optimizer XISelectionOptimizer, in winProbSelectionInput
 		if len(result.UnknownPlayerIDs) > 0 {
 			slog.WarnContext(ctx, "xi selection: pool players with no rating history were treated as debutants",
 				slog.Int("count", len(result.UnknownPlayerIDs)))
+		}
+		if marginals != nil {
+			marginals.record(s.isTeam1, result.MarginalValues)
 		}
 		return xiResultToPlayers(result, idToPlayer), nil
 	}

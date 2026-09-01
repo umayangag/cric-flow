@@ -108,6 +108,10 @@ type SelectedPlayer struct {
 	Economy    float64 `json:"economy"`
 	Catches    float64 `json:"catches"`
 	RunOuts    float64 `json:"run_outs"`
+	// RunsRange and WicketsRange are the simulator's 10-90 ranges around the point, present
+	// on the xi path only (selection.win_model = "xi", limited-overs formats).
+	RunsRange    *ValueRange `json:"runs_range,omitempty"`
+	WicketsRange *ValueRange `json:"wickets_range,omitempty"`
 }
 
 // ScorecardSummary holds predicted innings totals and winner for an upcoming match.
@@ -127,6 +131,10 @@ type Result struct {
 	Team2                      []SelectedPlayer  `json:"team2"`
 	ScorecardSummary           *ScorecardSummary `json:"scorecard_summary,omitempty"`
 	ScorecardSummaryReconciled *ScorecardSummary `json:"scorecard_summary_reconciled,omitempty"` // from generate-match when requested
+	// XISimulation and Explanation are present on the xi path only: the simulator's innings
+	// ranges and win probability, and the L3 "why" (marginal values, spread contributions).
+	XISimulation *XISimulationSummary  `json:"xi_simulation,omitempty"`
+	Explanation  *SelectionExplanation `json:"explanation,omitempty"`
 }
 
 // MatchContext is optional context for hybrid reconciliation (innings model rescaling).
@@ -516,9 +524,10 @@ func predictTeamsWithIntermediates(
 	useWinProbSelection := usesWinProbabilitySelection(input.SelectionMode, cfg)
 
 	var sel1, sel2 []teamselect.Player
+	var marginalValues map[int64]float64
 	if useWinProbSelection {
 		if enhanced, ok := predictor.(EnhancedWinPredictor); ok {
-			sel1, sel2, err = selectTeamsByWinProbability(
+			sel1, sel2, marginalValues, err = selectTeamsByWinProbability(
 				ctx,
 				enhanced,
 				tsPool1,
@@ -645,17 +654,34 @@ func predictTeamsWithIntermediates(
 		} else {
 			summary.PredictedWinner = team2
 		}
-		rescaleTeamPredictionsToWinProbability(result.Team1, result.Team2, extras1, extras2, p)
-		// Recompute summary from rescaled runs
-		var runs1, runs2 float64
-		for _, p := range result.Team1 {
-			runs1 += p.Runs
+		// On the xi path the simulator (L2-C) produces the totals, the per-player points and
+		// their ranges from one set of draws, and the displayed probability comes with it;
+		// the extras and innings models and the rescale below are then unused (plan P-4).
+		simulated := applyXISimulation(ctx, predictor, xiScorecardInputs{
+			format:         format,
+			team1IDs:       selectedPlayerIDs(sel1, nameToID1),
+			team2IDs:       selectedPlayerIDs(sel2, nameToID2),
+			team1ID:        opp1IDVal,
+			team2ID:        opp2IDVal,
+			venueID:        venueIDVal,
+			asOf:           input.AsOf,
+			team1Code:      team1,
+			team2Code:      team2,
+			marginalValues: marginalValues,
+		}, result, &summary)
+		if !simulated {
+			rescaleTeamPredictionsToWinProbability(result.Team1, result.Team2, extras1, extras2, p)
+			// Recompute summary from rescaled runs
+			var runs1, runs2 float64
+			for _, p := range result.Team1 {
+				runs1 += p.Runs
+			}
+			for _, p := range result.Team2 {
+				runs2 += p.Runs
+			}
+			summary.Innings1Total = runs1 + extras1
+			summary.Innings2Total = runs2 + extras2
 		}
-		for _, p := range result.Team2 {
-			runs2 += p.Runs
-		}
-		summary.Innings1Total = runs1 + extras1
-		summary.Innings2Total = runs2 + extras2
 	} else if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows is expected if win model is not loaded.
 		slog.WarnContext(ctx, "failed to get match win probability", slog.Any("err", err))
 	}
@@ -1167,7 +1193,7 @@ func selectTeamsByWinProbability(
 	format string, formatID, venueIDVal, opp1IDVal, opp2IDVal int64,
 	allFeats map[int64]map[string]float64,
 	asOf time.Time,
-) ([]teamselect.Player, []teamselect.Player, error) {
+) ([]teamselect.Player, []teamselect.Player, map[int64]float64, error) {
 	inputs := winProbSelectionInputs{
 		pool1:       tsPool1,
 		pool2:       tsPool2,
@@ -1187,9 +1213,10 @@ func selectTeamsByWinProbability(
 	// The XI-responsive model (S-10) when config asks for it and the predictor speaks it. On
 	// failure the windowed-form paths below still produce both XIs, from one search each.
 	if xiOptimizer, ok := enhanced.(XISelectionOptimizer); ok && selectionUsesXIWinModel() {
-		sel1, sel2, err := runBestResponse(ctx, newXISideOptimizer(xiOptimizer, inputs), inputs)
+		marginals := &xiMarginalValues{}
+		sel1, sel2, err := runBestResponse(ctx, newXISideOptimizer(xiOptimizer, inputs, marginals), inputs)
 		if err == nil {
-			return sel1, sel2, nil
+			return sel1, sel2, marginals.values(), nil
 		}
 		slog.WarnContext(ctx, "xi selection unavailable, falling back to the windowed-form win model",
 			slog.Any("err", err))
@@ -1197,12 +1224,13 @@ func selectTeamsByWinProbability(
 	if optimizer, ok := enhanced.(TeamSelectionOptimizer); ok {
 		sel1, sel2, err := runBestResponse(ctx, newServerSideSideOptimizer(optimizer, inputs), inputs)
 		if err == nil {
-			return sel1, sel2, nil
+			return sel1, sel2, nil, nil
 		}
 		slog.WarnContext(ctx, "server-side team optimization unavailable, falling back to per-call hill-climb",
 			slog.Any("err", err))
 	}
-	return runBestResponse(ctx, newPerCallSideOptimizer(enhanced, inputs), inputs)
+	sel1, sel2, err := runBestResponse(ctx, newPerCallSideOptimizer(enhanced, inputs), inputs)
+	return sel1, sel2, nil, err
 }
 
 // runBestResponse alternates: optimise team1 against team2's XI, then team2 against

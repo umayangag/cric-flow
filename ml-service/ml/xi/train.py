@@ -89,10 +89,16 @@ def swap_orientation(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, float]:
-    x_a, y = _xy(te, cols)
+def marginalised_probabilities(model, te: pd.DataFrame, cols: List[str]) -> np.ndarray:
+    """P(team1 wins) per row as the serving path computes it: both batting orders averaged."""
+    x_a, _ = _xy(te, cols)
     x_b, _ = _xy(swap_orientation(te), cols)
-    p = 0.5 * (model.predict_proba(x_a)[:, 1] + (1.0 - model.predict_proba(x_b)[:, 1]))
+    return 0.5 * (model.predict_proba(x_a)[:, 1] + (1.0 - model.predict_proba(x_b)[:, 1]))
+
+
+def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, float]:
+    y = te[C.TARGET_COL].to_numpy(dtype=float)
+    p = marginalised_probabilities(model, te, cols)
     return {"auc": float(roc_auc_score(y, p)), "brier": float(brier_score_loss(y, p))}
 
 
@@ -199,17 +205,22 @@ def train_format(
     return models, report
 
 
-def train_performance(player_frame: pd.DataFrame, format_code: str, cutoff: pd.Timestamp, artifacts_dir: str) -> Dict:
+def train_performance(
+    player_frame: pd.DataFrame, match_frame: pd.DataFrame, format_code: str, cutoff: pd.Timestamp, artifacts_dir: str
+) -> Dict:
     """Fit the format's performance model on the player rows before the cutoff, score it on
     the rows after, and write ``xi_perf_<FORMAT>.joblib``. The rows must carry the
-    baseline predictors. Under E6's joint option the T20 and T20I artifacts hold one fit."""
+    baseline predictors; ``match_frame`` (the win rows) feeds the simulator's calibration.
+    Under E6's joint option the T20 and T20I artifacts hold one fit."""
     train, joint = perf_harness.training_rows(player_frame, format_code, cutoff)
     holdout = player_frame[(player_frame.format_code == format_code) & (player_frame.match_date >= cutoff)]
     report: Dict = {"n_train": int(len(train)), "n_holdout": int(len(holdout)), "joint_t20_formats": joint}
     if len(train) < perf_harness.MIN_TRAIN_ROWS:
         report["skipped_reason"] = "insufficient training rows"
         return report
-    model = fit_performance(train, format_code, default_spec(joint_format=joint))
+    model = fit_performance(
+        train, format_code, default_spec(joint_format=joint), match_frame[match_frame.match_date < cutoff]
+    )
     report["fit"] = model.metadata
     if len(holdout) >= perf_harness.MIN_EVAL_ROWS:
         report["targets"] = perf_harness.score_targets(model, train, holdout)
@@ -243,7 +254,7 @@ def train_all(
             )
         else:
             logger.warning("%s: skipped (%s)", fmt, report.get("skipped_reason"))
-        report["performance"] = train_performance(player_frame, fmt, cutoff, artifacts_dir)
+        report["performance"] = train_performance(player_frame, result.frame, fmt, cutoff, artifacts_dir)
         _log_performance(fmt, report["performance"])
     save_ratings(result.state, artifacts_dir)
     # Read before anything is written: the baseline is the last accepted run's counts.

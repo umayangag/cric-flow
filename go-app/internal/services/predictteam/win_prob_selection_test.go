@@ -137,7 +137,7 @@ func TestSelectTeamsByWinProbability_ServerSide_ScoresAgainstOpponentXINotPool(t
 	optimizer := &recordingOptimizer{}
 
 	// Act
-	sel1, sel2, err := selectTeamsByWinProbability(
+	sel1, sel2, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},
@@ -170,7 +170,7 @@ func TestSelectTeamsByWinProbability_PerCall_ScoresAgainstOpponentXINotPool(t *t
 	predictor := &recordingPredictor{}
 
 	// Act
-	_, _, err := selectTeamsByWinProbability(
+	_, _, _, err := selectTeamsByWinProbability(
 		context.Background(), predictor, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},
@@ -199,11 +199,11 @@ func TestSelectTeamsByWinProbability_BothPathsDescribeTheSameFixture(t *testing.
 	allFeats := mergeFeatures(feats1, feats2)
 
 	// Act
-	_, _, errPerCall := selectTeamsByWinProbability(
+	_, _, _, errPerCall := selectTeamsByWinProbability(
 		context.Background(), predictor, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats, time.Time{},
 	)
-	_, _, errServer := selectTeamsByWinProbability(
+	_, _, _, errServer := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4, allFeats, time.Time{},
 	)
@@ -342,7 +342,7 @@ func TestSelectTeamsByWinProbability_FallsBackWhenServerSideFails(t *testing.T) 
 	optimizer := &recordingOptimizer{err: errors.New("optimiser down")}
 
 	// Act
-	sel1, sel2, err := selectTeamsByWinProbability(
+	sel1, sel2, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
 		mergeFeatures(feats1, feats2), time.Time{},

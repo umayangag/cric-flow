@@ -88,6 +88,13 @@ func (mlPredictorAdapter) PredictMatchWinXI(ctx context.Context, req predictteam
 	return mlPredictMatchWinXIFunc(ctx, req)
 }
 
+func (mlPredictorAdapter) SimulateMatchXI(
+	ctx context.Context,
+	req predictteam.XISimulationRequest,
+) (*predictteam.XISimulationResult, error) {
+	return mlSimulateMatchXIFunc(ctx, req)
+}
+
 // predictTeamRequest holds the parsed request body for team-selection prediction.
 type predictTeamRequest struct {
 	Format             string `json:"format"`

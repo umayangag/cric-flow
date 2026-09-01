@@ -34,9 +34,9 @@ def test_stats_is_none_when_no_fold_produced_the_number() -> None:
 def test_evaluate_win_window_reports_why_it_skipped() -> None:
     frame = pd.DataFrame({"match_date": [pd.Timestamp("2023-01-01")], "team1_wins": [1.0]})
 
-    fold, model = ev._evaluate_win_window(frame, pd.Timestamp("2023-06-01"), pd.Timestamp("2023-09-01"))
+    fold, model, displays = ev._evaluate_win_window(frame, pd.Timestamp("2023-06-01"), pd.Timestamp("2023-09-01"))
 
-    assert model is None
+    assert model is None and displays == []
     assert fold["skipped_reason"] == "insufficient training rows"
 
 

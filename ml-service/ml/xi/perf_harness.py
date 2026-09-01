@@ -138,15 +138,26 @@ def training_rows(player_frame: pd.DataFrame, format_code: str, cutoff: pd.Times
     return rows, bool(joint)
 
 
-def evaluate_window(train_rows: pd.DataFrame, eval_rows: pd.DataFrame, format_code: str, spec: FitSpec) -> WindowResult:
+def evaluate_window(
+    train_rows: pd.DataFrame,
+    eval_rows: pd.DataFrame,
+    format_code: str,
+    spec: FitSpec,
+    match_frame: Optional[pd.DataFrame] = None,
+) -> WindowResult:
     """Fit on ``train_rows`` (< cutoff), score on ``eval_rows`` ([cutoff, end)). The rows
-    must carry the baseline predictors (``perf_baselines.add_baseline_predictors``)."""
+    must carry the baseline predictors (``perf_baselines.add_baseline_predictors``);
+    ``match_frame`` is the win frame, which the simulator's shared factor is fitted from
+    (only its rows before the cutoff are used, and only when the spec asks)."""
     skip = {"n_train": int(len(train_rows)), "n_eval": int(len(eval_rows))}
     if len(train_rows) < MIN_TRAIN_ROWS:
         return WindowResult({**skip, "skipped_reason": "insufficient training rows"}, None)
     if len(eval_rows) < MIN_EVAL_ROWS:
         return WindowResult({**skip, "skipped_reason": "evaluation window too small"}, None)
-    model = fit_performance(train_rows, format_code, spec)
+    training_matches = None
+    if match_frame is not None and len(train_rows):
+        training_matches = match_frame[match_frame.match_date <= train_rows.match_date.max()]
+    model = fit_performance(train_rows, format_code, spec, training_matches)
     logger.info(
         "%s performance model: %d train rows, %d eval rows, %.0f s, iterations %s",
         format_code,
@@ -165,6 +176,7 @@ def evaluate_fold(
     cutoff: pd.Timestamp,
     end: pd.Timestamp,
     recalibrate: Tuple[str, ...] = (),
+    match_frame: Optional[pd.DataFrame] = None,
 ) -> WindowResult:
     """One walk-forward (or locked) window of the L4 harness for a format."""
     train, joint = training_rows(player_frame, format_code, cutoff)
@@ -174,7 +186,7 @@ def evaluate_fold(
         & (player_frame.match_date < end)
     ]
     spec = default_spec(joint_format=joint, recalibrate=recalibrate)
-    return evaluate_window(train, window, format_code, spec)
+    return evaluate_window(train, window, format_code, spec, match_frame)
 
 
 def recalibration_needed(summary: Optional[Dict]) -> List[str]:

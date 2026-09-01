@@ -12,7 +12,7 @@ Two families, kept apart on purpose:
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 FORMAT_CODES: List[str] = ["T20", "T20I", "ODI", "TEST"]
 FORMAT_INDEX: Dict[str, int] = {code: i for i, code in enumerate(FORMAT_CODES)}
@@ -284,6 +284,33 @@ E6_JOINT_FORMATS: Tuple[str, str] = ("T20", "T20I")
 # E6's verdict: whether the T20 and T20I performance models are one joint fit (recorded in
 # the artifact; decided on the walk-forward folds by the > 0.01 Spearman rule).
 E6_JOINT_T20_FORMATS = False
+
+# --- Simulator (L2-C) inputs -----------------------------------------------------------
+#
+# The simulator is derived from L2-B and trains nothing. Besides the model's outputs it reads
+# three as-of rates from the rating pass, carried on the win row and served from the state
+# (plan §3, "The innings sample"), and the laws of the game below. Nothing else is a constant.
+
+#: Legal deliveries in one innings per format; None where the laws set no limit, and there
+#: the simulator does not run (H-17: TEST stays on the greedy path).
+INNINGS_LEGAL_BALLS: Dict[str, Optional[int]] = {"T20": 120, "T20I": 120, "ODI": 300, "TEST": None}
+MAX_WICKETS = 10
+#: A bowler may deliver at most this share of an innings (four of twenty overs, ten of fifty).
+BOWLER_MAX_SHARE = 0.2
+#: As-of match context per format (and context group, like the run baselines): extras per
+#: delivery, deliveries per full first innings (one not all out, so it ran its overs), and
+#: the bowler-credited share of dismissals. Running rates over every delivery before the match.
+SIMULATION_CONTEXT_COLS: List[str] = ["ctx_extras_per_ball", "ctx_innings_deliveries", "ctx_bowler_wicket_share"]
+#: What each innings then did -- outcome columns on the win row. Targets for E2 (simulated
+#: totals against actual), never inputs to anything.
+INNINGS_OUTCOME_COLS: List[str] = [
+    "innings1_runs",
+    "innings1_wickets",
+    "innings1_deliveries",
+    "innings2_runs",
+    "innings2_wickets",
+    "innings2_deliveries",
+]
 
 
 def performance_feature_cols(

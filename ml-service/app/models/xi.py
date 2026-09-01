@@ -1,5 +1,6 @@
-"""Request / response models for the XI-responsive win endpoints (``/xi/*``) and the
-player-performance endpoint (``/performance/predict``).
+"""Request / response models for the XI-responsive win endpoints (``/xi/*``), the
+player-performance endpoint (``/performance/predict``) and the match simulator
+(``/simulate``).
 
 Players are identified by id only. The ML service holds the as-of rating state, so callers
 send who is playing, not what their features are -- which is also what makes the training
@@ -134,3 +135,84 @@ class PerformancePredictResponse(BaseModel):
     unknown_player_ids: List[int] = Field(
         default_factory=list, description="Ids with no rating history; predicted as debutants"
     )
+
+
+class SimulateRequest(PerformancePredictRequest):
+    """A performance prediction's inputs plus the draw count and seed. The simulator (L2-C)
+    runs only for formats with an innings length (T20, T20I, ODI)."""
+
+    n_samples: int = Field(default=2000, ge=100, le=20000, description="Draws; the served default is 2000")
+    seed: int = Field(default=0, ge=0, description="Draws are deterministic given the inputs and the seed")
+
+
+class SimulatedScorecardLine(BaseModel):
+    """One player's line of the median-band scorecard: the mean over the draws whose side
+    total lies in the central tenth of its distribution. The lines plus extras sum to the
+    side's ``total.scorecard`` by construction."""
+
+    runs: float
+    balls_faced: float
+    wickets: float
+    runs_conceded: float
+    balls_bowled: float
+
+
+class SimulatedPlayer(BaseModel):
+    player_id: int
+    side: int = Field(..., description="1 = team1, 2 = team2")
+    p_bats: float = Field(..., ge=0, le=1, description="Share of draws in which the player batted")
+    p_bowls: float = Field(..., ge=0, le=1)
+    runs: PerformanceRange
+    balls_faced: PerformanceRange
+    wickets: PerformanceRange
+    runs_conceded: PerformanceRange
+    balls_bowled: PerformanceRange
+    scorecard: SimulatedScorecardLine
+    spread_share: float = Field(..., description="Cov(player runs, side total) / Var(side total); shares sum to 1")
+    spread_runs: float = Field(..., description="spread_share times the side total's standard deviation")
+
+
+class SimulatedTotal(PerformanceRange):
+    mean: float
+    sd: float
+    scorecard: float = Field(..., description="Mean total over the median band; what the scorecard lines sum to")
+
+
+class SimulatedSide(BaseModel):
+    total: SimulatedTotal
+    extras_scorecard: float = Field(..., description="Extras in the median-band scorecard")
+    extras_spread_share: float
+    wickets_lost: PerformanceRange
+    players: List[SimulatedPlayer]
+
+
+class SimulatedMargin(BaseModel):
+    """The margin as cricket states it: runs when the side batting first wins, balls
+    remaining and wickets in hand when the chaser does."""
+
+    p_bat_first_wins: float
+    p_chaser_wins: float
+    p_tie: float
+    runs_when_bat_first_wins: Optional[PerformanceRange] = None
+    balls_remaining_when_chaser_wins: Optional[PerformanceRange] = None
+    wickets_in_hand_when_chaser_wins: Optional[PerformanceRange] = None
+
+
+class SimulatedWinProbability(BaseModel):
+    simulated: float = Field(..., ge=0, le=1, description="P(team1 wins) by simulation, a tie counted half")
+    p_tie: float = Field(..., ge=0, le=1)
+    display: float = Field(..., ge=0, le=1, description="The display model's P(team1 wins) for the same fixture")
+    headline: float = Field(..., ge=0, le=1, description="The probability to show, per E2's rule")
+    headline_source: str = Field(..., description="'display' or 'simulator' (plan §5, E2)")
+
+
+class SimulateResponse(BaseModel):
+    format: str
+    n_samples: int
+    seed: int
+    toss_marginalised: bool = Field(..., description="True when the toss was unknown and half the draws went each way")
+    team1: SimulatedSide
+    team2: SimulatedSide
+    win_probability: SimulatedWinProbability
+    margin: SimulatedMargin
+    unknown_player_ids: List[int] = Field(default_factory=list)
