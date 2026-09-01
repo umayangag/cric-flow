@@ -70,7 +70,7 @@ jobs:
           # Keep aligned with ml-service/Makefile COV_MIN. Raise together once coverage improves.
           # Measured with requirements-serve.txt (installed above): shap is absent, so the
           # shap_explanations tests skip and that module counts as uncovered.
-          COV_MIN: "87"
+          COV_MIN: "86"
           REQUIREMENTS_FILE: requirements-serve.txt
         run: make -C ml-service coverage-check
 

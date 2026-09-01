@@ -2,7 +2,6 @@ package predictteam
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -223,16 +222,4 @@ func economy(runsConceded, ballsBowled float64) float64 {
 		return 0
 	}
 	return runsConceded / (ballsBowled / 6.0)
-}
-
-// String renders the inputs for logs without the id lists.
-func (in xiScorecardInputs) String() string {
-	return fmt.Sprintf(
-		"%s %s v %s (venue %d, as of %s)",
-		in.format,
-		in.team1Code,
-		in.team2Code,
-		in.venueID,
-		in.asOf.Format("2006-01-02"),
-	)
 }
