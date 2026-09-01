@@ -57,8 +57,9 @@ CHASE_ORIENTATION = "chasing"
 SHARED_FACTOR = True
 #: E2's rule (plan §5): the simulator's P(win) may be displayed only if it is within 0.01
 #: Brier of the display model on the walk-forward folds; otherwise it is a description of
-#: the draws. Measured (P-4): within tolerance in T20 (+0.0024 ± 0.0057) and ODI (+0.0043 ±
-#: 0.0143) -- a probability, but not a better one -- so the display model stays the headline
+#: the draws. Measured (P-4, walk-forward folds): within tolerance in T20 (+0.0028 ± 0.0057)
+#: and ODI (+0.0034 ± 0.0131) -- a probability, but not a better one -- so the display model
+#: stays the headline
 #: (plan §3) and the simulated P(win) is served beside it. Per format.
 SIMULATED_WIN_PROBABILITY_DISPLAYED: Dict[str, bool] = {f: False for f in SIMULATED_FORMATS}
 #: Deconvolution guard: a residual sample smaller than this is not a distribution.

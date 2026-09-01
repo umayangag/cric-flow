@@ -524,7 +524,18 @@ the displayed probability — `simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED` pe
 `/simulate` returns both with `headline_source`. The H-8 parity check compares the simulator's
 draws at a fixed seed from the as-of path and from the training frame's rows.
 
-<!-- P4-NUMBERS -->
+**First numbers** (plan §8.3). Walk-forward, 7 folds: without the shared factor the
+first-innings totals' 10–90 coverage is 0.64 (T20) / 0.58 (ODI) with a dispersion ratio of
+1.42 / 1.36 and a U-shaped PIT; with it 0.76 / 0.74 at ratio 1.02 / 1.02, the interval
+widening from 61 to 83 runs (T20) and 107 to 151 (ODI) — the narrower one was the wrong one.
+Locked window (≥ 2025-09-01, scored once): coverage **0.786** (T20, 1,521 first innings) and
+**0.790** (ODI, 347), the acceptance's ±0.03 met; simulated P(win) Brier 0.2024 vs the
+display model's 0.2032 (T20) and 0.2201 vs 0.2110 (ODI), within E2's tolerance, so the
+display model stays the headline and the simulated probability is served beside it. The
+chase total under-covers from the low side (0.72–0.73); margins cover 0.50–0.69 at nominal
+0.80 — reported, not tuned. 5.4 ms per fixture at 1,000 draws, 9.4–9.9 ms at the served
+2,000. The two sources agree on every locked-window figure to within the seed spread and
+the H-8 parity check is 0.0 on both, simulator draws included.
 
 **Serve.** `POST /simulate` takes what `/performance/predict` takes plus `n_samples` and
 `seed`, and returns per side the total (median, 10–90, mean, sd, scorecard total), per player
