@@ -381,7 +381,7 @@ names the experiment that will.
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
-| H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | **first report done (P-0)**: 2025-09-01 → 2026-08-25, no drop against the JSON-path development numbers. But that window is the one that guided the development choices, so it is a report, not yet an unseen-data measurement; the walk-forward in P-2 is what makes it one |
+| H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | **done (P-2)** — `make xi-evaluate`: quarterly rolling origins 2024-01 … 2025-06, the locked window scored once and labeled. First per-format walk-forward table in §8.1; the locked-window figures sit inside the fold spreads, toward the top for T20 — what later origins with more training data should produce — so the development-window reuse §10.3 could only estimate is now priced. (P-0's locked-window report, 2025-09-01 → 2026-08-25 with no drop, was the precursor: same window, but the one that guided the choices) |
 | H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | **frame done (P-2)**: the player-match frame carries every XI player, batted or not, with expected involvement as-of. The rule still binds L2-B's training and its two-part targets in P-3 |
 | H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | rule (P-3, P-4) |
 | H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | rule (P-3) |
@@ -390,6 +390,32 @@ Items marked *open* are folded into the migration: H-5, H-12 and H-20's training
 P-3, and H-11 into P-6 alongside H-16 (H-2, H-4, H-7, H-8, H-15 and H-19 are done as of
 P-2). Nothing left in the list needs new modelling; it is measurement, guards and two small
 serving rules.
+
+### 8.1 First walk-forward report (H-19, P-2)
+
+`make xi-evaluate` on the full dataset, quarterly rolling origins 2024-01-01 … 2025-06-01
+(each fold trains strictly before its cutoff and scores the window to the next one; the
+locked window ≥ 2025-09-01 is scored once, never used for a choice). Walk-forward columns
+are mean ± sd over folds; the display model additionally averages three seeds per fold.
+Identical to 4 dp from the Postgres and Cricsheet-JSON sources.
+
+| format | folds | objective AUC, walk-forward | display AUC, walk-forward | objective, locked | display, locked | n locked |
+|---|---:|---:|---:|---:|---:|---:|
+| T20  | 7 | 0.684 ± 0.044 | 0.713 ± 0.059 | 0.721 | 0.746 | 1635 |
+| T20I | 6 | 0.772 ± 0.042 | 0.752 ± 0.054 | 0.747 | 0.733 | 182 |
+| ODI  | 7 | 0.670 ± 0.077 | 0.708 ± 0.082 | 0.683 | 0.729 | 375 |
+| TEST | 7 | 0.637 ± 0.121 | 0.671 ± 0.090 | 0.582 | 0.594 | 157 |
+
+T20I's first fold is skipped for too few evaluation matches, hence six folds. The spreads
+are the honest error bars this document previously lacked: a quarterly T20I or TEST window
+holds 30–90 matches, so their ±0.04–0.12 is mostly window size, not model drift. The
+locked-window figures sit inside every spread — toward the top for T20, which is what later
+origins with more training data should produce. Beside the win model, the same folds carry
+swap monotonicity (0.0–0.8 % violations, all under H-4's 2 % line), the
+specific-XI-beyond-typical-XI delta (+0.045 ± 0.021 T20; within noise elsewhere) and the
+performance baselines (career-mean within-match Spearman 0.300 ± 0.011 T20 / 0.306 ± 0.043
+ODI over folds, 0.317 / 0.318 on the locked window); the full detail is per fold in
+`xi_evaluate_report.json`.
 
 ---
 
