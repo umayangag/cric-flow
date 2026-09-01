@@ -116,13 +116,18 @@ Additions the pass should carry for L2-B (all as-of, all cheap):
 
 Per format, per target, gradient boosting with a distributional loss:
 
-| target | population | loss | outputs |
+| target | population (as built in P-3) | loss | outputs |
 |---|---|---|---|
-| runs | players expected to bat (exp_balls_faced > 0) | quantile (0.1, 0.5, 0.9) or NB | median + interval |
-| balls faced | same | quantile | median + interval |
-| wickets | players expected to bowl | Poisson | rate → P(0), P(1), P(2+) |
-| runs conceded | same | quantile | median + interval |
-| catches | fielders | Poisson | rate only (never a headline) |
+| runs | **all XI players**, "did not bat" = 0 (H-20) | quantile (0.1, 0.5, 0.9), direct | median + interval |
+| balls faced | same | quantile, direct | median + interval |
+| wickets | all XI players, "did not bowl" = 0 | Poisson, **two-part** (P(bowls) × Poisson given bowling; §5.3) | P(0), P(1), P(2+), mean |
+| runs conceded | same | quantile, direct | median + interval |
+| catches | all XI players | Poisson | rate only (never a headline) |
+
+P(bats) and P(bowls) are fitted on the same rows and served beside the distributions. The
+original draft of this table conditioned the batting population on expected involvement;
+P-3 replaced that with the unconditional population and let the folds choose between a
+direct fit and a two-part one per target.
 
 Inputs: the player's vectors, expected batting slot, phase splits, own-side batting
 strength (how many balls are left for this slot), opponent bowling strength (phase-wise),
@@ -211,13 +216,13 @@ to two model families and one derived simulator, all fed by one pass over one ta
 
 | id | question | method | decision rule |
 |---|---|---|---|
-| E1 | Do sequence features add to L2-B? | Ablate `seqcalc` families as extra as-of accumulators in L1; measure Spearman / pinball on the holdout | Keep a family only if it moves pinball loss by > 1% over three seeds; otherwise drop it and its tables |
+| E1 | Do sequence features add to L2-B? | Ablate `seqcalc` families as extra as-of accumulators in L1; measure Spearman / pinball on the holdout | Keep a family only if it moves pinball loss by > 1% over three seeds; otherwise drop it and its tables — **run in P-3, §5.3: no family moves pinball by more than 0.21 %; none kept** |
 | E2 | Is the simulator consistent with the display model? | Simulated P(win) vs display P(win) on holdout matches; calibration of each | If simulated P(win) is worse-calibrated by > 0.01 Brier, keep it as a display-only distribution and never as a probability |
 | E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain |
 | E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
 | E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way |
 | E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's — **run in P-2, §5.2: no effect; the split ships off** |
-| E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) |
+| E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) — **run in P-3, §5.3: joint moves Spearman by at most 0.003; separate stays** |
 
 Already answered by S-9/S-10 (do not re-run): pooling formats for the win model (no),
 neural nets (no gain), subset-by-prediction (no; weight by involvement instead), monotone
@@ -313,6 +318,77 @@ the run report), because §5.1's caveat still stands — the women's holdouts ar
 that has to grow before this question can be answered better, and re-asking it is then one
 flag rather than a branch.
 
+### 5.3 P-3's choices — grid, structure, E1 and E6 (walk-forward folds only)
+
+All four were made by `scripts/experiments/xi/perf_choices.py` on the quarterly walk-forward
+folds (2024-01 … 2025-06) of the Cricsheet-JSON source, fitting the two acceptance targets
+(runs, wickets) in T20 and ODI; the locked window was not scored until every choice was
+fixed. Pinball loss is the mean over the 0.1 / 0.5 / 0.9 levels on the unconditional
+population — every XI player, "did not bat" as 0 (H-20).
+
+**Grid** (one seed; the grid is coarse and the seed spread is measured below):
+
+| point | learning rate | leaves | min leaf | L2 | pinball relative to `medium` |
+|---|---:|---:|---:|---:|---:|
+| small | 0.05 | 15 | 200 | 1.0 | 1.0003 |
+| **medium** | 0.05 | 31 | 100 | 1.0 | 1.0000 |
+| large | 0.10 | 63 | 50 | 0.0 | 1.0013 |
+
+Flat to a tenth of a percent, as §4 predicted ("model class is not the constraint");
+`medium` stays.
+
+**Structure** (three seeds), direct on the unconditional rows vs two-part
+(P(involved) × distribution given involvement, the involvement predicted, the served
+quantiles those of the mixture):
+
+| format | target | direct pinball | two-part pinball | two-part gain | direct Spearman | two-part Spearman |
+|---|---|---:|---:|---:|---:|---:|
+| T20 | runs | 2.927 | 2.921 | +0.2 % | 0.542 | 0.544 |
+| ODI | runs | 4.590 | 4.592 | −0.05 % | 0.475 | 0.475 |
+| T20 | wickets | 0.1424 | 0.1410 | +1.0 % | 0.486 | 0.483 |
+| ODI | wickets | 0.1647 | 0.1632 | +0.9 % | 0.557 | 0.552 |
+
+Two-part costs three times the fits (nine conditional quantile models instead of three),
+so it has to earn its place: the rule is *two-part only where it beats direct by more than
+0.5 % in every format*. It does for wickets — a zero-inflated Poisson is the natural model
+of a count whose zeros are mostly "did not bowl" — and not for runs, where 0.2 % and
+−0.05 % are a tie. **Wickets ship two-part; every quantile target ships direct.** The
+ranking is unmoved either way, which is the first sign of the finding recorded under P-3:
+on the unconditional population, within-match Spearman is set by who is involved, not by
+how much they do.
+
+**E1 — sequence families** (three seeds; each family added to the base inputs on its own;
+rule: keep if pinball falls by more than 1 % somewhere and rises nowhere):
+
+| family (columns) | T20 runs | T20 wickets | ODI runs | ODI wickets | kept |
+|---|---:|---:|---:|---:|---|
+| dot streaks (`bat_stuck_share`, `bat_release_rate`, `bowl_squeeze_share`, `bowl_squeeze_wrate`) | +0.04 % | −0.14 % | +0.01 % | −0.21 % | no |
+| reactions (`bat_after_boundary_rate`, `bowl_after_boundary_rate`, `bowl_after_wicket_rate`) | −0.00 % | +0.06 % | +0.02 % | +0.07 % | no |
+| spells (`bowl_spell_first_rate`, `bowl_spell_later_rate`, `bowl_spell_overs`) | +0.01 % | −0.21 % | +0.01 % | −0.21 % | no |
+
+Pinball change against the base inputs (negative is better); base pinball 2.927 / 0.1410
+(T20 runs / wickets) and 4.590 / 0.1632 (ODI). Nothing comes within a fifth of the 1 % line.
+The bowling families lean the right way on wickets — a fifth of a percent, in both formats —
+which is worth knowing and not worth ten columns. **No family is kept**: `SEQUENCE_FAMILIES_KEPT`
+is empty, the accumulators stay in the rating pass (`ml/xi/sequence.py`, ten as-of columns
+in every player row, checked by the parity test) so the question is one constant away from
+being re-asked, and P-6 drops the nine `*_features` tables with nothing to re-implement.
+
+**E6 — format transfer** (three seeds; T20 + T20I jointly with a format indicator vs each
+alone; rule: joint only if it wins by more than 0.01 Spearman everywhere it is scored):
+
+| scored on | folds | target | separate Spearman | joint Spearman | Δ | separate pinball | joint pinball |
+|---|---:|---|---:|---:|---:|---:|---:|
+| T20 | 7 | runs | 0.542 | 0.541 | −0.001 | 2.927 | 2.928 |
+| T20 | 7 | wickets | 0.483 | 0.483 | +0.000 | 0.1410 | 0.1411 |
+| T20I | 6 | runs | 0.598 | 0.597 | −0.001 | 3.164 | 3.151 |
+| T20I | 6 | wickets | 0.565 | 0.568 | +0.003 | 0.1302 | 0.1301 |
+
+Nothing moves by a third of the 0.01 line; the joint fit buys T20I 0.4 % pinball on runs
+and nothing else. **Separate models stay** (`E6_JOINT_T20_FORMATS = False`), which is also
+what the win model found. The mechanism (a format indicator column, one artifact under both
+names) is kept so the question is one constant away.
+
 ---
 
 ## 6. Migration sequence
@@ -326,7 +402,7 @@ checklist.
 | P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches gives `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stays off. The gate is also mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
 | P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content; per-match squads became reproducible one PR later, with §10.4's match-identity fix. Franchise lineage (I-4) is not in this PR |
 | P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | **done** (`arch/p-2-rating-rows-harness`). The day-close pass emits 463,818 player-match rows — all XI players, never only those who batted (H-20) — with expected batting slot, innings share and phase-split impact rates, identical from both sources. `ml.xi.asof` answers `ratings_as_of(D)` and raises rather than run backwards, so a backtest at date D provably cannot see D or later; `freeze_ratings.py` is retired, `/xi/*` accept `as_of`, the selection comparison sends each match's date and its report carries per-match rows. `make xi-evaluate` runs the walk-forward + locked window + H-8 parity from one command into one JSON report. Acceptance: career-mean within-match Spearman on the locked window 0.317 T20 / 0.318 ODI (the script's ≈ 0.32 / 0.34, computed there with cross-format career means — inside the 0.31–0.35 band §1 calls the ceiling); parity max abs difference 0.0 on both sources; E7 measured, no effect (§5.2) |
-| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
+| P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | **done** (`arch/p-3-performance-model`). `ml/xi/performance.py`: per format, quantile (0.1 / 0.5 / 0.9) models of runs, balls faced and runs conceded, a two-part zero-inflated Poisson of wickets, a Poisson rate of catches, and P(bats) / P(bowls) — all on the unconditional population (H-20), innings marginalised at prediction, three seeds, a three-point grid tuned inside the folds (flat), E1 (no family kept) and E6 (separate) in §5.3. Walk-forward over 7 folds, 3 seeds (§8.2): **runs** beat the career mean on Spearman (+0.040 ± 0.007 T20, +0.048 ± 0.013 ODI) and pinball (2.93 vs 5.09, 4.59 vs 7.96), median MAE −9 %; **wickets** beat it on pinball (0.141 vs 0.260, 0.163 vs 0.302) and tie on Spearman in ODI (+0.001 ± 0.012) but **trail it by 0.029 ± 0.012 in T20** — a tie-averaging artifact of the unconditional metric, recorded below rather than gamed; among the players who bowled the model ranks better in both. Locked window: per-end coverage inside ±0.03 everywhere, no recalibration triggered (H-5); width reported beside coverage (H-22). `POST /performance/predict` serves it; H-8 parity holds for rows and predictions on both sources at 0.0 — after it found the fifth defect, §10.4 |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
 | P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet |
 | P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min |
@@ -341,7 +417,8 @@ Each of P-2 … P-6 removes more than it adds. The end state is smaller than the
 - **Performance prediction disappoints in absolute terms.** It will: the ceiling is set by
   the game (Spearman ≈ 0.35 for any predictor). The plan's answer is to ship calibrated
   distributions and rankings, and to say so in the UI ("expected 18 (8–41)") rather than a
-  point that reads as a promise.
+  point that reads as a promise. *Measured in P-3 (§8.2): 0.33 among the batters, a 9 %
+  median-MAE gain, intervals at nominal coverage — as forecast.*
 - **Identity work delays everything.** P-1 is first because ratings inherit it, but P-2/P-3
   can be developed on the Cricsheet-JSON source in parallel (which does not have the defect)
   and re-run on the DB when P-1 lands.
@@ -367,14 +444,14 @@ names the experiment that will.
 | H-2 | **Leak canaries.** The model must beat its own best single column by a clear margin, and no column may be a scoreboard read-through | win, performance | Harness reports best-single-column AUC (done); add the TEST-as-control check from S-3c: a column whose AUC collapses in TEST but not elsewhere is suspect | **done (P-2)** — `make xi-evaluate` reports both. Its first run flagged one suspect, `team_h2h` in T20I (0.70 there, 0.55 in TEST): reviewed and benign — a team-context column, excluded from the objective, and head-to-head genuinely means less where draws exist. The point is that the flag fired and someone had to say why it was fine |
 | H-3 | **Toss / batting-order marginalisation.** The label defines team1 as the side batting first; at selection time that is unknown | win (objective + display), simulator | Serving path averages both orientations; `P(A,B) == 1 − P(B,A)` is a unit test. Measured: display AUC T20 0.741 → **0.747**, ODI 0.720 → **0.730**, T20I 0.715 → **0.731**; the oriented probability moved by 0.07–0.12 on an unknown. Once the toss is known, pass `team1_bats_first` | **done (this PR)** |
 | H-4 | **Monotone objective.** Upgrading a player never lowers the selection score | win objective | Harness: share of one-player upgrades with Δp < 0 must stay < 2% (measured 0.4% T20 / 3.7% ODI for logistic; 12% / 20% for unconstrained boosting) | **done (P-2)** — reported per fold in `make xi-evaluate`; walk-forward means 0.3% T20 / 0.8% T20I / 0.0% ODI / 0.6% TEST, all under the 2% line |
-| H-5 | **Calibration of what is displayed.** The probability shown must mean what it says | win display, simulator, performance quantiles | Harness: reliability curve + Brier vs base rate per format (done for win); isotonic recalibration fitted on a temporal fold if Brier is worse than base rate; quantile coverage within ±0.03 of nominal (measured 0.80 / 0.79 on 0.80) | partly |
+| H-5 | **Calibration of what is displayed.** The probability shown must mean what it says | win display, simulator, performance quantiles | Harness: reliability curve + Brier vs base rate per format (done for win); isotonic recalibration fitted on a temporal fold if Brier is worse than base rate; quantile coverage within ±0.03 of nominal (measured 0.80 / 0.79 on 0.80) | **done for the performance quantiles (P-3)**; the simulator's P(win) waits for P-4. The check is per quantile end, because the targets have a point mass at zero: a level must sit between its strict and inclusive exceedance ± 0.03 (`perf_calibration.coverage_off_nominal`). On the locked window P(y ≤ q90) is 0.896 / 0.892 / 0.896 / 0.899 for runs (T20 / T20I / ODI / TEST) and P(y < q10) ≤ 0.12 everywhere; the 3-way wicket probabilities are within 0.02 of observed. No target trips the check, so the isotonic recalibration (`ml/xi/perf_calibration.py`, fitted on the last quarter of the training rows, applied at prediction, unit-tested) ships in place and unused, and the harness re-decides it every run |
 | H-6 | **Rating hyperparameters are not load-bearing.** decay and prior were chosen by judgement | rating pass | Measured sweep (`health_experiment.py`): decay 0.80–0.97 and prior 20–150 move objective AUC by ≤ 0.01 in T20 and ODI — flat. Keep 0.90 / 60; re-run the sweep when the pass changes | done |
 | H-7 | **Gender- and competition-aware baselines.** Context expectations (runs per ball per over) are per format only; women's and men's matches share them, and so do the IPL and a club league | rating pass | E7: split the context baseline by gender (cheap, gender is on every match); measure the women's-subset AUC before/after. Competition tiers only if E7 shows gender matters | **measured (P-2, §5.2): no effect** — the T20 women's subset moves by 0.000 and the only larger delta sits inside a 74-match holdout while hurting the men's display. The split ships off, behind `--gender-split-context`, to be re-asked when the women's holdouts grow; competition tiers are therefore not pursued |
 | H-8 | **Train / serve parity.** The serving store must compute the same features the training frame holds | all | Harness: for the last 50 holdout matches, rebuild the row from the serving store *as of that date* and assert equality with the training frame (the S-3c defect, made a test) | **done (P-2)** — `serving_parity` in `ml.xi.asof` rebuilds the last 50 matches' win *and* player-match rows through the as-of path and fails `make xi-evaluate` on any difference; measured max abs difference 0.0 on both sources. The state evolution is genuinely different code on the two sides (day-close buffering vs a strict date threshold) while row assembly is shared (`ml.xi.rows`), so the D-4 class — a column spelled differently in serving — cannot recur, and drift in the as-of logic is caught. (P-0's find, for the record: the legacy path served a 37-wide vector to a 38-wide scaler over `inning` vs `batting_inning`) |
 | H-9 | **Identity.** Ratings keyed by name merge people | all | P-1 (IDENTITY I-3/I-4); E4 measures the delta | **done**: players key off the Cricsheet registry id, teams off (club, gender) — one row per (name, gender) since P-1, folded onto the club by `opposition.canonical_id` since I-4 — on both sources, so the two paths produce the same keys and their artifacts are comparable. E4 found the correction worth ≤ 0.01 AUC everywhere it can be resolved, and the lineage merge is smaller again; both are correctness, not discrimination. S-7's opposition encoding is unblocked |
 | H-10 | **Cold start is bounded.** A player with no history must regress to neutral, never explode | win, performance | Measured: replacing a player by a debutant moves p by a median −0.003, p10 −0.05. Unit test on `side_vectors` for an unseen key | done |
 | H-11 | **Staleness.** Ratings are only as fresh as the last import | rating pass | `/xi/status` reports `ratings_through`; the ops step fails a prediction request with a clear code if it is older than N days (config, default 14). Retrain is one command and ~2 minutes, so the cadence is "after every import" | open |
-| H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | open (P-3) |
+| H-12 | **Per-target, never pooled metrics.** A headline number must be for one target on one population | performance | `ml/metrics.py`'s raveled multi-output MAE is retired; L4 reports per target | **done (P-3)** for everything P-3 touches: `ml/xi/perf_metrics.py` scores one target on one population and the harness and `xi_win_report.json` carry the numbers per target and format. `ml/metrics.py` has two callers left, the legacy multi-output trainer and its tuning path, which P-5 deletes; nothing new reads it |
 | H-13 | **Consumer metric first.** AUC for an argmax, Spearman/top-k for a ranking, coverage for an interval | all | Every model in L4 has a named consumer and its metric is the one that gates | rule |
 | H-14 | **Seeds and noise floor.** Differences under the seed spread are not evidence | all | Every reported number is a mean over ≥ 3 seeds with the spread (done for win) | done |
 | H-15 | **Data-quality gate.** Undecided matches, sides without squads, namesakes, replacement players | rating pass | Two checks, both in `ml/xi/quality.py`. **Accounting:** a source offers N matches and must yield, scope out or reject exactly N — a match dropped for a reason nothing names fails the run. **Doubling:** any quality count over twice the last accepted run's, or one that was zero and is not, fails. The accepted counts live in `xi_data_quality_baseline.json`, which a *failing* run does not update, so re-running cannot clear the gate; `--accept-data-quality` is the one way to move it. Beside it, `make xi-parity` runs both sources and compares every count and the player-key sets | **done**. Measured baseline: 22,734 offered = 22,734 read, 1,710 undecided, 0 namesake sides, 1,358 sides over eleven, 0 unresolved player keys, 13,569 player keys, 514 clubs — identical from both sources. Its first two real runs found two more defects; see §10.4 |
@@ -382,14 +459,14 @@ names the experiment that will.
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
 | H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | **done (P-2)** — `make xi-evaluate`: quarterly rolling origins 2024-01 … 2025-06, the locked window scored once and labeled. First per-format walk-forward table in §8.1; the locked-window figures sit inside the fold spreads, toward the top for T20 — what later origins with more training data should produce — so the development-window reuse §10.3 could only estimate is now priced. (P-0's locked-window report, 2025-09-01 → 2026-08-25 with no drop, was the precursor: same window, but the one that guided the choices) |
-| H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | **frame done (P-2)**: the player-match frame carries every XI player, batted or not, with expected involvement as-of. The rule still binds L2-B's training and its two-part targets in P-3 |
-| H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | rule (P-3, P-4) |
-| H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | rule (P-3) |
+| H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | **done (P-3)**: every target trains and is scored on all XI players with "did not bat / bowl" as 0; the baselines are defined on the same population (the unconditional career mean, not the mean over innings batted). The one two-part target, wickets, fits P(bowls) on the unconditional rows and reads the involvement from that classifier at prediction, never from the outcome; a unit test asserts no outcome column is an input |
+| H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | **done for P-3's second stage**: the only fitted consumer of a model output is H-5's quantile recalibration, and it is fitted on the last quarter of the training rows by date, which the members do not train on (`performance._temporal_calibration_split`; unit-tested). The two-part mixture is arithmetic, not a fit. The rule still binds the simulator in P-4 |
+| H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | **reported (P-3)** — width beside coverage for every target and format in §8.2 and in `xi_evaluate_report.json`, with the career-quantile baseline's width and coverage beside them. First release: T20 runs 29.1 wide at 0.897 inclusive coverage against the career quantiles' 26.0 at 0.782 — the baseline is narrower only by under-covering. Pinball is the proper score (mean over the three levels; CRPS was not added: two proper scores buy nothing a second column cannot). The release-over-release gate has one release to compare against so far |
 
-Items marked *open* are folded into the migration: H-5, H-12 and H-20's training rule into
-P-3, and H-11 into P-6 alongside H-16 (H-2, H-4, H-7, H-8, H-15 and H-19 are done as of
-P-2). Nothing left in the list needs new modelling; it is measurement, guards and two small
-serving rules.
+Items marked *open* are folded into the migration: H-11 into P-6 alongside H-16 (H-2, H-4,
+H-7, H-8, H-15 and H-19 are done as of P-2; H-5, H-12, H-20, H-21 and H-22 as of P-3, bar
+what the simulator adds in P-4). Nothing left in the list needs new modelling; it is
+measurement, guards and two small serving rules.
 
 ### 8.1 First walk-forward report (H-19, P-2)
 
@@ -416,6 +493,119 @@ specific-XI-beyond-typical-XI delta (+0.045 ± 0.021 T20; within noise elsewhere
 performance baselines (career-mean within-match Spearman 0.300 ± 0.011 T20 / 0.306 ± 0.043
 ODI over folds, 0.317 / 0.318 on the locked window); the full detail is per fold in
 `xi_evaluate_report.json`.
+
+### 8.2 First performance report (P-3)
+
+`make xi-evaluate` on the full dataset, the same quarterly origins as §8.1, the model fitted
+per fold on every XI player before the cutoff (three seeds) and scored pre-toss on the
+window; the baselines on the same rows. Ranking is within-match Spearman (the mean for
+counts, the median otherwise); pinball is the mean over the 0.1 / 0.5 / 0.9 levels; the
+interval is the 10–90 range, coverage inclusive, width its mean. Targets marked `*` are
+reported, never a headline. The Postgres and Cricsheet-JSON sources agree to 4 dp on every
+baseline (the frames hold the same rows) and to within 0.005 Spearman and 0.35 % pinball on
+the model for every headline target: the two sources order same-day rows differently and the
+early-stopping split follows row order, which is the seed spread showing up as a source
+spread. Catches, a target with almost no signal, wanders by up to 0.1 Spearman for the same
+reason. The table is the Cricsheet-JSON run.
+
+**Walk-forward** (mean over folds; Δ is model minus career mean, ± sd over folds):
+
+| format | target | folds | Spearman: model | career mean | Δ ± sd | pinball: model | career mean | career quantiles | median MAE: model | career mean | 80 % interval: coverage / width, model | career quantiles | ranking among the involved: model | career mean |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|
+| T20 | runs | 7 | **0.542** | 0.502 | 0.040 ± 0.007 | **2.927** | 5.087 | 3.162 | 9.21 | 10.17 | 0.897 / 29.1 | 0.782 / 26.0 | 0.333 | 0.311 |
+| T20 | balls_faced | 7 | **0.587** | 0.548 | 0.039 ± 0.006 | **2.315** | 4.006 | 2.532 | 7.36 | 8.01 | 0.895 / 24.1 | 0.763 / 20.8 | 0.363 | 0.342 |
+| T20 | wickets | 7 | **0.483** | 0.512 | -0.029 ± 0.012 | **0.141** | 0.260 | 0.156 | 0.45 | 0.52 | 0.950 / 1.3 | 0.901 / 1.2 | 0.167 | 0.133 |
+| T20 | runs_conceded | 7 | **0.733** | 0.737 | -0.004 ± 0.005 | **1.921** | 3.139 | 1.991 | 5.96 | 6.28 | 0.912 / 22.1 | 0.809 / 15.4 | 0.272 | 0.243 |
+| T20 | catches * | 7 | **0.036** | 0.146 | -0.112 ± 0.000 | **0.104** | 0.218 | 0.114 | 0.31 | 0.44 | 0.956 / 1.0 | 0.905 / 0.9 | — | — |
+| T20I | runs | 6 | **0.598** | 0.547 | 0.051 ± 0.017 | **3.164** | 5.436 | 3.445 | 10.02 | 10.87 | 0.885 / 30.5 | 0.784 / 26.8 | 0.388 | 0.342 |
+| T20I | balls_faced | 6 | **0.639** | 0.600 | 0.039 ± 0.019 | **2.278** | 3.909 | 2.481 | 7.26 | 7.82 | 0.883 / 23.6 | 0.775 / 20.4 | 0.428 | 0.398 |
+| T20I | wickets | 6 | **0.565** | 0.565 | -0.000 ± 0.006 | **0.130** | 0.243 | 0.144 | 0.41 | 0.49 | 0.955 / 1.3 | 0.915 / 1.2 | 0.188 | 0.169 |
+| T20I | runs_conceded | 6 | **0.801** | 0.810 | -0.009 ± 0.018 | **1.869** | 2.980 | 1.870 | 5.51 | 5.96 | 0.902 / 22.0 | 0.813 / 14.8 | 0.298 | 0.311 |
+| T20I | catches * | 6 | **0.079** | 0.142 | -0.070 ± 0.153 | **0.112** | 0.226 | 0.121 | 0.34 | 0.45 | 0.952 / 1.0 | 0.901 / 0.9 | — | — |
+| ODI | runs | 7 | **0.475** | 0.427 | 0.048 ± 0.013 | **4.590** | 7.961 | 5.110 | 14.47 | 15.92 | 0.904 / 46.9 | 0.723 / 38.8 | 0.342 | 0.312 |
+| ODI | balls_faced | 7 | **0.510** | 0.467 | 0.043 ± 0.010 | **5.272** | 9.090 | 5.883 | 16.73 | 18.18 | 0.901 / 56.7 | 0.702 / 45.6 | 0.371 | 0.350 |
+| ODI | wickets | 7 | **0.552** | 0.551 | 0.001 ± 0.012 | **0.163** | 0.302 | 0.189 | 0.52 | 0.60 | 0.948 / 1.5 | 0.872 / 1.4 | 0.202 | 0.176 |
+| ODI | runs_conceded | 7 | **0.782** | 0.763 | 0.019 ± 0.006 | **2.878** | 4.835 | 3.124 | 8.80 | 9.67 | 0.915 / 34.4 | 0.786 / 23.2 | 0.338 | 0.293 |
+| ODI | catches * | 7 | **0.172** | 0.176 | -0.004 ± 0.041 | **0.118** | 0.241 | 0.133 | 0.37 | 0.48 | 0.953 / 1.1 | 0.879 / 1.0 | — | — |
+| TEST | runs | 7 | **0.455** | 0.411 | 0.043 ± 0.018 | **8.441** | 14.181 | 9.381 | 26.50 | 28.36 | 0.771 / 82.3 | 0.677 / 71.6 | 0.440 | 0.401 |
+| TEST | balls_faced | 7 | **0.477** | 0.437 | 0.040 ± 0.017 | **13.822** | 23.728 | 15.460 | 43.59 | 47.46 | 0.774 / 136.3 | 0.673 / 123.5 | 0.460 | 0.427 |
+| TEST | wickets | 7 | **0.775** | 0.735 | 0.040 ± 0.023 | **0.308** | 0.531 | 0.344 | 0.96 | 1.06 | 0.882 / 2.3 | 0.849 / 2.6 | 0.442 | 0.407 |
+| TEST | runs_conceded | 7 | **0.837** | 0.820 | 0.017 ± 0.023 | **6.065** | 10.161 | 6.622 | 17.94 | 20.32 | 0.915 / 72.9 | 0.795 / 48.8 | 0.527 | 0.491 |
+| TEST | catches * | 7 | **0.403** | 0.413 | -0.010 ± 0.036 | **0.227** | 0.388 | 0.240 | 0.73 | 0.78 | 0.919 / 2.0 | 0.833 / 1.7 | — | — |
+
+**Locked window** (≥ 2025-09-01, scored once). Strict coverage counts y strictly inside
+the interval, inclusive counts the ends; with a point mass at zero the nominal 0.80 sits
+between them. The last two columns are the per-end exceedances H-5 reads: a level must
+sit between them (± 0.03). No target trips it; `recalibrated_targets` is empty everywhere.
+
+| format | target | n rows | Spearman: model | career mean | pinball: model | career mean | career quantiles | median MAE: model | career mean | coverage: strict / inclusive | width | P(y < q90) / P(y ≤ q90) | P(y < q10) / P(y ≤ q10) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---|---|
+| T20 | runs | 36228 | **0.549** | 0.514 | **2.941** | 5.064 | 3.138 | 9.26 | 10.13 | 0.539 / 0.896 | 29.2 | 0.896 / 0.896 | 0.000 / 0.357 |
+| T20 | balls_faced | 36228 | **0.590** | 0.550 | **2.325** | 4.028 | 2.511 | 7.39 | 8.06 | 0.621 / 0.893 | 24.0 | 0.893 / 0.893 | 0.000 / 0.272 |
+| T20 | wickets | 36228 | **0.472** | 0.513 | **0.141** | 0.259 | 0.153 | 0.45 | 0.52 | 0.184 / 0.951 | 1.3 | 0.547 / 0.951 | 0.000 / 0.677 |
+| T20 | runs_conceded | 36228 | **0.727** | 0.727 | **1.967** | 3.212 | 2.024 | 6.14 | 6.42 | 0.458 / 0.911 | 22.4 | 0.911 / 0.911 | 0.000 / 0.453 |
+| T20 | catches * | 36228 | **0.016** | 0.140 | **0.104** | 0.217 | 0.113 | 0.31 | 0.43 | 0.017 / 0.957 | 1.0 | 0.754 / 0.957 | 0.000 / 0.741 |
+| T20I | runs | 4004 | **0.575** | 0.561 | **3.313** | 5.562 | 3.499 | 10.47 | 11.12 | 0.548 / 0.892 | 31.7 | 0.892 / 0.892 | 0.000 / 0.344 |
+| T20I | balls_faced | 4004 | **0.621** | 0.601 | **2.301** | 3.932 | 2.415 | 7.35 | 7.86 | 0.615 / 0.882 | 23.7 | 0.890 / 0.890 | 0.008 / 0.274 |
+| T20I | wickets | 4004 | **0.540** | 0.563 | **0.133** | 0.244 | 0.144 | 0.43 | 0.49 | 0.203 / 0.956 | 1.3 | 0.511 / 0.956 | 0.000 / 0.677 |
+| T20I | runs_conceded | 4004 | **0.802** | 0.796 | **1.953** | 3.094 | 1.946 | 5.77 | 6.19 | 0.439 / 0.896 | 22.5 | 0.896 / 0.896 | 0.000 / 0.457 |
+| T20I | catches * | 4004 | **0.066** | 0.130 | **0.115** | 0.235 | 0.123 | 0.35 | 0.47 | 0.015 / 0.947 | 1.1 | 0.732 / 0.947 | 0.000 / 0.718 |
+| ODI | runs | 8255 | **0.506** | 0.459 | **4.895** | 8.384 | 5.340 | 15.62 | 16.77 | 0.648 / 0.896 | 49.1 | 0.896 / 0.896 | 0.000 / 0.247 |
+| ODI | balls_faced | 8255 | **0.566** | 0.516 | **5.352** | 9.235 | 5.891 | 17.15 | 18.47 | 0.731 / 0.900 | 56.7 | 0.900 / 0.900 | 0.000 / 0.168 |
+| ODI | wickets | 8255 | **0.592** | 0.587 | **0.157** | 0.291 | 0.176 | 0.50 | 0.58 | 0.233 / 0.954 | 1.5 | 0.536 / 0.954 | 0.000 / 0.641 |
+| ODI | runs_conceded | 8255 | **0.808** | 0.792 | **2.932** | 4.802 | 3.074 | 8.86 | 9.60 | 0.477 / 0.914 | 35.2 | 0.914 / 0.914 | 0.000 / 0.437 |
+| ODI | catches * | 8255 | **0.182** | 0.193 | **0.123** | 0.248 | 0.136 | 0.39 | 0.50 | 0.043 / 0.947 | 1.1 | 0.738 / 0.947 | 0.000 / 0.695 |
+| TEST | runs | 3501 | **0.442** | 0.410 | **8.192** | 13.821 | 8.987 | 25.83 | 27.64 | 0.777 / 0.778 | 81.7 | 0.899 / 0.899 | 0.120 / 0.122 |
+| TEST | balls_faced | 3501 | **0.469** | 0.427 | **13.807** | 23.530 | 15.291 | 43.83 | 47.06 | 0.781 / 0.781 | 136.9 | 0.894 / 0.894 | 0.113 / 0.113 |
+| TEST | wickets | 3501 | **0.778** | 0.746 | **0.297** | 0.500 | 0.319 | 0.93 | 1.00 | 0.245 / 0.883 | 2.3 | 0.494 / 0.925 | 0.042 / 0.629 |
+| TEST | runs_conceded | 3501 | **0.844** | 0.830 | **5.752** | 9.217 | 5.986 | 16.85 | 18.43 | 0.467 / 0.912 | 70.2 | 0.912 / 0.912 | 0.000 / 0.445 |
+| TEST | catches * | 3501 | **0.411** | 0.415 | **0.215** | 0.377 | 0.226 | 0.70 | 0.75 | 0.238 / 0.930 | 1.9 | 0.782 / 0.935 | 0.006 / 0.544 |
+
+**Wicket probabilities**, locked window, predicted against observed:
+
+| format | n | Brier (3-way) | P(0): predicted / observed | P(1) | P(2+) |
+|---|---:|---:|---|---|---|
+| T20 | 36228 | 0.387 | 0.668 / 0.677 | 0.197 / 0.180 | 0.135 / 0.143 |
+| T20I | 4004 | 0.369 | 0.663 / 0.677 | 0.195 / 0.173 | 0.143 / 0.150 |
+| ODI | 8255 | 0.383 | 0.623 / 0.641 | 0.198 / 0.172 | 0.179 / 0.186 |
+| TEST | 3501 | 0.289 | 0.520 / 0.568 | 0.103 / 0.099 | 0.377 / 0.332 |
+
+
+**Reading it.**
+
+- *The deliverable is where it was expected.* Median MAE for runs improves by 9 % over the
+  career mean (9.21 vs 10.17 T20, 14.47 vs 15.92 ODI) — the ≈ 6 % §3 forecast, a little
+  more because the population now includes the tail, whose zeros a contextual model
+  predicts and a career mean smears. Among the players who did bat, the ranking sits at
+  0.33 / 0.34 (T20 / ODI): the ≈ 0.34 ceiling §1 measured for every predictor, now with
+  the career mean at 0.31 beside it. The gains are real, small, and mostly in the range
+  rather than the point — which is what the intervals are for.
+- *Ranking on the unconditional population has an artifact, and it decides wickets.* Six
+  of eleven players take 0 wickets and tie; the career mean gives most of them the same
+  exact 0 and tie-averaging rewards that, while any model resolves them and is charged for
+  it. Runs are barely affected (few unconditional means are exactly 0) and the model wins
+  by 0.04–0.05; wickets are dominated by it, so the model ties in ODI and trails by 0.03 in
+  T20 in every fold, while beating the career mean by 45 % on pinball and by 0.03 among
+  the bowlers. The headline metric stays as defined — H-13 says the consumer's metric, and
+  the selector does rank all eleven — and the diagnostic sits beside it; what is *not*
+  done is teaching the model to emit exact zeros to win the tie. **P-3's acceptance is
+  therefore met for runs and for wickets' pinball, and not met for wickets' Spearman in
+  T20**, for a reason that is now written down.
+- *Calibration is nominal without recalibration.* P(y ≤ q90) reads 0.89–0.90 for the
+  quantile targets in every format and P(y < q10) ≤ 0.12; the inclusive coverage of 0.89–
+  0.91 in limited overs is the zero mass (q10 = 0 for a third of rows), not
+  over-dispersion, and TEST runs — where almost everyone bats — sit at 0.78 / 0.78. The
+  wicket distribution's P(0) / P(1) / P(2+) are within 0.02 of observed. So H-5's mechanism
+  ships in place and idle, and the harness will say when that changes.
+- *Sharpness (H-22).* The career quantiles are narrower (26.0 vs 29.1, T20 runs) and
+  under-cover (0.78 vs 0.90 inclusive); the model's interval is the one that means what it
+  says, and its width is the number the next release has to beat without giving that up.
+- *Catches* rank badly (0.02–0.07 in the T20 formats against 0.13–0.15 for the career
+  mean) — a Poisson(0.4) count with almost no signal, which §1 predicted; the rate is
+  reported for the simulator and nothing else.
+- *Cost.* The locked-window fit is 4–6 minutes per limited-overs format for three seeds;
+  `make xi-evaluate` takes ≈ 2.5 h on both sources together, dominated by the 13
+  estimators × 3 seeds × 8 windows the performance section adds.
 
 ---
 
@@ -505,9 +695,9 @@ quoted in this document should be read with them in mind.
 | **Feature sees its own outcome** (S-3c: scoreboard membership as a feature) | export read who batted, which the result decides | features are read from state accumulated over *prior days only*, then the match is folded in; no snapshot table exists to query wrongly. Unit test H-1 | closed, tested |
 | **Same-day ordering** | matches on one date processed in id order, so a match could see a same-day result it may have preceded (78% of matches share a date with another in their format) | **day-close batching** in `ml.xi.builder.build`: every match on a date reads prior dates only, the whole day is applied afterwards. Cost ≤ 0.003 AUC (measured). Unit test `test_same_day_matches_do_not_see_each_other` | closed, tested |
 | **Future data in as-of state** (D-1 snapshot ambiguity) | duplicate snapshot rows, "latest before match" undefined | no snapshots; state is the pass itself | closed by construction |
-| **Outcome-conditioned training population** | rows exist only for players who batted/bowled — decided by the result — and the model learns the population, not the quantity | **rule H-20**: the performance model's training rows are *all XI players*, with involvement predicted as-of (expected balls faced/bowled), never rows selected by what happened. A two-part target (P(bats) × runs given bats) is allowed only if both parts are trained on the unconditional population. The experiment in §1 conditioned on "batted" and is therefore an upper bound for the given-batted quantity, not the deliverable | open — P-3 |
-| **Stacked predictions used in-sample** (classic stacking leak) | the greedy selector, the Monte Carlo and the combination meta-model consumed base-model predictions for matches those models had trained on; a depth-12 RF partly memorises its rows, so second-stage fits learned to over-trust them | **rule H-21**: any model output consumed by another model or by an evaluation must be out-of-sample for that row — as-of ratings by construction, or out-of-fold predictions from a temporal split. The simulator (L2-C) consumes L2-B only through as-of features, never through in-sample fits | rule; P-3/P-4 |
-| **Unknowable-at-decision inputs** (toss, innings, batting order) | trained on real values, served constants (S-2, S-8) | marginalised on the serving path (H-3); the display model accepts the toss once known | closed for win; P-3 for performance |
+| **Outcome-conditioned training population** | rows exist only for players who batted/bowled — decided by the result — and the model learns the population, not the quantity | **rule H-20**: the performance model's training rows are *all XI players*, with involvement predicted as-of (expected balls faced/bowled), never rows selected by what happened. A two-part target (P(bats) × runs given bats) is allowed only if both parts are trained on the unconditional population. The experiment in §1 conditioned on "batted" and is therefore an upper bound for the given-batted quantity, not the deliverable | **closed (P-3)** — L2-B trains and is scored on the unconditional rows; its baselines too |
+| **Stacked predictions used in-sample** (classic stacking leak) | the greedy selector, the Monte Carlo and the combination meta-model consumed base-model predictions for matches those models had trained on; a depth-12 RF partly memorises its rows, so second-stage fits learned to over-trust them | **rule H-21**: any model output consumed by another model or by an evaluation must be out-of-sample for that row — as-of ratings by construction, or out-of-fold predictions from a temporal split. The simulator (L2-C) consumes L2-B only through as-of features, never through in-sample fits | closed for P-3's recalibration (fitted on a temporal fold the members did not see); rule for P-4 |
+| **Unknowable-at-decision inputs** (toss, innings, batting order) | trained on real values, served constants (S-2, S-8) | marginalised on the serving path (H-3); the display model accepts the toss once known | closed for win and performance (P-3 marginalises the innings and accepts `team1_bats_first`) |
 | **Target leakage through team context** | none found: Elo, form, h2h, venue bat-first rate all update *after* the day closes | — | closed |
 | **Train / serve skew** | serving aggregated over 11, training over the scorecard | same code path; parity test H-8 turns it into a permanent check | test open — P-2 |
 | **Identity leakage** (two people as one, one person as two) | name-keyed ids; men's and women's sides share team ids | P-1; the JSON-path numbers use registry ids and are unaffected | **closed**: players by registry id and teams by gender in P-1, franchise renames in I-4. `make xi-parity` holds both sources to the same keys |
@@ -521,10 +711,10 @@ quoted in this document should be read with them in mind.
 | Temporal validation, no random splits | rolling-origin walk-forward + locked window (H-19) | **done (P-2)** — `make xi-evaluate` |
 | Reported with uncertainty | ≥ 3 seeds, mean ± spread (H-14); walk-forward spread across cutoffs | done (P-2 adds the cutoff spread) |
 | Baselines that are hard to beat | base-rate Brier, best single column, career mean, team Elo — all reported beside the model | done |
-| Metric matches the consumer | AUC + monotonicity for an argmax; Spearman/top-k/coverage for a ranking or interval; per target, never pooled (H-12, H-13) | rule; P-3 retires the pooled metric |
-| Calibration of any probability shown | reliability + Brier; isotonic recalibration on a temporal fold if needed; interval coverage (H-5) | partly |
-| Distribution-aware losses | quantile / Poisson for counts; MAE-optimal points are not the deliverable | P-3 |
-| Progress measured as sharpness at fixed calibration | interval width tracked beside coverage across releases; proper scores (CRPS / pinball / Brier) are the headline, never MAE (H-22) | P-3 |
+| Metric matches the consumer | AUC + monotonicity for an argmax; Spearman/top-k/coverage for a ranking or interval; per target, never pooled (H-12, H-13) | **done (P-3)** — per target and format throughout; the pooled metric has no new reader and goes with its last caller in P-5 |
+| Calibration of any probability shown | reliability + Brier; isotonic recalibration on a temporal fold if needed; interval coverage (H-5) | **done for win and performance (P-3)**; simulator in P-4 |
+| Distribution-aware losses | quantile / Poisson for counts; MAE-optimal points are not the deliverable | **done (P-3)** |
+| Progress measured as sharpness at fixed calibration | interval width tracked beside coverage across releases; proper scores (CRPS / pinball / Brier) are the headline, never MAE (H-22) | **reported (P-3)**; the first release is the baseline the next is measured against |
 | Reproducibility | dataset sha, cutoff, git sha, hyperparameters and metrics in a run manifest (H-16); deterministic seeds; the pass is a pure function of the event table | P-6 |
 | Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | **done** — `ml/xi/quality.py` gates the retrain, `make xi-parity` compares the two sources |
 | Serving = training | same feature code, parity test (H-8); ids in, features computed inside | **done (P-2)** — parity runs in the harness and fails it |
@@ -659,6 +849,36 @@ Four defects in this area have now been found by comparing two numbers — 22,42
 the gate: none of them was subtle, and none of them was visible. Two of the four were found
 *by* the gate, within minutes of it existing, and the fourth was found by extending it while
 making an unrelated change.
+
+**A fifth, found by H-8 in P-3 — delivery order.** The Postgres source read a match's
+deliveries `ORDER BY innings, ball_seq`, and `ball_seq` is the *legal*-ball counter: a wide
+or no-ball carries the same number as the legal delivery before it, 238,772 such pairs in
+the table, and the order within each pair was whatever the planner produced. Every feature
+before P-3 was a sum over deliveries and could not tell; the sequence families are the first
+to read the order, and the parity check's first Postgres run found two players whose
+dot-streak shares differed by 1e-5 to 2e-4 between the training pass and the as-of rebuild
+of the same match. Fixed by ordering on `(innings, over, ball)`, which is unique and is the
+source's order; the Cricsheet path was never affected. Small — but it is precisely the class
+of difference that turns a reproducible number into one that drifts between two runs of the
+same command, and the check exists so that it is a failed run rather than a mystery.
+
+**A sixth, found by comparing the two sources' performance numbers — fielders.** With the
+sequence order fixed, the two harness reports agreed on every headline target to 3 dp and
+disagreed on catches everywhere, because the Postgres source read fielders from
+`ball_event.fielder_ids`, which the importer has always left NULL ("omitted for
+simplicity"), and wrote them to `fielding_event` instead. So from the database the pass
+credited no catches and — since the keeper flag is set by the fielder of a stumping — held
+no keeper at all: `has_keeper` was 0 for every side and a pool from the database could not
+satisfy the optimiser's `require_keeper`. The win model never noticed because `has_keeper`
+is not one of its columns. Reading `fielding_event` per ball fixes both; keepers then agree
+exactly per format and catches to within 0.4 % — and that residue was the importer's own
+defect: a "caught and bowled" special case that could never see a real caught-and-bowled
+(its own kind, skipped above it) and so fired only for a *caught* dismissal with no named
+fielder, crediting the bowler with 452 catches taken by unnamed substitutes. The archive
+path credits such a catch to nobody (§10.4 above); the importer now does the same, and
+replaces a match's fielding events on re-import rather than inserting with `ON CONFLICT DO
+NOTHING`, which would have kept the 452 rows through every re-import that no longer wrote
+them. Re-imported; the two sources now agree on catches and keepers row for row.
 
 ---
 

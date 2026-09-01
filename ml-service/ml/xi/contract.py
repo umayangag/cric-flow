@@ -82,6 +82,43 @@ PLAYER_ROLE_KEYS: List[str] = (
     + [f"bowl_{p}_rate" for p in PHASE_NAMES]  # runs saved vs expectation per ball bowled, per phase (shrunk)
 )
 
+# Sequence families (E1): the ``seqcalc`` calculators expressed as as-of accumulators in the
+# rating pass, one decayed rate per (player, format). Each is (numerator over the balls a
+# family selects) / (those balls + a prior), so a player without history reads as neutral.
+# ``ml.xi.sequence`` derives the per-ball flags; the pass accumulates them beside every
+# other rate. A family is fed to the performance model only if E1 kept it
+# (``SEQUENCE_FAMILIES_KEPT``); the columns are always in the frame so the question can be
+# re-asked without a new pass.
+SEQUENCE_FAMILIES: Dict[str, List[str]] = {
+    "dot_streaks": [
+        "bat_stuck_share",  # share of balls faced that follow >= 2 consecutive dots by the batter
+        "bat_release_rate",  # runs above expectation per ball on those balls
+        "bowl_squeeze_share",  # share of balls bowled that follow >= 2 consecutive dots by the bowler
+        "bowl_squeeze_wrate",  # bowler-credited wickets above expectation per ball on those balls
+    ],
+    "reactions": [
+        "bat_after_boundary_rate",  # runs above expectation on the ball after the batter's own boundary
+        "bowl_after_boundary_rate",  # runs saved on the ball after the bowler conceded a boundary
+        "bowl_after_wicket_rate",  # runs saved on the ball after the bowler took a wicket
+    ],
+    "spells": [
+        "bowl_spell_first_rate",  # runs saved per ball in the first over of a spell
+        "bowl_spell_later_rate",  # runs saved per ball in a spell's later overs
+        "bowl_spell_overs",  # decayed mean overs per spell
+    ],
+}
+PLAYER_SEQUENCE_KEYS: List[str] = [key for keys in SEQUENCE_FAMILIES.values() for key in keys]
+# A ball is "under a squeeze" after this many consecutive dots in the same stream.
+SEQUENCE_DOT_STREAK = 2
+# Successive overs by one bowler at most this far apart belong to one spell (alternate ends).
+SEQUENCE_SPELL_MAX_GAP = 2
+# Shrinkage for the sequence rates, which select a subset of a player's balls.
+SEQUENCE_PRIOR_BALLS = PHASE_PRIOR_BALLS
+
+# E1's verdict: families the performance model consumes. Decided on the walk-forward folds
+# by the > 1 % pinball-loss rule over three seeds (plan §5); the table is in the plan.
+SEQUENCE_FAMILIES_KEPT: Tuple[str, ...] = ()
+
 
 # One side's aggregates, produced by ml.xi.ratings.aggregate_side. Order is the contract.
 SIDE_FEATURE_STEMS: List[str] = [
@@ -207,6 +244,7 @@ PLAYER_MATCH_META_COLS: List[str] = [
 PLAYER_MATCH_FEATURE_COLS: List[str] = (
     PLAYER_VECTOR_KEYS
     + PLAYER_ROLE_KEYS
+    + PLAYER_SEQUENCE_KEYS
     + [f"own_{s}" for s in SIDE_FEATURE_STEMS]
     + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
     + ["venue_bf_rate", "venue_n", "elo_edge"]  # elo_edge = own team Elo minus opponent's
@@ -216,7 +254,8 @@ PLAYER_MATCH_FEATURE_COLS: List[str] = (
 # definition the as-of ``exp_balls_*`` vectors use. ``batting_position`` is the order of
 # first appearance on strike in the player's first batting innings, 0 when they never
 # faced a ball; ``wickets`` and ``runs_conceded`` are the bowler-credited kinds and total
-# runs off the ball, matching ``bowl_wrate`` / ``bowl_rate``.
+# runs off the ball, matching ``bowl_wrate`` / ``bowl_rate``. ``catches`` credits each
+# fielder named on a bowler-credited dismissal that is not a stumping.
 PLAYER_MATCH_TARGET_COLS: List[str] = [
     "balls_faced",
     "runs",
@@ -227,9 +266,43 @@ PLAYER_MATCH_TARGET_COLS: List[str] = [
     "balls_bowled",
     "wickets",
     "runs_conceded",
+    "catches",
 ]
 
 PLAYER_MATCH_COLS: List[str] = PLAYER_MATCH_META_COLS + PLAYER_MATCH_FEATURE_COLS + PLAYER_MATCH_TARGET_COLS
+
+# --- Performance model (L2-B) inputs ----------------------------------------------------
+#
+# Everything the model reads is as-of (H-1) or decided before the match starts: the innings
+# (``bats_first``) is the toss, not the result, and is marginalised at prediction unless the
+# caller knows it. Nothing here is a function of the match's own outcome.
+BATS_FIRST_COL = "bats_first"
+# Joint T20 + T20I training (E6) reads the format through this indicator.
+FORMAT_INDICATOR_COL = "is_t20i"
+# Formats E6 considered pooling. Everything else always trains alone.
+E6_JOINT_FORMATS: Tuple[str, str] = ("T20", "T20I")
+# E6's verdict: whether the T20 and T20I performance models are one joint fit (recorded in
+# the artifact; decided on the walk-forward folds by the > 0.01 Spearman rule).
+E6_JOINT_T20_FORMATS = False
+
+
+def performance_feature_cols(
+    sequence_families: Tuple[str, ...] = SEQUENCE_FAMILIES_KEPT, joint_format: bool = False
+) -> List[str]:
+    """The performance model's input columns: the row's as-of vectors and role, the kept
+    sequence families, both sides' aggregates, venue context, the Elo edge and the innings."""
+    sequence_keys = [key for family in sequence_families for key in SEQUENCE_FAMILIES[family]]
+    cols = (
+        PLAYER_VECTOR_KEYS
+        + PLAYER_ROLE_KEYS
+        + sequence_keys
+        + [f"own_{s}" for s in SIDE_FEATURE_STEMS]
+        + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
+        + ["venue_bf_rate", "venue_n", "elo_edge", BATS_FIRST_COL]
+    )
+    if joint_format:
+        cols.append(FORMAT_INDICATOR_COL)
+    return cols
 
 
 def monotone_directions(columns: List[str]) -> List[int]:

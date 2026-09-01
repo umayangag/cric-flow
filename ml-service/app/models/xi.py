@@ -1,4 +1,5 @@
-"""Request / response models for the XI-responsive win endpoints (``/xi/*``).
+"""Request / response models for the XI-responsive win endpoints (``/xi/*``) and the
+player-performance endpoint (``/performance/predict``).
 
 Players are identified by id only. The ML service holds the as-of rating state, so callers
 send who is playing, not what their features are -- which is also what makes the training
@@ -89,6 +90,47 @@ class XiWinResponse(BaseModel):
 class XiStatusResponse(BaseModel):
     loaded: bool
     formats: List[str]
+    performance_formats: List[str] = Field(default_factory=list)
     players: int
     ratings_through: Optional[str]
     report: Optional[dict] = None
+
+
+class PerformancePredictRequest(XiWinRequest):
+    """The same inputs as a win prediction: both elevens by id, the format, optional team
+    and venue ids for context, the toss once known, and ``as_of`` for backtests."""
+
+
+class PerformanceRange(BaseModel):
+    q10: float
+    median: float
+    q90: float
+
+
+class WicketDistribution(BaseModel):
+    expected: float = Field(..., description="Mean of the count distribution")
+    p0: float = Field(..., ge=0, le=1)
+    p1: float = Field(..., ge=0, le=1)
+    p2_plus: float = Field(..., ge=0, le=1)
+
+
+class PlayerPerformance(BaseModel):
+    player_id: int
+    side: int = Field(..., description="1 = team1, 2 = team2")
+    p_bats: float = Field(..., ge=0, le=1)
+    p_bowls: float = Field(..., ge=0, le=1)
+    runs: PerformanceRange
+    balls_faced: PerformanceRange
+    runs_conceded: PerformanceRange
+    wickets: WicketDistribution
+    catches_expected: float = Field(..., description="Poisson rate; reported, never a headline")
+
+
+class PerformancePredictResponse(BaseModel):
+    players: List[PlayerPerformance]
+    innings_marginalised: bool = Field(
+        ..., description="True when the toss was unknown and both batting orders were averaged"
+    )
+    unknown_player_ids: List[int] = Field(
+        default_factory=list, description="Ids with no rating history; predicted as debutants"
+    )

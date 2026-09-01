@@ -1,9 +1,11 @@
 """Artifacts and serving.
 
 One artifact per training run, ``xi_win_<FORMAT>.joblib``, holds two fitted models and the
-column lists; one shared ``xi_ratings.joblib`` holds the serving ``RatingState``. The store
-loads them and answers two questions: P(team1 wins | XI_1, XI_2, context) and the per-player
-vectors an optimiser needs to rebuild that probability for a different XI.
+column lists; ``xi_perf_<FORMAT>.joblib`` holds the format's performance model (L2-B); one
+shared ``xi_ratings.joblib`` holds the serving ``RatingState``. The store loads them and
+answers three questions: P(team1 wins | XI_1, XI_2, context), the per-player vectors an
+optimiser needs to rebuild that probability for a different XI, and what each player of
+the two elevens is expected to do.
 """
 
 from __future__ import annotations
@@ -17,7 +19,9 @@ import joblib
 import numpy as np
 
 from ml.xi import contract as C
+from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState, aggregate_side, xi_feature_vector
+from ml.xi.rows import serving_match, team_context_or_neutral
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +30,10 @@ RATINGS_ARTIFACT = "xi_ratings.joblib"
 
 def model_artifact_name(format_code: str) -> str:
     return f"xi_win_{format_code}.joblib"
+
+
+def performance_artifact_name(format_code: str) -> str:
+    return f"xi_perf_{format_code}.joblib"
 
 
 @dataclass
@@ -70,6 +78,8 @@ def _state_to_payload(state: RatingState) -> Dict:
                 "bat_ph_balls",
                 "bowl_ph_rse",
                 "bowl_ph_balls",
+                "seq_num",
+                "seq_den",
                 "ctx_balls",
                 "ctx_runs",
                 "ctx_wickets",
@@ -118,33 +128,59 @@ def save_models(models: FormatModels, artifacts_dir: str) -> str:
     return path
 
 
+def save_performance(models: PerformanceModels, format_code: str, artifacts_dir: str) -> str:
+    """Write a format's performance artifact. ``format_code`` is the file's, which under
+    E6's joint option can differ from the model's own (one fit serves both)."""
+    path = os.path.join(artifacts_dir, performance_artifact_name(format_code))
+    joblib.dump(models, path, compress=3)
+    return path
+
+
 class XiStore:
     """Serving-side access to ratings + per-format models."""
 
-    def __init__(self, state: RatingState, models: Dict[str, FormatModels]):
+    def __init__(
+        self,
+        state: RatingState,
+        models: Dict[str, FormatModels],
+        performance: Optional[Dict[str, PerformanceModels]] = None,
+    ):
         self.state = state
         self.models = models
+        self.performance = performance or {}
 
     @classmethod
     def load(cls, artifacts_dir: str) -> "XiStore":
         state = load_ratings(artifacts_dir)
         models: Dict[str, FormatModels] = {}
+        performance: Dict[str, PerformanceModels] = {}
         for fmt in C.FORMAT_CODES:
             path = os.path.join(artifacts_dir, model_artifact_name(fmt))
             if os.path.exists(path):
                 models[fmt] = joblib.load(path)
+            performance_path = os.path.join(artifacts_dir, performance_artifact_name(fmt))
+            if os.path.exists(performance_path):
+                performance[fmt] = joblib.load(performance_path)
         if not models:
             raise FileNotFoundError(f"no xi_win_<FORMAT>.joblib artifacts in {artifacts_dir}")
-        logger.info("xi store loaded: formats %s, %d players", sorted(models), len(state.players))
-        return cls(state, models)
+        logger.info(
+            "xi store loaded: win formats %s, performance formats %s, %d players",
+            sorted(models),
+            sorted(performance),
+            len(state.players),
+        )
+        return cls(state, models, performance)
 
     def has_format(self, format_code: str) -> bool:
         return format_code in self.models
 
+    def has_performance(self, format_code: str) -> bool:
+        return format_code in self.performance
+
     def with_state(self, state: RatingState) -> "XiStore":
         """The same models over a different rating state -- how a backtest serves
         "ratings as of date D" (see ``ml.xi.asof``) instead of "through today"."""
-        return XiStore(state, self.models)
+        return XiStore(state, self.models, self.performance)
 
     def covers_as_of(self, as_of) -> bool:
         """Whether the loaded through-today state already is the as-of state for ``as_of``:
@@ -209,19 +245,4 @@ class XiStore:
         return float(0.5 * (p[0] + (1.0 - p[1])))
 
     def _team_context(self, fmt: str, t1: Optional[str], t2: Optional[str], venue: Optional[str]) -> Dict[str, float]:
-        from ml.xi.sources import Deliveries, MatchRecord
-
-        if t1 is None or t2 is None:
-            return {
-                "team_elo_diff": 0.0,
-                "team_form_diff": 0.0,
-                "team_h2h": 0.5,
-                "team_h2h_n": 0.0,
-                "venue_bf_rate": 0.5,
-                "venue_n": 0.0,
-                "venue_fam_diff": 0.0,
-            }
-        stub = MatchRecord(
-            "", self.state.last_date, fmt, t1, t2, venue or "", "", [], [], None, None, Deliveries.empty()
-        )
-        return self.state.team_context(stub)
+        return team_context_or_neutral(self.state, serving_match(fmt, [], [], t1, t2, venue, self.state.last_date))

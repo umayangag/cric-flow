@@ -1,5 +1,6 @@
-"""Serving-side glue for the XI-responsive win model: a lazily loaded ``XiStore`` and the
-functions the ``/xi/*`` routes call. Kept free of FastAPI so it is testable in-process."""
+"""Serving-side glue for the XI-responsive win model and the player-performance model: a
+lazily loaded ``XiStore`` and the functions the ``/xi/*`` and ``/performance/*`` routes
+call. Kept free of FastAPI so it is testable in-process."""
 
 from __future__ import annotations
 
@@ -8,9 +9,16 @@ import os
 import threading
 from typing import Dict, List, Optional
 
+import pandas as pd
+
 from app.errors import error_payload
 from app.logging import get_struct_logger
 from app.models.xi import (
+    PerformancePredictRequest,
+    PerformancePredictResponse,
+    PerformanceRange,
+    PlayerPerformance,
+    WicketDistribution,
     XiConstraints,
     XiOptimizeRequest,
     XiOptimizeResponse,
@@ -20,6 +28,7 @@ from app.models.xi import (
 )
 from ml.xi.asof import AsOfServer
 from ml.xi.optimizer import Constraints, marginal_values, select_xi
+from ml.xi.rows import player_feature_rows, serving_match
 from ml.xi.store import RATINGS_ARTIFACT, XiStore
 from ml.xi.train import REPORT_NAME
 
@@ -84,6 +93,13 @@ class XiRegistry:
             raise XiUnavailable(f"no XI win model for format {format_code!r}; loaded: {sorted(s.models)}")
         return s
 
+    def performance(self, format_code: str, as_of) -> tuple:
+        """The store (as of ``as_of`` when given) and the format's performance model."""
+        store = self.store_as_of(format_code, as_of)
+        if not store.has_performance(format_code):
+            raise XiUnavailable(f"no performance model for format {format_code!r}; loaded: {sorted(store.performance)}")
+        return store, store.performance[format_code]
+
     def store_as_of(self, format_code: str, as_of) -> XiStore:
         """The store serving ratings as they stood strictly before ``as_of`` (a backtest's
         view). ``None``, or a date past everything the loaded state holds, serves the
@@ -109,6 +125,7 @@ class XiRegistry:
         return XiStatusResponse(
             loaded=True,
             formats=sorted(s.models),
+            performance_formats=sorted(s.performance),
             players=len(s.state.players),
             ratings_through=s.state.last_date.isoformat() if s.state.last_date else None,
             report=self._report,
@@ -181,6 +198,66 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         team1_bats_first=req.team1_bats_first,
     )
     return XiWinResponse(team1_win_probability=display, objective_probability=objective)
+
+
+def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = REGISTRY) -> PerformancePredictResponse:
+    """Per-player performance distributions for two elevens: the same feature rows the
+    training frame is built from (``ml.xi.rows``), predicted by the format's L2-B model,
+    averaged over both batting orders unless the toss is known."""
+    store, model = registry.performance(req.format, req.as_of)
+    t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
+    unknown = [
+        pid
+        for pid, known in zip(req.team1_player_ids + req.team2_player_ids, store.known_players(t1 + t2))
+        if not known
+    ]
+    match = serving_match(
+        req.format,
+        t1,
+        t2,
+        None if req.team1_id is None else str(req.team1_id),
+        None if req.team2_id is None else str(req.team2_id),
+        None if req.venue_id is None else str(req.venue_id),
+        store.state.last_date,
+    )
+    rows = pd.DataFrame(player_feature_rows(store.state, match)[1])
+    rows["team_side"] = rows.side  # which eleven the player belongs to, whatever the innings
+    if req.team1_bats_first is None:
+        prediction = model.predict_marginalised(rows)
+    else:
+        # ``bats_first`` is per player: team1's players bat first exactly when team1 does.
+        if not req.team1_bats_first:
+            rows["side"] = 3 - rows.side
+        prediction = model.predict_oriented(rows, None)
+    players = [_player_performance(rows, prediction, i) for i in range(len(rows))]
+    logger.info("performance.predict.done", format=req.format, players=len(players), unknown=len(unknown))
+    return PerformancePredictResponse(
+        players=players, innings_marginalised=req.team1_bats_first is None, unknown_player_ids=unknown
+    )
+
+
+def _player_performance(rows: pd.DataFrame, prediction: Dict, i: int) -> PlayerPerformance:
+    def quantile_range(target: str) -> PerformanceRange:
+        q = prediction[target]["quantiles"][i]
+        return PerformanceRange(q10=float(q[0]), median=float(q[1]), q90=float(q[2]))
+
+    wickets = prediction["wickets"]
+    return PlayerPerformance(
+        player_id=int(rows.player_key.iloc[i]),
+        side=int(rows.team_side.iloc[i]),
+        p_bats=float(prediction["p_bats"][i]),
+        p_bowls=float(prediction["p_bowls"][i]),
+        runs=quantile_range("runs"),
+        balls_faced=quantile_range("balls_faced"),
+        runs_conceded=quantile_range("runs_conceded"),
+        wickets=WicketDistribution(
+            expected=float(wickets["mean"][i]),
+            p0=float(wickets["p0"][i]),
+            p1=float(wickets["p1"][i]),
+            p2_plus=float(wickets["p2plus"][i]),
+        ),
+        catches_expected=float(prediction["catches"]["mean"][i]),
+    )
 
 
 def status(registry: XiRegistry = REGISTRY) -> XiStatusResponse:

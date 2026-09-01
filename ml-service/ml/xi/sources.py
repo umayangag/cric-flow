@@ -388,22 +388,33 @@ JOIN opposition o ON o.id = mp.opposition_id
 WHERE mp.match_id = %s
 """
 
-# Fielders are stored as an array of ids, so their keys are looked up in a lateral join
-# that preserves the array's order -- the rating pass credits them positionally.
+# Fielders come from ``fielding_event`` -- one row per credited fielder per ball (the
+# catcher, the keeper of a stumping, each run-out assist) -- because the importer leaves
+# ``ball_event.fielder_ids`` NULL on every row. Until P-3 this source read that empty
+# column, so it credited no catches and, since the keeper flag comes from stumpings, held
+# no keeper at all: a pool from the database could not satisfy ``require_keeper``. The
+# archive path never had the defect; the H-8 comparison of the two sources found it.
+#
+# Playing order is (innings, over, ball), which is unique. ``ball_seq`` is the *legal*-ball
+# counter: a wide or no-ball shares it with the legal delivery before it (238,772 such
+# pairs), so ordering by it left their relative order to the query planner. Nothing noticed
+# until the sequence families (P-3) read the order of deliveries, and the H-8 parity check
+# found two players whose dot-streak shares differed between two reads of the same match.
 _BALLS_SQL = f"""
 SELECT be.innings, be.over,
        {_player_key("striker")}, {_player_key("bowler")},
        be.runs_batter, be.runs_total, be.wicket_kind,
-       (SELECT array_agg({_player_key("f")} ORDER BY u.position)
-        FROM unnest(be.fielder_ids) WITH ORDINALITY AS u(fielder_id, position)
-        JOIN player f ON f.id = u.fielder_id),
+       (SELECT array_agg({_player_key("f")} ORDER BY fe.id)
+        FROM fielding_event fe
+        JOIN player f ON f.id = fe.fielder_id
+        WHERE fe.match_id = be.match_id AND fe.innings = be.innings AND fe.over = be.over AND fe.ball = be.ball),
        {_player_key("pout")}
 FROM ball_event be
 LEFT JOIN player striker ON striker.id = be.striker_id
 LEFT JOIN player bowler ON bowler.id = be.bowler_id
 LEFT JOIN player pout ON pout.id = be.player_out_id
 WHERE be.match_id = %s
-ORDER BY be.innings, be.ball_seq
+ORDER BY be.innings, be.over, be.ball
 """
 
 

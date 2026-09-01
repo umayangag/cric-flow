@@ -66,7 +66,15 @@ from .models.predict import (
     WinFeaturesEnhanced,
     WinPrediction,
 )
-from .models.xi import XiOptimizeRequest, XiOptimizeResponse, XiStatusResponse, XiWinRequest, XiWinResponse
+from .models.xi import (
+    PerformancePredictRequest,
+    PerformancePredictResponse,
+    XiOptimizeRequest,
+    XiOptimizeResponse,
+    XiStatusResponse,
+    XiWinRequest,
+    XiWinResponse,
+)
 from .prediction_service.endpoints import (
     run_batting_prediction,
     run_bowling_prediction,
@@ -968,6 +976,18 @@ async def xi_predict_win(request: XiWinRequest):
     """P(team1 wins) for two elevens given by player id. team1 is the side batting first."""
     try:
         return xi_service.predict_win(request)
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+
+
+@app.post("/performance/predict", response_model=PerformancePredictResponse)
+async def performance_predict(request: PerformancePredictRequest):
+    """Per-player performance distributions (L2-B) for two elevens given by player id:
+    median and 10-90 range of runs, balls faced and runs conceded; P(bats) / P(bowls);
+    wicket probabilities P(0), P(1), P(2+). Both batting orders are averaged unless
+    ``team1_bats_first`` is given."""
+    try:
+        return xi_service.predict_performance(request)
     except xi_service.XiUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.payload) from exc
 
