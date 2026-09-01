@@ -490,7 +490,7 @@ checklist.
 | P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | **done** (`arch/p-2-rating-rows-harness`). The day-close pass emits 463,818 player-match rows — all XI players, never only those who batted (H-20) — with expected batting slot, innings share and phase-split impact rates, identical from both sources. `ml.xi.asof` answers `ratings_as_of(D)` and raises rather than run backwards, so a backtest at date D provably cannot see D or later; `freeze_ratings.py` is retired, `/xi/*` accept `as_of`, the selection comparison sends each match's date and its report carries per-match rows. `make xi-evaluate` runs the walk-forward + locked window + H-8 parity from one command into one JSON report. Acceptance: career-mean within-match Spearman on the locked window 0.317 T20 / 0.318 ODI (the script's ≈ 0.32 / 0.34, computed there with cross-format career means — inside the 0.31–0.35 band §1 calls the ceiling); parity max abs difference 0.0 on both sources; E7 measured, no effect (§5.2) |
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | **done** (`arch/p-3-performance-model`). `ml/xi/performance.py`: per format, quantile (0.1 / 0.5 / 0.9) models of runs, balls faced and runs conceded, a two-part zero-inflated Poisson of wickets, a Poisson rate of catches, and P(bats) / P(bowls) — all on the unconditional population (H-20), innings marginalised at prediction, three seeds, a three-point grid tuned inside the folds (flat), E1 (no family kept) and E6 (separate) in §5.3. Walk-forward over 7 folds, 3 seeds (§8.2): **runs** beat the career mean on Spearman (+0.040 ± 0.007 T20, +0.048 ± 0.013 ODI) and pinball (2.93 vs 5.09, 4.59 vs 7.96), median MAE −9 %; **wickets** beat it on pinball (0.141 vs 0.260, 0.163 vs 0.302) and tie on Spearman in ODI (+0.001 ± 0.012) but **trail it by 0.029 ± 0.012 in T20** — a tie-averaging artifact of the unconditional metric, recorded below rather than gamed; among the players who bowled the model ranks better in both. Locked window: per-end coverage inside ±0.03 everywhere, no recalibration triggered (H-5); width reported beside coverage (H-22). `POST /performance/predict` serves it; H-8 parity holds for rows and predictions on both sources at 0.0 — after it found the fifth defect, §10.4 |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | **done** (`arch/p-4-simulator`). Design written first (§3, "The innings sample"); `ml/xi/simulator.py` draws whole matches from L2-B's forecasts — sequential by expected slot under the as-of innings length, chase ended at the target, bowlers attributed, toss marginalised — with one shared as-of match factor (deconvolved residuals of the calibration fold) that the folds showed was needed (§8.3: dispersion ratio 1.42 → 1.02 T20, 1.36 → 1.02 ODI; coverage 0.64 → 0.76, 0.58 → 0.74; before/after recorded). Locked window (§8.3): first-innings 10–90 coverage **0.786 T20 / 0.790 ODI** (acceptance ±0.03 met), dispersion ratio 0.98 / 1.02, width 90.6 / 154.1 runs; 9.4–9.9 ms per fixture at 2,000 draws. E2 within tolerance (+0.003 / +0.003 Brier on the folds), so the simulated P(win) is served as a probability beside the display model, which stays the headline. `POST /simulate`; the go-app xi scorecard reads it (totals, points and ranges from the draws; extras / innings models and the rescale unused on that path); L3 explanation = marginal values + spread shares. H-8 parity extended to the draws at a fixed seed: max abs difference 0.0 over 39 simulated matches on both sources, and the two sources agree on every locked-window figure (T20 coverage 0.786 / 0.786, ODI 0.790 / 0.787, Brier to 0.0004) |
-| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete the greedy weights, the meta-model, the rescaling layers, the Normal Monte Carlo and the per-call optimiser | **done** (`arch/p-5-repoint-surfaces`). A limited-overs `/api/predict/*` response now carries the display model's P(win) with `source` on the wire, the simulated totals with their 10-90 ranges, per-player ranges and marginal values, and a `scorecard` block whose lines and extras sum to the total by construction; nothing rescales a simulated total toward anything, on any path. **S-6 ships here**: the XI path is the only selection path for T20 / T20I / ODI, on the gate P-2 measured (specific-XI-beyond-typical-XI +0.045 ± 0.021 AUC T20, swap violations 0.3 %), not on P-0's mis-specified winner accuracy. **TEST** gets `objective: "ratings"` on `/xi/optimize` — the search's own seed order under the same constraints, evaluating no model — labelled `optimised: false` in the API and shown as a *Not optimised* notice in the UI (H-17); its per-player numbers come from `/performance/predict`, and it has no innings total because it has no innings length. The backtest surface is L4's report, served by the new `GET /xi/evaluate-report` and proxied at `/api/backtest/report`: walk-forward folds with the locked window labelled beside them, the two selection metrics with a labelled slot for E5, per-target performance with width beside coverage, the E2 section and the serving-parity verdict. `ml/metrics.py` and both its callers are gone (H-12). Migration `0007` drops `match_prediction_aggregates`, the one table whose last reader and last writer both died here; nothing else was orphaned by P-5 that P-6 does not already own. Coverage ratcheted: Go 68, ml-service 86, frontend 74/69/74/77 |
+| P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete the greedy weights, the meta-model, the rescaling layers, the Normal Monte Carlo and the per-call optimiser | **done** (`arch/p-5-repoint-surfaces`). A limited-overs `/api/predict/*` response now carries the display model's P(win) with `source` on the wire, the simulated totals with their 10-90 ranges, per-player ranges and marginal values, and a `scorecard` block whose lines and extras sum to the total by construction; nothing rescales a simulated total toward anything, on any path. **S-6 ships here**: the XI path is the only selection path for T20 / T20I / ODI, on L4's replacement gates rather than P-0's mis-specified winner accuracy. **Re-measured on the database for this PR (§8.4), and one of the two gates is weaker than §8.1 recorded**: swap monotonicity passes comfortably (0.0–0.8 % violations against a 2 % line), but the specific-XI-beyond-typical-XI delta is **+0.012 ± 0.010 in T20** over seven folds — positive, about 1.2 sd from zero — and inside its own noise in ODI (+0.024 ± 0.069) and T20I (+0.021 ± 0.068), not the +0.045 ± 0.021 this document carried. The switch ships on that reading, recorded rather than rounded up. **TEST** gets `objective: "ratings"` on `/xi/optimize` — the search's own seed order under the same constraints, evaluating no model — labelled `optimised: false` in the API and shown as a *Not optimised* notice in the UI (H-17); its per-player numbers come from `/performance/predict`, and it has no innings total because it has no innings length. The backtest surface is L4's report, served by the new `GET /xi/evaluate-report` and proxied at `/api/backtest/report`: walk-forward folds with the locked window labelled beside them, the two selection metrics with a labelled slot for E5, per-target performance with width beside coverage, the E2 section and the serving-parity verdict. `ml/metrics.py` and both its callers are gone (H-12). Migration `0007` drops `match_prediction_aggregates`, the one table whose last reader and last writer both died here; nothing else was orphaned by P-5 that P-6 does not already own. Coverage ratcheted: Go 68, ml-service 86, frontend 74/69/74/77 |
 | P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min. **Carries one defect found while smoke-testing P-5 (D-6, §10.4).** A rating artifact written before P-2 loads without complaint and then raises `IndexError` on the first request that touches a player past slot 1024, because `_state_from_payload` assigns only the arrays the payload happens to carry and leaves the nine P-2/P-3 added (`bat_pos_sum`, `bat_pos_n`, `xi_n`, the four phase splits, `seq_num`, `seq_den`) at the constructor's initial width — while `/xi/status` reports `loaded: true`. The guard belongs here rather than in P-5: it is the same question H-16 asks (an artifact must name what produced it), and a run manifest is what lets the loader say *which* run the artifact is from instead of guessing from the arrays it holds |
 | P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report |
 
@@ -575,7 +575,7 @@ holds 30–90 matches, so their ±0.04–0.12 is mostly window size, not model d
 locked-window figures sit inside every spread — toward the top for T20, which is what later
 origins with more training data should produce. Beside the win model, the same folds carry
 swap monotonicity (0.0–0.8 % violations, all under H-4's 2 % line), the
-specific-XI-beyond-typical-XI delta (+0.045 ± 0.021 T20; within noise elsewhere) and the
+specific-XI-beyond-typical-XI delta (+0.045 ± 0.021 T20; within noise elsewhere — **but see §8.4: the same harness on the database measures +0.012 ± 0.010 for this quantity, so treat the figure in this paragraph as superseded**) and the
 performance baselines (career-mean within-match Spearman 0.300 ± 0.011 T20 / 0.306 ± 0.043
 ODI over folds, 0.317 / 0.318 on the locked window); the full detail is per fold in
 `xi_evaluate_report.json`.
@@ -806,6 +806,51 @@ reported, not tuned.
   shared-factor fit per window.
 
 ---
+
+### 8.4 P-5 verification run (`make xi-evaluate --postgres`, 2026-09-01)
+
+The harness was re-run end to end on the database as P-5's acceptance. It is the same
+command §8.1–§8.3 report, so the numbers are directly comparable, and the point of running
+it was to check that what P-5 *ships on* is what the harness *currently measures*.
+
+**H-8 parity holds at zero.** 50 matches, 1,105 player rows, 1,105 performance predictions
+and 39 simulations rebuilt through the as-of serving path; max absolute difference 0.0. The
+simulator is included at a fixed seed, so the draws agree too.
+
+**The simulator reproduces §8.3.** Locked window: first-innings 10–90 coverage 0.786 at 90.6
+runs wide (T20) and 0.787 at 154.1 (ODI), dispersion 0.98 and 1.02. E2 is within tolerance in
+both (Δ Brier +0.0018 T20, +0.0062 ODI), so the simulated P(win) is a probability and the
+display model stays the headline — unchanged.
+
+**One selection gate is weaker than §8.1 recorded.** Over the seven folds:
+
+| format | matches | objective AUC | display AUC | specific-XI Δ | swap violations |
+|---|---|---|---|---|---|
+| T20 | 11,948 | 0.684 ± 0.044 | 0.720 ± 0.058 | **+0.012 ± 0.010** | 0.3 % |
+| T20I | 2,047 | 0.772 ± 0.042 | 0.763 ± 0.035 | +0.021 ± 0.068 | 0.8 % |
+| ODI | 4,945 | 0.670 ± 0.077 | 0.694 ± 0.082 | +0.024 ± 0.069 | 0.0 % |
+| TEST | 2,084 | 0.637 ± 0.121 | 0.672 ± 0.093 | **−0.014 ± 0.049** | 0.7 % |
+
+Swap monotonicity passes everywhere, comfortably (H-4's line is 2 %). The specific-XI delta
+does not read the way §8.1 does: **+0.012 ± 0.010 in T20**, about 1.2 sd from zero, and inside
+its own noise in ODI and T20I, where a quarterly window holds too few matches to resolve a
+delta this size. §8.1 recorded +0.045 ± 0.021 for the same quantity; two runs today, from both
+sources, agree on 0.012, so the older figure is superseded rather than a source difference.
+
+**What that supports.** That the objective reads the eleven at all, in T20, weakly — the sign
+is right and it is the same sign on the locked window (+0.050, which H-19 forbids using for
+the choice and which is not used for it here). It does **not** support a claim that
+win-probability selection is measurably better than the alternative in ODI or T20I; those
+windows cannot resolve it either way. S-6 ships on this reading, and the honest summary is
+that the gate that replaced P-0's is *passed but thin*, not passed comfortably.
+
+**TEST is confirmed excluded.** Its delta is negative and its locked display AUC is 0.586,
+under H-17's 0.65 line, which is why it is served a rating-ordered XI and told so.
+
+**What would settle it** is E5, the natural experiment (P-7): consecutive matches of one side
+with 1–3 lineup changes, asking whether Δobjective agrees with Δoutcome more often than chance.
+It is the only one of the three gates that measures the thing selection actually claims, and
+it is the labelled empty slot in the Evaluation report tab.
 
 ## 9. Database schema and pipeline steps: what changes, what does not
 
