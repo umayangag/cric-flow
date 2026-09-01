@@ -9,6 +9,7 @@ import pytest
 
 from ml.xi import evaluate as ev
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
+from tests.xi_perf_fixtures import fast_fits
 
 
 def test_fold_windows_end_where_the_locked_window_starts() -> None:
@@ -49,7 +50,8 @@ def harness_report(tmp_path_factory) -> dict:
     ev.WALK_FORWARD_CUTOFFS = ["2023-03-01", "2023-04-01"]
     ev.LOCKED_START = "2023-05-01"
     try:
-        report = ev.evaluate(_ListSource(matches), lambda: _ListSource(matches))
+        with fast_fits():
+            report = ev.evaluate(_ListSource(matches), lambda: _ListSource(matches))
     finally:
         ev.WALK_FORWARD_CUTOFFS, ev.LOCKED_START = original
     out = tmp_path_factory.mktemp("harness") / "report.json"
@@ -73,11 +75,12 @@ def test_harness_scores_the_locked_window_once_and_labels_it(harness_report) -> 
     assert "objective_auc" in locked
 
 
-def test_harness_serving_parity_passes(harness_report) -> None:
+def test_harness_serving_parity_passes_for_rows_and_performance_predictions(harness_report) -> None:
     parity = harness_report["serving_parity"]
 
     assert parity["passed"], parity["mismatches"]
     assert parity["matches_compared"] == ev.PARITY_LAST_N
+    assert parity["performance_predictions_compared"] == ev.PARITY_LAST_N * 22
 
 
 def test_harness_reports_selection_metrics_per_fold(harness_report) -> None:
@@ -90,13 +93,17 @@ def test_harness_reports_selection_metrics_per_fold(harness_report) -> None:
     assert fold["specific_vs_typical"]["n"] >= 20
 
 
-def test_harness_reports_performance_baselines_with_empty_interval_columns(harness_report) -> None:
-    fold = [f for f in harness_report["formats"]["T20"]["walk_forward"]["folds"] if "objective_auc" in f][0]
-    runs = fold["performance"]["runs"]
+def test_harness_reports_the_performance_model_beside_its_baselines(harness_report) -> None:
+    t20 = harness_report["formats"]["T20"]
+    scored = [f for f in t20["walk_forward"]["folds"] if "objective_auc" in f]
+    runs = scored[-1]["performance"]["targets"]["runs"]
 
     assert runs["career_mean"]["mae"] is not None
-    assert runs["interval_width_80"] is None  # H-22: the column exists, P-3 fills it
-    assert runs["interval_coverage_80"] is None
+    assert runs["model"]["interval"]["width_80"] is not None  # H-22: width beside coverage
+    assert runs["model"]["interval"]["coverage_80"] is not None
+    summary = t20["walk_forward"]["summary"]["performance"]["targets"]["runs"]
+    assert summary["vs_career_mean"]["pinball"]["n_folds"] >= 1
+    assert t20["locked"]["recalibrated_targets"] == list(t20["locked"]["performance"]["fit"]["spec"]["recalibrate"])
 
 
 def test_harness_reports_the_leak_canary(harness_report) -> None:

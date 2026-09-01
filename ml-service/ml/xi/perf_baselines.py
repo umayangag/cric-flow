@@ -1,124 +1,79 @@
-"""Performance baselines over the player-match frame (L4's secondary-goal metrics).
+"""Performance baselines over the player-match frame: what the performance model (L2-B)
+must beat, on the same population it is scored on.
 
-The predictors here are the ones any performance model must beat (P-3): the player's own
-as-of career mean, and the rating pass's expectation. Metrics are the consumer's --
-within-match Spearman and top-3 hit for ranking, MAE for the point -- reported per target
-and per format, never pooled (H-12/H-13). Interval width and coverage columns exist from
-the start and stay empty until P-3 ships a distributional model (H-22).
+Every predictor here is as-of by construction and defined on the *unconditional*
+population -- every XI player, "did not bat" as 0 (H-20). Three of them:
 
-The frame itself is unconditional (every XI player has a row, H-20); the *baseline check*
-conditions on who batted or bowled, because that is what ``perf_experiment.py`` measured
-and what its reference numbers (career-mean Spearman ~0.32 T20 / ~0.34 ODI) mean.
+* ``career_mean_<target>``      -- the player's expanding mean of the target over their
+                                   previous rows in the format, shifted so a row never sees
+                                   itself. The acceptance baseline (plan P-3).
+* ``career_q{10,50,90}_<target>`` -- the same history's empirical quantiles: the
+                                   distributional baseline H-22's width-at-coverage is read
+                                   against.
+* ``rating_expect_<target>``    -- a pure function of the row's as-of vectors (expected balls
+                                   times a league rate plus the impact rating).
+
+A player with no history in the format has NaN career predictors; the harness fills them
+with the training window's figure, which is what a model that knew nothing would say.
 """
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
 
-# The experiment's league-average runs per ball, used by the rating-expectation predictor.
+from ml.xi.perf_metrics import QUANTILE_LEVELS
+from ml.xi.performance import TARGETS
+
+# League-average rates used by the rating-expectation predictor (the experiment's values).
 LEAGUE_RUNS_PER_BALL = 1.25
-# The experiment's wickets-per-ball equivalent for bowling expectation.
 LEAGUE_WICKETS_PER_BALL = 0.05
-# Players with fewer prior innings than this are excluded from the check, matching the
-# experiment (a career mean over one innings is not a predictor).
-MIN_PRIOR_INNINGS = 3
 
-# The two targets the baselines cover: runs for batters, wickets for bowlers.
-TARGETS = ("runs", "wickets")
+BASELINE_TARGETS = tuple(t.name for t in TARGETS)
+CAREER_QUANTILE_COLS = {level: f"career_q{int(round(level * 100))}" for level in QUANTILE_LEVELS}
 
 
 def add_baseline_predictors(player_frame: pd.DataFrame) -> pd.DataFrame:
-    """The frame with as-of baseline predictor columns added.
-
-    ``career_mean_*`` are expanding means over the player's *previous* batted / bowled
-    innings (shifted, so a row never sees itself); ``rating_expect_*`` are pure functions
-    of the row's as-of vectors.
-    """
+    """The frame, date-ordered, with the baseline predictor columns for every target."""
     out = player_frame.sort_values(["match_date", "match_id"], kind="stable").copy()
-    batted = out.balls_faced > 0
-    bowled = out.balls_bowled > 0
-    # Per (player, format): a T20 career mean should not predict an ODI innings. The shift
-    # keeps the mean strictly as-of its row; like the reference experiment, it does not
-    # re-apply day-close batching, because these are baseline predictors, not features.
+    # Per (player, format): a T20 career should not predict an ODI innings. The shift keeps
+    # the statistic strictly as-of its row; like the reference experiment these do not
+    # re-apply day-close batching, because they are baseline predictors, not features.
     by_player = [out.player_key, out.format_code]
-
-    runs_when_batted = out.runs.where(batted)
-    out["career_mean_runs"] = runs_when_batted.groupby(by_player).transform(lambda s: s.shift(1).expanding().mean())
-    out["prior_batting_innings"] = batted.groupby(by_player).cumsum() - batted.astype(int)
-
-    wickets_when_bowled = out.wickets.where(bowled)
-    out["career_mean_wickets"] = wickets_when_bowled.groupby(by_player).transform(
-        lambda s: s.shift(1).expanding().mean()
-    )
-    out["prior_bowling_innings"] = bowled.groupby(by_player).cumsum() - bowled.astype(int)
-
+    out["prior_appearances"] = out.groupby(by_player).cumcount()
+    for target in BASELINE_TARGETS:
+        grouped = out[target].groupby(by_player)
+        out[f"career_mean_{target}"] = grouped.transform(lambda s: s.shift(1).expanding().mean())
+        for level, stem in CAREER_QUANTILE_COLS.items():
+            out[f"{stem}_{target}"] = grouped.transform(lambda s, q=level: s.shift(1).expanding().quantile(q))
     out["rating_expect_runs"] = np.maximum(out.exp_balls_faced * (LEAGUE_RUNS_PER_BALL + out.bat_rate), 0.0)
+    out["rating_expect_balls_faced"] = out.exp_balls_faced
     out["rating_expect_wickets"] = np.maximum(out.exp_balls_bowled * (LEAGUE_WICKETS_PER_BALL + out.bowl_wrate), 0.0)
+    out["rating_expect_runs_conceded"] = np.maximum(out.exp_balls_bowled * (LEAGUE_RUNS_PER_BALL - out.bowl_rate), 0.0)
     return out
 
 
-def _within_match_spearman(rows: pd.DataFrame, predicted: str, actual: str) -> Optional[float]:
-    """Mean per-match Spearman between predicted and actual, over matches with at least
-    four players and variance in both columns."""
-    correlations: List[float] = []
-    for _, group in rows.groupby("match_id", sort=False):
-        if len(group) < 4 or group[actual].std() == 0 or group[predicted].std() == 0:
-            continue
-        rho = spearmanr(group[predicted], group[actual]).correlation
-        if not np.isnan(rho):
-            correlations.append(float(rho))
-    return float(np.mean(correlations)) if correlations else None
-
-
-def _top3_hit_rate(rows: pd.DataFrame, predicted: str, actual: str) -> Optional[float]:
-    """Mean share of the actual top-3 performers found in the predicted top-3, over
-    matches with at least six players."""
-    hits: List[float] = []
-    for _, group in rows.groupby("match_id", sort=False):
-        if len(group) < 6:
-            continue
-        top_predicted = set(group.nlargest(3, predicted).player_key)
-        top_actual = set(group.nlargest(3, actual).player_key)
-        hits.append(len(top_predicted & top_actual) / 3.0)
-    return float(np.mean(hits)) if hits else None
-
-
-def _score_predictor(rows: pd.DataFrame, predicted: str, actual: str) -> Dict:
-    return {
-        "n": int(len(rows)),
-        "mae": float(np.abs(rows[actual] - rows[predicted]).mean()) if len(rows) else None,
-        "within_match_spearman": _within_match_spearman(rows, predicted, actual),
-        "top3_hit_rate": _top3_hit_rate(rows, predicted, actual),
+def baseline_predictions(train_rows: pd.DataFrame, eval_rows: pd.DataFrame, target: str) -> Dict[str, Dict]:
+    """The baseline forecasts for one target on ``eval_rows``: a point for every predictor
+    and, for the career quantiles, an interval. NaNs (no history) take the training
+    window's mean / quantiles."""
+    y_train = train_rows[target].to_numpy(dtype=float)
+    fill_mean = float(y_train.mean()) if len(y_train) else 0.0
+    fill_quantiles = np.quantile(y_train, QUANTILE_LEVELS) if len(y_train) else np.zeros(len(QUANTILE_LEVELS))
+    career_mean = eval_rows[f"career_mean_{target}"].fillna(fill_mean).to_numpy(dtype=float)
+    career_quantiles = np.column_stack(
+        [
+            eval_rows[f"{stem}_{target}"].fillna(fill_quantiles[i]).to_numpy(dtype=float)
+            for i, stem in enumerate(CAREER_QUANTILE_COLS.values())
+        ]
+    )
+    out: Dict[str, Dict] = {
+        "career_mean": {"point": career_mean},
+        "career_quantiles": {"point": career_quantiles[:, 1], "quantiles": career_quantiles},
     }
-
-
-def _population(rows: pd.DataFrame, target: str, fill: float) -> pd.DataFrame:
-    """The conditioned population the baselines are defined on, with predictor NaNs filled
-    by the population's overall mean stand-in (the experiment used the training mean)."""
-    if target == "runs":
-        population = rows[(rows.balls_faced > 0) & (rows.prior_batting_innings >= MIN_PRIOR_INNINGS)].copy()
-        population["career_mean_runs"] = population.career_mean_runs.fillna(fill)
-    else:
-        population = rows[(rows.balls_bowled > 0) & (rows.prior_bowling_innings >= MIN_PRIOR_INNINGS)].copy()
-        population["career_mean_wickets"] = population.career_mean_wickets.fillna(fill)
-    return population
-
-
-def score_window(rows: pd.DataFrame) -> Dict:
-    """Both targets' baseline metrics over one evaluation window's player rows."""
-    report: Dict = {}
-    for target in TARGETS:
-        fill = float(rows[target].mean()) if len(rows) else 0.0
-        population = _population(rows, target, fill)
-        report[target] = {
-            "career_mean": _score_predictor(population, f"career_mean_{target}", target),
-            "rating_expectation": _score_predictor(population, f"rating_expect_{target}", target),
-            # H-22: interval sharpness columns exist from the start; P-3's quantile model fills them.
-            "interval_width_80": None,
-            "interval_coverage_80": None,
-        }
-    return report
+    rating_col = f"rating_expect_{target}"
+    if rating_col in eval_rows:
+        out["rating_expectation"] = {"point": eval_rows[rating_col].to_numpy(dtype=float)}
+    return out

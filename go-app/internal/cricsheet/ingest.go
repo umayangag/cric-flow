@@ -419,13 +419,15 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 							continue // Not a fielding dismissal we are tracking
 						}
 
+						// A "caught" dismissal with no named fielder is a catch by a substitute
+						// the source could not name (469 in the archive): it is credited to
+						// nobody, as the batting and rating paths already do. "Caught and
+						// bowled" is its own kind and never reaches here, so falling back to
+						// the bowler would credit him with a catch he did not take -- which is
+						// what this did until the two rating sources were compared (P-3).
 						var fNames []string
 						if w.Fielders != nil {
 							fNames = append(fNames, *w.Fielders...)
-						}
-						// Special case for caught and bowled: fielder is the bowler.
-						if isCaught && len(fNames) == 0 && d.Bowler != "" {
-							fNames = []string{d.Bowler}
 						}
 
 						if len(fNames) > 0 {
@@ -722,6 +724,13 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				slog.Int("squad_size", len(matchPlayerRows)),
 				slog.Any("err", err))
 			return fmt.Errorf("replace match_player: %w", err)
+		}
+		if err := db.DeleteFieldingEventsForMatchTx(ctx, tx, mid); err != nil {
+			slog.Error("delete fielding_events failed",
+				slog.String("file", matchCtx.file),
+				slog.Int64("match_id", mid),
+				slog.Any("err", err))
+			return fmt.Errorf("delete fielding_events: %w", err)
 		}
 		for i := range allMatchInnings {
 			inn := allMatchInnings[i]

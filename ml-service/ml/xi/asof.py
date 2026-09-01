@@ -19,9 +19,11 @@ import logging
 from datetime import date
 from typing import Callable, Dict, Iterator, List, Optional
 
+import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
+from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
 from ml.xi.sources import MatchRecord, MatchSource
@@ -106,6 +108,7 @@ def serving_parity(
     player_frame: pd.DataFrame,
     last_n: int = 50,
     gender_split_context: bool = False,
+    performance_models: Optional[Dict[str, PerformanceModels]] = None,
 ) -> Dict:
     """Rebuild the last ``last_n`` matches' rows from the as-of serving path and compare
     them with the training frame's rows (H-8).
@@ -114,6 +117,10 @@ def serving_parity(
     day-close buffering there, a strict date threshold here -- so agreement is a real
     check on both, while the row assembly is shared (``ml.xi.rows``) so the two cannot
     even in principle spell a column differently (the D-4 defect class).
+
+    With ``performance_models`` (per format) the check extends to what is served: the
+    model's pre-toss prediction for the rebuilt rows must equal its prediction for the
+    frame's rows, output by output.
     """
     ordered = frame.sort_values(["match_date", "match_id"], kind="stable")
     wanted = list(ordered.match_id.tail(last_n))
@@ -129,8 +136,10 @@ def serving_parity(
     matches_compared = 0
     win_rows_compared = 0
     player_rows_compared = 0
+    predictions_compared = 0
     max_abs_difference = 0.0
     mismatches: List[str] = []
+    performance_models = performance_models or {}
 
     matches_for_lookup, matches_for_state = itertools.tee(source.iter_matches())
     asof = AsOfRatings(_IteratorSource(matches_for_state), gender_split_context)
@@ -163,6 +172,13 @@ def serving_parity(
                 if diff > PARITY_TOLERANCE:
                     mismatches.append(f"match {match.match_id} player {rebuilt['player_key']} {col}: {diff:.3g}")
             player_rows_compared += 1
+        model = performance_models.get(match.format_code)
+        if model is not None and expected_players is not None and rebuilt_players:
+            diff = _prediction_difference(model, pd.DataFrame(rebuilt_players), expected_players)
+            max_abs_difference = max(max_abs_difference, diff)
+            predictions_compared += len(rebuilt_players)
+            if diff > PARITY_TOLERANCE:
+                mismatches.append(f"match {match.match_id} performance prediction: {diff:.3g}")
 
     if matches_compared < len(wanted_set):
         mismatches.append(f"source yielded {matches_compared} of {len(wanted_set)} matches the frame holds")
@@ -170,15 +186,33 @@ def serving_parity(
         "matches_compared": matches_compared,
         "win_rows_compared": win_rows_compared,
         "player_rows_compared": player_rows_compared,
+        "performance_predictions_compared": predictions_compared,
         "max_abs_difference": float(max_abs_difference),
         "mismatches": mismatches[:20],
         "passed": not mismatches,
     }
     logger.info(
-        "serving parity (H-8): %d matches, %d player rows, max diff %.3g, %s",
+        "serving parity (H-8): %d matches, %d player rows, %d performance predictions, max diff %.3g, %s",
         matches_compared,
         player_rows_compared,
+        predictions_compared,
         max_abs_difference,
         "passed" if report["passed"] else f"FAILED ({len(mismatches)} mismatches)",
     )
     return report
+
+
+def _prediction_difference(model: PerformanceModels, rebuilt: pd.DataFrame, expected: pd.DataFrame) -> float:
+    """Largest difference, over every served output, between the model's pre-toss
+    prediction for the rebuilt rows and for the frame's rows of the same players."""
+    key = ["side", "player_key"]
+    aligned = expected.set_index(key).loc[list(zip(rebuilt.side, rebuilt.player_key))].reset_index()
+    served, frame = model.predict_marginalised(rebuilt), model.predict_marginalised(aligned)
+    largest = 0.0
+    for name, value in served.items():
+        if isinstance(value, dict):
+            for output, arr in value.items():
+                largest = max(largest, float(np.max(np.abs(arr - frame[name][output]))))
+        else:
+            largest = max(largest, float(np.max(np.abs(value - frame[name]))))
+    return largest

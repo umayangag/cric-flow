@@ -22,9 +22,16 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from ml.xi import contract as C
+from ml.xi.sequence import sequence_flags
 from ml.xi.sources import Deliveries, MatchRecord, batting_positions
 
 _N_FMT = len(C.FORMAT_CODES)
+_N_SEQ = len(C.PLAYER_SEQUENCE_KEYS)
+_SEQ_INDEX: Dict[str, int] = {key: i for i, key in enumerate(C.PLAYER_SEQUENCE_KEYS)}
+# (numerator prior, denominator prior) per sequence column: rates shrink toward zero over a
+# ball prior; the mean spell length shrinks toward two overs over one spell.
+_SEQ_PRIOR: Dict[str, tuple] = {"bowl_spell_overs": (2.0, 1.0)}
+_SEQ_DEFAULT_PRIOR = (0.0, C.SEQUENCE_PRIOR_BALLS)
 
 
 def _grow(arr: np.ndarray, n: int, fill: float) -> np.ndarray:
@@ -92,6 +99,8 @@ class RatingState:
         zp = lambda: np.zeros((_N_FMT, _N_PHASES, n))  # noqa: E731
         self.bat_ph_rae, self.bat_ph_balls = zp(), zp()
         self.bowl_ph_rse, self.bowl_ph_balls = zp(), zp()
+        # sequence families (E1): (column, format, player) decayed numerators and denominators
+        self.seq_num, self.seq_den = np.zeros((_N_SEQ, _N_FMT, n)), np.zeros((_N_SEQ, _N_FMT, n))
         # context baselines: (gender group, format, over) cumulative balls / runs / wickets
         # with a weak prior. Group 0 is everyone; group 1 is women's matches when
         # gender_split_context is on, otherwise unused.
@@ -114,6 +123,7 @@ class RatingState:
         for name in (
             "bat_rae", "bat_balls", "bat_wae", "bat_matches", "bowl_rse", "bowl_balls", "bowl_wae", "bowl_matches", "career",
             "bat_pos_sum", "bat_pos_n", "xi_n", "bat_ph_rae", "bat_ph_balls", "bowl_ph_rse", "bowl_ph_balls",
+            "seq_num", "seq_den",
         ):  # fmt: skip
             setattr(self, name, _grow(getattr(self, name), n, 0.0))
         self.career_all = _grow(self.career_all, n, 0.0)
@@ -153,6 +163,9 @@ class RatingState:
         for p, name in enumerate(C.PHASE_NAMES):
             out[f"bat_{name}_rate"] = self.bat_ph_rae[f, p, s] / (self.bat_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
             out[f"bowl_{name}_rate"] = self.bowl_ph_rse[f, p, s] / (self.bowl_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
+        for key, i in _SEQ_INDEX.items():
+            prior_num, prior_den = _SEQ_PRIOR.get(key, _SEQ_DEFAULT_PRIOR)
+            out[key] = (self.seq_num[i, f, s] + prior_num) / (self.seq_den[i, f, s] + prior_den)
         return out
 
     def _ctx_group(self, gender: str) -> int:
@@ -260,6 +273,7 @@ class RatingState:
         phase = np.where(d.over >= death_start, 2, np.where(d.over >= mid_start, 1, 0))
         self._accumulate_phase(self.bat_ph_rae, self.bat_ph_balls, f, batters, phase, d.runs_batter - exp_runs)
         self._accumulate_phase(self.bowl_ph_rse, self.bowl_ph_balls, f, bowlers, phase, exp_runs - d.runs_total)
+        self._update_sequence(f, d, batters, bowlers, exp_runs, exp_wk)
         np.add.at(self.ctx_balls[g, f], over, 1.0)
         np.add.at(self.ctx_runs[g, f], over, d.runs_total)
         np.add.at(self.ctx_wickets[g, f], over, d.wicket)
@@ -276,6 +290,50 @@ class RatingState:
         balls[f, uniq] += np.bincount(inv, weights=count, minlength=len(uniq))
         wtotal[f, uniq] += np.bincount(inv, weights=wvalue, minlength=len(uniq))
         matches[f, uniq] += 1.0
+
+    def _update_sequence(self, f: int, d: Deliveries, batters, bowlers, exp_runs, exp_wk) -> None:
+        """Accumulate the sequence families (E1) from this match's per-ball flags."""
+        flags = sequence_flags(d)
+        bat_stuck = (flags.bat_dots_before >= C.SEQUENCE_DOT_STREAK).astype(float)
+        bowl_squeeze = (flags.bowl_dots_before >= C.SEQUENCE_DOT_STREAK).astype(float)
+        bat_above = d.runs_batter - exp_runs
+        bowl_saved = exp_runs - d.runs_total
+        bowl_wickets_above = d.bowler_wicket - exp_wk
+        ones = np.ones(len(d))
+        first_over = flags.spell_first_over.astype(float)
+        after_boundary_bat = flags.bat_after_boundary.astype(float)
+        after_boundary_bowl = flags.bowl_after_boundary.astype(float)
+        after_wicket = flags.bowl_after_wicket.astype(float)
+        self._accumulate_sequence(f, "bat_stuck_share", batters, bat_stuck, ones)
+        self._accumulate_sequence(f, "bat_release_rate", batters, bat_above * bat_stuck, bat_stuck)
+        self._accumulate_sequence(f, "bowl_squeeze_share", bowlers, bowl_squeeze, ones)
+        self._accumulate_sequence(f, "bowl_squeeze_wrate", bowlers, bowl_wickets_above * bowl_squeeze, bowl_squeeze)
+        self._accumulate_sequence(
+            f, "bat_after_boundary_rate", batters, bat_above * after_boundary_bat, after_boundary_bat
+        )
+        self._accumulate_sequence(
+            f, "bowl_after_boundary_rate", bowlers, bowl_saved * after_boundary_bowl, after_boundary_bowl
+        )
+        self._accumulate_sequence(f, "bowl_after_wicket_rate", bowlers, bowl_saved * after_wicket, after_wicket)
+        self._accumulate_sequence(f, "bowl_spell_first_rate", bowlers, bowl_saved * first_over, first_over)
+        self._accumulate_sequence(
+            f, "bowl_spell_later_rate", bowlers, bowl_saved * (1.0 - first_over), 1.0 - first_over
+        )
+        if flags.spells_per_bowler:
+            keys = list(flags.spells_per_bowler)
+            slots = self._slots(keys)
+            overs = np.asarray([flags.spells_per_bowler[k][1] for k in keys], dtype=float)
+            spells = np.asarray([flags.spells_per_bowler[k][0] for k in keys], dtype=float)
+            self._accumulate_sequence(f, "bowl_spell_overs", slots, overs, spells)
+
+    def _accumulate_sequence(self, f: int, key: str, who, value, count) -> None:
+        """One decay per player per match, then the family's masked sums land on the player."""
+        i = _SEQ_INDEX[key]
+        uniq, inv = np.unique(who, return_inverse=True)
+        self.seq_num[i, f, uniq] *= C.DECAY_PER_MATCH
+        self.seq_den[i, f, uniq] *= C.DECAY_PER_MATCH
+        self.seq_num[i, f, uniq] += np.bincount(inv, weights=value, minlength=len(uniq))
+        self.seq_den[i, f, uniq] += np.bincount(inv, weights=count, minlength=len(uniq))
 
     def _accumulate_phase(self, total, balls, f, who, phase, value) -> None:
         """Like ``_accumulate`` but per innings phase: one decay per player per match,

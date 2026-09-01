@@ -16,6 +16,13 @@ Run from a scratch directory with the JSON files unzipped under `raw/` (paths at
     python diagnostics3.py     # monotone objective: unconstrained vs monotone GBM vs logistic
     python perf_experiment.py  # player-performance predictability benchmark (plan §1)
 
+`perf_choices.py` is different from the rest: it runs against the production pass
+(`ml-service/ml/xi/`), not the research parse, and makes P-3's modelling choices on the
+walk-forward folds — the hyperparameter grid, direct vs two-part structure, E1 (sequence
+families) and E6 (T20 + T20I transfer) — writing one JSON with the tables the plan quotes:
+
+    python perf_choices.py --cricsheet-dir ../../../data/go-app/cricsheet --cache frame.pkl --out choices.json
+
 `freeze_ratings.py` used to live here as a one-off that rewrote the serving artifact with a
 rating state frozen at a date, because a backtest must not score matches with ratings that
 already contain their results. P-2 retired it: the serving path answers "ratings as of

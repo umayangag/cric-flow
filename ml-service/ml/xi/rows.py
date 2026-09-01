@@ -10,14 +10,14 @@ delivery gets zero targets, which is what happened to them.
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
 from ml.xi.ratings import RatingState, aggregate_side, match_features
-from ml.xi.sources import MatchRecord, batting_positions
+from ml.xi.sources import Deliveries, MatchRecord, batting_positions
 
 _ZERO_ACTUALS: Dict[str, float] = {name: 0.0 for name in C.PLAYER_MATCH_TARGET_COLS}
 
@@ -68,17 +68,53 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
         unique_out, out_counts = np.unique(dismissed, return_counts=True)
         for key, count in zip(unique_out, out_counts):
             entry(key)["dismissals"] = float(count)
+
+    # A catch is a fielder credited on a bowler-credited dismissal that is not a stumping
+    # (caught, caught and bowled); run-outs are not the bowler's and carry no catch.
+    caught = np.flatnonzero((d.bowler_wicket > 0) & (d.stumping == 0))
+    for i in caught:
+        for key in d.fielders[i] if i < len(d.fielders) else []:
+            entry(key)["catches"] += 1.0
     return out
 
 
-def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
-    """The win-frame row and the player-match rows for one decided match, computed from
-    the state as of the match date. The caller guarantees the match is not folded in yet."""
+def serving_match(
+    format_code: str,
+    team1_players: Sequence[str],
+    team2_players: Sequence[str],
+    team1: Optional[str],
+    team2: Optional[str],
+    venue: Optional[str],
+    match_date,
+) -> MatchRecord:
+    """A match that has not been played, for the serving path to build feature rows from.
+    Team and venue names are optional: without them the context columns read neutral."""
+    return MatchRecord(
+        match_id="",
+        match_date=match_date,
+        format_code=format_code,
+        team1=team1 or "",
+        team2=team2 or "",
+        venue=venue or "",
+        gender="",
+        team1_players=list(team1_players),
+        team2_players=list(team2_players),
+        winner=None,
+        result=None,
+        deliveries=Deliveries.empty(),
+    )
+
+
+def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
+    """Both sides' aggregates as the win-feature row, and one feature row per XI player
+    (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
+    match date. The performance model's serving path reads rows from here; the training
+    pass adds what the player then did through ``build_match_rows``."""
     vectors1 = state.side_vectors(match.format_code, match.team1_players)
     vectors2 = state.side_vectors(match.format_code, match.team2_players)
     side1 = aggregate_side(vectors1, match.format_code)
     side2 = aggregate_side(vectors2, match.format_code)
-    context = state.team_context(match)
+    context = team_context_or_neutral(state, match)
 
     win_row = {
         "match_id": match.match_id,
@@ -93,7 +129,6 @@ def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List
     win_row.update(match_features(side1, side2))
     win_row.update(context)
 
-    actuals = match_actuals(match)
     player_rows: List[Dict] = []
     sides = (
         (1, match.team1_players, vectors1, side1, side2, match.team1, match.team2, 1.0),
@@ -112,7 +147,7 @@ def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List
                 "venue": match.venue,
                 "player_key": key,
             }
-            for name in C.PLAYER_VECTOR_KEYS + C.PLAYER_ROLE_KEYS:
+            for name in C.PLAYER_VECTOR_KEYS + C.PLAYER_ROLE_KEYS + C.PLAYER_SEQUENCE_KEYS:
                 row[name] = float(vectors[name][i])
             for stem in C.SIDE_FEATURE_STEMS:
                 row[f"own_{stem}"] = own[stem]
@@ -120,6 +155,30 @@ def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List
             row["venue_bf_rate"] = context["venue_bf_rate"]
             row["venue_n"] = context["venue_n"]
             row["elo_edge"] = elo_sign * context["team_elo_diff"]
-            row.update(actuals.get(key, _ZERO_ACTUALS))
             player_rows.append(row)
     return win_row, player_rows
+
+
+def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
+    """The win-frame row and the player-match rows for one decided match, computed from
+    the state as of the match date. The caller guarantees the match is not folded in yet."""
+    win_row, player_rows = player_feature_rows(state, match)
+    actuals = match_actuals(match)
+    for row in player_rows:
+        row.update(actuals.get(row["player_key"], _ZERO_ACTUALS))
+    return win_row, player_rows
+
+
+def team_context_or_neutral(state: RatingState, match: MatchRecord) -> Dict[str, float]:
+    """Team-level context, neutral when the serving caller named no teams."""
+    if match.team1 and match.team2:
+        return state.team_context(match)
+    return {
+        "team_elo_diff": 0.0,
+        "team_form_diff": 0.0,
+        "team_h2h": 0.5,
+        "team_h2h_n": 0.0,
+        "venue_bf_rate": 0.5,
+        "venue_n": 0.0,
+        "venue_fam_diff": 0.0,
+    }

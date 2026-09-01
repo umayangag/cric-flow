@@ -12,12 +12,13 @@ import pandas as pd
 import pytest
 
 from app import xi_service
-from app.models.xi import XiConstraints, XiOptimizeRequest, XiWinRequest
+from app.models.xi import PerformancePredictRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi.builder import build
 from ml.xi.sources import BOWLER_CREDITED_KINDS, Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
 from ml.xi.train import main as train_main
 from ml.xi.train import train_all
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
+from tests.xi_perf_fixtures import fast_fits
 
 
 def _numeric_history(n: int = 160):
@@ -59,7 +60,9 @@ def _numeric_history(n: int = 160):
 def artifacts_dir(tmp_path_factory) -> tuple:
     matches, squad_a, squad_b = _numeric_history()
     out = tmp_path_factory.mktemp("xi_service_artifacts")
-    train_all(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
+    with fast_fits():
+        summary = train_all(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
+    assert "targets" in summary["formats"][0]["performance"]
     return str(out), squad_a, squad_b, matches
 
 
@@ -68,6 +71,50 @@ def registry(artifacts_dir) -> xi_service.XiRegistry:
     reg = xi_service.XiRegistry()
     reg.reload(artifacts_dir[0])
     return reg
+
+
+def test_status_lists_the_performance_formats(registry) -> None:
+    assert registry.status().performance_formats == ["T20"]
+
+
+def test_predict_performance_returns_distributions_for_both_elevens(registry, artifacts_dir) -> None:
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = PerformancePredictRequest(
+        format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + [99999]
+    )
+
+    res = xi_service.predict_performance(req, registry)
+
+    assert len(res.players) == 23 and res.innings_marginalised is True
+    assert [p.side for p in res.players] == [1] * 11 + [2] * 12
+    assert res.unknown_player_ids == [99999]
+    first = res.players[0]
+    assert first.player_id == squad_a[0]
+    assert 0.0 <= first.p_bats <= 1.0 and first.runs.q10 <= first.runs.median <= first.runs.q90
+    assert first.wickets.p0 + first.wickets.p1 + first.wickets.p2_plus == pytest.approx(1.0)
+
+
+def test_predict_performance_marginalises_unless_the_toss_is_known(registry, artifacts_dir) -> None:
+    _, squad_a, squad_b, _ = artifacts_dir
+    base = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+
+    unknown = xi_service.predict_performance(PerformancePredictRequest(**base), registry)
+    first = xi_service.predict_performance(PerformancePredictRequest(**base, team1_bats_first=True), registry)
+    chase = xi_service.predict_performance(PerformancePredictRequest(**base, team1_bats_first=False), registry)
+
+    assert first.innings_marginalised is False
+    assert [p.side for p in chase.players] == [1] * 11 + [2] * 11  # side is the eleven, not the innings
+    for u, f, c in zip(unknown.players, first.players, chase.players):
+        assert u.runs.median == pytest.approx(0.5 * (f.runs.median + c.runs.median), abs=1e-9)
+
+
+def test_predict_performance_without_an_artifact_is_unavailable(registry) -> None:
+    registry._store.performance = {}
+
+    with pytest.raises(xi_service.XiUnavailable, match="no performance model"):
+        xi_service.predict_performance(
+            PerformancePredictRequest(format="T20", team1_player_ids=[1], team2_player_ids=[2]), registry
+        )
 
 
 def test_registry_reports_absent_artifacts_without_raising(tmp_path) -> None:
@@ -235,6 +282,18 @@ def test_postgres_source_carries_missing_delivery_players_as_empty_keys() -> Non
 
     assert list(d.batter) == [""] and list(d.bowler) == [""]
     assert d.fielders == [[]]
+
+
+def test_postgres_balls_are_read_in_playing_order_not_legal_ball_order() -> None:
+    """``ball_seq`` counts legal balls, so a wide shares it with the delivery before it and
+    the order within the tie was the planner's; (innings, over, ball) is unique. The
+    sequence features are the first to read delivery order, and H-8 caught the tie."""
+    from ml.xi.sources import _BALLS_SQL
+
+    order_by = _BALLS_SQL.strip().splitlines()[-1]
+
+    assert order_by == "ORDER BY be.innings, be.over, be.ball"
+    assert "ball_seq" not in _BALLS_SQL
 
 
 def test_deliveries_from_rows_handles_empty() -> None:

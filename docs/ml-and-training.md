@@ -357,6 +357,18 @@ non-zero if any count or the player-key sets differ. It needs the archive as wel
 database, which is why it is a separate command rather than part of a retrain. Run it after
 changing the importer or either source.
 
+The harness's parity check (H-8) is the other half of the same idea and found a fifth
+difference in P-3: the Postgres source read deliveries in `ball_seq` order, which counts
+legal balls only, so a wide shared its number with the ball before it and their order was
+the planner's. Nothing noticed until a feature read delivery order. Deliveries are now read
+in `(innings, over, ball)` order, the source's own. Comparing the two sources' performance
+reports then found a sixth: the database source read fielders from `ball_event.fielder_ids`,
+which the importer leaves NULL, so it credited no catches and knew no keeper (the flag comes
+from stumpings) — the optimiser's `require_keeper` could not be met from the database. It
+reads `fielding_event` now, and the importer no longer credits the bowler with a catch taken
+by an unnamed substitute (452 rows), replacing a match's fielding events on re-import. The
+plan's §10.4 has the account.
+
 ### Player-match rows (L1, P-2)
 
 The same day-close pass also emits one row per (match, player) — the training frame for the
@@ -369,7 +381,83 @@ runs conceded). Rows cover **all XI players**, never only those who batted: who 
 is decided by the result, and a population selected by the outcome is a leak (H-20).
 `ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
 two cannot spell a column differently. `python -m ml.xi.train --player-frame-out <path>`
-writes the frame as CSV when wanted; the harness consumes it in memory.
+writes the frame as CSV when wanted; the harness consumes it in memory. Since P-3 the rows
+also carry `catches` (each fielder named on a caught dismissal) and the sequence families
+(`contract.SEQUENCE_FAMILIES`: dot streaks, reactions, spells — the `seqcalc` calculators
+as as-of accumulators, per-ball flags from `ml/xi/sequence.py`), which are in the frame
+whether or not the performance model consumes them (E1 decides that).
+
+### Performance model (L2-B, `ml/xi/performance.py`, P-3)
+
+**What it answers.** For two elevens, per player, *distributions* — never points — of runs,
+balls faced and runs conceded (quantiles 0.1 / 0.5 / 0.9), wickets and catches (a Poisson
+rate → P(0), P(1), P(2+)), and P(bats) / P(bowls). The point shown anywhere is the median;
+the deliverable is a calibrated range and a ranking, because one innings is mostly noise
+(plan §1: within-match Spearman ≈ 0.3 for any predictor on the players who batted).
+
+**Population (H-20).** Every XI player of every decided match, with "did not bat" as 0 runs
+from 0 balls and "did not bowl" as 0 wickets. The old batting model trained on "who batted",
+which the result decides, and its headline MAE was pooled over five targets (S-3c); neither
+survives here. Two structures per target are available and were chosen on the walk-forward
+folds by pinball loss (plan P-3): `direct` — one gradient-boosting model per quantile (or a
+Poisson model) on the unconditional rows; `two_part` — P(involved) from a classifier on the
+same rows, times the distribution given involvement fitted on the rows where it happened,
+with the involvement *predicted* and the served quantiles those of the mixture, so both
+structures are scored on one population with one loss.
+
+**Inputs.** The row's as-of vectors and expected role, the sequence families E1 kept, both
+sides' aggregates, venue context, the Elo edge, and the innings (bat first / chase). The
+innings is the toss, not the result: at prediction it is **marginalised** — predicted under
+both and averaged — unless the caller passes `team1_bats_first`, the same knob
+`/xi/predict-win` has. Nothing the model reads is a function of the match's own result
+(`contract.performance_feature_cols` excludes every target column; a unit test asserts it).
+
+**Fitting.** `HistGradientBoostingRegressor` with quantile and Poisson losses and a
+classifier for involvement; a three-point grid (`performance.HYPERPARAMETER_GRID`) tuned
+inside the walk-forward folds only, where it turned out flat (§ P-3 of the plan); every fit
+on three seeds, which enter through the early-stopping split, with the members' outputs
+averaged. Independently fitted quantiles can cross; they are sorted. When the harness finds a
+quantile target's coverage off nominal it is **recalibrated on a temporal fold** (H-5,
+`ml/xi/perf_calibration.py`): the last quarter of the training rows is held out of the fit,
+each level is mapped by an isotonic binned correction fitted there, and the members never
+see those rows (H-21). `performance.RECALIBRATED_TARGETS` records the decision.
+
+**Measured by (H-12, H-22).** Per target and format, never pooled: within-match Spearman and
+top-3 hit for the ranking (using the mean for counts — a median of 0 cannot rank bowlers —
+and the median otherwise), the median's MAE, pinball loss as the proper score, and the
+10–90 interval's coverage **beside its width**. Coverage is read twice because the targets
+have a point mass at zero: a calibrated 0.1 quantile of a player who bats in half his
+matches is 0, so the inclusive coverage of a calibrated interval legitimately exceeds
+nominal while the strict one falls short; nominal sits between them, and H-5's check is per
+end (`perf_calibration.coverage_off_nominal`). The career-mean, career-quantile and
+rating-expectation baselines are scored on the same unconditional population
+(`ml/xi/perf_baselines.py`), and a labelled diagnostic — the ranking among the players who
+did bat / bowl — sits beside the headline because tie-averaging on the unconditional
+population rewards a predictor that gives every non-bowler one identical value.
+
+**First numbers** (plan §8.2; walk-forward, 7 folds × 3 seeds, model vs career mean on the
+same unconditional rows): runs within-match Spearman 0.542 vs 0.502 (T20) and 0.475 vs 0.427
+(ODI), pinball 2.93 vs 5.09 and 4.59 vs 7.96, median MAE 9 % lower; wickets pinball 0.141 vs
+0.260 and 0.163 vs 0.302, but Spearman a tie in ODI and −0.03 in T20 — six of eleven take
+no wickets and tie, and a predictor that gives them one identical value is rewarded for it
+(among the bowlers the model ranks better). Locked-window coverage is nominal per quantile
+end in every format without recalibration. Expect the point to stay modest: the ranking
+among batters sits at ≈ 0.33, the ceiling the plan measured for every predictor; the
+deliverable is the range.
+
+**Run.** `make train-xi CUTOFF=…` fits the performance models beside the win models and
+writes `xi_perf_<FMT>.joblib`; `xi_win_report.json` carries the holdout numbers per target
+under `performance`. `make xi-evaluate` is where the choice-facing numbers come from. The
+choices themselves (grid, structure, E1, E6) are reproduced by
+`scripts/experiments/xi/perf_choices.py`, which runs on the walk-forward folds only.
+
+**Serve.** `POST /performance/predict` takes both elevens by id, the format, optional team
+and venue ids, `team1_bats_first` once the toss is known, and `as_of` for backtests, and
+returns per player the median and 10–90 range of runs, balls faced and runs conceded,
+P(bats) / P(bowls), wicket probabilities P(0) / P(1) / P(2+), and the expected catches.
+Rows are assembled by `ml/xi/rows.py` from the same state the win path reads, and the H-8
+parity check in the harness compares the served prediction with the prediction on the
+training frame's row for the last 50 matches, output by output.
 
 ### As-of serving (`ratings_as_of`, P-2)
 
@@ -393,11 +481,13 @@ Per format it reports, with mean ± spread over cutoffs (and seeds where a model
 objective/display AUC and Brier against the base rate; the specific-XI-beyond-typical-XI
 delta and swap monotonicity (the selection gates that replace P-0's winner accuracy); the
 best-single-column leak canary with the TEST-format control (H-2); and the performance
-baselines from the player-match rows — within-match Spearman, top-3 hit and per-target MAE
-for the career-mean and rating-expectation predictors, with interval width and coverage
-columns that stay empty until P-3 (H-22). It ends with the train/serve parity check (H-8):
-the last 50 matches rebuilt from the as-of serving path and compared with the training
-frame, and the run fails if they differ.
+model on the player-match rows — per target and format, within-match Spearman, top-3 hit,
+the median's MAE, pinball loss and the 10–90 interval's coverage beside its width (H-22),
+with the career-mean, career-quantile and rating-expectation baselines on the same
+population, and quantile targets whose walk-forward coverage is off nominal recalibrated
+on a temporal fold for the locked window (H-5). It ends with the train/serve parity check
+(H-8): the last 50 matches rebuilt from the as-of serving path and compared with the
+training frame — rows and performance predictions alike — and the run fails if they differ.
 
 ```bash
 make xi-evaluate                                        # the database

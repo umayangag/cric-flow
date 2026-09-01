@@ -9,11 +9,14 @@ such, never used for a choice. Per format it reports, with mean and spread over 
 * the specific-XI-beyond-typical-XI delta and swap monotonicity (the selection gates
   that replace P-0's winner accuracy);
 * the best-single-column leak canary with the TEST-format control (H-2);
-* performance baselines from the player-match rows -- within-match Spearman, top-3 hit,
-  per-target MAE for the career-mean and rating-expectation predictors -- with interval
-  width and coverage columns that stay empty until P-3 (H-22);
+* the performance model (L2-B) on the player-match rows, per target and format: within-match
+  Spearman, top-3 hit, the median's MAE, pinball loss, and 10-90 interval coverage beside
+  its width (H-22), with the career-mean, career-quantile and rating-expectation baselines
+  scored on the same unconditional population (H-20); quantile targets whose walk-forward
+  coverage is off nominal are recalibrated on a temporal fold for the locked window (H-5);
 * the train/serve parity check (H-8): the last ``PARITY_LAST_N`` matches rebuilt from the
-  as-of serving path and compared with the training frame.
+  as-of serving path and compared with the training frame, rows and performance
+  predictions alike.
 
 One command, one JSON report:
 
@@ -35,9 +38,10 @@ import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import perf_baselines, selection_metrics
+from ml.xi import perf_baselines, perf_harness, selection_metrics
 from ml.xi.asof import serving_parity
 from ml.xi.builder import build
+from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
 from ml.xi.train import _score_marginalised, _xy, make_display_model, make_objective_model
 
@@ -126,13 +130,15 @@ def _evaluate_win_window(
 def _evaluate_fold(
     format_code: str,
     format_frame: pd.DataFrame,
-    format_players: pd.DataFrame,
+    player_frame: pd.DataFrame,
     cutoff: pd.Timestamp,
     end: pd.Timestamp,
-) -> Dict:
+    recalibrate: Tuple[str, ...] = (),
+) -> Tuple[Dict, Optional[PerformanceModels]]:
     fold, objective = _evaluate_win_window(format_frame, cutoff, end)
     if objective is None:
-        return fold
+        return fold, None
+    format_players = player_frame[player_frame.format_code == format_code]
     window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
     fold["swap_monotonicity"] = selection_metrics.swap_monotonicity(
         objective, C.XI_FEATURE_COLS, window_players, format_code, max_matches=SWAP_MAX_MATCHES
@@ -140,8 +146,9 @@ def _evaluate_fold(
     fold["specific_vs_typical"] = selection_metrics.specific_vs_typical(
         objective, C.XI_FEATURE_COLS, format_frame, cutoff, end
     )
-    fold["performance"] = perf_baselines.score_window(window_players)
-    return fold
+    performance = perf_harness.evaluate_fold(player_frame, format_code, cutoff, end, recalibrate)
+    fold["performance"] = performance.report
+    return fold, performance.model
 
 
 def _summarize_folds(folds: List[Dict]) -> Dict:
@@ -166,30 +173,33 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
         "specific_vs_typical_delta": over_folds(lambda f: nested(f, "specific_vs_typical", "delta")),
-        "performance": {},
+        "performance": perf_harness.summarize_folds(
+            [f["performance"] for f in scored if "targets" in f.get("performance", {})]
+        ),
     }
-    for target in perf_baselines.TARGETS:
-        summary["performance"][target] = {
-            predictor: {
-                metric: over_folds(lambda f, p=predictor, m=metric, t=target: nested(f, "performance", t, p, m))
-                for metric in ("mae", "within_match_spearman", "top3_hit_rate")
-            }
-            for predictor in ("career_mean", "rating_expectation")
-        }
     return summary
 
 
-def evaluate_format(format_code: str, frame: pd.DataFrame, player_frame: pd.DataFrame) -> Dict:
+def evaluate_format(
+    format_code: str, frame: pd.DataFrame, player_frame: pd.DataFrame
+) -> Tuple[Dict, Optional[PerformanceModels]]:
+    """The format's walk-forward folds and its locked window; also returns the locked
+    window's performance model, which the parity check serves through the as-of path."""
     format_frame = frame[frame.format_code == format_code]
-    format_players = player_frame[player_frame.format_code == format_code]
-    folds = [_evaluate_fold(format_code, format_frame, format_players, cutoff, end) for cutoff, end in fold_windows()]
-    locked = _evaluate_fold(format_code, format_frame, format_players, pd.Timestamp(LOCKED_START), pd.Timestamp.max)
+    folds = [_evaluate_fold(format_code, format_frame, player_frame, cutoff, end)[0] for cutoff, end in fold_windows()]
+    summary = _summarize_folds(folds)
+    # H-5: the folds, never the locked window, decide which quantiles get recalibrated.
+    recalibrate = tuple(perf_harness.recalibration_needed(summary["performance"]))
+    locked, locked_model = _evaluate_fold(
+        format_code, format_frame, player_frame, pd.Timestamp(LOCKED_START), pd.Timestamp.max, recalibrate
+    )
     locked["note"] = "locked window (H-19): scored once per release, never used for a choice"
+    locked["recalibrated_targets"] = list(recalibrate)
     return {
         "n_matches": int(len(format_frame)),
-        "walk_forward": {"folds": folds, "summary": _summarize_folds(folds)},
+        "walk_forward": {"folds": folds, "summary": summary},
         "locked": locked,
-    }
+    }, locked_model
 
 
 def evaluate(
@@ -218,9 +228,12 @@ def evaluate(
         "leak_canary": selection_metrics.leak_canary(result.frame, dev_start, dev_end),
         "formats": {},
     }
+    locked_models: Dict[str, PerformanceModels] = {}
     for format_code in C.FORMAT_CODES:
         logger.info("evaluating %s", format_code)
-        report["formats"][format_code] = evaluate_format(format_code, result.frame, player_frame)
+        report["formats"][format_code], model = evaluate_format(format_code, result.frame, player_frame)
+        if model is not None:
+            locked_models[format_code] = model
     logger.info("serving parity (H-8): rebuilding the last %d matches from the as-of path", PARITY_LAST_N)
     report["serving_parity"] = serving_parity(
         parity_source_factory(),
@@ -228,8 +241,30 @@ def evaluate(
         result.player_frame,
         last_n=PARITY_LAST_N,
         gender_split_context=gender_split_context,
+        performance_models=locked_models,
     )
     return report
+
+
+def _log_performance(format_code: str, performance: Optional[Dict]) -> None:
+    """One line per headline target: the model against the career mean, over folds."""
+    if not performance or "targets" not in performance:
+        return
+    for target, entry in performance["targets"].items():
+        model, delta = entry["model"], entry["vs_career_mean"]
+        if entry.get("headline") is not True or model.get("interval") is None or delta.get("spearman") is None:
+            continue
+        logger.info(
+            "%-5s %-14s Spearman %.3f (vs career mean %+.3f) | pinball %.3f (%+.3f) | coverage %.3f width %.2f",
+            format_code,
+            target,
+            model["within_match_spearman"]["mean"],
+            delta["spearman"]["mean"],
+            model["pinball"]["mean"],
+            delta["pinball"]["mean"],
+            model["interval"]["coverage_80"]["mean"],
+            model["interval"]["width_80"]["mean"],
+        )
 
 
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -289,6 +324,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 objective["sd"],
                 objective["n_folds"],
             )
+        _log_performance(format_code, summary.get("performance"))
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])
         return 1

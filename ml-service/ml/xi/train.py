@@ -16,6 +16,10 @@ Per format two models are fitted on rows before the cutoff and scored on rows at
 The report records, per format: AUC and Brier for both models over several seeds, the
 base-rate Brier, and the best single raw column's AUC -- a model that cannot beat its own
 best column by a clear margin is not being measured (S-3c).
+
+The same run fits the performance model (L2-B, ``ml.xi.performance``) per format on the
+player-match rows before the cutoff and scores it on the rows after it, per target beside
+the career-mean baselines -- never pooled (H-12). Its artifact is ``xi_perf_<FORMAT>.joblib``.
 """
 
 from __future__ import annotations
@@ -37,9 +41,10 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ml.xi import contract as C
-from ml.xi import quality
+from ml.xi import perf_baselines, perf_harness, quality
 from ml.xi.builder import BuildResult, build
-from ml.xi.store import FormatModels, save_models, save_ratings
+from ml.xi.performance import default_spec, fit_performance
+from ml.xi.store import FormatModels, save_models, save_performance, save_ratings
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +199,26 @@ def train_format(
     return models, report
 
 
+def train_performance(player_frame: pd.DataFrame, format_code: str, cutoff: pd.Timestamp, artifacts_dir: str) -> Dict:
+    """Fit the format's performance model on the player rows before the cutoff, score it on
+    the rows after, and write ``xi_perf_<FORMAT>.joblib``. The rows must carry the
+    baseline predictors. Under E6's joint option the T20 and T20I artifacts hold one fit."""
+    train, joint = perf_harness.training_rows(player_frame, format_code, cutoff)
+    holdout = player_frame[(player_frame.format_code == format_code) & (player_frame.match_date >= cutoff)]
+    report: Dict = {"n_train": int(len(train)), "n_holdout": int(len(holdout)), "joint_t20_formats": joint}
+    if len(train) < perf_harness.MIN_TRAIN_ROWS:
+        report["skipped_reason"] = "insufficient training rows"
+        return report
+    model = fit_performance(train, format_code, default_spec(joint_format=joint))
+    report["fit"] = model.metadata
+    if len(holdout) >= perf_harness.MIN_EVAL_ROWS:
+        report["targets"] = perf_harness.score_targets(model, train, holdout)
+    else:
+        report["holdout_note"] = "holdout too small; no performance numbers"
+    report["artifact"] = save_performance(model, format_code, artifacts_dir)
+    return report
+
+
 def train_all(
     result: BuildResult,
     artifacts_dir: str,
@@ -203,6 +228,7 @@ def train_all(
     os.makedirs(artifacts_dir, exist_ok=True)
     reports = []
     gender_split_context = result.state.gender_split_context
+    player_frame = perf_baselines.add_baseline_predictors(result.player_frame)
     for fmt in formats:
         models, report = train_format(result.frame, fmt, cutoff, gender_split_context=gender_split_context)
         reports.append(report)
@@ -217,6 +243,8 @@ def train_all(
             )
         else:
             logger.warning("%s: skipped (%s)", fmt, report.get("skipped_reason"))
+        report["performance"] = train_performance(player_frame, fmt, cutoff, artifacts_dir)
+        _log_performance(fmt, report["performance"])
     save_ratings(result.state, artifacts_dir)
     # Read before anything is written: the baseline is the last accepted run's counts.
     gate = quality.check(result.quality, quality.load_baseline(artifacts_dir))
@@ -232,6 +260,32 @@ def train_all(
     with open(os.path.join(artifacts_dir, REPORT_NAME), "w") as fh:
         json.dump(summary, fh, indent=2)
     return summary
+
+
+def _log_performance(format_code: str, report: Dict) -> None:
+    if "skipped_reason" in report:
+        logger.warning("%s performance model: skipped (%s)", format_code, report["skipped_reason"])
+        return
+    for target, entry in report.get("targets", {}).items():
+        if not entry["headline"]:
+            continue
+        model, baseline = entry["model"], entry["career_mean"]
+        values = (
+            model["within_match_spearman"],
+            baseline["within_match_spearman"],
+            model["pinball"],
+            baseline["pinball"],
+            model["interval"]["coverage_80"],
+            model["interval"]["width_80"],
+        )
+        if any(v is None for v in values):
+            continue  # a holdout too small to rank; the report still carries what was measured
+        logger.info(
+            "%-5s %-14s Spearman %.3f (career mean %.3f) | pinball %.3f (%.3f) | coverage %.3f width %.2f",
+            format_code,
+            target,
+            *values,
+        )
 
 
 def _international_teams_from_config() -> List[str]:

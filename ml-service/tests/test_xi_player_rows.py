@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from ml.xi import contract as C
 from ml.xi.builder import build
-from ml.xi.rows import match_actuals
+from ml.xi.ratings import RatingState
+from ml.xi.rows import match_actuals, player_feature_rows, serving_match
 from ml.xi.sources import batting_positions
 from tests.xi_fixtures import ListSource, make_deliveries, make_match, xi
 
@@ -78,6 +80,57 @@ def _two_match_source() -> ListSource:
             make_match("m2", 1, "A", t1, t2, d),
         ]
     )
+
+
+def test_match_actuals_credits_catches_to_named_fielders_on_caught_dismissals() -> None:
+    d = make_deliveries(
+        batters=["a0", "a1", "a2", "a3"],
+        bowlers=["b0"] * 4,
+        runs=[0] * 4,
+        wickets=[1, 1, 1, 0],
+        players_out=["a0", "a1", "a2", ""],
+    )
+    d.fielders = [["b3"], ["b4"], ["b3"], []]
+    d.stumping[1] = 1.0  # the second is a stumping: the keeper takes no catch
+    d.bowler_wicket[2] = 0.0  # the third is a run out: not the bowler's, no catch
+
+    actuals = match_actuals(make_match("m1", 0, "A", xi("a"), xi("b"), d))
+
+    assert actuals["b3"]["catches"] == 1
+    assert "b4" not in actuals or actuals["b4"]["catches"] == 0
+    assert actuals["b0"]["wickets"] == 2
+
+
+def test_serving_feature_rows_equal_the_training_frames_feature_columns() -> None:
+    """The endpoint builds rows from ids through the same assembly the training pass uses,
+    so for the same state and the same elevens the feature columns are identical."""
+    source = _two_match_source()
+    frame = build(source).player_frame
+    state = RatingState()
+    state.update(source.matches[0])
+    second = source.matches[1]
+    stub = serving_match(
+        second.format_code, second.team1_players, second.team2_players, "A", "B", "V", second.match_date
+    )
+
+    served = pd.DataFrame(player_feature_rows(state, stub)[1])
+    expected = frame[frame.match_id == "m2"].reset_index(drop=True)
+
+    assert list(served.player_key) == list(expected.player_key)
+    pd.testing.assert_frame_equal(
+        served[C.PLAYER_MATCH_FEATURE_COLS].reset_index(drop=True), expected[C.PLAYER_MATCH_FEATURE_COLS]
+    )
+    assert not set(served.columns) & set(C.PLAYER_MATCH_TARGET_COLS)
+
+
+def test_serving_rows_without_team_names_read_neutral_context() -> None:
+    source = _two_match_source()
+    state = build(source).state
+    stub = serving_match("T20", xi("a"), xi("b"), None, None, None, state.last_date)
+
+    rows = pd.DataFrame(player_feature_rows(state, stub)[1])
+
+    assert (rows.elo_edge == 0.0).all() and (rows.venue_bf_rate == 0.5).all() and (rows.venue_n == 0.0).all()
 
 
 def test_player_frame_covers_all_xi_players_with_exact_columns() -> None:
