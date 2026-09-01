@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Phase 1 trials per algorithm; Phase 2 Optuna trials (when Optuna available)
 PHASE1_TRIALS_PER_ALGORITHM = 5
@@ -11,171 +11,16 @@ PHASE2_TRIALS = 40
 # Algorithm keys for filtering
 AVAILABLE_ALGORITHMS = frozenset({"rf", "gb", "et", "hgb", "quantile", "stacked", "mlp"})
 
-# ── Sequence columns ────────────────────────────────────────────────────
+# ── Optional training module reference (for the data loader) ───────────
+#
+# One is left: the batting, bowling, fielding, extras and innings trainers went in P-5.
 
-BAT_SEQ_COLS = [
-    "bat_prev_sr",
-    "bat_prev_out_rate",
-    "bat_window_sr_12_pp",
-    "bat_window_boundary_rate_12_pp",
-    "bat_entry_sr_1_6",
-    "bat_set_sr_13_30",
-    "bat_react_after_dot_sr",
-    "bat_after_k_dots_boundary_p_k2",
-]
-BOWL_SEQ_COLS = [
-    "bowl_prev_wkt_rate",
-    "bowl_window_econ_24_death",
-    "bowl_window_wkt_rate_24_death",
-    "bowl_extras_wide_rate_pp",
-    "bowl_react_after_boundary_wkt_rate_next",
-    "bowl_spell_first_over_wkt_rate",
-    "bowl_over_ball1_wkt_rate",
-    "bowl_over_ball6_wkt_rate",
-]
-
-# ── Feature / target column lists (raw stats from configs/feature_vectors.json) ───────────────────────────────────────
-
-try:
-    from app.feature_config import get_raw_stat_feature_names
-
-    BAT_RAW_STAT_COLS = get_raw_stat_feature_names("batting")
-    BOWL_RAW_STAT_COLS = get_raw_stat_feature_names("bowling")
-except (ImportError, RuntimeError):  # noqa: S110 (allow broad except for optional app dependency at import)
-    # Fallback when app not available; must match Go contract.
-    BAT_RAW_STAT_COLS = [
-        "batting_mean_w3",
-        "batting_mean_w5",
-        "batting_mean_w10",
-        "batting_mean_w20",
-        "batting_std_w5",
-        "batting_std_w10",
-        "batting_max_w10",
-        "batting_min_w10",
-        "batting_median_w10",
-        "batting_last_1",
-        "batting_last_2",
-        "batting_last_3",
-        "batting_career_mean",
-        "batting_career_count",
-        "batting_pct_zero_w10",
-        "batting_trend_w5",
-        "batting_days_since_last",
-        "batting_innings_in_last_90d",
-    ]
-    BOWL_RAW_STAT_COLS = [
-        "bowling_mean_w3",
-        "bowling_mean_w5",
-        "bowling_mean_w10",
-        "bowling_mean_w20",
-        "bowling_std_w5",
-        "bowling_std_w10",
-        "bowling_max_w10",
-        "bowling_min_w10",
-        "bowling_median_w10",
-        "bowling_last_1",
-        "bowling_last_2",
-        "bowling_last_3",
-        "bowling_career_mean",
-        "bowling_career_count",
-        "bowling_pct_zero_w10",
-        "bowling_trend_w5",
-        "bowling_days_since_last",
-        "bowling_innings_in_last_90d",
-    ]
-
-BATTING_FEATURE_COLS = (
-    BAT_RAW_STAT_COLS
-    + [
-        "inning",
-        "batting_session",
-        "toss",
-        "batting_venue",
-        "batting_opposition",
-        "match_month_sin",
-        "match_month_cos",
-        "match_day_of_week_sin",
-        "match_day_of_week_cos",
-    ]
-    + BAT_SEQ_COLS
-)
-BATTING_TARGET_COLS = ["runs", "balls", "fours", "sixes", "batting_position"]
-
-BOWLING_FEATURE_COLS = (
-    BOWL_RAW_STAT_COLS
-    + [
-        "inning",
-        "bowling_session",
-        "toss",
-        "bowling_venue",
-        "bowling_opposition",
-        "match_month_sin",
-        "match_month_cos",
-        "match_day_of_week_sin",
-        "match_day_of_week_cos",
-    ]
-    + BOWL_SEQ_COLS
-)
-BOWLING_TARGET_COLS = ["runs", "balls", "wickets"]
-
-# ── Target names registry (model_kind -> target column names) ───────────
-
-_TARGET_NAMES_BY_KIND: Dict[str, List[str]] = {
-    "batting": BATTING_TARGET_COLS,
-    "bowling": BOWLING_TARGET_COLS,
-}
-
-# Lazily add fielding/innings if modules available
-try:
-    from ml import train_fielding as _train_fielding_mod
-
-    if hasattr(_train_fielding_mod, "FIELDING_TARGET_COLS"):
-        _TARGET_NAMES_BY_KIND["fielding"] = getattr(_train_fielding_mod, "FIELDING_TARGET_COLS")
-except ImportError:
-    pass
-try:
-    from ml import train_innings as _train_innings_mod
-
-    if hasattr(_train_innings_mod, "INNINGS_TARGET_COLS"):
-        _TARGET_NAMES_BY_KIND["innings"] = getattr(_train_innings_mod, "INNINGS_TARGET_COLS")
-except ImportError:
-    pass
-
-
-def target_names_for_model(model_kind: str) -> Optional[List[str]]:
-    """Return target column names for per-target MAE when available."""
-    return _TARGET_NAMES_BY_KIND.get(model_kind)
-
-
-# ── Optional training module references (for data loaders) ─────────────
-
-_train_fielding: Any = None
-_train_extras: Any = None
 _train_win: Any = None
-_train_innings: Any = None
 
-try:
-    from ml import train_fielding as _tf
-
-    _train_fielding = _tf
-except ImportError:
-    pass
-try:
-    from ml import train_extras as _te
-
-    _train_extras = _te
-except ImportError:
-    pass
 try:
     from ml import train_win as _tw
 
     _train_win = _tw
-except ImportError:
-    pass
-try:
-    from ml import train_innings as _ti
-
-    _train_innings = _ti
 except ImportError:
     pass
 

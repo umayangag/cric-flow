@@ -170,7 +170,9 @@ def test_optimised_xi_scores_at_least_the_fielded_xi(trained_store) -> None:
 
 def test_select_xi_by_ratings_meets_the_constraints_without_an_opponent(trained_store) -> None:
     store, squad_a, _, _ = trained_store
-    selected = select_xi_by_ratings(store, "T20", squad_a, Constraints(team_size=11, min_bowlers=3, require_keeper=False))
+    selected = select_xi_by_ratings(
+        store, "T20", squad_a, Constraints(team_size=11, min_bowlers=3, require_keeper=False)
+    )
     assert len(set(selected)) == 11
     assert set(selected) <= set(squad_a)
     v = store.side_vectors("T20", selected)

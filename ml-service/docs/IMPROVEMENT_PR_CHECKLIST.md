@@ -2,7 +2,14 @@
 
 Tracked improvements from the architecture review (May 2026). Implement **one PR at a time**; mark status here as work progresses.
 
-**Status legend:** `todo` | `in_progress` | `done` | `skipped`
+**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `moot`
+
+> **P-5 (the ML pipeline re-architecture, `../../docs/ML_PIPELINE_REARCHITECTURE_PLAN.md`)
+> deleted several of the modules this list was written about**: the batting / bowling /
+> fielding / extras / innings trainers and their tuning path, the reconciliation solvers, the
+> team optimiser, the backtest service and `train_on_the_fly`. Items scoped to those modules
+> are marked `moot` — not skipped on judgement, but with no code left to improve. The rest
+> still stand.
 
 | ID | Status | PR branch (when done) | Title |
 |----|--------|----------------------|-------|
@@ -17,14 +24,14 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P0-5 | done | `cleanup/c1-7-fold-ml-service` | Fold `ml_service/` into `ml/` (datasets, baselines) |
 | P1-1 | todo | | Artifact store with safe reload under concurrency |
 | P1-2 | todo | | Run CPU-heavy routes via thread pool / `to_thread` |
-| P1-3 | todo | | Replace `urllib` with `httpx` in `train_on_the_fly` |
+| P1-3 | moot | | Replace `urllib` with `httpx` in `train_on_the_fly` — module deleted in P-5 |
 | P2-1 | todo | | Expand ruff rules (phased) |
 | P2-2 | todo | | Add mypy/pyright in CI (phased) |
 | P2-3 | todo | | Standardize structlog in `ml/` |
 | P3-1 | todo | | Decompose `ml/config.py` |
-| P3-2 | todo | | Consolidate training entrypoints |
-| P3-3 | done | `ml-service/p3-3-reconciliation-docs` | Document reconciliation layers |
-| P3-4 | todo | | Coverage/smoke tests for omitted training paths |
+| P3-2 | moot | | Consolidate training entrypoints — one trainer left after P-5 |
+| P3-3 | moot | `ml-service/p3-3-reconciliation-docs` | Document reconciliation layers — both layers deleted in P-5 |
+| P3-4 | moot | | Coverage/smoke tests for omitted training paths — those paths went in P-5 |
 | P4-1 | done | `ml-service/p4-1-tighten-cors` | Tighten CORS defaults |
 | P4-2 | todo | | API versioning (`/v1/...`) — **skipped unless cross-repo approved** |
 | P4-3 | todo | | Trusted artifact directory validation for joblib |
@@ -41,22 +48,22 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 
 ### P0-2 — Split `app/models.py`
 
-- **Why:** ~735 lines mixing predict, backtest, reconciliation models.
-- **Scope:** `app/models/` package with `predict.py`, `backtest.py`, `reconciliation.py`; re-export from `__init__.py` during transition.
+- **Why:** ~735 lines mixing predict, backtest and match-projection models.
+- **Scope:** `app/models/` package with one module per domain; re-export from `__init__.py` during transition.
 - **Risk:** Low
 - **Transition complete:** the re-exports were removed in C6-2; `__init__.py` is a docstring and callers import the submodules directly.
 
 ### P0-3 — Split `prediction_service.py`
 
 - **Why:** ~1.3k lines; hardest module to change safely.
-- **Scope:** `player_predict`, `match_predict`, `extras_win`, `batch` modules.
+- **Scope:** one module per prediction domain.
 - **Risk:** Medium
 - **Transition complete:** the re-exports were removed in C6-2, including the `_sum_team_feature` alias.
 
 ### P0-4 — Split `main.py` into routers
 
 - **Why:** ~900 lines; routes, middleware, admin, cache in one file.
-- **Scope:** `app/routes/health.py`, `predict.py`, `backtest.py`, `admin.py`; register in `main.py`.
+- **Scope:** `app/routes/health.py`, `predict.py`, `xi.py`, `admin.py`; register in `main.py`.
 - **Risk:** Medium
 
 ### P0-5 — Unify `ml_service/` into `ml/`
@@ -64,9 +71,8 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 - **Why:** Three top-level names; `ml_service` not copied in Docker.
 - **Scope:** `ml/datasets`, `ml/baselines`; update tests and imports.
 - **Risk:** Low–medium
-- **Done** as C1-7 in [../../docs/CLEANUP_PR_CHECKLIST.md](../../docs/CLEANUP_PR_CHECKLIST.md). Moved rather than deleted:
-  `make train-batting-baseline` / `train-bowling-baseline` import them, and the root README documents them.
-  Since `Dockerfile` already does `COPY ml-service/ml ./ml`, the move alone fixes the "not in the image" half.
+- **Done** as C1-7 in [../../docs/CLEANUP_PR_CHECKLIST.md](../../docs/CLEANUP_PR_CHECKLIST.md); both packages
+  were deleted in P-5 when the models that read them went.
 
 ---
 
@@ -140,23 +146,19 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 - **Scope:** Submodules + thin facade.
 - **Risk:** Medium
 
-### P3-2 — Consolidate training entrypoints
+### P3-2 — Consolidate training entrypoints (moot)
 
-- **Why:** `train_batting` vs `train_batting_model` duplication.
-- **Scope:** Single documented entry path.
-- **Risk:** Medium
+P-5 left one trainer of the old family (`ml.train_win`), which P-6 removes; the XI layer has
+one entry path already (`make train-xi`).
 
-### P3-3 — Reconciliation documentation
+### P3-3 — Reconciliation documentation (moot)
 
-- **Why:** Hybrid rescale (`app/reconciliation`) vs integer solver (`ml/reconciliation_service`) unclear.
-- **Scope:** Module docstrings + short doc section.
-- **Risk:** Low
+Both layers were deleted in P-5. The scorecard and the win probability now come from one
+simulator, so there is no second estimate to reconcile toward.
 
-### P3-4 — Training path coverage
+### P3-4 — Training path coverage (moot)
 
-- **Why:** Coverage omits `train_*`, `tuning/*`.
-- **Scope:** Targeted smoke tests for critical paths.
-- **Risk:** Low–medium
+The `train_*` and regression `tuning/*` paths coverage omitted went in P-5.
 
 ---
 

@@ -109,7 +109,7 @@ def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
         return 1
 
     def fake_run(*_args: Any, **_kwargs: Any) -> Any:
-        raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.train_batting", timeout=1)
+        raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.train_win", timeout=1)
 
     import ml.config as ml_config
 
@@ -118,7 +118,7 @@ def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
 
     logger = DummyLogger()
     with pytest.raises(ValueError) as exc:
-        training_orchestrator.run_training_subprocess("ml.train_batting", logger=logger)
+        training_orchestrator.run_training_subprocess("ml.train_win", logger=logger)
     assert "timed out" in str(exc.value)
     assert logger.errors, "expected timeout to log an error"
 
@@ -137,18 +137,14 @@ def test_run_training_subprocess_failure_raises(monkeypatch) -> None:
 
     logger = DummyLogger()
     with pytest.raises(ValueError) as exc:
-        training_orchestrator.run_training_subprocess("ml.train_bowling", logger=logger)
+        training_orchestrator.run_training_subprocess("ml.train_win", logger=logger)
     assert "Training failed" in str(exc.value)
     assert logger.errors, "expected failure to log an error"
 
 
-def _capture_run_training(monkeypatch, fn_name: str, cutoff: str, csv_available: bool) -> Dict[str, Any]:
-    """Helper to capture calls to run_training_subprocess from *_training helpers."""
+def test_run_win_training_forwards_the_cutoff_and_the_go_app_url(monkeypatch) -> None:
+    """The win trainer is temporal: it is handed the cutoff it was given, never none."""
     calls: Dict[str, Any] = {}
-
-    def fake_export(prefix: str) -> bool:
-        assert prefix in ("batting_encoded_", "bowling_encoded_")
-        return csv_available
 
     def fake_run_training_subprocess(
         module: str,
@@ -156,44 +152,20 @@ def _capture_run_training(monkeypatch, fn_name: str, cutoff: str, csv_available:
         extra_env: Optional[Dict[str, str]] = None,
         logger: Optional[Any] = None,
     ) -> None:
-        calls["module"] = module
-        calls["extra_args"] = extra_args or []
-        calls["extra_env"] = extra_env or {}
-        calls["logger"] = logger
-
-    monkeypatch.setattr(training_orchestrator, "export_csvs_available", fake_export)
+        calls.update(module=module, extra_args=extra_args or [], extra_env=extra_env or {}, logger=logger)
 
     monkeypatch.setattr(training_orchestrator, "run_training_subprocess", fake_run_training_subprocess)
 
     logger = DummyLogger()
-    go_app_url = "http://localhost:8080"
-    if fn_name == "run_batting_training":
-        training_orchestrator.run_batting_training(cutoff, go_app_url, logger=logger)
-    else:
-        training_orchestrator.run_bowling_training(cutoff, go_app_url, logger=logger)
-    calls["logger"] = logger
-    return calls
+    training_orchestrator.run_win_training("2024-01-01T00:00:00Z", "http://localhost:8080", logger=logger)
 
-
-@pytest.mark.parametrize(
-    "fn_name,cutoff,csv_available,expected_from_api",
-    [
-        ("run_batting_training", "2024-01-01T00:00:00Z", False, True),
-        ("run_batting_training", "", False, False),
-        ("run_bowling_training", "2024-01-01T00:00:00Z", False, True),
-    ],
-)
-def test_run_batting_and_bowling_training_builds_expected_args(
-    monkeypatch, fn_name: str, cutoff: str, csv_available: bool, expected_from_api: bool
-) -> None:
-    calls = _capture_run_training(monkeypatch, fn_name, cutoff, csv_available)
-    assert calls["module"] in ("ml.train_batting", "ml.train_bowling")
-    args = calls["extra_args"]
-    if expected_from_api:
-        assert "--from-api" in args and "--cutoff" in args and "--go-app-url" in args
-    else:
-        # CSV available or no cutoff -> local all-formats training
-        assert args == ["--all-formats"]
+    assert calls["module"] == "ml.train_win"
+    assert calls["extra_args"] == [
+        "--cutoff",
+        "2024-01-01T00:00:00Z",
+        "--go-app-url",
+        "http://localhost:8080",
+    ]
     assert calls["extra_env"].get("ML_N_JOBS") == "-1"
     assert isinstance(calls["logger"], DummyLogger)
 
@@ -218,7 +190,7 @@ def test_run_auto_tune_invokes_training_subprocess_with_expected_args(monkeypatc
     training_orchestrator.run_auto_tune(
         cutoff="2025-01-01T00:00:00Z",
         go_app_url="http://localhost:8080",
-        model="batting",
+        model="win",
         use_all_formats=False,
         fmt="T20",
         rescreen=True,
@@ -229,7 +201,7 @@ def test_run_auto_tune_invokes_training_subprocess_with_expected_args(monkeypatc
     assert captured["module"] == "ml.auto_tune"
     args = captured["extra_args"]
     # Core flags should be threaded through
-    assert "--model" in args and "batting" in args
+    assert "--model" in args and "win" in args
     assert "--from-api" in args and "--cutoff" in args and "--go-app-url" in args
     assert "--format" in args and "T20" in args
     assert "--rescreen" in args

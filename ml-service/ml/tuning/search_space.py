@@ -9,28 +9,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sklearn.ensemble import (
     ExtraTreesClassifier,
-    ExtraTreesRegressor,
     GradientBoostingClassifier,
-    GradientBoostingRegressor,
     HistGradientBoostingClassifier,
-    HistGradientBoostingRegressor,
     RandomForestClassifier,
-    RandomForestRegressor,
-    StackingRegressor,
 )
-from sklearn.linear_model import Ridge
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.neural_network import MLPClassifier, MLPRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.neural_network import MLPClassifier
 
-from ml.config import get_training_params, get_tuned_params_from_go_app, get_tuning_config, get_tuning_search_space
+from ml.config import get_tuned_params_from_go_app, get_tuning_config, get_tuning_search_space
 from ml.tuning.types import (
     _PHASE1_COARSE_ET,
     _PHASE1_COARSE_GB,
     _PHASE1_COARSE_HGB,
     _PHASE1_COARSE_MLP_CLF,
-    _PHASE1_COARSE_MLP_REG,
     _PHASE1_COARSE_RF,
     AVAILABLE_ALGORITHMS,
 )
@@ -107,7 +97,7 @@ def _normalize_hidden_layer_sizes(v: Any) -> Optional[Tuple[int, ...]]:
     return None
 
 
-def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def _prior_params_to_optuna_params(algo: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Convert stored config_snippet to Optuna trial params for regression."""
     out: Dict[str, Any] = {"algorithm": algo}
     p = {}
@@ -138,114 +128,6 @@ def _prior_params_to_optuna_regression(algo: str, params: Dict[str, Any]) -> Dic
     return out
 
 
-def _to_pipeline_params(config_space: Dict[str, Any], random_state: int) -> Dict[str, Any]:
-    """Convert config search_space dict to Pipeline param format (est__estimator__*)."""
-    out = {"est__estimator__random_state": [random_state]}
-    for k, v in config_space.items():
-        if k == "random_state":
-            continue
-        key = f"est__estimator__{k}"
-        if v is not None and hasattr(v, "__iter__") and not isinstance(v, (str, bytes)):
-            out[key] = list(v)  # JSON null → None for max_depth etc.
-        else:
-            out[key] = [v]
-    return out
-
-
-def _search_space_regression(model_kind: str) -> List[Tuple[str, Any, Dict[str, Any]]]:
-    """Return list of (estimator_name, base_estimator, param_distributions) for regression.
-    Reads from ml.tuning.search_space in config when present; otherwise uses built-in default from config.
-    """
-    tuning = get_tuning_config()
-    rs = tuning.get("random_state", 42)
-
-    rf_space = get_tuning_search_space("rf")
-    if rf_space:
-        rf_params = _to_pipeline_params(rf_space, rs)
-    else:
-        rf_params = {
-            "est__estimator__random_state": [rs],
-            "est__estimator__n_estimators": [50, 100, 150, 200, 300],
-            "est__estimator__max_depth": [6, 8, 10, 12, 16, 20, None],
-            "est__estimator__min_samples_split": [2, 5, 10],
-            "est__estimator__min_samples_leaf": [1, 2, 4],
-        }
-
-    gb_space = get_tuning_search_space("gb")
-    if gb_space:
-        gb_params = _to_pipeline_params(gb_space, rs)
-    else:
-        gb_params = {
-            "est__estimator__random_state": [rs],
-            "est__estimator__n_estimators": [50, 100, 150, 200],
-            "est__estimator__max_depth": [3, 4, 5, 6, 8],
-            "est__estimator__learning_rate": [0.01, 0.05, 0.1],
-            "est__estimator__min_samples_split": [2, 5],
-            "est__estimator__min_samples_leaf": [1, 2],
-        }
-
-    candidates: List[Tuple[str, str, Any, Dict[str, Any]]] = [
-        ("rf", "RandomForestRegressor", RandomForestRegressor(), rf_params),
-        ("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
-    ]
-    # Add quantile (GBM with loss=quantile) for median/interval prediction
-    try:
-        tp = get_training_params(model_kind)
-        quantile_level = tp.get("quantile_level", 0.5)
-        qr = GradientBoostingRegressor(
-            n_estimators=tp.get("n_estimators", 200),
-            max_depth=tp.get("max_depth", 12),
-            random_state=rs,
-            learning_rate=tp.get("learning_rate", 0.1),
-            loss="quantile",
-            alpha=quantile_level,
-        )
-        candidates.append(
-            ("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [tp.get("max_depth", 12)]})
-        )
-    except (ValueError, KeyError):
-        pass
-
-    # Add stacked (RF + GBM + Ridge) using training params; no param search for stacked
-    try:
-        tp = get_training_params(model_kind)
-        rf = RandomForestRegressor(
-            n_estimators=tp.get("n_estimators", 200),
-            max_depth=tp.get("max_depth", 12),
-            random_state=rs,
-        )
-        gb = GradientBoostingRegressor(
-            n_estimators=tp.get("n_estimators", 200),
-            max_depth=tp.get("max_depth", 12),
-            random_state=rs,
-            learning_rate=tp.get("learning_rate", 0.1),
-        )
-        stacked = StackingRegressor(
-            estimators=[("rf", rf), ("gb", gb)],
-            final_estimator=Ridge(alpha=1.0, random_state=rs),
-        )
-        candidates.append(
-            ("stacked", "StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]})
-        )
-    except (ValueError, KeyError):
-        pass
-    return candidates
-
-
-def _build_pipeline(estimator: Any) -> Pipeline:
-    return Pipeline(
-        [
-            ("scaler", StandardScaler()),
-            ("est", MultiOutputRegressor(estimator)),
-        ]
-    )
-
-
-def _build_pipeline_single_regression(estimator: Any) -> Pipeline:
-    """Pipeline for single-output regression (extras)."""
-    return Pipeline([("scaler", StandardScaler()), ("est", estimator)])
-
-
 def _to_pipeline_params_single(
     config_space: Dict[str, Any], random_state: int, prefix: str = "est__"
 ) -> Dict[str, Any]:
@@ -262,114 +144,9 @@ def _to_pipeline_params_single(
     return out
 
 
-def _search_space_regression_single(model_kind: str) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
-    """Search space for single-output regression (extras)."""
-    tuning = get_tuning_config()
-    rs = tuning.get("random_state", 42)
-    rf_space = get_tuning_search_space("rf")
-    rf_params = (
-        _to_pipeline_params_single(rf_space, rs)
-        if rf_space
-        else _to_pipeline_params_single({"n_estimators": [50, 100, 150, 200], "max_depth": [6, 8, 10, 12, None]}, rs)
-    )
-    gb_space = get_tuning_search_space("gb")
-    gb_params = (
-        _to_pipeline_params_single(gb_space, rs)
-        if gb_space
-        else _to_pipeline_params_single(
-            {"n_estimators": [50, 100, 150], "max_depth": [3, 4, 5, 6], "learning_rate": [0.01, 0.05, 0.1]}, rs
-        )
-    )
-    return [
-        ("rf", "RandomForestRegressor", RandomForestRegressor(), rf_params),
-        ("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), gb_params),
-    ]
-
-
-def _phase1_candidates_regression(model_kind: str, allow: frozenset) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
-    """Phase 1 coarse candidates for multi-output regression (batting/bowling/fielding)."""
-    rs = get_tuning_config().get("random_state", 42)
-    candidates: List[Tuple[str, str, Any, Dict[str, Any]]] = []
-    if "rf" in allow:
-        p = dict(_PHASE1_COARSE_RF)
-        p["est__estimator__random_state"] = [rs]
-        candidates.append(("rf", "RandomForestRegressor", RandomForestRegressor(), p))
-    if "gb" in allow:
-        p = dict(_PHASE1_COARSE_GB)
-        p["est__estimator__random_state"] = [rs]
-        candidates.append(("gb", "GradientBoostingRegressor", GradientBoostingRegressor(), p))
-    if "et" in allow:
-        et_space = get_tuning_search_space("et")
-        if et_space:
-            p = _to_pipeline_params(et_space, rs)
-        else:
-            p = dict(_PHASE1_COARSE_ET)
-            p["est__estimator__random_state"] = [rs]
-        candidates.append(("et", "ExtraTreesRegressor", ExtraTreesRegressor(), p))
-    if "hgb" in allow:
-        p = dict(_PHASE1_COARSE_HGB)
-        p["est__estimator__random_state"] = [rs]
-        candidates.append(("hgb", "HistGradientBoostingRegressor", HistGradientBoostingRegressor(), p))
-    if "quantile" in allow:
-        try:
-            tp = get_training_params(model_kind)
-            qr = GradientBoostingRegressor(
-                n_estimators=tp.get("n_estimators", 200),
-                max_depth=tp.get("max_depth", 12),
-                random_state=rs,
-                learning_rate=tp.get("learning_rate", 0.1),
-                loss="quantile",
-                alpha=tp.get("quantile_level", 0.5),
-            )
-            candidates.append(("quantile", "QuantileRegressor", qr, {"est__estimator__max_depth": [6, 10, 14, 20]}))
-        except (ValueError, KeyError):
-            pass
-    if "stacked" in allow:
-        try:
-            tp = get_training_params(model_kind)
-            stacked = StackingRegressor(
-                estimators=[
-                    ("rf", RandomForestRegressor(n_estimators=100, max_depth=12, random_state=rs)),
-                    ("gb", GradientBoostingRegressor(n_estimators=100, max_depth=8, random_state=rs)),
-                ],
-                final_estimator=Ridge(alpha=1.0, random_state=rs),
-            )
-            candidates.append(
-                ("stacked", "StackingRegressor", stacked, {"est__estimator__final_estimator__random_state": [rs]})
-            )
-        except (ValueError, KeyError):
-            pass
-    if "mlp" in allow:
-        p = dict(_PHASE1_COARSE_MLP_REG)
-        p["est__estimator__random_state"] = [rs]
-        candidates.append(("mlp", "MLPRegressor", MLPRegressor(early_stopping=True, random_state=rs), p))
-    return candidates
-
-
 def _coarse_to_single_prefix(d: Dict[str, Any]) -> Dict[str, Any]:
     """Convert est__estimator__* to est__* for single-estimator pipelines."""
     return {k.replace("est__estimator__", "est__"): v for k, v in d.items()}
-
-
-def _phase1_candidates_regression_single(allow: frozenset) -> List[Tuple[str, str, Any, Dict[str, Any]]]:
-    """Phase 1 coarse candidates for single-output regression (extras)."""
-    rs = get_tuning_config().get("random_state", 42)
-    candidates: List[Tuple[str, str, Any, Dict[str, Any]]] = []
-    for key, name, est_factory, coarse in [
-        ("rf", "RandomForestRegressor", RandomForestRegressor, _PHASE1_COARSE_RF),
-        ("gb", "GradientBoostingRegressor", GradientBoostingRegressor, _PHASE1_COARSE_GB),
-        ("et", "ExtraTreesRegressor", ExtraTreesRegressor, _PHASE1_COARSE_ET),
-        ("hgb", "HistGradientBoostingRegressor", HistGradientBoostingRegressor, _PHASE1_COARSE_HGB),
-    ]:
-        if key in allow:
-            p = _coarse_to_single_prefix(dict(coarse))
-            p["est__random_state"] = [rs]
-            candidates.append((key, name, est_factory(), p))
-    if "mlp" in allow:
-        p = _coarse_to_single_prefix(dict(_PHASE1_COARSE_MLP_REG))
-        p["est__random_state"] = [rs]
-        candidates.append(("mlp", "MLPRegressor", MLPRegressor(early_stopping=True, random_state=rs), p))
-    return candidates
 
 
 def _phase1_candidates_classification(allow: frozenset) -> List[Tuple[str, str, Any, Dict[str, Any]]]:

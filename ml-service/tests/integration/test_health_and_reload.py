@@ -24,11 +24,9 @@ def test_health_returns_ok_and_artifact_keys(tmp_path):
     assert resp.status_code == 200
     body = resp.json()
     assert body.get("status") == "ok"
-    assert "loaded_batting_formats" in body
-    assert "loaded_bowling_formats" in body
+    assert "loaded_win_formats" in body
     assert "artifacts" in body
-    assert isinstance(body["loaded_batting_formats"], list)
-    assert isinstance(body["loaded_bowling_formats"], list)
+    assert isinstance(body["loaded_win_formats"], list)
 
 
 @pytest.mark.integration
@@ -43,5 +41,4 @@ def test_health_after_reload_empty_dir(tmp_path):
     resp = client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["loaded_batting_formats"] == []
-    assert body["loaded_bowling_formats"] == []
+    assert body["loaded_win_formats"] == []

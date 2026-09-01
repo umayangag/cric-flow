@@ -67,11 +67,6 @@ def find_per_format_artifact(
         return None
 
 
-def find_artifact(models_dir: str, fmt: str, batting: bool) -> Optional[Tuple[str, float]]:
-    """Return (path, mtime) for the first matching artifact if found."""
-    return find_per_format_artifact(models_dir, fmt, "batting" if batting else "bowling")
-
-
 def build_artifacts_status(models_dir: str) -> Dict[str, Any]:
     """Build the full artifacts status response (formats × kinds)."""
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

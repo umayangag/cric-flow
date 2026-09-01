@@ -24,61 +24,40 @@ def test_x_request_id_echo_and_health(tmp_path):
 
 
 def test_error_payload_contains_request_id_on_400(tmp_path):
+    """A refused request carries the request id, so a 4xx in the log and the one the
+    caller saw are the same event."""
     client = _client(tmp_path)
     rid = "req-400"
-    # Trigger 400 by sending empty list
-    resp = client.post("/predict/batting", headers={"X-Request-ID": rid}, json=[])
-    assert resp.status_code == 400
-    body = resp.json()
-    assert "detail" in body
-    detail = body["detail"]
-    assert detail["code"] == "EMPTY_BATCH"
+    # An XI optimisation for a format whose objective does not rank (H-17) is refused.
+    resp = client.post(
+        "/xi/optimize",
+        headers={"X-Request-ID": rid},
+        json={"format": "TEST", "pool_player_ids": [1], "opponent_player_ids": [2]},
+    )
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    assert detail["code"] == "XI_MODEL_UNAVAILABLE"
     assert detail.get("request_id") == rid
 
 
 def test_error_payload_contains_request_id_on_500(tmp_path):
-    # Force model predict to raise to produce 500
-    os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
-    app_module = importlib.import_module("app.main")
-    artifacts_module = importlib.import_module("app.artifacts")
-
-    class BoomModel:
-        def predict(self, X):  # noqa: N802
-            raise RuntimeError("boom")
-
-    class IdentityScaler:
-        def transform(self, X):  # noqa: N802
-            return X
-
-    artifacts_module.BAT_MODELS.clear()
-    artifacts_module.BAT_MODELS["ODI"] = (IdentityScaler(), BoomModel())
-
-    client = TestClient(app_module.app)
-
+    """An unhandled failure is still a payload with the request id in it, not a bare 500."""
+    client = _client(tmp_path)
     rid = "req-500"
-    row = {
-        "batting_consistency": 0.0,
-        "batting_form": 0.0,
-        "batting_temp": 0,
-        "batting_wind": 0,
-        "batting_rain": 0,
-        "batting_humidity": 0,
-        "batting_cloud": 0,
-        "batting_pressure": 0,
-        "batting_viscosity": 0,
-        "batting_inning": 1,
-        "batting_session": 1,
-        "toss": 0,
-        "venue": 0.0,
-        "opposition": 0.0,
-        "season": 0,
-        "player_name": "P",
-        "format": "ODI",
-    }
-    resp = client.post("/predict/batting", headers={"X-Request-ID": rid}, json=[row])
+
+    from app import xi_service
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    original = xi_service.status
+    xi_service.status = boom
+    try:
+        resp = client.get("/xi/status", headers={"X-Request-ID": rid})
+    finally:
+        xi_service.status = original
+
     assert resp.status_code == 500
-    body = resp.json()
-    assert "detail" in body
-    detail = body["detail"]
-    assert detail["code"] == "PREDICT_FAILED"
+    detail = resp.json()["detail"]
+    assert detail["code"] == "UNHANDLED_EXCEPTION"
     assert detail.get("request_id") == rid

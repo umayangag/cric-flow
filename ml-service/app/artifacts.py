@@ -26,23 +26,10 @@ from app.logging import get_struct_logger
 
 logger = get_struct_logger()
 
-# Registries: map format code -> (scaler, model).
-BAT_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-BOWL_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-FIELD_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-EXTRAS_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level extras regressor)
-WIN_MODELS: Dict[str, Optional[object]] = {}  # format -> model (match-level win classifier)
-INNINGS_MODELS: Dict[
-    str, Tuple[Optional[object], Optional[object]]
-] = {}  # format -> (scaler, model) for innings runs/wickets
-# Phase 3 share models: predict runs_share, wickets_share; multiply by innings totals for consistency
-BAT_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-BOWL_SHARE_MODELS: Dict[str, Tuple[Optional[object], Optional[object]]] = {}
-
-# Sidecar metadata per (kind, format). See ml.artifact_sidecar. Keyed by the same format code
-# convention (e.g. "T20") so prediction code can look up alongside the model.
-INNINGS_META: Dict[str, Dict[str, Any]] = {}
-EXTRAS_META: Dict[str, Dict[str, Any]] = {}
+# Registry: map format code -> model. One kind is left -- the windowed-form win classifier,
+# which P-6 removes. The batting, bowling, fielding, extras, innings and share families went
+# with their trainers in P-5, and the XI models live in ``ml.xi.store`` rather than here.
+WIN_MODELS: Dict[str, Optional[object]] = {}
 
 # mtime of the model file each registry entry was loaded from, keyed by (kind name, format code).
 # Without it "loaded" only means some object sits in the registry; with it `/artifacts/status`
@@ -92,60 +79,12 @@ class ArtifactKind:
 
 
 ARTIFACT_KINDS: Tuple[ArtifactKind, ...] = (
-    ArtifactKind(
-        name="batting",
-        registry=BAT_MODELS,
-        model_prefix="batting_model_",
-        scaler_prefix="batting_scaler_",
-        metadata_prefix="batting_metadata_",
-    ),
-    ArtifactKind(
-        name="bowling",
-        registry=BOWL_MODELS,
-        model_prefix="bowling_model_",
-        scaler_prefix="bowling_scaler_",
-        metadata_prefix="bowling_metadata_",
-    ),
-    ArtifactKind(
-        name="fielding",
-        registry=FIELD_MODELS,
-        model_prefix="fielding_model_",
-        scaler_prefix="fielding_scaler_",
-        metadata_prefix="fielding_metadata_",
-    ),
-    ArtifactKind(
-        name="extras",
-        registry=EXTRAS_MODELS,
-        model_prefix="extras_model_",
-        meta_registry=EXTRAS_META,
-        metadata_prefix="extras_meta_",
-    ),
     # Win sidecars are named win_model_<FMT>_metadata.json, so the model prefix finds them.
     ArtifactKind(
         name="win",
         registry=WIN_MODELS,
         model_prefix="win_model_",
         metadata_prefix="win_model_",
-    ),
-    ArtifactKind(
-        name="innings",
-        registry=INNINGS_MODELS,
-        model_prefix="innings_model_",
-        scaler_prefix="innings_scaler_",
-        meta_registry=INNINGS_META,
-        metadata_prefix="innings_meta_",
-    ),
-    ArtifactKind(
-        name="batting_share",
-        registry=BAT_SHARE_MODELS,
-        model_prefix="batting_share_model_",
-        scaler_prefix="batting_share_scaler_",
-    ),
-    ArtifactKind(
-        name="bowling_share",
-        registry=BOWL_SHARE_MODELS,
-        model_prefix="bowling_share_model_",
-        scaler_prefix="bowling_share_scaler_",
     ),
 )
 
@@ -164,16 +103,6 @@ def _load_meta(models_dir: str, kind: str, format_code: Optional[str]) -> Option
     except ImportError:
         return None
     return read_artifact_meta(models_dir, kind, format_code)
-
-
-def _use_share_models() -> bool:
-    """True if ml.use_share_models is enabled in config."""
-    try:
-        from ml.config import get_config
-
-        return bool((get_config().get("ml") or {}).get("use_share_models"))
-    except Exception:
-        return False
 
 
 def _discover_format_codes(entries: List[str], kind: ArtifactKind) -> List[str]:

@@ -2,18 +2,17 @@
 
 This module wires together route handlers, middleware, and startup logic.
 Domain logic lives in dedicated modules:
-- prediction_service: backtest predictions, individual predict endpoints
+- xi_service: selection, the displayed win probability, the performance model, the
+  simulator, and L4's evaluation report -- the whole prediction surface after P-5
+- prediction_service.endpoints: the windowed-form win model, which P-6 removes
 - artifact_service: artifact discovery, health, artifacts status
 - model_stats_service: model stats scanning and reporting
 - training_orchestrator: training subprocess management
-- backtest_service: historical backtest, feature building
-- backtest_cache: in-memory prediction cache
 """
 
 import asyncio
 import functools
 import hmac
-import math
 import os
 import sys
 import threading
@@ -21,7 +20,6 @@ import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
-from datetime import timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -35,35 +33,11 @@ from . import training_orchestrator, xi_service
 from .artifact_service import build_artifacts_status, build_health_response
 from .artifacts import reload as reload_artifacts
 from .artifacts import summary as artifacts_summary
-from .backtest_cache import BacktestCache
-from .backtest_service import DeterministicInMemoryRepo
-from .backtest_service import historical_backtest as svc_historical_backtest
-from .backtest_service import predict_match_baseline as svc_predict_match_baseline
-from .backtest_service import resolve_model_version as svc_resolve_model_version
 from .errors import error_payload
 from .logging import bind_request_context, get_struct_logger, init_logging
 from .model_metadata import get_model_metadata
 from .model_stats_service import build_model_stats
-from .models.backtest import (
-    BacktestMatchResponse,
-    BacktestPlayersResponse,
-    BacktestPredictRequest,
-    BatchPredictRequest,
-    BatchPredictResponse,
-    BatchPredictResultItem,
-    GenerateMatchRequest,
-    GenerateMatchResponse,
-    HistoricalMatchBacktestRequest,
-)
-from .models.features import BattingFeatures, BowlingFeatures
 from .models.predict import (
-    BattingPrediction,
-    BowlingPrediction,
-    ExtrasFeatures,
-    ExtrasPrediction,
-    TeamOptimizationRequest,
-    TeamOptimizationResponse,
-    TeamOptimizationSelectedPlayer,
     WinFeatures,
     WinFeaturesEnhanced,
     WinPrediction,
@@ -80,17 +54,9 @@ from .models.xi import (
     XiWinResponse,
 )
 from .prediction_service.endpoints import (
-    run_batting_prediction,
-    run_bowling_prediction,
-    run_extras_prediction,
-    run_team_optimization,
     run_win_prediction,
     run_win_prediction_enhanced,
-    validate_predict_batch,
 )
-from .prediction_service.generate_match import generate_match
-from .prediction_service.players import predict_players_batch, predict_players_with_features
-from .prediction_settings import GenerateMatchSettings
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -178,8 +144,6 @@ ENABLE_HOT_RELOAD = _settings.enable_hot_reload
 ADMIN_API_KEY = _settings.admin_api_key
 MAX_CONCURRENT_TRAINING_JOBS = _settings.max_concurrent_training_jobs
 MAX_PREDICT_BATCH_SIZE = _settings.max_predict_batch_size
-DISABLE_BACKTEST_CACHE = _settings.disable_backtest_cache
-CACHE_TTL_SECONDS = _settings.backtest_cache_ttl_seconds
 TRAIN_LATEST_CACHE_GRANULARITY = _settings.train_latest_cache_granularity
 MODEL_STATS_CACHE_TTL = _settings.model_stats_cache_ttl
 
@@ -214,22 +178,6 @@ def _verify_admin_api_key(request: Request) -> None:
 # ---------------------------------------------------------------------------
 
 _model_stats_cache: Optional[Tuple[float, Dict[str, Any]]] = None
-
-# ---------------------------------------------------------------------------
-# Backtest cache
-# ---------------------------------------------------------------------------
-
-_backtest_cache = BacktestCache(ttl_seconds=CACHE_TTL_SECONDS, disabled=DISABLE_BACKTEST_CACHE)
-
-
-def reset_backtest_cache() -> None:
-    """Utility for tests to clear cache and counters."""
-    _backtest_cache.reset()
-
-
-def get_backtest_compute_counts() -> Tuple[int, int]:
-    return _backtest_cache.get_compute_counts()
-
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -333,7 +281,7 @@ async def artifacts_status():
 
 @app.get("/model-metadata")
 async def model_metadata():
-    """Return model metadata from the source of truth (feature_vectors.json)."""
+    """Return the win model's metadata: feature order, output, artifact naming."""
     try:
         return get_model_metadata()
     except Exception as e:
@@ -359,231 +307,17 @@ async def model_stats():
         raise HTTPException(status_code=500, detail={"code": "MODEL_STATS_ERROR", "message": str(e)}) from e
 
 
-@app.post("/ml/backtest/predict")
-def backtest_predict(req: BacktestPredictRequest):
-    cutoff = req.cutoff_date
-    cutoff_with_tz = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=timezone.utc)
-    cutoff_utc = cutoff_with_tz.astimezone(timezone.utc)
-    cutoff_iso = cutoff_utc.isoformat().replace("+00:00", "Z")
-    if req.player_ids is not None:
-        use_full_pipeline = (
-            req.format is not None and (req.format or "").strip() and req.features is not None and len(req.features) > 0
-        )
-        if not use_full_pipeline:
-            logger.warning(
-                "backtest_predict.player_rejected",
-                reason="format_and_features_required",
-                has_format=bool(req.format and (req.format or "").strip()),
-                has_features=bool(req.features and len(req.features) > 0),
-                player_count=len(req.player_ids or []),
-                cutoff_iso=cutoff_iso,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=error_payload(
-                    code="FORMAT_AND_FEATURES_REQUIRED",
-                    message="Player predictions require format and features",
-                    hint="Send format and features (per-player feature map). No baseline fallback.",
-                ),
-            )
-        logger.info(
-            "backtest_predict.player.start",
-            format=req.format,
-            cutoff_iso=cutoff_iso,
-            player_count=len(req.player_ids),
-        )
-        cached = None if req.match_context else _backtest_cache.get("players", cutoff_iso, list(req.player_ids))
-        if cached is not None:
-            logger.info("backtest_predict.player.cache_hit", cutoff_iso=cutoff_iso, player_count=len(req.player_ids))
-            return JSONResponse(status_code=200, content=cached)
-        _backtest_cache.increment_players_compute()
-        try:
-            preds = predict_players_with_features(
-                cutoff,
-                req.player_ids,
-                req.format or "",
-                req.features,
-                MODELS_DIR,
-                _settings.enable_train_on_the_fly,
-                _settings.go_app_url,
-                _settings.go_app_api_key or None,
-                TRAIN_LATEST_CACHE_GRANULARITY,
-                req.use_latest_model,
-                req.match_context,
-            )
-        except ValueError as e:
-            logger.exception(
-                "backtest_predict.player.train_on_the_fly_failed",
-                format=req.format,
-                cutoff_iso=cutoff_iso,
-                player_count=len(req.player_ids),
-                error=str(e),
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=error_payload(
-                    code="TRAIN_ON_THE_FLY_FAILED",
-                    message=str(e),
-                    hint="Ensure GO_APP_URL is set and go-app has training data for this format and cutoff.",
-                ),
-            ) from e
-        except Exception as e:
-            logger.exception(
-                "backtest_predict.player.prediction_failed",
-                format=req.format,
-                cutoff_iso=cutoff_iso,
-                player_count=len(req.player_ids),
-                error=str(e),
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=error_payload(
-                    code="PREDICTION_FAILED",
-                    message="Train-on-the-fly or prediction failed",
-                    hint=str(e),
-                ),
-            ) from e
-        logger.info(
-            "backtest_predict.player.success",
-            format=req.format,
-            cutoff_iso=cutoff_iso,
-            player_count=len(req.player_ids),
-            predictions_count=len(preds),
-        )
-        body = BacktestPlayersResponse(players=preds).model_dump()
-        _backtest_cache.put("players", cutoff_iso, list(req.player_ids), body)
-        return JSONResponse(status_code=200, content=body)
-    if req.teams is not None:
-        cached = _backtest_cache.get("match", cutoff_iso, list(req.teams))
-        if cached is not None:
-            return JSONResponse(status_code=200, content=cached)
-        _backtest_cache.increment_match_compute()
-        match = svc_predict_match_baseline(cutoff, req.teams)
-        body = BacktestMatchResponse(
-            match=match, model_version=svc_resolve_model_version(getattr(app, "version", ""))
-        ).model_dump()
-        _backtest_cache.put("match", cutoff_iso, list(req.teams), body)
-        return JSONResponse(status_code=200, content=body)
-    logger.warning("backtest_predict.invalid_request", reason="missing_player_ids_and_teams", cutoff_iso=cutoff_iso)
-    raise HTTPException(
-        status_code=400,
-        detail=error_payload(
-            code="INVALID_REQUEST",
-            message="provide either player_ids or teams",
-            hint="Body must include one of: {player_ids:[..]} or {teams:[team1,team2]}",
-        ),
-    )
-
-
-@app.post("/ml/backtest/predict-batch", response_model=BatchPredictResponse)
-def backtest_predict_batch(req: BatchPredictRequest):
-    """Batch prediction: run multiple player-prediction sets in a single HTTP call.
-
-    Each item is equivalent to a POST /ml/backtest/predict with player_ids.
-    Models are loaded once and shared across all items in the batch.
-    """
-    logger.info("backtest_predict_batch.start", batch_size=len(req.requests))
-    try:
-        all_results = predict_players_batch(
-            items=req.requests,
-            models_dir=MODELS_DIR,
-            enable_train_on_the_fly=_settings.enable_train_on_the_fly,
-            go_app_url=_settings.go_app_url,
-            go_app_api_key=_settings.go_app_api_key or None,
-            train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
-        )
-    except ValueError as e:
-        logger.exception("backtest_predict_batch.failed", error=str(e))
-        raise HTTPException(
-            status_code=503,
-            detail=error_payload(code="BATCH_PREDICT_FAILED", message=str(e)),
-        ) from e
-    except Exception as e:
-        logger.exception("backtest_predict_batch.error", error=str(e))
-        raise HTTPException(
-            status_code=503,
-            detail=error_payload(code="BATCH_PREDICT_FAILED", message="Batch prediction failed"),
-        ) from e
-    logger.info("backtest_predict_batch.success", batch_size=len(req.requests))
-    return BatchPredictResponse(
-        results=[BatchPredictResultItem(players=preds) for preds in all_results],
-    )
-
-
-@app.post("/api/ml/generate-match", response_model=GenerateMatchResponse)
-def api_generate_match(req: GenerateMatchRequest):
-    """Generate a reconciled match: per-player stats, innings totals, and win probability (§5.1.1)."""
-    cutoff = req.cutoff_date
-    cutoff_with_tz = cutoff if cutoff.tzinfo is not None else cutoff.replace(tzinfo=timezone.utc)
-    try:
-        result = generate_match(
-            cutoff_with_tz,
-            req.player_ids,
-            req.format or "",
-            req.features or {},
-            req.match_context,
-            GenerateMatchSettings(
-                models_dir=MODELS_DIR,
-                enable_train_on_the_fly=_settings.enable_train_on_the_fly,
-                go_app_url=_settings.go_app_url,
-                go_app_api_key=_settings.go_app_api_key or None,
-                train_latest_cache_granularity=TRAIN_LATEST_CACHE_GRANULARITY,
-            ),
-            req.use_latest_model,
-            model_version=svc_resolve_model_version(getattr(app, "version", "")),
-        )
-    except ValueError as e:
-        logger.warning("generate_match.validation_failed", error=str(e))
-        raise HTTPException(status_code=400, detail=error_payload(code="VALIDATION_FAILED", message=str(e))) from e
-    except Exception as e:
-        logger.exception("generate_match.error", error=str(e))
-        raise HTTPException(
-            status_code=503,
-            detail=error_payload(code="GENERATE_MATCH_FAILED", message=str(e)),
-        ) from e
-    return GenerateMatchResponse(
-        players=result["players"],
-        innings=result["innings"],
-        win_probability_team1=result["win_probability_team1"],
-        model_version=result["model_version"],
-    )
-
-
-@app.post("/ml/backtest/match")
-def historical_backtest_match(req: HistoricalMatchBacktestRequest):
-    """Historical backtest for a specific already-played match."""
-    logger.info("historical_backtest.match.start", match_id=req.match_id, has_filters=req.filters is not None)
-    repo = DeterministicInMemoryRepo()
-    try:
-        resp = svc_historical_backtest(req, repo, svc_resolve_model_version(getattr(app, "version", "")))
-    except ValueError as e:
-        logger.error("historical_backtest.match.validation_failed", match_id=req.match_id, error=str(e))
-        raise HTTPException(status_code=422, detail=str(e)) from e
-    logger.info("historical_backtest.match.success", match_id=req.match_id)
-    return JSONResponse(status_code=200, content=resp.model_dump())
-
-
-@app.post("/predict/batting", response_model=List[BattingPrediction])
-async def predict_batting(features: List[BattingFeatures]):
-    validate_predict_batch(features, "batting", MAX_PREDICT_BATCH_SIZE)
-    return run_batting_prediction(features)
-
-
-@app.post("/predict/bowling", response_model=List[BowlingPrediction])
-async def predict_bowling(features: List[BowlingFeatures]):
-    validate_predict_batch(features, "bowling", MAX_PREDICT_BATCH_SIZE)
-    return run_bowling_prediction(features)
-
-
-@app.post("/predict/extras", response_model=List[ExtrasPrediction])
-async def predict_extras(features: List[ExtrasFeatures]):
-    validate_predict_batch(features, "extras", MAX_PREDICT_BATCH_SIZE)
-    return run_extras_prediction(features)
-
-
 @app.post("/predict/win", response_model=List[WinPrediction])
 async def predict_win(features: List[WinFeatures]):
-    validate_predict_batch(features, "win", MAX_PREDICT_BATCH_SIZE)
+    if len(features) > MAX_PREDICT_BATCH_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=error_payload(
+                code="BATCH_TOO_LARGE",
+                message=f"win batch of {len(features)} exceeds the limit of {MAX_PREDICT_BATCH_SIZE}",
+                hint="Split the request, or raise MAX_PREDICT_BATCH_SIZE.",
+            ),
+        )
     return run_win_prediction(features)
 
 
@@ -601,100 +335,6 @@ async def predict_win_enhanced(request: WinFeaturesEnhanced):
         team1_player_features=request.team1_player_features,
         team2_player_features=request.team2_player_features,
     )
-
-
-@app.post("/optimize/team-selection", response_model=TeamOptimizationResponse)
-async def optimize_team_selection(request: TeamOptimizationRequest):
-    """Server-side team selection optimisation via hill-climb with batch inference.
-
-    Replaces hundreds of ``POST /predict/win-enhanced`` calls with a single
-    request.  The ML service runs the full greedy-seed + hill-climb loop
-    internally using vectorised ``model.predict_proba`` batches.
-    """
-    from ml.team_optimizer import PoolPlayer, ScoreWeights, SelectionConstraints
-
-    def _validated_player_id(k: str) -> int:
-        if not k.isdigit() or len(k) > 20:
-            raise HTTPException(
-                status_code=400,
-                detail=_error_payload(code="INVALID_PLAYER_ID", message=f"Invalid player ID key: {k!r}"),
-            )
-        return int(k)
-
-    def _reject_non_finite(features: Dict[str, float], context: str) -> None:
-        for name, val in features.items():
-            if not math.isfinite(val):
-                raise HTTPException(
-                    status_code=400,
-                    detail=_error_payload(
-                        code="NON_FINITE_FEATURE",
-                        message=f"Non-finite value in {context}: {name}={val!r}",
-                    ),
-                )
-
-    for p in request.pool:
-        _reject_non_finite(p.features, f"pool player {p.player_id}")
-
-    pool = [
-        PoolPlayer(
-            player_id=p.player_id,
-            name=p.name,
-            is_bowler=p.is_bowler,
-            is_keeper=p.is_keeper,
-            bat_score=p.bat_score,
-            bowl_score=p.bowl_score,
-            field_score=p.field_score,
-            features=p.features,
-        )
-        for p in request.pool
-    ]
-    opponent_features = {_validated_player_id(k): v for k, v in request.opponent_features.items()}
-
-    for pid, feats in opponent_features.items():
-        _reject_non_finite(feats, f"opponent player {pid}")
-
-    try:
-        result = run_team_optimization(
-            fmt=request.format or "",
-            pool=pool,
-            opponent_features=opponent_features,
-            match_context=request.match_context,
-            constraints=SelectionConstraints(
-                size=request.constraints.size,
-                min_bowlers=request.constraints.min_bowlers,
-                require_keeper=request.constraints.require_keeper,
-            ),
-            weights=ScoreWeights(
-                bat=request.weights.bat,
-                bowl=request.weights.bowl,
-                field=request.weights.field,
-                keeper_bonus=request.weights.keeper_bonus,
-            ),
-            team_is_team1=request.team_is_team1,
-            max_iterations=request.max_iterations,
-            max_evals=request.max_evals,
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=_error_payload(
-                code="OPTIMIZATION_CONSTRAINT_ERROR",
-                message=str(exc),
-                hint="Check pool composition satisfies constraints (keeper, bowlers, size).",
-            ),
-        ) from exc
-
-    return TeamOptimizationResponse(
-        selected=[TeamOptimizationSelectedPlayer(player_id=p.player_id, name=p.name) for p in result.selected],
-        win_probability=result.win_probability,
-        iterations_used=result.iterations_used,
-        evals_performed=result.evals_performed,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Admin endpoints
-# ---------------------------------------------------------------------------
 
 
 @app.post("/admin/reload")
@@ -774,67 +414,6 @@ def _require_admin_train(step: str, fail_message: str):
     return decorator
 
 
-@app.post("/admin/train/batting")
-@_require_admin_train("batting", "Batting training failed")
-async def admin_train_batting(request: Request, cutoff: str = ""):
-    """Run batting model training per format."""
-    async with _get_training_semaphore():
-        await asyncio.to_thread(
-            training_orchestrator.run_batting_training,
-            (cutoff or "").strip(),
-            _settings.go_app_url,
-            logger,
-        )
-    return training_orchestrator.train_response("batting")
-
-
-@app.post("/admin/train/bowling")
-@_require_admin_train("bowling", "Bowling training failed")
-async def admin_train_bowling(request: Request, cutoff: str = ""):
-    """Run bowling model training per format."""
-    async with _get_training_semaphore():
-        await asyncio.to_thread(
-            training_orchestrator.run_bowling_training,
-            (cutoff or "").strip(),
-            _settings.go_app_url,
-            logger,
-        )
-    return training_orchestrator.train_response("bowling")
-
-
-@app.post("/admin/train/fielding")
-@_require_admin_train("fielding", "Fielding training failed")
-async def admin_train_fielding(request: Request, cutoff: str = ""):
-    """Run fielding model training."""
-    async with _get_training_semaphore():
-        await asyncio.to_thread(
-            training_orchestrator.run_fielding_training,
-            (cutoff or "").strip(),
-            _settings.go_app_url,
-            logger,
-        )
-    return training_orchestrator.train_response("fielding")
-
-
-@app.post("/admin/train/extras")
-@_require_admin_train("extras", "Extras training failed")
-async def admin_train_extras(request: Request, cutoff: str = ""):
-    """Run extras model training. Requires cutoff."""
-    cutoff = (cutoff or "").strip()
-    if not cutoff:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CUTOFF_REQUIRED",
-                message="Extras training requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
-            ),
-        )
-    async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_extras_training, cutoff, _settings.go_app_url, logger)
-    return training_orchestrator.train_response("extras")
-
-
 @app.post("/admin/train/win")
 @_require_admin_train("win", "Win training failed")
 async def admin_train_win(request: Request, cutoff: str = ""):
@@ -852,51 +431,6 @@ async def admin_train_win(request: Request, cutoff: str = ""):
     async with _get_training_semaphore():
         await asyncio.to_thread(training_orchestrator.run_win_training, cutoff, _settings.go_app_url, logger)
     return training_orchestrator.train_response("win")
-
-
-@app.post("/admin/train/innings")
-@_require_admin_train("innings", "Innings training failed")
-async def admin_train_innings(request: Request, cutoff: str = ""):
-    """Run innings model training. Requires cutoff."""
-    cutoff = (cutoff or "").strip()
-    if not cutoff:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CUTOFF_REQUIRED",
-                message="Innings training requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
-            ),
-        )
-    async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_innings_training, cutoff, _settings.go_app_url, logger)
-    return training_orchestrator.train_response("innings")
-
-
-@app.post("/admin/train/combination-meta")
-@_require_admin_train("combination-meta", "Combination-meta training failed")
-async def admin_train_combination_meta(request: Request):
-    """Train the score-combination meta-model from the backtest contributions CSV.
-
-    The CSV is produced by go-app's POST /api/backtest/export-contributions. A missing
-    input is a precondition, not a server error, so it returns 400 with the command to
-    run rather than a 500 that says "check the logs".
-    """
-    csv_path = training_orchestrator.combination_meta_csv_path()
-    if not os.path.isfile(csv_path):
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CONTRIBUTIONS_CSV_MISSING",
-                message=f"combination-meta training needs {csv_path}, which does not exist",
-                hint="Run POST /api/backtest/export-contributions on go-app first, then retry.",
-            ),
-        )
-    async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_combination_meta_training, logger)
-    # combination_meta is not instrumented, so this carries no summary today. Routing
-    # it through the same builder means it gains one the moment it is.
-    return training_orchestrator.train_response("combination_meta")
 
 
 @app.post("/admin/train/auto-tune")

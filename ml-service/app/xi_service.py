@@ -210,9 +210,7 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
     )
 
 
-def _rating_ordered(
-    req: XiOptimizeRequest, store: XiStore, pool: List[str], unknown: List[int]
-) -> XiOptimizeResponse:
+def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unknown: List[int]) -> XiOptimizeResponse:
     """The pick for a format whose objective does not rank (H-17): rating order under the
     same constraints, no model evaluated, and marked as not optimised so the API and the
     UI can say so."""

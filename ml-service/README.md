@@ -1,22 +1,24 @@
 # ML Service (Python)
 
-Standalone FastAPI microservice for cricket ML predictions, backtests, match generation, and training orchestration. Feature precomputation is owned by the Go app; this service does not expose a `/precompute` endpoint.
+Standalone FastAPI microservice for cricket ML: XI selection, win probability, the player
+performance model, the match simulator, and training orchestration. Feature precomputation
+is owned by the Go app; this service does not expose a `/precompute` endpoint.
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| `app/` | HTTP layer: FastAPI (`main.py`), Pydantic models, artifact loading, prediction orchestration, backtest cache |
-| `ml/` | Training scripts, tuning, reconciliation solvers, config helpers, plus `ml/baselines` and `ml/datasets` (small helpers for offline tooling and fixtures) |
+| `app/` | HTTP layer: FastAPI (`main.py`), Pydantic models, artifact loading, XI serving (`xi_service.py`) |
+| `ml/` | `ml/xi/` — the rating pass, the win models, the performance model, the simulator and the L4 harness; plus the windowed-form win trainer and the tuning stack, which P-6 removes |
 | `tests/` | Unit, integration, and gated e2e tests |
 | `docs/` | Service docs including [IMPROVEMENT_PR_CHECKLIST.md](docs/IMPROVEMENT_PR_CHECKLIST.md) |
 
 Key modules:
 
 - `app/main.py` — routes, middleware, lifespan
-- `app/prediction_service.py` — backtest and batch prediction pipelines
+- `app/xi_service.py` — selection, win probability, performance, simulation, L4's report
 - `app/artifacts.py` — in-memory joblib registries and reload
-- `ml/train_batting.py`, `ml/train_bowling.py` — primary training CLIs (`python -m ml.train_batting`, etc.)
+- `ml/xi/train.py`, `ml/xi/evaluate.py` — the training and evaluation CLIs (`make train-xi`, `make xi-evaluate`)
 
 **Prerequisites:** Python 3.10+ locally; CI and Docker use Python 3.12.
 
@@ -58,12 +60,10 @@ Hyperparameters are read from config (no hidden code defaults). Edit `ml.trainin
 
 | Model | Config path | Used by |
 |-------|-------------|--------|
-| Batting | `ml.training.batting` | `ml.train_batting`, train-on-the-fly (batting) |
-| Bowling | `ml.training.bowling` | `ml.train_bowling`, train-on-the-fly (bowling) |
+| Win (windowed form) | `ml.training.win` | `ml.train_win`, auto-tune |
 
-Each block includes `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (0–9). Fielding, extras, win, and innings have separate blocks; see [../docs/ml-and-training.md](../docs/ml-and-training.md).
-
-**Feature vectors:** Ordered names in `configs/feature_vectors.json` (shared with go-app). Override with `FEATURE_CONFIG_PATH`.
+The block includes `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (0–9). The XI
+models read their hyperparameters from `ml/xi/`; see [../docs/ml-and-training.md](../docs/ml-and-training.md).
 
 ## Common tasks
 
@@ -73,16 +73,14 @@ Run locally on port 8000 with reload:
 make run
 ```
 
-Train artifacts from exported CSVs or go-app API:
+Train the XI models (the rating pass, the win models and the performance models) and score them:
 
 ```bash
-make train-models
-# or per model:
-python3 -m ml.train_batting --all-formats
-python3 -m ml.train_bowling --all-formats
+make train-xi CUTOFF=2025-09-01
+make xi-evaluate
 ```
 
-Auto-tune: see **docs/ml-and-training.md** — e.g. `make auto-tune MODEL=batting FORMAT=T20`.
+Auto-tune the windowed-form win model: see **docs/ml-and-training.md** — e.g. `make auto-tune FORMAT=T20`.
 
 Docker:
 
@@ -103,30 +101,30 @@ OpenAPI schema: `GET /openapi.json` when the service is running.
 |--------|------|-------------|
 | GET | `/health` | Service status and whether artifacts are loaded |
 | GET | `/artifacts/status` | Per-format artifact presence and load state |
-| GET | `/model-metadata` | Feature/metadata from `feature_vectors.json` |
+| GET | `/model-metadata` | The win model's feature order, output and artifact naming |
 | GET | `/model-stats` | Trained model file stats (algorithm, size, mtime, etc.) |
 
-### Player / match predictions (artifacts required unless train-on-the-fly)
+### Selection and prediction (the XI layer)
+
+Every one of these takes player ids and a format, never a feature map: the rating state lives
+here, which is what makes the training and serving paths compute the same function of the same
+eleven names.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/predict/batting` | `BattingFeatures[]` → `BattingPrediction[]` |
-| POST | `/predict/bowling` | `BowlingFeatures[]` → `BowlingPrediction[]` |
-| POST | `/predict/extras` | `ExtrasFeatures[]` → `ExtrasPrediction[]` |
+| GET | `/xi/status` | Loaded formats, how far the ratings run, the last training report |
+| GET | `/xi/evaluate-report` | L4's evaluation report (`xi_evaluate_report.json`) |
+| POST | `/xi/optimize` | Pool + constraints → XI. `objective: "win"` maximises P(win); `objective: "ratings"` is the rating-ordered pick, the only mode offered where the objective does not rank (H-17) |
+| POST | `/xi/predict-win` | Two elevens → displayed P(team1 wins) |
+| POST | `/performance/predict` | Two elevens → per-player distributions (L2-B) |
+| POST | `/simulate` | Two elevens → totals, per-player ranges, the median-band scorecard and P(win), all from one set of draws (L2-C). Limited-overs formats only |
+
+### Windowed-form win model (P-6 removes it)
+
+| Method | Path | Description |
+|--------|------|-------------|
 | POST | `/predict/win` | `WinFeatures[]` → `WinPrediction[]` |
 | POST | `/predict/win-enhanced` | Per-player team features → single `WinPrediction` |
-| POST | `/optimize/team-selection` | Pool + constraints → optimized XI and win probability |
-
-### Backtest and match generation (go-app integration)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/ml/backtest/predict` | Player or team baseline backtest at cutoff |
-| POST | `/ml/backtest/predict-batch` | Batch player predictions (shared model load) |
-| POST | `/ml/backtest/match` | Historical match backtest |
-| POST | `/api/ml/generate-match` | Reconciled match: players, innings, win probability |
-
-Backtest player mode requires `format` and per-player `features`. Train-on-the-fly needs `GO_APP_URL` when artifacts are missing.
 
 ### Admin (gated)
 
@@ -135,12 +133,7 @@ Requires `ENABLE_HOT_RELOAD=1` and `X-Admin-API-Key` when `ADMIN_API_KEY` is set
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/admin/reload` | Rescan models directory and reload joblib artifacts |
-| POST | `/admin/train/batting` | Run batting training (`?cutoff=` optional) |
-| POST | `/admin/train/bowling` | Run bowling training |
-| POST | `/admin/train/fielding` | Run fielding training |
-| POST | `/admin/train/extras` | Run extras training (`cutoff` required) |
 | POST | `/admin/train/win` | Run win training (`cutoff` required) |
-| POST | `/admin/train/innings` | Run innings training (`cutoff` required) |
 | POST | `/admin/train/auto-tune` | Hyperparameter search (`cutoff` required) |
 | GET | `/admin/train/auto-tune/progress` | Auto-tune progress (API key only) |
 
@@ -153,10 +146,11 @@ Artifact directory precedence at startup:
 3. `config.outputs.artifacts_dir`
 4. Fallback: `../../output/ml-service`
 
-Expected joblib files, always per-format (e.g. `batting_model_T20.joblib`):
+Expected joblib files:
 
-- Batting / bowling: `*_scaler`, `*_model`, optional `*_output_scaler`
-- Fielding, extras, win, innings: format-specific names per **docs/ml-and-training.md**
+- Win (windowed form): `win_model_<FMT>.joblib`, with `win_model_<FMT>_metadata.json` beside it
+- XI layer: `xi_ratings.joblib`, `xi_win_<FMT>.joblib`, `xi_perf_<FMT>.joblib` — loaded by
+  `ml.xi.store`, not by the per-format registry above
 
 Reload at runtime: `POST /admin/reload` when hot reload is enabled.
 
