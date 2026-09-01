@@ -18,7 +18,14 @@ type fakeSimulator struct {
 	requests []XISimulationRequest
 }
 
-func (f *fakeSimulator) PredictPlayers(context.Context, time.Time, string, []int64, map[int64]map[string]float64, *MatchContext) (map[int64]PlayerPred, error) {
+func (f *fakeSimulator) PredictPlayers(
+	context.Context,
+	time.Time,
+	string,
+	[]int64,
+	map[int64]map[string]float64,
+	*MatchContext,
+) (map[int64]PlayerPred, error) {
 	return nil, nil
 }
 
@@ -37,7 +44,14 @@ func (f *fakeSimulator) SimulateMatchXI(_ context.Context, req XISimulationReque
 // nonSimulatingPredictor implements MLPredictor only.
 type nonSimulatingPredictor struct{}
 
-func (nonSimulatingPredictor) PredictPlayers(context.Context, time.Time, string, []int64, map[int64]map[string]float64, *MatchContext) (map[int64]PlayerPred, error) {
+func (nonSimulatingPredictor) PredictPlayers(
+	context.Context,
+	time.Time,
+	string,
+	[]int64,
+	map[int64]map[string]float64,
+	*MatchContext,
+) (map[int64]PlayerPred, error) {
 	return nil, nil
 }
 
@@ -137,11 +151,26 @@ func TestApplyXISimulation_LeavesTheScorecardAloneWhenItCannotRun(t *testing.T) 
 		predictor MLPredictor
 		format    string
 	}{
-		{name: "xi win model off", xiEnabled: false, predictor: &fakeSimulator{result: &XISimulationResult{}}, format: "T20"},
+		{
+			name:      "xi win model off",
+			xiEnabled: false,
+			predictor: &fakeSimulator{result: &XISimulationResult{}},
+			format:    "T20",
+		},
 		{name: "predictor cannot simulate", xiEnabled: true, predictor: nonSimulatingPredictor{}, format: "T20"},
-		{name: "format without an innings length", xiEnabled: true, predictor: &fakeSimulator{result: &XISimulationResult{}}, format: "TEST"},
+		{
+			name:      "format without an innings length",
+			xiEnabled: true,
+			predictor: &fakeSimulator{result: &XISimulationResult{}},
+			format:    "TEST",
+		},
 		{name: "the call fails", xiEnabled: true, predictor: &fakeSimulator{err: errors.New("boom")}, format: "ODI"},
-		{name: "no players returned", xiEnabled: true, predictor: &fakeSimulator{result: &XISimulationResult{}}, format: "ODI"},
+		{
+			name:      "no players returned",
+			xiEnabled: true,
+			predictor: &fakeSimulator{result: &XISimulationResult{}},
+			format:    "ODI",
+		},
 	}
 	for i := range testCases {
 		tc := testCases[i]
@@ -152,7 +181,13 @@ func TestApplyXISimulation_LeavesTheScorecardAloneWhenItCannotRun(t *testing.T) 
 			summary := ScorecardSummary{Innings1Total: 150, Innings2Total: 140, Team1WinProbability: 0.55}
 
 			// Act
-			applied := applyXISimulation(context.Background(), tc.predictor, xiScorecardInputs{format: tc.format}, result, &summary)
+			applied := applyXISimulation(
+				context.Background(),
+				tc.predictor,
+				xiScorecardInputs{format: tc.format},
+				result,
+				&summary,
+			)
 
 			// Assert
 			assert.False(t, applied)
