@@ -153,6 +153,92 @@ hybrid reconciliation rescaling and the Normal(mean, mean×CV) Monte Carlo, and 
 scorecard and the win probability come from one coherent picture of the match instead of
 being rescaled toward each other after the fact.
 
+#### The innings sample (P-4 design, written before the code)
+
+An innings has two views that must agree — the batting side's runs and the bowling side's
+runs conceded — and one budget: the balls. The sample takes the **batting side as
+authoritative** and treats the bowling side's figures as *attributions* of that innings, so
+the total is produced once and never rescaled toward a second estimate (the thing the hybrid
+reconciliation did). Every number the sample consumes is an as-of feature or an L2-B output
+for the fixture (H-21); the only constants are laws of the game — legal balls per innings,
+ten wickets, a bowler's fifth of the overs.
+
+*Inputs.* Per player of both elevens, from L2-B at the given `as_of` and orientation: the
+0.1 / 0.5 / 0.9 quantiles of runs, balls faced and runs conceded; the wicket distribution
+(mean, P(0), P(1), P(2+)); P(bats) and P(bowls); and from the same as-of row
+`exp_bat_position` and `exp_balls_bowled`. Per fixture, three as-of rates from the rating
+pass, per format (and per context group, like the run baselines): extras per delivery,
+deliveries per full first innings (an innings not all out, so it ran its overs), and the
+bowler-credited share of dismissals. No trained extras or innings model, no Normal.
+
+*A forecast becomes a distribution.* A player's three quantiles define a quantile function:
+piecewise linear through (0, 0), (0.1, q10), (0.5, q50), (0.9, q90), and above 0.9 an
+exponential tail with scale (q90 − q50) / ln 5 — the scale an exponential upper half would
+have — so the reconstruction reproduces the fitted quantiles exactly and invents nothing
+below them. One batter's runs and balls are drawn comonotonically (one uniform for both): a
+batter who faces more balls scores more.
+
+*The batting innings, sequentially by expected slot.*
+
+1. Order the XI by `exp_bat_position`.
+2. **Depth.** One uniform v per draw; B = #{k : P(bats)_k > v} batters bat (at least two),
+   the first B in slot order. Each batter keeps his marginal P(bats) — exactly when P(bats)
+   falls with the slot — and the count is coherent: nobody at eight bats while seven sits.
+3. **Given that he bats**, batter k draws (runs, balls) from the upper P(bats)_k part of his
+   unconditional quantile function (level 1 − p + p·u), never from the zero mass.
+4. **Innings length.** C is the as-of deliveries per full innings. Cumulative balls in slot
+   order: the batter at which they cross C keeps the remainder at his sampled strike rate
+   and later batters do not bat; if B < 11 and the sum falls short of C, the not-out pair
+   faces the remainder at their sampled strike rates. All out (B = 11 without truncation)
+   ends the innings where the balls do.
+5. **Wickets** = batters − 2 (the not-out pair), 10 when all out; never above 10.
+6. **Extras** ~ Poisson(as-of extras per delivery × deliveries used).
+7. **Total** = Σ runs + extras.
+
+*The chase.* Target = first-innings total + 1. Each batter's contribution is runs plus extras
+pro rata to his balls; the innings stops at the batter whose cumulative contribution reaches
+the target, truncated to it (balls pro rata); a chase that runs out of balls or batters loses
+by the difference; equal is a tie. The chasing side's L2-B forecasts are its chasing
+orientation — the innings is a known feature once the toss is — so the model's chasing rates
+and the truncation both act. Whether that double-counts is a measurement (folds only): the
+sample can be fed the bat-first orientation for the chaser instead, and the choice is a
+recorded constant.
+
+*Bowling attribution.* A bowler bowls with P(bowls), topped up in `exp_balls_bowled` order
+when too few bowl to deliver the innings under the per-bowler cap (a fifth of the innings);
+balls in proportion to `exp_balls_bowled`, excess above the cap redistributed. Runs conceded:
+a multinomial split of the innings total with weights balls × as-of rate (median runs
+conceded / expected balls). Wickets: the as-of bowler-credited share of the innings' wickets
+(the rest are run-outs), split multinomially with weights balls × wicket rate. Bowlers'
+figures therefore sum to the innings by construction; their own L2-B medians are not
+reproduced and are not meant to be — that would be the second estimate.
+
+*Toss.* Unknown: half the draws under each orientation, each with the matching L2-B
+forecasts, so P(win) is marginalised like everything else (H-3); known: every draw under it.
+
+*Outputs, all from the same draws.* Per side the total (median, 10–90, mean); per player the
+median and 10–90 of runs, balls, wickets and runs conceded; the **median-band scorecard** —
+each player's mean over the draws whose total lies in the central tenth of the total's
+distribution — which sums to that band's mean total by construction, so the scorecard and
+the innings total shown are one picture; P(win) and P(tie); the margin as cricket states it
+(runs when the side batting first wins, balls remaining and wickets in hand when the chaser
+does); and each player's contribution to the total's spread, Cov(player, total) / Var(total).
+
+*Shared match factor.* Independent batter draws under the balls constraint may under-disperse
+totals: a pitch or a day is shared by both sides. This is measured first (E2, walk-forward
+folds): the PIT of actual first-innings totals in the simulated distribution and the ratio of
+actual to simulated dispersion. If under-dispersed, one multiplicative factor per draw,
+shared by both innings and applied to every batter's runs draw, is sampled from the **as-of
+residual distribution**: the ratios actual / simulated-mean total over the last 92 days
+before the cutoff — the temporal calibration fold the members do not train on (H-21) —
+deconvolved of the simulator's own dispersion (shrunk toward 1 by √(excess / residual
+variance)). Never a hand-set CV; decided on the folds, before/after recorded.
+
+*Budget and scope.* N draws (default 2,000) configurable and seeded, vectorised over draws;
+under a second per fixture. Limited-overs formats only: TEST has no innings length and stays
+on the greedy path (H-17). Not modelled, and said so: the overshoot at the target (a chase
+ends exactly at it), rain and DLS, per-ball sequencing, batting-order optimisation (E3, P-7).
+
 ### L3 — selection and explanation
 
 Already in S-10: optimiser, marginal values, role coverage. Add: the batting-order
