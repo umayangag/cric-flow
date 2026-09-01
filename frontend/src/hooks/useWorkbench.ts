@@ -2,44 +2,14 @@ import { useCallback, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useAsync } from './useAsync';
 import type { ApiError } from '../lib/apiError';
-import type {
-  AccuracyTrendResponse,
-  AccuracyTrendFilters,
-  Migration,
-  ModelMetadataApiResponse,
-  ModelStatsResponse,
-  WalkForwardRegistry,
-} from '../types';
-
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
-
-/** How many run-history rows to pull for annotating the accuracy trend. */
-const RUN_HISTORY_LIMIT = 100;
+import type { ModelMetadataApiResponse, ModelStatsResponse, WalkForwardRegistry } from '../types';
 
 export interface UseWorkbenchReturn {
-  format: string;
-  setFormat: (v: string) => void;
-  startDate: string;
-  setStartDate: (v: string) => void;
-  endDate: string;
-  setEndDate: (v: string) => void;
-  limit: number;
-  setLimit: (v: number) => void;
-  maxLimit: number;
-  availableFormats: string[];
-  trendLoading: boolean;
-  trendError: ApiError | null;
-  trendData: AccuracyTrendResponse | null;
-  loadAccuracyTrend: () => Promise<void>;
-  /** Run history, so the trend can say what changed while it was moving (W5-2). */
-  runs: Migration[];
-  runsLoading: boolean;
   registryFile: File | null;
   registryError: string | null;
   registry: WalkForwardRegistry | null;
   handleRegistryFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  /** Full model metadata from GET /api/ml/model-metadata (model_modes + entries); null until loaded or on error. No fallback. */
+  /** Full model metadata from GET /api/ml/model-metadata; null until loaded or on error. No fallback. */
   modelMetadata: ModelMetadataApiResponse | null;
   modelMetadataLoading: boolean;
   modelMetadataError: ApiError | null;
@@ -49,25 +19,13 @@ export interface UseWorkbenchReturn {
 }
 
 /**
- * The Workbench's state, and the first surface migrated to {@link useAsync} (W1-1).
+ * The Workbench's state: what each loaded model *is*.
  *
- * It was chosen to prove the shape because it was the clearest case of the problem:
- * four independent fetches, each with its own `data`/`loading`/`error` triple written
- * out by hand, three of them with a near-identical mount effect and a
- * cancelled/active flag spelled differently every time. Twelve `useState` calls became
- * four `useAsync` calls, and the staleness guard the hand-written versions all lacked
- * came with them.
- *
- * What did *not* move: the four form fields, which are genuinely component state, and
- * the registry file, which is parsed locally rather than fetched.
+ * How well the models predict moved to the Evaluation report tab, which reads L4's own
+ * measurements. The accuracy trend that used to live here re-scored one match at a time
+ * against the batting, bowling and fielding models, and went with them in P-5.
  */
 export function useWorkbench(): UseWorkbenchReturn {
-  const [format, setFormat] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
-
-  const formats = useAsync(api.getFormats, { runOnMount: [] });
   const metadata = useAsync(api.getModelMetadata, {
     runOnMount: [],
     errorMessage: 'Failed to load model metadata',
@@ -79,24 +37,10 @@ export function useWorkbench(): UseWorkbenchReturn {
     runOnMount: [],
     errorMessage: 'Failed to load model stats',
   });
-  const trend = useAsync((filters: AccuracyTrendFilters) => api.accuracyTrend(filters));
-  // Enough history to cover a plotted window; the panel filters it to the dates shown.
-  const runs = useAsync(() => api.opsMigrations(1, RUN_HISTORY_LIMIT), { runOnMount: [] });
 
   const [registryFile, setRegistryFile] = useState<File | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<WalkForwardRegistry | null>(null);
-
-  const loadAccuracyTrend = useCallback(async () => {
-    await trend.run({
-      format: format || undefined,
-      start_date: startDate || undefined,
-      end_date: endDate || undefined,
-      order: 'asc',
-      limit: Math.min(Math.max(1, limit), MAX_LIMIT),
-      cache: 'read',
-    });
-  }, [trend, format, startDate, endDate, limit]);
 
   const handleRegistryFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -128,24 +72,6 @@ export function useWorkbench(): UseWorkbenchReturn {
 
   return useMemo(
     () => ({
-      format,
-      setFormat,
-      startDate,
-      setStartDate,
-      endDate,
-      setEndDate,
-      limit,
-      setLimit,
-      maxLimit: MAX_LIMIT,
-      // A failed format list is not worth a message here: the picker simply offers
-      // nothing, and the panels below say why they are empty.
-      availableFormats: formats.data ?? [],
-      trendLoading: trend.loading,
-      trendError: trend.error,
-      trendData: trend.data,
-      loadAccuracyTrend,
-      runs: runs.data?.items ?? [],
-      runsLoading: runs.loading,
       registryFile,
       registryError,
       registry,
@@ -158,17 +84,6 @@ export function useWorkbench(): UseWorkbenchReturn {
       modelStatsError: stats.error,
     }),
     [
-      format,
-      startDate,
-      endDate,
-      limit,
-      formats.data,
-      trend.loading,
-      trend.error,
-      trend.data,
-      loadAccuracyTrend,
-      runs.data,
-      runs.loading,
       registryFile,
       registryError,
       registry,

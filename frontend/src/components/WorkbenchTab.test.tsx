@@ -2,41 +2,30 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import WorkbenchTab from './WorkbenchTab';
 
-const mockGetFormats = vi.fn();
-const mockAccuracyTrend = vi.fn();
 const mockGetModelMetadata = vi.fn();
+const mockGetModelStats = vi.fn();
 vi.mock('../api', () => ({
   api: {
-    getFormats: (...args: unknown[]) => mockGetFormats(...args),
-    accuracyTrend: (...args: unknown[]) => mockAccuracyTrend(...args),
     getModelMetadata: (...args: unknown[]) => mockGetModelMetadata(...args),
+    getModelStats: (...args: unknown[]) => mockGetModelStats(...args),
   },
 }));
 
 describe('WorkbenchTab', () => {
   beforeEach(() => {
-    mockGetFormats.mockReset();
-    mockAccuracyTrend.mockReset();
     mockGetModelMetadata.mockReset();
+    mockGetModelStats.mockReset();
     mockGetModelMetadata.mockResolvedValue({});
+    mockGetModelStats.mockResolvedValue({ models: [] });
   });
 
-  it('loads formats on mount and renders format selector', async () => {
-    mockGetFormats.mockResolvedValue(['T20', 'ODI']);
+  it('points at the evaluation report rather than re-scoring matches here', async () => {
     render(<WorkbenchTab />);
-    await waitFor(() => expect(mockGetFormats).toHaveBeenCalled());
-    expect(screen.getByRole('combobox', { name: /format/i })).toBeInTheDocument();
-  });
-
-  it('renders Accuracy trend section and Load button', async () => {
-    mockGetFormats.mockResolvedValue([]);
-    render(<WorkbenchTab />);
-    await waitFor(() => expect(mockGetFormats).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: /load accuracy trend/i })).toBeInTheDocument();
+    await waitFor(() => expect(mockGetModelMetadata).toHaveBeenCalled());
+    expect(screen.getByText(/Evaluation report/i)).toBeInTheDocument();
   });
 
   it('uses backend model metadata when available', async () => {
-    mockGetFormats.mockResolvedValue([]);
     mockGetModelMetadata.mockResolvedValue({
       batting: {
         level: 'player',
@@ -53,7 +42,6 @@ describe('WorkbenchTab', () => {
   });
 
   it('shows error when ML service is down (model metadata fetch fails)', async () => {
-    mockGetFormats.mockResolvedValue([]);
     mockGetModelMetadata.mockRejectedValue(new Error('Connection refused'));
     render(<WorkbenchTab />);
     await waitFor(() => expect(mockGetModelMetadata).toHaveBeenCalled());

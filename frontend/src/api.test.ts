@@ -99,77 +99,6 @@ describe('frontend api client (DB-backed)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('accuracyTrend fetches with optional filters', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
-    const payload = { points: [], metrics: [] };
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
-    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
-
-    await api.accuracyTrend({
-      format: 'T20',
-      start_date: '2024-01-01',
-      end_date: '2024-12-31',
-      team1: 'IND',
-      team2: 'AUS',
-      order: 'asc',
-      limit: 50,
-      cache: 'read',
-      metrics: 'runs_mae',
-    });
-
-    const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('/api/backtest/accuracy-trend');
-    expect(url).toContain('format=T20');
-    expect(url).toContain('start_date=2024-01-01');
-    expect(url).toContain('end_date=2024-12-31');
-    expect(url).toContain('team1=IND');
-    expect(url).toContain('team2=AUS');
-    expect(url).toContain('order=asc');
-    expect(url).toContain('limit=50');
-    expect(url).toContain('cache=read');
-    expect(url).toContain('metrics=runs_mae');
-    expect(url).not.toContain('use_unified_model');
-    vi.unstubAllGlobals();
-  });
-
-  it('evaluateStart POSTs and returns job_id', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ job_id: 'job-123' }),
-    });
-    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
-
-    const result = await api.evaluateStart('T20', 'IND', 'AUS', 789);
-
-    expect(result).toEqual({ job_id: 'job-123' });
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/backtest/evaluate-start'),
-      expect.objectContaining({ method: 'POST' }),
-    );
-    const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('match_id=789');
-    // Both model toggles are retired: go-app refuses either of them (W0-1, W0-2), so a
-    // request the UI can construct must not carry them.
-    expect(url).not.toContain('use_unified_model');
-    expect(url).not.toContain('use_latest_model');
-    vi.unstubAllGlobals();
-  });
-
-  it('getEvaluateStatus fetches with job_id', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
-    const payload = { status: 'done', result: {} };
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
-    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
-
-    const result = await api.getEvaluateStatus('job-456');
-    expect(result).toEqual(payload);
-    const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('/api/backtest/evaluate-status');
-    expect(url).toContain('job_id=job-456');
-    vi.unstubAllGlobals();
-  });
-
   it('predictTeamSelection POSTs params and returns selection', async () => {
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
     const payload = {
@@ -178,13 +107,14 @@ describe('frontend api client (DB-backed)', () => {
           player_id: 1,
           player_name: 'A',
           runs: 20,
+          runs_range: { p10: 4, p90: 51 },
           wickets: 0,
-          economy: 7,
-          catches: 0,
-          run_outs: 0,
+          runs_conceded: 0,
         },
       ],
       team2: [],
+      selection: { objective: 'win', optimised: true },
+      win_probability: { team1: 0.61, source: 'display', predicted_winner: 'IND' },
     };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
@@ -194,8 +124,6 @@ describe('frontend api client (DB-backed)', () => {
       team1: 'IND',
       team2: 'AUS',
       match_date: '2024-06-15',
-      simulate: true,
-      simulation_top_k: 3,
     });
 
     expect(result).toEqual(payload);
@@ -227,6 +155,33 @@ describe('frontend api client (DB-backed)', () => {
       expect.stringContaining('/api/options/venues'),
       expect.any(Object),
     );
+    vi.unstubAllGlobals();
+  });
+
+  it('evaluationReport fetches the harness report from the backtest surface', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = { formats: {}, serving_parity: { passed: true } };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.evaluationReport();
+
+    expect(result).toEqual(payload);
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/api/backtest/report');
+    vi.unstubAllGlobals();
+  });
+
+  it('opsStatus and health go to their own routes', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    await api.opsStatus();
+    await api.health();
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/ops/status');
+    expect(fetchMock.mock.calls[1][0]).toContain('/api/health/ml');
     vi.unstubAllGlobals();
   });
 });

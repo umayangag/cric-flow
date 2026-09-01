@@ -1,7 +1,6 @@
 import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import SectionCard from './common/SectionCard';
-import WorkbenchAccuracyTrendSection from './WorkbenchAccuracyTrendSection';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
 import WorkbenchProvenanceSection from './WorkbenchProvenanceSection';
@@ -9,22 +8,6 @@ import { useWorkbench } from '../hooks/useWorkbench';
 
 const WorkbenchTab: React.FC = () => {
   const {
-    format,
-    setFormat,
-    startDate,
-    setStartDate,
-    endDate,
-    setEndDate,
-    limit,
-    setLimit,
-    maxLimit,
-    availableFormats,
-    trendLoading,
-    trendError,
-    trendData,
-    runs,
-    runsLoading,
-    loadAccuracyTrend,
     registryFile,
     registryError,
     registry,
@@ -44,11 +27,10 @@ const WorkbenchTab: React.FC = () => {
           What is the Workbench?
         </Typography>
         <Typography variant="body2" component="span">
-          The Workbench lets you inspect how well the ML models predict real match outcomes. Use{' '}
-          <strong>Accuracy trend</strong> to load backtest results (per-match MAE and aggregates),
-          and <strong>Walk-forward registry</strong> to view results from the walk-forward pipeline
-          (train → predict next window → score). Predictions always use the model trained for the
-          match&apos;s own format.
+          The Workbench lets you inspect what each loaded model is: the dataset it was trained on,
+          its features, and its artifacts. How well those models predict is the{' '}
+          <strong>Evaluation report</strong> tab, which reads the harness&apos;s own measurements
+          rather than re-scoring matches here.
         </Typography>
         <Typography variant="body2" component="div" sx={{ mt: 1 }}>
           Running the pipeline lives in <strong>Ops → Pipeline</strong>, which shows each
@@ -56,25 +38,6 @@ const WorkbenchTab: React.FC = () => {
           <code>docs/ml-and-training.md</code>.
         </Typography>
       </Alert>
-
-      <WorkbenchAccuracyTrendSection
-        format={format}
-        availableFormats={availableFormats}
-        startDate={startDate}
-        endDate={endDate}
-        limit={limit}
-        maxLimit={maxLimit}
-        trendLoading={trendLoading}
-        trendError={trendError}
-        runs={runs}
-        runsLoading={runsLoading}
-        trendData={trendData}
-        onChangeFormat={setFormat}
-        onChangeStartDate={setStartDate}
-        onChangeEndDate={setEndDate}
-        onChangeLimit={(value) => setLimit(value)}
-        onLoad={loadAccuracyTrend}
-      />
 
       <WorkbenchRegistrySection
         registryFile={registryFile}

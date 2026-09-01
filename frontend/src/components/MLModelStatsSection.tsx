@@ -18,7 +18,6 @@ import SectionCard from './common/SectionCard';
 import ErrorNotice from './common/ErrorNotice';
 import type { ApiError } from '../lib/apiError';
 import { MLModelRow } from './MLModelRow';
-import MLPredictionGraph from './MLPredictionGraph';
 import OpsFormatHierarchy from './OpsFormatHierarchy';
 
 /** Presentational section for ML model stats: table, refresh button, loading/error states. */
@@ -204,13 +203,6 @@ export function MLModelStatsSection({
                 </Table>
               </TableContainer>
             )}
-          </SectionCard>
-
-          <SectionCard
-            title="Prediction model flow"
-            subtitle="Features at cutoff → per-player models (batting, bowling, fielding) and the match-level innings model → player lines reconciled to the innings targets → team aggregates + extras → win model (winner and team scores reconciled to win probability) → team selection and simulation, scored with the combination meta weights when one is configured."
-          >
-            <MLPredictionGraph />
           </SectionCard>
 
           <SectionCard

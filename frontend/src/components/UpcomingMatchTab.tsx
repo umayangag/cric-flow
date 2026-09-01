@@ -1,76 +1,27 @@
 import React from 'react';
 import {
+  Alert,
+  AlertTitle,
   Autocomplete,
   Box,
   Button,
   CircularProgress,
   createFilterOptions,
   FormControl,
-  FormControlLabel,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
   Stack,
-  Switch,
-  type SxProps,
   TextField,
   Typography,
 } from '@mui/material';
 import TeamTable from './TeamTable';
+import MatchScorecard from './MatchScorecard';
 import ErrorNotice from './common/ErrorNotice';
 import PredictionReadiness from './PredictionReadiness';
 import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
-import type { PredictScorecardSummary } from '../types';
 
 const filter = createFilterOptions<string>();
-
-function ScorecardSummaryDisplay({
-  title,
-  summaryData,
-  team1,
-  team2,
-  titleColor,
-  sx,
-}: {
-  title: string;
-  summaryData: PredictScorecardSummary;
-  team1: string;
-  team2: string;
-  titleColor?: string;
-  sx?: SxProps;
-}) {
-  return (
-    <Paper variant="outlined" sx={{ p: 2, mb: 2, ...sx }}>
-      <Typography
-        variant="subtitle2"
-        {...(titleColor ? { sx: { color: titleColor } } : { color: 'text.secondary' })}
-        gutterBottom
-      >
-        {title}
-      </Typography>
-      <Stack direction="row" spacing={3} flexWrap="wrap">
-        <Typography variant="body2">
-          <strong>Innings 1 ({team1}):</strong> {summaryData.innings1_total.toFixed(0)} runs
-        </Typography>
-        <Typography variant="body2">
-          <strong>Innings 2 ({team2}):</strong> {summaryData.innings2_total.toFixed(0)} runs
-        </Typography>
-        {summaryData.predicted_winner && (
-          <Typography variant="body2">
-            <strong>Predicted winner:</strong> {summaryData.predicted_winner}
-          </Typography>
-        )}
-        {summaryData.team1_win_probability != null && (
-          <Typography variant="body2">
-            <strong>Win probability ({team1}):</strong>{' '}
-            {(summaryData.team1_win_probability * 100).toFixed(1)}%
-          </Typography>
-        )}
-      </Stack>
-    </Paper>
-  );
-}
 
 function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
   const filtered = filter(options, params);
@@ -91,8 +42,6 @@ const UpcomingMatchTab: React.FC = () => {
     setVenue,
     matchDate,
     setMatchDate,
-    runSimulation,
-    setRunSimulation,
     availableFormats,
     availableTeam1s,
     availableTeam2s,
@@ -191,17 +140,6 @@ const UpcomingMatchTab: React.FC = () => {
           fullWidth
         />
 
-        <FormControlLabel
-          control={
-            <Switch
-              checked={runSimulation}
-              onChange={(_, checked) => setRunSimulation(checked)}
-              color="primary"
-            />
-          }
-          label="Run Monte Carlo simulation (win prob & innings distribution over top XIs)"
-        />
-
         <Button
           variant="contained"
           onClick={handlePredict}
@@ -220,65 +158,35 @@ const UpcomingMatchTab: React.FC = () => {
 
       {result && (
         <Box sx={{ mt: 3 }}>
-          {result.scorecard_summary && (
-            <ScorecardSummaryDisplay
-              title="Scorecard summary"
-              summaryData={result.scorecard_summary}
-              team1={team1}
-              team2={team2}
-              sx={{ bgcolor: 'grey.50' }}
-            />
-          )}
-          {result.scorecard_summary_reconciled && (
-            <ScorecardSummaryDisplay
-              title="Reconciled scorecard summary (aligned with win model)"
-              summaryData={result.scorecard_summary_reconciled}
-              team1={team1}
-              team2={team2}
-              titleColor="primary.dark"
-              sx={{ bgcolor: 'primary.50' }}
-            />
-          )}
-          {result.simulation && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'primary.50' }}>
-              <Typography variant="subtitle2" color="primary.dark" gutterBottom>
-                Monte Carlo simulation (over top XIs and sampled outcomes)
-              </Typography>
-              <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ mb: 1 }}>
-                <Typography variant="body2">
-                  <strong>Win prob ({team1}):</strong>{' '}
-                  {(result.simulation.win_probability_team1 * 100).toFixed(1)}%
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Win prob ({team2}):</strong>{' '}
-                  {(result.simulation.win_probability_team2 * 100).toFixed(1)}%
-                </Typography>
-                <Typography variant="body2">
-                  <strong>Draw:</strong>
-                  {(result.simulation.draw_probability * 100).toFixed(1)}%
-                </Typography>
-              </Stack>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                Innings 1 total: P10 = {result.simulation.innings1_total_p10.toFixed(0)} · P50 ={' '}
-                {result.simulation.innings1_total_p50.toFixed(0)} · P90 ={' '}
-                {result.simulation.innings1_total_p90.toFixed(0)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block">
-                Innings 2 total: P10 = {result.simulation.innings2_total_p10.toFixed(0)} · P50 ={' '}
-                {result.simulation.innings2_total_p50.toFixed(0)} · P90 ={' '}
-                {result.simulation.innings2_total_p90.toFixed(0)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                {result.simulation.num_matchups} matchups × {result.simulation.num_samples} samples
-              </Typography>
-            </Paper>
+          <MatchScorecard
+            scorecard={result.scorecard}
+            winProbability={result.win_probability}
+            team1={team1}
+            team2={team2}
+          />
+          {!result.selection.optimised && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <AlertTitle>Not optimised</AlertTitle>
+              {result.selection.note ??
+                'This format has no win objective that ranks, so the eleven is picked by as-of rating under the same constraints.'}
+            </Alert>
           )}
           <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>
-            Best 11 for each team
+            {result.selection.optimised
+              ? 'Best 11 for each team'
+              : 'Rating-ordered 11 for each team'}
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-            <TeamTable teamName={team1} players={result.team1} />
-            <TeamTable teamName={team2} players={result.team2} />
+            <TeamTable
+              teamName={team1}
+              players={result.team1}
+              optimised={result.selection.optimised}
+            />
+            <TeamTable
+              teamName={team2}
+              players={result.team2}
+              optimised={result.selection.optimised}
+            />
           </Stack>
         </Box>
       )}

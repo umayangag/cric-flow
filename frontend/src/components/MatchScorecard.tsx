@@ -1,155 +1,93 @@
 import React from 'react';
-import {
-  Box,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@mui/material';
-import type { MatchScorecardResponse } from '../types';
-
-import { formatCount, formatDecimal } from '../utils/format';
-import ErrorNotice from './common/ErrorNotice';
-import type { ApiError } from '../lib/apiError';
+import { Chip, Paper, Stack, Typography } from '@mui/material';
+import type { PredictInningsTotal, PredictScorecard, PredictWinProbability } from '../types';
 
 type Props = {
-  scorecard: MatchScorecardResponse | null;
-  loading?: boolean;
-  error?: ApiError | string | null;
-  /** Override default "Match summary" title */
-  title?: string;
-  /** Optional subtitle (e.g. for predicted card: "ML using data before match date") */
-  subtitle?: string;
+  /** Absent for a format with no innings length: there is no total, and none is invented. */
+  scorecard?: PredictScorecard;
+  winProbability: PredictWinProbability;
+  team1: string;
+  team2: string;
 };
 
-const MatchScorecard: React.FC<Props> = ({
-  scorecard,
-  loading,
-  error,
-  title = 'Match summary',
-  subtitle,
-}) => {
-  if (loading) {
-    return (
-      <Typography color="text.secondary" sx={{ fontStyle: 'italic', py: 2 }}>
-        Loading match summary…
-      </Typography>
-    );
-  }
-  if (error) {
-    return <ErrorNotice error={error} title="Could not load the scorecard" />;
-  }
-  if (!scorecard || !scorecard.innings?.length) {
-    return (
-      <Typography color="text.secondary" sx={{ fontStyle: 'italic', py: 2 }}>
-        No scorecard available for this match.
-      </Typography>
-    );
-  }
+const winProbabilitySources: Record<PredictWinProbability['source'], string> = {
+  display: 'display model (monotone GBM over both elevens)',
+  simulator: 'simulator (share of simulated matches won)',
+};
 
-  const dateStr = scorecard.match_date
-    ? new Date(scorecard.match_date).toISOString().slice(0, 10)
-    : '';
+const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = ({
+  label,
+  innings,
+}) => (
+  <Typography variant="body2">
+    <strong>{label}:</strong> {innings.total.toFixed(0)} runs ({innings.p10.toFixed(0)}–
+    {innings.p90.toFixed(0)}), extras {innings.extras.toFixed(0)}
+  </Typography>
+);
 
+/**
+ * The predicted match: the innings totals with the range the draws produced, and the
+ * headline win probability with the model it came from.
+ *
+ * The totals and the per-player lines come from one set of draws, so they sum: nothing here
+ * is rescaled toward the win probability, which is what the two estimates used to be pulled
+ * together into. Where the format has no innings length there is no total at all, and the
+ * card says so rather than summing eleven medians and calling it an innings.
+ */
+const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, team1, team2 }) => {
   return (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-        {title}
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+        Predicted match
       </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        {subtitle ?? `${dateStr}${scorecard.venue ? ` · ${scorecard.venue}` : ''}`}
-      </Typography>
-
-      {scorecard.innings.map((inn) => (
-        <Paper key={inn.inning_number} sx={{ mt: 2, p: 2 }} variant="outlined">
-          <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-            Inning {inn.inning_number}: {inn.batting_team_name} vs {inn.bowling_team_name}
+      <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ mb: 1 }}>
+        <Typography variant="body2">
+          <strong>Win probability ({team1}):</strong> {(winProbability.team1 * 100).toFixed(1)}%
+        </Typography>
+        <Typography variant="body2">
+          <strong>Predicted winner:</strong> {winProbability.predicted_winner}
+        </Typography>
+        {winProbability.simulated != null && (
+          <Typography variant="body2" color="text.secondary">
+            simulated: {(winProbability.simulated * 100).toFixed(1)}%
           </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            {inn.batting_team_name} {inn.runs_scored}/{inn.wickets_lost}
-            {inn.extras > 0 ? ` (extras ${inn.extras})` : ''}
-            {inn.target_runs != null && inn.target_runs > 0 ? ` · Target ${inn.target_runs}` : ''}
+        )}
+      </Stack>
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
+        <Chip
+          size="small"
+          variant="outlined"
+          label={`source: ${winProbabilitySources[winProbability.source]}`}
+        />
+        {scorecard && (
+          <>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`${scorecard.samples.toLocaleString()} draws`}
+            />
+            {scorecard.toss_marginalised && (
+              <Chip size="small" variant="outlined" label="toss unknown: both orders averaged" />
+            )}
+          </>
+        )}
+      </Stack>
+      {scorecard ? (
+        <Stack spacing={0.5}>
+          <InningsLine label={`Innings 1 (${team1})`} innings={scorecard.innings1} />
+          <InningsLine label={`Innings 2 (${team2})`} innings={scorecard.innings2} />
+          <Typography variant="caption" color="text.secondary">
+            Totals and the per-player lines come from the same draws, so the lines and extras sum to
+            the total shown. Nothing is rescaled toward the win probability.
           </Typography>
-
-          <Typography variant="caption" fontWeight="bold" component="div" sx={{ mt: 1 }}>
-            Batting — {inn.batting_team_name}
-          </Typography>
-          <TableContainer>
-            <Table size="small" aria-label={`Batting inning ${inn.inning_number}`}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Batter</TableCell>
-                  <TableCell align="right">R</TableCell>
-                  <TableCell align="right">B</TableCell>
-                  <TableCell align="right">4s</TableCell>
-                  <TableCell align="right">6s</TableCell>
-                  <TableCell align="right">SR</TableCell>
-                  <TableCell>How out</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {inn.batting.map((b, idx) => (
-                  <TableRow key={`${b.player_name}-${idx}`}>
-                    <TableCell>{b.player_name}</TableCell>
-                    <TableCell align="right">{formatCount(b.runs)}</TableCell>
-                    <TableCell align="right">{formatCount(b.balls)}</TableCell>
-                    <TableCell align="right">{formatCount(b.fours)}</TableCell>
-                    <TableCell align="right">{formatCount(b.sixes)}</TableCell>
-                    <TableCell align="right">{formatDecimal(b.strike_rate)}</TableCell>
-                    <TableCell>{b.how_out ?? '-'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-
-          <Typography variant="caption" fontWeight="bold" component="div" sx={{ mt: 2 }}>
-            Bowling — {inn.bowling_team_name}
-          </Typography>
-          <TableContainer>
-            <Table size="small" aria-label={`Bowling inning ${inn.inning_number}`}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Bowler</TableCell>
-                  <TableCell align="right">O</TableCell>
-                  <TableCell align="right">M</TableCell>
-                  <TableCell align="right">R</TableCell>
-                  <TableCell align="right">W</TableCell>
-                  <TableCell align="right">Econ</TableCell>
-                  <TableCell align="right">Wides</TableCell>
-                  <TableCell align="right">No</TableCell>
-                  <TableCell align="right">SR</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {inn.bowling.map((w, idx) => {
-                  const balls = w.balls ?? 0;
-                  const wickets = w.wickets ?? 0;
-                  const bowlSR = wickets > 0 && balls > 0 ? balls / wickets : null;
-                  return (
-                    <TableRow key={`${w.player_name}-${idx}`}>
-                      <TableCell>{w.player_name}</TableCell>
-                      <TableCell align="right">{formatDecimal(w.overs, 1)}</TableCell>
-                      <TableCell align="right">{formatCount(w.maidens)}</TableCell>
-                      <TableCell align="right">{formatCount(w.runs)}</TableCell>
-                      <TableCell align="right">{formatCount(w.wickets)}</TableCell>
-                      <TableCell align="right">{formatDecimal(w.economy)}</TableCell>
-                      <TableCell align="right">{formatCount(w.wides)}</TableCell>
-                      <TableCell align="right">{formatCount(w.no_balls)}</TableCell>
-                      <TableCell align="right">{formatDecimal(bowlSR)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      ))}
-    </Box>
+        </Stack>
+      ) : (
+        <Typography variant="caption" color="text.secondary">
+          This format has no fixed innings length, so there is no simulated total. The per-player
+          numbers are the performance model’s own medians and 10–90 intervals.
+        </Typography>
+      )}
+    </Paper>
   );
 };
 
