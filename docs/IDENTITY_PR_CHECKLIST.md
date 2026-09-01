@@ -367,13 +367,15 @@ returns one club across 321 matches.
 review, and hence the mapping is committed rather than computed.
 
 > **Measured (`identity/i-4-team-lineage`).** Both acceptance criteria hold. The nine pairs
-> are linked — `opposition` holds 524 rows and **515 clubs** — and `Royal Challengers`
-> returns one club across **321** matches, which the gender split now reports as its two
-> real halves: 286 men's and 35 women's.
+> are linked, plus a tenth added on review — `opposition` holds 524 rows and **514 clubs** —
+> and `Royal Challengers` returns one club across **321** matches, which the gender split
+> now reports as its two real halves: 286 men's and 35 women's.
 >
 > The merge reaches the model, which is the point of the item: the rating pass's team keys
-> go 524 → 515, and **94 head-to-head pairs collapse** (8,446 → 8,352) — 94 fixtures that
-> were a first meeting and are not.
+> go 524 → 514, and **94 head-to-head pairs collapse** (8,446 → 8,352) — 94 fixtures that
+> were a first meeting and are not. (The head-to-head figure is from the nine-pair run;
+> Rising Pune played two seasons in one competition, so the tenth adds no new fixture pair
+> either side already had.)
 >
 > **The detector found more than nine, and the extra ones are not here.** Re-run after I-3,
 > it also surfaces England's 2025 women's restructure (`Southern Vipers → Hampshire` at 88%
@@ -384,9 +386,10 @@ review, and hence the mapping is committed rather than computed.
 > this item's own risk note is why it is not made by whoever happened to run the script.
 > The candidates are in the PR body for a reviewer.
 >
-> **`Rising Pune Supergiants → Rising Pune Supergiant`** (45%) is the one clear omission —
-> the same IPL franchise dropping an "s" between its two seasons. It is left out only
-> because the acceptance criterion names nine pairs; add it when someone confirms it.
+> **`Rising Pune Supergiants → Rising Pune Supergiant`** (45%) was reviewed and added, so
+> the mapping holds ten. The data settles it: 14 matches in IPL 2016 and 16 in IPL 2017, one
+> competition, consecutive seasons, no temporal overlap, and a name that differs by a plural
+> — the same case as `Kathmandu Gurkhas → Gorkhas`. One club across 30 matches.
 
 ---
 
