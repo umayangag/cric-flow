@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from ml.xi import contract as C
-from ml.xi.sources import Deliveries, MatchRecord
+from ml.xi.sources import Deliveries, MatchRecord, batting_positions
 
 _N_FMT = len(C.FORMAT_CODES)
 
@@ -62,11 +62,21 @@ def elo_expected(rating_a: float, rating_b: float) -> float:
     return 1.0 / (1.0 + 10 ** ((rating_b - rating_a) / 400.0))
 
 
-class RatingState:
-    """All as-of state. Arrays are (format, player_slot); grown on demand."""
+_N_PHASES = len(C.PHASE_NAMES)
 
-    def __init__(self) -> None:
+
+class RatingState:
+    """All as-of state. Arrays are (format, player_slot); grown on demand.
+
+    ``gender_split_context`` is E7 (H-7): when True the context baselines -- expected runs
+    and wickets per (format, over) -- are kept separately for women's and men's matches, so
+    a woman's impact is measured against women's cricket rather than a blend. Off by
+    default; the flag is part of the feature definition and is recorded in the artifact.
+    """
+
+    def __init__(self, gender_split_context: bool = False) -> None:
         self.players = PlayerIndex()
+        self.gender_split_context = gender_split_context
         n = 1024
         z = lambda: np.zeros((_N_FMT, n))  # noqa: E731
         self.bat_rae, self.bat_balls, self.bat_wae, self.bat_matches = z(), z(), z(), z()
@@ -75,10 +85,19 @@ class RatingState:
         self.career_all = np.zeros(n)
         self.keeper = np.zeros(n)
         self.pelo = np.full((_N_FMT, n), C.ELO_INITIAL)
-        # context baselines: (format, over) cumulative balls / runs / wickets with a weak prior
-        self.ctx_balls = np.ones((_N_FMT, C.MAX_OVER_INDEX))
-        self.ctx_runs = np.full((_N_FMT, C.MAX_OVER_INDEX), 1.2)
-        self.ctx_wickets = np.full((_N_FMT, C.MAX_OVER_INDEX), 0.05)
+        # expected batting slot: decayed sum of positions batted, decayed count of innings
+        # batted, decayed count of XI appearances
+        self.bat_pos_sum, self.bat_pos_n, self.xi_n = z(), z(), z()
+        # per-phase impact: (format, phase, player) decayed sums and ball counts
+        zp = lambda: np.zeros((_N_FMT, _N_PHASES, n))  # noqa: E731
+        self.bat_ph_rae, self.bat_ph_balls = zp(), zp()
+        self.bowl_ph_rse, self.bowl_ph_balls = zp(), zp()
+        # context baselines: (gender group, format, over) cumulative balls / runs / wickets
+        # with a weak prior. Group 0 is everyone; group 1 is women's matches when
+        # gender_split_context is on, otherwise unused.
+        self.ctx_balls = np.ones((2, _N_FMT, C.MAX_OVER_INDEX))
+        self.ctx_runs = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 1.2)
+        self.ctx_wickets = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 0.05)
         # team-level state
         self.team_elo: Dict[tuple, float] = defaultdict(lambda: C.ELO_INITIAL)
         self.team_results: Dict[tuple, List[float]] = defaultdict(list)
@@ -94,6 +113,7 @@ class RatingState:
             return
         for name in (
             "bat_rae", "bat_balls", "bat_wae", "bat_matches", "bowl_rse", "bowl_balls", "bowl_wae", "bowl_matches", "career",
+            "bat_pos_sum", "bat_pos_n", "xi_n", "bat_ph_rae", "bat_ph_balls", "bowl_ph_rse", "bowl_ph_balls",
         ):  # fmt: skip
             setattr(self, name, _grow(getattr(self, name), n, 0.0))
         self.career_all = _grow(self.career_all, n, 0.0)
@@ -107,12 +127,15 @@ class RatingState:
 
     # -- reads ---------------------------------------------------------------------------
     def side_vectors(self, format_code: str, player_keys: Sequence[str]) -> Dict[str, np.ndarray]:
-        """Per-player as-of vectors for one side (``contract.PLAYER_VECTOR_KEYS``)."""
+        """Per-player as-of vectors for one side (``contract.PLAYER_VECTOR_KEYS`` plus
+        ``contract.PLAYER_ROLE_KEYS``). One read path for the win features, the optimiser
+        and the player-match rows, so training and serving cannot compute different
+        functions of the same eleven names."""
         f = C.FORMAT_INDEX[format_code]
         s = self._slots(player_keys)
         bat_m = self.bat_matches[f, s]
         bowl_m = self.bowl_matches[f, s]
-        return {
+        out = {
             "exp_balls_faced": np.where(bat_m > 0, self.bat_balls[f, s] / np.maximum(bat_m, 1e-9), 0.0),
             "exp_balls_bowled": np.where(bowl_m > 0, self.bowl_balls[f, s] / np.maximum(bowl_m, 1e-9), 0.0),
             "bat_rate": self.bat_rae[f, s] / (self.bat_balls[f, s] + C.PRIOR_BALLS),
@@ -123,7 +146,18 @@ class RatingState:
             "career_all": self.career_all[s].copy(),
             "pelo": self.pelo[f, s].copy(),
             "keeper": self.keeper[s].copy(),
+            "exp_bat_position": (self.bat_pos_sum[f, s] + C.BAT_POSITION_PRIOR * C.BAT_POSITION_PRIOR_INNINGS)
+            / (self.bat_pos_n[f, s] + C.BAT_POSITION_PRIOR_INNINGS),
+            "bat_innings_share": self.bat_pos_n[f, s] / np.maximum(self.xi_n[f, s], 1.0),
         }
+        for p, name in enumerate(C.PHASE_NAMES):
+            out[f"bat_{name}_rate"] = self.bat_ph_rae[f, p, s] / (self.bat_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
+            out[f"bowl_{name}_rate"] = self.bowl_ph_rse[f, p, s] / (self.bowl_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
+        return out
+
+    def _ctx_group(self, gender: str) -> int:
+        """Which context-baseline group a match belongs to (E7)."""
+        return 1 if self.gender_split_context and gender == "female" else 0
 
     def team_context(self, match: MatchRecord) -> Dict[str, float]:
         """Team-level features (constant w.r.t. the XI)."""
@@ -151,10 +185,22 @@ class RatingState:
         s1, s2 = self._slots(match.team1_players), self._slots(match.team2_players)
         d = match.deliveries
         if len(d):
-            self._update_impact(f, d)
+            self._update_impact(f, self._ctx_group(match.gender), match.format_code, d)
         both = np.concatenate([s1, s2])
         self.career[f, both] += 1.0
         self.career_all[both] += 1.0
+        # Expected batting slot: every XI member's accumulators decay together, so the mean
+        # position is unchanged by matches not batted in while the batted share is.
+        for name in ("bat_pos_sum", "bat_pos_n", "xi_n"):
+            getattr(self, name)[f, both] *= C.DECAY_PER_MATCH
+        self.xi_n[f, both] += 1.0
+        if len(d):
+            in_xi = set(both.tolist())
+            for key, position in batting_positions(d).items():
+                slot = self.players.key_to_slot.get(key)
+                if slot in in_xi:
+                    self.bat_pos_sum[f, slot] += float(position)
+                    self.bat_pos_n[f, slot] += 1.0
         self.team_venue_matches[(match.team1, match.venue)] += 1
         self.team_venue_matches[(match.team2, match.venue)] += 1
         y = match.outcome
@@ -181,10 +227,10 @@ class RatingState:
         self.matches_seen += 1
         self.last_date = match.match_date
 
-    def _update_impact(self, f: int, d: Deliveries) -> None:
+    def _update_impact(self, f: int, g: int, format_code: str, d: Deliveries) -> None:
         over = np.minimum(d.over, C.MAX_OVER_INDEX - 1)
-        exp_runs = self.ctx_runs[f, over] / self.ctx_balls[f, over]
-        exp_wk = self.ctx_wickets[f, over] / self.ctx_balls[f, over]
+        exp_runs = self.ctx_runs[g, f, over] / self.ctx_balls[g, f, over]
+        exp_wk = self.ctx_wickets[g, f, over] / self.ctx_balls[g, f, over]
         batters = self._slots(list(d.batter))
         bowlers = self._slots(list(d.bowler))
         ones = np.ones(len(d))
@@ -210,9 +256,13 @@ class RatingState:
             d.bowler_wicket - exp_wk,
             ones,
         )
-        np.add.at(self.ctx_balls[f], over, 1.0)
-        np.add.at(self.ctx_runs[f], over, d.runs_total)
-        np.add.at(self.ctx_wickets[f], over, d.wicket)
+        mid_start, death_start = C.PHASE_BOUNDS[format_code]
+        phase = np.where(d.over >= death_start, 2, np.where(d.over >= mid_start, 1, 0))
+        self._accumulate_phase(self.bat_ph_rae, self.bat_ph_balls, f, batters, phase, d.runs_batter - exp_runs)
+        self._accumulate_phase(self.bowl_ph_rse, self.bowl_ph_balls, f, bowlers, phase, exp_runs - d.runs_total)
+        np.add.at(self.ctx_balls[g, f], over, 1.0)
+        np.add.at(self.ctx_runs[g, f], over, d.runs_total)
+        np.add.at(self.ctx_wickets[g, f], over, d.wicket)
         stumped = np.nonzero(d.stumping)[0]
         for i in stumped:
             for key in d.fielders[i] if i < len(d.fielders) else []:
@@ -226,6 +276,15 @@ class RatingState:
         balls[f, uniq] += np.bincount(inv, weights=count, minlength=len(uniq))
         wtotal[f, uniq] += np.bincount(inv, weights=wvalue, minlength=len(uniq))
         matches[f, uniq] += 1.0
+
+    def _accumulate_phase(self, total, balls, f, who, phase, value) -> None:
+        """Like ``_accumulate`` but per innings phase: one decay per player per match,
+        additions land in the phase each ball was bowled in."""
+        uniq = np.unique(who)
+        total[f][:, uniq] *= C.DECAY_PER_MATCH
+        balls[f][:, uniq] *= C.DECAY_PER_MATCH
+        np.add.at(total[f], (phase, who), value)
+        np.add.at(balls[f], (phase, who), 1.0)
 
 
 # ---------------------------------------------------------------------------

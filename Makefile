@@ -245,6 +245,12 @@ train-xi:
 	set -a; [ -f .env ] && . ./.env; set +a; \
 	$(MAKE) -C ml-service train-xi CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
 
+# L4 evaluation harness (H-19): walk-forward + locked window, one JSON report. Reads the DB
+# or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory. See ml-service/Makefile.
+xi-evaluate:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service xi-evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,)
+
 # Compare the database against the Cricsheet archive (H-15). See ml-service/Makefile.
 XI_PARITY_DIR ?= data/go-app/cricsheet
 xi-parity:

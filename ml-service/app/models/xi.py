@@ -7,6 +7,7 @@ and serving paths compute the same function of the same eleven names (S-3c).
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -31,6 +32,11 @@ class XiOptimizeRequest(BaseModel):
     team_is_team1: bool = Field(default=True, description="Whether the pool's side bats first")
     constraints: XiConstraints = Field(default_factory=XiConstraints)
     max_evaluations: int = Field(default=20000, ge=100, le=200000)
+    as_of: Optional[date] = Field(
+        default=None,
+        description="Backtests only: serve from ratings as they stood before this date "
+        "instead of through today. Omit for live predictions.",
+    )
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
@@ -61,6 +67,11 @@ class XiWinRequest(BaseModel):
     venue_id: Optional[int] = None
     team1_bats_first: Optional[bool] = Field(
         default=None, description="Known after the toss; omit before it to average both batting orders"
+    )
+    as_of: Optional[date] = Field(
+        default=None,
+        description="Backtests only: serve from ratings as they stood before this date "
+        "instead of through today. Omit for live predictions.",
     )
 
     @field_validator("format", mode="before")

@@ -12,7 +12,7 @@ Two families, kept apart on purpose:
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 FORMAT_CODES: List[str] = ["T20", "T20I", "ODI", "TEST"]
 FORMAT_INDEX: Dict[str, int] = {code: i for i, code in enumerate(FORMAT_CODES)}
@@ -40,6 +40,22 @@ TEAM_FORM_WINDOW = 10
 HEAD_TO_HEAD_WINDOW = 10
 VENUE_PRIOR_MATCHES = 5.0
 
+# Innings phases, per format: (first middle over, first death over). Batting and bowling
+# impact is accumulated per phase so the performance model can see that a death-overs
+# hitter and an opening bowler are different jobs. TEST has no powerplay; its buckets are
+# positional (new ball / middle / old ball) and exist only so every format defines the
+# same columns.
+PHASE_NAMES: List[str] = ["pp", "mid", "death"]
+PHASE_BOUNDS: Dict[str, Tuple[int, int]] = {"T20": (6, 15), "T20I": (6, 15), "ODI": (10, 40), "TEST": (30, 80)}
+# Per-phase shrinkage: a third of PRIOR_BALLS, since each phase holds roughly a third of a
+# player's balls.
+PHASE_PRIOR_BALLS = PRIOR_BALLS / 3.0
+
+# Expected batting slot: shrunk toward position 7 with the weight of two innings, so a
+# player with no batting history reads as lower-middle order rather than an opener.
+BAT_POSITION_PRIOR = 7.0
+BAT_POSITION_PRIOR_INNINGS = 2.0
+
 # Per-player as-of vector keys (what the serving store holds for every player x format).
 PLAYER_VECTOR_KEYS: List[str] = [
     "exp_balls_faced",
@@ -53,6 +69,19 @@ PLAYER_VECTOR_KEYS: List[str] = [
     "pelo",  # player Elo in this format
     "keeper",  # 1.0 if the player has ever been credited with a stumping
 ]
+
+# As-of expected-role keys, held beside the vectors for every player x format. They feed
+# the player-match rows (L2-B's training frame) and are returned by the same
+# ``side_vectors`` read the win path uses, so training and serving cannot drift apart.
+PLAYER_ROLE_KEYS: List[str] = (
+    [
+        "exp_bat_position",  # decayed mean batting position, shrunk toward BAT_POSITION_PRIOR
+        "bat_innings_share",  # decayed share of XI appearances in which the player batted
+    ]
+    + [f"bat_{p}_rate" for p in PHASE_NAMES]  # runs above expectation per ball faced, per phase (shrunk)
+    + [f"bowl_{p}_rate" for p in PHASE_NAMES]  # runs saved vs expectation per ball bowled, per phase (shrunk)
+)
+
 
 # One side's aggregates, produced by ml.xi.ratings.aggregate_side. Order is the contract.
 SIDE_FEATURE_STEMS: List[str] = [
@@ -157,6 +186,50 @@ TEAM_CONTEXT_COLS: List[str] = [
 DISPLAY_FEATURE_COLS: List[str] = XI_FEATURE_COLS + TEAM_CONTEXT_COLS
 
 TARGET_COL = "team1_wins"
+
+# --- Player-match rows (L1 -> L2-B training frame) -----------------------------------
+#
+# One row per (match, player), for ALL XI players of every decided match -- never only
+# those who batted or bowled, because who got to bat is decided by the result (H-20).
+
+PLAYER_MATCH_META_COLS: List[str] = [
+    "match_id",
+    "match_date",
+    "format_code",
+    "gender",
+    "side",  # 1 = batted first
+    "team",
+    "opponent",
+    "venue",
+    "player_key",
+]
+
+PLAYER_MATCH_FEATURE_COLS: List[str] = (
+    PLAYER_VECTOR_KEYS
+    + PLAYER_ROLE_KEYS
+    + [f"own_{s}" for s in SIDE_FEATURE_STEMS]
+    + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
+    + ["venue_bf_rate", "venue_n", "elo_edge"]  # elo_edge = own team Elo minus opponent's
+)
+
+# What the player then did. Counts are over deliveries, wides included -- the same
+# definition the as-of ``exp_balls_*`` vectors use. ``batting_position`` is the order of
+# first appearance on strike in the player's first batting innings, 0 when they never
+# faced a ball; ``wickets`` and ``runs_conceded`` are the bowler-credited kinds and total
+# runs off the ball, matching ``bowl_wrate`` / ``bowl_rate``.
+PLAYER_MATCH_TARGET_COLS: List[str] = [
+    "balls_faced",
+    "runs",
+    "fours",
+    "sixes",
+    "dismissals",
+    "batting_position",
+    "balls_bowled",
+    "wickets",
+    "runs_conceded",
+]
+
+PLAYER_MATCH_COLS: List[str] = PLAYER_MATCH_META_COLS + PLAYER_MATCH_FEATURE_COLS + PLAYER_MATCH_TARGET_COLS
 
 
 def monotone_directions(columns: List[str]) -> List[int]:

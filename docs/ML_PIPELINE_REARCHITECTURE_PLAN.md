@@ -216,7 +216,7 @@ to two model families and one derived simulator, all fed by one pass over one ta
 | E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain |
 | E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
 | E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way |
-| E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's |
+| E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's — **run in P-2, §5.2: no effect; the split ships off** |
 | E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) |
 
 Already answered by S-9/S-10 (do not re-run): pooling formats for the win model (no),
@@ -287,6 +287,32 @@ they price identity for *this* window only. The women's subsets are too small to
 anything, which is itself the finding to carry into E7: gender-split context baselines
 cannot be evaluated on the women's holdout of a format until there are more of them.
 
+### 5.2 E7, run — gender-split context baselines (P-2)
+
+**Design.** `RatingState(gender_split_context=True)` keeps the (format, over) runs and
+wickets baselines separately for women's and men's matches, so a woman's impact is measured
+against women's cricket rather than a blend. Two `ml.xi.train` runs over the same
+Cricsheet-JSON source at `--cutoff 2025-09-01`, seeds (0, 1, 2), differing only in the flag.
+
+| format | subset | n | objective off | on | Δ | display off | on | Δ |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| T20  | women | 560  | 0.765 | 0.765 | −0.000 | 0.794 | 0.789 | −0.005 |
+| T20  | men   | 1075 | 0.694 | 0.694 | +0.000 | 0.712 | 0.707 | −0.005 |
+| T20I | women | 74   | 0.779 | 0.795 | +0.015 | 0.758 | 0.772 | +0.014 |
+| T20I | men   | 108  | 0.728 | 0.727 | −0.001 | 0.714 | 0.696 | −0.019 |
+| ODI  | women | 141  | 0.774 | 0.772 | −0.002 | 0.810 | 0.810 | +0.000 |
+| ODI  | men   | 234  | 0.619 | 0.621 | +0.001 | 0.670 | 0.666 | −0.004 |
+
+**Reading it.** T20 — the only women's subset large enough to say anything — moves by
+exactly nothing. The one delta over the decision rule's 0.01, T20I women +0.015, sits on 74
+matches that cannot resolve less than ±0.15, and the same arm costs T20I men −0.019 display,
+so the rule's "without hurting men's" clause fails even if the noise were believed.
+**No effect; the simpler option ships: one shared baseline per (format, over).** The
+mechanism stays behind `--gender-split-context` (the flag is recorded in the artifact and
+the run report), because §5.1's caveat still stands — the women's holdouts are the thing
+that has to grow before this question can be answered better, and re-asking it is then one
+flag rather than a branch.
+
 ---
 
 ## 6. Migration sequence
@@ -299,7 +325,7 @@ checklist.
 |---|---|---|
 | P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches gives `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stays off. The gate is also mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
 | P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content; per-match squads became reproducible one PR later, with §10.4's match-identity fix. Franchise lineage (I-4) is not in this PR |
-| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | frame reproduces `perf_experiment.py` baselines (career-mean Spearman ≈ 0.32 T20); a backtest at date D provably cannot see D or later (P-0 had to freeze the artifact by hand — `scripts/experiments/xi/freeze_ratings.py` — because the serving store holds one state through today) |
+| P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | **done** (`arch/p-2-rating-rows-harness`). The day-close pass emits 463,818 player-match rows — all XI players, never only those who batted (H-20) — with expected batting slot, innings share and phase-split impact rates, identical from both sources. `ml.xi.asof` answers `ratings_as_of(D)` and raises rather than run backwards, so a backtest at date D provably cannot see D or later; `freeze_ratings.py` is retired, `/xi/*` accept `as_of`, the selection comparison sends each match's date and its report carries per-match rows. `make xi-evaluate` runs the walk-forward + locked window + H-8 parity from one command into one JSON report. Acceptance: career-mean within-match Spearman on the locked window 0.317 T20 / 0.318 ODI (the script's ≈ 0.32 / 0.34, computed there with cross-format career means — inside the 0.31–0.35 band §1 calls the ceiling); parity max abs difference 0.0 on both sources; E7 measured, no effect (§5.2) |
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | beats career mean on Spearman and pinball for every target, 3 seeds; coverage within ±0.03 of nominal |
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | scorecard medians and P(win) come from one source; extras/innings models unused |
 | P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete greedy weights, meta-model, reconciliation, Normal Monte Carlo, per-call optimiser | frontend shows ranges + marginal values; `make check-all` green; coverage gates ratchet |
@@ -338,13 +364,13 @@ names the experiment that will.
 | id | property | applies to | gate / rule | status |
 |---|---|---|---|---|
 | H-1 | **As-of by construction.** A row's features cannot depend on its own match or any later one | all | Unit test: a match's row is identical with or without later matches and unaffected by its own result (`test_features_are_as_of_and_never_see_their_own_match`) | done (S-10) |
-| H-2 | **Leak canaries.** The model must beat its own best single column by a clear margin, and no column may be a scoreboard read-through | win, performance | Harness reports best-single-column AUC (done); add the TEST-as-control check from S-3c: a column whose AUC collapses in TEST but not elsewhere is suspect | partly |
+| H-2 | **Leak canaries.** The model must beat its own best single column by a clear margin, and no column may be a scoreboard read-through | win, performance | Harness reports best-single-column AUC (done); add the TEST-as-control check from S-3c: a column whose AUC collapses in TEST but not elsewhere is suspect | **done (P-2)** — `make xi-evaluate` reports both. Its first run flagged one suspect, `team_h2h` in T20I (0.70 there, 0.55 in TEST): reviewed and benign — a team-context column, excluded from the objective, and head-to-head genuinely means less where draws exist. The point is that the flag fired and someone had to say why it was fine |
 | H-3 | **Toss / batting-order marginalisation.** The label defines team1 as the side batting first; at selection time that is unknown | win (objective + display), simulator | Serving path averages both orientations; `P(A,B) == 1 − P(B,A)` is a unit test. Measured: display AUC T20 0.741 → **0.747**, ODI 0.720 → **0.730**, T20I 0.715 → **0.731**; the oriented probability moved by 0.07–0.12 on an unknown. Once the toss is known, pass `team1_bats_first` | **done (this PR)** |
-| H-4 | **Monotone objective.** Upgrading a player never lowers the selection score | win objective | Harness: share of one-player upgrades with Δp < 0 must stay < 2% (measured 0.4% T20 / 3.7% ODI for logistic; 12% / 20% for unconstrained boosting) | done, gate to add |
+| H-4 | **Monotone objective.** Upgrading a player never lowers the selection score | win objective | Harness: share of one-player upgrades with Δp < 0 must stay < 2% (measured 0.4% T20 / 3.7% ODI for logistic; 12% / 20% for unconstrained boosting) | **done (P-2)** — reported per fold in `make xi-evaluate`; walk-forward means 0.3% T20 / 0.8% T20I / 0.0% ODI / 0.6% TEST, all under the 2% line |
 | H-5 | **Calibration of what is displayed.** The probability shown must mean what it says | win display, simulator, performance quantiles | Harness: reliability curve + Brier vs base rate per format (done for win); isotonic recalibration fitted on a temporal fold if Brier is worse than base rate; quantile coverage within ±0.03 of nominal (measured 0.80 / 0.79 on 0.80) | partly |
 | H-6 | **Rating hyperparameters are not load-bearing.** decay and prior were chosen by judgement | rating pass | Measured sweep (`health_experiment.py`): decay 0.80–0.97 and prior 20–150 move objective AUC by ≤ 0.01 in T20 and ODI — flat. Keep 0.90 / 60; re-run the sweep when the pass changes | done |
-| H-7 | **Gender- and competition-aware baselines.** Context expectations (runs per ball per over) are per format only; women's and men's matches share them, and so do the IPL and a club league | rating pass | E7: split the context baseline by gender (cheap, gender is on every match); measure the women's-subset AUC before/after. Competition tiers only if E7 shows gender matters | open (E7) |
-| H-8 | **Train / serve parity.** The serving store must compute the same features the training frame holds | all | Harness: for the last 50 holdout matches, rebuild the row from the serving store *as of that date* and assert equality with the training frame (the S-3c defect, made a test) | open — and P-0 found what its absence costs: the legacy batting/bowling path had been serving a 37-wide vector to a 38-wide scaler because an interaction operand is spelled `inning` in training and `batting_inning` in serving, and the mismatch was silently skipped. Every match-context prediction 503'd. See D-4/D-5 in the selection checklist |
+| H-7 | **Gender- and competition-aware baselines.** Context expectations (runs per ball per over) are per format only; women's and men's matches share them, and so do the IPL and a club league | rating pass | E7: split the context baseline by gender (cheap, gender is on every match); measure the women's-subset AUC before/after. Competition tiers only if E7 shows gender matters | **measured (P-2, §5.2): no effect** — the T20 women's subset moves by 0.000 and the only larger delta sits inside a 74-match holdout while hurting the men's display. The split ships off, behind `--gender-split-context`, to be re-asked when the women's holdouts grow; competition tiers are therefore not pursued |
+| H-8 | **Train / serve parity.** The serving store must compute the same features the training frame holds | all | Harness: for the last 50 holdout matches, rebuild the row from the serving store *as of that date* and assert equality with the training frame (the S-3c defect, made a test) | **done (P-2)** — `serving_parity` in `ml.xi.asof` rebuilds the last 50 matches' win *and* player-match rows through the as-of path and fails `make xi-evaluate` on any difference; measured max abs difference 0.0 on both sources. The state evolution is genuinely different code on the two sides (day-close buffering vs a strict date threshold) while row assembly is shared (`ml.xi.rows`), so the D-4 class — a column spelled differently in serving — cannot recur, and drift in the as-of logic is caught. (P-0's find, for the record: the legacy path served a 37-wide vector to a 38-wide scaler over `inning` vs `batting_inning`) |
 | H-9 | **Identity.** Ratings keyed by name merge people | all | P-1 (IDENTITY I-3/I-4); E4 measures the delta | **done**: players key off the Cricsheet registry id, teams off (club, gender) — one row per (name, gender) since P-1, folded onto the club by `opposition.canonical_id` since I-4 — on both sources, so the two paths produce the same keys and their artifacts are comparable. E4 found the correction worth ≤ 0.01 AUC everywhere it can be resolved, and the lineage merge is smaller again; both are correctness, not discrimination. S-7's opposition encoding is unblocked |
 | H-10 | **Cold start is bounded.** A player with no history must regress to neutral, never explode | win, performance | Measured: replacing a player by a debutant moves p by a median −0.003, p10 −0.05. Unit test on `side_vectors` for an unseen key | done |
 | H-11 | **Staleness.** Ratings are only as fresh as the last import | rating pass | `/xi/status` reports `ratings_through`; the ops step fails a prediction request with a clear code if it is older than N days (config, default 14). Retrain is one command and ~2 minutes, so the cadence is "after every import" | open |
@@ -355,14 +381,41 @@ names the experiment that will.
 | H-16 | **Run identity.** A measurement must name the artifact it measured | all | `runs/<id>/manifest.json` with dataset sha, cutoff, git sha, hyperparameters, metrics (D-3) | open (P-6) |
 | H-17 | **Format scope.** Selection is only offered where the objective ranks | win | TEST stays on greedy with a note in the UI; an objective with holdout AUC < 0.65 is not used for selection in that format | rule |
 | H-18 | **Day-close batching.** A match never sees a same-day result | rating pass | Implemented in `ml.xi.builder`; unit-tested; cost ≤ 0.003 AUC | done |
-| H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | **first report done (P-0)**: 2025-09-01 → 2026-08-25, no drop against the JSON-path development numbers. But that window is the one that guided the development choices, so it is a report, not yet an unseen-data measurement; the walk-forward in P-2 is what makes it one |
-| H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | open (P-3) |
+| H-19 | **Walk-forward evaluation + locked window.** Choices are made on rolling cutoffs; one final window is scored once per release | all | L4 reports mean ± spread over cutoffs; the locked window (≥ 2025-09-01) is never used for a choice | **done (P-2)** — `make xi-evaluate`: quarterly rolling origins 2024-01 … 2025-06, the locked window scored once and labeled. First per-format walk-forward table in §8.1; the locked-window figures sit inside the fold spreads, toward the top for T20 — what later origins with more training data should produce — so the development-window reuse §10.3 could only estimate is now priced. (P-0's locked-window report, 2025-09-01 → 2026-08-25 with no drop, was the precursor: same window, but the one that guided the choices) |
+| H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | **frame done (P-2)**: the player-match frame carries every XI player, batted or not, with expected involvement as-of. The rule still binds L2-B's training and its two-part targets in P-3 |
 | H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | rule (P-3, P-4) |
 | H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | rule (P-3) |
 
-Items marked *open* are folded into the migration: H-7, H-8 and H-19 into P-2, H-5, H-12 and
-H-20 into P-3 and H-11 into P-6 alongside H-16 (H-15 is done). Nothing in the list needs new modelling; it is
-measurement, guards and two small serving rules.
+Items marked *open* are folded into the migration: H-5, H-12 and H-20's training rule into
+P-3, and H-11 into P-6 alongside H-16 (H-2, H-4, H-7, H-8, H-15 and H-19 are done as of
+P-2). Nothing left in the list needs new modelling; it is measurement, guards and two small
+serving rules.
+
+### 8.1 First walk-forward report (H-19, P-2)
+
+`make xi-evaluate` on the full dataset, quarterly rolling origins 2024-01-01 … 2025-06-01
+(each fold trains strictly before its cutoff and scores the window to the next one; the
+locked window ≥ 2025-09-01 is scored once, never used for a choice). Walk-forward columns
+are mean ± sd over folds; the display model additionally averages three seeds per fold.
+Identical to 4 dp from the Postgres and Cricsheet-JSON sources.
+
+| format | folds | objective AUC, walk-forward | display AUC, walk-forward | objective, locked | display, locked | n locked |
+|---|---:|---:|---:|---:|---:|---:|
+| T20  | 7 | 0.684 ± 0.044 | 0.713 ± 0.059 | 0.721 | 0.746 | 1635 |
+| T20I | 6 | 0.772 ± 0.042 | 0.752 ± 0.054 | 0.747 | 0.733 | 182 |
+| ODI  | 7 | 0.670 ± 0.077 | 0.708 ± 0.082 | 0.683 | 0.729 | 375 |
+| TEST | 7 | 0.637 ± 0.121 | 0.671 ± 0.090 | 0.582 | 0.594 | 157 |
+
+T20I's first fold is skipped for too few evaluation matches, hence six folds. The spreads
+are the honest error bars this document previously lacked: a quarterly T20I or TEST window
+holds 30–90 matches, so their ±0.04–0.12 is mostly window size, not model drift. The
+locked-window figures sit inside every spread — toward the top for T20, which is what later
+origins with more training data should produce. Beside the win model, the same folds carry
+swap monotonicity (0.0–0.8 % violations, all under H-4's 2 % line), the
+specific-XI-beyond-typical-XI delta (+0.045 ± 0.021 T20; within noise elsewhere) and the
+performance baselines (career-mean within-match Spearman 0.300 ± 0.011 T20 / 0.306 ± 0.043
+ODI over folds, 0.317 / 0.318 on the locked window); the full detail is per fold in
+`xi_evaluate_report.json`.
 
 ---
 
@@ -458,15 +511,15 @@ quoted in this document should be read with them in mind.
 | **Target leakage through team context** | none found: Elo, form, h2h, venue bat-first rate all update *after* the day closes | — | closed |
 | **Train / serve skew** | serving aggregated over 11, training over the scorecard | same code path; parity test H-8 turns it into a permanent check | test open — P-2 |
 | **Identity leakage** (two people as one, one person as two) | name-keyed ids; men's and women's sides share team ids | P-1; the JSON-path numbers use registry ids and are unaffected | **closed**: players by registry id and teams by gender in P-1, franchise renames in I-4. `make xi-parity` holds both sources to the same keys |
-| **Holdout reuse** (model-selection leakage) | — new — | the 2025-09-01 holdout was used in this session to choose feature families, model class, monotone constraints and marginalisation. Every reported number is therefore mildly optimistic as an estimate of *future* performance, even though each individual comparison is valid. Closure: **rule H-19** — L4 evaluates by rolling-origin walk-forward over several cutoffs (e.g. quarterly from 2024-01 to 2025-09) and reports mean ± spread; and a **locked final window** (matches after the latest cutoff, 2025-09-01 → present) is scored once per release, never used for choices. The numbers in this document are the *development* numbers; P-0 reports the first locked-window numbers | partly — P-0 reported (§10.3) and found no drop, but on the same window that guided the choices, so the reuse is recorded rather than closed; P-2 closes it |
-| **Leak canaries** | S-3c was found by comparing the model to one raw column and to the TEST format as control | H-2: best-single-column AUC (done) plus the TEST-control check: a feature whose AUC collapses in TEST but not in limited-overs formats is suspect | partly |
+| **Holdout reuse** (model-selection leakage) | — new — | the 2025-09-01 holdout was used in this session to choose feature families, model class, monotone constraints and marginalisation. Every reported number is therefore mildly optimistic as an estimate of *future* performance, even though each individual comparison is valid. Closure: **rule H-19** — L4 evaluates by rolling-origin walk-forward over several cutoffs (e.g. quarterly from 2024-01 to 2025-09) and reports mean ± spread; and a **locked final window** (matches after the latest cutoff, 2025-09-01 → present) is scored once per release, never used for choices. The numbers in this document are the *development* numbers; P-0 reports the first locked-window numbers | **closed (P-2)** — `make xi-evaluate` evaluates by rolling origins and labels the locked window; H-19 has the first walk-forward numbers |
+| **Leak canaries** | S-3c was found by comparing the model to one raw column and to the TEST format as control | H-2: best-single-column AUC (done) plus the TEST-control check: a feature whose AUC collapses in TEST but not in limited-overs formats is suspect | **closed (P-2)** — both in `make xi-evaluate`; see H-2 for the first flag it raised |
 
 ### 10.2 ML standards, and where the plan stands
 
 | standard | plan | status |
 |---|---|---|
-| Temporal validation, no random splits | rolling-origin walk-forward + locked window (H-19) | rule set; harness in P-2 |
-| Reported with uncertainty | ≥ 3 seeds, mean ± spread (H-14); walk-forward spread across cutoffs | done / P-2 |
+| Temporal validation, no random splits | rolling-origin walk-forward + locked window (H-19) | **done (P-2)** — `make xi-evaluate` |
+| Reported with uncertainty | ≥ 3 seeds, mean ± spread (H-14); walk-forward spread across cutoffs | done (P-2 adds the cutoff spread) |
 | Baselines that are hard to beat | base-rate Brier, best single column, career mean, team Elo — all reported beside the model | done |
 | Metric matches the consumer | AUC + monotonicity for an argmax; Spearman/top-k/coverage for a ranking or interval; per target, never pooled (H-12, H-13) | rule; P-3 retires the pooled metric |
 | Calibration of any probability shown | reliability + Brier; isotonic recalibration on a temporal fold if needed; interval coverage (H-5) | partly |
@@ -474,7 +527,7 @@ quoted in this document should be read with them in mind.
 | Progress measured as sharpness at fixed calibration | interval width tracked beside coverage across releases; proper scores (CRPS / pinball / Brier) are the headline, never MAE (H-22) | P-3 |
 | Reproducibility | dataset sha, cutoff, git sha, hyperparameters and metrics in a run manifest (H-16); deterministic seeds; the pass is a pure function of the event table | P-6 |
 | Data-quality gates | undecided matches, sides without squads, namesakes, replacement players counted per run and gated (H-15) | **done** — `ml/xi/quality.py` gates the retrain, `make xi-parity` compares the two sources |
-| Serving = training | same feature code, parity test (H-8); ids in, features computed inside | S-10 / P-2 |
+| Serving = training | same feature code, parity test (H-8); ids in, features computed inside | **done (P-2)** — parity runs in the harness and fails it |
 | Monitoring in use | staleness of ratings (H-11); prediction-distribution drift per format between runs (add to the manifest diff) | P-6 |
 | Hyperparameters not tuned on the test window | grid inside the walk-forward folds only; the locked window never sees a choice | H-19 |
 | Sample size honesty | T20I (182) and TEST (157) holdouts cannot resolve differences under ~0.03 AUC; the plan says so wherever they are quoted | done |

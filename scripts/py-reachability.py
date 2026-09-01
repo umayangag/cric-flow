@@ -65,6 +65,7 @@ SCRIPT_ENTRYPOINTS: Dict[str, str] = {
     "ml.validate_exports": "make -C ml-service validate-exports",
     "ml.baselines": "make train-batting-baseline / train-bowling-baseline",
     "ml.xi.parity": "make xi-parity",
+    "ml.xi.evaluate": "make xi-evaluate",
 }
 
 ENTRYPOINTS = MODULE_ENTRYPOINTS + tuple(SCRIPT_ENTRYPOINTS)

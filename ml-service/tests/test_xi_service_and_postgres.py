@@ -4,7 +4,7 @@ database or a running FastAPI app."""
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from typing import List
 
 import numpy as np
@@ -194,11 +194,11 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
         },
         "balls": {
             1: [
-                (1, 0, "a0000000", "b0000000", 4, 4, None, None),
-                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"]),
-                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"]),
+                (1, 0, "a0000000", "b0000000", 4, 4, None, None, None),
+                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000"),
+                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000"),
             ],
-            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None)],
+            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None)],
         },
     }
     recs = list(PostgresSource(_FakeConnection(tables), formats=["T20"]).iter_matches())
@@ -231,7 +231,7 @@ def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
 def test_postgres_source_carries_missing_delivery_players_as_empty_keys() -> None:
     """striker_id and bowler_id are nullable, so the join can yield NULL. That must become
     an empty key, not the string "None", which would become a rated player."""
-    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None)])
+    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None, None)])
 
     assert list(d.batter) == [""] and list(d.bowler) == [""]
     assert d.fielders == [[]]
@@ -337,3 +337,53 @@ def test_an_unnamed_substitute_costs_the_fielding_credit_and_not_the_wicket() ->
     assert list(d.wicket) == [1.0]
     assert list(d.bowler_wicket) == [1.0]
     assert d.fielders == [[]]
+
+
+# ---------------------------------------------------------------------------
+# As-of serving (P-2): the registry answers "ratings as of date D"
+# ---------------------------------------------------------------------------
+
+
+def _registry_with_as_of(artifacts_dir) -> tuple:
+    """A fresh registry over the shared artifacts, serving the as-of pass from memory."""
+    out, squad_a, squad_b, matches = artifacts_dir
+    reg = xi_service.XiRegistry()
+    reg.reload(out)
+    reg.as_of_source_factory = lambda: _ListSource(matches)
+    return reg, squad_a, squad_b, matches
+
+
+def test_store_as_of_none_serves_the_loaded_state(artifacts_dir) -> None:
+    reg, _, _, _ = _registry_with_as_of(artifacts_dir)
+
+    assert reg.store_as_of("T20", None) is reg.store("T20")
+
+
+def test_store_as_of_future_date_serves_the_loaded_state(artifacts_dir) -> None:
+    """Ratings through today already are the as-of state for any later date."""
+    reg, _, _, matches = _registry_with_as_of(artifacts_dir)
+    after_everything = matches[-1].match_date + timedelta(days=1)
+
+    assert reg.store_as_of("T20", after_everything) is reg.store("T20")
+
+
+def test_store_as_of_past_date_serves_a_state_that_stops_there(artifacts_dir) -> None:
+    reg, _, _, matches = _registry_with_as_of(artifacts_dir)
+    as_of = matches[80].match_date
+
+    store = reg.store_as_of("T20", as_of)
+
+    assert store is not reg.store("T20")
+    assert store.state.last_date < as_of
+    assert store.state.matches_seen < reg.store("T20").state.matches_seen
+    assert store.models is reg.store("T20").models  # same fitted models, earlier ratings
+
+
+def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
+    reg, squad_a, squad_b, matches = _registry_with_as_of(artifacts_dir)
+    request = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+
+    today = xi_service.predict_win(XiWinRequest(**request), registry=reg)
+    early = xi_service.predict_win(XiWinRequest(**request, as_of=matches[30].match_date), registry=reg)
+
+    assert today.team1_win_probability != pytest.approx(early.team1_win_probability, abs=1e-12)

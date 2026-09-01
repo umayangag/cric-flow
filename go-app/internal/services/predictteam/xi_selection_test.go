@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,7 +57,7 @@ func TestSelectTeamsByWinProbability_XIModel_SendsIDsNotFeatures(t *testing.T) {
 	sel1, sel2, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "t20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert
@@ -86,7 +87,7 @@ func TestSelectTeamsByWinProbability_XIModel_FallsBackWhenUnavailable(t *testing
 	sel1, sel2, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert: the per-call windowed-form path still produces both XIs
@@ -107,7 +108,7 @@ func TestSelectTeamsByWinProbability_XIModel_IgnoredWhenConfigSaysWindowedForm(t
 	_, _, err := selectTeamsByWinProbability(
 		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
 		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2),
+		mergeFeatures(feats1, feats2), time.Time{},
 	)
 
 	// Assert
@@ -155,4 +156,28 @@ func TestXIResultToPlayers_ReturnsPoolPlayersSortedByName(t *testing.T) {
 	assert.Equal(t, "amy", out[0].Name)
 	assert.Equal(t, "zed", out[1].Name)
 	assert.Equal(t, 1.0, out[1].BatScore, "the pool's own player record is returned, scores intact")
+}
+
+func TestSelectTeamsByWinProbability_XIModel_CarriesAsOfToEveryOptimizeCall(t *testing.T) {
+	// Arrange: a backtest asks for ratings as they stood before the match date.
+	withXIWinModel(t, true)
+	tsPool1, dbPool1, feats1 := buildPools(t, "a", 1000, 14)
+	tsPool2, dbPool2, feats2 := buildPools(t, "b", 2000, 14)
+	optimizer := &recordingXIOptimizer{}
+	asOf := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+
+	// Act
+	_, _, err := selectTeamsByWinProbability(
+		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
+		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
+		mergeFeatures(feats1, feats2), asOf,
+	)
+
+	// Assert
+	require.NoError(t, err)
+	require.NotEmpty(t, optimizer.requests)
+	for i := range optimizer.requests {
+		assert.Equal(t, asOf, optimizer.requests[i].AsOf,
+			"both sides' searches must run against the same as-of state")
+	}
 }

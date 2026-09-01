@@ -82,6 +82,12 @@ train-xi: venv
 	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make train-xi CUTOFF=2025-09-01" && exit 1)
 	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
 
+# L4 evaluation harness (H-19): rolling-origin walk-forward + the locked window, selection
+# and performance metrics, the leak canary, and the train/serve parity check (H-8). Writes
+# one JSON report (xi_evaluate_report.json). Fails if serving parity does not hold.
+xi-evaluate: venv
+	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,)
+
 # Check the database against the Cricsheet archive: both rating sources are supposed to
 # describe the same cricket, and twice they did not (H-15). Needs both, so it is not part
 # of a retrain. Usage: make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet

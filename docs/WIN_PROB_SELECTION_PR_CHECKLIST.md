@@ -1091,10 +1091,14 @@ Recorded so the next person does not rediscover them:
   around it with `scripts/experiments/xi/freeze_ratings.py`, which rebuilds the state with
   `PostgresSource(before=…)` and rewrites `xi_ratings.joblib`; the comparison above ran with
   ratings frozen at 2025-08-31, so the XI arm is *handicapped* (stale by up to a year) rather
-  than flattered. An as-of serving path belongs in L4 (P-2).
+  than flattered. **Fixed in P-2**: `ml.xi.asof` serves "ratings as of date D", `/xi/*`
+  accept an `as_of` date, the comparison sends each match's date, and `freeze_ratings.py`
+  is deleted.
 - **The report is aggregate-only.** No per-match rows, so no paired test, no date filter, and
-  no way to ask which matches the arms disagreed on. The endpoint also takes one team pair at
-  a time with a limit of 50, so a window has to be assembled pair by pair from outside.
+  no way to ask which matches the arms disagreed on. **Per-match rows landed in P-2**
+  (`per_match` in the response, one entry per arm with probability, predicted winner and
+  correctness). The endpoint still takes one team pair at a time with a limit of 50, so a
+  window has to be assembled pair by pair from outside.
 - **Pools are large.** `GetBacktestSquadPlayerIDs` returns 180–230 players, not the 22–23 the
   S-10 latency note assumed. The optimiser still converges in ~1,500–2,000 evaluations and
   110–150 ms, so the budget holds; but "overlap with the fielded XI" is near-meaningless when
