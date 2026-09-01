@@ -45,7 +45,11 @@ func GetMatchContext(ctx context.Context, matchID int64) (*MatchContext, error) 
 
 // PlayerPoolRow represents a candidate player with consistency and flags.
 type PlayerPoolRow struct {
-	PlayerID           int64
+	PlayerID int64
+	// ExternalID is the Cricsheet registry id, and it is what the ML service knows a player
+	// by: the rating state has been keyed on it since P-1, on both sources. The database id
+	// is this repo's own and means nothing to ml-service.
+	ExternalID         string
 	PlayerName         string
 	IsWicketKeeper     int16
 	BattingConsistency sql.NullFloat64
@@ -63,7 +67,7 @@ func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string)
 		return nil, err
 	}
 	rows, err := Pool.Query(ctx, `
-		SELECT p.id, p.player_name, p.is_wicket_keeper,
+		SELECT p.id, COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper,
 		       COALESCE(latest.batting_std_w10,0)::real AS batting_consistency,
 		       COALESCE(latest.bowling_std_w10,0)::real AS bowling_consistency
 		FROM player p
@@ -83,7 +87,8 @@ func ListPlayerPoolConsistency(ctx context.Context, _ string, formatCode string)
 	var out []PlayerPoolRow
 	for rows.Next() {
 		var r PlayerPoolRow
-		if err := rows.Scan(&r.PlayerID, &r.PlayerName, &r.IsWicketKeeper, &r.BattingConsistency, &r.BowlingConsistency); err != nil {
+		if err := rows.Scan(&r.PlayerID, &r.ExternalID, &r.PlayerName, &r.IsWicketKeeper,
+			&r.BattingConsistency, &r.BowlingConsistency); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -142,7 +147,7 @@ func ListPlayerPoolByOpposition(
 		  WHERE m.format_id = $1 AND m.match_date < $2
 		    AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
 		)
-		SELECT p.id, p.player_name, p.is_wicket_keeper,
+		SELECT p.id, COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper,
 		       COALESCE(latest.batting_std_w10, 0)::real AS batting_consistency,
 		       COALESCE(latest.bowling_std_w10, 0)::real AS bowling_consistency
 		FROM player p
@@ -167,7 +172,8 @@ func ListPlayerPoolByOpposition(
 	var out []PlayerPoolRow
 	for rows.Next() {
 		var r PlayerPoolRow
-		if err := rows.Scan(&r.PlayerID, &r.PlayerName, &r.IsWicketKeeper, &r.BattingConsistency, &r.BowlingConsistency); err != nil {
+		if err := rows.Scan(&r.PlayerID, &r.ExternalID, &r.PlayerName, &r.IsWicketKeeper,
+			&r.BattingConsistency, &r.BowlingConsistency); err != nil {
 			return nil, err
 		}
 		if seen[r.PlayerID] {
@@ -185,9 +191,11 @@ func ListPlayerPoolByOpposition(
 		if seen[pid] {
 			continue
 		}
-		var name string
+		var name, externalID string
 		var keeper int16
-		if err := Pool.QueryRow(ctx, `SELECT player_name, is_wicket_keeper FROM player WHERE id = $1`, pid).Scan(&name, &keeper); err != nil {
+		if err := Pool.QueryRow(ctx,
+			`SELECT COALESCE(external_id, ''), player_name, is_wicket_keeper FROM player WHERE id = $1`,
+			pid).Scan(&externalID, &name, &keeper); err != nil {
 			if err == sql.ErrNoRows {
 				continue
 			}
@@ -196,6 +204,7 @@ func ListPlayerPoolByOpposition(
 		seen[pid] = true
 		out = append(out, PlayerPoolRow{
 			PlayerID:           pid,
+			ExternalID:         externalID,
 			PlayerName:         name,
 			IsWicketKeeper:     keeper,
 			BattingConsistency: sql.NullFloat64{},

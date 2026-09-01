@@ -168,6 +168,38 @@ def test_optimised_xi_scores_at_least_the_fielded_xi(trained_store) -> None:
     assert res.win_probability >= fielded - 1e-9
 
 
+def test_reading_an_unknown_player_does_not_add_him_to_the_state(trained_store) -> None:
+    """A serving read must not invent a player.
+
+    ``side_vectors`` used to assign a slot to any key it had not seen, so a request naming
+    someone unknown -- a debutant, or a caller sending the wrong kind of id -- grew the
+    loaded state permanently, and ``known_players`` reported him *known* on the second
+    identical request. The state must be the same before and after a read.
+    """
+    store, squad_a, _, _ = trained_store
+    before = len(store.state.players)
+
+    assert store.known_players(["nobody-has-this-key"]) == [False]
+    store.side_vectors("T20", squad_a[:3] + ["nobody-has-this-key"])
+
+    assert len(store.state.players) == before
+    assert store.known_players(["nobody-has-this-key"]) == [False]
+
+
+def test_an_unknown_player_reads_as_a_debutant_not_as_a_neighbour(trained_store) -> None:
+    """The reserved column no update writes, so two different unknown keys read alike and
+    neither picks up the values of whoever happens to sit at the next slot."""
+    store, _, _, _ = trained_store
+
+    first = store.side_vectors("T20", ["unknown-one"])
+    second = store.side_vectors("T20", ["unknown-two"])
+
+    for key, values in first.items():
+        assert values[0] == pytest.approx(second[key][0]), key
+    assert first["pelo"][0] == pytest.approx(C.ELO_INITIAL)
+    assert first["bat_rate"][0] == pytest.approx(0.0)
+
+
 def test_select_xi_by_ratings_meets_the_constraints_without_an_opponent(trained_store) -> None:
     store, squad_a, _, _ = trained_store
     selected = select_xi_by_ratings(

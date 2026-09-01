@@ -35,9 +35,9 @@ func (f *fakePerformance) PredictPerformance(
 	return f.result, f.err
 }
 
-func simulatedPlayer(id int64) XISimulatedPlayer {
+func simulatedPlayer(key string) XISimulatedPlayer {
 	return XISimulatedPlayer{
-		PlayerID:              id,
+		PlayerKey:             key,
 		Runs:                  XISimulatedRange{P10: 4, Median: 21, P90: 55},
 		BallsFaced:            XISimulatedRange{P10: 5, Median: 17, P90: 38},
 		Wickets:               XISimulatedRange{P10: 0, Median: 1, P90: 3},
@@ -51,12 +51,12 @@ func simulatedPlayer(id int64) XISimulatedPlayer {
 	}
 }
 
-func simulatedSide(id int64, total float64) XISimulatedSide {
+func simulatedSide(key string, total float64) XISimulatedSide {
 	return XISimulatedSide{
 		Total:           XISimulatedRange{P10: total - 40, Median: total, P90: total + 40},
 		TotalScorecard:  total + 1,
 		ExtrasScorecard: 9,
-		Players:         []XISimulatedPlayer{simulatedPlayer(id)},
+		Players:         []XISimulatedPlayer{simulatedPlayer(key)},
 	}
 }
 
@@ -64,8 +64,8 @@ func simulationResult(headlineSource string) *XISimulationResult {
 	return &XISimulationResult{
 		Samples:                      2000,
 		TossMarginalised:             true,
-		Team1:                        simulatedSide(1, 170),
-		Team2:                        simulatedSide(4, 160),
+		Team1:                        simulatedSide("a1", 170),
+		Team2:                        simulatedSide("b1", 160),
 		SimulatedTeam1WinProbability: 0.58,
 		DisplayTeam1WinProbability:   0.61,
 		HeadlineTeam1WinProbability:  0.61,
@@ -75,8 +75,8 @@ func simulationResult(headlineSource string) *XISimulationResult {
 
 func resultWithOnePlayerEachSide() *Result {
 	return &Result{
-		Team1: []SelectedPlayer{{PlayerID: 1, PlayerName: "A"}},
-		Team2: []SelectedPlayer{{PlayerID: 4, PlayerName: "B"}},
+		Team1: []SelectedPlayer{{PlayerID: 1, PlayerKey: "a1", PlayerName: "A"}},
+		Team2: []SelectedPlayer{{PlayerID: 4, PlayerKey: "b1", PlayerName: "B"}},
 	}
 }
 
@@ -86,7 +86,7 @@ func TestApplyXISimulation_WritesRangesTotalsAndSpreadFromOneSetOfDraws(t *testi
 	result := resultWithOnePlayerEachSide()
 	fix := twoSidedFixture("T20")
 
-	err := applyXISimulation(context.Background(), simulator, fix, []int64{1}, []int64{4}, result)
+	err := applyXISimulation(context.Background(), simulator, fix, []string{"a1"}, []string{"b1"}, result)
 
 	require.NoError(t, err)
 	player := result.Team1[0]
@@ -113,7 +113,7 @@ func TestApplyXISimulation_RefusesAWinProbabilityWithNoHonestSource(t *testing.T
 	simulator := &fakeSimulator{result: simulationResult("vibes")}
 
 	err := applyXISimulation(context.Background(), simulator, twoSidedFixture("T20"),
-		[]int64{1}, []int64{4}, resultWithOnePlayerEachSide())
+		[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown win-probability source")
@@ -143,7 +143,7 @@ func TestApplyXISimulation_FailsTheRequestRatherThanAnsweringWithoutNumbers(t *t
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := applyXISimulation(context.Background(), tc.simulator, twoSidedFixture("T20"),
-				[]int64{1}, []int64{4}, resultWithOnePlayerEachSide())
+				[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
 		})
@@ -156,7 +156,7 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 		InningsMarginalised: true,
 		Players: []XIPerformancePlayer{
 			{
-				PlayerID:     1,
+				PlayerKey:    "a1",
 				Runs:         XISimulatedRange{P10: 3, Median: 26, P90: 71},
 				BallsFaced:   XISimulatedRange{P10: 8, Median: 44, P90: 110},
 				RunsConceded: XISimulatedRange{P10: 10, Median: 33, P90: 60},
@@ -167,7 +167,7 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 	result := resultWithOnePlayerEachSide()
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
-		[]int64{1}, []int64{4}, result)
+		[]string{"a1"}, []string{"b1"}, result)
 
 	require.NoError(t, err)
 	assert.Equal(t, 26.0, result.Team1[0].Runs)
@@ -184,7 +184,7 @@ func TestApplyPerformanceForecast_PropagatesTheFailure(t *testing.T) {
 	predictor := &fakePerformance{err: errors.New("no performance model for TEST")}
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
-		[]int64{1}, []int64{4}, resultWithOnePlayerEachSide())
+		[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no performance model for TEST")
@@ -227,11 +227,19 @@ func TestWinnerFrom_NamesTeam2OnAnExactTie(t *testing.T) {
 
 func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]int64{2, 1}, pool(1, 2, 3), map[int64]float64{2: 0.03})
+	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), map[string]float64{"k2": 0.03})
 
 	require.Len(t, players, 2)
 	assert.Equal(t, int64(2), players[0].PlayerID)
 	require.NotNil(t, players[0].MarginalValue)
 	assert.InDelta(t, 0.03, *players[0].MarginalValue, 1e-9)
 	assert.Nil(t, players[1].MarginalValue, "a player with no marginal value carries none")
+}
+
+func TestNewSelectedPlayers_DropsAKeyNoPoolRowClaims(t *testing.T) {
+	t.Parallel()
+	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), nil)
+
+	require.Len(t, players, 1, "a key with no pool row names nobody and is not invented")
+	assert.Equal(t, int64(1), players[0].PlayerID)
 }

@@ -49,13 +49,15 @@ type XIWinPredictor interface {
 
 // XIOptimizationRequest is the Go-side payload for POST /xi/optimize.
 type XIOptimizationRequest struct {
-	Format            string
-	Objective         string
-	PoolPlayerIDs     []int64
-	OpponentPlayerIDs []int64
-	TeamIsTeam1       bool
-	Constraints       Constraints
-	MaxEvaluations    int
+	Format    string
+	Objective string
+	// PoolPlayerKeys and OpponentPlayerKeys are registry ids: the identity the rating state
+	// is keyed on, and the only one ml-service can resolve to a rated player.
+	PoolPlayerKeys     []string
+	OpponentPlayerKeys []string
+	TeamIsTeam1        bool
+	Constraints        Constraints
+	MaxEvaluations     int
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
 	// means the serving state through today.
 	AsOf time.Time
@@ -63,22 +65,22 @@ type XIOptimizationRequest struct {
 
 // XIOptimizationResult is the Go-side response from POST /xi/optimize.
 type XIOptimizationResult struct {
-	SelectedPlayerIDs []int64
-	Objective         string
-	Optimised         bool
-	UnknownPlayerIDs  []int64
-	MarginalValues    map[int64]float64
+	SelectedPlayerKeys []string
+	Objective          string
+	Optimised          bool
+	UnknownPlayerKeys  []string
+	MarginalValues     map[string]float64
 }
 
 // XIWinRequest is the Go-side payload for POST /xi/predict-win.
 type XIWinRequest struct {
-	Format         string
-	Team1PlayerIDs []int64
-	Team2PlayerIDs []int64
-	Team1ID        int64
-	Team2ID        int64
-	VenueID        int64
-	AsOf           time.Time
+	Format          string
+	Team1PlayerKeys []string
+	Team2PlayerKeys []string
+	Team1ID         int64
+	Team2ID         int64
+	VenueID         int64
+	AsOf            time.Time
 }
 
 // selectBothXIs picks an XI for each side and reports how.
@@ -93,7 +95,7 @@ func selectBothXIs(
 	ctx context.Context,
 	optimizer XISelectionOptimizer,
 	fix fixture,
-) (xi1, xi2 []int64, summary SelectionSummary, marginals map[int64]float64, err error) {
+) (xi1, xi2 []string, summary SelectionSummary, marginals map[string]float64, err error) {
 	if !optimisedSelectionFormats[fix.format] {
 		return selectByRatings(ctx, optimizer, fix)
 	}
@@ -105,7 +107,7 @@ func selectByRatings(
 	ctx context.Context,
 	optimizer XISelectionOptimizer,
 	fix fixture,
-) ([]int64, []int64, SelectionSummary, map[int64]float64, error) {
+) ([]string, []string, SelectionSummary, map[string]float64, error) {
 	summary := SelectionSummary{Objective: SelectionObjectiveRatings, Optimised: false, Note: notOptimisedNote}
 	xi1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
@@ -116,7 +118,7 @@ func selectByRatings(
 		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team2Code, err)
 	}
 	slog.InfoContext(ctx, "rating-ordered XIs selected", slog.String("format", fix.format))
-	return xi1.SelectedPlayerIDs, xi2.SelectedPlayerIDs, summary, nil, nil
+	return xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys, summary, nil, nil
 }
 
 // selectByWinProbability alternates: optimise team1 against team2's XI, then team2 against
@@ -131,7 +133,7 @@ func selectByWinProbability(
 	ctx context.Context,
 	optimizer XISelectionOptimizer,
 	fix fixture,
-) ([]int64, []int64, SelectionSummary, map[int64]float64, error) {
+) ([]string, []string, SelectionSummary, map[string]float64, error) {
 	summary := SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true}
 	seed1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
@@ -141,8 +143,8 @@ func selectByWinProbability(
 	if err != nil {
 		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team2Code, err)
 	}
-	xi1, xi2 := seed1.SelectedPlayerIDs, seed2.SelectedPlayerIDs
-	marginals := map[int64]float64{}
+	xi1, xi2 := seed1.SelectedPlayerKeys, seed2.SelectedPlayerKeys
+	marginals := map[string]float64{}
 
 	for round := 1; round <= config.SelectionBestResponseRounds(config.Load()); round++ {
 		next1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveWin, fix.pool1, xi2, true)
@@ -155,14 +157,14 @@ func selectByWinProbability(
 			fix,
 			SelectionObjectiveWin,
 			fix.pool2,
-			next1.SelectedPlayerIDs,
+			next1.SelectedPlayerKeys,
 			false,
 		)
 		if err != nil {
 			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team2Code, round, err)
 		}
-		settled := sameXI(xi1, next1.SelectedPlayerIDs) && sameXI(xi2, next2.SelectedPlayerIDs)
-		xi1, xi2 = next1.SelectedPlayerIDs, next2.SelectedPlayerIDs
+		settled := sameXI(xi1, next1.SelectedPlayerKeys) && sameXI(xi2, next2.SelectedPlayerKeys)
+		xi1, xi2 = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys
 		marginals = mergeMarginals(next1.MarginalValues, next2.MarginalValues)
 		if settled {
 			slog.InfoContext(ctx, "win-probability selection settled",
@@ -180,32 +182,32 @@ func optimizeSide(
 	fix fixture,
 	objective string,
 	pool []db.PlayerPoolRow,
-	opponentXI []int64,
+	opponentXI []string,
 	isTeam1 bool,
 ) (*XIOptimizationResult, error) {
-	poolIDs := poolPlayerIDs(pool)
-	if len(poolIDs) < fix.constraints.Size {
-		return nil, fmt.Errorf("pool resolves to %d ids, need %d", len(poolIDs), fix.constraints.Size)
+	poolKeys := poolPlayerKeys(pool)
+	if len(poolKeys) < fix.constraints.Size {
+		return nil, fmt.Errorf("pool resolves to %d registry ids, need %d", len(poolKeys), fix.constraints.Size)
 	}
 	if objective == SelectionObjectiveWin && len(opponentXI) == 0 {
 		return nil, fmt.Errorf("the win objective needs an opposing XI, and none was selected")
 	}
 	result, err := optimizer.OptimizeXI(ctx, XIOptimizationRequest{
-		Format:            fix.format,
-		Objective:         objective,
-		PoolPlayerIDs:     poolIDs,
-		OpponentPlayerIDs: opponentXI,
-		TeamIsTeam1:       isTeam1,
-		Constraints:       fix.constraints,
-		MaxEvaluations:    config.SelectionMaxWinProbEvalBudget(config.Load()),
-		AsOf:              fix.asOf,
+		Format:             fix.format,
+		Objective:          objective,
+		PoolPlayerKeys:     poolKeys,
+		OpponentPlayerKeys: opponentXI,
+		TeamIsTeam1:        isTeam1,
+		Constraints:        fix.constraints,
+		MaxEvaluations:     config.SelectionMaxWinProbEvalBudget(config.Load()),
+		AsOf:               fix.asOf,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(result.UnknownPlayerIDs) > 0 {
+	if len(result.UnknownPlayerKeys) > 0 {
 		slog.WarnContext(ctx, "xi selection: pool players with no rating history were treated as debutants",
-			slog.Int("count", len(result.UnknownPlayerIDs)))
+			slog.Int("count", len(result.UnknownPlayerKeys)))
 	}
 	return result, nil
 }
@@ -213,28 +215,28 @@ func optimizeSide(
 // sameXI reports whether two selections name the same players. Order is not significant: a
 // fixed-point test that depended on it would break quietly the day the optimiser stopped
 // returning a stable order.
-func sameXI(a, b []int64) bool {
+func sameXI(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	seen := make(map[int64]bool, len(a))
-	for _, pid := range a {
-		seen[pid] = true
+	seen := make(map[string]bool, len(a))
+	for _, key := range a {
+		seen[key] = true
 	}
-	for _, pid := range b {
-		if !seen[pid] {
+	for _, key := range b {
+		if !seen[key] {
 			return false
 		}
 	}
 	return true
 }
 
-// mergeMarginals merges both sides' marginal values; player ids are unique across sides.
-func mergeMarginals(sides ...map[int64]float64) map[int64]float64 {
-	out := map[int64]float64{}
+// mergeMarginals merges both sides' marginal values; registry ids are unique across sides.
+func mergeMarginals(sides ...map[string]float64) map[string]float64 {
+	out := map[string]float64{}
 	for _, side := range sides {
-		for pid, v := range side {
-			out[pid] = v
+		for key, v := range side {
+			out[key] = v
 		}
 	}
 	return out

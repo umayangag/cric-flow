@@ -59,7 +59,11 @@ type ValueRange struct {
 // 10-90 range around it, and the two L3 explanations: what the XI loses without this player
 // and how much of the innings total's spread he accounts for.
 type SelectedPlayer struct {
-	PlayerID          int64       `json:"player_id"`
+	PlayerID int64 `json:"player_id"`
+	// PlayerKey is the registry id ml-service knows this player by. It is how the
+	// simulator's and the optimiser's answers are matched back to these rows, and it stays
+	// off the wire: a client joins on player_id, which is this repo's own identifier.
+	PlayerKey         string      `json:"-"`
 	PlayerName        string      `json:"player_name"`
 	Runs              float64     `json:"runs"`
 	RunsRange         *ValueRange `json:"runs_range,omitempty"`
@@ -173,13 +177,13 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	}
 
 	display, err := service.PredictMatchWinXI(ctx, XIWinRequest{
-		Format:         fix.format,
-		Team1PlayerIDs: xi1,
-		Team2PlayerIDs: xi2,
-		Team1ID:        fix.team1ID,
-		Team2ID:        fix.team2ID,
-		VenueID:        fix.venueID,
-		AsOf:           fix.asOf,
+		Format:          fix.format,
+		Team1PlayerKeys: xi1,
+		Team2PlayerKeys: xi2,
+		Team1ID:         fix.team1ID,
+		Team2ID:         fix.team2ID,
+		VenueID:         fix.venueID,
+		AsOf:            fix.asOf,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
@@ -204,7 +208,7 @@ func applyMatchForecast(
 	ctx context.Context,
 	service XIService,
 	fix fixture,
-	xi1, xi2 []int64,
+	xi1, xi2 []string,
 	result *Result,
 ) error {
 	if formatHasInningsLength(fix.format) {
@@ -307,17 +311,25 @@ func loadPool(
 	return pool, nil
 }
 
-// newSelectedPlayers turns the chosen ids into response rows, in the order the optimiser
-// returned them, naming each player from the pool he was chosen out of.
-func newSelectedPlayers(ids []int64, pool []db.PlayerPoolRow, marginals map[int64]float64) []SelectedPlayer {
-	names := make(map[int64]string, len(pool))
+// newSelectedPlayers turns the chosen registry keys into response rows, in the order the
+// optimiser returned them, resolving each back to the pool row he was chosen out of.
+//
+// A key the pool cannot resolve is dropped rather than returned as a nameless row with a
+// zero id: it would mean ml-service answered with a player nobody asked about.
+func newSelectedPlayers(keys []string, pool []db.PlayerPoolRow, marginals map[string]float64) []SelectedPlayer {
+	byKey := make(map[string]db.PlayerPoolRow, len(pool))
 	for _, p := range pool {
-		names[p.PlayerID] = p.PlayerName
+		byKey[p.ExternalID] = p
 	}
-	out := make([]SelectedPlayer, 0, len(ids))
-	for _, pid := range ids {
-		player := SelectedPlayer{PlayerID: pid, PlayerName: names[pid]}
-		if v, ok := marginals[pid]; ok {
+	out := make([]SelectedPlayer, 0, len(keys))
+	for _, key := range keys {
+		row, ok := byKey[key]
+		if !ok {
+			slog.Warn("selection returned a player the pool does not hold", slog.String("player_key", key))
+			continue
+		}
+		player := SelectedPlayer{PlayerID: row.PlayerID, PlayerKey: key, PlayerName: row.PlayerName}
+		if v, ok := marginals[key]; ok {
 			value := v
 			player.MarginalValue = &value
 		}
@@ -335,10 +347,18 @@ func winnerFrom(team1Probability float64, team1Code, team2Code string) string {
 	return team2Code
 }
 
-func poolPlayerIDs(pool []db.PlayerPoolRow) []int64 {
-	ids := make([]int64, 0, len(pool))
+// poolPlayerKeys is the pool as ml-service addresses it: registry ids, skipping anyone the
+// importer never matched to a registry entry (0 rows today) because ml-service has no
+// rating for a player it has never been told about under that name.
+func poolPlayerKeys(pool []db.PlayerPoolRow) []string {
+	keys := make([]string, 0, len(pool))
 	for _, p := range pool {
-		ids = append(ids, p.PlayerID)
+		if p.ExternalID == "" {
+			slog.Warn("player has no registry id and cannot be selected",
+				slog.Int64("player_id", p.PlayerID), slog.String("player_name", p.PlayerName))
+			continue
+		}
+		keys = append(keys, p.ExternalID)
 	}
-	return ids
+	return keys
 }

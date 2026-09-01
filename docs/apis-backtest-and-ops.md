@@ -12,6 +12,11 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 
 - **Content-Type:** `application/json`. **Error format:** `{ "error": { "code": "INVALID_INPUT", "message": "...", "details": {...} } }`
 - **GET /health** — 200 `{ "status": "ok" }`
+- **Player id contract:** every `*_player_ids` field on an XI endpoint, and every key of
+  `marginal_values`, is the **Cricsheet registry id** — `player.external_id` in the database, a
+  hex string such as `2911de16` — never the numeric `player.player_id`. That is the key the
+  rating state is built under (P-1), so a numeric id sent here matches nobody and every player
+  comes back unrated (D-7a). A player whose row has no `external_id` cannot be sent.
 - **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format whose objective does not rank (H-17: TEST) — the hint names `"ratings"`.
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.

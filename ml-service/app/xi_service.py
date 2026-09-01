@@ -159,8 +159,11 @@ class XiRegistry:
 REGISTRY = XiRegistry()
 
 
-def _keys(ids: List[int]) -> List[str]:
-    return [str(i) for i in ids]
+def _keys(ids: List[str]) -> List[str]:
+    """The wire's player ids *are* the rating state's keys (registry ids), so this is
+    identity -- kept as a named seam because it was a conversion until P-5, and the
+    conversion was the bug: ``str(int)`` can never spell a hex registry id."""
+    return list(ids)
 
 
 def _constraints(c: XiConstraints) -> Constraints:
@@ -208,14 +211,14 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
         evaluations=result.evaluations,
     )
     return XiOptimizeResponse(
-        selected_player_ids=[int(k) for k in result.selected],
+        selected_player_ids=list(result.selected),
         objective="win",
         optimised=True,
         win_probability=result.win_probability,
         evaluations=result.evaluations,
         improved_over_seed=result.improved_over_seed,
         unknown_player_ids=unknown,
-        marginal_values={int(k): v for k, v in mv.items()},
+        marginal_values=dict(mv),
     )
 
 
@@ -226,7 +229,7 @@ def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unk
     selected = select_xi_by_ratings(store, req.format, pool, constraints=_constraints(req.constraints))
     logger.info("xi.optimize.rating_ordered", format=req.format, pool=len(pool), selected=len(selected))
     return XiOptimizeResponse(
-        selected_player_ids=[int(k) for k in selected],
+        selected_player_ids=list(selected),
         objective="ratings",
         optimised=False,
         win_probability=None,
@@ -256,6 +259,7 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
 
 
 def _optional_str(value: Optional[int]) -> Optional[str]:
+    """Team and venue ids stay integers: they key team-level context, not the player state."""
     return None if value is None else str(value)
 
 
@@ -310,7 +314,7 @@ def _player_performance(rows: pd.DataFrame, prediction: Dict, i: int) -> PlayerP
 
     wickets = prediction["wickets"]
     return PlayerPerformance(
-        player_id=int(rows.player_key.iloc[i]),
+        player_id=str(rows.player_key.iloc[i]),
         side=int(rows.team_side.iloc[i]),
         p_bats=float(prediction["p_bats"][i]),
         p_bowls=float(prediction["p_bowls"][i]),
@@ -396,7 +400,7 @@ def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
         wickets_lost=PerformanceRange(**side["wickets_lost"]),
         players=[
             SimulatedPlayer(
-                player_id=int(p["player_key"]),
+                player_id=str(p["player_key"]),
                 side=team_side,
                 p_bats=p["p_bats"],
                 p_bowls=p["p_bowls"],

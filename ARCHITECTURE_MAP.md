@@ -12,14 +12,14 @@ Concise reference for data flow, ML models, and aggregation. Use `@ARCHITECTURE_
 
 ### Sources
 - **The event store** — `match`, `match_player`, `ball_event` — is the only input the XI layer reads. One chronological, as-of pass (`ml.xi.builder`) produces the win frame, the player-match frame and the serving rating state.
-- **go-app** knows who is available (the pool) and which fixture this is; it sends player ids, a format, team ids, a venue id and a date. It sends no features.
+- **go-app** knows who is available (the pool) and which fixture this is; it sends **registry ids** (`player.external_id`, the key the rating state is built under), a format, team ids, a venue id and a date. It sends no features.
 - `configs/feature_vectors.json` and `GET /api/backtest/training-data` still feed the windowed-form win model and the auto-tune stack, both of which P-6 removes.
 
 ### Flow (prediction)
 
 ```
 DB (pools for the two sides) → go-app resolves format / teams / venue / date
-    → ml-service, by player id:
+    → ml-service, by registry id (`player.external_id`, not `player_id` — see D-7a):
         - POST /xi/optimize        objective="win"     → the XI that maximises P(win), + marginal values
                                    objective="ratings" → the rating-ordered XI (H-17: TEST), optimised=false
         - POST /xi/predict-win                          → the displayed P(team1 wins)

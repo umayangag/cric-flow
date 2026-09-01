@@ -61,10 +61,10 @@ func TestPredictMatchWinXI_SendsAsOfOnlyWhenSet(t *testing.T) {
 			client, captured := xiCaptureServer(t, `{"team1_win_probability":0.6,"objective_probability":0.55}`)
 
 			p, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
-				Format:         "T20",
-				Team1PlayerIDs: []int64{1},
-				Team2PlayerIDs: []int64{2},
-				AsOf:           tc.asOf,
+				Format:          "T20",
+				Team1PlayerKeys: []string{"a1"},
+				Team2PlayerKeys: []string{"b1"},
+				AsOf:            tc.asOf,
 			})
 
 			require.NoError(t, err)
@@ -82,14 +82,14 @@ func TestOptimizeXI_SendsAsOf(t *testing.T) {
 	t.Parallel()
 
 	client, captured := xiCaptureServer(
-		t, `{"selected_player_ids":[1],"win_probability":0.5,"evaluations":1,"improved_over_seed":0}`,
+		t, `{"selected_player_ids":["a1"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0}`,
 	)
 
 	_, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
-		Format:            "T20",
-		PoolPlayerIDs:     []int64{1, 2},
-		OpponentPlayerIDs: []int64{3},
-		AsOf:              time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		Format:             "T20",
+		PoolPlayerKeys:     []string{"a1", "a2"},
+		OpponentPlayerKeys: []string{"b1"},
+		AsOf:               time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
 	})
 
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	  "format": "T20", "n_samples": 2000, "seed": 0, "toss_marginalised": true,
 	  "team1": {"total": {"q10": 130, "median": 158, "q90": 186, "mean": 158.4, "sd": 21.0, "scorecard": 157.9},
 	            "extras_scorecard": 7.5, "extras_spread_share": 0.02, "wickets_lost": {"q10": 3, "median": 6, "q90": 9},
-	            "players": [{"player_id": 11, "side": 1, "p_bats": 1.0, "p_bowls": 0.0,
+	            "players": [{"player_id": "a1", "side": 1, "p_bats": 1.0, "p_bowls": 0.0,
 	                         "runs": {"q10": 5, "median": 28, "q90": 61}, "balls_faced": {"q10": 4, "median": 22, "q90": 44},
 	                         "wickets": {"q10": 0, "median": 0, "q90": 0}, "runs_conceded": {"q10": 0, "median": 0, "q90": 0},
 	                         "balls_bowled": {"q10": 0, "median": 0, "q90": 0},
@@ -118,14 +118,14 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	batsFirst := true
 
 	result, err := client.SimulateMatchXI(context.Background(), predictteam.XISimulationRequest{
-		Format:         "T20",
-		Team1PlayerIDs: []int64{11},
-		Team2PlayerIDs: []int64{21},
-		Team1ID:        7,
-		VenueID:        3,
-		Team1BatsFirst: &batsFirst,
-		AsOf:           time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
-		Samples:        500,
+		Format:          "T20",
+		Team1PlayerKeys: []string{"a1"},
+		Team2PlayerKeys: []string{"b1"},
+		Team1ID:         7,
+		VenueID:         3,
+		Team1BatsFirst:  &batsFirst,
+		AsOf:            time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		Samples:         500,
 	})
 
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	assert.InDelta(t, 157.9, result.Team1.TotalScorecard, 1e-9)
 	assert.InDelta(t, 130, result.Team1.Total.P10, 1e-9)
 	require.Len(t, result.Team1.Players, 1)
-	assert.Equal(t, int64(11), result.Team1.Players[0].PlayerID)
+	assert.Equal(t, "a1", result.Team1.Players[0].PlayerKey)
 	assert.InDelta(t, 29.1, result.Team1.Players[0].ScorecardRuns, 1e-9)
 	assert.InDelta(t, 61, result.Team1.Players[0].Runs.P90, 1e-9)
 	assert.InDelta(t, 0.18, result.Team1.Players[0].SpreadShare, 1e-9)

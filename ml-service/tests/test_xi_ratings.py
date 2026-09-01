@@ -219,3 +219,17 @@ def test_simulation_context_starts_at_the_laws_of_the_game_and_is_as_of() -> Non
     assert after["ctx_innings_deliveries"] == pytest.approx((120.0 + 12.0) / 2.0)  # one prior innings
     assert after["ctx_bowler_wicket_share"] == pytest.approx((1.0 + 8.0) / (1.0 + 10.0))
     assert state.simulation_context("ODI", "male")["ctx_innings_deliveries"] == 300.0  # per format
+
+
+def test_reading_an_unknown_player_does_not_register_him() -> None:
+    """D-7b: serving is a read. A request naming a player the state has never seen must
+    leave the state exactly as the artifact left it, or two identical requests either side
+    of a third can disagree."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    state.update(_match("m", 0, "A", t1, t2, _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)))
+    keys_before = dict(state.players.key_to_slot)
+
+    state.side_vectors("T20", ["never-seen-1", "never-seen-2"])
+
+    assert state.players.key_to_slot == keys_before, "a read registered a player it was only asked about"

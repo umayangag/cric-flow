@@ -20,19 +20,19 @@ type XIPerformancePredictor interface {
 
 // XIPerformanceRequest is the Go-side payload for POST /performance/predict.
 type XIPerformanceRequest struct {
-	Format         string
-	Team1PlayerIDs []int64
-	Team2PlayerIDs []int64
-	Team1ID        int64
-	Team2ID        int64
-	VenueID        int64
-	AsOf           time.Time
+	Format          string
+	Team1PlayerKeys []string
+	Team2PlayerKeys []string
+	Team1ID         int64
+	Team2ID         int64
+	VenueID         int64
+	AsOf            time.Time
 }
 
 // XIPerformancePlayer is one player's forecast: the median of each target with its 10-90
 // interval, and the expected wickets.
 type XIPerformancePlayer struct {
-	PlayerID     int64
+	PlayerKey    string
 	Runs         XISimulatedRange
 	BallsFaced   XISimulatedRange
 	RunsConceded XISimulatedRange
@@ -52,27 +52,27 @@ func applyPerformanceForecast(
 	ctx context.Context,
 	predictor XIPerformancePredictor,
 	fix fixture,
-	xi1, xi2 []int64,
+	xi1, xi2 []string,
 	result *Result,
 ) error {
 	forecast, err := predictor.PredictPerformance(ctx, XIPerformanceRequest{
-		Format:         fix.format,
-		Team1PlayerIDs: xi1,
-		Team2PlayerIDs: xi2,
-		Team1ID:        fix.team1ID,
-		Team2ID:        fix.team2ID,
-		VenueID:        fix.venueID,
-		AsOf:           fix.asOf,
+		Format:          fix.format,
+		Team1PlayerKeys: xi1,
+		Team2PlayerKeys: xi2,
+		Team1ID:         fix.team1ID,
+		Team2ID:         fix.team2ID,
+		VenueID:         fix.venueID,
+		AsOf:            fix.asOf,
 	})
 	if err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
-	byID := make(map[int64]XIPerformancePlayer, len(forecast.Players))
+	byKey := make(map[string]XIPerformancePlayer, len(forecast.Players))
 	for _, p := range forecast.Players {
-		byID[p.PlayerID] = p
+		byKey[p.PlayerKey] = p
 	}
-	applyForecastToSide(result.Team1, byID)
-	applyForecastToSide(result.Team2, byID)
+	applyForecastToSide(result.Team1, byKey)
+	applyForecastToSide(result.Team2, byKey)
 	slog.InfoContext(ctx, "performance forecast applied",
 		slog.String("format", fix.format),
 		slog.Int("players", len(forecast.Players)),
@@ -80,12 +80,12 @@ func applyPerformanceForecast(
 	return nil
 }
 
-func applyForecastToSide(players []SelectedPlayer, byID map[int64]XIPerformancePlayer) {
+func applyForecastToSide(players []SelectedPlayer, byKey map[string]XIPerformancePlayer) {
 	for i := range players {
-		p, ok := byID[players[i].PlayerID]
+		p, ok := byKey[players[i].PlayerKey]
 		if !ok {
 			slog.Warn("performance forecast: selected player missing from the response",
-				slog.Int64("player_id", players[i].PlayerID))
+				slog.String("player_key", players[i].PlayerKey))
 			continue
 		}
 		players[i].Runs = p.Runs.Median

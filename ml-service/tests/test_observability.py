@@ -32,7 +32,7 @@ def test_error_payload_contains_request_id_on_400(tmp_path):
     resp = client.post(
         "/xi/optimize",
         headers={"X-Request-ID": rid},
-        json={"format": "TEST", "pool_player_ids": [1], "opponent_player_ids": [2]},
+        json={"format": "TEST", "pool_player_ids": ["a1"], "opponent_player_ids": ["b1"]},
     )
     assert resp.status_code == 503
     detail = resp.json()["detail"]

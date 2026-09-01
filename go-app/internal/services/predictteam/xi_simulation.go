@@ -16,12 +16,12 @@ type XISimulator interface {
 
 // XISimulationRequest is the Go-side payload for POST /simulate.
 type XISimulationRequest struct {
-	Format         string
-	Team1PlayerIDs []int64
-	Team2PlayerIDs []int64
-	Team1ID        int64
-	Team2ID        int64
-	VenueID        int64
+	Format          string
+	Team1PlayerKeys []string
+	Team2PlayerKeys []string
+	Team1ID         int64
+	Team2ID         int64
+	VenueID         int64
 	// Team1BatsFirst is nil before the toss, when both batting orders are drawn.
 	Team1BatsFirst *bool
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
@@ -43,7 +43,7 @@ type XISimulatedRange struct {
 // line (what the scorecard shows; the lines sum to the side total by construction) and
 // the player's contribution to the side total's spread.
 type XISimulatedPlayer struct {
-	PlayerID              int64
+	PlayerKey             string
 	Runs                  XISimulatedRange
 	BallsFaced            XISimulatedRange
 	Wickets               XISimulatedRange
@@ -103,17 +103,17 @@ func applyXISimulation(
 	ctx context.Context,
 	simulator XISimulator,
 	fix fixture,
-	xi1, xi2 []int64,
+	xi1, xi2 []string,
 	result *Result,
 ) error {
 	sim, err := simulator.SimulateMatchXI(ctx, XISimulationRequest{
-		Format:         fix.format,
-		Team1PlayerIDs: xi1,
-		Team2PlayerIDs: xi2,
-		Team1ID:        fix.team1ID,
-		Team2ID:        fix.team2ID,
-		VenueID:        fix.venueID,
-		AsOf:           fix.asOf,
+		Format:          fix.format,
+		Team1PlayerKeys: xi1,
+		Team2PlayerKeys: xi2,
+		Team1ID:         fix.team1ID,
+		Team2ID:         fix.team2ID,
+		VenueID:         fix.venueID,
+		AsOf:            fix.asOf,
 	})
 	if err != nil {
 		return fmt.Errorf("simulate match: %w", err)
@@ -167,15 +167,15 @@ func inningsTotal(side XISimulatedSide) InningsTotal {
 // ranges and their share of the innings total's spread. A player the simulator did not
 // return (it always returns the eleven it was sent) is logged and left with zeros.
 func applySimulatedSide(players []SelectedPlayer, side XISimulatedSide) {
-	byID := make(map[int64]XISimulatedPlayer, len(side.Players))
+	byKey := make(map[string]XISimulatedPlayer, len(side.Players))
 	for _, p := range side.Players {
-		byID[p.PlayerID] = p
+		byKey[p.PlayerKey] = p
 	}
 	for i := range players {
-		sp, ok := byID[players[i].PlayerID]
+		sp, ok := byKey[players[i].PlayerKey]
 		if !ok {
 			slog.Warn("xi simulation: selected player missing from the simulator's side",
-				slog.Int64("player_id", players[i].PlayerID))
+				slog.String("player_key", players[i].PlayerKey))
 			continue
 		}
 		spread := sp.SpreadShare
