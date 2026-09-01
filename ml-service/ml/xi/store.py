@@ -83,6 +83,12 @@ def _state_to_payload(state: RatingState) -> Dict:
                 "ctx_balls",
                 "ctx_runs",
                 "ctx_wickets",
+                "ctx_extras",
+                "ctx_deliveries",
+                "ctx_bowler_wickets",
+                "ctx_dismissals",
+                "ctx_full_innings_deliveries",
+                "ctx_full_innings",
             )  # fmt: skip
         },
         "team_elo": dict(state.team_elo),

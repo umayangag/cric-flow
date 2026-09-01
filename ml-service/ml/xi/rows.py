@@ -78,6 +78,22 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
     return out
 
 
+def innings_outcomes(match: MatchRecord) -> Dict[str, float]:
+    """What the first two innings did (``contract.INNINGS_OUTCOME_COLS``): runs, dismissals
+    and deliveries. Outcome columns on the win row -- E2 scores simulated totals against
+    them -- and never an input."""
+    d = match.deliveries
+    out = {col: 0.0 for col in C.INNINGS_OUTCOME_COLS}
+    if not len(d):
+        return out
+    for number, inning in enumerate(np.unique(d.innings)[:2], start=1):
+        mask = d.innings == inning
+        out[f"innings{number}_runs"] = float(d.runs_total[mask].sum())
+        out[f"innings{number}_wickets"] = float(d.wicket[mask].sum())
+        out[f"innings{number}_deliveries"] = float(mask.sum())
+    return out
+
+
 def serving_match(
     format_code: str,
     team1_players: Sequence[str],
@@ -108,8 +124,9 @@ def serving_match(
 def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
     """Both sides' aggregates as the win-feature row, and one feature row per XI player
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
-    match date. The performance model's serving path reads rows from here; the training
-    pass adds what the player then did through ``build_match_rows``."""
+    match date. The win row also carries the simulator's as-of context
+    (``SIMULATION_CONTEXT_COLS``). The performance model's serving path reads rows from
+    here; the training pass adds what the player then did through ``build_match_rows``."""
     vectors1 = state.side_vectors(match.format_code, match.team1_players)
     vectors2 = state.side_vectors(match.format_code, match.team2_players)
     side1 = aggregate_side(vectors1, match.format_code)
@@ -128,6 +145,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     }
     win_row.update(match_features(side1, side2))
     win_row.update(context)
+    win_row.update(state.simulation_context(match.format_code, match.gender))
 
     player_rows: List[Dict] = []
     sides = (
@@ -163,6 +181,7 @@ def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List
     """The win-frame row and the player-match rows for one decided match, computed from
     the state as of the match date. The caller guarantees the match is not folded in yet."""
     win_row, player_rows = player_feature_rows(state, match)
+    win_row.update(innings_outcomes(match))
     actuals = match_actuals(match)
     for row in player_rows:
         row.update(actuals.get(row["player_key"], _ZERO_ACTUALS))

@@ -459,6 +459,96 @@ Rows are assembled by `ml/xi/rows.py` from the same state the win path reads, an
 parity check in the harness compares the served prediction with the prediction on the
 training frame's row for the last 50 matches, output by output.
 
+### Match simulator (L2-C, `ml/xi/simulator.py`, P-4)
+
+**What it answers.** For two elevens, drawn N times (default 2,000, seeded, vectorised): each
+side's total (median, 10–90), each player's median and 10–90 of runs, balls, wickets and runs
+conceded, a **median-band scorecard** — each player's mean over the draws whose side total
+lies in the central tenth of its distribution, which sums to that band's mean total by
+construction, so the scorecard and the innings total shown are one picture — the margin as
+cricket states it (runs when the side batting first wins, balls remaining and wickets in hand
+when the chaser does), P(win) by simulation, and each player's share of the total's spread,
+Cov(player, total) / Var(total). Nothing is trained: the design is written down in the plan
+(§3, "The innings sample") and the module follows it.
+
+**Inputs.** L2-B's forecasts for the fixture under both orientations — the three quantiles of
+runs, balls faced and runs conceded, the wicket distribution, P(bats) / P(bowls) — plus the
+row's as-of expected slot and expected balls bowled, and three **as-of context rates** the
+rating pass now carries per format (`contract.SIMULATION_CONTEXT_COLS`,
+`RatingState.simulation_context`): extras per delivery, deliveries per full first innings (one
+not all out, so it ran its overs) and the bowler-credited share of dismissals. The only
+constants are laws of the game (legal balls, ten wickets, a bowler's fifth). Nothing the
+simulator consumes is in-sample for the fixture (H-21): the forecasts are as-of predictions,
+the rates are running sums over matches before it.
+
+**The innings sample.** A player's three quantiles become a quantile function (piecewise
+linear through zero and the fitted levels, exponential tail above 0.9 with the (q50, q90)
+scale). The batting side is authoritative: order by `exp_bat_position`; one uniform per draw
+against each P(bats) sets how deep the innings goes (at least two bat); each batter draws
+runs and balls *given that he bats* from the upper P(bats) part of his distribution; the
+balls budget is the as-of deliveries per full innings — the batter at which it is crossed
+keeps the remainder at his sampled strike rate, and when the sum falls short the not-out
+pair face the rest at their expected rates; wickets = batters − 2 (10 when all out); extras
+are Poisson at the as-of rate over the deliveries used. The chase ends at the target
+(contributions counted with extras pro rata). Bowlers are *attributions* of that innings:
+each bowls with P(bowls), topped up until the side can deliver the innings under the cap;
+balls in proportion to expected balls; runs conceded a multinomial split of the total by
+balls × as-of rate; the bowler-credited share of the wickets by balls × wicket rate. So the
+bowlers' figures sum to the innings by construction and their own L2-B medians are not
+reproduced — that would be the second estimate the hybrid reconciliation used to rescale
+toward. Toss unknown: half the draws each way, each with the matching forecasts (H-3).
+
+**Runs and balls are coupled, not identical.** The first build drew a batter's runs and balls
+from one uniform; with every strike rate fixed and the balls budget enforced, the side total's
+spread collapsed (sd 4.6 on a synthetic side). Runs and balls are now drawn through a
+Gaussian copula whose correlation comes from the training rows' rank correlation of runs and
+balls among those who batted (`simulator.runs_balls_copula_rho`, stored in the artifact as
+`PerformanceModels.simulation`), as-of for the fixture because the rows precede the cutoff.
+
+**Shared match factor.** A pitch or a day is common to both innings, so independent batter
+draws can under-disperse totals. E2 measures it (PIT and the dispersion ratio of actual
+totals around the simulated mean); where needed, one multiplicative factor per draw, shared by
+both innings, is sampled from the **as-of residual distribution** — actual / simulated-mean
+first-innings totals on the last 92 days before the cutoff, the temporal calibration fold the
+members do not train on (H-21), deconvolved of the simulator's own dispersion — never a
+hand-set CV. `simulator.SHARED_FACTOR` records the decision; §8.3 of the plan the before/after.
+
+**Measured by (E2, `ml/xi/sim_harness.py`, in `make xi-evaluate`).** Per format and window,
+beside the display model on the same matches: Brier and reliability of the simulated P(win)
+(pre-toss, the comparable one; toss-known beside it) against the display model's and the base
+rate; coverage **and** width of the simulated totals' 10–90 interval against actual first
+innings that ran their course (H-22 applied to totals), with the chase total the same way on
+every match; margins; latency per fixture. E2's rule (plan §5): simulated P(win) worse than the
+display model by more than 0.01 Brier on the walk-forward folds and it is a description, never
+the displayed probability — `simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED` per format, and
+`/simulate` returns both with `headline_source`. The H-8 parity check compares the simulator's
+draws at a fixed seed from the as-of path and from the training frame's rows.
+
+**First numbers** (plan §8.3). Walk-forward, 7 folds: without the shared factor the
+first-innings totals' 10–90 coverage is 0.64 (T20) / 0.58 (ODI) with a dispersion ratio of
+1.42 / 1.36 and a U-shaped PIT; with it 0.76 / 0.74 at ratio 1.02 / 1.02, the interval
+widening from 61 to 83 runs (T20) and 107 to 151 (ODI) — the narrower one was the wrong one.
+Locked window (≥ 2025-09-01, scored once): coverage **0.786** (T20, 1,521 first innings) and
+**0.790** (ODI, 347), the acceptance's ±0.03 met; simulated P(win) Brier 0.2024 vs the
+display model's 0.2032 (T20) and 0.2201 vs 0.2110 (ODI), within E2's tolerance, so the
+display model stays the headline and the simulated probability is served beside it. The
+chase total under-covers from the low side (0.72–0.73); margins cover 0.50–0.69 at nominal
+0.80 — reported, not tuned. 5.4 ms per fixture at 1,000 draws, 9.4–9.9 ms at the served
+2,000. The two sources agree on every locked-window figure to within the seed spread and
+the H-8 parity check is 0.0 on both, simulator draws included.
+
+**Serve.** `POST /simulate` takes what `/performance/predict` takes plus `n_samples` and
+`seed`, and returns per side the total (median, 10–90, mean, sd, scorecard total), per player
+the ranges and the scorecard line, the win probabilities (simulated, display, headline and its
+source), and the margin. Limited-overs formats only (422 otherwise; TEST stays on the greedy
+path, H-17). Behind `selection.win_model: "xi"` the go-app scorecard reads it
+(`predictteam/xi_simulation.go`): innings totals, per-player points and their `runs_range` /
+`wickets_range` come from the draws, P(win) from the display model, and the response carries
+`xi_simulation` (innings ranges, simulated P(win), which model is the headline) and
+`explanation` — each selected player's marginal value from `/xi/optimize` and share of the
+total's spread from the simulator (L3). The extras and innings models and the win-probability
+rescale are unused on that path; P-5 re-points the rest and P-6 deletes them.
+
 ### As-of serving (`ratings_as_of`, P-2)
 
 The serving artifact holds ratings **through today** — right for a live prediction, wrong
@@ -485,9 +575,12 @@ model on the player-match rows — per target and format, within-match Spearman,
 the median's MAE, pinball loss and the 10–90 interval's coverage beside its width (H-22),
 with the career-mean, career-quantile and rating-expectation baselines on the same
 population, and quantile targets whose walk-forward coverage is off nominal recalibrated
-on a temporal fold for the locked window (H-5). It ends with the train/serve parity check
-(H-8): the last 50 matches rebuilt from the as-of serving path and compared with the
-training frame — rows and performance predictions alike — and the run fails if they differ.
+on a temporal fold for the locked window (H-5); and the simulator (E2) — simulated P(win)
+against the display model's, totals coverage and width, margins, latency, with E2's display
+rule decided on the folds. It ends with the train/serve parity check (H-8): the last 50
+matches rebuilt from the as-of serving path and compared with the training frame — rows,
+performance predictions and simulator draws at a fixed seed alike — and the run fails if
+they differ.
 
 ```bash
 make xi-evaluate                                        # the database

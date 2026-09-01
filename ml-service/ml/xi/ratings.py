@@ -107,6 +107,19 @@ class RatingState:
         self.ctx_balls = np.ones((2, _N_FMT, C.MAX_OVER_INDEX))
         self.ctx_runs = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 1.2)
         self.ctx_wickets = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 0.05)
+        # simulator context (L2-C): per (context group, format) running sums over deliveries
+        # -- extras, deliveries, bowler-credited and total dismissals -- and over full first
+        # innings (not all out, so they ran their overs) their deliveries and count. The
+        # priors are the laws of the game, not tuned values: one innings of legal balls, no
+        # extras over one delivery, every dismissal the bowler's over one dismissal.
+        self.ctx_extras = np.zeros((2, _N_FMT))
+        self.ctx_deliveries = np.ones((2, _N_FMT))
+        self.ctx_bowler_wickets = np.ones((2, _N_FMT))
+        self.ctx_dismissals = np.ones((2, _N_FMT))
+        self.ctx_full_innings_deliveries = np.tile(
+            np.asarray([float(C.INNINGS_LEGAL_BALLS[f] or 0) for f in C.FORMAT_CODES]), (2, 1)
+        )
+        self.ctx_full_innings = np.ones((2, _N_FMT))
         # team-level state
         self.team_elo: Dict[tuple, float] = defaultdict(lambda: C.ELO_INITIAL)
         self.team_results: Dict[tuple, List[float]] = defaultdict(list)
@@ -191,6 +204,19 @@ class RatingState:
             - math.log1p(self.team_venue_matches[(t2, v)]),
         }
 
+    def simulation_context(self, format_code: str, gender: str) -> Dict[str, float]:
+        """The as-of rates the simulator consumes (``contract.SIMULATION_CONTEXT_COLS``):
+        extras per delivery, deliveries per full first innings and the bowler-credited share
+        of dismissals, for the format (and the match's context group, which is everyone
+        unless the gender split is on -- a serving request names no gender and reads group 0,
+        exactly what training reads with the split off)."""
+        g, f = self._ctx_group(gender), C.FORMAT_INDEX[format_code]
+        return {
+            "ctx_extras_per_ball": float(self.ctx_extras[g, f] / self.ctx_deliveries[g, f]),
+            "ctx_innings_deliveries": float(self.ctx_full_innings_deliveries[g, f] / self.ctx_full_innings[g, f]),
+            "ctx_bowler_wicket_share": float(self.ctx_bowler_wickets[g, f] / self.ctx_dismissals[g, f]),
+        }
+
     # -- update --------------------------------------------------------------------------
     def update(self, match: MatchRecord) -> None:
         """Fold one match into the state. Must be called after its features were read."""
@@ -199,6 +225,7 @@ class RatingState:
         d = match.deliveries
         if len(d):
             self._update_impact(f, self._ctx_group(match.gender), match.format_code, d)
+            self._update_simulation_context(f, self._ctx_group(match.gender), d)
         both = np.concatenate([s1, s2])
         self.career[f, both] += 1.0
         self.career_all[both] += 1.0
@@ -281,6 +308,18 @@ class RatingState:
         for i in stumped:
             for key in d.fielders[i] if i < len(d.fielders) else []:
                 self.keeper[self._slots([key])[0]] = 1.0
+
+    def _update_simulation_context(self, f: int, g: int, d: Deliveries) -> None:
+        self.ctx_extras[g, f] += float((d.runs_total - d.runs_batter).sum())
+        self.ctx_deliveries[g, f] += float(len(d))
+        self.ctx_bowler_wickets[g, f] += float(d.bowler_wicket.sum())
+        self.ctx_dismissals[g, f] += float(d.wicket.sum())
+        first = d.innings == d.innings.min()
+        # A first innings that was not all out ran its overs (rain aside), so its length in
+        # deliveries -- wides included, as every ball count here is -- is the innings length.
+        if d.wicket[first].sum() < C.MAX_WICKETS:
+            self.ctx_full_innings_deliveries[g, f] += float(first.sum())
+            self.ctx_full_innings[g, f] += 1.0
 
     def _accumulate(self, total, balls, wtotal, matches, f, who, value, wvalue, count) -> None:
         uniq, inv = np.unique(who, return_inverse=True)

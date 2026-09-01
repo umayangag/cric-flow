@@ -26,6 +26,7 @@ outputs are averaged.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -36,8 +37,11 @@ from scipy.stats import poisson
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
 
 from ml.xi import contract as C
+from ml.xi import simulator
 from ml.xi.perf_calibration import QuantileRecalibration
 from ml.xi.perf_metrics import QUANTILE_LEVELS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -83,8 +87,11 @@ DEFAULT_STRUCTURE: Dict[str, str] = {t.name: ("two_part" if t.name == "wickets" 
 #: Targets whose quantiles are recalibrated on a temporal fold (H-5), decided by the
 #: harness's coverage on the walk-forward folds; empty while coverage is nominal.
 RECALIBRATED_TARGETS: Tuple[str, ...] = ()
-#: The temporal calibration fold: the last quarter of the training rows by date.
+#: The temporal calibration fold: the last quarter of the training rows by date. Shared by
+#: the quantile recalibration (H-5) and the simulator's shared match factor (plan P-4).
 CALIBRATION_DAYS = 92
+#: Draws per calibration fixture when fitting the shared factor: enough for a mean and sd.
+SHARED_FACTOR_SAMPLES = 400
 MIN_FIT_ROWS = 200
 
 
@@ -100,6 +107,9 @@ class FitSpec:
     hyperparameters_name: str = DEFAULT_HYPERPARAMETERS
     # Experiments fit a subset of targets; production fits them all.
     targets: Tuple[str, ...] = tuple(t.name for t in TARGETS)
+    # Whether the simulator's shared match factor is fitted on the temporal calibration fold
+    # (``simulator.SHARED_FACTOR`` decides the default; the fit then needs the match frame).
+    shared_factor: bool = False
 
     def as_dict(self) -> Dict:
         return {
@@ -111,6 +121,7 @@ class FitSpec:
             "seeds": list(self.seeds),
             "recalibrate": list(self.recalibrate),
             "targets": list(self.targets),
+            "shared_factor": self.shared_factor,
         }
 
     @property
@@ -138,6 +149,7 @@ def default_spec(
     seeds: Optional[Sequence[int]] = None,
     recalibrate: Optional[Sequence[str]] = None,
     targets: Optional[Sequence[str]] = None,
+    shared_factor: Optional[bool] = None,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
     test can shrink the seeds without rebinding every caller."""
@@ -149,6 +161,7 @@ def default_spec(
         seeds=tuple(DEFAULT_SEEDS if seeds is None else seeds),
         recalibrate=tuple(RECALIBRATED_TARGETS if recalibrate is None else recalibrate),
         targets=tuple(targets) if targets is not None else tuple(t.name for t in TARGETS),
+        shared_factor=simulator.SHARED_FACTOR if shared_factor is None else bool(shared_factor),
     )
 
 
@@ -348,6 +361,9 @@ class PerformanceModels:
     members: List[SeedMember]
     calibration: Dict[str, QuantileRecalibration]
     metadata: Dict
+    # What the simulator (L2-C) takes from this fit's training rows: the runs-balls copula
+    # and, when the spec asks for it, the shared match factor from the calibration fold.
+    simulation: Optional[simulator.SimulatorCalibration] = None
 
     def _predict_oriented_raw(self, rows: pd.DataFrame, bats_first: Optional[bool]) -> Dict[str, Any]:
         x = design_matrix(rows, self.spec.feature_cols, bats_first)
@@ -387,21 +403,68 @@ def _temporal_calibration_split(rows: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
     return rows[rows.match_date < boundary], rows[rows.match_date >= boundary]
 
 
-def fit_performance(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> PerformanceModels:
+def _fit_shared_factor(
+    model: PerformanceModels, calibration_rows: pd.DataFrame, match_frame: pd.DataFrame
+) -> Optional[simulator.SharedFactor]:
+    """The simulator's shared match factor from the calibration fold's complete first
+    innings (plan P-4): fixtures the members did not train on, simulated toss-known. A
+    format without an innings length has no simulator and so no factor; a fold too thin to
+    hold a residual distribution ships no factor, and says so."""
+    if model.format_code not in simulator.SIMULATED_FORMATS:
+        return None
+    matches = match_frame[match_frame.match_id.isin(set(calibration_rows.match_id))]
+    matches = matches[simulator.complete_first_innings(matches)]
+    if len(matches) < simulator.MIN_SHARED_FACTOR_MATCHES:
+        logger.warning(
+            "%s: %d complete first innings in the calibration fold, need %d; the simulator ships without a shared factor",
+            model.format_code,
+            len(matches),
+            simulator.MIN_SHARED_FACTOR_MATCHES,
+        )
+        return None
+    fixtures = simulator.fixtures_from_rows(calibration_rows, matches, model.predict_oriented)
+    actual = matches.set_index("match_id").innings1_runs.loc[[f.match_id for f in fixtures]].to_numpy(dtype=float)
+    rho = simulator.calibrate(calibration_rows).runs_balls_rho
+    return simulator.fit_shared_factor_on_fixtures(fixtures, actual, rho, SHARED_FACTOR_SAMPLES, seed=0)
+
+
+def fit_performance(
+    rows: pd.DataFrame, format_code: str, spec: FitSpec, match_frame: Optional[pd.DataFrame] = None
+) -> PerformanceModels:
     """Fit the format's model on ``rows`` (the training population, every XI player) under
     ``spec``: one member per seed, and -- for the targets ``spec.recalibrate`` names -- a
     quantile recalibration fitted on the last ``CALIBRATION_DAYS`` of the rows, which the
-    members then do not train on."""
+    members then do not train on. The simulator's calibration comes from the same rows:
+    the runs-balls copula from the fit rows and, under ``spec.shared_factor``, the shared
+    match factor from the calibration fold, which needs the win rows (``match_frame``)."""
     if len(rows) < MIN_FIT_ROWS:
         raise ValueError(f"{format_code}: {len(rows)} training rows, need {MIN_FIT_ROWS}")
+    if spec.shared_factor and match_frame is None:
+        raise ValueError(f"{format_code}: the shared match factor needs the match frame")
     started = time.perf_counter()
-    fit_rows, calibration_rows = _temporal_calibration_split(rows) if spec.recalibrate else (rows, rows.iloc[0:0])
+    hold_out = bool(spec.recalibrate) or spec.shared_factor
+    fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else (rows, rows.iloc[0:0])
+    if hold_out and len(fit_rows) < MIN_FIT_ROWS:
+        # A history shorter than the calibration fold cannot hold one out; the members take
+        # every row and the fold-fitted parts (recalibration, shared factor) are not fitted.
+        logger.warning(
+            "%s: %d rows before the calibration fold, need %d; fitting on every row without recalibration or a shared factor",
+            format_code,
+            len(fit_rows),
+            MIN_FIT_ROWS,
+        )
+        hold_out = False
+        fit_rows, calibration_rows = rows, rows.iloc[0:0]
     x = design_matrix(fit_rows, spec.feature_cols)
     members = [_fit_member(x, fit_rows, spec, seed) for seed in spec.seeds]
     model = PerformanceModels(format_code, spec, members, {}, {})
-    for target in spec.recalibrate:
+    for target in spec.recalibrate if hold_out else ():
         raw = model.predict_marginalised(calibration_rows)[target]["quantiles"]
         model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
+    shared_factor = (
+        _fit_shared_factor(model, calibration_rows, match_frame) if spec.shared_factor and hold_out else None
+    )
+    model.simulation = simulator.calibrate(fit_rows, shared_factor)
     model.metadata = {
         "format_code": format_code,
         "n_train": int(len(fit_rows)),
@@ -410,6 +473,7 @@ def fit_performance(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> Perf
         "train_to": fit_rows.match_date.max().date().isoformat(),
         "spec": spec.as_dict(),
         "iterations": model.iterations,
+        "simulation": model.simulation.as_dict(),
         "fit_seconds": round(time.perf_counter() - started, 1),
     }
     return model

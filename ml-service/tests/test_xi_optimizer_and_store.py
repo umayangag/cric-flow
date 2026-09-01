@@ -116,6 +116,7 @@ def test_store_round_trip_preserves_state(tmp_path) -> None:
         np.testing.assert_allclose(loaded.side_vectors("T20", keys)[k], v)
     assert loaded.team_elo[("T20", "A")] == pytest.approx(state.team_elo[("T20", "A")])
     assert loaded.last_date == state.last_date
+    assert loaded.simulation_context("T20", "male") == state.simulation_context("T20", "male")
 
 
 def test_store_round_trip_preserves_the_gender_split_flag(tmp_path) -> None:

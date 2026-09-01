@@ -14,9 +14,12 @@ such, never used for a choice. Per format it reports, with mean and spread over 
   its width (H-22), with the career-mean, career-quantile and rating-expectation baselines
   scored on the same unconditional population (H-20); quantile targets whose walk-forward
   coverage is off nominal are recalibrated on a temporal fold for the locked window (H-5);
+* the simulator (L2-C, E2): simulated P(win) against the display model's (Brier,
+  reliability), simulated totals' 10-90 coverage and width against actual innings totals,
+  margins, latency; E2's display rule decided on the folds (``ml.xi.sim_harness``);
 * the train/serve parity check (H-8): the last ``PARITY_LAST_N`` matches rebuilt from the
-  as-of serving path and compared with the training frame, rows and performance
-  predictions alike.
+  as-of serving path and compared with the training frame -- rows, performance
+  predictions and simulator outputs at a fixed seed alike.
 
 One command, one JSON report:
 
@@ -38,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import perf_baselines, perf_harness, selection_metrics
+from ml.xi import perf_baselines, perf_harness, selection_metrics, sim_harness, simulator
 from ml.xi.asof import serving_parity
 from ml.xi.builder import build
 from ml.xi.performance import PerformanceModels
@@ -87,9 +90,10 @@ def _stats(values: Sequence[Optional[float]]) -> Optional[Dict]:
 
 def _evaluate_win_window(
     format_frame: pd.DataFrame, cutoff: pd.Timestamp, end: pd.Timestamp
-) -> Tuple[Optional[Dict], Optional[object]]:
+) -> Tuple[Optional[Dict], Optional[object], List[object]]:
     """Win-model metrics for one (train < cutoff, eval [cutoff, end)) split; also returns
-    the fitted objective model for the selection metrics."""
+    the fitted objective model for the selection metrics and the display models (one per
+    seed) for the simulator's consistency check."""
     train = format_frame[format_frame.match_date < cutoff]
     evaluation = format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)]
     skip = {
@@ -100,10 +104,10 @@ def _evaluate_win_window(
     }
     if len(train) < MIN_TRAIN_ROWS or train[C.TARGET_COL].nunique() < 2:
         skip["skipped_reason"] = "insufficient training rows"
-        return skip, None
+        return skip, None, []
     if len(evaluation) < MIN_EVAL_ROWS or evaluation[C.TARGET_COL].nunique() < 2:
         skip["skipped_reason"] = "evaluation window too small or single-class"
-        return skip, None
+        return skip, None, []
     x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
     x_display, _ = _xy(train, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model().fit(x_objective, y_train)
@@ -116,6 +120,7 @@ def _evaluate_win_window(
     metrics.update(
         {
             "eval_positive_rate": float(y_eval.mean()),
+            "train_positive_rate": float(y_train.mean()),
             "objective_auc": objective_scores["auc"],
             "objective_brier": objective_scores["brier"],
             "display_auc_mean": float(np.mean([s["auc"] for s in display_scores])),
@@ -124,7 +129,7 @@ def _evaluate_win_window(
             "base_rate_brier": base_rate_brier,
         }
     )
-    return metrics, objective
+    return metrics, objective, displays
 
 
 def _evaluate_fold(
@@ -135,7 +140,7 @@ def _evaluate_fold(
     end: pd.Timestamp,
     recalibrate: Tuple[str, ...] = (),
 ) -> Tuple[Dict, Optional[PerformanceModels]]:
-    fold, objective = _evaluate_win_window(format_frame, cutoff, end)
+    fold, objective, displays = _evaluate_win_window(format_frame, cutoff, end)
     if objective is None:
         return fold, None
     format_players = player_frame[player_frame.format_code == format_code]
@@ -146,8 +151,13 @@ def _evaluate_fold(
     fold["specific_vs_typical"] = selection_metrics.specific_vs_typical(
         objective, C.XI_FEATURE_COLS, format_frame, cutoff, end
     )
-    performance = perf_harness.evaluate_fold(player_frame, format_code, cutoff, end, recalibrate)
+    performance = perf_harness.evaluate_fold(player_frame, format_code, cutoff, end, recalibrate, format_frame)
     fold["performance"] = performance.report
+    if performance.model is not None:
+        window_matches = format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)]
+        fold["simulation"] = sim_harness.evaluate_window(
+            performance.model, displays, window_matches, window_players, format_code, fold["train_positive_rate"]
+        )
     return fold, performance.model
 
 
@@ -176,6 +186,7 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "performance": perf_harness.summarize_folds(
             [f["performance"] for f in scored if "targets" in f.get("performance", {})]
         ),
+        "simulation": sim_harness.summarize_folds([f.get("simulation") for f in scored]),
     }
     return summary
 
@@ -199,6 +210,14 @@ def evaluate_format(
         "n_matches": int(len(format_frame)),
         "walk_forward": {"folds": folds, "summary": summary},
         "locked": locked,
+        # E2's rule, applied to the folds only; what the serving path does is the constant
+        # ``simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED``, set from this by hand.
+        "simulation_decision": {
+            **sim_harness.decision(summary["simulation"]),
+            "shared_factor": simulator.SHARED_FACTOR,
+            "chase_orientation": simulator.CHASE_ORIENTATION,
+            "served": simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED.get(format_code, False),
+        },
     }, locked_model
 
 
@@ -325,6 +344,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 objective["n_folds"],
             )
         _log_performance(format_code, summary.get("performance"))
+        decision = report["formats"][format_code]["simulation_decision"]
+        if "delta_brier_mean" in decision:
+            logger.info(
+                "%-5s simulation (E2): Δ Brier %+.4f ± %.4f over %d folds -> simulated P(win) %s",
+                format_code,
+                decision["delta_brier_mean"],
+                decision["delta_brier_sd"],
+                decision["n_folds"],
+                "a probability" if decision["simulated_win_probability_within_tolerance"] else "a description only",
+            )
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])
         return 1

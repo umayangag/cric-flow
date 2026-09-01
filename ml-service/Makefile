@@ -11,7 +11,7 @@ LINE_LENGTH?=120
 # from requirements.in also has shap, so tests/test_shap_explanations.py runs instead of
 # skipping and `make coverage` reports ~0.9 points higher here than the gate will. Ratchet
 # from the CI number, not the local one.
-COV_MIN?=85
+COV_MIN?=86
 # CI sets REQUIREMENTS_FILE=requirements-serve.txt so venv gets the serving deps (no pycaret/autogluon/shap).
 REQUIREMENTS_FILE?=requirements.txt
 

@@ -12,8 +12,9 @@ import pandas as pd
 import pytest
 
 from app import xi_service
-from app.models.xi import PerformancePredictRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
+from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi.builder import build
+from ml.xi.simulator import SimulationUnavailable
 from ml.xi.sources import BOWLER_CREDITED_KINDS, Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
 from ml.xi.train import main as train_main
 from ml.xi.train import train_all
@@ -446,3 +447,38 @@ def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
     early = xi_service.predict_win(XiWinRequest(**request, as_of=matches[30].match_date), registry=reg)
 
     assert today.team1_win_probability != pytest.approx(early.team1_win_probability, abs=1e-12)
+
+
+def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, artifacts_dir) -> None:
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = SimulateRequest(format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=300)
+
+    res = xi_service.simulate(req, registry)
+
+    assert res.n_samples == 300 and res.toss_marginalised is True and res.format == "T20"
+    assert len(res.team1.players) == 11 and [p.side for p in res.team2.players] == [2] * 11
+    lines = sum(p.scorecard.runs for p in res.team1.players) + res.team1.extras_scorecard
+    assert lines == pytest.approx(res.team1.total.scorecard)  # the scorecard sums to the total by construction
+    assert res.team1.total.q10 <= res.team1.total.median <= res.team1.total.q90
+    assert sum(p.spread_share for p in res.team1.players) + res.team1.extras_spread_share == pytest.approx(1.0)
+    assert 0.0 <= res.win_probability.simulated <= 1.0 and 0.0 <= res.win_probability.display <= 1.0
+    assert res.win_probability.headline_source == "display"  # E2's rule: the display model stays the headline
+    assert res.win_probability.headline == res.win_probability.display
+    assert res.margin.p_bat_first_wins + res.margin.p_chaser_wins + res.margin.p_tie == pytest.approx(1.0)
+
+
+def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry, artifacts_dir) -> None:
+    _, squad_a, squad_b, _ = artifacts_dir
+    base = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=200)
+
+    first = xi_service.simulate(SimulateRequest(**base, seed=5), registry)
+    again = xi_service.simulate(SimulateRequest(**base, seed=5), registry)
+    known = xi_service.simulate(SimulateRequest(**base, seed=5, team1_bats_first=True), registry)
+
+    assert first.team1.total == again.team1.total and first.win_probability == again.win_probability
+    assert known.toss_marginalised is False
+
+
+def test_simulate_refuses_a_format_without_an_innings_length(registry) -> None:
+    with pytest.raises(SimulationUnavailable):
+        xi_service.simulate(SimulateRequest(format="TEST", team1_player_ids=[1], team2_player_ids=[2]), registry)

@@ -1,6 +1,7 @@
-"""Serving-side glue for the XI-responsive win model and the player-performance model: a
-lazily loaded ``XiStore`` and the functions the ``/xi/*`` and ``/performance/*`` routes
-call. Kept free of FastAPI so it is testable in-process."""
+"""Serving-side glue for the XI-responsive win model, the player-performance model and the
+match simulator: a lazily loaded ``XiStore`` and the functions the ``/xi/*``,
+``/performance/*`` and ``/simulate`` routes call. Kept free of FastAPI so it is testable
+in-process."""
 
 from __future__ import annotations
 
@@ -18,6 +19,14 @@ from app.models.xi import (
     PerformancePredictResponse,
     PerformanceRange,
     PlayerPerformance,
+    SimulatedMargin,
+    SimulatedPlayer,
+    SimulatedScorecardLine,
+    SimulatedSide,
+    SimulatedTotal,
+    SimulatedWinProbability,
+    SimulateRequest,
+    SimulateResponse,
     WicketDistribution,
     XiConstraints,
     XiOptimizeRequest,
@@ -26,6 +35,7 @@ from app.models.xi import (
     XiWinRequest,
     XiWinResponse,
 )
+from ml.xi import simulator
 from ml.xi.asof import AsOfServer
 from ml.xi.optimizer import Constraints, marginal_values, select_xi
 from ml.xi.rows import player_feature_rows, serving_match
@@ -200,11 +210,13 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
     return XiWinResponse(team1_win_probability=display, objective_probability=objective)
 
 
-def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = REGISTRY) -> PerformancePredictResponse:
-    """Per-player performance distributions for two elevens: the same feature rows the
-    training frame is built from (``ml.xi.rows``), predicted by the format's L2-B model,
-    averaged over both batting orders unless the toss is known."""
-    store, model = registry.performance(req.format, req.as_of)
+def _optional_str(value: Optional[int]) -> Optional[str]:
+    return None if value is None else str(value)
+
+
+def _fixture_rows(store: XiStore, req: PerformancePredictRequest) -> tuple:
+    """The fixture's win row and player rows from the serving state -- the same assembly
+    the training frame uses (``ml.xi.rows``) -- and the ids the state has never seen."""
     t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
     unknown = [
         pid
@@ -215,13 +227,23 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
         req.format,
         t1,
         t2,
-        None if req.team1_id is None else str(req.team1_id),
-        None if req.team2_id is None else str(req.team2_id),
-        None if req.venue_id is None else str(req.venue_id),
+        _optional_str(req.team1_id),
+        _optional_str(req.team2_id),
+        _optional_str(req.venue_id),
         store.state.last_date,
     )
-    rows = pd.DataFrame(player_feature_rows(store.state, match)[1])
+    win_row, player_rows = player_feature_rows(store.state, match)
+    rows = pd.DataFrame(player_rows)
     rows["team_side"] = rows.side  # which eleven the player belongs to, whatever the innings
+    return win_row, rows, unknown
+
+
+def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = REGISTRY) -> PerformancePredictResponse:
+    """Per-player performance distributions for two elevens: the same feature rows the
+    training frame is built from (``ml.xi.rows``), predicted by the format's L2-B model,
+    averaged over both batting orders unless the toss is known."""
+    store, model = registry.performance(req.format, req.as_of)
+    _, rows, unknown = _fixture_rows(store, req)
     if req.team1_bats_first is None:
         prediction = model.predict_marginalised(rows)
     else:
@@ -257,6 +279,93 @@ def _player_performance(rows: pd.DataFrame, prediction: Dict, i: int) -> PlayerP
             p2_plus=float(wickets["p2plus"][i]),
         ),
         catches_expected=float(prediction["catches"]["mean"][i]),
+    )
+
+
+def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateResponse:
+    """Draw the match ``n_samples`` times from the format's L2-B forecasts for the two
+    elevens (``ml.xi.simulator``): totals, per-player ranges, the median-band scorecard,
+    margins and P(win) all from the same draws, with the display model's P(win) for the
+    same fixture beside it and E2's rule deciding which is the headline."""
+    if req.format not in simulator.SIMULATED_FORMATS:
+        raise simulator.SimulationUnavailable(
+            f"format {req.format!r} has no innings length; the simulator runs for {list(simulator.SIMULATED_FORMATS)}"
+        )
+    store, model = registry.performance(req.format, req.as_of)
+    win_row, rows, unknown = _fixture_rows(store, req)
+    fixture = simulator.fixtures_from_rows(rows, pd.DataFrame([win_row]), model.predict_oriented)[0]
+    draws = simulator.simulate_match(
+        fixture.team1, fixture.team2, fixture.context, req.n_samples, req.seed, req.team1_bats_first, model.simulation
+    )
+    summary = simulator.summarize(draws)
+    display = store.display_probability(
+        req.format,
+        _keys(req.team1_player_ids),
+        _keys(req.team2_player_ids),
+        team1_name=_optional_str(req.team1_id),
+        team2_name=_optional_str(req.team2_id),
+        venue=_optional_str(req.venue_id),
+        team1_bats_first=req.team1_bats_first,
+    )
+    simulated = summary["win"]["team1"] + 0.5 * summary["win"]["tie"]
+    simulator_headline = simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED.get(req.format, False)
+    logger.info(
+        "simulate.done",
+        format=req.format,
+        n=req.n_samples,
+        p_simulated=round(simulated, 4),
+        p_display=round(display, 4),
+        team1_total=round(summary["team1"]["total"]["median"], 1),
+        team2_total=round(summary["team2"]["total"]["median"], 1),
+        unknown=len(unknown),
+    )
+    return SimulateResponse(
+        format=req.format,
+        n_samples=req.n_samples,
+        seed=req.seed,
+        toss_marginalised=summary["toss_marginalised"],
+        team1=_simulated_side(summary["team1"], 1),
+        team2=_simulated_side(summary["team2"], 2),
+        win_probability=SimulatedWinProbability(
+            simulated=simulated,
+            p_tie=summary["win"]["tie"],
+            display=display,
+            headline=simulated if simulator_headline else display,
+            headline_source="simulator" if simulator_headline else "display",
+        ),
+        margin=SimulatedMargin(
+            **{
+                key: (PerformanceRange(**value) if isinstance(value, dict) else value)
+                for key, value in summary["margin"].items()
+            }
+        ),
+        unknown_player_ids=unknown,
+    )
+
+
+def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
+    return SimulatedSide(
+        total=SimulatedTotal(**side["total"]),
+        extras_scorecard=side["extras"]["scorecard"],
+        extras_spread_share=side["extras"]["spread_share"],
+        wickets_lost=PerformanceRange(**side["wickets_lost"]),
+        players=[
+            SimulatedPlayer(
+                player_id=int(p["player_key"]),
+                side=team_side,
+                p_bats=p["p_bats"],
+                p_bowls=p["p_bowls"],
+                runs=PerformanceRange(**p["runs"]),
+                balls_faced=PerformanceRange(**p["balls_faced"]),
+                wickets=PerformanceRange(**p["wickets"]),
+                runs_conceded=PerformanceRange(**p["runs_conceded"]),
+                balls_bowled=PerformanceRange(**p["balls_bowled"]),
+                scorecard=SimulatedScorecardLine(**p["scorecard"]),
+                spread_share=p["spread_share"],
+                spread_runs=p["spread_runs"],
+            )
+            for p in side["players"]
+        ],
     )
 
 

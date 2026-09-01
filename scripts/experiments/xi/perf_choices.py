@@ -61,9 +61,7 @@ def load_frame(cricsheet_dir: Optional[str], cache: Optional[str]) -> pd.DataFra
     return frame
 
 
-def run_folds(
-    frame: pd.DataFrame, train_formats: Sequence[str], eval_format: str, spec: P.FitSpec
-) -> Dict:
+def run_folds(frame: pd.DataFrame, train_formats: Sequence[str], eval_format: str, spec: P.FitSpec) -> Dict:
     """Per-fold model and career-mean metrics for the spec's targets, and their mean over folds."""
     folds: List[Dict] = []
     for cutoff, end in fold_windows():
@@ -83,7 +81,13 @@ def run_folds(
                 "career_mean_spearman": entry["career_mean"]["within_match_spearman"],
             }
         folds.append(fold)
-        logger.info("%s <- %s @ %s: %s", eval_format, "+".join(train_formats), fold["cutoff"], {t: fold[t]["pinball"] for t in spec.targets})
+        logger.info(
+            "%s <- %s @ %s: %s",
+            eval_format,
+            "+".join(train_formats),
+            fold["cutoff"],
+            {t: fold[t]["pinball"] for t in spec.targets},
+        )
     summary = {
         target: {
             metric: float(np.mean([f[target][metric] for f in folds if f[target][metric] is not None]))
@@ -99,7 +103,12 @@ def stage_grid(frame: pd.DataFrame) -> Dict:
     out: Dict = {"by_point": {}}
     for name in P.HYPERPARAMETER_GRID:
         out["by_point"][name] = {
-            fmt: run_folds(frame, [fmt], fmt, P.default_spec(hyperparameters=name, seeds=(0,), targets=TARGETS))
+            fmt: run_folds(
+                frame,
+                [fmt],
+                fmt,
+                P.default_spec(shared_factor=False, hyperparameters=name, seeds=(0,), targets=TARGETS),
+            )
             for fmt in FORMATS
         }
     # Pick by pinball relative to the default point, averaged over formats and targets.
@@ -121,6 +130,7 @@ def stage_structure(frame: pd.DataFrame, hyperparameters: str) -> Dict:
     out: Dict = {"by_structure": {}}
     for structure in P.STRUCTURES:
         spec = P.default_spec(
+            shared_factor=False,
             hyperparameters=hyperparameters,
             structure={t.name: structure for t in P.TARGETS},
             seeds=SEEDS,
@@ -157,6 +167,7 @@ def stage_sequence(frame: pd.DataFrame, hyperparameters: str, structure: Dict[st
     out: Dict = {"by_family": {}}
     for name, families in configs.items():
         spec = P.default_spec(
+            shared_factor=False,
             sequence_families=families,
             hyperparameters=hyperparameters,
             structure=full_structure,
@@ -177,9 +188,7 @@ def stage_sequence(frame: pd.DataFrame, hyperparameters: str, structure: Dict[st
     # Keep a family only if it lowers pinball by more than 1 % on some (format, target) and
     # raises it on none by more than the seed spread deserves (plan §5: > 1 % rule).
     kept = [
-        family
-        for family, changes in table.items()
-        if min(changes.values()) < -1.0 and max(changes.values()) <= 1.0
+        family for family, changes in table.items() if min(changes.values()) < -1.0 and max(changes.values()) <= 1.0
     ]
     out["kept"] = kept
     return out
@@ -188,14 +197,30 @@ def stage_sequence(frame: pd.DataFrame, hyperparameters: str, structure: Dict[st
 def stage_transfer(frame: pd.DataFrame, hyperparameters: str, structure: Dict[str, str], families) -> Dict:
     """E6: T20I (and T20) scored from a separate fit vs a joint T20 + T20I fit."""
     full_structure = {t.name: structure.get(t.name, "direct") for t in P.TARGETS}
-    separate = P.default_spec(sequence_families=families, hyperparameters=hyperparameters, structure=full_structure, seeds=SEEDS, targets=TARGETS)
-    joint = P.default_spec(sequence_families=families, joint_format=True, hyperparameters=hyperparameters, structure=full_structure, seeds=SEEDS, targets=TARGETS)
+    separate = P.default_spec(
+        shared_factor=False,
+        sequence_families=families,
+        hyperparameters=hyperparameters,
+        structure=full_structure,
+        seeds=SEEDS,
+        targets=TARGETS,
+    )
+    joint = P.default_spec(
+        shared_factor=False,
+        sequence_families=families,
+        joint_format=True,
+        hyperparameters=hyperparameters,
+        structure=full_structure,
+        seeds=SEEDS,
+        targets=TARGETS,
+    )
     out: Dict = {"separate": {}, "joint": {}}
     for fmt in C.E6_JOINT_FORMATS:
         out["separate"][fmt] = run_folds(frame, [fmt], fmt, separate)
         out["joint"][fmt] = run_folds(frame, list(C.E6_JOINT_FORMATS), fmt, joint)
     deltas = {
-        f"{fmt}_{target}_spearman_delta": out["joint"][fmt]["summary"][target]["spearman"] - out["separate"][fmt]["summary"][target]["spearman"]
+        f"{fmt}_{target}_spearman_delta": out["joint"][fmt]["summary"][target]["spearman"]
+        - out["separate"][fmt]["summary"][target]["spearman"]
         for fmt in C.E6_JOINT_FORMATS
         for target in TARGETS
     }
@@ -218,7 +243,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--stages", nargs="+", default=["grid", "structure", "sequence", "transfer"])
     args = p.parse_args(argv)
     frame = load_frame(args.cricsheet_dir, args.cache)
-    report: Dict = {"cutoffs": [c.date().isoformat() for c, _ in fold_windows()], "seeds": list(SEEDS), "formats": list(FORMATS), "targets": list(TARGETS)}
+    report: Dict = {
+        "cutoffs": [c.date().isoformat() for c, _ in fold_windows()],
+        "seeds": list(SEEDS),
+        "formats": list(FORMATS),
+        "targets": list(TARGETS),
+    }
     if os.path.exists(args.out):
         with open(args.out) as fh:
             report.update(json.load(fh))
@@ -242,7 +272,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if "transfer" in args.stages:
         report["transfer"] = stage_transfer(frame, hyperparameters, structure, families)
         _write(args.out, report)
-    logger.info("choices: hyperparameters=%s structure=%s families=%s joint=%s", hyperparameters, structure, families, report.get("transfer", {}).get("joint_wins"))
+    logger.info(
+        "choices: hyperparameters=%s structure=%s families=%s joint=%s",
+        hyperparameters,
+        structure,
+        families,
+        report.get("transfer", {}).get("joint_wins"),
+    )
     return 0
 
 
