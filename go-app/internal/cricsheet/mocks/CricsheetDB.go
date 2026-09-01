@@ -38,6 +38,72 @@ func (_m *MockCricsheetDB) EXPECT() *MockCricsheetDB_Expecter {
 	return &MockCricsheetDB_Expecter{mock: &_m.Mock}
 }
 
+// ApplyTeamLineage provides a mock function for the type MockCricsheetDB
+func (_mock *MockCricsheetDB) ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (int, error) {
+	ret := _mock.Called(ctx, renames)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ApplyTeamLineage")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) (int, error)); ok {
+		return returnFunc(ctx, renames)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) int); ok {
+		r0 = returnFunc(ctx, renames)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []db.TeamRename) error); ok {
+		r1 = returnFunc(ctx, renames)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockCricsheetDB_ApplyTeamLineage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ApplyTeamLineage'
+type MockCricsheetDB_ApplyTeamLineage_Call struct {
+	*mock.Call
+}
+
+// ApplyTeamLineage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - renames []db.TeamRename
+func (_e *MockCricsheetDB_Expecter) ApplyTeamLineage(ctx interface{}, renames interface{}) *MockCricsheetDB_ApplyTeamLineage_Call {
+	return &MockCricsheetDB_ApplyTeamLineage_Call{Call: _e.mock.On("ApplyTeamLineage", ctx, renames)}
+}
+
+func (_c *MockCricsheetDB_ApplyTeamLineage_Call) Run(run func(ctx context.Context, renames []db.TeamRename)) *MockCricsheetDB_ApplyTeamLineage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []db.TeamRename
+		if args[1] != nil {
+			arg1 = args[1].([]db.TeamRename)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCricsheetDB_ApplyTeamLineage_Call) Return(n int, err error) *MockCricsheetDB_ApplyTeamLineage_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockCricsheetDB_ApplyTeamLineage_Call) RunAndReturn(run func(ctx context.Context, renames []db.TeamRename) (int, error)) *MockCricsheetDB_ApplyTeamLineage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Exec provides a mock function for the type MockCricsheetDB
 func (_mock *MockCricsheetDB) Exec(ctx context.Context, sql string, args ...any) error {
 	var tmpRet mock.Arguments

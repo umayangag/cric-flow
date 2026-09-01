@@ -155,3 +155,88 @@ func TestUpdatePlayerDisplayNames_LeavesTheNameKeyedFallbackAlone_Integration(t 
 	require.NoError(t, Pool.QueryRow(ctx, "SELECT player_name FROM player WHERE id = $1", id).Scan(&name))
 	assert.Equal(t, "Unregistered Player", name)
 }
+
+func TestApplyTeamLineage_LinksASupersededClubToItsCurrentRow_Integration(t *testing.T) {
+	if !guardIntegration(t) {
+		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
+	}
+	ctx := connectAndMigrateForIdentity(t)
+	old, err := GetOrCreateOpposition(ctx, "Royal Challengers Bangalore", "male")
+	require.NoError(t, err)
+	current, err := GetOrCreateOpposition(ctx, "Royal Challengers Bengaluru", "male")
+	require.NoError(t, err)
+
+	linked, err := ApplyTeamLineage(ctx, []TeamRename{
+		{FromName: "Royal Challengers Bangalore", ToName: "Royal Challengers Bengaluru", Gender: "male"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, linked)
+	var canonical *int64
+	require.NoError(t, Pool.QueryRow(ctx, "SELECT canonical_id FROM opposition WHERE id = $1", old).Scan(&canonical))
+	require.NotNil(t, canonical)
+	assert.Equal(t, current, *canonical)
+	// The club's current row is not itself superseded: COALESCE(canonical_id, id) has to
+	// terminate, and a self-reference would make "has this club renamed?" two questions.
+	require.NoError(
+		t,
+		Pool.QueryRow(ctx, "SELECT canonical_id FROM opposition WHERE id = $1", current).Scan(&canonical),
+	)
+	assert.Nil(t, canonical)
+}
+
+func TestApplyTeamLineage_LeavesTheOtherGenderAlone_Integration(t *testing.T) {
+	if !guardIntegration(t) {
+		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
+	}
+	ctx := connectAndMigrateForIdentity(t)
+	womensOld, err := GetOrCreateOpposition(ctx, "Lightning", "female")
+	require.NoError(t, err)
+	_, err = GetOrCreateOpposition(ctx, "The Blaze", "female")
+	require.NoError(t, err)
+	mensSameName, err := GetOrCreateOpposition(ctx, "Lightning", "male")
+	require.NoError(t, err)
+
+	linked, err := ApplyTeamLineage(ctx, []TeamRename{
+		{FromName: "Lightning", ToName: "The Blaze", Gender: "female"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, linked, "a club may rename its women's side and not its men's")
+	var canonical *int64
+	require.NoError(
+		t,
+		Pool.QueryRow(ctx, "SELECT canonical_id FROM opposition WHERE id = $1", mensSameName).Scan(&canonical),
+	)
+	assert.Nil(t, canonical)
+	require.NoError(
+		t,
+		Pool.QueryRow(ctx, "SELECT canonical_id FROM opposition WHERE id = $1", womensOld).Scan(&canonical),
+	)
+	assert.NotNil(t, canonical)
+}
+
+func TestApplyTeamLineage_IsIdempotentAndSkipsARenameThisDatasetDoesNotHave_Integration(t *testing.T) {
+	if !guardIntegration(t) {
+		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
+	}
+	ctx := connectAndMigrateForIdentity(t)
+	_, err := GetOrCreateOpposition(ctx, "Kings XI Punjab", "male")
+	require.NoError(t, err)
+	_, err = GetOrCreateOpposition(ctx, "Punjab Kings", "male")
+	require.NoError(t, err)
+	renames := []TeamRename{
+		{FromName: "Kings XI Punjab", ToName: "Punjab Kings", Gender: "male"},
+		// A rename whose successor has not played yet: the mapping describes cricket, not
+		// this particular import, so it is reported and skipped rather than failing.
+		{FromName: "Deccan Chargers", ToName: "Sunrisers Hyderabad", Gender: "male"},
+	}
+
+	first, err := ApplyTeamLineage(ctx, renames)
+	require.NoError(t, err)
+	second, err := ApplyTeamLineage(ctx, renames)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, first)
+	assert.Zero(t, second, "the count is rows changed, so a second run over the same data changes none")
+}

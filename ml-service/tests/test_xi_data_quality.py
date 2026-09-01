@@ -416,3 +416,112 @@ def test_accepting_the_new_counts_moves_the_baseline(tmp_path) -> None:
 
     assert rc == 0
     assert json.loads((out / quality.BASELINE_NAME).read_text())["oversized_squads"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Team identity in the Cricsheet source (I-3 and I-4)
+# ---------------------------------------------------------------------------
+
+
+def _doc(teams, gender: str, winner: str, day: int = 0) -> dict:
+    from datetime import date as _date
+    from datetime import timedelta as _timedelta
+
+    players = {t: [f"{t[:2]}{i}" for i in range(11)] for t in teams}
+    return {
+        "info": {
+            "dates": [(_date(2024, 3, 1) + _timedelta(days=day)).isoformat()],
+            "match_type": "T20",
+            "teams": teams,
+            "gender": gender,
+            "venue": "Ground",
+            "registry": {"people": {n: f"id_{n}" for t in players.values() for n in t}},
+            "players": players,
+            "outcome": {"winner": winner},
+        },
+        "innings": [
+            {
+                "team": teams[0],
+                "overs": [
+                    {
+                        "over": 0,
+                        "deliveries": [
+                            {
+                                "batter": players[teams[0]][0],
+                                "bowler": players[teams[1]][0],
+                                "non_striker": players[teams[0]][1],
+                                "runs": {"batter": 1, "extras": 0, "total": 1},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def _parse(tmp_path, doc, lineage=None):
+    from ml.xi.sources import parse_cricsheet_file
+
+    path = tmp_path / "1.json"
+    path.write_text(json.dumps(doc))
+    return parse_cricsheet_file(str(path), [], lineage)
+
+
+def test_the_archive_keys_a_mens_and_a_womens_side_separately(tmp_path) -> None:
+    """130 of the 394 team names belong to both. One key for both gave Australia's two
+    sides one Elo and one head-to-head record (I-3)."""
+    mens = _parse(tmp_path, _doc(["India", "Australia"], "male", "Australia"))
+    womens = _parse(tmp_path, _doc(["India", "Australia"], "female", "Australia"))
+
+    assert mens.team1 != womens.team1
+    assert mens.team1 == "India|male" and womens.team1 == "India|female"
+
+
+def test_the_archive_keys_a_renamed_club_as_one_club(tmp_path) -> None:
+    from ml.xi.lineage import TeamLineage
+
+    lineage = TeamLineage([{"from": "Kings XI Punjab", "to": "Punjab Kings", "gender": "male"}])
+
+    before = _parse(tmp_path, _doc(["Kings XI Punjab", "Mumbai Indians"], "male", "Kings XI Punjab"), lineage)
+    after = _parse(tmp_path, _doc(["Punjab Kings", "Mumbai Indians"], "male", "Punjab Kings"), lineage)
+
+    assert before.team1 == after.team1 == "Punjab Kings|male"
+    assert before.outcome == 1.0 and after.outcome == 1.0, "the winner is mapped with the sides"
+
+
+def test_a_rename_recorded_for_one_gender_does_not_touch_the_other(tmp_path) -> None:
+    from ml.xi.lineage import TeamLineage
+
+    lineage = TeamLineage([{"from": "Lightning", "to": "The Blaze", "gender": "female"}])
+
+    womens = _parse(tmp_path, _doc(["Lightning", "Sunrisers"], "female", "Lightning"), lineage)
+    mens = _parse(tmp_path, _doc(["Lightning", "Sunrisers"], "male", "Lightning"), lineage)
+
+    assert womens.team1 == "The Blaze|female"
+    assert mens.team1 == "Lightning|male"
+
+
+def test_the_lineage_loader_returns_an_empty_mapping_when_there_is_no_file(tmp_path, monkeypatch) -> None:
+    from ml.xi import lineage as lineage_module
+
+    monkeypatch.setenv(lineage_module.ENV_VAR, str(tmp_path / "absent.json"))
+    monkeypatch.setattr(lineage_module, "_search_paths", lambda: ())
+
+    mapping = lineage_module.load()
+
+    assert len(mapping) == 0
+    assert mapping.club("Kings XI Punjab", "male") == "Kings XI Punjab"
+
+
+def test_the_committed_lineage_is_the_one_both_sources_read() -> None:
+    """The go-app importer writes opposition.canonical_id from this same file; a mapping
+    applied on one side only is the divergence make xi-parity exists to catch."""
+    from ml.xi.lineage import load as load_lineage
+
+    mapping = load_lineage()
+
+    assert len(mapping) > 0
+    assert mapping.club("Royal Challengers Bangalore", "male") == "Royal Challengers Bengaluru"
+    assert mapping.club("Royal Challengers Bangalore", "female") == "Royal Challengers Bengaluru"
+    assert mapping.club("Mumbai Indians", "male") == "Mumbai Indians"

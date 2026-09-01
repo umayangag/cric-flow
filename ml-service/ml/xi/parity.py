@@ -45,6 +45,7 @@ _COMPARED_COUNTS = (
     "oversized_squads",
     "unknown_player_keys",
     "player_keys",
+    "team_keys",
 )
 
 

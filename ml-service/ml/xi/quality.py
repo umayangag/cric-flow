@@ -77,6 +77,11 @@ class DataQuality:
 
     player_keys: int = 0
 
+    # Distinct team keys the pass saw. A club that renamed is one key from both sources --
+    # ``opposition.canonical_id`` in the database, ``configs/team_lineage.json`` in the
+    # archive -- so a lineage applied on one side only shows up here as a difference.
+    team_keys: int = 0
+
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
 

@@ -109,7 +109,7 @@ stays: the source genuinely does not know.
 | I-1 | done | `arch/p-1-identity` | Capture the Cricsheet person identifier at import |
 | I-2 | done | `arch/p-1-identity` | Key players by that identifier, not by name |
 | I-3 | done | `arch/p-1-identity` | Team identity includes gender |
-| I-4 | todo | `identity/i-4-team-lineage` | Franchise renames are one club, not two |
+| I-4 | done | `identity/i-4-team-lineage` | Franchise renames are one club, not two |
 | I-5 | partly | `arch/p-1-identity` | Rebuild the derived data and price the change |
 
 **Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked` | `partly`
@@ -139,9 +139,11 @@ plan and **should finish S-3c first**. Two reasons:
    run this plan, retrain, record. Doing both at once produces a single number that cannot
    be attributed to either.
 
-**S-7 (venue and opposition ID encoding) is blocked on I-3 and I-4.** Any target or
+**S-7 (venue and opposition ID encoding) was blocked on I-3 and I-4.** Any target or
 frequency encoding fitted before the identities are merged learns the rename as a new team
 with 63 matches of history, and learns one encoding for two genders of the same nation.
+Both are done, so S-7 is unblocked — though the win plan has since superseded it for an
+unrelated reason: the XI model feeds no raw id to a tree.
 
 ---
 
@@ -363,6 +365,31 @@ returns one club across 321 matches.
 
 **Risk.** A wrong merge is invisible and corrupts a team's whole history. Hence hand
 review, and hence the mapping is committed rather than computed.
+
+> **Measured (`identity/i-4-team-lineage`).** Both acceptance criteria hold. The nine pairs
+> are linked, plus a tenth added on review — `opposition` holds 524 rows and **514 clubs** —
+> and `Royal Challengers` returns one club across **321** matches, which the gender split
+> now reports as its two real halves: 286 men's and 35 women's.
+>
+> The merge reaches the model, which is the point of the item: the rating pass's team keys
+> go 524 → 514, and **94 head-to-head pairs collapse** (8,446 → 8,352) — 94 fixtures that
+> were a first meeting and are not. (The head-to-head figure is from the nine-pair run;
+> Rising Pune played two seasons in one competition, so the tenth adds no new fixture pair
+> either side already had.)
+>
+> **The detector found more than nine, and the extra ones are not here.** Re-run after I-3,
+> it also surfaces England's 2025 women's restructure (`Southern Vipers → Hampshire` at 88%
+> roster carry-over, and six more), the Hundred's 2025 rebrands, and CPL relocations. Those
+> are competition restructures, not one franchise slot renaming: `Central Sparks` covered
+> Warwickshire *and* Worcestershire, so merging it into `Warwickshire` attributes a region's
+> record to one county. That is a claim about cricket governance the data cannot settle, and
+> this item's own risk note is why it is not made by whoever happened to run the script.
+> The candidates are in the PR body for a reviewer.
+>
+> **`Rising Pune Supergiants → Rising Pune Supergiant`** (45%) was reviewed and added, so
+> the mapping holds ten. The data settles it: 14 matches in IPL 2016 and 16 in IPL 2017, one
+> competition, consecutive seasons, no temporal overlap, and a name that differs by a plural
+> — the same case as `Kathmandu Gurkhas → Gorkhas`. One club across 30 matches.
 
 ---
 
