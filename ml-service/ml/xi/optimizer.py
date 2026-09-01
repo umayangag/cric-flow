@@ -1,5 +1,6 @@
-"""Pick the XI from a pool that maximises the objective model's P(win) against a fixed
-opponent XI.
+"""Pick the XI from a pool: either the one that maximises the objective model's P(win)
+against a fixed opponent XI, or -- where the objective does not rank -- the rating-ordered
+pick that is not optimised at all.
 
 Search: greedy seed by individual marginal value, then steepest-ascent single swaps, then
 pair swaps once single swaps stall, with restarts. The objective is additive in the XI
@@ -10,6 +11,12 @@ bowler, bring in two all-rounders).
 Constraints are expressed through the same as-of vectors the model reads -- a bowling option
 is a player whose expected balls bowled clears the format threshold -- so "min bowlers" means
 the same thing to the constraint and to the ``n_bowlers`` feature.
+
+``select_xi_by_ratings`` is the second mode (H-17): TEST has no objective that ranks -- the
+holdout AUC sits under the 0.65 line in every feature family -- so it is offered a selection
+but never an optimised one. It is the search's own seed order, stopped before the search,
+and it evaluates no model, which is what lets the formats that do not rank keep a selection
+without any of the weights P-5 deleted.
 """
 
 from __future__ import annotations
@@ -26,6 +33,12 @@ from ml.xi.ratings import aggregate_side, xi_feature_vector
 from ml.xi.store import XiStore
 
 logger = logging.getLogger(__name__)
+
+# H-17, as a serving rule: the formats whose objective ranks well enough to select on
+# (holdout AUC >= 0.65 in the L4 harness). TEST is absent by measurement -- every feature
+# family leaves it near 0.6 -- so it gets ``select_xi_by_ratings`` and is labelled as not
+# optimised all the way to the UI. Mirrored by the go-app xi path.
+OPTIMISED_SELECTION_FORMATS = frozenset({"T20", "T20I", "ODI"})
 
 
 @dataclass
@@ -60,7 +73,11 @@ class _Pool:
         self.fmt = format_code
         self.keys = list(pool_keys)
         self.vectors = store.side_vectors(format_code, self.keys)
-        self.opponent = aggregate_side(store.side_vectors(format_code, opponent_keys), format_code)
+        # A rating-ordered pick reads no opponent and scores nothing, so it may pass an
+        # empty opponent; ``score_many`` is then the caller's error, not a silent zero.
+        self.opponent = (
+            aggregate_side(store.side_vectors(format_code, opponent_keys), format_code) if opponent_keys else None
+        )
         self.models = store.models[format_code]
         self.team_is_team1 = team_is_team1
         self.evaluations = 0
@@ -85,6 +102,8 @@ class _Pool:
         objective is scored with the candidate as team1 and as team2 and the two are
         averaged. ``team_is_team1`` then only says which orientation is reported first;
         the number is the same either way, which is what an argmax over XIs should rely on."""
+        if self.opponent is None:
+            raise ValueError("scoring an XI needs an opponent XI; this pool was built without one")
         rows = []
         for idx in candidates:
             side = aggregate_side({k: v[list(idx)] for k, v in self.vectors.items()}, self.fmt)
@@ -96,6 +115,14 @@ class _Pool:
 
     def score(self, idx: Sequence[int]) -> float:
         return float(self.score_many([idx])[0])
+
+
+def _locked_and_banned(pool: _Pool, c: Constraints) -> tuple:
+    """The must-include / must-exclude keys as pool positions, ignoring ids not in the pool."""
+    key_index = {k: i for i, k in enumerate(pool.keys)}
+    locked = [key_index[k] for k in c.must_include if k in key_index]
+    banned = {key_index[k] for k in c.must_exclude if k in key_index}
+    return locked, banned
 
 
 def _greedy_seed(pool: _Pool, c: Constraints, locked: List[int], banned: set) -> Optional[List[int]]:
@@ -168,9 +195,7 @@ def select_xi(
 ) -> SelectionResult:
     c = constraints or Constraints()
     pool = _Pool(store, format_code, pool_keys, opponent_keys, team_is_team1)
-    key_index = {k: i for i, k in enumerate(pool.keys)}
-    locked = [key_index[k] for k in c.must_include if k in key_index]
-    banned = {key_index[k] for k in c.must_exclude if k in key_index}
+    locked, banned = _locked_and_banned(pool, c)
     seed = _greedy_seed(pool, c, locked, banned)
     if seed is None:
         raise ValueError("pool cannot satisfy the constraints (size / bowlers / keeper)")
@@ -201,6 +226,29 @@ def select_xi(
         improved_over_seed=current_score - seed_score,
         trace=trace,
     )
+
+
+def select_xi_by_ratings(
+    store: XiStore,
+    format_code: str,
+    pool_keys: Sequence[str],
+    constraints: Optional[Constraints] = None,
+) -> List[str]:
+    """The rating-ordered XI: the keeper and the bowlers the constraints ask for, then the
+    highest-rated players left, all read from the same as-of vectors the win model reads.
+
+    No opponent, no objective, no search -- so nothing here depends on a model whose
+    holdout AUC does not clear H-17's 0.65 line, and the caller must label the answer as
+    not optimised (the API and the UI both do).
+    """
+    c = constraints or Constraints()
+    pool = _Pool(store, format_code, pool_keys, opponent_keys=[], team_is_team1=True)
+    locked, banned = _locked_and_banned(pool, c)
+    chosen = _greedy_seed(pool, c, locked, banned)
+    if chosen is None:
+        raise ValueError("pool cannot satisfy the constraints (size / bowlers / keeper)")
+    logger.info("xi rating-ordered pick: %s, pool %d, no objective evaluated", format_code, len(pool.keys))
+    return [pool.keys[i] for i in chosen]
 
 
 def marginal_values(

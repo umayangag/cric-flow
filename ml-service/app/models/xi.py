@@ -10,7 +10,7 @@ and serving paths compute the same function of the same eleven names (S-3c).
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -30,7 +30,16 @@ class XiConstraints(BaseModel):
 class XiOptimizeRequest(BaseModel):
     format: str
     pool_player_ids: List[int] = Field(..., min_length=1)
-    opponent_player_ids: List[int] = Field(..., min_length=1)
+    opponent_player_ids: List[int] = Field(
+        default_factory=list,
+        description="The opposing XI the selection is made against; not read by objective='ratings'",
+    )
+    objective: Literal["win", "ratings"] = Field(
+        default="win",
+        description="'win' searches for the XI that maximises the objective model's P(win); "
+        "'ratings' returns the rating-ordered pick and evaluates no model, which is the only "
+        "mode offered where the objective does not rank (H-17, TEST)",
+    )
     team_is_team1: bool = Field(default=True, description="Whether the pool's side bats first")
     constraints: XiConstraints = Field(default_factory=XiConstraints)
     max_evaluations: int = Field(default=20000, ge=100, le=200000)
@@ -47,7 +56,15 @@ class XiOptimizeRequest(BaseModel):
 
 class XiOptimizeResponse(BaseModel):
     selected_player_ids: List[int]
-    win_probability: float = Field(..., ge=0, le=1)
+    objective: Literal["win", "ratings"]
+    optimised: bool = Field(
+        ...,
+        description="False for the rating-ordered pick: a selection, but not one that maximises "
+        "anything. Callers must say so (H-17)",
+    )
+    win_probability: Optional[float] = Field(
+        default=None, ge=0, le=1, description="None when nothing was maximised (objective='ratings')"
+    )
     evaluations: int
     improved_over_seed: float
     unknown_player_ids: List[int] = Field(

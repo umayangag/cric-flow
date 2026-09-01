@@ -1015,11 +1015,15 @@ async def simulate(request: SimulateRequest):
 
 @app.post("/xi/optimize", response_model=XiOptimizeResponse)
 async def xi_optimize(request: XiOptimizeRequest):
-    """Pick the XI from a pool that maximises P(win) against a fixed opponent XI.
+    """Pick the XI from a pool: ``objective="win"`` maximises P(win) against a fixed opponent
+    XI, ``objective="ratings"`` returns the rating-ordered pick and maximises nothing.
 
     The objective is a function of the eleven ids only (plus the opponent's), so the search
     inside is exact with respect to what the model can express; everything the caller decides
     -- availability, format, who the opponent fields -- comes in as the pool and the opponent list.
+
+    A format whose objective does not rank (H-17: TEST) is offered ``"ratings"`` only, and the
+    response says ``optimised: false`` so every consumer down to the UI can label it.
     """
     try:
         return xi_service.optimize(request)

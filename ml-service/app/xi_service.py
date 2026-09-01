@@ -37,7 +37,13 @@ from app.models.xi import (
 )
 from ml.xi import simulator
 from ml.xi.asof import AsOfServer
-from ml.xi.optimizer import Constraints, marginal_values, select_xi
+from ml.xi.optimizer import (
+    OPTIMISED_SELECTION_FORMATS,
+    Constraints,
+    marginal_values,
+    select_xi,
+    select_xi_by_ratings,
+)
 from ml.xi.rows import player_feature_rows, serving_match
 from ml.xi.store import RATINGS_ARTIFACT, XiStore
 from ml.xi.train import REPORT_NAME
@@ -160,11 +166,22 @@ def _constraints(c: XiConstraints) -> Constraints:
 
 
 def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptimizeResponse:
+    # The two policy checks come before the artifacts: whether a format is offered an
+    # optimised selection is a rule (H-17), not a property of what happens to be loaded.
+    if req.objective == "win" and req.format not in OPTIMISED_SELECTION_FORMATS:
+        raise XiUnavailable(
+            f"format {req.format!r} has no objective that ranks (H-17); "
+            f"ask for objective='ratings'. Optimised formats: {sorted(OPTIMISED_SELECTION_FORMATS)}"
+        )
+    if req.objective == "win" and not req.opponent_player_ids:
+        raise XiUnavailable("objective='win' needs the opposing XI: opponent_player_ids is empty")
     store = registry.store_as_of(req.format, req.as_of)
     pool, opponent = _keys(req.pool_player_ids), _keys(req.opponent_player_ids)
     unknown = [pid for pid, known in zip(req.pool_player_ids, store.known_players(pool)) if not known]
     if unknown:
         logger.warning("xi.optimize.unknown_players", format=req.format, count=len(unknown), ids=unknown[:10])
+    if req.objective == "ratings":
+        return _rating_ordered(req, store, pool, unknown)
     result = select_xi(
         store,
         req.format,
@@ -184,11 +201,33 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
     )
     return XiOptimizeResponse(
         selected_player_ids=[int(k) for k in result.selected],
+        objective="win",
+        optimised=True,
         win_probability=result.win_probability,
         evaluations=result.evaluations,
         improved_over_seed=result.improved_over_seed,
         unknown_player_ids=unknown,
         marginal_values={int(k): v for k, v in mv.items()},
+    )
+
+
+def _rating_ordered(
+    req: XiOptimizeRequest, store: XiStore, pool: List[str], unknown: List[int]
+) -> XiOptimizeResponse:
+    """The pick for a format whose objective does not rank (H-17): rating order under the
+    same constraints, no model evaluated, and marked as not optimised so the API and the
+    UI can say so."""
+    selected = select_xi_by_ratings(store, req.format, pool, constraints=_constraints(req.constraints))
+    logger.info("xi.optimize.rating_ordered", format=req.format, pool=len(pool), selected=len(selected))
+    return XiOptimizeResponse(
+        selected_player_ids=[int(k) for k in selected],
+        objective="ratings",
+        optimised=False,
+        win_probability=None,
+        evaluations=0,
+        improved_over_seed=0.0,
+        unknown_player_ids=unknown,
+        marginal_values={},
     )
 
 

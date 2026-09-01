@@ -157,7 +157,45 @@ def test_optimize_returns_ids_marginals_and_unknowns(registry, artifacts_dir) ->
     assert squad_a[0] not in res.selected_player_ids
     assert res.unknown_player_ids == [99999]
     assert set(res.marginal_values) == set(res.selected_player_ids)
+    assert res.objective == "win"
+    assert res.optimised is True
     assert 0.0 <= res.win_probability <= 1.0
+
+
+def test_optimize_rating_ordered_needs_no_opponent_and_is_marked_not_optimised(registry, artifacts_dir) -> None:
+    _, squad_a, _, _ = artifacts_dir
+    req = XiOptimizeRequest(
+        format="t20",
+        pool_player_ids=squad_a,
+        objective="ratings",
+        constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
+    )
+    res = xi_service.optimize(req, registry)
+    assert len(res.selected_player_ids) == 11
+    assert res.objective == "ratings"
+    assert res.optimised is False
+    assert res.win_probability is None
+    assert res.evaluations == 0
+    assert res.marginal_values == {}
+
+
+def test_optimize_refuses_the_win_objective_where_it_does_not_rank(registry, artifacts_dir) -> None:
+    """H-17: TEST has no objective that ranks, so the win objective is not offered there."""
+    _, squad_a, _, matches = artifacts_dir
+    req = XiOptimizeRequest(
+        format="TEST",
+        pool_player_ids=squad_a,
+        opponent_player_ids=[int(k) for k in matches[-1].team2_players],
+    )
+    with pytest.raises(xi_service.XiUnavailable, match="H-17"):
+        xi_service.optimize(req, registry)
+
+
+def test_optimize_win_objective_requires_an_opponent_xi(registry, artifacts_dir) -> None:
+    _, squad_a, _, _ = artifacts_dir
+    req = XiOptimizeRequest(format="T20", pool_player_ids=squad_a)
+    with pytest.raises(xi_service.XiUnavailable, match="opponent_player_ids"):
+        xi_service.optimize(req, registry)
 
 
 def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_dir) -> None:
