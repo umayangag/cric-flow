@@ -45,14 +45,21 @@ DEFAULT_SAMPLES = 2000
 SIMULATED_FORMATS = tuple(f for f in C.FORMAT_CODES if C.INNINGS_LEGAL_BALLS[f])
 #: Which L2-B orientation feeds the chasing side. "chasing" is the innings as a known feature
 #: (the model's chasing rates and the target truncation both act); "bat_first" lets the
-#: truncation alone carry the chase. Decided on the walk-forward folds (plan P-4).
+#: truncation alone carry the chase. Measured on the walk-forward folds (plan P-4,
+#: ``scripts/experiments/xi/sim_choices.py``): no effect -- Brier within 0.0003, P(bat-first
+#: wins) within 0.01 -- so the design's default stays.
 CHASE_ORIENTATION = "chasing"
 #: Whether one shared match factor multiplies every batter's runs draw. Decided on the folds
-#: from the dispersion of simulated totals against actual (plan P-4, before/after recorded).
-SHARED_FACTOR = False
+#: from the dispersion of simulated totals against actual (plan P-4): without it the PIT of
+#: first-innings totals is U-shaped (0.18 / 0.19 in the end deciles) and the dispersion ratio
+#: 1.42 T20 / 1.36 ODI; with the deconvolved as-of factor the ratio is 1.02 / 1.02 and 10-90
+#: coverage moves 0.64 -> 0.76 (T20) and 0.58 -> 0.74 (ODI). On.
+SHARED_FACTOR = True
 #: E2's rule (plan §5): the simulator's P(win) may be displayed only if it is within 0.01
 #: Brier of the display model on the walk-forward folds; otherwise it is a description of
-#: the draws and the display model's probability stays the headline. Per format.
+#: the draws. Measured (P-4): within tolerance in T20 (+0.0024 ± 0.0057) and ODI (+0.0043 ±
+#: 0.0143) -- a probability, but not a better one -- so the display model stays the headline
+#: (plan §3) and the simulated P(win) is served beside it. Per format.
 SIMULATED_WIN_PROBABILITY_DISPLAYED: Dict[str, bool] = {f: False for f in SIMULATED_FORMATS}
 #: Deconvolution guard: a residual sample smaller than this is not a distribution.
 MIN_SHARED_FACTOR_MATCHES = 30

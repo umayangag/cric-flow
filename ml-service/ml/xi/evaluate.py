@@ -352,7 +352,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 decision["delta_brier_mean"],
                 decision["delta_brier_sd"],
                 decision["n_folds"],
-                "displayable" if decision["simulated_win_probability_displayed"] else "a description only",
+                "a probability" if decision["simulated_win_probability_within_tolerance"] else "a description only",
             )
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])

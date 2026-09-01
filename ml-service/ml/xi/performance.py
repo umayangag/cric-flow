@@ -441,13 +441,26 @@ def fit_performance(
     started = time.perf_counter()
     hold_out = bool(spec.recalibrate) or spec.shared_factor
     fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else (rows, rows.iloc[0:0])
+    if hold_out and len(fit_rows) < MIN_FIT_ROWS:
+        # A history shorter than the calibration fold cannot hold one out; the members take
+        # every row and the fold-fitted parts (recalibration, shared factor) are not fitted.
+        logger.warning(
+            "%s: %d rows before the calibration fold, need %d; fitting on every row without recalibration or a shared factor",
+            format_code,
+            len(fit_rows),
+            MIN_FIT_ROWS,
+        )
+        hold_out = False
+        fit_rows, calibration_rows = rows, rows.iloc[0:0]
     x = design_matrix(fit_rows, spec.feature_cols)
     members = [_fit_member(x, fit_rows, spec, seed) for seed in spec.seeds]
     model = PerformanceModels(format_code, spec, members, {}, {})
-    for target in spec.recalibrate:
+    for target in spec.recalibrate if hold_out else ():
         raw = model.predict_marginalised(calibration_rows)[target]["quantiles"]
         model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
-    shared_factor = _fit_shared_factor(model, calibration_rows, match_frame) if spec.shared_factor else None
+    shared_factor = (
+        _fit_shared_factor(model, calibration_rows, match_frame) if spec.shared_factor and hold_out else None
+    )
     model.simulation = simulator.calibrate(fit_rows, shared_factor)
     model.metadata = {
         "format_code": format_code,

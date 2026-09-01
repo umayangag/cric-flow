@@ -251,20 +251,23 @@ def summarize_folds(folds: List[Dict]) -> Optional[Dict]:
 
 
 def decision(summary: Optional[Dict]) -> Dict[str, Any]:
-    """E2's rule on the walk-forward summary: may the simulated P(win) be displayed?"""
+    """E2's rule on the walk-forward summary: is the simulated P(win) a probability (within
+    tolerance of the display model) or a description of the draws? Whether a probability
+    that qualifies is the one displayed is the serving constant
+    ``simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED``, set by hand from this."""
     if not summary or "win" not in summary:
-        return {"simulated_win_probability_displayed": False, "reason": "no simulated folds"}
+        return {"simulated_win_probability_within_tolerance": False, "reason": "no simulated folds"}
     delta = summary["win"]["delta_brier_simulated_minus_display"]
-    displayable = delta["mean"] <= BRIER_TOLERANCE
+    within = delta["mean"] <= BRIER_TOLERANCE
     return {
-        "simulated_win_probability_displayed": bool(displayable),
+        "simulated_win_probability_within_tolerance": bool(within),
         "delta_brier_mean": delta["mean"],
         "delta_brier_sd": delta["sd"],
         "n_folds": delta["n_folds"],
         "tolerance": BRIER_TOLERANCE,
         "reason": (
-            "simulated P(win) within tolerance of the display model on the folds"
-            if displayable
-            else "simulated P(win) worse than the display model by more than the tolerance: a description, not the headline"
+            "simulated P(win) within tolerance of the display model on the folds: a probability"
+            if within
+            else "simulated P(win) worse than the display model by more than the tolerance: a description, never the headline"
         ),
     }

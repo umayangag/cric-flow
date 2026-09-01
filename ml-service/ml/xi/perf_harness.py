@@ -185,7 +185,11 @@ def evaluate_fold(
         & (player_frame.match_date >= cutoff)
         & (player_frame.match_date < end)
     ]
-    spec = default_spec(joint_format=joint, recalibrate=recalibrate)
+    # Without the win rows the shared factor cannot be fitted; a caller that leaves them out
+    # gets a simulator without one, and the report's spec says so.
+    spec = default_spec(
+        joint_format=joint, recalibrate=recalibrate, shared_factor=None if match_frame is not None else False
+    )
     return evaluate_window(train, window, format_code, spec, match_frame)
 
 

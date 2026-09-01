@@ -34,12 +34,13 @@ import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "ml-service"))
 
+from sim_frame_cache import load_frames  # noqa: E402
+
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
 from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
-from sim_frame_cache import load_frames  # noqa: E402
 
 logger = logging.getLogger("sim_choices")
 
