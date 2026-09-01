@@ -218,3 +218,18 @@ def test_shared_factor_needs_the_match_frame() -> None:
 
     with pytest.raises(ValueError, match="match frame"):
         P.fit_performance(player_frame, "T20", P.default_spec(shared_factor=True))
+
+
+def test_shared_factor_is_not_fitted_for_a_format_without_an_innings_length() -> None:
+    """TEST has no simulator (H-17); its fit must not try to simulate the calibration fold."""
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")].copy()
+    train["format_code"] = "TEST"
+    matches = match_frame.copy()
+    matches["format_code"] = "TEST"
+    matches["innings1_wickets"] = 10.0  # every first innings "complete" by the all-out rule
+
+    with fast_fits():
+        model = P.fit_performance(train, "TEST", P.default_spec(shared_factor=True), matches)
+
+    assert model.simulation.shared_factor is None

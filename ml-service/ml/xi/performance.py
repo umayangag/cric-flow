@@ -408,7 +408,10 @@ def _fit_shared_factor(
 ) -> Optional[simulator.SharedFactor]:
     """The simulator's shared match factor from the calibration fold's complete first
     innings (plan P-4): fixtures the members did not train on, simulated toss-known. A
-    fold too thin to hold a residual distribution ships no factor, and says so."""
+    format without an innings length has no simulator and so no factor; a fold too thin to
+    hold a residual distribution ships no factor, and says so."""
+    if model.format_code not in simulator.SIMULATED_FORMATS:
+        return None
     matches = match_frame[match_frame.match_id.isin(set(calibration_rows.match_id))]
     matches = matches[simulator.complete_first_innings(matches)]
     if len(matches) < simulator.MIN_SHARED_FACTOR_MATCHES:
