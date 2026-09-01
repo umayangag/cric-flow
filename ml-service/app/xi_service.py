@@ -74,6 +74,7 @@ class XiRegistry:
     def __init__(self) -> None:
         self._store: Optional[XiStore] = None
         self._report: Optional[dict] = None
+        self._models_dir: Optional[str] = None
         self._lock = threading.Lock()
         self._as_of_server: Optional[AsOfServer] = None
         # A seam, so tests can serve the as-of pass from an in-memory source.
@@ -83,6 +84,9 @@ class XiRegistry:
         with self._lock:
             self._store, self._report = None, None
             self._as_of_server = None
+            # Remembered even when there are no artifacts to load: L4's report lives in the
+            # same directory, and reading it from anywhere else is how the two drift.
+            self._models_dir = models_dir
             if not os.path.exists(os.path.join(models_dir, RATINGS_ARTIFACT)):
                 logger.info("xi.artifacts.absent", models_dir=models_dir)
                 return self.status().model_dump()
@@ -132,6 +136,11 @@ class XiRegistry:
             state = self._as_of_server.state_as_of(as_of)
             logger.info("xi.as_of.served", as_of=str(as_of), players=len(state.players))
             return store.with_state(state)
+
+    @property
+    def models_dir(self) -> Optional[str]:
+        """The directory the artifacts were last loaded from. ``None`` before the first reload."""
+        return self._models_dir
 
     def status(self) -> XiStatusResponse:
         s = self._store
@@ -409,16 +418,25 @@ def status(registry: XiRegistry = REGISTRY) -> XiStatusResponse:
     return registry.status()
 
 
-def evaluate_report(models_dir: Optional[str] = None) -> dict:
+def evaluate_report(registry: XiRegistry = REGISTRY) -> dict:
     """L4's report (``xi_evaluate_report.json``), as `make xi-evaluate` last wrote it.
+
+    Read from the directory the artifacts were loaded from -- which is
+    ``ML_SERVICE_OUTPUT_DIR`` before it is anything else -- so the report and the models it
+    describes can never come from two different places. Resolving it independently through
+    ``ml.config.default_artifacts_dir()`` looked equivalent and was not: that is the last
+    fallback in the chain, a relative path that is wrong inside the container.
 
     Read from disk on every request rather than cached at reload: the harness is run on
     demand, and a report that is one release stale because nobody restarted the service
     would be exactly the kind of number nobody can trace.
     """
-    from ml import config as ml_config
-
-    directory = models_dir or ml_config.default_artifacts_dir()
+    directory = registry.models_dir
+    if directory is None:
+        raise XiUnavailable(
+            "artifacts have never been loaded, so there is nowhere to read the report from",
+            hint="POST /admin/reload, then run `make xi-evaluate` if the report is missing",
+        )
     path = os.path.join(directory, EVALUATE_REPORT_NAME)
     if not os.path.exists(path):
         raise XiUnavailable(

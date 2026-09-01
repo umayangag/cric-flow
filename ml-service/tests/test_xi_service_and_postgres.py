@@ -143,6 +143,38 @@ def test_registry_status_after_load(registry, artifacts_dir) -> None:
         registry.store("ODI")
 
 
+def test_evaluate_report_is_read_from_the_loaded_artifacts_directory(registry, tmp_path) -> None:
+    """The report and the models it describes must come from one directory.
+
+    Resolving it through ``ml.config.default_artifacts_dir()`` instead looked equivalent and
+    was not: that is the last fallback in the chain, so in any deployment that sets
+    ``ML_SERVICE_OUTPUT_DIR`` -- the container does -- the service loaded artifacts from one
+    place and looked for the report in another, and answered 503 with a report on disk.
+    """
+    models_dir = tmp_path / "artifacts"
+    models_dir.mkdir()
+    (models_dir / "xi_evaluate_report.json").write_text(json.dumps({"formats": {"T20": {}}}))
+    registry.reload(str(models_dir))
+
+    assert xi_service.evaluate_report(registry)["formats"] == {"T20": {}}
+
+
+def test_evaluate_report_reports_a_missing_report_with_the_path_it_looked_in(registry, tmp_path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    registry.reload(str(empty))
+
+    with pytest.raises(xi_service.XiUnavailable, match="no evaluation report at"):
+        xi_service.evaluate_report(registry)
+
+
+def test_evaluate_report_refuses_before_any_reload() -> None:
+    """A registry that has never been reloaded has nowhere to read from, and says so rather
+    than falling back to a directory nobody configured."""
+    with pytest.raises(xi_service.XiUnavailable, match="never been loaded"):
+        xi_service.evaluate_report(xi_service.XiRegistry())
+
+
 def test_optimize_returns_ids_marginals_and_unknowns(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, matches = artifacts_dir
     opponent = [int(k) for k in matches[-1].team2_players]
