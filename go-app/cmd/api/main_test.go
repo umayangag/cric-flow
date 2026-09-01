@@ -24,17 +24,17 @@ func TestRunMigrationsAtStartup_DisabledByEnv(t *testing.T) {
 }
 
 func TestRunTrackingReconciliationAtStartup_DefaultTrue(t *testing.T) {
-	os.Unsetenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP")
-	defer os.Unsetenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP")
-	require.True(t, runTrackingReconciliationAtStartup())
+	os.Unsetenv("RUN_TRACKING_CANCEL_STALE_AT_STARTUP")
+	defer os.Unsetenv("RUN_TRACKING_CANCEL_STALE_AT_STARTUP")
+	require.True(t, runTrackingCancelStaleAtStartup())
 }
 
 func TestRunTrackingReconciliationAtStartup_DisabledByEnv(t *testing.T) {
 	for _, v := range []string{"0", "false", "no"} {
 		t.Run(v, func(t *testing.T) {
-			os.Setenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP", v)
-			defer os.Unsetenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP")
-			require.False(t, runTrackingReconciliationAtStartup())
+			os.Setenv("RUN_TRACKING_CANCEL_STALE_AT_STARTUP", v)
+			defer os.Unsetenv("RUN_TRACKING_CANCEL_STALE_AT_STARTUP")
+			require.False(t, runTrackingCancelStaleAtStartup())
 		})
 	}
 }

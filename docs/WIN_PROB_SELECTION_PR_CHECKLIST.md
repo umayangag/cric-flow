@@ -5,6 +5,12 @@ show that it beats the XI we pick today.
 
 Implement **one PR at a time**; mark status in the table below as work progresses.
 
+> **Complete.** S-6 shipped in P-5 of
+> [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md), on a gate that
+> replaced the one this document proposed. Every other item is done, cancelled or superseded —
+> see **Final disposition** under the status table. The code this document quotes as "today" was
+> deleted in the same PR; read it as history, not as a description of `main`.
+
 ---
 
 ## Why this plan exists
@@ -13,7 +19,7 @@ The system's stated purpose is optimal team selection, but the running configura
 selects by **greedy top-11 on three hand-picked weights**:
 
 ```json
-// go-app/config.json -> selection
+// go-app/config.json -> selection, as it was
 "score_weights": { "bat": 0.45, "bowl": 0.4, "field": 0.1, "keeper_bonus": 0.02 }
 ```
 
@@ -90,20 +96,43 @@ Two consequences that shape the whole plan:
 | S-1 | done | `select/s-1-opponent-xi` | Optimise against the opponent's XI, not their whole pool |
 | S-2 | done | `select/s-2-drop-toss-feature` | Remove `toss_winner_opposition_id` from the win contract |
 | S-3a | done | `select/s-3-selection-backtest` | Win-model discrimination report (AUC, Brier, reliability) |
-| S-3b | done | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches |
+| S-3b | done, then removed | `select/s-3b-selection-backtest` | Selection backtest harness: greedy vs winprob over historical matches. **Deleted in P-5** with the greedy arm it compared against — see the disposition below |
 | S-3c | done | `select/s-3c-export-over-squad` | **The win export aggregates over who batted, not over the XI** (all three parts; numbers below) |
 | S-9 | done | `select/s-9-xi-win-model` | **The win model barely discriminates once the leak is gone.** Answered: XI-responsive ratings reach 0.73 T20 / 0.69 ODI / 0.75 T20I (numbers below) |
-| S-10 | done | `select/s-10-xi-win-model` | **XI-responsive win model behind `selection.win_model: "xi"`** — DB acceptance run; the model reproduces its JSON-path numbers (0.72–0.75 objective, 0.72–0.75 display), the S-3b selection gate does not pass (numbers in "S-10 results") |
+| S-10 | done | `select/s-10-xi-win-model` | **XI-responsive win model**, then behind `selection.win_model: "xi"` — DB acceptance run; the model reproduces its JSON-path numbers (0.72–0.75 objective, 0.72–0.75 display), the S-3b selection gate does not pass (numbers in "S-10 results"). **P-5 removed the flag**: the XI path is the only selection path |
 | S-4 | skipped | — | Steepest-ascent, pair swaps, real budget — superseded by S-10's optimiser (`ml/xi/optimizer.py`) |
-| S-5 | cancelled | — | Composite target for the combination-meta seed — the meta-model is deleted in P-5 of the re-architecture plan; the greedy seed no longer decides anything |
+| S-5 | cancelled | — | Composite target for the combination-meta seed — the meta-model was deleted in P-5; the greedy seed no longer decides anything, and is now `_greedy_seed` inside `ml/xi/optimizer.py` |
 | S-5b | cancelled | — | Auto-tune the combination meta-model — same reason as S-5 |
-| S-6 | not_shipped | — | Turn on win-probability selection — **the gate was run and not met**: pooled winner accuracy 0.560 (`winprob`) vs 0.569 (`greedy`) over 332 locked-window matches, T20 5 points the wrong way. The flag stays off and the reason is recorded ("S-10 results" §3); the gate itself needs replacing, because winner accuracy cannot be won by an arm that strengthens both sides |
-| S-7 | superseded | — | Venue and opposition ID encoding — the XI model never feeds raw ids to a tree (venue and teams enter only through as-of context keyed by id); the identity half is IDENTITY I-3/I-4 = P-1 |
-| S-8 | superseded | — | Base-model features unavailable at decision time — the toss/innings case is solved for the win model by marginalising over batting order (H-3, done); the performance model in P-3 marginalises innings the same way; the base models themselves are replaced |
+| S-6 | **shipped** | `arch/p-5-repoint-surfaces` | Turn on win-probability selection. **Shipped in P-5 on a replacement gate.** The original gate was run and not met — pooled winner accuracy 0.560 (`winprob`) vs 0.569 (`greedy`) over 332 locked-window matches — and was then shown to be unwinnable by an arm that optimises *both* sides: it asks whether the predicted winner of a **counterfactual** fixture matches the result of the real one, and strengthening both sides moves that fixture toward parity (mean \|p − 0.5\| 0.153 optimised vs 0.180 greedy). P-2 measured the replacements the plan named — specific-XI-beyond-typical-XI **+0.045 ± 0.021** AUC in T20, swap violations **0.3 %** against a 2 % line — and P-5 ships selection on the XI objective for T20 / T20I / ODI. There is no flag: the XI path is the only selection path, and TEST is served a rating-ordered XI marked not optimised (H-17) |
+| S-7 | superseded, closed | — | Venue and opposition ID encoding — the XI model never feeds raw ids to a tree (venue and teams enter only through as-of context keyed by id); the identity half is IDENTITY I-3/I-4 = P-1 |
+| S-8 | superseded, closed | — | Base-model features unavailable at decision time — the toss/innings case is solved for the win model by marginalising over batting order (H-3, done); the performance model in P-3 marginalises innings the same way; the base models themselves are replaced |
 
-**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked` | `not_shipped` (built and measured, deliberately not turned on)
+**Status legend:** `todo` | `in_progress` | `done` | `skipped` | `blocked` | `cancelled` | `superseded` | `shipped`
 
-**Disposition under the re-architecture plan** ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md)). This checklist is not discarded: S-1…S-3c and S-9/S-10 are the foundation the plan builds on, and S-6 is its P-0 gate. What changes is that the items written to improve the *old* objective's inputs (S-5, S-5b, S-7, S-8) lose their reason to exist once that objective and the base models behind it are replaced, so they are marked cancelled or superseded with the plan item that covers the underlying concern. Open decision #1 is moot with S-5; #2 (best-response rounds) still applies — the XI optimiser is called inside the same alternating loop. Known defects D-1 and D-2 are closed by dropping the tables and exports (P-6); D-3 by run identity (H-16, P-6).
+**This checklist is complete.** Every item is done, shipped, cancelled or superseded; nothing
+here is a to-do. It is kept for the defect record — the leak in S-3c, the mis-specified gate in
+S-6 — which is the part that was expensive to learn.
+
+**Final disposition** ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md)):
+
+- **S-1, S-2, S-3a, S-3c, S-9, S-10 — done.** They are the foundation the plan builds on.
+- **S-3b — done, then removed.** The harness answered its question, including the one nobody
+  wanted: its own headline metric could not decide S-6. P-5 deleted it along with the greedy arm
+  it compared against, since there is no second selection path left to compare. Its replacements
+  live in the L4 harness and are rendered by the Evaluation report tab.
+- **S-4 — skipped.** S-10's optimiser (`ml/xi/optimizer.py`) does steepest-ascent single swaps,
+  pair swaps and a real evaluation budget already.
+- **S-5, S-5b — cancelled.** The meta-model they tuned was deleted in P-5.
+- **S-6 — shipped in P-5**, on the replacement gate; see its row.
+- **S-7 — superseded and closed.** The XI model feeds no raw id to a tree; the identity half
+  shipped as P-1.
+- **S-8 — superseded and closed.** Batting order is marginalised at prediction for both the win
+  model (H-3) and the performance model (P-3), and the base models it was about are deleted.
+
+Open decision #1 is moot with S-5; #2 (best-response rounds) still applies — the XI optimiser is
+called inside the same alternating loop, capped by `selection.best_response_rounds`. Known
+defects D-1 and D-2 close by dropping the tables and exports (P-6); D-3 by run identity (H-16,
+P-6); D-5 closed when the artifact families it named were deleted in P-5.
 
 **S-9 is answered and S-10 carries the fix.** See "S-9 results" and "S-10" below; the
 paragraphs that follow are the history that led there.

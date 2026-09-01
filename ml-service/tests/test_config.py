@@ -391,8 +391,6 @@ def test_get_tuning_search_space_missing_returns_none(monkeypatch):
         config_mod._cached = None
 
 
-
-
 def test_get_pipeline_common_config():
     """get_pipeline_common_config returns pipeline_common defaults."""
     config_mod._cached = None

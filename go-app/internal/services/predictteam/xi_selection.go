@@ -149,7 +149,15 @@ func selectByWinProbability(
 		if err != nil {
 			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team1Code, round, err)
 		}
-		next2, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveWin, fix.pool2, next1.SelectedPlayerIDs, false)
+		next2, err := optimizeSide(
+			ctx,
+			optimizer,
+			fix,
+			SelectionObjectiveWin,
+			fix.pool2,
+			next1.SelectedPlayerIDs,
+			false,
+		)
 		if err != nil {
 			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team2Code, round, err)
 		}

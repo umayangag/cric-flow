@@ -9,7 +9,8 @@ import (
 )
 
 // InningsTrainingRows returns innings-level rows for the innings model (runs, wickets per innings).
-// One row per (match_id, inning_number). Used for hybrid reconciliation: innings model predicts
+// One row per (match_id, inning_number). Fed the innings model, which P-5 deleted; the export
+// itself goes with the export step in P-6. It predicted
 // innings_runs and innings_wickets; player predictions are rescaled to match.
 // Features: format_code (categorical), venue_id, season_id, inning_number, opposition_id (batting team's opposition),
 // bat_consistency_sum (batting team), bowl_consistency_sum (bowling team), bat_form_sum, bowl_form_sum.

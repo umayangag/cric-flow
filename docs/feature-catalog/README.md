@@ -10,7 +10,7 @@ Plans are **numbered by priority** (1 = highest). Weather data is not yet availa
 
 | # | Plan | Primary goal |
 |---|------|--------------|
-| 01 | [Team selection optimization](01-team-selection-optimization.md) | Goal 1 |
+| 01 | Team selection optimization — **superseded**: the greedy scorer and its weights were deleted in P-5; selection is the XI objective in `ml/xi/optimizer.py` |
 | 02 | [Individual prediction accuracy](02-individual-prediction-accuracy.md) | Goal 2 |
 | 03 | [Scorecard summary for upcoming match](03-scorecard-summary-upcoming-match.md) | Goal 3 |
 | 04 | [Feature pipeline consistency](04-feature-pipeline-consistency.md) | Goals 1–3 |

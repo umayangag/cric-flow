@@ -249,7 +249,7 @@ def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
     """Return feature names for MLQA sensitivity analysis and feature importance when available.
 
     One kind is left: the regression models whose columns the other branches named went in
-    P-5, and with them ``ml.metrics``'s raveled multi-output scoring (H-12).
+    P-5, and with them the raveled multi-output scoring H-12 retired.
     """
     if model_kind == "win" and _train_win is not None:
         return _train_win.WIN_FEATURE_COLS

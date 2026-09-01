@@ -1,5 +1,11 @@
 # Workbench, Evaluate and Prediction: streamline the consumer surfaces
 
+> **Historical record.** The Evaluate tab this plan streamlined was replaced in P-5 of
+> [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md): the per-match
+> evaluate flow and the accuracy trend scored the batting, bowling and fielding models and
+> went with them. The surfaces are now the Evaluation report tab and the prediction tab
+> described there.
+
 **Goal.** Make the three surfaces that *consume* model output — Workbench, Evaluate (DB),
 Upcoming match prediction — coherent, honest about what they can actually do, and free of
 paths that no longer work.
@@ -169,7 +175,7 @@ not redo the work:
 | `resume` (run-plan) | kept — R-1's resume, traced to `Executor.Resume` |
 | `simulate` | kept — gates `PredictTeamsWithSimulation` |
 | `require_keeper`, `min_bowlers`, `extra_team1/2`, `simulation_top_k/samples/max_pairs` | kept — real effects in `buildPredictInput` / `buildSimulationOpts`. The UI declares them and never sends them, which is not the same as dead: a declared option a handler honours is a usable API, not a lie |
-| `use_reconciled_scorecard`, `include_both_scorecards` | kept — backend-only; not declared in `api.ts` |
+| `use_reconciled_scorecard`, `include_both_scorecards` | kept then — backend-only, not declared in `api.ts`. P-5 retired both: the API now refuses them |
 | `feed` / `url` (data fetch), `archive` (extract) | kept — W6 changes who chooses them, not whether they work |
 
 **`weather` was the real find.** `POST /api/predict/team-selection` accepted a weather
@@ -410,7 +416,7 @@ scorecards and model-mode flags in one hook.
 `applyJobModeFromStatus`. Two sources of truth that can disagree, and the UI cannot say
 which it is showing.
 
-- [x] **The reconciliation callback is gone rather than smaller.** W0-1 and W0-2
+- [x] **The second-scorecard callback is gone rather than smaller.** W0-1 and W0-2
       removed both flags it kept in sync, and the split gave the remainder an owner: a
       job carries the parameters it was started with, in `localStorage`, and the form
       is somebody else's state. There is nothing left for the two to disagree about

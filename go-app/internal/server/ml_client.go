@@ -114,4 +114,3 @@ func logMLNon2xx(resp *http.Response, endpoint string) error {
 	}
 	return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(bodyStr))
 }
-

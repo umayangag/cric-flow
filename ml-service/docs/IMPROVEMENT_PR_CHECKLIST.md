@@ -6,7 +6,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 
 > **P-5 (the ML pipeline re-architecture, `../../docs/ML_PIPELINE_REARCHITECTURE_PLAN.md`)
 > deleted several of the modules this list was written about**: the batting / bowling /
-> fielding / extras / innings trainers and their tuning path, the reconciliation solvers, the
+> fielding / extras / innings trainers and their tuning path, the constraint solver and its
 > team optimiser, the backtest service and `train_on_the_fly`. Items scoped to those modules
 > are marked `moot` — not skipped on judgement, but with no code left to improve. The rest
 > still stand.
@@ -30,7 +30,7 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 | P2-3 | todo | | Standardize structlog in `ml/` |
 | P3-1 | todo | | Decompose `ml/config.py` |
 | P3-2 | moot | | Consolidate training entrypoints — one trainer left after P-5 |
-| P3-3 | moot | `ml-service/p3-3-reconciliation-docs` | Document reconciliation layers — both layers deleted in P-5 |
+| P3-3 | moot | (shipped, branch since deleted) | Document the two rescaling layers — both deleted in P-5 |
 | P3-4 | moot | | Coverage/smoke tests for omitted training paths — those paths went in P-5 |
 | P4-1 | done | `ml-service/p4-1-tighten-cors` | Tighten CORS defaults |
 | P4-2 | todo | | API versioning (`/v1/...`) — **skipped unless cross-repo approved** |
@@ -151,10 +151,10 @@ Tracked improvements from the architecture review (May 2026). Implement **one PR
 P-5 left one trainer of the old family (`ml.train_win`), which P-6 removes; the XI layer has
 one entry path already (`make train-xi`).
 
-### P3-3 — Reconciliation documentation (moot)
+### P3-3 — Rescaling-layer documentation (moot)
 
 Both layers were deleted in P-5. The scorecard and the win probability now come from one
-simulator, so there is no second estimate to reconcile toward.
+simulator, so there is no second estimate to pull them toward.
 
 ### P3-4 — Training path coverage (moot)
 

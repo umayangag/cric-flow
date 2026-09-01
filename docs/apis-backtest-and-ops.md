@@ -1,6 +1,6 @@
-# APIs, backtest, evaluate, and ops
+# APIs, prediction, evaluation, and ops
 
-API contracts (Go and ML), backtest/evaluate on played matches, and the ops status dashboard.
+API contracts (Go and ML), the prediction and evaluation surfaces, and the ops status dashboard.
 
 ---
 
@@ -12,11 +12,13 @@ API contracts (Go and ML), backtest/evaluate on played matches, and the ops stat
 
 - **Content-Type:** `application/json`. **Error format:** `{ "error": { "code": "INVALID_INPUT", "message": "...", "details": {...} } }`
 - **GET /health** — 200 `{ "status": "ok" }`
-- **POST /predict/batting** — Body: BattingFeatures (consistency, form, temp, wind, rain, humidity, cloud, pressure, viscosity, inning, session, toss, venue, opposition, season, player_name, format). Response: runs_scored, balls_faced, fours_scored, sixes_scored, batting_position, strike_rate. Constraints: batting_consistency ≥ 0, batting_inning ∈ {1,2}, batting_session ∈ {1,2,3}, format optional.
-- **POST /predict/bowling** — Body: BowlingFeatures (bowling_* names, batting_inning, bowling_session, toss, bowling_venue, bowling_opposition, season, player_name, format). Response: runs_conceded, deliveries, wickets_taken, econ.
-- **POST /predict/extras** — Body: array of **ExtrasFeatures** (format_id, venue_id, season_id, temp, wind, rain, humidity, cloud, pressure, viscosity, bat_consistency_sum, bowl_consistency_sum, bat_form_sum, bowl_form_sum; optional `format` for per-format model). Response: array of `{ "total_extras": float }`. Uses the same unified feature set as extras training.
-- **POST /predict/win** — Body: array of **WinFeatures** (format_id, venue_id, team1_opposition_id, team2_opposition_id, team1/team2 bat/bowl consistency and form sums; optional `format`). Response: array of `{ "team1_win_probability": float }`. Uses the same unified feature set as win training.
-- **POST /predict-win** (legacy) — Body: array of PlayerPrediction (no winning_probability). Response: array with winning_probability. Distinct from **POST /predict/win** above (match-level WinFeatures).
+- **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format whose objective does not rank (H-17: TEST) — the hint names `"ratings"`.
+- **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
+- **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
+- **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
+- **GET /xi/status** — Loaded formats, `ratings_through`, player count, the last training report.
+- **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make xi-evaluate` when the harness has not run.
+- **POST /predict/win**, **POST /predict/win-enhanced** — the windowed-form win model. Superseded; P-6 removes them.
 
 ### Go API (mux) — base `http://localhost:8080`
 
@@ -31,106 +33,56 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 
 ---
 
-## Backtesting predictions on played matches
+## Prediction
 
-**Purpose:** Evaluate model accuracy on already-played matches with a strict training cutoff at the match date; predict only for players who actually played; compare predictions vs actuals with summary metrics.
+**`POST /api/predict/team-selection`** (also GET with query params).
 
-**Prerequisites:** Go API (e.g. localhost:8080), ML service (e.g. localhost:8000). Env: `ML_SERVICE_URL`, optional `VITE_API_URL`, `VITE_ML_SERVICE_URL` for frontend.
+**Body:** `format`, `team1`, `team2`, `match_date` (RFC3339 or `YYYY-MM-DD`), optional `venue`,
+`extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`, `require_keeper`.
 
-### Endpoints
+**Response:**
 
-1. **Select played matches by filters**  
-   `GET /api/backtest/match?format=T20&team1=IND&team2=AUS`  
-   Response: `filters`, `candidates[]` (match_id, stable_id, date, venue, season, format, team1, team2, winner_team_code).
+| Field | Meaning |
+|-------|---------|
+| `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
+| `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI |
+| `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
+| `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and per innings the median-band `total`, its `extras` and the 10-90 range of the draws |
 
-2. **Evaluate a specific played match**  
-   `GET /api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=111`  
-   Or SSE: `GET /api/backtest/evaluate-stream?format=...&team1=...&team2=...&match_id=...`  
-   Or job: `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id).  
-   Match scorecard (actual): `GET /api/backtest/scorecard?match_id=...`
+The scorecard lines and extras sum to the innings total by construction — they come from the
+same draws — so nothing is rescaled toward the win probability.
 
-   Response includes: `filters` (with `model_mode`: `"latest"` or `"strict_temporal"`), `match`, `players[]` (player_id, predicted, actual, errors), `match_aggregates` (predicted, actual, errors), `metrics` (player_runs_mae, player_runs_rmse, player_runs_r2, player_wickets_mae, player_economy_mae, player_catches_mae, player_run_outs_mae, match_*_mae, winner_accuracy), `predicted_scorecard`.
-
-   **Model temporal mode** (query or body: `use_latest_model=1`):
-   - **Latest model** (default for UI): Uses the current model (artifacts or train-on-the-fly with "now" cutoff). Fast; good for QA and sanity checks. May include the match being evaluated in training.
-   - **Strict cutoff**: Model trained only on data before match date. Unbiased temporal validation; may require per-match training when artifacts unavailable.
-
-**Notes:** Features are always computed at match-date cutoff (no future leakage). Players list = those who actually played. Match aggregates: predicted runs/wickets = sum of player preds; predicted extras from historical average per format/venue (`db.GetAverageExtrasForFormat`); actuals from DB. Fielding metrics (player_catches_mae, player_run_outs_mae) when fielding artifacts are loaded.
-
-### Comparing selection strategies
-
-`POST /api/backtest/selection-comparison` — body: `format`, `team1`, `team2`, optional
-`limit` (default 10, max 50), `min_bowlers`, `require_keeper`. Selects each played match
-between the pair twice, once greedily and once by maximising win probability, and
-reports per arm: winner accuracy against the real result, mean predicted win
-probability, and mean overlap with the XI actually fielded — plus how many players the
-two arms chose differently.
-
-The limit is small and capped because each match costs two selections and one of them is
-a search; run larger windows in batches.
-
-**What the numbers mean.** Only **winner accuracy** is grounded in what happened. Mean
-predicted win probability says an arm moved its own objective, not that it moved
-somewhere true. Divergence says whether the search is doing anything at all — if the
-optimiser returns the greedy XI every time, no other number matters.
-
-**What cannot be measured.** "Would the optimiser's XI have won more often?" is not
-answerable from historical data: the match was played by the teams actually fielded, and
-replaying it with a different XI needs a simulator whose accuracy is the thing in doubt.
-Overlap with the fielded XI is reported for context only — real selectors are not
-optimal, so agreeing with them is not evidence of being right.
-
-### ML backtest endpoint (used by Go backend)
-
-- **URL:** `POST $ML_SERVICE_URL/ml/backtest/predict`
-- **Player mode:** Request: `cutoff_date`, `player_ids`, `format`, `features` (required), optional `use_latest_model` (default false). Response: `players[]` with player_id, runs, wickets, economy (and catches/run_outs when fielding loaded). When artifacts are loaded, ML uses them; otherwise **train-on-the-fly** (fetch training data from go-app `GET /api/backtest/training-data?cutoff=...&format=all`, train in memory, predict). `use_latest_model=true`: train with "now" as cutoff (one model per format). `use_latest_model=false`: train strictly before `cutoff_date`. Requires **GO_APP_URL** for train-on-the-fly.
-- **Match aggregates mode:** Request: `cutoff_date`, `teams`. Response: `match` (runs, wickets, extras, winner_team_code).
-
-### Curl examples
-
-```bash
-curl "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS" | jq .
-curl "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=111" | jq .
-```
-
-### E2E smoke
-
-- **Seed fixtures:** `make seed-fixtures` (minimal IND vs AUS T20, one played match).
-- **Smoke:** `make e2e-backtest-smoke` — verifies backtest match list and evaluate response (players, metrics, match_aggregates). Uses Docker Compose service names.
-
-### Frontend
-
-Evaluate DB tab: load candidates by filters, select match, choose **model temporal mode** (Latest model recommended vs Strict cutoff), run evaluation (job-based, polls status), show actual scorecard, progress, result (player errors, summary metrics, predicted scorecard). MAE shown to 3 decimal places; missing as '-'.
-
-### Troubleshooting
-
-- Go backend cannot reach ML: set `ML_SERVICE_URL`, ensure ML is running.
-- Missing match_aggregates: verify ML client returns `match` and DB has winner/innings data.
-- Frontend: set `VITE_API_URL` to Go API.
+**Retired fields are refused, not ignored:** `weather`, `simulate`, `use_reconciled_scorecard`
+and `include_both_scorecards` each return 400 with a code and a hint. A caller still sending one
+would otherwise get an answer to a different question with no indication why.
 
 ---
 
-## Evaluate DB pipeline (flow and reference)
+## Evaluation
 
-**Flow:** Frontend (Evaluate DB tab) → `GET /api/backtest/match` (select) → user selects match → optional `GET /api/backtest/scorecard?match_id=N` → `POST /api/backtest/evaluate-start` or `GET /api/backtest/evaluate-stream` (with optional `use_latest_model=1`) → go-app runs `doEvaluateWork` → progress/result → UI shows actual scorecard, evaluation result, predicted scorecard. **Features** are always computed at match-date cutoff. **Model temporal mode:** `use_latest_model=true` uses the latest model (may include match in training); `use_latest_model=false` (strict) trains only on data before match date.
+**`GET /api/backtest/report`** proxies ml-service's `GET /xi/evaluate-report`, which serves
+`xi_evaluate_report.json` as `make xi-evaluate` last wrote it. 503 with a hint when the harness
+has not run.
 
-**Go-app evaluate steps (`doEvaluateWork`):** match_date (cutoff) → squad (playing XI from batting_data ∪ bowling_data) → features (at cutoff via `ComputeFeaturesAtCutoffForMatch` or legacy provider) → ml_predict (format + features + use_latest_model to ML) → actuals (from DB) → metrics → aggregates (predicted = sum of player preds; actual from DB) → scorecard (build predicted scorecard from actual layout + ML preds) → done. Response includes `filters.model_mode` (`"latest"` or `"strict_temporal"`). All external deps behind seams in `backtest_seams.go` for testing.
+The report carries, per format: the walk-forward folds and their summary (objective and display
+AUC, Brier against the base rate, swap monotonicity, the specific-XI-beyond-typical-XI delta,
+per-target performance metrics, the simulator's E2 section), the locked window in the same
+shape, and E2's serving decision. Beside them: the data-quality counts, the leak canary with its
+TEST control, and the train/serve parity verdict.
 
-**Feature computation at cutoff:** For matchID > 0: `GetMatchFeatureContext` (format_id, venue_id, season_id, opposition IDs) then per-player batting/bowling snapshots at cutoff (EWM, consistency, venue, opposition; only data with match_date < cutoff). Missing history → 0; weather 0 when not available. Same semantics as training export.
+**There is no per-match evaluate flow.** It scored the batting, bowling and fielding models
+against actuals and went with them in P-5; what replaced it is the harness, which scores every
+format over rolling origins in one run and never uses the locked window for a choice (H-19).
 
-**ML service:** `POST /ml/backtest/predict` with format, features, and `use_latest_model`. Uses loaded artifacts for that format or train-on-the-fly (fetch `GET /api/backtest/training-data?cutoff=...&format=all`). When `use_latest_model=true`, train-on-the-fly uses "now" as cutoff. No deterministic baseline. Fielding: when fielding artifacts loaded, returns catches/run_outs; else 0.
+**`GET /api/backtest/training-data?cutoff=...&format=...`** still serves rows to the
+windowed-form win trainer and the auto-tune stack. P-6 removes it with them.
 
-**Go-app training-data API:** `GET /api/backtest/training-data?cutoff=...&format=...` (cutoff required; format=all or specific). Response: batting, bowling (headers + rows); only matches with match_date < cutoff. Used by ML train-on-the-fly.
+**Frontend:** the Evaluation report tab renders the report. It has no form — the folds, the
+locked window and the seeds are the harness's, and a cutoff chosen in a browser would be a
+choice made against the locked window.
 
-**SSE stream:** `GET /api/backtest/evaluate-stream?format&team1&team2&match_id` (optional `use_latest_model=1`). Events: `progress` (step, message), then `result` (BacktestEvaluateResponse) or `error` (message). Frontend: `backtestEvaluateStream()` in api.ts.
-
-**Evaluate job:** `POST /api/backtest/evaluate-start` (body or query: format, team1, team2, match_id, optional use_latest_model). Returns 202 `{ "job_id": "..." }`. Poll `GET /api/backtest/evaluate-status?job_id=...` for status, steps, and result. EvaluateDbTab uses this flow.
-
-**Scorecards:** Actual: `GET /api/backtest/scorecard?match_id=N` (repo_scorecard.GetMatchScorecard). Predicted: built in go-app from actual layout + ML predictions, returned in evaluate response.
-
-**Key files:** backtest_handlers.go (doEvaluateWork, stream, training-data handler), backtest_seams.go, backtest.go, repo_backtest_features.go, exportqueries/training_snapshot.go, ml_backtest_client.go, repo_scorecard.go; ml-service: main.py (backtest_predict), train_on_the_fly.py, backtest_service.py, models.py; configs/feature_vectors.json; frontend: api.ts, EvaluateDbTab.tsx, MatchScorecard.tsx.
-
-**Debugging:** Predictions random → check format and features reach ML; train-on-the-fly → set GO_APP_URL, ensure data for cutoff. 503 TRAIN_ON_THE_FLY_FAILED → check GO_APP_URL, go-app data, ML logs. Features wrong → check GetMatchFeatureContext and ComputeFeaturesAtCutoffForMatch, match format_id/venue_id/season_id. Squad empty → match must have batting_data/bowling_data. SSE never finishes → ensure one result or error event. Scorecard missing → same match_id, DB rows for match/innings/batting/bowling.
+**E2E smoke:** `make e2e-backtest-smoke` checks `/api/backtest/report` (200, or 503 when the
+harness has not run) and the options and model-stats endpoints.
 
 ---
 

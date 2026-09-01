@@ -12,8 +12,8 @@ them stays hand-written -- data flow and aggregation logic are not mechanically 
 
 Sources:
   configs/feature_vectors.json          batting / bowling / fielding inputs
-  ml-service/ml/train_extras.py         EXTRAS_FEATURE_COLS, TARGET/label
-  ml-service/ml/train_innings.py        INNINGS_FEATURE_COLS
+  ml-service/ml/xi/contract.py          XI_FEATURE_COLS, DISPLAY_FEATURE_COLS, TARGET_COL
+  ml-service/ml/xi/performance.py       TARGETS
   ml-service/ml/win_features.py         WIN_ENHANCED_FEATURE_COLS
   ml-service/app/main.py                @app.get/@app.post routes
   go-app/internal/server/router.go      HandleFunc routes
@@ -114,25 +114,29 @@ def go_routes(path: str) -> List[Tuple[str, str]]:
 
 
 def render_models(root: str) -> str:
-    contract = read_json_contract(root)
-    ml = os.path.join(root, "ml-service", "ml")
+    """The model table, read from the contracts the code actually fits on.
 
-    extras_in = list_from_import(root, "ml.train_extras", "EXTRAS_FEATURE_COLS")
-    innings_in = list_from_import(root, "ml.train_innings", "INNINGS_FEATURE_COLS")
-    win_in = list_from_import(root, "ml.win_features", "WIN_ENHANCED_FEATURE_COLS")
-
-    bat_out = list_from_module(os.path.join(ml, "train_batting.py"), "TARGET_COLS")
-    bowl_out = list_from_module(os.path.join(ml, "train_bowling.py"), "TARGET_COLS")
-    field_out = list_from_module(os.path.join(ml, "train_fielding.py"), "TARGET_COLS")
-    inn_out = list_from_import(root, "ml.train_innings", "INNINGS_TARGET_COLS")
+    The XI layer is the whole serving surface after P-5: two win models over the same XI
+    columns, one performance model with five targets, and a simulator that trains nothing.
+    The windowed-form win model is listed beside them until P-6 removes it.
+    """
+    objective_in = list_from_import(root, "ml.xi.contract", "XI_FEATURE_COLS")
+    display_in = list_from_import(root, "ml.xi.contract", "DISPLAY_FEATURE_COLS")
+    win_target = scalar_from_import(root, "ml.xi.contract", "TARGET_COL")
+    formats = list_from_import(root, "ml.xi.contract", "FORMAT_CODES")
+    perf_targets = performance_targets(root)
+    legacy_win_in = list_from_import(root, "ml.win_features", "WIN_ENHANCED_FEATURE_COLS")
 
     rows = [
-        ("Batting", "Player", len(contract.get("batting", [])), bat_out or ["runs", "balls", "fours", "sixes", "batting_position"], "`configs/feature_vectors.json` → `batting`"),
-        ("Bowling", "Player", len(contract.get("bowling", [])), bowl_out or ["runs_conceded", "deliveries", "wickets_taken"], "`configs/feature_vectors.json` → `bowling`"),
-        ("Fielding", "Player", len(contract.get("fielding", [])), field_out or ["catches", "run_outs", "stumpings"], "`configs/feature_vectors.json` → `fielding`"),
-        ("Extras", "Match", len(extras_in), [scalar_from_import(root, "ml.train_extras", "EXTRAS_TARGET_COL")], "`ml.train_extras.EXTRAS_FEATURE_COLS`"),
-        ("Win", "Match", len(win_in), [scalar_from_import(root, "ml.train_win", "WIN_TARGET_COL")], "`ml.win_features.WIN_ENHANCED_FEATURE_COLS`"),
-        ("Innings", "Innings", len(innings_in), inn_out or ["innings_runs", "innings_wickets"], "`ml.train_innings.INNINGS_FEATURE_COLS`"),
+        ("XI win — objective", "Match", len(objective_in), [win_target],
+         "`ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens"),
+        ("XI win — display", "Match", len(display_in), [win_target],
+         "`ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context"),
+        ("Performance (L2-B)", "Player", len(objective_in), perf_targets,
+         "as-of player-match rows from `ml.xi.rows`"),
+        ("Win — windowed form", "Match", len(legacy_win_in),
+         [scalar_from_import(root, "ml.train_win", "WIN_TARGET_COL")],
+         "`ml.win_features.WIN_ENHANCED_FEATURE_COLS` — superseded, removed in P-6"),
     ]
 
     out = ["| Model | Level | Inputs | Outputs | Input source |", "|-------|-------|--------|---------|--------------|"]
@@ -140,20 +144,37 @@ def render_models(root: str) -> str:
         out.append(f"| **{name}** | {level} | {n_in} | {len(outs)} — {', '.join(f'`{o}`' for o in outs)} | {source} |")
 
     out.append("")
+    out.append(f"One model of each kind per format: {', '.join(f'`{f}`' for f in formats)}. "
+               "The simulator (L2-C) trains nothing — it draws from the performance model.")
+    out.append("")
     out.append("Input feature names, in order:")
     out.append("")
-    for key in ("batting", "bowling", "fielding"):
-        names = contract.get(key, [])
-        out.append(f"- **{key.capitalize()}** ({len(names)}): " + ", ".join(f"`{n}`" for n in names))
     for label, names, source in (
-        ("Extras", extras_in, "ml.train_extras"),
-        ("Win", win_in, "ml.win_features"),
-        ("Innings", innings_in, "ml.train_innings"),
+        ("XI win — objective", objective_in, "ml.xi.contract.XI_FEATURE_COLS"),
+        ("XI win — display", display_in, "ml.xi.contract.DISPLAY_FEATURE_COLS"),
+        ("Win — windowed form", legacy_win_in, "ml.win_features"),
     ):
         shown = ", ".join(f"`{n}`" for n in names[:12])
         more = f" … (+{len(names) - 12} more, see `{source}`)" if len(names) > 12 else ""
         out.append(f"- **{label}** ({len(names)}): {shown}{more}")
     return "\n".join(out)
+
+
+def performance_targets(root: str) -> List[str]:
+    """The performance model's target names, in the order it fits them."""
+    import importlib
+
+    ml_root = os.path.join(root, "ml-service")
+    if ml_root not in sys.path:
+        sys.path.insert(0, ml_root)
+    try:
+        module = importlib.import_module("ml.xi.performance")
+    except Exception as exc:  # pragma: no cover - surfaced to the caller
+        raise SystemExit(
+            f"error: could not import ml.xi.performance ({exc}).\n"
+            "Run via `make gen-architecture-map`, which uses the ml-service venv."
+        ) from exc
+    return [t.name for t in module.TARGETS]
 
 
 def render_endpoints(root: str) -> str:

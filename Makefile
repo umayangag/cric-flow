@@ -13,12 +13,12 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs export-dataset export-off export-on
 .PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
-.PHONY: go-test go-test-int ml-serve team-predictor ml-install
-.PHONY: train-batting train-bowling train-fielding train-extras train-win train-innings train-batting-bowling train-all train-models ml-auto-tune walk-forward win-discrimination train-combination-meta full-pipeline
+.PHONY: go-test go-test-int ml-serve ml-install
+.PHONY: train-win ml-auto-tune win-discrimination train-xi xi-evaluate xi-parity full-pipeline
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
-.PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test train-batting-baseline train-bowling-baseline
+.PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test
 
 # docker-compose stack (Postgres + API + ML service)
 dev-up:
@@ -110,7 +110,7 @@ ml-serve:
 API_KEY ?= dev-local-key
 API_URL ?= http://localhost:8080
 
-# Variables for convenience (override like: make team-predictor MATCH=123 BAT=6 BOWL=5)
+# Variables for convenience (override like: make e2e FORMAT=ODI SEASON=2019)
 SEASON ?= 2019
 FORMAT ?= T20
 # Recognized formats: TEST, ODI, T20, T20I
@@ -153,45 +153,13 @@ precompute-all:
 precompute-all-all-formats:
 	cd go-app && go run ./cmd/precompute-all -all-formats -replay $(ARGS) || exit 1
 
-# Team predictor: requires MATCH, SEASON, FORMAT; uses go-app team-predictor (ML service must be running for predict).
-team-predictor:
-	@if [ "$(MATCH)" = "0" ]; then echo "Please pass MATCH=<match_id>, e.g., make team-predictor MATCH=123456"; exit 1; fi
-	cd go-app && make team-predictor MATCH=$(MATCH) BAT=$(BAT) BOWL=$(BOWL) FORMAT=$(FORMAT) SEASON=$(SEASON)
 
-# Train ML artifacts (batting, bowling, fielding). Prerequisites: precompute + export (see export-dataset).
-# Fielding uses go-app training-data API by default; set GO_APP_URL and CUTOFF, or pass FIELDING_CSV to ml-service.
-ml-install:
-	$(MAKE) -C ml-service install
-
-# Per-format artifacts; run export-dataset first so batting_encoded_*.csv exists.
-train-batting:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --all-formats
-
-train-bowling:
-	cd ml-service && $(ML_VENV_BIN)/python -m ml.train_bowling --all-formats
-
-# Train fielding: same as batting/bowling — if CUTOFF set use API; else use fielding_encoded_all.csv from GO_APP_OUTPUT_DIR (run export first).
+# Train the windowed-form win model. Prerequisites: precompute + export (see export-dataset).
+# P-6 removes it; the XI layer is trained by `make train-xi` and needs only the import.
 GO_APP_URL ?= http://localhost:8080
 CUTOFF ?=
-train-fielding:
-	@if [ -n "$(FIELDING_CSV)" ]; then \
-	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding --csv "$(FIELDING_CSV)"; \
-	elif [ -n "$(CUTOFF)" ]; then \
-	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_fielding --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
-	else \
-	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_fielding; \
-	fi
-
-train-extras:
-	@if [ -z "$(CUTOFF)" ] && [ -z "$(EXTRAS_CSV)" ]; then \
-	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set EXTRAS_CSV=<path>. Example: make train-extras CUTOFF=2025-01-01T00:00:00Z"; \
-	  exit 1; \
-	fi
-	@if [ -n "$(EXTRAS_CSV)" ]; then \
-	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_extras --csv "$(EXTRAS_CSV)"; \
-	else \
-	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_extras --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
-	fi
+ml-install:
+	$(MAKE) -C ml-service install
 
 train-win:
 	@if [ -z "$(CUTOFF)" ] && [ -z "$(WIN_CSV)" ]; then \
@@ -204,40 +172,17 @@ train-win:
 	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
 	fi
 
-train-innings:
-	@if [ -z "$(CUTOFF)" ]; then \
-	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=. Example: make train-innings CUTOFF=2025-01-01T00:00:00Z"; \
-	  exit 1; \
-	fi
-	cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_innings --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"
-
-# Train batting + bowling (from exported CSVs). Fielding: same — export then make train-fielding (or set CUTOFF for API).
-train-batting-bowling: train-batting train-bowling
-
-# Train all models (batting, bowling, fielding, extras, win). For fielding/extras/win set CUTOFF= and GO_APP_URL= if using API.
-train-all: train-models
-train-models: train-batting train-bowling train-fielding train-extras train-win train-innings
-
-# Auto-tune ML model(s): find best algorithm and hyperparameters. From repo root: make ml-auto-tune MODEL=batting FORMAT=T20 or MODEL=all ALL_FORMATS=1
-# When MODEL=all and ALL_FORMATS=1, set GO_APP_URL (and optionally CUTOFF) so all five models are tuned from API and params saved to DB.
+# Auto-tune the win model: find best algorithm and hyperparameters.
+# From repo root: make ml-auto-tune FORMAT=T20, or ALL_FORMATS=1.
 # Options: ALGORITHMS=rf,gb VALIDATION_METHOD=walk_forward
-MODEL ?= batting
+MODEL ?= win
 # FORMAT is already defined above (default T20); a second `FORMAT ?=` here was a no-op.
 ALL_FORMATS ?=
 ALGORITHMS ?=
 VALIDATION_METHOD ?=
-# CUTOFF is defined once above (train-fielding block); reused here for ml-auto-tune.
 RESCREEN ?=
 ml-auto-tune:
 	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",) $(if $(FAST),FAST="$(FAST)",) $(if $(NO_PYCARET),NO_PYCARET="$(NO_PYCARET)",) $(if $(RESCREEN),RESCREEN="$(RESCREEN)",)
-
-# Walk-forward: incremental train → predict → evaluate → absorb (see docs/ml-and-training.md)
-INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
-WINDOW_X ?= 50
-WALK_FORMAT ?= T20
-WALK_MODEL ?= batting
-walk-forward:
-	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service walk-forward INITIAL_CUTOFF="$(INITIAL_CUTOFF)" WINDOW_X="$(WINDOW_X)" WALK_FORMAT="$(WALK_FORMAT)" WALK_MODEL="$(WALK_MODEL)" $(if $(MAX_WINDOWS),MAX_WINDOWS="$(MAX_WINDOWS)",) $(if $(EXPORT_METRICS),EXPORT_METRICS="$(EXPORT_METRICS)",)
 
 # Train the XI-responsive win model + ratings (see docs/ml-and-training.md, S-10). Reads the DB
 # (POSTGRES_* from the environment or .env) or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory.
@@ -261,21 +206,9 @@ xi-parity:
 win-discrimination:
 	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service win-discrimination TRAIN_CUTOFF="$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),EVAL_CUTOFF="$(EVAL_CUTOFF)",)
 
-# Train meta-model for score combination from backtest CSV (see docs/ml-and-training.md)
-train-combination-meta:
-	$(MAKE) -C ml-service train-combination-meta CSV="$(CSV)" OUT="$(OUT)"
-
-# Full retrain pipeline: precompute → export → train all models; optionally train-combination-meta if CSV exists.
-# Does not run import. Set CUTOFF= and GO_APP_URL= for fielding/extras/win. Generate contributions CSV via POST /api/backtest/export-contributions first if you want combination meta.
-FULL_PIPELINE_CSV ?= output/go-app/backtest_contributions.csv
-FULL_PIPELINE_OUT ?= output/go-app/combination_meta.json
-full-pipeline: output-dirs precompute-all-all-formats export-dataset train-models
-	@if [ -f "$(FULL_PIPELINE_CSV)" ]; then \
-	  echo "[full-pipeline] Running train-combination-meta (CSV found)"; \
-	  $(MAKE) train-combination-meta CSV="$(FULL_PIPELINE_CSV)" OUT="$(FULL_PIPELINE_OUT)"; \
-	else \
-	  echo "[full-pipeline] Skipping train-combination-meta (no $(FULL_PIPELINE_CSV)); generate via POST /api/backtest/export-contributions"; \
-	fi
+# Full retrain pipeline: precompute → export → train the win model. Does not run import.
+# Set CUTOFF= and GO_APP_URL=. The XI layer is a separate command: `make train-xi CUTOFF=`.
+full-pipeline: output-dirs precompute-all-all-formats export-dataset train-win
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -342,49 +275,16 @@ e2e-backtest-smoke: seed-fixtures
 	  done; \
 	  echo "  healthy: $$url"; \
 	done
-	# Select candidates
-	@echo "[SMOKE] Selecting played matches (T20 IND vs AUS)"; \
-	URL="http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS"; \
-	SEL_JSON=$$(mktemp); \
-	trap 'rm -f "$$SEL_JSON"' EXIT; \
-	STATUS=$$(curl -sS -H "X-API-Key: test-api-key" -o "$$SEL_JSON" -w "%{http_code}" "$$URL"); \
-	echo "  [SEL] HTTP $$STATUS $$URL"; \
-	if [ "$$STATUS" != "200" ]; then \
-	  echo "  [SEL] Response:"; \
-	  cat "$$SEL_JSON"; echo; \
-	  exit 2; \
-	fi; \
-	COUNT=$$(jq -r '(.candidates // []) | length' "$$SEL_JSON"); \
-	echo "  [SEL] candidates count=$$COUNT"; \
-	if [ "$$COUNT" -le 0 ]; then \
-	  echo "  [SEL] Body:"; \
-	  cat "$$SEL_JSON"; echo; \
-	  exit 2; \
-	fi
-	# Evaluate the seeded match (match_id known from fixtures: 9000111)
-	# use_ml=1 delegates to ML /ml/backtest/match (deterministic baselines); avoids need for training data.
-	@echo "[SMOKE] Evaluating match_id=9000111 (use_ml=1)"; \
-	EVAL_JSON=$$(mktemp); \
-	trap 'rm -f "$$EVAL_JSON"' EXIT; \
-	STATUS=$$(curl -sS -o "$$EVAL_JSON" -w "%{http_code}" -H "X-API-Key: test-api-key" \
-	  "http://localhost:8080/api/backtest/match?format=T20&team1=IND&team2=AUS&mode=evaluate&match_id=9000111&use_ml=1&cutoff=2024-01-15T00:00:00Z"); \
-	if [ "$$STATUS" != "200" ]; then \
-	  echo "[EVAL] HTTP $$STATUS"; echo "[EVAL] Response:"; cat "$$EVAL_JSON"; echo; exit 2; \
-	fi; \
-	jq -e '(.players | length) > 0' "$$EVAL_JSON" >/dev/null || { echo "[EVAL] Assertion failed: (.players | length) > 0"; cat "$$EVAL_JSON"; exit 2; }; \
-	jq -e '(.metrics.player_runs_mae | type) == "number"' "$$EVAL_JSON" >/dev/null || { echo "[EVAL] Assertion failed: .metrics.player_runs_mae"; cat "$$EVAL_JSON"; exit 2; }; \
-	jq -e '.match_aggregates.predicted' "$$EVAL_JSON" >/dev/null || { echo "[EVAL] Assertion failed: .match_aggregates.predicted"; cat "$$EVAL_JSON"; exit 2; }; \
-	jq -e '.match_aggregates.actual' "$$EVAL_JSON" >/dev/null || { echo "[EVAL] Assertion failed: .match_aggregates.actual"; cat "$$EVAL_JSON"; exit 2; }; \
-	jq -e '.match_aggregates.errors' "$$EVAL_JSON" >/dev/null || { echo "[EVAL] Assertion failed: .match_aggregates.errors"; cat "$$EVAL_JSON"; exit 2; }
+	# The evaluation report (L4). Proxied from ml-service; 503 when the harness has not run,
+	# which is a state a fresh box is legitimately in.
+	@echo "[SMOKE] Checking backtest/report"; \
+	STATUS=$$(curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/report"); \
+	if [ "$$STATUS" = "200" ]; then echo "  report OK (200)"; \
+	elif [ "$$STATUS" = "503" ]; then echo "  [WARN] no evaluation report yet (run make xi-evaluate)"; \
+	else echo "report HTTP $$STATUS"; exit 2; fi
 	# Options endpoints
 	@echo "[SMOKE] Checking options/formats"; \
 	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/options/formats" | jq -e 'type == "array"' >/dev/null
-	# Accuracy trend (may return 500 when ML models not loaded or DB state differs; treat as non-fatal)
-	@echo "[SMOKE] Checking backtest/accuracy-trend"; \
-	STATUS=$$(curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/accuracy-trend?format=T20&team1=IND&team2=AUS"); \
-	if [ "$$STATUS" = "200" ]; then echo "  accuracy-trend OK (200)"; \
-	elif [ "$$STATUS" = "500" ]; then echo "  [WARN] accuracy-trend returned 500 (ML models/DB state may differ; skipping)"; \
-	else echo "accuracy-trend HTTP $$STATUS"; exit 2; fi
 	# Model stats (proxy to ML service)
 	@echo "[SMOKE] Checking ml/model-stats"; \
 	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/ml/model-stats" | jq -e '.models_dir and (.models | type) == "array"' >/dev/null
@@ -394,16 +294,9 @@ e2e-backtest-smoke: seed-fixtures
 e2e-pytest:
 	cd ml-service && RUN_E2E=1 ML_SERVICE_URL=$${ML_SERVICE_URL:-http://localhost:8000} $(ML_VENV_BIN)/pytest -q -m e2e -v
 
-# Scoped ML tests for new readers/baselines (avoid full FastAPI test suite)
+# Scoped ML tests for the rating pass and the optimiser (avoid the full FastAPI suite)
 ml-test:
-	cd ml-service && $(ML_VENV_BIN)/pytest -q tests/test_seq_reader.py tests/test_baselines.py
-
-# Tiny T20 baselines using new readers on small fixtures (structure only)
-train-batting-baseline:
-	cd ml-service && $(ML_VENV_BIN)/python -c "from ml.baselines import train_batting_from_csv; res=train_batting_from_csv('../tests/fixtures/exporter/t20/batting_on.csv'); print('batting baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
-
-train-bowling-baseline:
-	cd ml-service && $(ML_VENV_BIN)/python -c "from ml.baselines import train_bowling_from_csv; res=train_bowling_from_csv('../tests/fixtures/exporter/t20/bowling_on.csv'); print('bowling baseline trained:', res.n_rows, 'rows', res.n_features, 'features')"
+	cd ml-service && $(ML_VENV_BIN)/pytest -q tests/test_xi_ratings.py tests/test_xi_optimizer_and_store.py
 
 # --- End-to-end automation (format-aware) ---
 # Usage:
@@ -459,7 +352,7 @@ up-all:
 	@$(MAKE) output-dirs --no-print-directory
 	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
 	@echo "[6/7] Training ML artifacts..."
-	$(MAKE) train-all CUTOFF=$$(date -u +%Y-%m-%dT%H:%M:%SZ) || (echo "Training failed" && exit 1)
+	$(MAKE) train-win CUTOFF=$$(date -u +%Y-%m-%dT%H:%M:%SZ) || (echo "Training failed" && exit 1)
 	@echo "[7/7] Restarting ML service to load artifacts..."
 	$(DC) restart ml-service
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health), Frontend at http://localhost:$(FRONTEND_PORT)."
@@ -519,8 +412,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 66)..."
-	COV_MIN=$${COV_MIN_GO:-66} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 68)..."
+	COV_MIN=$${COV_MIN_GO:-68} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -630,7 +523,7 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 66
+COV_MIN_GO ?= 68
 COV_MIN_ML ?= 86
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
@@ -661,7 +554,7 @@ help:
 	@echo ""
 	@echo "[Orchestration]"
 	@echo "  up-all             One-shot: docker up → migrate → import → precompute → export → train → restart ML"
-	@echo "  full-pipeline      precompute → export → train (+ combination-meta if its CSV exists)"
+	@echo "  full-pipeline      precompute → export → train the win model"
 	@echo "  e2e                Run pipeline for a single FORMAT (requires FORMAT)"
 	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
 	@echo
@@ -689,30 +582,20 @@ help:
 	@echo "  export-dataset     Export training datasets (unified)"
 	@echo "  export-off         Export without seq columns for FORMAT (default T20)"
 	@echo "  export-on          Export with seq columns appended for FORMAT (uses -enable-seq and ENABLE_SEQ_FEATURES=1)"
-	@echo "  team-predictor     Generate team prediction (MATCH, BAT, BOWL)"
 	@echo
-	@echo "[ML training — precompute → export-dataset → train]"
-	@echo "  train-batting      Train batting model (from exported CSVs)"
-	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding     Train fielding (from export CSV, or CUTOFF= + GO_APP_URL= or FIELDING_CSV=)"
-	@echo "  train-extras       Train extras model (CUTOFF= + GO_APP_URL= or EXTRAS_CSV=)"
-	@echo "  train-win          Train win model (CUTOFF= + GO_APP_URL= or WIN_CSV=)"
-	@echo "  train-xi           Train the XI-responsive win model + player ratings (CUTOFF=YYYY-MM-DD; DB, or CRICSHEET_DIR=)"
+	@echo "[ML training — the XI layer needs only the import; the win model needs precompute → export]"
+	@echo "  train-xi           Train the rating pass, the XI win models and the performance models (CUTOFF=YYYY-MM-DD; DB, or CRICSHEET_DIR=)"
+	@echo "  xi-evaluate        L4 harness: walk-forward + locked window, one JSON report"
 	@echo "  xi-parity          Check the database against the Cricsheet archive (H-15; XI_PARITY_DIR=)"
-	@echo "  train-batting-bowling  Train batting + bowling"
-	@echo "  train-innings      Train innings model (used for hybrid reconciliation)"
-	@echo "  train-combination-meta  Fit bat/bowl/field weights from backtest_contributions.csv"
-	@echo "  train-batting-baseline / train-bowling-baseline  Baseline models for comparison"
-	@echo "  train-all          Train all models (batting, bowling, fielding, extras, win)"
-	@echo "  train-models       Same as train-all"
-	@echo "  ml-auto-tune       Auto-tune model(s): best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
-	@echo "  walk-forward       Walk-forward train → predict → evaluate; registry for feedback (INITIAL_CUTOFF=, WINDOW_X=, WALK_FORMAT=, WALK_MODEL=)"
+	@echo "  train-win          Train the windowed-form win model (CUTOFF= + GO_APP_URL= or WIN_CSV=); P-6 removes it"
+	@echo "  win-discrimination Held-out AUC / Brier for the windowed-form win model (TRAIN_CUTOFF=)"
+	@echo "  ml-auto-tune       Auto-tune the win model: best algorithm + hyperparams (FORMAT=, ALL_FORMATS=1)"
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"
 	@echo "  test               Run Go and Python unit tests"
 	@echo "  frontend-test      Frontend unit tests"
-	@echo "  ml-test            Only test_seq_reader + test_baselines, not the ML suite"
+	@echo "  ml-test            Only the rating-pass and optimiser tests, not the ML suite"
 	@echo "  e2e-pytest         ML e2e tests against a running service (RUN_E2E=1)"
 	@echo "  go-app-check / ml-service-check / frontend-check  Per-component gate"
 	@echo "  frontend-backend-sync-check  Verify canonical formats and model metadata agree"

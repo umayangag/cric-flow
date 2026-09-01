@@ -170,10 +170,10 @@ func CancelStaleInProgressMigrations(ctx context.Context, reason string, staleOl
 	return n, nil
 }
 
-// ReconcileStaleRuns cancels IN_PROGRESS runs older than staleOlderThan (e.g. on API startup
+// CancelStaleRuns cancels IN_PROGRESS runs older than staleOlderThan (e.g. on API startup
 // so runs interrupted by restart/crash are marked CANCELLED). Logs how many were cancelled.
 // Use when db is already connected. Returns the number of runs cancelled and any error.
-func ReconcileStaleRuns(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
+func CancelStaleRuns(ctx context.Context, reason string, staleOlderThan time.Duration) (int, error) {
 	n, err := CancelStaleInProgressMigrations(ctx, reason, staleOlderThan)
 	if err != nil {
 		return n, err

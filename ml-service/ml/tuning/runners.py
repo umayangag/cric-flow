@@ -1,7 +1,7 @@
 """The auto-tune runner: search the win model's hyperparameters, two-phase.
 
 The regression runners -- batting, bowling, fielding, extras, innings -- went with their
-trainers in P-5, and with them the multi-output scoring in ``ml.metrics``. What is left
+trainers in P-5, and with them the shared multi-output scoring. What is left
 tunes one classifier, and P-6 removes the stack entirely.
 """
 

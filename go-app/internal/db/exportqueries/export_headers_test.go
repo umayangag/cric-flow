@@ -197,7 +197,7 @@ func TestTrainingExportsAgreeWithEachOther(t *testing.T) {
 			name:      "bowling",
 			perFormat: eq.BowlingFormatHeaders(),
 			crossFmt:  eq.BowlingTrainingHeaders(),
-			// the bowling cross-format export carries both innings totals for reconciliation
+			// the bowling cross-format export carries both innings totals
 			extraOnly: []string{
 				"innings_runs",
 				"innings_wickets",
