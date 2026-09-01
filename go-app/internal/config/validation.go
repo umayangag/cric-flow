@@ -20,12 +20,6 @@ func ValidateTeamSettings(cfg *Config) error {
 		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
 		return err
 	}
-	// Default extras cannot be negative when provided.
-	if cfg.Predictor.DefaultExtras < 0 {
-		err := fmt.Errorf("extras must be non-negative")
-		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
-		return err
-	}
 	// Default batters cannot be negative.
 	if cfg.Team.DefaultBatters < 0 {
 		err := fmt.Errorf("default batters must be >= 0")

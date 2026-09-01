@@ -76,7 +76,7 @@ func TestStepJob_IsTheSameWorkForEveryCaller(t *testing.T) {
 func TestStepJob_RecordsTrainingOnDefaultParameters(t *testing.T) {
 	t.Parallel()
 	app := &App{}
-	step, ok := pipelinesvc.Steps().ByID("train_batting")
+	step, ok := pipelinesvc.Steps().ByID("train_win")
 	require.True(t, ok)
 
 	planned := app.stepJob(step, StepRequest{ConfirmDefaultParams: true})

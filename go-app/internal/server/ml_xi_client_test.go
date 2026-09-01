@@ -23,7 +23,7 @@ func TestAsOfParam_RendersADateAndOmitsTheZeroTime(t *testing.T) {
 }
 
 // xiCaptureServer answers any /xi/* POST with the given body and records the request JSON.
-func xiCaptureServer(t *testing.T, response string) (*BacktestMLClient, *map[string]interface{}) {
+func xiCaptureServer(t *testing.T, response string) (*MLClient, *map[string]interface{}) {
 	t.Helper()
 	captured := map[string]interface{}{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +34,7 @@ func xiCaptureServer(t *testing.T, response string) (*BacktestMLClient, *map[str
 		_, _ = w.Write([]byte(response))
 	}))
 	t.Cleanup(srv.Close)
-	return &BacktestMLClient{BaseURL: srv.URL, HTTP: srv.Client()}, &captured
+	return &MLClient{BaseURL: srv.URL, HTTP: srv.Client()}, &captured
 }
 
 func TestPredictMatchWinXI_SendsAsOfOnlyWhenSet(t *testing.T) {

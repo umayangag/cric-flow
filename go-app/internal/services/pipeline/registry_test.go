@@ -195,15 +195,14 @@ func TestStepLookups(t *testing.T) {
 	t.Parallel()
 	registry := Steps()
 
-	step, ok := registry.ByID("train_combination_meta")
+	step, ok := registry.ByID("auto_tune")
 	require.True(t, ok)
-	assert.Equal(t, "train-combination-meta", step.Command)
+	assert.Equal(t, "ml-auto-tune", step.Command)
 	assert.True(t, step.Optional)
-	assert.NotEmpty(t, step.Prerequisite, "combination-meta's CSV precondition must be stated")
 	assert.True(t, step.RunsOnMLService())
-	assert.False(t, step.IsTraining(), "combination-meta has no tuned-params model")
+	assert.False(t, step.IsTraining(), "auto-tune has no tuned-params model of its own")
 
-	byCommand, ok := registry.ByCommand("train-combination-meta")
+	byCommand, ok := registry.ByCommand("ml-auto-tune")
 	require.True(t, ok)
 	assert.Equal(t, step, byCommand)
 

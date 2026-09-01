@@ -72,11 +72,7 @@
     }
   },
   "predictor": {
-    "team_size": 11,
-    "default_extras": 0,
-    "max_total_samples": 100000,
-    "simulation_top_k_per_team": 50,
-    "simulation_num_samples_per_matchup": 500
+    "team_size": 11
   },
   "pipeline": {
     "precompute_concurrency": 0,
@@ -85,43 +81,5 @@
   },
   "resources": {
     "memory_usage_fraction_percent": 85
-  },
-  "selection": {
-    "default_pool_csv": "../ml-service/ml/pool.csv",
-    "require_keeper": false,
-    "score_weights": {
-      "bat": 0.45,
-      "bowl": 0.4,
-      "field": 0.1,
-      "keeper_bonus": 0.02
-    },
-    "score_normalization": {
-      "T20": {
-        "bat_divisor": 80,
-        "wicket_divisor": 5,
-        "econ_base": 12,
-        "field_divisor": 5
-      },
-      "T20I": {
-        "bat_divisor": 75,
-        "wicket_divisor": 4,
-        "econ_base": 11,
-        "field_divisor": 4
-      },
-      "ODI": {
-        "bat_divisor": 100,
-        "wicket_divisor": 5,
-        "econ_base": 6,
-        "field_divisor": 5
-      },
-      "TEST": {
-        "bat_divisor": 150,
-        "wicket_divisor": 6,
-        "econ_base": 4,
-        "field_divisor": 6
-      }
-    },
-    "score_weights_by_format": {},
-    "win_model": "xi"
   }
 }

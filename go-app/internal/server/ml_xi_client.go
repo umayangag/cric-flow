@@ -23,6 +23,7 @@ type mlXIConstraints struct {
 
 type mlXIOptimizeRequest struct {
 	Format            string          `json:"format"`
+	Objective         string          `json:"objective"`
 	PoolPlayerIDs     []int64         `json:"pool_player_ids"`
 	OpponentPlayerIDs []int64         `json:"opponent_player_ids"`
 	TeamIsTeam1       bool            `json:"team_is_team1"`
@@ -34,9 +35,8 @@ type mlXIOptimizeRequest struct {
 
 type mlXIOptimizeResponse struct {
 	SelectedPlayerIDs []int64            `json:"selected_player_ids"`
-	WinProbability    float64            `json:"win_probability"`
-	Evaluations       int                `json:"evaluations"`
-	ImprovedOverSeed  float64            `json:"improved_over_seed"`
+	Objective         string             `json:"objective"`
+	Optimised         bool               `json:"optimised"`
 	UnknownPlayerIDs  []int64            `json:"unknown_player_ids"`
 	MarginalValues    map[string]float64 `json:"marginal_values"`
 }
@@ -59,7 +59,7 @@ type mlXIWinResponse struct {
 
 // OptimizeXI calls POST /xi/optimize: server-side selection over player ids against the
 // XI-responsive win model.
-func (c *BacktestMLClient) OptimizeXI(
+func (c *MLClient) OptimizeXI(
 	ctx context.Context,
 	req predictteam.XIOptimizationRequest,
 ) (*predictteam.XIOptimizationResult, error) {
@@ -67,10 +67,15 @@ func (c *BacktestMLClient) OptimizeXI(
 	if maxEvals < 100 {
 		maxEvals = 20000
 	}
+	opponent := req.OpponentPlayerIDs
+	if opponent == nil {
+		opponent = []int64{}
+	}
 	payload, err := json.Marshal(mlXIOptimizeRequest{
 		Format:            req.Format,
+		Objective:         req.Objective,
 		PoolPlayerIDs:     req.PoolPlayerIDs,
-		OpponentPlayerIDs: req.OpponentPlayerIDs,
+		OpponentPlayerIDs: opponent,
 		TeamIsTeam1:       req.TeamIsTeam1,
 		Constraints: mlXIConstraints{
 			TeamSize:      req.Constraints.Size,
@@ -97,16 +102,15 @@ func (c *BacktestMLClient) OptimizeXI(
 	}
 	return &predictteam.XIOptimizationResult{
 		SelectedPlayerIDs: out.SelectedPlayerIDs,
-		WinProbability:    out.WinProbability,
-		Evaluations:       out.Evaluations,
-		ImprovedOverSeed:  out.ImprovedOverSeed,
+		Objective:         out.Objective,
+		Optimised:         out.Optimised,
 		UnknownPlayerIDs:  out.UnknownPlayerIDs,
 		MarginalValues:    marginal,
 	}, nil
 }
 
 // PredictMatchWinXI calls POST /xi/predict-win and returns the displayed P(team1 wins).
-func (c *BacktestMLClient) PredictMatchWinXI(ctx context.Context, req predictteam.XIWinRequest) (float64, error) {
+func (c *MLClient) PredictMatchWinXI(ctx context.Context, req predictteam.XIWinRequest) (float64, error) {
 	payload, err := json.Marshal(mlXIWinRequest{
 		Format:         req.Format,
 		Team1PlayerIDs: req.Team1PlayerIDs,
@@ -143,7 +147,7 @@ func optionalID(id int64) *int64 {
 }
 
 // postJSON posts a JSON body to the ml-service and decodes a 2xx JSON response into out.
-func (c *BacktestMLClient) postJSON(ctx context.Context, path string, payload []byte, out interface{}) error {
+func (c *MLClient) postJSON(ctx context.Context, path string, payload []byte, out interface{}) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -204,7 +208,6 @@ type mlSimulatedPlayer struct {
 	RunsConceded mlSimulatedRange         `json:"runs_conceded"`
 	Scorecard    mlSimulatedScorecardLine `json:"scorecard"`
 	SpreadShare  float64                  `json:"spread_share"`
-	SpreadRuns   float64                  `json:"spread_runs"`
 }
 
 type mlSimulatedSide struct {
@@ -231,7 +234,7 @@ type mlSimulateResponse struct {
 // SimulateMatchXI calls POST /simulate: the match drawn from the performance model's
 // forecasts for the two elevens (L2-C) -- totals, per-player ranges, the median-band
 // scorecard and P(win), all from the same draws.
-func (c *BacktestMLClient) SimulateMatchXI(
+func (c *MLClient) SimulateMatchXI(
 	ctx context.Context,
 	req predictteam.XISimulationRequest,
 ) (*predictteam.XISimulationResult, error) {
@@ -285,14 +288,80 @@ func simulatedSide(side mlSimulatedSide) predictteam.XISimulatedSide {
 			ScorecardRunsConceded: p.Scorecard.RunsConceded,
 			ScorecardBallsBowled:  p.Scorecard.BallsBowled,
 			SpreadShare:           p.SpreadShare,
-			SpreadRuns:            p.SpreadRuns,
 		})
 	}
 	return predictteam.XISimulatedSide{
 		Total:           simulatedRange(side.Total.mlSimulatedRange),
-		TotalMean:       side.Total.Mean,
 		TotalScorecard:  side.Total.Scorecard,
 		ExtrasScorecard: side.ExtrasScorecard,
 		Players:         players,
 	}
+}
+
+// Wire shapes for POST /performance/predict (app/models/xi.py).
+
+type mlPerformanceRequest struct {
+	Format         string  `json:"format"`
+	Team1PlayerIDs []int64 `json:"team1_player_ids"`
+	Team2PlayerIDs []int64 `json:"team2_player_ids"`
+	Team1ID        *int64  `json:"team1_id,omitempty"`
+	Team2ID        *int64  `json:"team2_id,omitempty"`
+	VenueID        *int64  `json:"venue_id,omitempty"`
+	AsOf           string  `json:"as_of,omitempty"`
+}
+
+type mlWicketDistribution struct {
+	Expected float64 `json:"expected"`
+}
+
+type mlPerformancePlayer struct {
+	PlayerID     int64                `json:"player_id"`
+	Runs         mlSimulatedRange     `json:"runs"`
+	BallsFaced   mlSimulatedRange     `json:"balls_faced"`
+	RunsConceded mlSimulatedRange     `json:"runs_conceded"`
+	Wickets      mlWicketDistribution `json:"wickets"`
+}
+
+type mlPerformanceResponse struct {
+	Players             []mlPerformancePlayer `json:"players"`
+	InningsMarginalised bool                  `json:"innings_marginalised"`
+}
+
+// PredictPerformance calls POST /performance/predict: L2-B's per-player distributions for
+// two elevens. It is what a format with no innings length shows instead of a simulated
+// scorecard -- the same forecasts, reported rather than drawn from.
+func (c *MLClient) PredictPerformance(
+	ctx context.Context,
+	req predictteam.XIPerformanceRequest,
+) (*predictteam.XIPerformanceResult, error) {
+	payload, err := json.Marshal(mlPerformanceRequest{
+		Format:         req.Format,
+		Team1PlayerIDs: req.Team1PlayerIDs,
+		Team2PlayerIDs: req.Team2PlayerIDs,
+		Team1ID:        optionalID(req.Team1ID),
+		Team2ID:        optionalID(req.Team2ID),
+		VenueID:        optionalID(req.VenueID),
+		AsOf:           asOfParam(req.AsOf),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out mlPerformanceResponse
+	if err := c.postJSON(ctx, "/performance/predict", payload, &out); err != nil {
+		return nil, err
+	}
+	players := make([]predictteam.XIPerformancePlayer, 0, len(out.Players))
+	for _, p := range out.Players {
+		players = append(players, predictteam.XIPerformancePlayer{
+			PlayerID:     p.PlayerID,
+			Runs:         simulatedRange(p.Runs),
+			BallsFaced:   simulatedRange(p.BallsFaced),
+			RunsConceded: simulatedRange(p.RunsConceded),
+			Wickets:      p.Wickets.Expected,
+		})
+	}
+	return &predictteam.XIPerformanceResult{
+		InningsMarginalised: out.InningsMarginalised,
+		Players:             players,
+	}, nil
 }

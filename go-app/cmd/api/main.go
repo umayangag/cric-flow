@@ -16,7 +16,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
-	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 	apipkg "github.com/umayangag/cric-flow/go-app/internal/server"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -87,8 +86,7 @@ func run() int {
 	defer cancelJob()
 
 	// Initialize long-lived dependencies
-	client := mlclient.New()
-	server := apipkg.NewApp(jobCtx, client)
+	server := apipkg.NewApp(jobCtx, apipkg.NewMLClient())
 
 	// Build router with dependencies
 	r := apipkg.NewRouter(server)

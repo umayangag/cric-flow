@@ -12,10 +12,11 @@ import (
 // App holds long-lived application dependencies to be shared with handlers.
 // Extend this struct as new dependencies are introduced.
 type App struct {
-	mlClient         Client
-	backtestMLClient *BacktestMLClient
-	dbProbe          opsstatus.DBProbe
-	jobContext       context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	// mlClient is the one ml-service client: after P-5 every prediction the API serves is
+	// an XI-layer call, so there is no second client and no second contract.
+	mlClient   *MLClient
+	dbProbe    opsstatus.DBProbe
+	jobContext context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// jobCancels holds one cancel func per lane, for the job running in that lane.
 	//
@@ -34,13 +35,16 @@ type App struct {
 }
 
 // NewApp creates an App. jobCtx is cancelled when the process receives SIGTERM/SIGINT;
-// pipeline jobs use it so they stop cleanly during shutdown. Pass nil in tests for context.Background() behavior.
-func NewApp(jobCtx context.Context, client Client) *App {
+// pipeline jobs use it so they stop cleanly during shutdown. Pass nil for jobCtx in tests
+// for context.Background() behaviour, and nil for client to use the configured ml-service.
+func NewApp(jobCtx context.Context, client *MLClient) *App {
+	if client == nil {
+		client = NewMLClient()
+	}
 	return &App{
-		mlClient:         client,
-		backtestMLClient: NewBacktestMLClient(),
-		dbProbe:          opsstatus.NewProductionDBProbe(),
-		jobContext:       jobCtx,
+		mlClient:   client,
+		dbProbe:    opsstatus.NewProductionDBProbe(),
+		jobContext: jobCtx,
 	}
 }
 

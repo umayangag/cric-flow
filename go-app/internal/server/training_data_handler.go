@@ -7,14 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
-	"github.com/umayangag/cric-flow/go-app/internal/db"
 	exq "github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 )
 
@@ -71,31 +68,6 @@ func respondTrainingDataErr(w http.ResponseWriter, err error, format string) {
 // allowedTrainingDataSections is the set of valid section names for training-data ?sections= (reduces go-app/DB load when only one model is needed).
 var allowedTrainingDataSections = map[string]bool{
 	"batting": true, "bowling": true, "fielding": true, "extras": true, "win": true, "innings": true,
-}
-
-// backtestScorecardHandler handles GET /api/backtest/scorecard?match_id=...
-// It returns the match scorecard (innings, batting and bowling card) for the given match.
-func (a *App) backtestScorecardHandler(w http.ResponseWriter, r *http.Request) {
-	matchIDStr := strings.TrimSpace(r.URL.Query().Get("match_id"))
-	if matchIDStr == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "match_id is required"})
-		return
-	}
-	matchID, err := strconv.ParseInt(matchIDStr, 10, 64)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid match_id"})
-		return
-	}
-	card, err := db.GetMatchScorecard(r.Context(), matchID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusNotFound, apiError{Code: "NOT_FOUND", Message: "match not found"})
-			return
-		}
-		respondErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, card)
 }
 
 // backtestTrainingDataHandler handles GET /api/backtest/training-data?cutoff=...&format=...&sections=...
@@ -225,130 +197,4 @@ func (a *App) backtestTrainingDataHandler(w http.ResponseWriter, r *http.Request
 		Innings:  trainingDataPart{Headers: inningsH, Rows: inningsD},
 	})
 	slog.Info("training-data: response written successfully")
-}
-
-// matchesAfterResponse is the JSON shape for GET /api/backtest/matches (walk-forward).
-type matchesAfterResponse struct {
-	Matches []matchAfterItem `json:"matches"`
-}
-
-type matchAfterItem struct {
-	MatchID   int64  `json:"match_id"`
-	MatchDate string `json:"match_date"` // RFC3339
-}
-
-// backtestMatchesHandler handles GET /api/backtest/matches?after=...&format=...&limit=...
-// Used by walk-forward: list match_id and match_date for matches strictly after the cutoff.
-func (a *App) backtestMatchesHandler(w http.ResponseWriter, r *http.Request) {
-	afterStr := strings.TrimSpace(r.URL.Query().Get("after"))
-	if afterStr == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "after is required (RFC3339)"})
-		return
-	}
-	after, err := time.Parse(time.RFC3339, afterStr)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "after must be RFC3339"})
-		return
-	}
-	format := strings.TrimSpace(r.URL.Query().Get("format"))
-	if format == "" {
-		writeJSON(
-			w,
-			http.StatusBadRequest,
-			apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"},
-		)
-		return
-	}
-	cfg := config.Load()
-	limit := config.BacktestListDefaultLimit(cfg)
-	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			limit = v
-			maxLimit := config.BacktestListMaxLimit(cfg)
-			if limit > maxLimit {
-				limit = maxLimit
-			}
-		}
-	}
-	formatIDs, err := db.GetGlobalCache().GetFormatIDsForTrainingBucket(r.Context(), format)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	items, err := db.ListMatchIDsAfter(r.Context(), formatIDs, after, limit)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	out := make([]matchAfterItem, 0, len(items))
-	for _, it := range items {
-		out = append(out, matchAfterItem{MatchID: it.MatchID, MatchDate: it.MatchDate.Format(time.RFC3339)})
-	}
-	writeJSON(w, http.StatusOK, matchesAfterResponse{Matches: out})
-}
-
-// backtestHoldoutDataHandler handles GET /api/backtest/holdout-data?cutoff=...&format=...&limit=...
-// Returns training-data-shaped JSON for matches strictly after cutoff (features computed at cutoff) for walk-forward.
-func (a *App) backtestHoldoutDataHandler(w http.ResponseWriter, r *http.Request) {
-	cutoffStr := strings.TrimSpace(r.URL.Query().Get("cutoff"))
-	if cutoffStr == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff is required (RFC3339)"})
-		return
-	}
-	cutoff, err := time.Parse(time.RFC3339, cutoffStr)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "cutoff must be RFC3339"})
-		return
-	}
-	format := strings.TrimSpace(r.URL.Query().Get("format"))
-	if format == "" {
-		writeJSON(
-			w,
-			http.StatusBadRequest,
-			apiError{Code: "INVALID_PARAM", Message: "format is required (e.g. T20, ODI)"},
-		)
-		return
-	}
-	cfg := config.Load()
-	limit := config.BacktestListDefaultLimit(cfg)
-	if s := strings.TrimSpace(r.URL.Query().Get("limit")); s != "" {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			limit = v
-			maxLimit := config.BacktestListMaxLimit(cfg)
-			if limit > maxLimit {
-				limit = maxLimit
-			}
-		}
-	}
-	batRows, err := exq.BattingHoldoutRows(r.Context(), format, cutoff, limit)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	bowlRows, err := exq.BowlingHoldoutRows(r.Context(), format, cutoff, limit)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	fieldRows, err := exq.FieldingHoldoutRows(r.Context(), format, cutoff, limit)
-	if err != nil {
-		respondErr(w, err)
-		return
-	}
-	part := func(rows [][]string) (headers []string, data [][]string) {
-		if len(rows) > 0 {
-			return rows[0], rows[1:]
-		}
-		return nil, nil
-	}
-	batH, batD := part(batRows)
-	bowlH, bowlD := part(bowlRows)
-	fieldH, fieldD := part(fieldRows)
-	writeJSON(w, http.StatusOK, trainingDataResponse{
-		Batting:  trainingDataPart{Headers: batH, Rows: batD},
-		Bowling:  trainingDataPart{Headers: bowlH, Rows: bowlD},
-		Fielding: trainingDataPart{Headers: fieldH, Rows: fieldD},
-		Extras:   trainingDataPart{},
-		Win:      trainingDataPart{},
-	})
 }

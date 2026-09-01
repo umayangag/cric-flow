@@ -157,9 +157,10 @@ func TestLaneBusy(t *testing.T) {
 	assert.False(t, busy)
 }
 
-// TestLaneBusyCoversEveryComputeStep is the regression guard for the drift that let
-// train-combination-meta run alongside a training step: the lock consulted a
-// hand-maintained command list that step had never been added to.
+// TestLaneBusyCoversEveryComputeStep is the regression guard for the drift that once let
+// a training step run alongside another: the lock consulted a hand-maintained command list
+// a step had never been added to. It asserts over the registry rather than a named step, so
+// it keeps guarding as steps come and go.
 func TestLaneBusyCoversEveryComputeStep(t *testing.T) {
 	t.Parallel()
 
@@ -172,8 +173,8 @@ func TestLaneBusyCoversEveryComputeStep(t *testing.T) {
 		assert.Contains(t, compute, step.Command,
 			"%s is a compute step but does not hold the compute lane", step.ID)
 	}
-	assert.Contains(t, compute, "train-combination-meta")
-	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "train-combination-meta")
+	assert.Contains(t, compute, "train-win")
+	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "train-win")
 }
 
 func TestRunJob_WithTimeout(t *testing.T) {

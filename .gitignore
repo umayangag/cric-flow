@@ -9,6 +9,7 @@ go-app/api
 go-app/coverage.out
 go-app/bin
 go-app/export-dataset
+go-app/precompute-all
 
 ml-service/.venv
 ml-service/.venv-ci

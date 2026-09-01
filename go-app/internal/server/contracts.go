@@ -1,17 +1,5 @@
 package server
 
-import (
-	"context"
-
-	"github.com/umayangag/cric-flow/go-app/internal/models"
-)
-
-// Client abstracts mlCleint prediction client used by API handlers.
-type Client interface {
-	PredictBatting(ctx context.Context, feats []models.BattingFeatures) ([]models.BattingPrediction, error)
-	PredictBowling(ctx context.Context, feats []models.BowlingFeatures) ([]models.BowlingPrediction, error)
-}
-
 type playerResponse struct {
 	ID                 int64    `json:"id"`
 	Name               string   `json:"player_name"`

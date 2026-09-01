@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 )
 
 var (
 	cached     *Config
 	loadedFrom string // path of config file loaded; empty if none found
+	loadedRaw  []byte // the bytes it was decoded from, so retired keys can be spotted
 )
 
 // Load reads config.json from the current working directory if present.
@@ -27,8 +27,7 @@ func Load() *Config {
 	if p := os.Getenv("GO_APP_CONFIG"); p != "" {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
-			cached = cfg
-			loadedFrom = p
+			cached, loadedFrom, loadedRaw = cfg, p, b
 			return cfg
 		}
 	}
@@ -40,8 +39,7 @@ func Load() *Config {
 	for _, p := range candidates {
 		if b, err := os.ReadFile(p); err == nil {
 			_ = json.Unmarshal(b, cfg)
-			cached = cfg
-			loadedFrom = p
+			cached, loadedFrom, loadedRaw = cfg, p, b
 			return cfg
 		}
 	}
@@ -56,6 +54,10 @@ func ValidateForServer() error {
 	if loadedFrom == "" {
 		err := fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
 		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
+	}
+	if err := RetiredKeys(loadedRaw); err != nil {
+		slog.Error("config.ValidateForServer failed", slog.String("path", loadedFrom), slog.Any("err", err))
 		return err
 	}
 	if cfg.Features.PrecomputeTimeoutMs < 0 {
@@ -124,58 +126,4 @@ func CricsheetSourceURL() string {
 		return strings.TrimSpace(cfg.Inputs.CricsheetSourceURL)
 	}
 	return DefaultCricsheetSourceURL
-}
-
-var (
-	metaModelCache  *metaModelWeights
-	metaModelPath   string
-	metaModelLoadMu sync.Mutex
-)
-
-func loadMetaModel(cfg *Config) *metaModelWeights {
-	path := ""
-	if cfg != nil && cfg.Selection.MetaModelPath != "" {
-		path = cfg.Selection.MetaModelPath
-	}
-	if path == "" {
-		return nil
-	}
-	metaModelLoadMu.Lock()
-	defer metaModelLoadMu.Unlock()
-	if metaModelPath == path && metaModelCache != nil {
-		return metaModelCache
-	}
-	abs := path
-	if !filepath.IsAbs(path) {
-		// If a config file was loaded, resolve relative to its directory.
-		if loadedFrom != "" {
-			configDir := filepath.Dir(loadedFrom)
-			abs = filepath.Join(configDir, path)
-		} else {
-			// Fallback to CWD if config path is unknown (e.g. in tests)
-			cwd, err := os.Getwd()
-			if err != nil {
-				slog.Error("config.loadMetaModel failed to get CWD", "err", err)
-				return nil
-			}
-			abs = filepath.Join(cwd, path)
-		}
-	}
-	b, err := os.ReadFile(abs)
-	if err != nil {
-		slog.Error("config.loadMetaModel failed to read file", "path", abs, "err", err)
-		metaModelPath = ""
-		metaModelCache = nil
-		return nil
-	}
-	var m metaModelWeights
-	if err := json.Unmarshal(b, &m); err != nil {
-		slog.Error("config.loadMetaModel unmarshal failed", "path", abs, "err", err)
-		metaModelPath = ""
-		metaModelCache = nil
-		return nil
-	}
-	metaModelPath = path
-	metaModelCache = &m
-	return metaModelCache
 }

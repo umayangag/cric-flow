@@ -4,180 +4,180 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/umayangag/cric-flow/go-app/internal/services/teamselect"
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-// recordingXIOptimizer implements EnhancedWinPredictor and XISelectionOptimizer and records
-// every /xi/optimize request. It picks the first teamSize ids of the pool.
-type recordingXIOptimizer struct {
-	requests []XIOptimizationRequest
-	err      error
+// fakeOptimizer records every /xi/optimize call and answers from a scripted plan.
+type fakeOptimizer struct {
+	calls   []XIOptimizationRequest
+	answers [][]int64 // one per call, cycling on the last
+	err     error
 }
 
-func (o *recordingXIOptimizer) PredictMatchWinEnhanced(context.Context, WinFeaturesEnhanced) (float64, error) {
-	return 0.5, nil
-}
-
-func (o *recordingXIOptimizer) OptimizeXI(_ context.Context, req XIOptimizationRequest) (*XIOptimizationResult, error) {
-	o.requests = append(o.requests, req)
-	if o.err != nil {
-		return nil, o.err
+func (f *fakeOptimizer) OptimizeXI(
+	_ context.Context,
+	req XIOptimizationRequest,
+) (*XIOptimizationResult, error) {
+	f.calls = append(f.calls, req)
+	if f.err != nil {
+		return nil, f.err
 	}
-	n := teamSize
-	if len(req.PoolPlayerIDs) < n {
-		n = len(req.PoolPlayerIDs)
+	index := len(f.calls) - 1
+	if index >= len(f.answers) {
+		index = len(f.answers) - 1
+	}
+	selected := f.answers[index]
+	marginals := map[int64]float64{}
+	for i, pid := range selected {
+		marginals[pid] = float64(i) / 100
 	}
 	return &XIOptimizationResult{
-		SelectedPlayerIDs: append([]int64(nil), req.PoolPlayerIDs[:n]...),
-		WinProbability:    0.6,
+		SelectedPlayerIDs: selected,
+		Objective:         req.Objective,
+		Optimised:         req.Objective == SelectionObjectiveWin,
+		MarginalValues:    marginals,
 	}, nil
 }
 
-func withXIWinModel(t *testing.T, enabled bool) {
-	t.Helper()
-	previous := selectionUsesXIWinModel
-	selectionUsesXIWinModel = func() bool { return enabled }
-	t.Cleanup(func() { selectionUsesXIWinModel = previous })
-}
-
-func TestSelectTeamsByWinProbability_XIModel_SendsIDsNotFeatures(t *testing.T) {
-	// Arrange
-	withXIWinModel(t, true)
-	poolSize := 18
-	tsPool1, dbPool1, feats1 := buildPools(t, "a", 1000, poolSize)
-	tsPool2, dbPool2, feats2 := buildPools(t, "b", 2000, poolSize)
-	optimizer := &recordingXIOptimizer{}
-
-	// Act
-	sel1, sel2, _, err := selectTeamsByWinProbability(
-		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "t20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2), time.Time{},
-	)
-
-	// Assert
-	require.NoError(t, err)
-	assert.Len(t, sel1, teamSize)
-	assert.Len(t, sel2, teamSize)
-	require.NotEmpty(t, optimizer.requests)
-	for i := range optimizer.requests {
-		req := optimizer.requests[i]
-		assert.Equal(t, "T20", req.Format, "format is normalised to upper case")
-		assert.Len(t, req.PoolPlayerIDs, poolSize, "the side being optimised chooses from its whole pool")
-		assert.Len(t, req.OpponentPlayerIDs, teamSize, "the opposing side is an XI, never the pool (S-1)")
-		assert.Equal(t, selectionConstraints(), req.Constraints)
+func pool(ids ...int64) []db.PlayerPoolRow {
+	rows := make([]db.PlayerPoolRow, 0, len(ids))
+	for _, id := range ids {
+		rows = append(rows, db.PlayerPoolRow{PlayerID: id})
 	}
-	assert.True(t, optimizer.requests[0].TeamIsTeam1, "team1 is optimised first")
-	assert.False(t, optimizer.requests[1].TeamIsTeam1, "then team2 against team1's new XI")
+	return rows
 }
 
-func TestSelectTeamsByWinProbability_XIModel_FallsBackWhenUnavailable(t *testing.T) {
-	// Arrange
-	withXIWinModel(t, true)
-	tsPool1, dbPool1, feats1 := buildPools(t, "a", 1000, 14)
-	tsPool2, dbPool2, feats2 := buildPools(t, "b", 2000, 14)
-	optimizer := &recordingXIOptimizer{err: errors.New("xi artifacts not loaded")}
+func twoSidedFixture(format string) fixture {
+	return fixture{
+		format:      format,
+		team1Code:   "IND",
+		team2Code:   "AUS",
+		pool1:       pool(1, 2, 3),
+		pool2:       pool(4, 5, 6),
+		constraints: Constraints{Size: 2, MinBowlers: 1, RequireKeeper: false},
+	}
+}
 
-	// Act
-	sel1, sel2, _, err := selectTeamsByWinProbability(
-		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2), time.Time{},
-	)
+func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{answers: [][]int64{{1, 2}, {4, 5}}}
 
-	// Assert: the per-call windowed-form path still produces both XIs
+	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("TEST"))
+
 	require.NoError(t, err)
-	assert.Len(t, sel1, teamSize)
-	assert.Len(t, sel2, teamSize)
-	assert.NotEmpty(t, optimizer.requests, "the XI path was attempted before falling back")
+	assert.Equal(t, []int64{1, 2}, xi1)
+	assert.Equal(t, []int64{4, 5}, xi2)
+	assert.Equal(t, SelectionObjectiveRatings, summary.Objective)
+	assert.False(t, summary.Optimised)
+	assert.NotEmpty(t, summary.Note, "a rating-ordered XI must carry the note every surface shows")
+	assert.Nil(t, marginals, "nothing was maximised, so no player has a margin")
+	require.Len(t, optimizer.calls, 2, "rating order does not depend on the opponent: one call per side")
+	for _, call := range optimizer.calls {
+		assert.Equal(t, SelectionObjectiveRatings, call.Objective)
+		assert.Empty(t, call.OpponentPlayerIDs)
+	}
 }
 
-func TestSelectTeamsByWinProbability_XIModel_IgnoredWhenConfigSaysWindowedForm(t *testing.T) {
-	// Arrange
-	withXIWinModel(t, false)
-	tsPool1, dbPool1, feats1 := buildPools(t, "a", 1000, 14)
-	tsPool2, dbPool2, feats2 := buildPools(t, "b", 2000, 14)
-	optimizer := &recordingXIOptimizer{}
+func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
+	t.Parallel()
+	// Two rating-ordered seeds, then a round that returns the same XIs: a fixed point.
+	optimizer := &fakeOptimizer{answers: [][]int64{{1, 2}, {4, 5}, {1, 3}, {4, 6}, {1, 3}, {4, 6}}}
 
-	// Act
-	_, _, _, err := selectTeamsByWinProbability(
-		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2), time.Time{},
-	)
+	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20"))
 
-	// Assert
 	require.NoError(t, err)
-	assert.Empty(t, optimizer.requests, "selection.win_model != xi must not call /xi/optimize")
+	assert.Equal(t, []int64{1, 3}, xi1)
+	assert.Equal(t, []int64{4, 6}, xi2)
+	assert.Equal(t, SelectionObjectiveWin, summary.Objective)
+	assert.True(t, summary.Optimised)
+	assert.Empty(t, summary.Note)
+	assert.Equal(t, map[int64]float64{1: 0, 3: 0.01, 4: 0, 6: 0.01}, marginals,
+		"both sides' marginal values reach the response")
+
+	seeds := optimizer.calls[:2]
+	for _, call := range seeds {
+		assert.Equal(t, SelectionObjectiveRatings, call.Objective, "the search is seeded by rating order")
+	}
+	// The first optimised call for team1 plays against team2's seed, not team2's pool.
+	assert.Equal(t, SelectionObjectiveWin, optimizer.calls[2].Objective)
+	assert.Equal(t, []int64{4, 5}, optimizer.calls[2].OpponentPlayerIDs)
+	// team2 then answers team1's *new* XI.
+	assert.Equal(t, []int64{1, 3}, optimizer.calls[3].OpponentPlayerIDs)
 }
 
-func TestPoolPlayerIDs_SkipsUnknownAndDuplicateNames(t *testing.T) {
+func TestSelectBothXIs_StopsAtAFixedPointRatherThanRunningEveryRound(t *testing.T) {
+	t.Parallel()
+	// Every call returns the seed, so round one settles.
+	optimizer := &fakeOptimizer{answers: [][]int64{{1, 2}, {4, 5}, {1, 2}, {4, 5}}}
+
+	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("ODI"))
+
+	require.NoError(t, err)
+	assert.Len(t, optimizer.calls, 4, "two seeds and one settled round")
+}
+
+func TestSelectBothXIs_PropagatesTheOptimiserFailure(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{answers: [][]int64{{1, 2}}, err: errors.New("model not loaded")}
+
+	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20"))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "model not loaded")
+}
+
+func TestOptimizeSide_RefusesAPoolTooSmallForTheConstraints(t *testing.T) {
+	t.Parallel()
+	fix := twoSidedFixture("T20")
+	fix.constraints.Size = 11
+
+	_, err := optimizeSide(context.Background(), &fakeOptimizer{}, fix,
+		SelectionObjectiveWin, fix.pool1, []int64{4, 5}, true)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "need 11")
+}
+
+func TestOptimizeSide_RefusesTheWinObjectiveWithoutAnOpposingXI(t *testing.T) {
+	t.Parallel()
+	fix := twoSidedFixture("T20")
+
+	_, err := optimizeSide(context.Background(), &fakeOptimizer{}, fix,
+		SelectionObjectiveWin, fix.pool1, nil, true)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "opposing XI")
+}
+
+func TestSameXI_IgnoresOrderAndCatchesADifference(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
-		name     string
-		pool     []teamselect.Player
-		nameToID map[string]int64
-		wantIDs  []int64
+		name string
+		a, b []int64
+		want bool
 	}{
-		{
-			name:     "unknown names are skipped",
-			pool:     []teamselect.Player{{Name: "a"}, {Name: "b"}, {Name: "c"}},
-			nameToID: map[string]int64{"a": 1, "c": 3},
-			wantIDs:  []int64{1, 3},
-		},
-		{
-			name:     "two names on one id keep the first",
-			pool:     []teamselect.Player{{Name: "a"}, {Name: "a2"}},
-			nameToID: map[string]int64{"a": 1, "a2": 1},
-			wantIDs:  []int64{1},
-		},
+		{name: "identical", a: []int64{1, 2, 3}, b: []int64{1, 2, 3}, want: true},
+		{name: "same players in another order", a: []int64{1, 2, 3}, b: []int64{3, 1, 2}, want: true},
+		{name: "one player swapped", a: []int64{1, 2, 3}, b: []int64{1, 2, 4}, want: false},
+		{name: "different sizes", a: []int64{1, 2}, b: []int64{1, 2, 3}, want: false},
+		{name: "both empty", a: nil, b: nil, want: true},
 	}
+
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			ids, byID := poolPlayerIDs(tc.pool, tc.nameToID)
-			assert.Equal(t, tc.wantIDs, ids)
-			assert.Len(t, byID, len(tc.wantIDs))
+			t.Parallel()
+			assert.Equal(t, tc.want, sameXI(tc.a, tc.b))
 		})
 	}
 }
 
-func TestXIResultToPlayers_ReturnsPoolPlayersSortedByName(t *testing.T) {
-	byID := map[int64]teamselect.Player{1: {Name: "zed", BatScore: 1}, 2: {Name: "amy", BatScore: 2}}
-	result := &XIOptimizationResult{SelectedPlayerIDs: []int64{1, 2, 99}}
-
-	out := xiResultToPlayers(result, byID)
-
-	require.Len(t, out, 2, "an id the pool does not know is dropped, not invented")
-	assert.Equal(t, "amy", out[0].Name)
-	assert.Equal(t, "zed", out[1].Name)
-	assert.Equal(t, 1.0, out[1].BatScore, "the pool's own player record is returned, scores intact")
-}
-
-func TestSelectTeamsByWinProbability_XIModel_CarriesAsOfToEveryOptimizeCall(t *testing.T) {
-	// Arrange: a backtest asks for ratings as they stood before the match date.
-	withXIWinModel(t, true)
-	tsPool1, dbPool1, feats1 := buildPools(t, "a", 1000, 14)
-	tsPool2, dbPool2, feats2 := buildPools(t, "b", 2000, 14)
-	optimizer := &recordingXIOptimizer{}
-	asOf := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
-
-	// Act
-	_, _, _, err := selectTeamsByWinProbability(
-		context.Background(), optimizer, tsPool1, tsPool2, selectionConstraints(),
-		dbPool1, dbPool2, selectionWeights(), "T20", 1, 2, 3, 4,
-		mergeFeatures(feats1, feats2), asOf,
-	)
-
-	// Assert
-	require.NoError(t, err)
-	require.NotEmpty(t, optimizer.requests)
-	for i := range optimizer.requests {
-		assert.Equal(t, asOf, optimizer.requests[i].AsOf,
-			"both sides' searches must run against the same as-of state")
-	}
+func TestNormalizeFormat_FoldsSpacingAndCase(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "T20I", normalizeFormat(" t20i "))
+	assert.Equal(t, "", normalizeFormat(""))
 }

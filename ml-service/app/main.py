@@ -975,6 +975,18 @@ async def xi_status():
     return xi_service.status()
 
 
+@app.get("/xi/evaluate-report")
+async def xi_evaluate_report():
+    """L4's evaluation report: the walk-forward table, the locked window, per-target
+    performance metrics with width beside coverage, the simulator's E2 section, the
+    selection metrics and the train/serve parity check -- everything `make xi-evaluate`
+    measured, as the backtest surfaces render it."""
+    try:
+        return xi_service.evaluate_report()
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+
+
 @app.post("/xi/predict-win", response_model=XiWinResponse)
 async def xi_predict_win(request: XiWinRequest):
     """P(team1 wins) for two elevens given by player id. team1 is the side batting first."""

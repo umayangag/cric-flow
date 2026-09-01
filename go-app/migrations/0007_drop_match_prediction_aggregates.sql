@@ -1,0 +1,22 @@
+-- 0007_drop_match_prediction_aggregates.sql
+--
+-- P-5 re-points every prediction and backtest surface to the XI layer (L2/L3) and deletes
+-- what they replaced. `match_prediction_aggregates` was the cache behind the per-match
+-- backtest evaluate flow: predicted runs / wickets / extras / winner for one played match,
+-- written by that flow and read back by the accuracy-trend endpoint.
+--
+-- Both of those scored the batting, bowling, fielding, extras and innings models, and all
+-- five go in this PR. The table's last reader and its last writer therefore die together --
+-- the only condition under which P-5 drops a table -- so it goes with them rather than
+-- lingering as a cache of numbers nothing can reproduce.
+--
+-- Evaluation now comes from L4's report (`xi_evaluate_report.json`, served at
+-- /api/backtest/report): walk-forward folds, the locked window, per-target performance
+-- metrics with width beside coverage, the simulator's E2 section and the train/serve parity
+-- check. It is a file in the run directory, not a table, because a measurement belongs with
+-- the artifact it measured (H-16).
+--
+-- Forward only, as every migration here is: the rows were a cache, and the thing that
+-- filled them no longer exists.
+
+DROP TABLE IF EXISTS match_prediction_aggregates;

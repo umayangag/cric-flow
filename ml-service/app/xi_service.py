@@ -37,6 +37,7 @@ from app.models.xi import (
 )
 from ml.xi import simulator
 from ml.xi.asof import AsOfServer
+from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
 from ml.xi.optimizer import (
     OPTIMISED_SELECTION_FORMATS,
     Constraints,
@@ -62,11 +63,9 @@ def _postgres_as_of_source():
 class XiUnavailable(Exception):
     """Raised when no XI artifacts are loaded; routes map it to 503."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, hint: str = "run `make train-xi` and POST /admin/reload"):
         super().__init__(message)
-        self.payload = error_payload(
-            code="XI_MODEL_UNAVAILABLE", message=message, hint="run `make train-xi` and POST /admin/reload"
-        )
+        self.payload = error_payload(code="XI_MODEL_UNAVAILABLE", message=message, hint=hint)
 
 
 class XiRegistry:
@@ -410,6 +409,28 @@ def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
 
 def status(registry: XiRegistry = REGISTRY) -> XiStatusResponse:
     return registry.status()
+
+
+def evaluate_report(models_dir: Optional[str] = None) -> dict:
+    """L4's report (``xi_evaluate_report.json``), as `make xi-evaluate` last wrote it.
+
+    Read from disk on every request rather than cached at reload: the harness is run on
+    demand, and a report that is one release stale because nobody restarted the service
+    would be exactly the kind of number nobody can trace.
+    """
+    from ml import config as ml_config
+
+    directory = models_dir or ml_config.default_artifacts_dir()
+    path = os.path.join(directory, EVALUATE_REPORT_NAME)
+    if not os.path.exists(path):
+        raise XiUnavailable(
+            f"no evaluation report at {path}",
+            hint="run `make xi-evaluate` -- the harness writes the report the backtest surfaces read",
+        )
+    with open(path) as fh:
+        report = json.load(fh)
+    logger.info("xi.evaluate_report.served", path=path, formats=sorted(report.get("formats", {})))
+    return report
 
 
 def loaded_formats(registry: XiRegistry = REGISTRY) -> Dict[str, List[str]]:
