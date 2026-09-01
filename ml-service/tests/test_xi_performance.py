@@ -167,3 +167,48 @@ def test_degenerate_columns_fall_back_to_constants(frame) -> None:
 def test_fit_refuses_too_few_rows(frame) -> None:
     with pytest.raises(ValueError, match="training rows"):
         P.fit_performance(frame.head(10), "T20", P.default_spec())
+
+
+def _frames_for_shared_factor():
+    from ml.xi import perf_baselines
+    from ml.xi.builder import build
+    from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
+
+    matches, _, _ = _synthetic_history(160)
+    result = build(_ListSource(matches))
+    return perf_baselines.add_baseline_predictors(result.player_frame), result.frame
+
+
+def test_shared_factor_is_fitted_on_the_calibration_fold_from_complete_first_innings() -> None:
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")]
+    matches = match_frame.copy()
+    matches["innings1_deliveries"] = 120.0  # the synthetic innings are short; call them complete
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True), matches)
+
+    factor = model.simulation.shared_factor
+    assert factor is not None and factor.n_matches >= 30
+    assert 0.0 <= factor.shrink <= 1.0 and np.all(factor.factors >= 0.0)
+    assert model.metadata["simulation"]["shared_factor"]["n_matches"] == factor.n_matches
+    assert pd.Timestamp(model.metadata["train_to"]) < train.match_date.max()  # the members did not see the fold
+    assert 0.0 <= model.simulation.runs_balls_rho < 1.0
+
+
+def test_shared_factor_is_skipped_with_a_warning_when_the_fold_is_thin() -> None:
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")]
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True), match_frame)
+
+    assert model.simulation.shared_factor is None  # no synthetic first innings ran its overs
+    assert model.metadata["simulation"]["shared_factor"] is None
+
+
+def test_shared_factor_needs_the_match_frame() -> None:
+    player_frame, _ = _frames_for_shared_factor()
+
+    with pytest.raises(ValueError, match="match frame"):
+        P.fit_performance(player_frame, "T20", P.default_spec(shared_factor=True))

@@ -26,6 +26,7 @@ outputs are averaged.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -39,6 +40,8 @@ from ml.xi import contract as C
 from ml.xi import simulator
 from ml.xi.perf_calibration import QuantileRecalibration
 from ml.xi.perf_metrics import QUANTILE_LEVELS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -402,11 +405,20 @@ def _temporal_calibration_split(rows: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
 
 def _fit_shared_factor(
     model: PerformanceModels, calibration_rows: pd.DataFrame, match_frame: pd.DataFrame
-) -> simulator.SharedFactor:
+) -> Optional[simulator.SharedFactor]:
     """The simulator's shared match factor from the calibration fold's complete first
-    innings (plan P-4): fixtures the members did not train on, simulated toss-known."""
+    innings (plan P-4): fixtures the members did not train on, simulated toss-known. A
+    fold too thin to hold a residual distribution ships no factor, and says so."""
     matches = match_frame[match_frame.match_id.isin(set(calibration_rows.match_id))]
     matches = matches[simulator.complete_first_innings(matches)]
+    if len(matches) < simulator.MIN_SHARED_FACTOR_MATCHES:
+        logger.warning(
+            "%s: %d complete first innings in the calibration fold, need %d; the simulator ships without a shared factor",
+            model.format_code,
+            len(matches),
+            simulator.MIN_SHARED_FACTOR_MATCHES,
+        )
+        return None
     fixtures = simulator.fixtures_from_rows(calibration_rows, matches, model.predict_oriented)
     actual = matches.set_index("match_id").innings1_runs.loc[[f.match_id for f in fixtures]].to_numpy(dtype=float)
     rho = simulator.calibrate(calibration_rows).runs_balls_rho
