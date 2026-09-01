@@ -44,12 +44,14 @@ def build(
     player_rows = []
     n_undecided = 0
     n_seen = 0
+    team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
     pending: List = []
     current_date = None
     for i, match in enumerate(source.iter_matches()):
         n_seen += 1
+        team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
         if current_date is not None and match.match_date < current_date:
@@ -84,6 +86,7 @@ def build(
         oversized_squads=oversized_squads,
         unknown_player_keys=_unknown_player_keys(state),
         player_keys=len(state.players),
+        team_keys=len(team_keys),
     )
     logger.info(
         "rating pass: %d training rows, %d player-match rows, %d undecided matches, %d players "

@@ -19,6 +19,8 @@ from typing import Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 import numpy as np
 
 from ml.xi.contract import FORMAT_CODES
+from ml.xi.lineage import TeamLineage
+from ml.xi.lineage import load as load_lineage
 
 logger = logging.getLogger(__name__)
 
@@ -210,8 +212,15 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
     )
 
 
-def parse_cricsheet_file(path: str, international_teams: Sequence[str]) -> Optional[MatchRecord]:
-    """One Cricsheet JSON file -> MatchRecord, or None if it is not a usable two-team match."""
+def parse_cricsheet_file(
+    path: str, international_teams: Sequence[str], lineage: Optional[TeamLineage] = None
+) -> Optional[MatchRecord]:
+    """One Cricsheet JSON file -> MatchRecord, or None if it is not a usable two-team match.
+
+    ``lineage`` maps a club's superseded name onto its current one, so a rebrand does not
+    reset the team's Elo and head-to-head. The database does the same through
+    ``opposition.canonical_id``; both read ``configs/team_lineage.json``.
+    """
     with open(path) as fh:
         data = json.load(fh)
     info = data["info"]
@@ -228,20 +237,41 @@ def parse_cricsheet_file(path: str, international_teams: Sequence[str]) -> Optio
         return None
     outcome = info.get("outcome") or {}
     squad1, squad2 = _squads(players[team1], players[team2], registry)
+    # Team *keys* become the club, and carry the gender; the squad lookups above and the
+    # winner comparison below use the names the file actually carries, which is why the
+    # mapping happens here and not when the names are read.
+    gender = info.get("gender") or ""
+    lineage = lineage or TeamLineage()
+    club1, club2 = team_key(team1, gender, lineage), team_key(team2, gender, lineage)
+    winner = outcome.get("winner")
+    if winner:
+        winner = team_key(winner, gender, lineage)
     return MatchRecord(
         match_id=os.path.basename(path).rsplit(".", 1)[0],
         match_date=date.fromisoformat(info["dates"][0]),
         format_code=fmt,
-        team1=team1,
-        team2=team2,
+        team1=club1,
+        team2=club2,
         venue=info.get("venue") or "",
-        gender=info.get("gender") or "",
+        gender=gender,
         team1_players=squad1,
         team2_players=squad2,
-        winner=outcome.get("winner"),
+        winner=winner,
         result=outcome.get("result"),
         deliveries=_deliveries_from_cricsheet(innings, registry),
     )
+
+
+def team_key(name: str, gender: str, lineage: "TeamLineage") -> str:
+    """The key one team is rated under: its club, and its gender.
+
+    Both halves are identity fixes the database already has and this source did not. 130 of
+    the 394 team names in the dataset belong to *both* a men's and a women's side, so a
+    name alone gave Australia's two teams one Elo (I-3); and a club that renames is one club
+    (I-4). ``opposition.canonical_id`` and the ``(opposition_name, gender)`` key are how
+    Postgres says the same thing, and ``make xi-parity`` is what noticed they differed.
+    """
+    return f"{lineage.club(name, gender)}|{gender}"
 
 
 def _squads(names1: Sequence[str], names2: Sequence[str], registry: dict) -> Tuple[List[str], List[str]]:
@@ -270,10 +300,17 @@ def _squads(names1: Sequence[str], names2: Sequence[str], registry: dict) -> Tup
 class CricsheetJsonSource:
     """All ``*.json`` files in a directory, sorted by (date, id)."""
 
-    def __init__(self, directory: str, international_teams: Sequence[str], formats: Sequence[str] = FORMAT_CODES):
+    def __init__(
+        self,
+        directory: str,
+        international_teams: Sequence[str],
+        formats: Sequence[str] = FORMAT_CODES,
+        lineage: Optional[TeamLineage] = None,
+    ):
         self.directory = directory
         self.international_teams = list(international_teams)
         self.formats = set(formats)
+        self.lineage = lineage if lineage is not None else load_lineage()
         self.counts = SourceCounts()
 
     def iter_matches(self) -> Iterator[MatchRecord]:
@@ -281,7 +318,7 @@ class CricsheetJsonSource:
         self.counts = SourceCounts(offered=len(names))
         records: List[MatchRecord] = []
         for n in names:
-            rec = parse_cricsheet_file(os.path.join(self.directory, n), self.international_teams)
+            rec = parse_cricsheet_file(os.path.join(self.directory, n), self.international_teams, self.lineage)
             # The two reasons a file yields nothing are worth telling apart: a format this
             # run did not ask for is expected, a file that will not parse into a two-team
             # match with two squads is a fact about the archive.
@@ -308,12 +345,20 @@ class CricsheetJsonSource:
 # Postgres (go-app schema)
 # ---------------------------------------------------------------------------
 
+# Team keys are the *club*: COALESCE(canonical_id, id) folds a club's superseded rows onto
+# its current one, so a rebrand does not restart the team's Elo, form and head-to-head
+# (I-4). The Cricsheet source does the same through configs/team_lineage.json.
 _MATCH_SQL = """
 SELECT m.match_id, m.match_date, mf.code, m.gender, COALESCE(m.venue_id, 0),
-       mi.batting_team_opposition_id, mi.bowling_team_opposition_id, m.outcome_winner_opposition_id
+       COALESCE(bat.canonical_id, bat.id),
+       COALESCE(bowl.canonical_id, bowl.id),
+       COALESCE(win.canonical_id, win.id)
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
+JOIN opposition bat ON bat.id = mi.batting_team_opposition_id
+JOIN opposition bowl ON bowl.id = mi.bowling_team_opposition_id
+LEFT JOIN opposition win ON win.id = m.outcome_winner_opposition_id
 WHERE mf.code = ANY(%s) AND m.match_date < %s
 ORDER BY m.match_date, m.match_id
 """
@@ -336,9 +381,10 @@ def _player_key(alias: str) -> str:
 
 
 _PLAYERS_SQL = f"""
-SELECT {_player_key("p")}, mp.opposition_id
+SELECT {_player_key("p")}, COALESCE(o.canonical_id, o.id)
 FROM match_player mp
 JOIN player p ON p.id = mp.player_id
+JOIN opposition o ON o.id = mp.opposition_id
 WHERE mp.match_id = %s
 """
 

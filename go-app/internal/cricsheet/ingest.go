@@ -18,6 +18,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
+	"github.com/umayangag/cric-flow/go-app/internal/teamlineage"
 )
 
 // Options controls optional behaviors for Cricsheet import.
@@ -129,6 +130,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 			slog.Any("err", err))
 		return int(count), fmt.Errorf("settle player display names: %w", err)
 	}
+	// Join up clubs that have renamed. Also after the files, and for the same reason as
+	// display names: both rows of a rename have to exist before they can be linked, and
+	// which file creates which is not something one file can know.
+	if err := applyTeamLineage(parentCtx, dir); err != nil {
+		return int(count), err
+	}
 	if len(failedFiles) > 0 {
 		slog.Warn("cricsheet.ImportDir finished with skipped files",
 			slog.String("dir", dir),
@@ -137,6 +144,42 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 			slog.Any("skipped_files", failedFiles))
 	}
 	return int(count), nil
+}
+
+// applyTeamLineage links every superseded team row to the club's current row, from the
+// reviewed mapping in configs/team_lineage.json.
+//
+// A mapping that exists but does not parse or does not validate fails the import: that is
+// a bug in committed data, and importing 22,734 files against a broken mapping only buries
+// it. A mapping that is simply *absent* does not fail -- a deployment may legitimately have
+// none, and losing the whole dataset over a search path would be the worse trade -- but it
+// warns, and the row count below is what makes its absence visible in a run's log.
+func applyTeamLineage(ctx context.Context, dir string) error {
+	mapping, err := teamlineage.Load()
+	if err != nil {
+		slog.Error("cricsheet.ImportDir could not read the team lineage mapping",
+			slog.String("dir", dir),
+			slog.Any("err", err))
+		return fmt.Errorf("read team lineage: %w", err)
+	}
+	if len(mapping.Renames) == 0 {
+		return nil
+	}
+	renames := make([]db.TeamRename, 0, len(mapping.Renames))
+	for _, r := range mapping.Renames {
+		renames = append(renames, db.TeamRename{FromName: r.From, ToName: r.To, Gender: r.Gender})
+	}
+	changed, err := cricDB.ApplyTeamLineage(ctx, renames)
+	if err != nil {
+		slog.Error("cricsheet.ImportDir could not apply the team lineage mapping",
+			slog.String("dir", dir),
+			slog.Any("err", err))
+		return fmt.Errorf("apply team lineage: %w", err)
+	}
+	slog.Info("cricsheet: team lineage applied",
+		slog.Int("renames", len(renames)),
+		slog.Int("rows_changed", changed))
+	return nil
 }
 
 // ImportMatchFile parses a single Cricsheet JSON file and upserts stats into DB.

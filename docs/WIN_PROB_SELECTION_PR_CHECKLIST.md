@@ -118,10 +118,15 @@ on a feature set that encodes the result of the match being predicted. Tuning a 
 over that objective, or shipping it, would both be measuring the leak. S-5 is unaffected —
 it concerns the combination-meta seed, not the win model.
 
-**S-7 is blocked on [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md).** The IDs it
-would encode are themselves split (one franchise under two ids after a rename) and merged
-(130 team names shared by a men's and a women's side). Encoding those first only makes the
-error smoother.
+**S-7 was blocked on [IDENTITY_PR_CHECKLIST.md](IDENTITY_PR_CHECKLIST.md); it no longer
+is.** The IDs it would encode were themselves split (one franchise under two ids after a
+rename) and merged (130 team names shared by a men's and a women's side), and encoding
+those first only makes the error smoother. Both are closed: I-3 split the genders in P-1,
+I-4 joined the nine renamed clubs. An `opposition_id` is now one club of one gender.
+
+S-7 stays **superseded** for a different reason — the XI model feeds no raw id to a tree —
+but the identity it would have encoded is now sound, so if a later model does want an
+opposition encoding, nothing in this list blocks it.
 
 ---
 

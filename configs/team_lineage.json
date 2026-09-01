@@ -1,0 +1,83 @@
+{
+  "version": "1",
+  "_comment": [
+    "Franchise renames: one club that Cricsheet names two ways, and therefore holds two",
+    "opposition rows (I-4 in docs/IDENTITY_PR_CHECKLIST.md).",
+    "",
+    "This is data, not a heuristic. The candidates were produced once by",
+    "scripts/experiments/xi/team_lineage_candidates.py -- no temporal overlap plus roster",
+    "carry-over across the boundary -- and then reviewed by hand. A rule that ran on every",
+    "import would merge two real clubs the first time a coincidence cleared its threshold,",
+    "and a wrong merge is invisible: it corrupts a club's whole history and nothing fails.",
+    "",
+    "Each entry names a gender explicitly. A team is (name, gender) since migration 0004,",
+    "and a rename that applies to a club's men's side need not apply to its women's.",
+    "",
+    "Every entry here is one franchise slot in one competition whose name changed. The",
+    "detector also surfaces competition restructures -- England's women's regional teams",
+    "becoming county teams in 2025, the Hundred's 2025 rebrands -- which are a different",
+    "claim and are deliberately not here. See the PR body."
+  ],
+  "renames": [
+    {
+      "from": "Royal Challengers Bangalore",
+      "to": "Royal Challengers Bengaluru",
+      "gender": "male",
+      "note": "IPL, renamed 2024. 240 + 46 matches."
+    },
+    {
+      "from": "Royal Challengers Bangalore",
+      "to": "Royal Challengers Bengaluru",
+      "gender": "female",
+      "note": "WPL, the same club's women's side, renamed at the same time. 18 + 17 matches."
+    },
+    {
+      "from": "Kings XI Punjab",
+      "to": "Punjab Kings",
+      "gender": "male",
+      "note": "IPL, renamed 2021."
+    },
+    {
+      "from": "Delhi Daredevils",
+      "to": "Delhi Capitals",
+      "gender": "male",
+      "note": "IPL, renamed 2019."
+    },
+    {
+      "from": "Deccan Chargers",
+      "to": "Sunrisers Hyderabad",
+      "gender": "male",
+      "note": "IPL, 2013. New owner and a new squad rather than a rebrand, so this is an assumption and not a fact: open decision 3 in the identity checklist chose to merge, because the alternative is a judgement about corporate continuity the data cannot settle."
+    },
+    {
+      "from": "Jaffna Stallions",
+      "to": "Jaffna Kings",
+      "gender": "male",
+      "note": "Lanka Premier League, renamed 2021."
+    },
+    {
+      "from": "Himachal",
+      "to": "Himachal Pradesh",
+      "gender": "male",
+      "note": "Indian domestic; the same side under a fuller name."
+    },
+    {
+      "from": "Kathmandu Gurkhas",
+      "to": "Kathmandu Gorkhas",
+      "gender": "male",
+      "note": "Nepal Premier League; a spelling change, not a new club."
+    },
+    {
+      "from": "Surrey Stars",
+      "to": "South East Stars",
+      "gender": "female",
+      "note": "England women's: the Super League side became the regional side of the same name and geography in 2020."
+    },
+    {
+      "from": "Rising Pune Supergiants",
+      "to": "Rising Pune Supergiant",
+      "gender": "male",
+      "note": "IPL: the same franchise across its only two seasons, 14 matches in 2016 and 16 in 2017, having dropped the plural. Like Kathmandu Gurkhas, a spelling change rather than a new club."
+    }
+  ]
+}
