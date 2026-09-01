@@ -15,6 +15,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Bound the blast radius: without a limit every container shares the whole Docker VM,
+    # so a pipeline or training run can exhaust it and the kernel picks the victim by score.
+    # Postgres is the fattest resident and therefore the most likely victim, so cap what it
+    # can grow into and tell the OOM killer to look elsewhere first. Page cache inside the
+    # cgroup is reclaimable, so reaching the cap costs cache hits, not a kill.
+    mem_limit: ${POSTGRES_MEM_LIMIT:-3g}
+    oom_score_adj: -500
+    restart: unless-stopped
 
   go-api:
     build:
@@ -65,6 +73,7 @@ services:
       - ./output:/output
       - ./data:/data
       - ./configs:/configs:ro
+    restart: unless-stopped
 
   ml-service:
     build:
@@ -109,8 +118,9 @@ services:
       - "8000:8000"
     volumes:
       - ./output:/app/output
+    restart: unless-stopped
 
-  # Watcher: monitors go-api and ml-service for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.
+  # Watcher: monitors go-api, ml-service and postgres for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.
   watcher:
     build:
       context: .
@@ -121,8 +131,9 @@ services:
       - go-api
       - ml-service
     environment:
-      # Comma-separated list; default monitors both. Legacy: WATCH_CONTAINER for single container.
-      WATCH_CONTAINERS: ${WATCH_CONTAINERS:-cric-go-api,cric-ml-service}
+      # Comma-separated list. Postgres is included because it is the likeliest OOM victim of
+      # an allocation it did not make. Legacy: WATCH_CONTAINER for single container.
+      WATCH_CONTAINERS: ${WATCH_CONTAINERS:-cric-go-api,cric-ml-service,cricket-postgres}
       # Optional: persist to volume
       WATCH_LOG: ${WATCH_LOG:-}
       # Last N log lines to capture on crash (default 50)

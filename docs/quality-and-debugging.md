@@ -116,7 +116,9 @@ Workflows are path-filtered, so a change touching only files outside those globs
 
 ## Container crash and OOM diagnosis
 
-**Goal:** Confirm whether go-api or ml-service containers are crashing due to out-of-memory (OOM) or something else. The watcher monitors both services and collects rich diagnostics.
+**Goal:** Confirm whether a container is crashing due to out-of-memory (OOM) or something else. The watcher monitors go-api, ml-service and postgres, and collects rich diagnostics.
+
+**Who dies is not who caused it.** go-api and ml-service run without a `mem_limit`, so each auto-sizes its concurrency from the *whole* Docker VM's memory (~80% of it) as if it owned the machine. When their peaks overlap, the VM runs out and the kernel picks a victim by OOM score — and `cricket-postgres`, the fattest steady-state resident, is a prime candidate. Compose therefore sets `oom_score_adj: -500` and a `mem_limit` (`POSTGRES_MEM_LIMIT`, default 3g) on postgres so it is deprioritised as a victim and cannot itself exhaust the VM. All three services run `restart: unless-stopped` so a kill does not leave the stack down.
 
 **1. Exit code (entrypoint)**  
 When a process exits, the entrypoint script logs the exit code to stderr. View: `docker logs cric-go-api 2>&1 | tail -20` or `docker logs cric-ml-service 2>&1 | tail -20`. **Exit code 137** = SIGKILL; the kernel often sends this when the OOM killer terminates the process → strongly suggests OOM.
@@ -125,17 +127,17 @@ When a process exits, the entrypoint script logs the exit code to stderr. View: 
 The go-api logs “memory stats” at startup (`heap_alloc_mb`, `heap_sys_mb`, `heap_inuse_mb`, `sys_mb`, `num_gc`). Set **MEM_STATS_INTERVAL** (e.g. `5m` or `10m`) so the same stats are logged periodically. If OOM-killed, the last log line shows how high memory was. Example: `MEM_STATS_INTERVAL: "5m"` in docker-compose environment. Use `docker logs cric-go-api` to inspect.
 
 **3. Watcher container**  
-The stack includes a **watcher** service that monitors **cric-go-api** and **cric-ml-service** for crashes. On any container exit (die event), it logs:
+The stack includes a **watcher** service that monitors **cric-go-api**, **cric-ml-service** and **cricket-postgres** for crashes. On any container exit (die event), it logs:
 
-- **Which service crashed** — clear header `CRASH DETECTED: cric-go-api` or `CRASH DETECTED: cric-ml-service`
+- **Which service crashed** — clear header, e.g. `CRASH DETECTED: cric-go-api`
 - **Diagnostics** — `exit_code`, `OOMKilled`, `image`, `memory_limit_bytes`, `started_at`, `finished_at`, `state_error`
 - **Service-specific hints** — e.g. for ml-service: increase `mem_limit`, set `n_jobs=1` for fielding/extras/win training
 - **Last N log lines** — tail of container logs (default 50) for immediate context
 
-Start: `docker compose up -d`. View: `docker logs -f cric-watcher`. Set `WATCH_LOG=/logs/watcher.log` to persist. Use `WATCH_CONTAINERS=cric-go-api,cric-ml-service` (default) or `WATCH_CONTAINER=cric-go-api` (legacy). Use `WATCH_TAIL_LOGS=100` to capture more log lines.
+Start: `docker compose up -d`. View: `docker logs -f cric-watcher`. Set `WATCH_LOG=/logs/watcher.log` to persist. Use `WATCH_CONTAINERS=cric-go-api,cric-ml-service,cricket-postgres` (default) or `WATCH_CONTAINER=cric-go-api` (legacy). Use `WATCH_TAIL_LOGS=100` to capture more log lines.
 
 **4. Watcher on host**  
-Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATCH_CONTAINERS=cric-go-api,cric-ml-service`, `WATCH_LOG=/path/to/file`, `WATCH_TAIL_LOGS=50`.
+Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATCH_CONTAINERS=cric-go-api,cric-ml-service,cricket-postgres`, `WATCH_LOG=/path/to/file`, `WATCH_TAIL_LOGS=50`.
 
 **5. After a crash**
 
