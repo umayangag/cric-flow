@@ -31,7 +31,7 @@ None of it was the hard part. The hard parts — geocoding 877 venues and choosi
 
 ## What was kept
 
-- **`weather_data` and `weather_job` tables**, in `0001_baseline.sql`. They cost nothing and encode the session/queue design.
+- **Nothing in the schema.** `weather_data` and `weather_job` were kept in `0001_baseline.sql` on the argument that they cost nothing and encoded the session/queue design. P-6 dropped them (migration `0008`) with the last readers — the ops probe, the training-snapshot export and the win contract's seven constant columns. The design is described here, which is where a reader would look for it; a pair of permanently empty tables was not documentation.
 - **`venue.latitude` / `longitude` / `city` / `country` / `timezone`** columns, ready for a geocoding pass.
 
 ## Building it
@@ -40,6 +40,6 @@ None of it was the hard part. The hard parts — geocoding 877 venues and choosi
 2. **Pick a source.** [Open-Meteo's historical archive](https://open-meteo.com/en/docs/historical-weather-api) is free, needs no key, covers 1940–present globally, and keys on lat/lon + date — a good fit for ~21k historical matches.
 3. **Fetch and store.** Re-enqueue with an `INSERT … SELECT` over matches lacking a job, then drain the queue into `weather_data` with one row per session. Rate-limit and make it resumable.
 4. **Re-add the features.** Seven names per section back into `configs/feature_vectors.json` (batting, bowling, fielding) and into `EXTRAS_FEATURE_COLS`, `WIN_FEATURE_COLS`, `INNINGS_FEATURE_COLS`.
-5. **Re-export and retrain all six models.** Required regardless — models trained without weather cannot use it.
+5. **Retrain.** Required regardless — a model trained without weather cannot use it. It would also mean adding weather to the rating pass's as-of accumulators (`ml.xi.rows`), since that is where every feature the models read now comes from.
 
 Step 5 is why the features were removed rather than left as constant zeros: the retrain is mandatory whenever real data arrives, so keeping the slots bought nothing while costing 17–47% constant-zero inputs per model in the meantime.

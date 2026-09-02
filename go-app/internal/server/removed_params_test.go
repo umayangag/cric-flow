@@ -53,8 +53,8 @@ func TestRejectRemovedParams(t *testing.T) {
 			"LATEST_MODEL_REMOVED",
 		},
 		{
-			"auto_tune model values are untouched",
-			"/ops/pipeline/run/auto_tune?model=batting",
+			"a model= value on a step that takes none is untouched",
+			"/ops/pipeline/run/retrain?model=batting",
 			http.StatusOK,
 			"",
 		},
@@ -63,7 +63,7 @@ func TestRejectRemovedParams(t *testing.T) {
 			// param is a different name and must pass through: matching the word
 			// rather than the parameter is how this rule would start over-refusing.
 			"a bare unified param is not refused by name matching",
-			"/ops/pipeline/run/auto_tune?model=all&unified=1",
+			"/ops/pipeline/run/retrain?model=all&unified=1",
 			http.StatusOK,
 			"",
 		},

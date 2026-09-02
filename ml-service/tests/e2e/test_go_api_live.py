@@ -63,18 +63,17 @@ def test_backtest_accuracy_trend_live():
 
 @pytest.mark.e2e
 @pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_ml_model_stats_proxy_live():
-    """GET /api/ml/model-stats (go-api proxy) returns 200 with models_dir and models."""
+def test_ml_xi_status_proxy_live():
+    """GET /api/ml/xi-status (go-api proxy) returns 200 and names the run being served."""
     resp = httpx.get(
-        f"{_go_api_url()}/api/ml/model-stats",
+        f"{_go_api_url()}/api/ml/xi-status",
         headers=_api_headers(),
         timeout=5.0,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "models_dir" in body
-    assert "models" in body
-    assert isinstance(body["models"], list)
+    assert "loaded" in body
+    assert "run_id" in body
 
 
 @pytest.mark.e2e

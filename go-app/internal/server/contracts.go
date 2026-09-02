@@ -1,12 +1,10 @@
 package server
 
 type playerResponse struct {
-	ID                 int64    `json:"id"`
-	Name               string   `json:"player_name"`
-	IsWicketKeeper     int16    `json:"is_wicket_keeper"`
-	IsRetired          int16    `json:"is_retired"`
-	BattingConsistency *float32 `json:"batting_consistency,omitempty"`
-	BowlingConsistency *float32 `json:"bowling_consistency,omitempty"`
+	ID             int64  `json:"id"`
+	Name           string `json:"player_name"`
+	IsWicketKeeper int16  `json:"is_wicket_keeper"`
+	IsRetired      int16  `json:"is_retired"`
 }
 
 type matchDetailsResponse struct {

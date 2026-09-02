@@ -325,11 +325,10 @@ def fold(
     total_folds: int,
     metrics: Optional[Mapping[str, Any]] = None,
 ) -> None:
-    """Report one cross-validation fold and its metrics.
+    """Report one point of the hyperparameter grid and its inner-split score.
 
-    Only the trainers that cross-validate call this -- `train_win` splits with
-    `TimeSeriesSplit`; the rest fit once. A step that emitted fake folds to look busy
-    would be worse than one that says nothing.
+    Only `retrain` searches, and only over three points; a step that emitted fake folds
+    to look busy would be worse than one that says nothing.
     """
     _summary.record_metrics(fmt, _clean_metrics(metrics))
     _emit(
@@ -339,7 +338,7 @@ def fold(
             current=int(index),
             total=int(total_folds),
             metrics=_clean_metrics(metrics),
-            message=f"Fold {index}/{total_folds}" + (f" ({fmt})" if fmt else ""),
+            message=f"Grid point {index}/{total_folds}" + (f" ({fmt})" if fmt else ""),
             extra=_fmt_extra(fmt),
         )
     )

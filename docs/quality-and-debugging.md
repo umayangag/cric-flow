@@ -90,7 +90,7 @@ Pinned via `DEADCODE_VERSION` in `go-app/Makefile`.
 Parses every module under `app/` and `ml/` with `ast`, resolves absolute and relative imports, and walks the graph from two kinds of root. Tests are **not** roots.
 
 - **`MODULE_ENTRYPOINTS`** — `app.main` plus the modules invoked as `python -m ml.<mod>` by `app/training_orchestrator.py` and the Makefiles.
-- **`SCRIPT_ENTRYPOINTS`** — modules executed directly rather than imported, e.g. `ml.validate_exports` (`make -C ml-service validate-exports`) and `ml.baselines` (`make train-batting-baseline`). These must be _roots_, not allowlist entries: allowlisting silences the module itself but leaves everything it uniquely imports looking dead.
+- **`SCRIPT_ENTRYPOINTS`** — modules executed directly rather than imported, e.g. `ml.xi.evaluate` (`make evaluate`) and `ml.xi.parity` (`make xi-parity`). These must be _roots_, not allowlist entries: allowlisting silences the module itself but leaves everything it uniquely imports looking dead.
 
 It fails on three things:
 
@@ -110,7 +110,7 @@ Run it without `--check` to see the full picture, or with `--json` for tooling.
 
 ### Path filters
 
-Workflows are path-filtered, so a change touching only files outside those globs runs **no checks at all**. The root `Makefile` was such a gap — the reason a broken `make precompute` (C1-2) sat unnoticed — and is now a trigger path for both the go-app and ml-service workflows.
+Workflows are path-filtered, so a change touching only files outside those globs runs **no checks at all**. The root `Makefile` was such a gap — the reason a broken make target (C1-2) sat unnoticed — and is now a trigger path for both the go-app and ml-service workflows.
 
 ---
 

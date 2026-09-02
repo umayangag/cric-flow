@@ -435,7 +435,9 @@ def test_retrain_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:
     run_id = runs.newest_run_id(str(out))
     assert run_id, "a completed retrain leaves a run with a manifest"
     directory = runs.run_dir(str(out), run_id)
-    report = json.loads((directory + "/xi_win_report.json").replace("//", "/") and open(directory + "/xi_win_report.json").read())
+    report = json.loads(
+        (directory + "/xi_win_report.json").replace("//", "/") and open(directory + "/xi_win_report.json").read()
+    )
     assert report["n_rows"] == 2
     assert all("skipped_reason" in f for f in report["formats"])
     assert (out / "runs" / run_id / "xi_ratings.joblib").exists()

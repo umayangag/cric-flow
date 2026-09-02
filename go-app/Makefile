@@ -92,14 +92,6 @@ docker-run:
 test-int:
 	go test ./integration -v
 
-# Export datasets for all formats to the default output directory
-.PHONY: export-dataset
-export-dataset:
-	OUT=$${GO_APP_OUTPUT_DIR:-../output/go-app}; \
-	mkdir -p $$OUT; \
-	# Use unified cross-format export to generate *_encoded_all.csv files
-	go run ./cmd/export-dataset -unified=1 -out $$OUT
-
 # Lint Go code using golangci-lint (matches CI config)
 # Self-bootstrap a pinned major version (v2) if missing or outdated and invoke via absolute path if needed
 GOLANGCI_BIN := $(shell command -v golangci-lint 2>/dev/null || echo $$(go env GOPATH)/bin/golangci-lint)
@@ -204,7 +196,6 @@ help:
 	@echo
 	@echo "[Data & CLIs]"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
-	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo
 	@echo "[Docker]"
 	@echo "  docker-build       Build API Docker image"

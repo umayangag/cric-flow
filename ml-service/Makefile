@@ -9,7 +9,7 @@ LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
 # One requirements set now serves both CI and a local venv (P-6 removed the optional
 # pycaret / autogluon / shap extras), so the local figure and the gate's are the same run.
-COV_MIN?=86
+COV_MIN?=92
 REQUIREMENTS_FILE?=requirements.txt
 
 .PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload

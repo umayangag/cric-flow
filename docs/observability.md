@@ -11,18 +11,21 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
 ### 1.1. HTTP Endpoints
 
 - **`GET /ops/status` (API health + pipeline + DB)**
-  - **Purpose**: Single JSON snapshot summarizing API readiness, database state, precompute/export status, artifacts, and pipeline runnability.
+  - **Purpose**: Single JSON snapshot summarizing API readiness, database state, which run is serving, and pipeline runnability.
   - **Key sections** (top-level fields):
     - `timestamp` (ISO string).
     - `services.api_health`, `services.api_readiness`, `services.ml_health`.
     - `db.counts` (e.g. `players`, `matches`) and `db.last_match_import_at`.
-    - `precompute.formats[FORMAT].status` (`ok` / `stale` / `missing` / `unknown`) and
-      `precompute.last_error` — why the last run did not finish, empty after a clean one.
-    - `exports.formats[FORMAT].files[]` (per-export file presence).
-    - `artifacts.formats[FORMAT].batting|bowling.exists/loaded`.
+    - `artifacts.current_run` / `artifacts.loaded_run` — the run `current` points at, and the
+      run the ML service actually loaded. They differ when a reload has not happened yet.
+    - `artifacts.ratings` — H-11's verdict (`fresh`, `age_days`, `max_age_days`), not just a date.
+    - `artifacts.error` — why a run on disk was refused (D-6). An empty panel and a refused
+      artifact set look the same otherwise, and only one is something to act on.
+    - `artifacts.runs[]` — every run directory, newest first, with its manifest summary and
+      `has_manifest` for the ones that are not runs.
     - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
     - `dataset.path|exists|match_files|bytes|newest_file|newest_modified` — the Cricsheet directory Import reads from, resolved by `GO_APP_CRICSHEET_DIR` → `inputs.cricsheet_dir` → built-in default.
-    - Optional: `fielding`, `weather`, `hierarchy`, `suggestions`.
+    - Optional: `fielding`, `db_freshness`, `db_completeness`, `suggestions`.
   - **Consumers**:
     - Frontend `OpsStatusTab` (auto-refreshing).
     - CLI / scripts (for quick readiness checks).
@@ -61,14 +64,14 @@ in between. A run plan is the server-side executor that closes that asymmetry.
 | `POST /ops/pipeline/stop` | Stops the plan **and** the step it is on |
 
 - **Named plans are derived from the step registry**, not written out: `full` is every
-  non-optional pipeline step, `retrain-only` the ml-service ones, `data-refresh` the
-  go-app ones. Optional steps are never implied — a "run everything" that silently
-  included auto-tune would take hours nobody asked for.
-- **`tune` is the exception, and states its own order**: auto-tune, then the same train
-  steps `retrain-only` runs. It is the only plan that includes an optional step, because
-  the search is the point of it. No filter over registry order could produce this
-  sequence — auto-tune is declared last, where the graph offers it — so the plan names
-  it explicitly, as `import` does for fetch → extract → import.
+  non-optional pipeline step (import → retrain → reload), `retrain-only` is the same
+  without the import. Optional steps are never implied — a "run everything" that silently
+  included the L4 harness would spend an hour nobody asked for.
+- **`import` is the exception, and states its own order**: fetch → extract → import. No
+  filter over registry order could produce it, because acquisition sits on a different
+  surface and carries no `Requires`. There is no longer a `tune` plan: the grid runs
+  inside `retrain`, so searching and training cannot be run in the order that throws the
+  artifacts away.
 - **State lives in `data_migrations`** under `pipeline-plan`, written before and after
   every step rather than only at the end. A page reload, another tab, or a browser
   closed overnight does not lose the run.
@@ -82,8 +85,8 @@ in between. A run plan is the server-side executor that closes that asymmetry.
 - **A stop is logged** (`pipeline stop: cancelled by user`, with the lanes it hit).
   `context canceled` reaches the logs from every goroutine that was holding work, so
   without a line at the endpoint itself there is no way to tell an operator's Stop from
-  a run that cancelled itself — which is how a premature cancellation inside the
-  precompute worker pool went unexplained for two full runs.
+  a run that cancelled itself — which is how a premature cancellation inside a worker
+  pool went unexplained for two full runs.
 - **Ordering comes from `CanRunPipelineStep`**, injected rather than reimplemented, so a
   plan and a single-step trigger cannot disagree about whether a step may run.
 - **`Execute` runs every step; `Resume` skips what the run being resumed completed.**
@@ -106,11 +109,11 @@ the box's history rather than about the data on it, and answering it kept a gree
 on a step whose latest run had failed or been cancelled, while `runnable` let the steps
 after it run against output that was never rebuilt.
 
-The same rule reaches the precompute freshness matrix from the other direction. A run
-records when it ended whatever happened to it, so `precompute.formats[…]` reads the
-run's *outcome*, not just its finish time; a run that stopped early falls back to the
-last run history records as `COMPLETED`, and reports `missing` when there is none.
-Partial snapshots left behind by a cancelled run are not a computed format.
+The same rule reaches the run listing from the other direction. A retrain writes its
+manifest last, so a run that stopped early leaves a directory with no manifest: the
+loader never selects it, `/artifacts/status` lists it as `has_manifest: false`, and the
+console's own check treats artifacts on disk as evidence of a run only when run history
+also says the step completed.
 
 `BuildPipelineSection` decides completion; the console's own checks — files on disk,
 freshness dates — only fill in for steps the backend has said nothing about, and can no
@@ -120,12 +123,12 @@ longer raise a step to green that run history says is not done.
 
 - **Log shape** (via `log/slog`):
   - Structured keys for pipeline/train jobs, including:
-    - `step` / `command` (e.g. `cricsheet-import`, `export-dataset`).
+    - `step` / `command` (e.g. `cricsheet-import`, `xi-retrain`, `xi-reload`).
     - `format`, `cutoff`, `job_id` or similar identifiers.
     - `err` for structured errors.
   - **Where to look**:
     - API process logs (stdout/stderr from `go-app/cmd/api`).
-    - CLI runners: precompute, export, importer binaries.
+    - CLI runners: the importer binary.
 
 ---
 
@@ -134,40 +137,44 @@ longer raise a step to green that run history says is not done.
 ### 2.1. Health and Artifacts
 
 - **`GET /health`**
-  - **Purpose**: Combined ML service + artifacts health.
+  - **Purpose**: Is the ML service alive, and can it answer?
   - **Typical fields**:
     - `status` (`ok` / `warn`).
-    - `models_dir` (resolved artifacts directory).
+    - `models_dir` (resolved artifacts root), `loaded`, `run_id`.
     - `loaded_batting_formats`, `loaded_bowling_formats`, `loaded_fielding_formats`, `loaded_extras_formats`, `loaded_win_formats`.
-    - `artifacts[model_type][]` with `file`, `size_bytes`, `modified` (unix timestamp).
+    - `loaded_xi_formats`, `loaded_performance_formats`, `ratings` (H-11's verdict), `error`.
     - `metadata`, `counters`.
 
-    The `legacy_*_available` fields are **gone**: they reported the `_LEGACY_` artifact
-    tier removed in C3-1. Built by `app/artifact_service.py:build_health_response`.
+    `status: "ok"` is about the process. A service with no run loaded is alive, and
+    `loaded: false` is how it says so — conflating the two is what let a box with no model
+    report itself healthy.
   - **Consumers**:
     - Frontend `HealthTab` (latency + artifacts summary).
     - Operators verifying which models are in memory.
 
 - **`GET /artifacts/status`**
-  - **Purpose**: Detailed status of model artifacts on disk vs loaded in memory.
+  - **Purpose**: Every run on disk, which one `current` names, and which one is loaded.
   - **Fields**:
     - `timestamp`, `root`, and `formats[<format>][<kind>]` carrying `exists`, `path`,
-      `modified` and `loaded`. No legacy tier — see `artifact_service.build_artifacts_status`.
+      `has_manifest`, `current` and `loaded`, plus the ratings verdict and the loader's refusal.
   - **Consumers**: debugging model deployment / reload issues.
 
-### 2.2. Model Stats
+### 2.2. Run identity
 
-- **`GET /model-stats`**
-  - **Purpose**: Exposes per-model training/tuning/evaluation metadata for observability.
-  - **Key fields per model**:
-    - `model_name`, `match_format`, `algorithm`.
-    - `best_cv_score`, `scoring`, `accuracy_display`.
-    - `tuned`, `duration_seconds`, `trained_at`, `size_bytes`.
-    - `tuned_parameters`, `metrics`, `feature_importance`.
-    - Optional `mlqa_audit` (status, key findings, stability metrics).
+- **`GET /xi/status`**
+  - **Purpose**: which run is serving, and what that run recorded about itself (H-16).
+  - **Key fields**: `loaded`, `run_id`, `formats`, `performance_formats`, `players`,
+    `ratings_through`, `ratings` (H-11's verdict), `error` (the loader's refusal, D-6),
+    `manifest` (run id, created-at, cutoff, dataset sha, git sha, formats, the
+    hyperparameters the grid chose, the run's headline metrics) and `report` (the run's
+    own training report).
   - **Consumers**:
-    - Frontend `MLModelStatsTab` (tables, chips, and tuning insights).
-    - Manual inspection of which models are “good enough” to promote.
+    - Frontend `WorkbenchRunSection` — "what is this model?" answered from the record
+      rather than inferred from filenames.
+    - go-app `/api/ml/xi-status`, and `/ops/status` via `/artifacts/status`.
+  - **Why it replaced `/model-stats`**: that endpoint described artifacts by scanning them
+    and joined tuning metadata from a database table nothing could tie back to a file. The
+    manifest is written by the run, beside the artifacts it produced.
 
 ### 2.3. Cross-process progress
 
@@ -181,11 +188,11 @@ output. A subprocess cannot push into its parent's memory, but it can write a fi
 - **Event schema** (versioned; `v` is bumped on a breaking envelope change):
 
   ```json
-  { "v": 1, "run_id": "1234", "step": "auto_tune", "phase": "cv",
+  { "v": 1, "run_id": "1234", "step": "retrain", "phase": "grid",
     "current": 3, "total": 5, "metrics": {"rmse": 24.1}, "ts": "2026-08-26T12:00:00Z" }
   ```
 
-  Step-specific fields (auto-tune's `algorithm`, `trial`, `best_score`) are merged at
+  Step-specific fields (the grid's `params` and `auc`) are merged at
   the top level beside the envelope, which is where existing consumers already read
   them. Envelope keys are reserved and cannot be shadowed.
 
@@ -210,13 +217,11 @@ output. A subprocess cannot push into its parent's memory, but it can write a fi
   the *live* run — the newest non-stale file for that step. Naming a `run_id` reads
   exactly that run, finished or stale. An empty object means "nothing is running",
   which is a normal answer, not an error: go-app polls on a timer and a 404 per tick
-  would be noise. `GET /admin/train/auto-tune/progress` survives as a delegate — one
-  implementation, two routes. `AUTO_TUNE_PROGRESS_FILE` pins an explicit path for
-  tests, or to `tail` one file, and applies only to auto-tune.
+  would be noise.
 
 - **Folded into one stream.** go-app polls the endpoint for any step the registry marks
   as `RunsOnMLService()` while it is in flight, and puts the event in the step's
-  `training` field on `/ops/pipeline/stream`. `import`, `precompute` and `export` run
+  `training` field on `/ops/pipeline/stream`. `import` and `reload` run
   inside go-app and are never asked.
 
 - **Unreachable is reported as unknown, not failure.** `progress_unavailable: true`
@@ -256,7 +261,7 @@ no feed or URL. Absent means genuinely unknown.
 | `load` | rows, features, targets — a run against 200 stale rows looks like one against 200,000 until something says otherwise |
 | `features` | low-variance columns dropped, by name, with kept/dropped counts |
 | `fit` | rows and features at the moment fitting starts — the long silent stretch |
-| `cv` | fold index/total and per-fold metrics. **Only `train_win` cross-validates**; the rest fit once, and a step emitting fake folds to look busy would be worse than one saying nothing |
+| `grid` | the display model's grid point and its inner-split AUC. Only `retrain` searches, and only over three points; a step emitting fake folds to look busy would be worse than one saying nothing |
 | `artifact` | each artifact's basename and size. Size is the postcondition worth checking: a model file of a few hundred bytes is a failed fit that reported success |
 | `done` | per-format completion, then a final event for the run |
 
@@ -272,7 +277,7 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
 
 ### 2.4. Logs
 
-- **Training / auto-tune / backtest**
+- **Retrain / evaluate**
   - Logs include:
     - `model_name`, `match_format` — every model is per-format, so the format is the mode.
     - `pipeline_id` / `run_id` equivalents where available.
@@ -292,15 +297,15 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - **Displays**:
     - Status pills for API and ML.
     - Latency for each health check.
-    - ML models directory, loaded formats, artifacts count, total size, latest modified.
+    - ML models directory, the loaded run, its formats, and the ratings' freshness verdict.
 
 - **`OpsStatusTab`**
   - **Endpoint**: `GET /ops/status` (Go API).
   - **Displays**:
-    - Pipeline graph (import → precompute → export → train → auto-tune).
+    - Pipeline graph (import → retrain → reload, with evaluate beside them).
     - Pipeline progress panel (current running step and actions).
     - Database stats, table counts, last match import.
-    - Precompute/export/artifacts readiness per format.
+    - The runs on disk, which is current, which is loaded, and the ratings verdict.
     - Migration history, format hierarchy, suggestions.
   - **Polling**:
     - Uses `usePolling` to auto-refresh at a fixed interval while mounted.
@@ -349,35 +354,18 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - **Failures**: `error_message` already carries `CODE: message — hint` from go-app's
     `MLError`; the dialog splits it so the next action is its own block.
 
-- **Model provenance** (`WorkbenchProvenanceSection`)
-  - **Source**: `GET /api/ml/model-stats`. ml-service attaches each model's
-    `provenance` from its sidecar; go-app attaches `live_dataset` and, per model,
-    `dataset_is_live`.
-  - **Displays**: per model — dataset digest, training cutoff, trained-at, accuracy —
-    and a warning listing models trained on a dataset that is no longer on the box.
-  - **Three states, not two**: `current`, `stale`, `unknown`. A model with no recorded
-    dataset is *unaccounted for*, not out of date; `dataset_is_live` is absent rather
-    than false, because flagging every such model as stale would warn about every model
-    on a box that has not retrained since.
-  - **The comparison is go-app's**: ml-service can say what a model trained on, but
-    only go-app knows whether that is still what is on disk.
-
 - **`WorkbenchTab`**
   - **Endpoints**:
-    - `GET /api/ml/model-metadata` (model metadata for features/outputs/artifacts).
-    - `GET /api/ml/model-stats` (artifact provenance and whether its dataset is still live).
+    - `GET /api/ml/xi-status` (the loaded run and its manifest: H-16).
   - **Displays**:
-    - **What each loaded model is.** How well it predicts is the Evaluation report tab.
+    - **What the loaded model is** (`WorkbenchRunSection`): the run id, its cutoff, how far
+      its ratings run, the dataset digest, the commit, the formats it serves, the
+      hyperparameters the grid chose and the run's headline metrics — all from
+      `manifest.json`, which the run wrote beside the artifacts it produced (H-16). A run
+      the loader refused says so, with the reason (D-6).
     - **Walk-forward registry**: uploaded JSON describing rolling-window evaluations.
-    - **Model metadata**:
-      - Features, outputs, and artifact patterns per model type.
-      - Backend `/model-metadata` is canonical; `DEFAULT_MODEL_FEATURES` is a documented fallback.
-
-- **`MLModelStatsTab`**
-  - **Endpoint**: `GET /model-stats` (ML service).
-  - **Displays**:
-    - Per-model table with accuracy, MLQA status, size, training time.
-    - Expandable rows for tuned parameters, metrics (flattened), feature importance, and audit findings.
+    - How well the models predict is the Evaluation report tab, which reads L4's own
+      measurements rather than re-scoring anything here.
 
 ---
 
@@ -385,17 +373,17 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
 
 To simplify correlation across systems (Go, ML, frontend), logs and payloads should converge on a small set of common identifiers:
 
-- `pipeline_id`: Logical pipeline execution (import → precompute → export → train).
+- `pipeline_id`: Logical pipeline execution (import → retrain → reload).
 - `run_id`: Individual run within a pipeline (e.g. one data migration or training run).
 - `format`: Match/series format (`TEST`, `ODI`, `T20I`, `T20`, etc.).
-- `artifact_type`: Model family (`batting`, `bowling`, `fielding`, `extras`, `win`, `combination_meta`).
+- `artifact_type`: Model family (`xi_win`, `xi_perf`, `xi_ratings`).
 - `cutoff`: Time cutoff for features/training (ISO string).
 
 Where practical:
 
 - Include these fields in:
   - Go logs for pipeline steps and `/ops/status` suggestions.
-  - ML logs for training, auto-tune, and backtest runs.
+  - ML logs for retrain and evaluate runs.
   - JSON responses where they help debugging (e.g. model stats, backtest/evaluate steps).
 - Keep naming consistent between Go and Python to ease cross-service searching.
 
@@ -406,16 +394,17 @@ Where practical:
 When debugging or validating a deployment:
 
 1. **Check basic health**
-   - `frontend → HealthTab` (Go + ML status, latency, artifacts).
+   - `frontend → HealthTab` (Go + ML status, latency, the loaded run and its freshness).
 2. **Inspect pipeline and data readiness**
-   - `frontend → OpsStatusTab` (pipeline, DB, exports, artifacts).
+   - `frontend → OpsStatusTab` (pipeline, DB, the runs on disk and which is serving).
    - `GET /ops/status` directly if needed (for scripting).
 3. **Investigate model quality and versions**
-   - `frontend → MLModelStatsTab` (per-model stats and tuning).
-   - `GET /model-stats` and `GET /health` (ML).
+   - `frontend → WorkbenchTab` (the run manifest: cutoff, dataset digest, commit, chosen
+     hyperparameters, headline metrics).
+   - `GET /xi/status` and `GET /health` (ML).
 4. **Validate model behaviour**
    - `frontend → EvaluationReportTab` (L4's folds, locked window, parity check).
-   - `frontend → WorkbenchTab` (what each artifact is, walk-forward registry).
+   - `frontend → WorkbenchTab` (the walk-forward registry upload).
 5. **Correlate logs**
    - Filter Go and ML logs by `pipeline_id`, `run_id`, `format`, and `artifact_type` when present.
 

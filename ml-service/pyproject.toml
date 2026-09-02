@@ -28,12 +28,9 @@ filterwarnings = [
 source = ["app", "ml"]
 branch = true
 omit = [
-  # Offline training and tuning CLIs and helpers (covered by integration/manual runs, not core service)
-  "ml/train_*.py",
-  "ml/training_pipeline.py",
-  "ml/tuning/*.py",
-  "ml/walk_forward.py",
-  "ml/validate_exports.py",
+  # Nothing. The offline training and tuning CLIs this list excluded were deleted in P-5 and
+  # P-6; what replaced them (ml.xi.retrain) is thin enough to be covered by the tests that
+  # cover what it calls, so an omit here would only hide the coverage of live code.
 ]
 
 [tool.coverage.report]

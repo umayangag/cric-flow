@@ -74,7 +74,7 @@ func (g *stepGate) runnable(step pipelinesvc.Step) bool {
 //
 // It reports the pipeline surface only. Acquisition steps share the registry so their
 // lane and label cannot drift, but they have no place in an ordering that runs import
-// through auto-tune — "order" is what the UI renders the graph from, and a fetch step
+// through reload — "order" is what the UI renders the graph from, and a fetch step
 // in it would be a stage that is not one.
 func BuildPipelineSection(ctx context.Context) map[string]any {
 	gate := newStepGate(ctx)

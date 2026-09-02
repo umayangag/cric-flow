@@ -411,7 +411,7 @@ async def admin_train_evaluate(request: Request, cutoff: str = ""):
 async def admin_train_progress(request: Request, step: str = "", run_id: str = ""):
     """Return live progress for a training step (ops plan O-3).
 
-    `step` is a pipeline step id (`train_batting`, `auto_tune`, ...). With no `run_id`
+    `step` is a pipeline step id (`retrain`, `evaluate`). With no `run_id`
     this reports the live run -- the newest non-stale progress file for that step.
     Naming a `run_id` reads exactly that run, finished or not.
 

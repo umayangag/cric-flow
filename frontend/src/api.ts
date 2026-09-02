@@ -243,8 +243,9 @@ export const api = {
     return httpApi(u.toString(), { signal: options?.signal });
   },
   /**
-   * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).
-   * For auto_tune, pass params: { model?, format?, all_formats?, rescreen?, cutoff?, algorithms? } (query string).
+   * Trigger a pipeline step (import, retrain, evaluate, reload).
+   * Params go on the query string: `cutoff` for retrain and evaluate, `run_id` for reload,
+   * `refresh` for import.
    * Returns status and body so UI can handle 202 (started), 501 (run from root), or error.
    */
   async opsPipelineRun(

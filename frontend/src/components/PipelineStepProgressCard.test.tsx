@@ -67,24 +67,24 @@ describe('PipelineStepProgressCard — dataset steps', () => {
 describe('PipelineStepProgressCard — training milestones', () => {
   afterEach(cleanup);
 
-  it('shows phase, counters and metrics for a CV fold', () => {
+  it('shows phase, counters and metrics for a grid point', () => {
     const step: PipelineStepProgress = {
-      step_id: 'train_win',
-      step_label: 'Train Win',
+      step_id: 'retrain',
+      step_label: 'Retrain',
       training: {
         v: 1,
-        phase: 'cv',
+        phase: 'grid',
         current: 3,
         total: 5,
         format: 'T20I',
-        metrics: { accuracy: 0.7123, rows: 12345 },
-        message: 'Fold 3/5 (T20I)',
+        metrics: { auc: 0.7123, rows: 12345 },
+        message: 'Grid point 3/5 (T20I)',
       },
     };
     render(<PipelineStepProgressCard step={step} />);
 
-    expect(screen.getByText(/Cross-validating · T20I · 3 \/ 5/)).toBeInTheDocument();
-    expect(screen.getByText(/accuracy 0\.7123/)).toBeInTheDocument();
+    expect(screen.getByText(/Choosing hyperparameters · T20I · 3 \/ 5/)).toBeInTheDocument();
+    expect(screen.getByText(/auc 0\.7123/)).toBeInTheDocument();
     expect(screen.getByText(/rows 12,345/)).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
   });

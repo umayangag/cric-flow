@@ -1,15 +1,15 @@
 # ML Service (Python)
 
 Standalone FastAPI microservice for cricket ML: XI selection, win probability, the player
-performance model, the match simulator, and training orchestration. Feature precomputation
-is owned by the Go app; this service does not expose a `/precompute` endpoint.
+performance model, the match simulator, the L4 harness, and the retrain / evaluate steps.
+Every feature the models read is computed here, by one as-of pass over the event store.
 
 ## Layout
 
 | Path | Role |
 |------|------|
 | `app/` | HTTP layer: FastAPI (`main.py`), Pydantic models, artifact loading, XI serving (`xi_service.py`) |
-| `ml/` | `ml/xi/` — the rating pass, the win models, the performance model, the simulator and the L4 harness; plus the windowed-form win trainer and the tuning stack, which P-6 removes |
+| `ml/` | `ml/xi/` — the rating pass, the win models, the performance model, the simulator, the L4 harness, and run identity (`runs.py`) |
 | `tests/` | Unit, integration, and gated e2e tests |
 | `docs/` | Service docs including [IMPROVEMENT_PR_CHECKLIST.md](docs/IMPROVEMENT_PR_CHECKLIST.md) |
 
@@ -17,8 +17,9 @@ Key modules:
 
 - `app/main.py` — routes, middleware, lifespan
 - `app/xi_service.py` — selection, win probability, performance, simulation, L4's report
-- `app/artifacts.py` — in-memory joblib registries and reload
-- `ml/xi/train.py`, `ml/xi/evaluate.py` — the training and evaluation CLIs (`make train-xi`, `make xi-evaluate`)
+- `ml/xi/retrain.py` — the `retrain` command: one run, its artifacts and its manifest
+- `ml/xi/runs.py` — run identity (H-16): the manifest, the `current` pointer, the refusal (D-6)
+- `ml/xi/evaluate.py` — the L4 harness (`make evaluate`)
 
 **Prerequisites:** Python 3.10+ locally; CI and Docker use Python 3.12.
 
@@ -38,32 +39,27 @@ This installs runtime deps from `requirements.txt` and dev tools (ruff, pytest).
 
 Directory resolution precedence:
 
-1. CLI args (`--csv`, `--out` for training)
-2. Environment variables (`GO_APP_OUTPUT_DIR`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`)
+1. CLI args (`--out` for retrain and evaluate)
+2. Environment variables (`ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `XI_RATINGS_MAX_AGE_DAYS`)
 3. `ml-service/config.json` (merged over `config.default.json`)
 4. Built-in defaults
 
-Minimal `config.json` schema:
+The whole `config.json`:
 
 ```json
 {
-  "inputs": { "go_app_export_dir": "../output/go-app" },
-  "outputs": { "artifacts_dir": "../output/ml-service" }
+  "inputs": { "training_subprocess_timeout_sec": 604800 },
+  "outputs": { "artifacts_dir": "../output/ml-service" },
+  "ml": { "formats": ["TEST", "ODI", "T20", "T20I"], "ratings_max_age_days": 14 }
 }
 ```
 
+**There are no model hyperparameters here.** They are the three-point grid in
+`ml.xi.train.DISPLAY_GRID`, chosen inside the training rows and recorded per run in
+`manifest.json`. A table of tuned parameters nothing could join back to an artifact was how a
+model came to carry parameters from a search it had never seen.
+
 See [../docs/config-and-data.md](../docs/config-and-data.md) for full details.
-
-### Model training parameters (config only, per model)
-
-Hyperparameters are read from config (no hidden code defaults). Edit `ml.training.<model>` in `config.json`:
-
-| Model | Config path | Used by |
-|-------|-------------|--------|
-| Win (windowed form) | `ml.training.win` | `ml.train_win`, auto-tune |
-
-The block includes `n_estimators`, `max_depth`, `random_state`, `joblib_compress` (0–9). The XI
-models read their hyperparameters from `ml/xi/`; see [../docs/ml-and-training.md](../docs/ml-and-training.md).
 
 ## Common tasks
 
@@ -73,14 +69,13 @@ Run locally on port 8000 with reload:
 make run
 ```
 
-Train the XI models (the rating pass, the win models and the performance models) and score them:
+Build a run (the rating pass, the win models and the performance models), serve it, and score it:
 
 ```bash
-make train-xi CUTOFF=2025-09-01
-make xi-evaluate
+make retrain CUTOFF=2025-09-01   # writes runs/<run_id>/, publishes nothing
+make reload                      # points current at it and loads it
+make evaluate                    # L4 over the database; touches no artifact current points at
 ```
-
-Auto-tune the windowed-form win model: see **docs/ml-and-training.md** — e.g. `make auto-tune FORMAT=T20`.
 
 Docker:
 
@@ -89,7 +84,8 @@ make docker-build
 make docker-run
 ```
 
-From repo root: `make export-dataset` → `output/go-app/`. See [../docs/overview.md](../docs/overview.md).
+From repo root: `make up-all CUTOFF=<date>` is the whole chain from an empty database. See
+[../docs/overview.md](../docs/overview.md).
 
 ## HTTP API
 
@@ -99,10 +95,8 @@ OpenAPI schema: `GET /openapi.json` when the service is running.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Service status and whether artifacts are loaded |
-| GET | `/artifacts/status` | Per-format artifact presence and load state |
-| GET | `/model-metadata` | The win model's feature order, output and artifact naming |
-| GET | `/model-stats` | Trained model file stats (algorithm, size, mtime, etc.) |
+| GET | `/health` | Alive, which run is loaded, and whether its ratings are fresh enough to answer with |
+| GET | `/artifacts/status` | Every run on disk, which one `current` names, which is loaded, and the loader's refusal when there is one |
 
 ### Selection and prediction (the XI layer)
 
@@ -112,19 +106,15 @@ eleven names.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/xi/status` | Loaded formats, how far the ratings run, the last training report |
+| GET | `/xi/status` | The loaded run and its manifest (H-16), loaded formats, how far the ratings run and whether they are stale (H-11), the run's own report |
 | GET | `/xi/evaluate-report` | L4's evaluation report (`xi_evaluate_report.json`) |
 | POST | `/xi/optimize` | Pool + constraints → XI. `objective: "win"` maximises P(win); `objective: "ratings"` is the rating-ordered pick, the only mode offered where the objective does not rank (H-17) |
 | POST | `/xi/predict-win` | Two elevens → displayed P(team1 wins) |
 | POST | `/performance/predict` | Two elevens → per-player distributions (L2-B) |
 | POST | `/simulate` | Two elevens → totals, per-player ranges, the median-band scorecard and P(win), all from one set of draws (L2-C). Limited-overs formats only |
 
-### Windowed-form win model (P-6 removes it)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/predict/win` | `WinFeatures[]` → `WinPrediction[]` |
-| POST | `/predict/win-enhanced` | Per-player team features → single `WinPrediction` |
+A live request (no `as_of`) against ratings older than `ml.ratings_max_age_days` answers
+**503 `RATINGS_STALE`** rather than predicting from a squad that has moved on (H-11).
 
 ### Admin (gated)
 
@@ -132,10 +122,10 @@ Requires `ENABLE_HOT_RELOAD=1` and `X-Admin-API-Key` when `ADMIN_API_KEY` is set
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/admin/reload` | Rescan models directory and reload joblib artifacts |
-| POST | `/admin/train/win` | Run win training (`cutoff` required) |
-| POST | `/admin/train/auto-tune` | Hyperparameter search (`cutoff` required) |
-| GET | `/admin/train/auto-tune/progress` | Auto-tune progress (API key only) |
+| POST | `/admin/reload?run=<id>` | Point `current` at a run and load it. Without `run`: the run `current` names, or the newest. 409 `RUN_ARTIFACTS_INVALID` when the run is not one, or its arrays are not the arrays this code reads |
+| POST | `/admin/train/retrain?cutoff=` | Build one run (`cutoff` required). Publishes nothing |
+| POST | `/admin/train/evaluate` | Run L4 and write its report |
+| GET | `/admin/train/progress?step=` | Live progress for a step (API key only) |
 
 ## Model loading
 
@@ -146,13 +136,22 @@ Artifact directory precedence at startup:
 3. `config.outputs.artifacts_dir`
 4. Fallback: `../../output/ml-service`
 
-Expected joblib files:
+Under that root:
 
-- Win (windowed form): `win_model_<FMT>.joblib`, with `win_model_<FMT>_metadata.json` beside it
-- XI layer: `xi_ratings.joblib`, `xi_win_<FMT>.joblib`, `xi_perf_<FMT>.joblib` — loaded by
-  `ml.xi.store`, not by the per-format registry above
+```
+current_run.json                    {"run_id": "...", "updated_at": "..."}
+runs/<run_id>/
+  manifest.json                     what the run trained on and what it chose (H-16)
+  xi_ratings.joblib
+  xi_win_<FMT>.joblib
+  xi_perf_<FMT>.joblib
+  xi_win_report.json
+```
 
-Reload at runtime: `POST /admin/reload` when hot reload is enabled.
+At startup, and on `POST /admin/reload`, the service loads the run `current` names — or the
+newest one if nothing does, publishing it. A directory with no manifest, or one whose arrays are
+not the arrays this code reads, is **refused** with an error naming the run rather than loaded
+(D-6); the refusal reaches `/xi/status`, `/health` and `/artifacts/status`.
 
 ## Formatting and CI checks
 
@@ -163,4 +162,5 @@ make test         # unit tests
 make coverage     # tests + coverage report
 ```
 
-Keep feature contracts in sync with the Go app. End-to-end workflow: repo root [README.md](../README.md).
+`make check-reachability` fails on any module no live entrypoint can reach. End-to-end workflow:
+repo root [README.md](../README.md).

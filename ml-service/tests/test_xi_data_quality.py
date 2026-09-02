@@ -421,7 +421,9 @@ def test_accepting_the_new_counts_moves_the_baseline(tmp_path) -> None:
     twelve = {"X": [f"X{i}" for i in range(12)], "Y": [f"Y{i}" for i in range(11)]}
     (src / "9.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], twelve, "X", 9)))
 
-    rc = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out), "--accept-data-quality"])
+    rc = retrain_main(
+        ["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out), "--accept-data-quality"]
+    )
 
     assert rc == 0
     assert json.loads((out / quality.BASELINE_NAME).read_text())["oversized_squads"] == 1

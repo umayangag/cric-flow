@@ -153,7 +153,7 @@ func TestStart(t *testing.T) {
 		mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(scanIntRow(42))
 
-		tr, err := Start(context.Background(), "precompute-features", map[string]string{"format": "T20"})
+		tr, err := Start(context.Background(), "xi-retrain", map[string]string{"format": "T20"})
 		require.NoError(t, err)
 		require.NotNil(t, tr)
 		require.Equal(t, 42, tr.ID)
@@ -163,7 +163,7 @@ func TestStart(t *testing.T) {
 		db.SetDB(nil)
 		t.Cleanup(func() { db.SetDB(nil) })
 
-		_, err := Start(context.Background(), "export-dataset", nil)
+		_, err := Start(context.Background(), "xi-reload", nil)
 		require.Error(t, err)
 	})
 }

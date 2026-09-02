@@ -1,12 +1,12 @@
 // Package tracking persists pipeline and migration run state so the API and
-// ops UI can show running/completed steps and enforce ordering (e.g. export
-// only after precompute).
+// ops UI can show running/completed steps and enforce ordering (e.g. reload
+// only after retrain).
 //
 // # Concepts (aligned with data_migrations table)
 //
 //   - Run ID: Migration.ID — primary key of the run.
-//   - Run type: Migration.Command — e.g. "cricsheet-import", "precompute-features",
-//     "export-dataset", "train-batting", "ml-auto-tune".
+//   - Run type: Migration.Command — e.g. "cricsheet-import", "xi-retrain", "xi-evaluate",
+//     "xi-reload", "dataset-fetch", "dataset-extract".
 //   - Run state: Migration.Status — one of IN_PROGRESS, COMPLETED, FAILED, CANCELLED.
 //
 // # State transitions

@@ -3,12 +3,6 @@ inpackage: false
 filename: "{{.InterfaceName}}.go"
 formatter: goimports
 packages:
-  github.com/umayangag/cric-flow/go-app/internal/services/teampredictor:
-    config:
-      dir: internal/services/teampredictor/internal/mocks
-      pkgname: mocks
-    interfaces:
-      MLClient: {}
   github.com/umayangag/cric-flow/go-app/internal/db:
     config:
       dir: internal/db/mocks
@@ -17,17 +11,6 @@ packages:
       DB: {}
       Row: {}
       Rows: {}
-      DatasetRepo: {}
-  github.com/umayangag/cric-flow/go-app/internal/services/exportdataset:
-    config:
-      dir: internal/services/exportdataset/mocks
-      pkgname: mocks
-    interfaces:
-      BattingExporter: {}
-      BowlingExporter: {}
-      FieldingExporter: {}
-      ExtrasExporter: {}
-      WinExporter: {}
   github.com/umayangag/cric-flow/go-app/internal/cricsheet:
     config:
       dir: internal/cricsheet/mocks

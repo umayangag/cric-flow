@@ -11,7 +11,10 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 ### ML service (FastAPI) — base `http://localhost:8000`
 
 - **Content-Type:** `application/json`. **Error format:** `{ "error": { "code": "INVALID_INPUT", "message": "...", "details": {...} } }`
-- **GET /health** — 200 `{ "status": "ok" }`
+- **GET /health** — 200 with `status`, `models_dir`, `loaded`, `run_id`, the loaded XI and
+  performance formats, `ratings` (H-11's verdict) and `error` (the loader's refusal, when there
+  is one). `status: "ok"` is about the process: a service with no model loaded is alive, and
+  `loaded: false` is how it says so.
 - **Player id contract:** every `*_player_ids` field on an XI endpoint, and every key of
   `marginal_values`, is the **Cricsheet registry id** — `player.external_id` in the database, a
   hex string such as `2911de16` — never the numeric `player.player_id`. That is the key the
@@ -21,17 +24,36 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
 - **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
-- **GET /xi/status** — Loaded formats, `ratings_through`, player count, the last training report.
-- **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make xi-evaluate` when the harness has not run.
-- **POST /predict/win**, **POST /predict/win-enhanced** — the windowed-form win model. Superseded; P-6 removes them.
+- **GET /xi/status** — Loaded formats, `ratings_through`, player count, the run's own training
+  report, and — since P-6 — `run_id` and `manifest` (H-16: run id, cutoff, dataset sha, git sha,
+  the hyperparameters the grid chose, the run's headline metrics), `ratings` (H-11: `fresh`,
+  `age_days`, `max_age_days`, `code`) and `error` (D-6: why a run on disk was refused).
+- **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make evaluate` when the harness has not run.
+- **GET /artifacts/status** — Every run on disk, newest first, with `current_run`, `loaded_run`,
+  the ratings verdict and the loader's refusal. A run directory with no manifest is listed as
+  `has_manifest: false` rather than hidden: it is exactly what an operator is looking for when
+  nothing loads.
+- **POST /admin/reload?run=<id>** — Point `current` at a run and load it. Without `run`: the run
+  `current` already names, or the newest one. **409 `RUN_ARTIFACTS_INVALID`** when the run is
+  not one, or when its arrays are not the arrays this code reads (D-6); **403 `RELOAD_DISABLED`**
+  when `ENABLE_HOT_RELOAD` is off.
+- **POST /admin/train/retrain?cutoff=...** — Build one run. **400 `CUTOFF_REQUIRED`** without a
+  cutoff. It publishes nothing; `/admin/reload` does that.
+- **POST /admin/train/evaluate** — Run L4 and write its report. Touches no artifact `current`
+  points at.
+
+**Every XI endpoint refuses a stale live request.** A request with no `as_of` against ratings
+older than `ml.ratings_max_age_days` (default 14) answers **503 `RATINGS_STALE`**, with a hint
+naming the step that fixes it (H-11). A request that names its own `as_of` is served: a
+backtest asks for a date and gets it.
 
 ### Go API (mux) — base `http://localhost:8080`
 
 - **GET /health** — 200 `{ "status": "ok" }`
 - **GET /readiness** — 200 `{ "status": "ready" }`; 503 when DB unavailable
-- **POST /precompute** — 202 `{ "status": "started" }`; optional body `{ "season", "formats" }`
-- **GET /precompute/status** — 200 with running, started_at, finished_at, season, formats, phase (starting|form|venue|opposition|consistency|done), last_error
 - **POST /import/cricsheet** — Body: `{ "dir", "placeholders_fielding" }`; 202 started
+- **GET /api/ml/xi-status** — proxies ml-service `GET /xi/status`: which run is loaded, what its
+  manifest records, and whether its ratings are fresh enough to answer with
 - **GET /players/{id}?season=...&format=...** — Player details (id, player_name, is_wicket_keeper, batting_consistency, bowling_consistency, etc.)
 
 Backtest and ops endpoints are described in the sections below. Keep contracts in sync with `ml-service/app/main.py` Pydantic models and Go `internal/contracts`.
@@ -51,11 +73,21 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 |-------|---------|
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
 | `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI |
+| `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
 | `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
 | `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and per innings the median-band `total`, its `extras` and the 10-90 range of the draws |
 
 The scorecard lines and extras sum to the innings total by construction — they come from the
 same draws — so nothing is rescaled toward the win probability.
+
+**Every substitution is named on the wire (§8.7).** Three fields say which model answered:
+`selection` says whether the XIs were optimised or rating-ordered, `forecast` says whether the
+per-player numbers came from the simulator's draws or from L2-B's own quantiles, and
+`win_probability.source` says which model produced the headline. The rule exists because
+go-app silently falling back from a refused `/xi/optimize` to another optimiser is what let a
+broken arm report a number for months (§8.5). Where a substitution *cannot* be labelled — a
+player the simulator or the performance model returned no line for — the request fails instead
+of leaving that player's row at zeros, which would read as a forecast of nothing.
 
 **Retired fields are refused, not ignored:** `weather`, `simulate`, `use_reconciled_scorecard`
 and `include_both_scorecards` each return 400 with a code and a hint. A caller still sending one
@@ -66,7 +98,7 @@ would otherwise get an answer to a different question with no indication why.
 ## Evaluation
 
 **`GET /api/backtest/report`** proxies ml-service's `GET /xi/evaluate-report`, which serves
-`xi_evaluate_report.json` as `make xi-evaluate` last wrote it. 503 with a hint when the harness
+`xi_evaluate_report.json` as `make evaluate` last wrote it. 503 with a hint when the harness
 has not run.
 
 The report carries, per format: the walk-forward folds and their summary (objective and display
@@ -79,26 +111,50 @@ TEST control, and the train/serve parity verdict.
 against actuals and went with them in P-5; what replaced it is the harness, which scores every
 format over rolling origins in one run and never uses the locked window for a choice (H-19).
 
-**`GET /api/backtest/training-data?cutoff=...&format=...`** still serves rows to the
-windowed-form win trainer and the auto-tune stack. P-6 removes it with them.
+**There is no `training-data` endpoint.** It served rows to the windowed-form win trainer and
+the auto-tune stack, and went with both in P-6. The rating pass reads the event store directly.
 
 **Frontend:** the Evaluation report tab renders the report. It has no form — the folds, the
 locked window and the seeds are the harness's, and a cutoff chosen in a browser would be a
 choice made against the locked window.
 
 **E2E smoke:** `make e2e-backtest-smoke` checks `/api/backtest/report` (200, or 503 when the
-harness has not run) and the options and model-stats endpoints.
+harness has not run), the options endpoint, and `/api/ml/xi-status` for the loaded run and its
+freshness verdict.
 
 ---
 
 ## Ops status dashboard
 
-**Endpoint:** `GET /ops/status` (no query params). Aggregates: services (API + ML health), DB (connectivity, migration, counts), precompute freshness per format, CSV exports (root, per-format files with exists/rows/modified), ML artifacts (per-format batting/bowling, exists/loaded/modified), fielding and weather data availability (row counts), and an ordered list of **suggestions** (actionable make commands to get the system ready).
+**Endpoint:** `GET /ops/status` (no query params). Aggregates: services (API + ML health), DB
+(connectivity, migration, counts), the runs on disk and which one is serving, fielding row
+counts, DB freshness and completeness per format, the pipeline's per-step state, and an ordered
+list of **suggestions** (the next make command the run history says is missing).
 
-**Response sections:** `timestamp`, `services` (api_health, api_readiness, ml_health), `db` (connected, migration status/current/expected, counts: players, matches, innings), `precompute` (last_run, as_of, formats with status ok/stale/missing), `exports` (root from GO_APP_OUTPUT_DIR when set, formats with files: name, exists, rows, modified), `artifacts` (root; probes ML `/artifacts/status` when available else filesystem scan; per-format batting/bowling/fielding/extras/win/innings with exists, loaded, modified, and — from the ML probe — `loaded_modified` and `stale`), `fielding` (available, rows), `weather` (available, rows), `pipeline` (steps with running, completed, runnable per step), `suggestions[]` (reason, commands). Precompute freshness: format in last run is ok if run finished same UTC day else stale; formats not in run = missing. Suggestions priority: DB → Precompute → Exports → Artifacts → Services. Example commands: DB not ready → `make migrate && make cricsheet-import`; precompute missing/stale → `make precompute-asof`; exports missing → `make export-dataset`; artifacts missing → `make ml-install && make train-batting`, `make train-bowling`; ML down → `make dev-up` or `make dev-rebuild`. Fallback artifacts root when ML down: GO_APP_ARTIFACTS_ROOT or output/ml-service.
+**Response sections:** `timestamp`, `services` (api_health, api_readiness, ml_health), `db`
+(connected, migration status/current/expected, counts), `dataset` (the directory Import reads,
+its manifest and match-file count), `artifacts`, `fielding` (available, rows), `db_freshness`,
+`db_completeness`, `pipeline` (per step: running, completed, runnable, optional),
+`suggestions[]`.
 
-**Pipeline modes:** Prefer **Train** when params are known (config + DB from previous auto-tune); use **Auto-tune** when discovering or re-optimizing hyperparameters. See **docs/ml-and-training.md** (§ Pipeline modes) for the single-train principle and Mode A (fast path) vs Mode B (tuning path).
+**`artifacts` reports runs, not a matrix.** It probes ml-service `GET /artifacts/status` and
+copies the answer through whole: `current_run`, `loaded_run`, `ratings_through`, `ratings`
+(H-11's verdict), `error` (the loader's refusal, D-6) and `runs[]` — each with `run_id`,
+`created_at`, `cutoff`, `git_sha`, `dataset_sha`, `formats`, `has_manifest`, `current` and
+`loaded`. It reports runs because a run is what an artifact belongs to now (H-16): "is the model
+current?" is answered by which run `current` points at and whether that is the run the process
+loaded, not by six per-format files that could each have come from a different session. When
+ml-service cannot be reached, go-app scans `<root>/runs/*/manifest.json` itself and reports
+`reachable: false` — the scan can say what exists, and does not claim to know what is loaded.
 
-**Quick verification:** `make dev-up` then `curl -s http://localhost:8080/health | jq`, `curl -s http://localhost:8080/readiness | jq`, `curl -s http://localhost:8080/ops/status | jq`. Frontend: Ops Status UI shows Fielding and Weather tiles (available, rows); suggestions per section card.
+**Suggestions** walk the three-step chain: no import → `make migrate && make cricsheet-import`;
+a retrain older than the import (or none) → `make retrain CUTOFF=...`; a reload older than the
+retrain (or none) → `make reload`. Only the earliest unmet one is offered — telling an operator
+to do three things in an order the message does not name is how the old list was read wrong.
 
-**Force gaps to test:** Remove artifacts → `rm -rf output/ml-service/*`; recheck artifacts and suggestions. Remove exports for a format → recheck exports and suggestions. After `make train-all`, recheck artifacts and suggestions.
+**Quick verification:** `make dev-up` then `curl -s http://localhost:8080/health | jq`,
+`curl -s http://localhost:8080/readiness | jq`, `curl -s http://localhost:8080/ops/status | jq`.
+
+**Force gaps to test:** point `GO_APP_ARTIFACTS_ROOT` at an empty directory and recheck
+`artifacts` and `suggestions`; remove a run's `manifest.json` and recheck that it is listed as
+`has_manifest: false` and that a reload of it answers 409.

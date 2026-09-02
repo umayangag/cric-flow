@@ -177,7 +177,7 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 
-// getPlayerHandler returns player info with optional consistency stats.
+// getPlayerHandler returns one player's row: id, name, keeper and retired flags.
 func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
@@ -188,10 +188,6 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	season := r.URL.Query().Get("season")
-	format := r.URL.Query().Get("format")
-
-	// Get base player data
 	player, err := db.GetPlayerByID(r.Context(), id)
 	if err != nil {
 		slog.Error("getPlayer: GetPlayerByID failed", slog.Int64("player_id", id), slog.Any("err", err))
@@ -199,32 +195,15 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get consistency data
-	consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
-	if err != nil {
-		// It's okay for consistency data to be missing, so just log the error
-		slog.Warn(
-			"could not get player consistency",
-			slog.Any("err", err),
-			slog.Int64("player_id", id),
-			slog.String("season", season),
-			slog.String("format", format),
-		)
-	}
-
-	resp := playerResponse{
+	// No consistency numbers: they came from `feature_raw_stats_snapshots`, which P-6
+	// dropped with the precompute pass that filled it. A player's form lives in the rating
+	// state ml-service holds, and is read there rather than served from a stale snapshot.
+	respondJSON(w, http.StatusOK, playerResponse{
 		ID:             player.ID,
 		Name:           player.Name,
 		IsWicketKeeper: player.IsWicketKeeper,
 		IsRetired:      player.IsRetired,
-	}
-
-	if consistency != nil {
-		resp.BattingConsistency = &consistency.BattingConsistency
-		resp.BowlingConsistency = &consistency.BowlingConsistency
-	}
-
-	respondJSON(w, http.StatusOK, resp)
+	})
 }
 
 // getMatchHandler returns match details for a given match id.

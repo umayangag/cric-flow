@@ -1,6 +1,7 @@
 # Configuration and data
 
-go-app and ml-service configuration, Cricsheet import, and export-schema alignment with ML. Feature vectors and model inputs: [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+go-app and ml-service configuration and Cricsheet import. Model inputs:
+[ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 **Precedence:** CLI/flags → env → component `config.json` → built-in defaults.
 
@@ -34,24 +35,23 @@ Config file: `go-app/config.json`
     It is invisible to import, which skips directories and does not recurse, so a
     half-downloaded archive can never be mistaken for match data.
 - `outputs`
-  - `export_dir` — where `export-dataset` writes CSVs.
+  - `dir` — go-app's own output directory. It held the export CSVs until P-6 deleted them;
+    what is left is the resource-observation file the import pipeline's concurrency is
+    derived from. `GO_APP_OUTPUT_DIR` overrides it.
 - `formats`
   - `treat_t20i_as_subset` (bool) — treat T20 between international teams as T20I.
   - `international_teams` (list) — ICC national teams for the subset rule.
-- `features`
-  - `precompute_timeout_ms` (int) — timeout for precompute/import pipeline steps (default 86400000). 0 = no deadline.
-  - `export_timeout_ms` (int) — timeout for the export-dataset step only. 0 = use `precompute_timeout_ms`. Set higher than the pipeline timeout if export writes many format CSVs and was hitting "context canceled" (e.g. 3600000 = 60 min).
-  - `min_batting_innings`, `min_bowling_innings`, `form_shrinkage_alpha`, `consistency_per_format`, `history_window_matches` — reserved or optional.
-  - **Feature extraction:** `ewm_alpha` (0.3), `ewm_alpha_short` (0.5), `ewm_alpha_long` (0.2), `consistency_last_n` (10), `form_window_n` (0), `momentum_last_n` (5). These control form/consistency/venue/opposition in precompute and export. **Changing any of these changes the feature space:** you must re-run precompute → export → train (or auto-tune). Tuning them for better accuracy is a separate, slower loop (see **ml-and-training.md** § Precompute and feature parameters).
-  - `fielding_enrich` — when ML has no fielding model: `ewm_alpha`, `form_to_catches_ratio` (0.7).
-- `pipeline` (optional) — `precompute_concurrency`, `import_concurrency`, `seqcalc_concurrency`, `export_concurrency`, `fielding_concurrency` (0 = auto from GOMEMLIMIT/cgroup). **Precompute and memory:** When no limit is set, precompute uses a low default concurrency (2) to avoid OOM. When a limit is set (GOMEMLIMIT or cgroup v2, including Docker/K8s via `/proc/self/cgroup`), each pipeline’s concurrency is derived from the limit: workers are sized so total usage stays at about **80%** of the limit. Per-worker estimates: precompute 450 MB, import 150 MB, export 100 MB, seqcalc 500 MB, fielding 50 MB. For containers with ≤2GB memory, **seqcalc is capped at 1 worker** (each calculator can use more than the estimate; one worker can still exceed the limit on very large formats—set GOMEMLIMIT or use a larger container if needed). Replay: `replay_match_page_size` (500). See `resources` for per-worker MB and thresholds.
-- `backtest` (optional) — `list_default_limit` (50), `list_max_limit` (500), `accuracy_trend_default_limit` (100), `accuracy_trend_max_limit` (500). `job`: `job_cleanup_age_hours` (24), `job_cleanup_interval_min` (15), `export_contributions_job_max_duration_hr` (2), `eval_job_max_duration_hr` (6), `eval_job_concurrency_min` (2), `eval_job_concurrency_max` (8).
+- `pipeline` (optional)
+  - `import_timeout_ms` (int) — how long an import may run (default 86400000). 0 = no deadline.
+  - `import_concurrency` (int) — 0 = auto. With a memory limit set (GOMEMLIMIT, or cgroup v2
+    including Docker/K8s via `/proc/self/cgroup`), workers are sized so total usage stays at
+    about **85 %** of it, at 150 MB per import worker; with no limit detected, `NumCPU()`.
+    Import is the only pipeline go-app runs workers for — precompute, export, seqcalc and
+    fielding went with their pipelines in P-6.
 - `ops` (optional) — `migrations_page_default` (10), `migrations_page_max` (100), `migrations_page_cap` (10000), `recent_migrations_count` (100).
-- `resources` (optional) — `precompute_mb_per_worker` (450), `import_mb_per_worker` (150), `export_mb_per_worker` (100), `seqcalc_mb_per_worker` (500), `fielding_mb_per_worker` (50), `memory_usage_fraction_percent` (80), `seqcalc_low_memory_limit_gib` (2), `precompute_concurrency_when_no_limit` (2).
-- `export`
-  - `required_format` (string) — restrict export to this format unless overridden by flags.
+- `resources` (optional) — `import_mb_per_worker` (150), `memory_usage_fraction_percent` (85).
 
-**Environment:** `GO_APP_CONFIG`, `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `PRECOMPUTE_CONCURRENCY`, `IMPORT_CONCURRENCY`, `SEQCALC_CONCURRENCY`, `EXPORT_CONCURRENCY`, `FIELDING_CONCURRENCY`.
+**Environment:** `GO_APP_CONFIG`, `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `IMPORT_CONCURRENCY`.
 
 **Team selection** (under `team`): `min_bowlers`, `default_batters`, `default_bowlers`. Under
 `selection`: `max_win_prob_eval_budget` (500 — how many XIs ml-service may score per side per
@@ -59,17 +59,17 @@ round) and `best_response_rounds` (3 — how many times the two sides answer eac
 
 There is nothing else left to configure about selection. The objective, the search and the
 constraints all live in ml-service, and the settings that used to weigh a batting score against
-a bowling one were retired in P-5: a `config.json` that still carries one of them fails
-`ValidateForServer` with a message naming what replaced it (`internal/config/retired_keys.go`),
-because encoding/json drops an unknown key and nothing else would ever notice.
+a bowling one were retired in P-5 — as the `features.*`, `export.*`, `backtest.*`, `weather.*`
+and precompute/seqcalc/export/fielding keys were in P-6. A `config.json` that still carries any
+of them fails `ValidateForServer` with a message naming what replaced it
+(`internal/config/retired_keys.go`), because encoding/json drops an unknown key and nothing
+else would ever notice.
 
 **Future-match prediction:** go-app sends player ids, a format, the two team ids, the venue id
 and the date. It sends no features at all — the rating state lives in ml-service, which is what
 makes the training and serving paths compute the same function of the same eleven names (H-8).
 **Weather is not a model input**; see [weather-not-implemented.md](weather-not-implemented.md).
-
-`configs/feature_vectors.json` is still read by go-app's export queries, which P-6 removes with
-the export step.
+P-6 dropped `weather_data` and `weather_job` with the probes that read them.
 
 ---
 
@@ -77,22 +77,25 @@ the export step.
 
 Config file: `ml-service/config.json`
 
-**Keys:**
-- `inputs` — `go_app_export_dir`, `training_data_fetch_timeout_sec` (default 604800 = 7 days — HTTP timeout when fetching training data from go-app), `training_data_fetch_timeout_invalid_fallback_sec` (600), `training_subprocess_timeout_sec` (default 604800 = 7 days — max time for each /admin/train/* subprocess; set in config so long training runs don’t hit context deadline), `go_app_request_timeout_sec` (30 — tuned-params GET/POST).
-- `outputs` — `artifacts_dir`.
-- `ml`
-  - `resources` (optional) — `training_mb_per_job` (400), `tuning_mb_per_job` (500), `prediction_mb_per_job` (100), `memory_usage_fraction_percent` (80 — use up to 80% of available memory for training/tuning workers), `training_low_memory_threshold_mb` (2560 — when process memory limit is at or below this MB, training uses 1 job to avoid OOM). Used for resource-aware n_jobs when a memory limit is set.
-  - `formats` — list of format codes to train/serve.
-  - `training` — **required** per-model block: `batting`, `bowling`, `fielding`, `extras`, `win` each with `n_estimators`, `max_depth`, `random_state`, `joblib_compress`; optional `estimator` (rf/gb/stacked/quantile), `learning_rate`, `quantile_level`.
-  - `feature_defaults` (optional) — defaults when go-app feature map omits keys: `common` (weather/context), `fielding`.
-  - `tuning` (optional) — for auto_tune: `cv_splits`, `n_iter`, `scoring`, `algorithms` (rf, gb, quantile, stacked or "all"), `validation_method` (walk_forward default, or kfold).
-  - `walk_forward` (optional) — for walk-forward: `initial_cutoff`, `window_x`, `registry_path`.
-  - `prediction_defaults` — e.g. `economy` (default 6.0).
-  - `team_prediction` — `team_size` (11), `max_wickets_per_innings` (10).
+**Keys:** four, and that is the whole file. Everything the deleted models and the tuning stack
+read went with them in P-5 and P-6; hyperparameters are the three-point grid inside `retrain`
+and are recorded per run in `manifest.json`, not configured here.
 
-**Environment:** `ML_SERVICE_CONFIG`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `GO_APP_OUTPUT_DIR`, `ENABLE_HOT_RELOAD`, `ML_N_JOBS`, `ML_N_JOBS_MAX`, `ML_MEMORY_LIMIT_MB`.
+- `inputs.training_subprocess_timeout_sec` — max time for a `/admin/train/*` subprocess
+  (default 604800 = 7 days; a retrain is minutes, an evaluate is under an hour, and the
+  deadline exists so a hung one does not hold the semaphore forever).
+- `outputs.artifacts_dir` — the artifacts root, holding `runs/` and `current_run.json`.
+- `ml.formats` — the format codes to train and serve. Checked against go-app's canonical list
+  by `make frontend-backend-sync-check`.
+- `ml.ratings_max_age_days` (14) — H-11: a live prediction against ratings older than this is
+  refused with `RATINGS_STALE`. `XI_RATINGS_MAX_AGE_DAYS` overrides it; 0 turns the check off.
 
-**Artifacts naming:** `batting_scaler_<FORMAT>.joblib`, `batting_model_<FORMAT>.joblib` (same for bowling, fielding, etc.). Artifacts are always per-format; the unsuffixed names were removed in C3-2.
+**Environment:** `ML_SERVICE_CONFIG`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `ENABLE_HOT_RELOAD`,
+`ADMIN_API_KEY`, `XI_RATINGS_MAX_AGE_DAYS`, `MAX_CONCURRENT_TRAINING_JOBS`.
+
+**Artifacts naming:** `runs/<run_id>/` holds `xi_ratings.joblib`, `xi_win_<FORMAT>.joblib`,
+`xi_perf_<FORMAT>.joblib`, the run's report and `manifest.json`; `current_run.json` at the root
+names the run being served. See **ml-and-training.md** § Runs, manifests and staleness.
 
 **Serving:** `format` is required on feature rows, all rows must share it, and a model for it must be loaded. A request without `format` returns 400 `MISSING_FORMAT`; a format with no loaded model returns 404 `MODEL_NOT_LOADED`.
 
@@ -301,47 +304,3 @@ not block a training run. `POST /ops/pipeline/stop` stops everything by default,
 lane with `?lane=data`.
 
 ---
-
-## Export provenance
-
-An export leaves `export-manifest.json` beside its CSVs (ops plan P-1):
-
-```json
-{ "v": 1, "exported_at": "…", "formats": ["T20I"], "unified": true,
-  "files": [{"name": "batting_encoded_T20I.csv", "bytes": 4096}],
-  "provenance": { "dataset_sha256": "…", "dataset_feed": "all",
-                  "dataset_source_url": "…", "dataset_extracted_at": "…",
-                  "dataset_match_files": 19998 } }
-```
-
-A CSV on disk says nothing about the dataset behind its rows. ml-service reads this
-manifest when training and copies the provenance — plus the training cutoff, which
-already varies per run — into each model's sidecar, beside `feature_names`. The
-provenance then travels **with the artifact**, because the export directory that
-produced it is overwritten by the next export.
-
-`files` records sizes because an empty CSV is a failed export that reported success,
-and a manifest listing a file without its size would hide exactly that.
-
-Provenance that cannot be established is **omitted, not blanked** — a data directory
-populated by hand has no manifest, and an export from before P-1 has none. Absent means
-genuinely unknown, which is what P-2 flags; inventing a digest would defeat it.
-
-Inference exports (`--inference-only`) get no manifest: they are inputs for a
-prediction, not training data.
-
----
-
-## Export schemas and ML input mapping
-
-**Goal:** go-app dataset exports match ML service expected inputs (column order and types).
-
-**Sources:** Exporter: `go-app/cmd/export-dataset/main.go`. ML: `configs/feature_vectors.json` (the shared contract; `ml/dataset_definitions.py` was removed in C7-2 once the legacy trainers that used it were gone).
-
-**Outputs:** Per-format: `batting_encoded_<FORMAT>.csv`, `bowling_encoded_<FORMAT>.csv` (FORMAT ∈ TEST, ODI, T20, T20I), plus the cross-format `*_encoded_all.csv` that fielding, extras, win and innings training read.
-
-**Batting:** ML expects (in order) consistency, form, temp, wind, rain, humidity, cloud, pressure, viscosity, inning, session, toss, venue, opposition, season, player_name. Exporter provides these via feature tables and weather/context; `viscosity_encoded` (0/1), `session_encoded` (1..3), venue/opposition aggregates. Use COALESCE for non-null numerics.
-
-**Bowling:** Same pattern with bowling_* names; `batting_inning` shared; bowling_venue, bowling_opposition, bowling_session.
-
-**Validation:** Run `make -C ml-service validate-exports` (checks headers/types against golden). CI runs this. Keep column order and encodings (session, toss, viscosity) stable in exporter and ML config.

@@ -66,7 +66,7 @@ var _ io.Writer = (*progressWriter)(nil)
 // slot holds the live state of one in-flight data step.
 //
 // Fetch and extract run in goroutines inside go-app, so unlike a training subprocess
-// they can simply publish into memory — the same shape precompute already uses for
+// they can simply publish into memory — the same shape a trainer's progress file uses for
 // its per-format status. One slot per step kind is enough because the data lane
 // admits one step at a time; the lane, not this variable, is what enforces that.
 type slot[T any] struct {

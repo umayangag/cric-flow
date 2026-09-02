@@ -70,7 +70,7 @@ func TestHasInProgressForCommand(t *testing.T) {
 		{
 			name:    "db_not_available_returns_false",
 			setup:   func(*mocks.MockDB) { db.SetDB(nil) },
-			command: "precompute-features",
+			command: "xi-retrain",
 			want:    false,
 			wantErr: false,
 		},
@@ -81,7 +81,7 @@ func TestHasInProgressForCommand(t *testing.T) {
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 					Return(scanBoolRow(true))
 			},
-			command: "precompute-features",
+			command: "xi-retrain",
 			want:    true,
 			wantErr: false,
 		},
@@ -92,7 +92,7 @@ func TestHasInProgressForCommand(t *testing.T) {
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 					Return(scanBoolRow(false))
 			},
-			command: "export-dataset",
+			command: "xi-reload",
 			want:    false,
 			wantErr: false,
 		},
@@ -144,7 +144,7 @@ func TestLastRunSucceededForCommand(t *testing.T) {
 		{
 			name:    "db_not_available",
 			setup:   func(*mocks.MockDB) { db.SetDB(nil) },
-			command: "precompute-features",
+			command: "xi-retrain",
 			want:    false,
 			wantErr: false,
 		},
@@ -160,9 +160,9 @@ func TestLastRunSucceededForCommand(t *testing.T) {
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
-					Return(&stubRows{migrations: []Migration{{ID: 5, Command: "export-dataset", Status: StatusCompleted}}}, nil)
+					Return(&stubRows{migrations: []Migration{{ID: 5, Command: "xi-reload", Status: StatusCompleted}}}, nil)
 			},
-			command: "export-dataset",
+			command: "xi-reload",
 			want:    true,
 			wantErr: false,
 		},
@@ -171,9 +171,9 @@ func TestLastRunSucceededForCommand(t *testing.T) {
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
-					Return(&stubRows{migrations: []Migration{{ID: 14, Command: "precompute-features", Status: StatusCancelled}}}, nil)
+					Return(&stubRows{migrations: []Migration{{ID: 14, Command: "xi-retrain", Status: StatusCancelled}}}, nil)
 			},
-			command: "precompute-features",
+			command: "xi-retrain",
 			want:    false,
 			wantErr: false,
 		},
@@ -182,9 +182,9 @@ func TestLastRunSucceededForCommand(t *testing.T) {
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
-					Return(&stubRows{migrations: []Migration{{ID: 4, Command: "export-dataset", Status: StatusFailed}}}, nil)
+					Return(&stubRows{migrations: []Migration{{ID: 4, Command: "xi-reload", Status: StatusFailed}}}, nil)
 			},
-			command: "export-dataset",
+			command: "xi-reload",
 			want:    false,
 			wantErr: false,
 		},
@@ -193,9 +193,9 @@ func TestLastRunSucceededForCommand(t *testing.T) {
 			setup: func(m *mocks.MockDB) {
 				setupDB(t, m)
 				m.On("Query", mock.Anything, mock.Anything, mock.Anything).
-					Return(&stubRows{migrations: []Migration{{ID: 15, Command: "export-dataset", Status: StatusInProgress}}}, nil)
+					Return(&stubRows{migrations: []Migration{{ID: 15, Command: "xi-reload", Status: StatusInProgress}}}, nil)
 			},
-			command: "export-dataset",
+			command: "xi-reload",
 			want:    false,
 			wantErr: false,
 		},
@@ -258,7 +258,7 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 		{
 			name:    "db_not_available",
 			setup:   func(*mocks.MockDB) { db.SetDB(nil) },
-			command: "precompute-features",
+			command: "xi-retrain",
 			wantNil: true,
 			wantErr: false,
 		},
@@ -287,7 +287,7 @@ func TestGetLastCompletedAtForCommand(t *testing.T) {
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 					Return(scanTimeRow(now))
 			},
-			command:  "precompute-features",
+			command:  "xi-retrain",
 			wantNil:  false,
 			wantErr:  false,
 			wantTime: &now,
@@ -432,54 +432,6 @@ func TestCancelStaleInProgressMigrations(t *testing.T) {
 	})
 }
 
-func TestGetInProgressMigrationIDForCommand(t *testing.T) {
-	// Do not use t.Parallel(); uses db.SetDB (global).
-
-	t.Run("db_not_available_or_empty_command_returns_zero", func(t *testing.T) {
-		db.SetDB(nil)
-		defer func() { db.SetDB(nil) }()
-		id, err := GetInProgressMigrationIDForCommand(context.Background(), "")
-		require.NoError(t, err)
-		require.Equal(t, 0, id)
-	})
-
-	t.Run("no_rows_returns_zero", func(t *testing.T) {
-		m := &mocks.MockDB{}
-		setupDB(t, m)
-		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-			Return(scanErrRow{err: sql.ErrNoRows})
-
-		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
-		require.NoError(t, err)
-		require.Equal(t, 0, id)
-		m.AssertExpectations(t)
-	})
-
-	t.Run("happy_path_returns_id", func(t *testing.T) {
-		m := &mocks.MockDB{}
-		setupDB(t, m)
-		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-			Return(scanIntRow(42))
-
-		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
-		require.NoError(t, err)
-		require.Equal(t, 42, id)
-		m.AssertExpectations(t)
-	})
-
-	t.Run("query_error_propagated", func(t *testing.T) {
-		m := &mocks.MockDB{}
-		setupDB(t, m)
-		m.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
-			Return(scanErrRow{err: errors.New("db error")})
-
-		id, err := GetInProgressMigrationIDForCommand(context.Background(), "precompute")
-		require.Error(t, err)
-		require.Equal(t, 0, id)
-		m.AssertExpectations(t)
-	})
-}
-
 // stubRows implements db.Rows for testing scanMigrations and repository helpers.
 type stubRows struct {
 	migrations []Migration
@@ -555,7 +507,7 @@ func TestScanMigrations(t *testing.T) {
 		},
 		{
 			ID:        2,
-			Command:   "export-dataset",
+			Command:   "xi-reload",
 			Args:      []byte(`{}`),
 			StartedAt: now.Add(time.Minute),
 			Status:    StatusInProgress,
@@ -601,7 +553,7 @@ func TestGetInProgressMigrations_HappyPath(t *testing.T) {
 
 	migs := []Migration{
 		{ID: 1, Command: "precompute"},
-		{ID: 2, Command: "export-dataset"},
+		{ID: 2, Command: "xi-reload"},
 	}
 	rows := &stubRows{migrations: migs}
 
@@ -631,7 +583,7 @@ func TestGetRecentMigrations_HappyPath(t *testing.T) {
 
 	migs := []Migration{
 		{ID: 1, Command: "precompute"},
-		{ID: 2, Command: "export-dataset"},
+		{ID: 2, Command: "xi-reload"},
 	}
 	rows := &stubRows{migrations: migs}
 
@@ -662,7 +614,7 @@ func TestGetMigrationsPaginated_HappyPath(t *testing.T) {
 
 	migs := []Migration{
 		{ID: 1, Command: "precompute"},
-		{ID: 2, Command: "export-dataset"},
+		{ID: 2, Command: "xi-reload"},
 	}
 	rows := &stubRows{migrations: migs}
 

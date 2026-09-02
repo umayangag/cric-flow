@@ -38,7 +38,7 @@ describe('WorkbenchTab', () => {
   it('points at the evaluation report rather than re-scoring matches here', async () => {
     render(<WorkbenchTab />);
     await waitFor(() => expect(mockXiStatus).toHaveBeenCalled());
-    expect(screen.getByText(/Evaluation report/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Evaluation report/i).length).toBeGreaterThan(0);
   });
 
   /** H-16: the Workbench answers "what is this model?" from the run's own manifest. */

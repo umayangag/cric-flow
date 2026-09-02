@@ -98,31 +98,22 @@ def test_artifacts_status_live():
     resp = httpx.get(f"{_base_url()}/artifacts/status", timeout=5.0)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "formats" in body
-    assert "legacy" in body
+    assert "runs" in body
+    assert "current_run" in body
+    assert "loaded_run" in body
     assert "timestamp" in body
 
 
 @pytest.mark.e2e
 @pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_model_metadata_live():
-    """GET /model-metadata returns 200 with batting/bowling metadata."""
-    resp = httpx.get(f"{_base_url()}/model-metadata", timeout=5.0)
+def test_xi_status_live():
+    """GET /xi/status returns 200 and names the run it is serving, if any (H-16)."""
+    resp = httpx.get(f"{_base_url()}/xi/status", timeout=5.0)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert isinstance(body, dict)
-
-
-@pytest.mark.e2e
-@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_model_stats_live():
-    """GET /model-stats returns 200 with models_dir and models list."""
-    resp = httpx.get(f"{_base_url()}/model-stats", timeout=5.0)
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert "models_dir" in body
-    assert "models" in body
-    assert isinstance(body["models"], list)
+    assert "loaded" in body
+    assert "run_id" in body
+    assert "ratings" in body
 
 
 @pytest.mark.e2e
