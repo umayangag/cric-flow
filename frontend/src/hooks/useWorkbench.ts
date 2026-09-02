@@ -2,20 +2,17 @@ import { useCallback, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useAsync } from './useAsync';
 import type { ApiError } from '../lib/apiError';
-import type { ModelMetadataApiResponse, ModelStatsResponse, WalkForwardRegistry } from '../types';
+import type { WalkForwardRegistry, XiStatusResponse } from '../types';
 
 export interface UseWorkbenchReturn {
   registryFile: File | null;
   registryError: string | null;
   registry: WalkForwardRegistry | null;
   handleRegistryFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  /** Full model metadata from GET /api/ml/model-metadata; null until loaded or on error. No fallback. */
-  modelMetadata: ModelMetadataApiResponse | null;
-  modelMetadataLoading: boolean;
-  modelMetadataError: ApiError | null;
-  modelStats: ModelStatsResponse | null;
-  modelStatsLoading: boolean;
-  modelStatsError: ApiError | null;
+  /** The loaded run and its manifest, from GET /api/ml/xi-status. Null until loaded or on error. */
+  runStatus: XiStatusResponse | null;
+  runStatusLoading: boolean;
+  runStatusError: ApiError | null;
 }
 
 /**
@@ -26,16 +23,12 @@ export interface UseWorkbenchReturn {
  * against the batting, bowling and fielding models, and went with them in P-5.
  */
 export function useWorkbench(): UseWorkbenchReturn {
-  const metadata = useAsync(api.getModelMetadata, {
+  // One request: which run is loaded, and what its manifest says. Provenance used to be
+  // read from a per-artifact sidecar and the feature list from the win model's metadata;
+  // both were inferences about an artifact, and the manifest is the record (H-16).
+  const runStatus = useAsync(api.xiStatus, {
     runOnMount: [],
-    errorMessage: 'Failed to load model metadata',
-  });
-  // Model stats carry each model's provenance and whether its dataset is still live
-  // (ops plan P-2). Fetched here rather than in the section so the Workbench makes one
-  // request whatever it chooses to render.
-  const stats = useAsync(api.getModelStats, {
-    runOnMount: [],
-    errorMessage: 'Failed to load model stats',
+    errorMessage: 'Failed to load the run status',
   });
 
   const [registryFile, setRegistryFile] = useState<File | null>(null);
@@ -76,24 +69,18 @@ export function useWorkbench(): UseWorkbenchReturn {
       registryError,
       registry,
       handleRegistryFile,
-      modelMetadata: metadata.data,
-      modelMetadataLoading: metadata.loading,
-      modelMetadataError: metadata.error,
-      modelStats: stats.data,
-      modelStatsLoading: stats.loading,
-      modelStatsError: stats.error,
+      runStatus: runStatus.data,
+      runStatusLoading: runStatus.loading,
+      runStatusError: runStatus.error,
     }),
     [
       registryFile,
       registryError,
       registry,
       handleRegistryFile,
-      metadata.data,
-      metadata.loading,
-      metadata.error,
-      stats.data,
-      stats.loading,
-      stats.error,
+      runStatus.data,
+      runStatus.loading,
+      runStatus.error,
     ],
   );
 }

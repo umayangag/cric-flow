@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AutoTuneRunDetailsEntry } from '../types';
 import { Migration } from '../types';
-import AutoTuneRunCard from './AutoTuneRunCard';
 import StatusPill from './common/StatusPill';
 import {
   Box,
@@ -159,9 +157,6 @@ const OpsMigrationsTable: React.FC = () => {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [detailsMigration, setDetailsMigration] = useState<Migration | null>(null);
-  const [autoTuneRuns, setAutoTuneRuns] = useState<AutoTuneRunDetailsEntry[] | null>(null);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
   const detailsAbortRef = useRef<AbortController | null>(null);
   const [previousRun, setPreviousRun] = useState<Migration | undefined>();
   const [comparisonReady, setComparisonReady] = useState(false);
@@ -202,8 +197,6 @@ const OpsMigrationsTable: React.FC = () => {
     detailsAbortRef.current = ac;
 
     setDetailsMigration(m);
-    setDetailsError(null);
-    setAutoTuneRuns(null);
     setPreviousRun(undefined);
     setComparisonReady(false);
 
@@ -228,35 +221,14 @@ const OpsMigrationsTable: React.FC = () => {
     } else {
       setComparisonReady(true);
     }
-
-    if (m.command === 'ml-auto-tune' && m.status === 'COMPLETED') {
-      setDetailsLoading(true);
-      try {
-        const res = await api.autoTuneDetailsForMigration(m.id, { signal: ac.signal });
-        setAutoTuneRuns(res.runs ?? []);
-      } catch (e) {
-        if (ac.signal.aborted) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        setDetailsError(msg);
-      } finally {
-        if (detailsAbortRef.current === ac) {
-          setDetailsLoading(false);
-        }
-      }
-    } else {
-      setDetailsLoading(false);
-    }
   };
 
   const closeDetails = () => {
     detailsAbortRef.current?.abort();
     detailsAbortRef.current = null;
     setDetailsMigration(null);
-    setAutoTuneRuns(null);
-    setDetailsError(null);
     setPreviousRun(undefined);
     setComparisonReady(false);
-    setDetailsLoading(false);
   };
 
   const runMetadata = asRunMetadata(detailsMigration?.metadata);
@@ -340,54 +312,29 @@ const OpsMigrationsTable: React.FC = () => {
             <FailureDetails errorMessage={detailsMigration.error_message} />
           )}
 
-          {detailsMigration != null &&
-            !detailsMigration.error_message &&
-            detailsMigration.command === 'ml-auto-tune' &&
-            detailsMigration.status === 'COMPLETED' && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {detailsLoading && <div>Loading auto-tune results…</div>}
-                {detailsError && (
-                  <ErrorText>Error loading auto-tune details: {detailsError}</ErrorText>
-                )}
-                {!detailsLoading &&
-                  !detailsError &&
-                  (!autoTuneRuns || autoTuneRuns.length === 0) && (
-                    <div>No auto-tune results were recorded for this migration.</div>
-                  )}
-                {!detailsLoading &&
-                  !detailsError &&
-                  autoTuneRuns &&
-                  autoTuneRuns.length > 0 &&
-                  autoTuneRuns.map((run) => <AutoTuneRunCard key={run.id} run={run} />)}
-              </Box>
-            )}
-
-          {detailsMigration != null &&
-            !detailsMigration.error_message &&
-            (detailsMigration.command !== 'ml-auto-tune' ||
-              detailsMigration.status !== 'COMPLETED') && (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {runMetadata ? (
-                  <RunSummaryPanel
-                    metadata={runMetadata}
-                    previousMetrics={previousMetrics}
-                    previousRun={previousRun}
-                    comparisonReady={comparisonReady}
-                  />
-                ) : (
-                  // Steps go-app runs itself record their own shapes, and rows written
-                  // before O-4 record almost nothing. Raw JSON is the honest rendering
-                  // for both: there is no structure here to present.
-                  <Typography variant="body2" color="text.secondary">
-                    This run recorded no structured summary.
-                  </Typography>
-                )}
-                <JsonCollapse
-                  data={{ args: detailsMigration.args, metadata: detailsMigration.metadata }}
-                  summary="Show raw JSON"
+          {detailsMigration != null && !detailsMigration.error_message && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {runMetadata ? (
+                <RunSummaryPanel
+                  metadata={runMetadata}
+                  previousMetrics={previousMetrics}
+                  previousRun={previousRun}
+                  comparisonReady={comparisonReady}
                 />
-              </Box>
-            )}
+              ) : (
+                // Steps go-app runs itself record their own shapes, and rows written
+                // before O-4 record almost nothing. Raw JSON is the honest rendering
+                // for both: there is no structure here to present.
+                <Typography variant="body2" color="text.secondary">
+                  This run recorded no structured summary.
+                </Typography>
+              )}
+              <JsonCollapse
+                data={{ args: detailsMigration.args, metadata: detailsMigration.metadata }}
+                summary="Show raw JSON"
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDetails}>Close</Button>

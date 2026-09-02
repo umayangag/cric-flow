@@ -33,11 +33,7 @@ describe('pipelineSteps', () => {
   describe('derivePipelineSteps', () => {
     it('returns default steps when data is null', () => {
       const steps = derivePipelineSteps(null);
-      expect(steps).toHaveLength(5);
-      expect(steps.map((s) => s.id)).toContain('import');
-      expect(steps.map((s) => s.id)).toContain('precompute');
-      expect(steps.map((s) => s.id)).toContain('auto_tune');
-      expect(steps.map((s) => s.id)).toContain('train_win');
+      expect(steps.map((s) => s.id)).toEqual(['import', 'retrain', 'evaluate', 'reload']);
       steps.forEach((s) => {
         expect(s.label).toBeTruthy();
         expect(s.command).toBeTruthy();
@@ -48,9 +44,14 @@ describe('pipelineSteps', () => {
       expect(importStep?.runnable).toBe(true);
     });
 
+    it('offers evaluate but never implies it', () => {
+      const evaluate = derivePipelineSteps(null).find((s) => s.id === 'evaluate');
+      expect(evaluate?.status).toBe('optional');
+    });
+
     it('returns default steps when data is empty object', () => {
       const steps = derivePipelineSteps({ timestamp: '' });
-      expect(steps).toHaveLength(5);
+      expect(steps).toHaveLength(4);
       expect(steps[0].status).toBe('pending');
     });
 
@@ -74,56 +75,33 @@ describe('pipelineSteps', () => {
       expect(importStep?.status).toBe('pending');
     });
 
-    it('sets precompute to success when at least one format has status ok', () => {
+    it('sets retrain to success when a run with a manifest is on disk', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        precompute: { formats: { T20: { status: 'ok' } } },
+        artifacts: { runs: [{ run_id: 'r1', has_manifest: true }] },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      const precomputeStep = steps.find((s) => s.id === 'precompute');
-      expect(precomputeStep?.status).toBe('success');
+      expect(steps.find((s) => s.id === 'retrain')?.status).toBe('success');
     });
 
-    it('sets precompute to stale when format has status stale', () => {
+    it('leaves retrain pending when the only run directory is not a run', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        precompute: { formats: { T20: { status: 'stale' } } },
+        artifacts: { runs: [{ run_id: 'r1', has_manifest: false }] },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      const precomputeStep = steps.find((s) => s.id === 'precompute');
-      expect(precomputeStep?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'retrain')?.status).toBe('pending');
     });
 
-    it('leaves precompute pending when every format is missing', () => {
-      const steps = derivePipelineSteps({
+    it('sets reload to success only when a run is actually loaded', () => {
+      const loaded = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        precompute: {
-          formats: { T20: { status: 'missing' }, ODI: { status: 'missing' } },
-        },
+        artifacts: { runs: [{ run_id: 'r1' }], loaded_run: 'r1' },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      const precomputeStep = steps.find((s) => s.id === 'precompute');
-      expect(precomputeStep?.status).toBe('pending');
-    });
-
-    it('sets export to success when at least one format has file with exists true', () => {
-      const steps = derivePipelineSteps({
+      const notLoaded = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        exports: { formats: { T20: { files: [{ exists: true }] } } },
+        artifacts: { runs: [{ run_id: 'r1' }], loaded_run: null },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      const exportStep = steps.find((s) => s.id === 'export');
-      expect(exportStep?.status).toBe('success');
-    });
-
-    it('sets the win step to success when its artifact is loaded or exists', () => {
-      const steps = derivePipelineSteps({
-        timestamp: '2026-01-01T00:00:00Z',
-        artifacts: {
-          formats: {
-            T20: {
-              win: { loaded: true },
-            },
-          },
-        },
-      } as Parameters<typeof derivePipelineSteps>[0]);
-      expect(steps.find((s) => s.id === 'train_win')?.status).toBe('success');
+      expect(loaded.find((s) => s.id === 'reload')?.status).toBe('success');
+      expect(notLoaded.find((s) => s.id === 'reload')?.status).toBe('pending');
     });
 
     it('overrides step status from pipeline.steps (running, completed, runnable)', () => {
@@ -134,74 +112,70 @@ describe('pipelineSteps', () => {
         pipeline: {
           steps: {
             import: { completed: true, runnable: true },
-            precompute: { running: true, runnable: false },
-            train_win: { completed: true, runnable: false },
+            retrain: { running: true, runnable: false },
+            reload: { completed: true, runnable: false },
           },
         },
       } as Parameters<typeof derivePipelineSteps>[0]);
       const importStep = steps.find((s) => s.id === 'import');
-      const precomputeStep = steps.find((s) => s.id === 'precompute');
-      const winStep = steps.find((s) => s.id === 'train_win');
+      const retrainStep = steps.find((s) => s.id === 'retrain');
+      const reloadStep = steps.find((s) => s.id === 'reload');
       expect(importStep?.status).toBe('success');
       expect(importStep?.runnable).toBe(true); // import always runnable
-      expect(precomputeStep?.status).toBe('running');
-      expect(precomputeStep?.runnable).toBe(false);
-      expect(winStep?.status).toBe('success');
-      expect(winStep?.runnable).toBe(false);
+      expect(retrainStep?.status).toBe('running');
+      expect(retrainStep?.runnable).toBe(false);
+      expect(reloadStep?.status).toBe('success');
+      expect(reloadStep?.runnable).toBe(false);
     });
 
     /**
      * The regression test for a graph that stayed green after a cancelled run: the
-     * heuristics above read files and freshness dates that outlive the run which wrote
-     * them, so where run history says a step has not completed, the graph must say so
-     * too rather than trusting the leftovers.
+     * heuristics above read files that outlive the run which wrote them, so where run
+     * history says a step has not completed, the graph must say so too rather than
+     * trusting the leftovers.
      */
     it('downgrades a step to stale when the backend says it has not completed', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
         services: { api_readiness: true },
         db: { counts: { matches: 1 } },
-        precompute: { formats: { T20: { status: 'ok' } } },
-        exports: { formats: { T20: { files: [{ exists: true }] } } },
-        artifacts: { formats: { T20: { win: { loaded: true } } } },
+        artifacts: { runs: [{ run_id: 'r1', has_manifest: true }], loaded_run: 'r1' },
         pipeline: {
           steps: {
-            precompute: { completed: false, runnable: true },
-            export: { completed: false, runnable: false },
-            train_win: { completed: false, runnable: false },
+            retrain: { completed: false, runnable: true },
+            reload: { completed: false, runnable: false },
           },
         },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('stale');
-      expect(steps.find((s) => s.id === 'export')?.status).toBe('stale');
-      expect(steps.find((s) => s.id === 'train_win')?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'retrain')?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'reload')?.status).toBe('stale');
     });
 
     it('leaves a step pending when the backend says not completed and nothing is on disk', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        pipeline: { steps: { export: { completed: false, runnable: false } } },
+        pipeline: { steps: { reload: { completed: false, runnable: false } } },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      expect(steps.find((s) => s.id === 'export')?.status).toBe('pending');
+      expect(steps.find((s) => s.id === 'reload')?.status).toBe('pending');
     });
 
     it('keeps running ahead of the downgrade for a step being re-run', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        precompute: { formats: { T20: { status: 'ok' } } },
-        pipeline: { steps: { precompute: { running: true, completed: false } } },
+        artifacts: { runs: [{ run_id: 'r1', has_manifest: true }] },
+        pipeline: { steps: { retrain: { running: true, completed: false } } },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('running');
+      expect(steps.find((s) => s.id === 'retrain')?.status).toBe('running');
     });
 
     it('leaves steps the backend does not report alone', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
-        precompute: { formats: { T20: { status: 'ok' } } },
+        artifacts: { runs: [{ run_id: 'r1', has_manifest: true }] },
         pipeline: { steps: {} },
       } as Parameters<typeof derivePipelineSteps>[0]);
       // An older API that sends no per-step entry must not turn the whole graph amber.
-      expect(steps.find((s) => s.id === 'precompute')?.status).toBe('success');
+      expect(steps.find((s) => s.id === 'retrain')?.status).toBe('success');
     });
 
     it('always keeps import step runnable', () => {
@@ -234,6 +208,16 @@ describe('pipelineSteps', () => {
       { term: 'consistency', why: 'the v3 feature contract uses raw windowed stats' },
       // Planned, not implemented: docs/weather-not-implemented.md, consumer W0-3.
       { term: 'weather', why: 'nothing populates weather_data and no model reads it' },
+      // The producers P-6 deleted, and the search it replaced with a fixed grid.
+      {
+        term: 'precompute',
+        why: 'the rating pass reads ball_event directly; there is no precompute',
+      },
+      {
+        term: 'auto-tune',
+        why: 'the grid runs inside retrain and records its choice in the manifest',
+      },
+      { term: 'csv', why: 'nothing exports CSVs; the training frames live in the run directory' },
     ];
 
     it.each(RETIRED)('never says "$term" — $why', ({ term }) => {

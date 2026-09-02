@@ -5,22 +5,10 @@ import { Button, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
 import KeyValueList from './common/KeyValueList';
-import { MISSING, formatBytes, formatEpochSeconds, formatWhen } from '../utils/format';
+import { formatWhen } from '../utils/format';
 import { usePolling } from '../hooks/usePolling';
-import { ARTIFACT_KINDS, type ArtifactKind } from '../utils/artifactKinds';
 
 const HEALTH_REFRESH_MS = Number(import.meta.env.VITE_HEALTH_REFRESH_MS ?? 60000) || 60000;
-
-const ARTIFACT_LABELS: Record<ArtifactKind, string> = {
-  batting: 'bat',
-  bowling: 'bowl',
-  fielding: 'field',
-  extras: 'extras',
-  win: 'win',
-  innings: 'innings',
-};
-
-type ArtifactItem = { file: string; size_bytes?: number; modified?: number };
 
 const HealthTab: React.FC = () => {
   const [mlData, setMlData] = useState<HealthResponse | null>(null);
@@ -78,41 +66,34 @@ const HealthTab: React.FC = () => {
     [lastChecked],
   );
 
-  const loadedFormatsItems = useMemo(() => {
-    return ARTIFACT_KINDS.map((t) => {
-      const formats = mlData?.[`loaded_${t}_formats` as keyof HealthResponse] as
-        string[] | undefined;
-      const value = !mlData ? '—' : formats && formats.length > 0 ? formats.join(', ') : 'None';
-      return { label: `Loaded ${t === 'win' ? 'win prediction' : t}`, value };
-    });
+  // What the ML service is actually serving (H-16, H-11). "Healthy" is about the
+  // process; these three are about whether it can answer -- which run is loaded, how far
+  // its ratings go, and whether that is recent enough that a live request is not refused.
+  const runItems = useMemo(() => {
+    if (!mlData) {
+      return [
+        { label: 'Loaded run', value: '—' },
+        { label: 'Formats', value: '—' },
+        { label: 'Ratings', value: '—' },
+      ];
+    }
+    const ratings = mlData.ratings;
+    const ratingsValue = !ratings?.ratings_through
+      ? 'none loaded'
+      : ratings.fresh
+        ? `through ${ratings.ratings_through} (${ratings.age_days} days old)`
+        : `through ${ratings.ratings_through} — ${ratings.age_days} days old, ` +
+          `limit ${ratings.max_age_days}: ${ratings.code}`;
+    return [
+      { label: 'Loaded run', value: mlData.run_id || (mlData.error ? 'refused' : 'none') },
+      {
+        label: 'Formats',
+        value: mlData.loaded_xi_formats?.length ? mlData.loaded_xi_formats.join(', ') : 'None',
+      },
+      { label: 'Ratings', value: ratingsValue },
+      ...(mlData.error ? [{ label: 'Refused', value: mlData.error }] : []),
+    ];
   }, [mlData]);
-
-  const artifactsCountValue = useMemo(() => {
-    if (!mlData) return '—';
-    const parts = ARTIFACT_KINDS.map((t) => {
-      const arr = mlData.artifacts?.[t];
-      return Array.isArray(arr) && arr.length ? `${ARTIFACT_LABELS[t]}: ${arr.length}` : null;
-    }).filter(Boolean);
-    return parts.length ? (parts as string[]).join(', ') : 'None';
-  }, [mlData]);
-
-  const allArtifacts = useMemo(() => {
-    if (!mlData) return [];
-    return ARTIFACT_KINDS.flatMap((t) => mlData.artifacts?.[t] || []) as ArtifactItem[];
-  }, [mlData]);
-
-  const totalSizeValue = useMemo(() => {
-    if (!mlData) return MISSING;
-    return formatBytes(allArtifacts.reduce((acc, it) => acc + (it.size_bytes ?? 0), 0));
-  }, [mlData, allArtifacts]);
-
-  const latestModifiedValue = useMemo(() => {
-    if (!mlData) return MISSING;
-    const timestamps = allArtifacts
-      .map((it) => it.modified)
-      .filter((n): n is number => n != null && isFinite(n));
-    return timestamps.length ? formatEpochSeconds(Math.max(...timestamps)) : MISSING;
-  }, [mlData, allArtifacts]);
 
   return (
     <Stack spacing={2}>
@@ -182,10 +163,7 @@ const HealthTab: React.FC = () => {
                 },
                 { label: 'Last checked', value: lastCheckedLocal || '—' },
                 { label: 'Models dir', value: mlData?.models_dir || '—' },
-                ...loadedFormatsItems,
-                { label: 'Artifacts', value: artifactsCountValue },
-                { label: 'Total size', value: totalSizeValue },
-                { label: 'Latest modified', value: latestModifiedValue },
+                ...runItems,
               ]}
             />
           </Paper>

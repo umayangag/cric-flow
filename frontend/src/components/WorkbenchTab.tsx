@@ -2,8 +2,7 @@ import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import SectionCard from './common/SectionCard';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
-import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
-import WorkbenchProvenanceSection from './WorkbenchProvenanceSection';
+import WorkbenchRunSection from './WorkbenchRunSection';
 import { useWorkbench } from '../hooks/useWorkbench';
 
 const WorkbenchTab: React.FC = () => {
@@ -12,12 +11,9 @@ const WorkbenchTab: React.FC = () => {
     registryError,
     registry,
     handleRegistryFile,
-    modelMetadata,
-    modelMetadataLoading,
-    modelMetadataError,
-    modelStats,
-    modelStatsLoading,
-    modelStatsError,
+    runStatus,
+    runStatusLoading,
+    runStatusError,
   } = useWorkbench();
 
   return (
@@ -46,17 +42,7 @@ const WorkbenchTab: React.FC = () => {
         onFileChange={handleRegistryFile}
       />
 
-      <WorkbenchProvenanceSection
-        stats={modelStats}
-        loading={modelStatsLoading}
-        error={modelStatsError}
-      />
-
-      <WorkbenchModelFeaturesSection
-        modelMetadata={modelMetadata}
-        loading={modelMetadataLoading}
-        error={modelMetadataError}
-      />
+      <WorkbenchRunSection status={runStatus} loading={runStatusLoading} error={runStatusError} />
 
       <SectionCard
         title="Commands & docs"

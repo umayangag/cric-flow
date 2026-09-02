@@ -1,5 +1,4 @@
 import type { DatasetStatus } from '../types';
-import type { ArtifactKind, ArtifactUnit } from './artifactKinds';
 
 /** Format code (e.g. TEST, ODI, T20, T20I). Canonical list is fetched from API via useCanonicalFormats(). */
 export type FormatCode = string;
@@ -31,27 +30,40 @@ type ServicesStatus = {
   ml_health?: boolean;
 };
 
-type PrecomputeFormats = Record<
-  string,
-  { status?: 'ok' | 'stale' | 'missing' | string } | undefined
->;
+/** One run directory, as ml-service reports it and go-app copies it through (H-16). */
+export type OpsRun = {
+  run_id?: string;
+  created_at?: string;
+  cutoff?: string;
+  git_sha?: string;
+  dataset_sha?: string;
+  formats?: string[];
+  has_manifest?: boolean;
+  current?: boolean;
+  loaded?: boolean;
+};
 
-export type ExportFile = { name?: string; exists?: boolean };
-type ExportFormats = Record<string, { files?: ExportFile[] } | undefined>;
-
-type ArtifactFormats = Record<string, Partial<Record<ArtifactKind, ArtifactUnit>> | undefined>;
+/** The artifacts section: runs rather than a formats-by-model-kind matrix. */
+export type OpsArtifacts = {
+  root?: string;
+  reachable?: boolean;
+  current_run?: string | null;
+  loaded_run?: string | null;
+  ratings_through?: string | null;
+  ratings?: { fresh?: boolean; age_days?: number | null; max_age_days?: number } | null;
+  /** Why nothing is loaded, when a run on disk was refused (D-6). */
+  error?: string | null;
+  runs?: OpsRun[];
+};
 
 export type OpsStatus = {
   timestamp: string;
   services?: ServicesStatus;
   db?: unknown;
-  precompute?: { formats?: PrecomputeFormats };
   dataset?: DatasetStatus;
-  exports?: { formats?: ExportFormats };
-  artifacts?: { formats?: ArtifactFormats };
+  artifacts?: OpsArtifacts;
   pipeline?: { steps?: Record<string, { running?: boolean }> };
   fielding?: unknown;
-  weather?: unknown;
   suggestions?: Array<{ reason: string; commands: string[] }>;
   [key: string]: unknown;
 };
