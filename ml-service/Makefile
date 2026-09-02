@@ -84,7 +84,7 @@ lint: venv _install_ruff
 
 # Import-graph reachability: fails on modules no live entrypoint can reach.
 # ruff and pytest both stay quiet about these, because a module's own tests keep
-# it "used" -- see docs/CLEANUP_PR_CHECKLIST.md C1-4/C1-6. Needs no venv.
+# it "used". Needs no venv.
 check-reachability:
 	@cd .. && python3 scripts/py-reachability.py --check
 

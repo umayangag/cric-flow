@@ -4,12 +4,13 @@
 
 ## Testing & Verification
 
-- [ ] Ran `cd go-app && go test -race -cover ./...`
-- [ ] (If Python changed) Ran `cd ml-service && pytest -q`
+- [ ] Ran the checks for every component touched (`make check-all`, or the component targets)
+- [ ] (If Go changed) Ran `make -C go-app coverage` then `make -C go-app coverage-check`
+- [ ] (If Python changed) Ran `PATH="$(pwd)/ml-service/.venv/bin:$PATH" make -C ml-service coverage`
 
 ## Go Unit Test Standards Checklist (required)
 
-For any new/modified Go tests, confirm adherence to our gold standard (see `docs/quality-and-debugging.md`).
+For any new/modified Go tests, confirm adherence to our gold standard (see `go-app/docs/testing-guidelines.md`, summarised in `docs/quality-and-debugging.md`).
 
 - [ ] Table-driven tests with subtests via `t.Run`
 - [ ] `t.Parallel()` at test function start (and in subtests only if fully isolated)
@@ -21,5 +22,5 @@ For any new/modified Go tests, confirm adherence to our gold standard (see `docs
 
 ## Additional Notes
 
-- [ ] Docs updated if behavior/commands changed (README/docs)
+- [ ] Docs updated if behavior/commands changed (README/docs); `make gen-architecture-map` re-run if contracts changed
 - [ ] No secrets committed; env vars documented in `.env.example` if needed

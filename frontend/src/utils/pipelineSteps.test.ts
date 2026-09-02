@@ -206,7 +206,7 @@ describe('pipelineSteps', () => {
       { term: 'legacy', why: 'the legacy artifact tier was removed with the pooled model' },
       // Formula features replaced by raw windowed stats in the v3 feature contract.
       { term: 'consistency', why: 'the v3 feature contract uses raw windowed stats' },
-      // Planned, not implemented: docs/weather-not-implemented.md, consumer W0-3.
+      // Wanted but not implemented; P-6 dropped the tables and the probes that read them.
       { term: 'weather', why: 'nothing populates weather_data and no model reads it' },
       // The producers P-6 deleted, and the search it replaced with a fixed grid.
       {

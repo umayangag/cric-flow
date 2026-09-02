@@ -10,4 +10,4 @@ This project treats warnings as failures (see [CLAUDE.md](../CLAUDE.md) § Quali
 
 ## Audit
 
-When adding a new suppression, add a one-line comment at the suppression site and consider noting it here or in [audit-coding-principles-remediation.md](audit-coding-principles-remediation.md). To remove suppressions: fix the underlying issue (types, test structure, or logic) then delete the suppression.
+When adding a new suppression, add a one-line comment at the suppression site saying why it is unavoidable, and note it here. To remove suppressions: fix the underlying issue (types, test structure, or logic) then delete the suppression.

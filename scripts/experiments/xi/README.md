@@ -1,8 +1,7 @@
-# XI experiments (S-9 / re-architecture plan)
+# XI experiments (re-architecture plan)
 
 Standalone, leakage-free-by-construction experiments over the raw Cricsheet JSON. They back
-the numbers in `docs/WIN_PROB_SELECTION_PR_CHECKLIST.md` (S-9 results) and
-`docs/ML_PIPELINE_REARCHITECTURE_PLAN.md` (§1, appendix). They are research scripts, not part
+the numbers in `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md` (§1, §5, §8 and the appendix). They are research scripts, not part
 of the service; the production implementation of the same pass is `ml-service/ml/xi/`.
 
 Run from a scratch directory with the JSON files unzipped under `raw/` (paths at the top of

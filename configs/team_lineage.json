@@ -2,7 +2,7 @@
   "version": "1",
   "_comment": [
     "Franchise renames: one club that Cricsheet names two ways, and therefore holds two",
-    "opposition rows (I-4 in docs/IDENTITY_PR_CHECKLIST.md).",
+    "opposition rows. See docs/ML_PIPELINE_REARCHITECTURE_PLAN.md 9.1.",
     "",
     "This is data, not a heuristic. The candidates were produced once by",
     "scripts/experiments/xi/team_lineage_candidates.py -- no temporal overlap plus roster",

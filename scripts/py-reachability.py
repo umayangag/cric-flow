@@ -3,9 +3,9 @@
 
 Why this exists: `ruff` and the test suite both stay quiet about a module that
 nothing imports, because its own tests keep it "used". That is how ml-service
-accumulated ~2,500 lines of unreachable code (see docs/CLEANUP_PR_CHECKLIST.md,
-C1-4 and C1-6). This walks the import graph from the entrypoints that actually
-run in production and reports whatever it cannot reach.
+accumulated ~2,500 lines of unreachable code. This walks the import graph from
+the entrypoints that actually run in production and reports whatever it cannot
+reach.
 
 Method: parse every module under the source roots with `ast`, resolve absolute
 and relative imports to module names, then breadth-first search from ENTRYPOINTS

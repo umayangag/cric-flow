@@ -8,8 +8,6 @@ vendor/
 go-app/api
 go-app/coverage.out
 go-app/bin
-go-app/export-dataset
-go-app/precompute-all
 
 ml-service/.venv
 ml-service/.venv-ci
@@ -18,7 +16,6 @@ ml-service/coverage.xml
 
 data
 output
-go-app-export
 
 .output.txt
 .coverage
@@ -35,10 +32,6 @@ local-review.md
 # Binaries
 **/bin/
 cricsheet-importer
-export-dataset
-precompute-features
-precompute-sequence-features
-team-predictor
 
 # Go specific
 go-app/go-app

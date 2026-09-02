@@ -11,7 +11,6 @@ Every feature the models read is computed here, by one as-of pass over the event
 | `app/` | HTTP layer: FastAPI (`main.py`), Pydantic models, artifact loading, XI serving (`xi_service.py`) |
 | `ml/` | `ml/xi/` — the rating pass, the win models, the performance model, the simulator, the L4 harness, and run identity (`runs.py`) |
 | `tests/` | Unit, integration, and gated e2e tests |
-| `docs/` | Service docs including [IMPROVEMENT_PR_CHECKLIST.md](docs/IMPROVEMENT_PR_CHECKLIST.md) |
 
 Key modules:
 

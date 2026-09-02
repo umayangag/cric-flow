@@ -7,8 +7,9 @@
 // every import would merge two genuinely different clubs the first time a coincidence
 // cleared its threshold, and a wrong merge is invisible.
 //
-// See docs/IDENTITY_PR_CHECKLIST.md I-4, and
-// scripts/experiments/xi/team_lineage_candidates.py for the one-off that proposed the list.
+// See docs/ML_PIPELINE_REARCHITECTURE_PLAN.md 9.1 (the `opposition.canonical_id` row) for
+// what the mapping buys, and scripts/experiments/xi/team_lineage_candidates.py for the
+// one-off that proposed the list.
 package teamlineage
 
 import (

@@ -5,13 +5,13 @@ Cricket match and player performance prediction: Cricsheet import, one as-of rat
 ## Quick start
 
 - **Bootstrap:** `make init` then `make dev-up` (Postgres, API, ML). Full pipeline: `make up-all`.
-- **Docs:** **docs/README.md** (reading order, cross-references), **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import), **docs/apis-backtest-and-ops.md** (APIs, backtest, ops).
+- **Docs:** **docs/README.md** (the index), **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import), **docs/apis-backtest-and-ops.md** (APIs, evaluation, ops), **docs/ML_PIPELINE_REARCHITECTURE_PLAN.md** (the evidence for every number the system claims).
 
 ## Key workflows
 
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
 - **Team selection API:** `POST /api/predict/team-selection` — `format`, `team1`, `team2`, `match_date`; see **docs/apis-backtest-and-ops.md**.
-- **Frontend:** six tabs — Health, Ops Status, ML model stats, Workbench, Evaluate (DB), Upcoming match prediction. `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
+- **Frontend:** five tabs — Health, Ops Status, Workbench, Evaluation report, Upcoming match prediction. (The ML-model-stats tab went with the endpoint behind it in P-6; data acquisition is a section of Ops Status.) `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
 
 ## System architecture
 

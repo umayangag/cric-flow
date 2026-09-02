@@ -5,11 +5,13 @@ opponent and venue. Secondary: predict how each player will perform. Everything 
 pipeline should be justified by one of those two, and measured by the metric its consumer
 actually needs.
 
-This plan is separate from [WIN_PROB_SELECTION_PR_CHECKLIST.md](WIN_PROB_SELECTION_PR_CHECKLIST.md)
-(which repairs the existing selection path and, in S-10, replaces its objective) and from
-[ML_PLAN_optimal_xi.md](ML_PLAN_optimal_xi.md) (the original feature and modelling plan, part
-of which S-10 implemented). It answers a different question: given what S-9/S-10 showed,
-what should the pipeline *be*.
+This plan was written separately from two earlier ones, both of which it has since outlived
+and which were deleted once the migration completed: the **win-probability selection
+checklist** (`docs/WIN_PROB_SELECTION_PR_CHECKLIST.md`, which repaired the existing selection
+path and, in S-10, replaced its objective) and the **original optimal-XI plan**
+(`docs/ML_PLAN_optimal_xi.md`, the first-principles feature and modelling plan, part of which
+S-10 implemented). Both are in git history at those paths. This plan answers a different
+question: given what S-9/S-10 showed, what should the pipeline *be*.
 
 ---
 
@@ -279,7 +281,7 @@ import → retrain → reload. Precompute and export steps are deleted.
 | component | decision | why |
 |---|---|---|
 | Cricsheet importer, `match` / `match_player` / `ball_event` | **keep** | The event store is the only input L1 needs. |
-| Player identity (`IDENTITY_PR_CHECKLIST.md`) | **keep, do first** | Name-keyed ids merge 348 people into 163 names and men's/women's sides into one team id. Every rating inherits it. The Cricsheet registry id is the fix and the importer already reads it. |
+| Player identity (planned in `docs/IDENTITY_PR_CHECKLIST.md`, since deleted; in git history) | **keep, do first** | Name-keyed ids merge 348 people into 163 names and men's/women's sides into one team id. Every rating inherits it. The Cricsheet registry id is the fix and the importer already reads it. |
 | Precompute (`internal/precompute`, `feature_raw_stats_snapshots`, `player_window_features`) | **remove** | Replaced by L1. Carries D-1. **Done (P-6)**: the package, the two commands and both tables are gone (migration `0008`); the rating pass reads `ball_event` directly. |
 | Sequence features (`seqcalc`, `*_features` tables) | **conditional** | Keep only the calculators E1 proves useful, re-implemented inside L1 as as-of accumulators; drop the tables. **Done (P-6)**: E1 kept no family (§5.3), so the calculators went with the nine tables rather than being re-implemented. |
 | Export CSVs (`export-dataset`, `exportqueries`) | **remove** | L1 writes the training frames itself. D-2 goes away. **Done (P-6)**: the command, the service, the query package and `configs/feature_vectors.json` are gone, and with them the `training-data` endpoint their last consumers read. |
@@ -365,7 +367,7 @@ zero because it is deterministic. The largest number in the table, T20I women +0
 on 70 matches that cannot resolve less than ±0.154. **The honest conclusion is that P-1
 buys no measurable discrimination, in the aggregate or in women's cricket.**
 
-That is the outcome IDENTITY_PR_CHECKLIST I-5 wrote down in advance as the likely one: 163
+That is the outcome the identity checklist's I-5 wrote down in advance as the likely one: 163
 collisions out of 13,568 people is about 1% of the roster, and the affected players are not
 the ones being selected. It does not make the change wrong. Two people sharing one rating
 is a defect whether or not the aggregate notices, and the rest of the plan — the
@@ -1247,7 +1249,7 @@ no-backward-compatibility rule applies: no shims, no views kept "just in case").
 | nine `*_features` tables from `seqcalc` (`batting_transition`, `bowling_sequence`, `bowling_spell`, `dot_streak`, `event_reaction`, `extras_discipline`, `wicket_mode`, `over_boundary_wicket`, `over_end_pressure`) | precomputed sequence features, read only by the sequence exports and one repo | **dropped (P-6, migration `0008`)**. E1 kept no family (§5.3), so nothing was re-implemented as an as-of accumulator: the calculators went with the tables | P-6 |
 | `batting_data`, `bowling_data`, `fielding_data`, `fielding_event` | scorecard tables derived from `ball_event` at import | **kept (survivor of P-6).** Their last *reader* died in P-6 with the feature-history and backtest-feature repos, but the importer still writes them, and P-6's rule is that a table goes only when its last reader and its last writer both die in the same PR. Dropping them means changing the importer, which is a change to the one component §4 marks "keep". Recorded here rather than done: they are now write-only, and the PR that stops the importer writing them is the one that drops them | after P-6 — the importer is the last writer |
 | `match_prediction_aggregates` | backtest aggregates cache | **dropped (P-5, migration `0007`)**; L4 writes its report to the artifacts directory. Its last reader (the accuracy trend) and its last writer (the per-match evaluate flow) both scored the deleted models and died together, which is the only condition under which P-5 drops a table | P-5 |
-| `weather_data`, `weather_job` | nothing populates them (`weather-not-implemented.md`); read by ops probes, the training snapshot export and prediction defaults | **dropped (P-6, migration `0008`)**, with the ops probe, the `weather.*` config block and the seven `temp/wind/rain/…` columns — the last of which went with the win contract | P-6 |
+| `weather_data`, `weather_job` | nothing populates them (no venue had coordinates and nothing fetched observations; `docs/weather-not-implemented.md` recorded it and is in git history); read by ops probes, the training snapshot export and prediction defaults | **dropped (P-6, migration `0008`)**, with the ops probe, the `weather.*` config block and the seven `temp/wind/rain/…` columns — the last of which went with the win contract | P-6 |
 | `ml_tuned_params` | Optuna / combination-meta parameter store | **dropped (P-6, migration `0008`)** with the auto-tune stack; the hyperparameters a run chose live in `runs/<id>/manifest.json`, beside the artifacts they produced | P-6 |
 
 Net after P-6: 30 tables → 16. Nothing in the kept set changed shape, so the importer, the
