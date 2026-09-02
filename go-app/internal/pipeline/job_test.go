@@ -173,8 +173,8 @@ func TestLaneBusyCoversEveryComputeStep(t *testing.T) {
 		assert.Contains(t, compute, step.Command,
 			"%s is a compute step but does not hold the compute lane", step.ID)
 	}
-	assert.Contains(t, compute, "train-win")
-	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "train-win")
+	assert.Contains(t, compute, "xi-retrain")
+	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "xi-retrain")
 }
 
 func TestRunJob_WithTimeout(t *testing.T) {

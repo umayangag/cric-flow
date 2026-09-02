@@ -93,10 +93,10 @@ func TestDefaultDirs_UseConfigValues(t *testing.T) {
 	// ensure cached does not leak across tests
 	cached = &Config{}
 	cached.Inputs.CricsheetDir = "/tmp/cricsheet"
-	cached.Outputs.ExportDir = "/tmp/export"
+	cached.Outputs.Dir = "/tmp/export"
 
 	require.Equal(t, "/tmp/cricsheet", DefaultCricsheetDir())
-	require.Equal(t, "/tmp/export", DefaultExportDir())
+	require.Equal(t, "/tmp/export", DefaultOutputDir())
 }
 
 // Not parallel: uses and mutates the package-level cached config.
@@ -106,17 +106,17 @@ func TestDefaultDirs_FallbacksWhenUnset(t *testing.T) {
 	wantExport := filepath.Join("output", "go-app")
 
 	require.Equal(t, wantCricsheet, DefaultCricsheetDir())
-	require.Equal(t, wantExport, DefaultExportDir())
+	require.Equal(t, wantExport, DefaultOutputDir())
 }
 
 // Not parallel: sets env and mutates cached config.
-func TestDefaultExportDir_EnvOverridesConfig(t *testing.T) {
+func TestDefaultOutputDir_EnvOverridesConfig(t *testing.T) {
 	cached = &Config{}
-	cached.Outputs.ExportDir = "/tmp/export"
+	cached.Outputs.Dir = "/tmp/export"
 	t.Setenv("GO_APP_OUTPUT_DIR", "/output/go-app")
 	defer t.Setenv("GO_APP_OUTPUT_DIR", "")
 
-	require.Equal(t, "/output/go-app", DefaultExportDir())
+	require.Equal(t, "/output/go-app", DefaultOutputDir())
 }
 
 func TestPipelineTimeout(t *testing.T) {
@@ -129,39 +129,9 @@ func TestPipelineTimeout(t *testing.T) {
 	require.Equal(t, time.Duration(0), d)
 
 	// configured timeout
-	cached.Features.PrecomputeTimeoutMs = 60000
+	cached.Pipeline.ImportTimeoutMs = 60000
 	d = PipelineTimeout()
 	require.Equal(t, 60*time.Second, d)
-}
-
-func TestExportTimeout(t *testing.T) {
-	cached = nil
-	cached = &Config{}
-	defer func() { cached = nil }()
-
-	// no config: ExportTimeout falls back to PipelineTimeout (0)
-	d := ExportTimeout()
-	require.Equal(t, time.Duration(0), d)
-
-	// export_timeout_ms set: use it
-	cached.Features.ExportTimeoutMs = 120000
-	d = ExportTimeout()
-	require.Equal(t, 120*time.Second, d)
-
-	// export_timeout_ms 0: fall back to pipeline timeout
-	cached.Features.ExportTimeoutMs = 0
-	cached.Features.PrecomputeTimeoutMs = 90000
-	d = ExportTimeout()
-	require.Equal(t, 90*time.Second, d)
-}
-
-func TestEffectiveExportMaxMatchIDs(t *testing.T) {
-	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(nil))
-	cfg := &Config{}
-	cfg.Backtest.ExportMaxMatchIDs = 500
-	require.Equal(t, 500, EffectiveExportMaxMatchIDs(cfg))
-	cfg.Backtest.ExportMaxMatchIDs = 0
-	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(cfg))
 }
 
 func TestConfigServerHelpers(t *testing.T) {
@@ -179,51 +149,20 @@ func TestConfigServerHelpers(t *testing.T) {
 	require.Equal(t, ":9000", ServerListenAddress(cfg))
 }
 
-func TestConfigBacktestAndOpsHelpers(t *testing.T) {
-	require.Equal(t, DefaultBacktestListDefaultLimit, BacktestListDefaultLimit(nil))
-	require.Equal(t, DefaultBacktestListMaxLimit, BacktestListMaxLimit(nil))
-	require.Equal(t, DefaultOpsMigrationsPageDefault, OpsMigrationsPageDefault(nil))
-
-	cfg := &Config{}
-	cfg.Backtest.ListDefaultLimit = 25
-	cfg.Backtest.ListMaxLimit = 100
-	cfg.Ops.MigrationsPageDefault = 20
-	require.Equal(t, 25, BacktestListDefaultLimit(cfg))
-	require.Equal(t, 100, BacktestListMaxLimit(cfg))
-	require.Equal(t, 20, OpsMigrationsPageDefault(cfg))
-}
-
-func TestPipelinePrecomputeETASecondsPerFmt(t *testing.T) {
-	require.Equal(t, DefaultServerPrecomputeETASecPerFmt, PipelinePrecomputeETASecondsPerFmt(nil))
-
-	cfg := &Config{}
-	cfg.Pipeline.PrecomputeETASecondsPerFmt = 123
-	require.Equal(t, 123, PipelinePrecomputeETASecondsPerFmt(cfg))
-}
-
 func TestConfigServerAndResourcesHelpers(t *testing.T) {
 	cfg := &Config{}
 	cfg.Server.ReadinessTimeoutSec = 5
 	require.Equal(t, 5, ServerReadinessTimeoutSec(cfg))
 
-	cfg.Resources = &ResourcesConfig{PrecomputeMBPerWorker: 600}
-	require.Equal(t, 600, ResourcesPrecomputeMBPerWorker(cfg))
+	cfg.Resources = &ResourcesConfig{ImportMBPerWorker: 600}
+	require.Equal(t, 600, ResourcesImportMBPerWorker(cfg))
 
 	cfg.Selection.MaxWinProbEvalBudget = 200
 	require.Equal(t, 200, SelectionMaxWinProbEvalBudget(cfg))
 
-	cfg.Pipeline.ReplayMatchPageSize = 250
-	require.Equal(t, 250, PipelineReplayMatchPageSize(cfg))
-}
-
-func TestConfigBacktestJobHelpers(t *testing.T) {
-	require.Equal(t, DefaultBacktestJobCleanupAgeHours, BacktestJobCleanupAgeHours(nil))
-	require.Equal(t, DefaultBacktestJobCleanupIntervalMin, BacktestJobCleanupIntervalMin(nil))
-
-	cfg := &Config{}
-	cfg.Backtest.Job = &BacktestJobConfig{CleanupAgeHours: 48, CleanupIntervalMin: 30}
-	require.Equal(t, 48, BacktestJobCleanupAgeHours(cfg))
-	require.Equal(t, 30, BacktestJobCleanupIntervalMin(cfg))
+	require.Equal(t, DefaultOpsMigrationsPageDefault, OpsMigrationsPageDefault(nil))
+	cfg.Ops.MigrationsPageDefault = 20
+	require.Equal(t, 20, OpsMigrationsPageDefault(cfg))
 }
 
 func TestValidateTeamSettings_NilConfig(t *testing.T) {
@@ -247,31 +186,13 @@ func TestConfigServerGetters_AllDefaults(t *testing.T) {
 	require.Equal(t, 3, ServerDBProbeTimeoutSec(cfg))
 }
 
-func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
-	cfgEvalJob := &Config{}
-	cfgEvalJob.Backtest.Job = &BacktestJobConfig{EvalJobMaxDurationHr: 8}
-	cfgExportJob := &Config{}
-	cfgExportJob.Backtest.Job = &BacktestJobConfig{ExportContributionsMaxDurHr: 4}
-	cfgEvalConcurrency := &Config{}
-	cfgEvalConcurrency.Backtest.Job = &BacktestJobConfig{
-		EvalJobConcurrencyMin: 2,
-		EvalJobConcurrencyMax: 4,
-	}
+func TestConfigMoreServerHelpers(t *testing.T) {
 	cfgServerTimeouts := &Config{}
 	cfgServerTimeouts.Server.DBProbeLongTimeoutSec = 10
 	cfgServerTimeouts.Server.ArtifactsTimeoutSec = 120
 	cfgServerTimeouts.Server.HTTPReadTimeoutSec = 15
 	cfgServerTimeouts.Server.HTTPWriteTimeoutSec = 20
 	cfgServerTimeouts.Server.HTTPIdleTimeoutSec = 25
-	cfgResources := &Config{
-		Resources: &ResourcesConfig{
-			ExportMBPerWorker:                256,
-			FieldingMBPerWorker:              128,
-			MemoryUsageFractionPercent:       75,
-			SeqCalcLowMemoryLimitGiB:         8,
-			PrecomputeConcurrencyWhenNoLimit: 6,
-		},
-	}
 
 	testCases := []struct {
 		name string
@@ -287,19 +208,12 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			25,
 		},
 		{"ServerDBProbeTimeoutSec nil", nil, ServerDBProbeTimeoutSec, DefaultServerDBProbeTimeoutSec},
-		{
-			"BacktestAccuracyTrendDefaultLimit nil",
-			nil,
-			BacktestAccuracyTrendDefaultLimit,
-			DefaultBacktestAccuracyTrendLimit,
-		},
-		{
-			"BacktestAccuracyTrendDefaultLimit set",
-			func() *Config { c := &Config{}; c.Backtest.AccuracyTrendDefaultLimit = 30; return c }(),
-			BacktestAccuracyTrendDefaultLimit,
-			30,
-		},
-		{"BacktestEvalJobMaxDurationHr set", cfgEvalJob, BacktestEvalJobMaxDurationHr, 8},
+		{"ServerDBProbeLongTimeoutSec set", cfgServerTimeouts, ServerDBProbeLongTimeoutSec, 10},
+		{"ServerArtifactsTimeoutSec set", cfgServerTimeouts, ServerArtifactsTimeoutSec, 120},
+		{"ServerHTTPReadTimeoutSec set", cfgServerTimeouts, ServerHTTPReadTimeoutSec, 15},
+		{"ServerHTTPWriteTimeoutSec set", cfgServerTimeouts, ServerHTTPWriteTimeoutSec, 20},
+		{"ServerHTTPIdleTimeoutSec nil", nil, ServerHTTPIdleTimeoutSec, DefaultServerHTTPIdleTimeoutSec},
+		{"ServerHTTPIdleTimeoutSec set", cfgServerTimeouts, ServerHTTPIdleTimeoutSec, 25},
 		{"OpsMigrationsPageMax nil", nil, OpsMigrationsPageMax, DefaultOpsMigrationsPageMax},
 		{
 			"OpsMigrationsPageMax set",
@@ -307,201 +221,19 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 			OpsMigrationsPageMax,
 			500,
 		},
-		{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
-		{"BacktestAccuracyTrendMaxLimit nil", nil, BacktestAccuracyTrendMaxLimit, DefaultBacktestListMaxLimit},
-		{
-			"BacktestAccuracyTrendMaxLimit set",
-			func() *Config { c := &Config{}; c.Backtest.AccuracyTrendMaxLimit = 200; return c }(),
-			BacktestAccuracyTrendMaxLimit,
-			200,
-		},
-		{
-			"BacktestAccuracyTrendConcurrency nil",
-			nil,
-			BacktestAccuracyTrendConcurrency,
-			DefaultBacktestAccuracyTrendConcurrency,
-		},
-		{
-			"BacktestAccuracyTrendConcurrency set",
-			func() *Config { c := &Config{}; c.Backtest.AccuracyTrendConcurrency = 4; return c }(),
-			BacktestAccuracyTrendConcurrency,
-			4,
-		},
-		{
-			"BacktestExportContributionsConcurrency nil",
-			nil,
-			BacktestExportContributionsConcurrency,
-			DefaultBacktestExportContributionsConcurrency,
-		},
-		{
-			"BacktestExportContributionsConcurrency set",
-			func() *Config { c := &Config{}; c.Backtest.ExportContributionsConcurrency = 6; return c }(),
-			BacktestExportContributionsConcurrency,
-			6,
-		},
-		{"ResourcesSeqCalcMBPerWorker nil", nil, ResourcesSeqCalcMBPerWorker, DefaultSeqCalcMBPerWorker},
-		{
-			"ResourcesSeqCalcMBPerWorker set",
-			&Config{Resources: &ResourcesConfig{SeqCalcMBPerWorker: 512}},
-			ResourcesSeqCalcMBPerWorker,
-			512,
-		},
-		{
-			"OpsRecentMigrationsCount set",
-			&Config{Ops: OpsConfig{RecentMigrationsCount: 50}},
-			OpsRecentMigrationsCount,
-			50,
-		},
-		{
-			"ResourcesImportMBPerWorker set",
-			&Config{Resources: &ResourcesConfig{ImportMBPerWorker: 200}},
-			ResourcesImportMBPerWorker,
-			200,
-		},
-		{
-			"ResourcesExportMBPerWorker set",
-			cfgResources,
-			ResourcesExportMBPerWorker,
-			256,
-		},
-		{
-			"ResourcesFieldingMBPerWorker set",
-			cfgResources,
-			ResourcesFieldingMBPerWorker,
-			128,
-		},
-		{
-			"ResourcesMemoryUsageFractionPercent set",
-			cfgResources,
-			ResourcesMemoryUsageFractionPercent,
-			75,
-		},
-		{
-			"ResourcesSeqCalcLowMemoryLimitGiB set",
-			cfgResources,
-			ResourcesSeqCalcLowMemoryLimitGiB,
-			8,
-		},
-		{
-			"ResourcesPrecomputeConcurrencyWhenNoLimit set",
-			cfgResources,
-			ResourcesPrecomputeConcurrencyWhenNoLimit,
-			6,
-		},
-		{
-			"BacktestExportContributionsJobMaxDurationHr set",
-			cfgExportJob,
-			BacktestExportContributionsJobMaxDurationHr,
-			4,
-		},
-		{
-			"BacktestEvalJobConcurrencyMin set",
-			cfgEvalConcurrency,
-			BacktestEvalJobConcurrencyMin,
-			2,
-		},
-		{
-			"BacktestEvalJobConcurrencyMax set",
-			cfgEvalConcurrency,
-			BacktestEvalJobConcurrencyMax,
-			4,
-		},
-		{
-			"ServerDBProbeLongTimeoutSec default when nil",
-			nil,
-			ServerDBProbeLongTimeoutSec,
-			DefaultServerDBProbeLongTimeoutSec,
-		},
-		{
-			"ServerDBProbeLongTimeoutSec set",
-			cfgServerTimeouts,
-			ServerDBProbeLongTimeoutSec,
-			10,
-		},
-		{
-			"ServerArtifactsTimeoutSec default when nil",
-			nil,
-			ServerArtifactsTimeoutSec,
-			DefaultServerArtifactsTimeoutSec,
-		},
-		{
-			"ServerArtifactsTimeoutSec set",
-			cfgServerTimeouts,
-			ServerArtifactsTimeoutSec,
-			120,
-		},
-		{
-			"ServerHTTPReadTimeoutSec default when nil",
-			nil,
-			ServerHTTPReadTimeoutSec,
-			DefaultServerHTTPReadTimeoutSec,
-		},
-		{
-			"ServerHTTPReadTimeoutSec set",
-			cfgServerTimeouts,
-			ServerHTTPReadTimeoutSec,
-			15,
-		},
-		{
-			"ServerHTTPWriteTimeoutSec default when nil",
-			nil,
-			ServerHTTPWriteTimeoutSec,
-			DefaultServerHTTPWriteTimeoutSec,
-		},
-		{
-			"ServerHTTPWriteTimeoutSec set",
-			cfgServerTimeouts,
-			ServerHTTPWriteTimeoutSec,
-			20,
-		},
-		{
-			"ServerHTTPIdleTimeoutSec default when nil",
-			nil,
-			ServerHTTPIdleTimeoutSec,
-			DefaultServerHTTPIdleTimeoutSec,
-		},
-		{
-			"ServerHTTPIdleTimeoutSec set",
-			cfgServerTimeouts,
-			ServerHTTPIdleTimeoutSec,
-			25,
-		},
-		{
-			"BacktestExportContributionsJobMaxDurationHr nil",
-			nil,
-			BacktestExportContributionsJobMaxDurationHr,
-			DefaultExportContributionsJobMaxDurHr,
-		},
-		{"BacktestEvalJobMaxDurationHr nil", nil, BacktestEvalJobMaxDurationHr, DefaultEvalJobMaxDurationHr},
-		{"BacktestEvalJobConcurrencyMin nil", nil, BacktestEvalJobConcurrencyMin, DefaultEvalJobConcurrencyMin},
-		{"BacktestEvalJobConcurrencyMax nil", nil, BacktestEvalJobConcurrencyMax, DefaultEvalJobConcurrencyMax},
 		{"OpsMigrationsPageCap nil", nil, OpsMigrationsPageCap, DefaultOpsMigrationsPageCap},
-		{"OpsRecentMigrationsCount nil", nil, OpsRecentMigrationsCount, DefaultBacktestRecentMigrations},
+		{"OpsMigrationsPageCap set", &Config{Ops: OpsConfig{MigrationsPageCap: 5000}}, OpsMigrationsPageCap, 5000},
+		{"OpsRecentMigrationsCount nil", nil, OpsRecentMigrationsCount, DefaultRecentMigrations},
 		{"ResourcesImportMBPerWorker nil", nil, ResourcesImportMBPerWorker, DefaultImportMBPerWorker},
-		{"ResourcesExportMBPerWorker nil", nil, ResourcesExportMBPerWorker, DefaultExportMBPerWorker},
-		{"ResourcesFieldingMBPerWorker nil", nil, ResourcesFieldingMBPerWorker, DefaultFieldingMBPerWorker},
 		{
 			"ResourcesMemoryUsageFractionPercent nil",
 			nil,
 			ResourcesMemoryUsageFractionPercent,
 			DefaultMemoryUsageFractionPercent,
 		},
-		{
-			"ResourcesSeqCalcLowMemoryLimitGiB nil",
-			nil,
-			ResourcesSeqCalcLowMemoryLimitGiB,
-			DefaultSeqCalcLowMemoryLimitGiB,
-		},
-		{
-			"ResourcesPrecomputeConcurrencyWhenNoLimit nil",
-			nil,
-			ResourcesPrecomputeConcurrencyWhenNoLimit,
-			DefaultPrecomputeConcurrencyWhenNoLimit,
-		},
 		{"ServerReadinessTimeoutSec nil", nil, ServerReadinessTimeoutSec, DefaultServerReadinessTimeoutSec},
-		{"ResourcesPrecomputeMBPerWorker nil", nil, ResourcesPrecomputeMBPerWorker, DefaultPrecomputeMBPerWorker},
 		{"SelectionMaxWinProbEvalBudget nil", nil, SelectionMaxWinProbEvalBudget, DefaultSelectionMaxWinProbEvalBudget},
-		{"PipelineReplayMatchPageSize nil", nil, PipelineReplayMatchPageSize, DefaultPipelineReplayMatchPageSize},
+		{"SelectionBestResponseRounds nil", nil, SelectionBestResponseRounds, DefaultSelectionBestResponseRounds},
 	}
 
 	for i := range testCases {
@@ -513,11 +245,6 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 	}
 }
 
-// TestCricsheetSourceURL covers the setting Import acquires from (consumer plan W6-1).
-//
-// The default matters as much as the override: the point of W6 is that Import works
-// on a box nobody has configured, so an empty or absent setting must not mean "no
-// source", it must mean "the usual one".
 func TestCricsheetSourceURL(t *testing.T) {
 	// Not parallel: mutates the package-level cached config, like the tests above.
 	t.Run("falls back to the built-in default", func(t *testing.T) {
@@ -562,7 +289,7 @@ func TestRetiredKeys(t *testing.T) {
 		},
 		{
 			name: "a retired key under a different parent is not matched",
-			raw:  `{"backtest":{"win_model":"xi"}}`,
+			raw:  `{"team":{"win_model":"xi"}}`,
 			want: "",
 		},
 		{

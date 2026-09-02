@@ -4,7 +4,7 @@
     "cricsheet_source_url": "https://cricsheet.org/downloads/all_json.zip"
   },
   "outputs": {
-    "export_dir": "output/go-app"
+    "dir": "output/go-app"
   },
   "server": {
     "train_step_timeout_min": 43200,
@@ -27,57 +27,17 @@
       "Zimbabwe"
     ]
   },
-  "features": {
-    "precompute_timeout_ms": 86400000,
-    "export_timeout_ms": 3600000,
-    "min_batting_innings": 5,
-    "min_bowling_innings": 5,
-    "form_shrinkage_alpha": 0,
-    "consistency_per_format": false,
-    "ewm_alpha": 0.3,
-    "ewm_alpha_short": 0.5,
-    "ewm_alpha_long": 0.2,
-    "consistency_last_n": 10,
-    "form_window_n": 0,
-    "momentum_last_n": 5,
-    "fielding_enrich": {
-      "ewm_alpha": 0.3,
-      "form_to_catches_ratio": 0.7
-    }
-  },
-  "export": {
-    "required_format": ""
-  },
   "team": {
     "min_bowlers": 5,
     "default_batters": 6,
     "default_bowlers": 5
   },
-  "weather": {
-    "enabled": false,
-    "rate_limit_per_sec": 0,
-    "max_attempts": 0,
-    "geocode_cache_only": true,
-    "overwrite_existing": false,
-    "whitelist_venues": [],
-    "mocks": {
-      "temp": 28,
-      "wind": 12,
-      "rain": 0,
-      "humidity": 62,
-      "cloud": 30,
-      "pressure": 1012,
-      "viscosity": 1,
-      "session": 2
-    }
-  },
   "predictor": {
     "team_size": 11
   },
   "pipeline": {
-    "precompute_concurrency": 0,
-    "seqcalc_concurrency": 0,
-    "export_concurrency": 0
+    "import_timeout_ms": 86400000,
+    "import_concurrency": 0
   },
   "resources": {
     "memory_usage_fraction_percent": 85

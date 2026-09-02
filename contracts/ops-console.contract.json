@@ -10,39 +10,30 @@
       "requires": []
     },
     {
-      "id": "precompute",
-      "command": "precompute-features",
-      "label": "Precompute",
+      "id": "retrain",
+      "command": "xi-retrain",
+      "label": "Retrain",
       "optional": false,
       "requires": [
         "import"
       ]
     },
     {
-      "id": "export",
-      "command": "export-dataset",
-      "label": "Export",
-      "optional": false,
-      "requires": [
-        "precompute"
-      ]
-    },
-    {
-      "id": "train_win",
-      "command": "train-win",
-      "label": "Train Win",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
-      "id": "auto_tune",
-      "command": "ml-auto-tune",
-      "label": "Auto-tune",
+      "id": "evaluate",
+      "command": "xi-evaluate",
+      "label": "Evaluate",
       "optional": true,
       "requires": [
-        "export"
+        "import"
+      ]
+    },
+    {
+      "id": "reload",
+      "command": "xi-reload",
+      "label": "Reload",
+      "optional": false,
+      "requires": [
+        "retrain"
       ]
     }
   ],

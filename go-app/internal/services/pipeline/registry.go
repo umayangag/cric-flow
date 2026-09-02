@@ -10,9 +10,9 @@ package pipeline
 type Lane string
 
 const (
-	// LaneCompute is the database-and-artifacts lane: import, precompute, export and
-	// every training step. They read and write the same tables and model files, so
-	// exactly one may run at a time.
+	// LaneCompute is the database-and-artifacts lane: import, retrain, evaluate and
+	// reload. They read and write the same tables and run directories, so exactly one
+	// may run at a time.
 	LaneCompute Lane = "compute"
 
 	// LaneData is the dataset-acquisition lane: fetching and extracting archives into
@@ -46,14 +46,14 @@ func LaneNames() []string {
 // Surface names where a step is offered in the UI. It exists because the registry is
 // the single list of steps (ops plan F-1) but not every step belongs on the pipeline
 // graph: acquisition is a precondition for the pipeline, not a stage of it, and it
-// has no place in an ordering that runs import through auto-tune.
+// has no place in an ordering that runs import through reload.
 //
 // Keeping acquisition in the same registry is what stops the lane, the label and the
 // busy-check from drifting into a second table — the failure F-1 and F-2 both fixed.
 type Surface string
 
 const (
-	// SurfacePipeline is the ordered import-to-train graph. It is the zero value, so
+	// SurfacePipeline is the ordered import-to-reload graph. It is the zero value, so
 	// a step only names a surface when it is not an ordinary pipeline stage.
 	SurfacePipeline Surface = "pipeline"
 
@@ -80,10 +80,6 @@ type Step struct {
 
 	// Label is the human-readable name shown in the UI and in error messages.
 	Label string
-
-	// Model is the ML model name used for the tuned-parameter lookup, or "" when
-	// the step trains no single model.
-	Model string
 
 	// MLEndpoint is the ml-service path segment for POST /admin/train/{endpoint},
 	// or "" when go-app executes the step itself.
@@ -124,10 +120,6 @@ func (s Step) EffectiveSurface() Surface {
 	}
 	return s.Surface
 }
-
-// IsTraining reports whether the step trains a model whose hyper-parameters are
-// looked up from the tuned-params table.
-func (s Step) IsTraining() bool { return s.Model != "" }
 
 // RunsOnMLService reports whether the step is executed by ml-service rather than go-app.
 func (s Step) RunsOnMLService() bool { return s.MLEndpoint != "" }
@@ -232,42 +224,36 @@ var defaultRegistry = NewRegistry(
 		Command: "cricsheet-import",
 		Label:   "Import",
 	},
+	// One step for the whole model build: the rating pass, the XI win models, the
+	// performance models, L4's report and the run manifest. It was six training steps
+	// plus precompute plus export, and every one of them could be run in an order that
+	// produced artifacts nothing had measured. There is no order to get wrong left.
 	Step{
-		ID:       "precompute",
-		Command:  "precompute-features",
-		Label:    "Precompute",
-		Requires: []string{"import"},
+		ID:         "retrain",
+		Command:    "xi-retrain",
+		Label:      "Retrain",
+		MLEndpoint: "retrain",
+		Requires:   []string{"import"},
 	},
+	// Evaluate is L4 at an arbitrary cutoff. It writes a report and touches no
+	// artifact `current` points at, which is why it is optional and requires only the
+	// import: asking "what would this have scored?" is not a stage of building a model.
 	Step{
-		ID:       "export",
-		Command:  "export-dataset",
-		Label:    "Export",
-		Requires: []string{"precompute"},
-	},
-	Step{
-		ID:         "train_win",
-		Command:    "train-win",
-		Label:      "Train Win",
-		Model:      "win",
-		MLEndpoint: "win",
-		Requires:   []string{"export"},
-	},
-	// Auto-tune requires the export and nothing after it. It consumes the same inputs
-	// the train step does — the training-data API — and not one trained artifact.
-	//
-	// It used to require the train steps, which forced the one order the pipeline is
-	// meant to avoid: train on stale params, then search for better ones and throw the
-	// artifacts away. Hyperparameters are a function of the feature space, so when the
-	// feature space has changed the search has to come first and the training that
-	// follows it uses what it found. That is the `tune` run plan, and this edge is what
-	// makes it runnable.
-	Step{
-		ID:         "auto_tune",
-		Command:    "ml-auto-tune",
-		Label:      "Auto-tune",
-		MLEndpoint: "auto-tune",
-		Requires:   []string{"export"},
+		ID:         "evaluate",
+		Command:    "xi-evaluate",
+		Label:      "Evaluate",
+		MLEndpoint: "evaluate",
+		Requires:   []string{"import"},
 		Optional:   true,
+	},
+	// Reload swaps `current` to a run and loads it. Separate from retrain because the
+	// two answer different questions -- "build a run" and "serve that run" -- and a
+	// retrain that published itself would leave no way to go back to the run before it.
+	Step{
+		ID:       "reload",
+		Command:  "xi-reload",
+		Label:    "Reload",
+		Requires: []string{"retrain"},
 	},
 	// Acquisition. Declared here so the lane, the label and the busy-check come from
 	// the same place as every other step, but on SurfaceData: fetching a dataset is

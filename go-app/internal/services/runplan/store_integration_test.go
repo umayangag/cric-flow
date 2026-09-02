@@ -47,7 +47,7 @@ func TestStoreRoundTrip_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := TrackingStore{}
 
-	steps := mustResolve(t, "import", "precompute")
+	steps := mustResolve(t, "import", "retrain")
 	state := NewState(PlanFull, steps, "2026-08-27T12:00:00Z")
 
 	id, err := store.Create(ctx, PlanFull, state)
@@ -70,7 +70,7 @@ func TestSaveDoesNotFinishThePlan_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := TrackingStore{}
 
-	state := NewState(PlanFull, mustResolve(t, "import", "precompute"), "2026-08-27T12:00:00Z")
+	state := NewState(PlanFull, mustResolve(t, "import", "retrain"), "2026-08-27T12:00:00Z")
 	id, err := store.Create(ctx, PlanFull, state)
 	require.NoError(t, err)
 
@@ -95,7 +95,7 @@ func TestFinishRecordsTheOutcome_Integration(t *testing.T) {
 		status string
 	}{
 		"success":   {nil, string(tracking.StatusCompleted)},
-		"failure":   {errors.New("precompute blew up"), string(tracking.StatusFailed)},
+		"failure":   {errors.New("retrain blew up"), string(tracking.StatusFailed)},
 		"cancelled": {context.Canceled, string(tracking.StatusCancelled)},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -144,13 +144,13 @@ func TestLatestSurvivesTheBrowserBeingClosed_Integration(t *testing.T) {
 	ctx := context.Background()
 	store := TrackingStore{}
 
-	state := NewState(PlanFull, mustResolve(t, "import", "precompute", "export"), "2026-08-27T12:00:00Z")
+	state := NewState(PlanFull, mustResolve(t, "import", "retrain", "reload"), "2026-08-27T12:00:00Z")
 	id, err := store.Create(ctx, PlanFull, state)
 	require.NoError(t, err)
 	state.Steps[0].Status = StatusCompleted
 	state.Steps[1].Status = StatusFailed
-	state.Steps[1].Error = "no rows to precompute"
-	require.NoError(t, store.Finish(ctx, id, state, errors.New("precompute failed")))
+	state.Steps[1].Error = "nothing to retrain"
+	require.NoError(t, store.Finish(ctx, id, state, errors.New("retrain failed")))
 
 	// A new reader, with nothing in memory.
 	gotID, restored, found, err := store.Latest(ctx)
@@ -160,6 +160,6 @@ func TestLatestSurvivesTheBrowserBeingClosed_Integration(t *testing.T) {
 
 	next, ok := restored.FirstIncomplete()
 	require.True(t, ok)
-	assert.Equal(t, "precompute", next.StepID, "resume from where it stopped")
-	assert.Equal(t, "no rows to precompute", restored.Steps[1].Error)
+	assert.Equal(t, "retrain", next.StepID, "resume from where it stopped")
+	assert.Equal(t, "nothing to retrain", restored.Steps[1].Error)
 }

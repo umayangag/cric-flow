@@ -60,18 +60,10 @@ func ValidateForServer() error {
 		slog.Error("config.ValidateForServer failed", slog.String("path", loadedFrom), slog.Any("err", err))
 		return err
 	}
-	if cfg.Features.PrecomputeTimeoutMs < 0 {
+	if cfg.Pipeline.ImportTimeoutMs < 0 {
 		err := fmt.Errorf(
-			"features.precompute_timeout_ms must be >= 0 (0 = no timeout); got %d",
-			cfg.Features.PrecomputeTimeoutMs,
-		)
-		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
-		return err
-	}
-	if cfg.Features.ExportTimeoutMs < 0 {
-		err := fmt.Errorf(
-			"features.export_timeout_ms must be >= 0 (0 = use pipeline timeout); got %d",
-			cfg.Features.ExportTimeoutMs,
+			"pipeline.import_timeout_ms must be >= 0 (0 = no timeout); got %d",
+			cfg.Pipeline.ImportTimeoutMs,
 		)
 		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
 		return err
@@ -79,25 +71,14 @@ func ValidateForServer() error {
 	return nil
 }
 
-// PipelineTimeout returns the timeout for long-running pipeline jobs (import, precompute).
-// Uses features.precompute_timeout_ms. 0 = no timeout.
+// PipelineTimeout returns the timeout for an import run.
+// Uses pipeline.import_timeout_ms. 0 = no timeout.
 func PipelineTimeout() time.Duration {
 	cfg := Load()
-	if cfg == nil || cfg.Features.PrecomputeTimeoutMs <= 0 {
+	if cfg == nil || cfg.Pipeline.ImportTimeoutMs <= 0 {
 		return 0
 	}
-	return time.Duration(cfg.Features.PrecomputeTimeoutMs) * time.Millisecond
-}
-
-// ExportTimeout returns the timeout for the export-dataset pipeline step.
-// Uses features.export_timeout_ms when set (must be > 0); otherwise falls back to PipelineTimeout().
-// A resulting duration of 0 means no timeout (only shutdown cancels).
-func ExportTimeout() time.Duration {
-	cfg := Load()
-	if cfg != nil && cfg.Features.ExportTimeoutMs > 0 {
-		return time.Duration(cfg.Features.ExportTimeoutMs) * time.Millisecond
-	}
-	return PipelineTimeout()
+	return time.Duration(cfg.Pipeline.ImportTimeoutMs) * time.Millisecond
 }
 
 // DefaultCricsheetDir returns the configured cricsheet input dir or a sensible built-in default.

@@ -89,6 +89,12 @@ const (
 // only (TEST has no innings to draw, plan H-17). Mirrors ml.xi.simulator.SIMULATED_FORMATS.
 var simulatedFormats = map[string]bool{"T20": true, "T20I": true, "ODI": true}
 
+// Forecast sources, mirroring predictteam.ForecastSummary.Source.
+const (
+	forecastSourceSimulator = "simulator"
+	forecastSourceQuantiles = "performance_quantiles"
+)
+
 // formatHasInningsLength reports whether the simulator runs for the format.
 func formatHasInningsLength(format string) bool {
 	return simulatedFormats[normalizeFormat(format)]
@@ -127,8 +133,13 @@ func applyXISimulation(
 		return fmt.Errorf("simulate match: unknown win-probability source %q", sim.HeadlineSource)
 	}
 
-	applySimulatedSide(result.Team1, sim.Team1)
-	applySimulatedSide(result.Team2, sim.Team2)
+	if err := applySimulatedSide(result.Team1, sim.Team1); err != nil {
+		return fmt.Errorf("simulate match: %w", err)
+	}
+	if err := applySimulatedSide(result.Team2, sim.Team2); err != nil {
+		return fmt.Errorf("simulate match: %w", err)
+	}
+	result.Forecast = ForecastSummary{Source: forecastSourceSimulator}
 	result.Scorecard = &Scorecard{
 		Samples:          sim.Samples,
 		TossMarginalised: sim.TossMarginalised,
@@ -164,9 +175,14 @@ func inningsTotal(side XISimulatedSide) InningsTotal {
 }
 
 // applySimulatedSide writes the selected players' median-band scorecard lines, their 10-90
-// ranges and their share of the innings total's spread. A player the simulator did not
-// return (it always returns the eleven it was sent) is logged and left with zeros.
-func applySimulatedSide(players []SelectedPlayer, side XISimulatedSide) {
+// ranges and their share of the innings total's spread.
+//
+// A player the simulator did not return is an error, not a warning. The simulator always
+// returns the eleven it was sent, so this cannot happen without something being wrong --
+// and the old behaviour, leaving the row at zeros, put "0 runs off 0 balls" on screen
+// indistinguishable from a genuine forecast (§8.7: a substitution has to be visible, and
+// substituting zeros for a forecast cannot be made visible).
+func applySimulatedSide(players []SelectedPlayer, side XISimulatedSide) error {
 	byKey := make(map[string]XISimulatedPlayer, len(side.Players))
 	for _, p := range side.Players {
 		byKey[p.PlayerKey] = p
@@ -174,9 +190,7 @@ func applySimulatedSide(players []SelectedPlayer, side XISimulatedSide) {
 	for i := range players {
 		sp, ok := byKey[players[i].PlayerKey]
 		if !ok {
-			slog.Warn("xi simulation: selected player missing from the simulator's side",
-				slog.String("player_key", players[i].PlayerKey))
-			continue
+			return fmt.Errorf("the simulator returned no line for selected player %q", players[i].PlayerKey)
 		}
 		spread := sp.SpreadShare
 		players[i].Runs = sp.ScorecardRuns
@@ -190,6 +204,7 @@ func applySimulatedSide(players []SelectedPlayer, side XISimulatedSide) {
 		players[i].RunsConcededRange = &ValueRange{P10: sp.RunsConceded.P10, P90: sp.RunsConceded.P90}
 		players[i].SpreadShare = &spread
 	}
+	return nil
 }
 
 // economy is runs conceded per over; zero when the player did not bowl.

@@ -20,11 +20,6 @@ type matchDetailsResponse struct {
 	BowlingSession *string `json:"bowling_session,omitempty"`
 }
 
-type precomputeRequest struct {
-	Season  string   `json:"season"`
-	Formats []string `json:"formats"`
-}
-
 type cricSheetRequest struct {
 	Dir                  string `json:"dir"`
 	PlaceholdersFielding bool   `json:"placeholders_fielding"`

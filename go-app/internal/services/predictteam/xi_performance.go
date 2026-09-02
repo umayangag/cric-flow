@@ -71,8 +71,20 @@ func applyPerformanceForecast(
 	for _, p := range forecast.Players {
 		byKey[p.PlayerKey] = p
 	}
-	applyForecastToSide(result.Team1, byKey)
-	applyForecastToSide(result.Team2, byKey)
+	if err := applyForecastToSide(result.Team1, byKey); err != nil {
+		return fmt.Errorf("performance forecast: %w", err)
+	}
+	if err := applyForecastToSide(result.Team2, byKey); err != nil {
+		return fmt.Errorf("performance forecast: %w", err)
+	}
+	// §8.7: the substitution is named on the wire, not only in this log line. The caller
+	// asked for a match forecast and got per-player distributions instead, because this
+	// format has no innings length for the simulator to draw.
+	result.Forecast = ForecastSummary{
+		Source: forecastSourceQuantiles,
+		Note: "This format has no innings length, so there is no simulated match: the " +
+			"per-player numbers are the performance model's own quantiles, and there is no total.",
+	}
 	slog.InfoContext(ctx, "performance forecast applied",
 		slog.String("format", fix.format),
 		slog.Int("players", len(forecast.Players)),
@@ -80,13 +92,14 @@ func applyPerformanceForecast(
 	return nil
 }
 
-func applyForecastToSide(players []SelectedPlayer, byKey map[string]XIPerformancePlayer) {
+// applyForecastToSide writes each player's median and 10-90 range. A player the response
+// does not carry is an error for the same reason it is in the simulator path: a row left
+// at zeros reads as a forecast of nothing rather than as a missing forecast.
+func applyForecastToSide(players []SelectedPlayer, byKey map[string]XIPerformancePlayer) error {
 	for i := range players {
 		p, ok := byKey[players[i].PlayerKey]
 		if !ok {
-			slog.Warn("performance forecast: selected player missing from the response",
-				slog.String("player_key", players[i].PlayerKey))
-			continue
+			return fmt.Errorf("no forecast for selected player %q", players[i].PlayerKey)
 		}
 		players[i].Runs = p.Runs.Median
 		players[i].Balls = p.BallsFaced.Median
@@ -96,4 +109,5 @@ func applyForecastToSide(players []SelectedPlayer, byKey map[string]XIPerformanc
 		players[i].BallsRange = &ValueRange{P10: p.BallsFaced.P10, P90: p.BallsFaced.P90}
 		players[i].RunsConcededRange = &ValueRange{P10: p.RunsConceded.P10, P90: p.RunsConceded.P90}
 	}
+	return nil
 }

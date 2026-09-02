@@ -38,10 +38,10 @@ func observationsFilePath() string {
 		if filename == "" || filename == "." || filename == string(os.PathSeparator) {
 			filename = observationsFilename
 		}
-		observationsPath = filepath.Join(config.DefaultExportDir(), filename)
+		observationsPath = filepath.Join(config.DefaultOutputDir(), filename)
 		return observationsPath
 	}
-	observationsPath = filepath.Join(config.DefaultExportDir(), observationsFilename)
+	observationsPath = filepath.Join(config.DefaultOutputDir(), observationsFilename)
 	return observationsPath
 }
 

@@ -162,6 +162,7 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 				RunsConceded: XISimulatedRange{P10: 10, Median: 33, P90: 60},
 				Wickets:      1.4,
 			},
+			{PlayerKey: "b1", Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
 		},
 	}}
 	result := resultWithOnePlayerEachSide()
@@ -176,7 +177,24 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 	assert.Equal(t, 33.0, result.Team1[0].RunsConceded)
 	assert.Zero(t, result.Team1[0].Economy, "economy needs balls bowled, which L2-B does not forecast")
 	assert.Nil(t, result.Scorecard, "no innings length means no innings total, and none is invented")
-	assert.Zero(t, result.Team2[0].Runs, "a player the forecast omitted keeps his zeros")
+	// §8.7: the substitution is on the wire, not only in a log line.
+	assert.Equal(t, "performance_quantiles", result.Forecast.Source)
+	assert.Contains(t, result.Forecast.Note, "no innings length")
+}
+
+// TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor: a row left at zeros reads
+// as a forecast of nothing rather than as a missing forecast, and no field says which.
+func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T) {
+	t.Parallel()
+	predictor := &fakePerformance{result: &XIPerformanceResult{
+		Players: []XIPerformancePlayer{{PlayerKey: "a1", Runs: XISimulatedRange{Median: 26}}},
+	}}
+
+	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
+		[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `no forecast for selected player "b1"`)
 }
 
 func TestApplyPerformanceForecast_PropagatesTheFailure(t *testing.T) {

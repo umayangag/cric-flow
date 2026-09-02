@@ -94,6 +94,21 @@ type SelectionSummary struct {
 	Note      string `json:"note,omitempty"`
 }
 
+// ForecastSummary says which model produced the per-player numbers, and — where that is
+// not the default — why.
+//
+// It exists because §8.7's rule applies to more than the win probability: a fallback that
+// changes which model answered must say so in the response, not only in a log line. A
+// format with no innings length gets L2-B's own quantiles instead of the simulator's
+// draws, and before this the only sign was a `scorecard` that quietly was not there.
+//
+// Source is "simulator" (whole matches drawn, L2-C) or "performance_quantiles" (L2-B's
+// per-player distributions, reported directly).
+type ForecastSummary struct {
+	Source string `json:"source"`
+	Note   string `json:"note,omitempty"`
+}
+
 // WinProbabilitySummary is the headline probability and where it came from.
 //
 // Source is "display" (the monotone GBM over both elevens) or "simulator" (the share of
@@ -127,10 +142,16 @@ type Scorecard struct {
 // Result is one prediction: two XIs, how they were chosen, the headline probability, and —
 // where the format has an innings length — the simulated scorecard the player points and
 // ranges come from.
+//
+// Every substitution it makes is named on the wire: `selection`
+// says whether the XIs were optimised or rating-ordered (H-17), `forecast` says which model
+// produced the per-player numbers, and `win_probability.source` says which produced the
+// headline probability. Nothing here falls back silently (§8.7).
 type Result struct {
 	Team1          []SelectedPlayer      `json:"team1"`
 	Team2          []SelectedPlayer      `json:"team2"`
 	Selection      SelectionSummary      `json:"selection"`
+	Forecast       ForecastSummary       `json:"forecast"`
 	WinProbability WinProbabilitySummary `json:"win_probability"`
 	Scorecard      *Scorecard            `json:"scorecard,omitempty"`
 }

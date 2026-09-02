@@ -179,30 +179,29 @@ func TestRequirementsPrecedeTheirDependents(t *testing.T) {
 	}
 }
 
-// TestAutoTuneDependsOnTheExportOnly pins the edge that makes tune-before-train
-// possible. Auto-tune reads the exported CSVs and the training-data API — the same
-// inputs the train steps read, and not one trained artifact. Requiring a train step
-// here would gate the search behind the training it is meant to inform.
-func TestAutoTuneDependsOnTheExportOnly(t *testing.T) {
+// TestEvaluateDependsOnTheImportOnly pins the edge that makes an evaluation runnable
+// without a retrain. Evaluate is L4 at a cutoff of the operator's choosing over rows
+// already in the database; requiring the retrain would gate "what would this have
+// scored?" behind producing the artifacts it is not measuring.
+func TestEvaluateDependsOnTheImportOnly(t *testing.T) {
 	t.Parallel()
-	step, ok := Steps().ByID("auto_tune")
+	step, ok := Steps().ByID("evaluate")
 	require.True(t, ok)
-	assert.Equal(t, []string{"export"}, step.Requires)
-	assert.True(t, step.Optional, "a search nobody asked for must never be implied")
+	assert.Equal(t, []string{"import"}, step.Requires)
+	assert.True(t, step.Optional, "a harness run nobody asked for must never be implied")
 }
 
 func TestStepLookups(t *testing.T) {
 	t.Parallel()
 	registry := Steps()
 
-	step, ok := registry.ByID("auto_tune")
+	step, ok := registry.ByID("evaluate")
 	require.True(t, ok)
-	assert.Equal(t, "ml-auto-tune", step.Command)
+	assert.Equal(t, "xi-evaluate", step.Command)
 	assert.True(t, step.Optional)
 	assert.True(t, step.RunsOnMLService())
-	assert.False(t, step.IsTraining(), "auto-tune has no tuned-params model of its own")
 
-	byCommand, ok := registry.ByCommand("ml-auto-tune")
+	byCommand, ok := registry.ByCommand("xi-evaluate")
 	require.True(t, ok)
 	assert.Equal(t, step, byCommand)
 

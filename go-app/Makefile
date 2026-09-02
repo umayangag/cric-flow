@@ -132,13 +132,12 @@ deadcode:
 .PHONY: coverage coverage-html coverage-func coverage-check
 
 # Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=70 make coverage-check`
-COV_MIN ?= 68
+COV_MIN ?= 74
 
-# Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data structs),
-# internal/db, internal/db/exportqueries (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
-# internal/commands/precomputefeatures, internal/precompute (DB/seqcalc orchestration; integration-covered),
+# Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data
+# structs), internal/db (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
 # internal/server (HTTP handlers; covered by API/integration tests)
-COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/db/exportqueries$$|/internal/db$$|/commands/precomputefeatures$$|/internal/precompute$$|/internal/server$$
+COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/db$$|/internal/server$$
 
 # Packages included in coverage. Default: internal libs excluding mocks, cmd, models. Override with COVERAGE_PACKAGES=./... for full.
 COVERAGE_PACKAGES ?= $(shell go list ./... | grep -vE '$(COVERAGE_EXCLUDE)' | tr '\n' ' ')
@@ -158,7 +157,7 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below COV_MIN (default 68)
+# Fail if total coverage is below COV_MIN (default 74)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
@@ -194,7 +193,7 @@ help:
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
-	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 68%%)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 74%%)"
 	@echo "  coverage-html      Render HTML coverage report"
 	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo

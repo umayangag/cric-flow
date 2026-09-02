@@ -8,12 +8,9 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
-	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
-	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
-	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
@@ -31,18 +28,10 @@ type StepRequest struct {
 	ImportDir string
 	// PlaceholdersFielding fills missing fielding rows during import.
 	PlaceholdersFielding bool
-	// Season and Formats narrow a precompute. Empty means all.
-	Season  string
-	Formats []string
-	// ConfirmDefaultParams allows a training step to run on config defaults when the
-	// model has no auto-tuned parameters.
-	//
-	// Single-step runs ask first (confirmDefaultParams answers the request and the
-	// client re-posts), because training on defaults by accident is a silent way to
-	// get a worse model. A plan cannot stop to ask, and asking for the whole pipeline
-	// *is* the confirmation — but the run records that it happened, so "why is this
-	// model worse?" has an answer in the history rather than nowhere.
-	ConfirmDefaultParams bool
+	// RunID names the run a reload should point `current` at. Empty means "reload
+	// whatever `current` already names", which is what a plan wants: the retrain
+	// before it in the same plan has just written that pointer.
+	RunID string
 	// Feed and SourceURL name the archive an acquisition step works on. Empty means
 	// the configured source (inputs.cricsheet_source_url), which is what a plan and
 	// what Import both use.
@@ -153,58 +142,30 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 			},
 		}
 
-	case "precompute":
-		season, formats := req.Season, req.Formats
-		return StepJob{
-			Command: step.Command,
-			Args:    map[string]any{"season": season, "formats": formats},
-			Timeout: config.PipelineTimeout(),
-			Run: func(ctx context.Context) (any, error) {
-				err := precompute.Run(ctx, season, formats, nil)
-				return map[string]any{"season": season, "formats": formats}, err
-			},
+	case "reload":
+		query := url.Values{}
+		args := map[string]any{"step": step.ID}
+		if req.RunID != "" {
+			query.Set("run", req.RunID)
+			args["run_id"] = req.RunID
 		}
-
-	case "export":
-		outDir := config.DefaultExportDir()
 		return StepJob{
 			Command: step.Command,
-			Args:    map[string]any{"out_dir": outDir},
-			Timeout: config.ExportTimeout(),
+			Args:    args,
+			Timeout: pipelinesvc.TrainStepTimeout(),
 			Run: func(ctx context.Context) (any, error) {
-				repo := &exportqueries.Repo{}
-				runner := exportsvc.NewRunnerWithServices(
-					exportsvc.NewBattingService(repo),
-					exportsvc.NewBowlingService(repo),
-					exportsvc.NewFieldingService(repo),
-					exportsvc.NewExtrasService(repo),
-					exportsvc.NewWinService(repo),
-				)
-				// Provenance here as well as in runExportHandler: a plan-driven export
-				// and a manually triggered one must produce the same manifest, and
-				// without this the plan's would name no dataset at all — silently,
-				// which is the failure this whole phase exists to prevent.
-				opts := exportsvc.Options{
-					OutDir:     outDir,
-					Unified:    true,
-					Provenance: liveDatasetProvenance(),
-				}
-				return map[string]any{"out_dir": outDir}, runner.Run(ctx, opts)
+				return callMLReload(ctx, query)
 			},
 		}
 	}
 
-	// Everything else runs on ml-service.
+	// Everything else — retrain and evaluate — runs on ml-service.
 	cutoff := req.Cutoff
 	if cutoff == "" {
 		cutoff = pipelinesvc.DefaultCutoff()
 	}
 	query := url.Values{"cutoff": []string{cutoff}}
 	args := map[string]any{"step": step.ID, "cutoff": cutoff}
-	if req.ConfirmDefaultParams {
-		query.Set("confirm_use_default", "1")
-		args["confirm_use_default"] = true
-	}
 	return StepJob{
 		Command: step.Command,
 		Args:    args,

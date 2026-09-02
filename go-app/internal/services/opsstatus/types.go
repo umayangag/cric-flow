@@ -16,12 +16,9 @@ type Response struct {
 	Timestamp      string          `json:"timestamp"`
 	Services       map[string]bool `json:"services"`
 	DB             map[string]any  `json:"db"`
-	Precompute     map[string]any  `json:"precompute"`
 	Dataset        map[string]any  `json:"dataset"`
-	Exports        map[string]any  `json:"exports"`
 	Artifacts      map[string]any  `json:"artifacts"`
 	Fielding       map[string]any  `json:"fielding"`
-	Weather        map[string]any  `json:"weather"`
 	DBFreshness    map[string]any  `json:"db_freshness"`
 	DBCompleteness map[string]any  `json:"db_completeness"`
 	Pipeline       map[string]any  `json:"pipeline,omitempty"`

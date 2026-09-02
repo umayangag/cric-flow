@@ -1,9 +1,14 @@
-// Package resources provides resource-aware concurrency limits for pipelines
-// (precompute, import, export, seqcalc) to avoid OOM while using available CPU/memory.
-// Limits are derived from the system when config pipeline.*_concurrency is 0: memory limit
-// (GOMEMLIMIT or cgroup), MB-per-worker (from observations or config fallback), and
-// memory_usage_fraction_percent yield worker count; when no memory limit is detected,
-// NumCPU is used. Set pipeline.*_concurrency > 0 only to override derivation.
+// Package resources provides resource-aware concurrency limits for the import pipeline,
+// to avoid OOM while using available CPU/memory. Limits are derived from the system when
+// config pipeline.import_concurrency is 0: memory limit (GOMEMLIMIT or cgroup),
+// MB-per-worker (from observations or config fallback), and memory_usage_fraction_percent
+// yield a worker count; when no memory limit is detected, NumCPU is used. Set
+// pipeline.import_concurrency > 0 only to override derivation.
+//
+// Import is the only kind left. Precompute, export, seqcalc and fielding were kinds until
+// P-6 deleted the pipelines that used them; the Kind type stays because the limit still
+// has to be named in an env var and a config key, and because the importer is not
+// obviously the last pipeline this repo will ever have.
 package resources
 
 import (
@@ -20,17 +25,13 @@ import (
 type Kind string
 
 const (
-	KindPrecompute Kind = "precompute"
-	KindImport     Kind = "import"
-	KindExport     Kind = "export"
-	KindSeqCalc    Kind = "seqcalc"
-	KindFielding   Kind = "fielding"
+	KindImport Kind = "import"
 )
 
 // Memory per worker and concurrency knobs come from config (see config.Resources*); fallbacks in config/constants.
 
 // ConcurrencyLimit returns a safe concurrency limit for the given pipeline kind.
-// Order of precedence: env override (e.g. PRECOMPUTE_CONCURRENCY) > configLimit > config callback >
+// Order of precedence: env override (e.g. IMPORT_CONCURRENCY) > configLimit > config callback >
 // memory-based limit (from GOMEMLIMIT or cgroup) > CPU-based default.
 // Floor 1, ceiling is kind-specific (e.g. NumCPU*2 for import).
 func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int {
@@ -51,15 +52,7 @@ func ConcurrencyLimit(kind Kind, configLimit int, getConfigLimit func() int) int
 	n := memoryBasedLimit(kind)
 	if n <= 0 {
 		// No memory limit detected (no GOMEMLIMIT/cgroup): use CPU-based concurrency for optimum throughput.
-		cfg := config.Load()
-		if kind == KindPrecompute {
-			n = config.ResourcesPrecomputeConcurrencyWhenNoLimit(cfg)
-			if n <= 0 {
-				n = runtime.NumCPU()
-			}
-		} else {
-			n = runtime.NumCPU()
-		}
+		n = runtime.NumCPU()
 		if n < 1 {
 			n = 1
 		}
@@ -75,38 +68,18 @@ func GetLimit(kind Kind) int {
 		if cfg == nil {
 			return 0
 		}
-		switch kind {
-		case KindPrecompute:
-			return cfg.Pipeline.PrecomputeConcurrency
-		case KindImport:
+		if kind == KindImport {
 			return cfg.Pipeline.ImportConcurrency
-		case KindSeqCalc:
-			return cfg.Pipeline.SeqCalcConcurrency
-		case KindExport:
-			return cfg.Pipeline.ExportConcurrency
-		case KindFielding:
-			return cfg.Pipeline.FieldingConcurrency
-		default:
-			return 0
 		}
+		return 0
 	})
 }
 
 func envKeyForKind(kind Kind) string {
-	switch kind {
-	case KindPrecompute:
-		return "PRECOMPUTE_CONCURRENCY"
-	case KindImport:
+	if kind == KindImport {
 		return "IMPORT_CONCURRENCY"
-	case KindExport:
-		return "EXPORT_CONCURRENCY"
-	case KindSeqCalc:
-		return "SEQCALC_CONCURRENCY"
-	case KindFielding:
-		return "FIELDING_CONCURRENCY"
-	default:
-		return "PIPELINE_CONCURRENCY"
 	}
+	return "PIPELINE_CONCURRENCY"
 }
 
 func ceiling(kind Kind) int {
@@ -114,14 +87,10 @@ func ceiling(kind Kind) int {
 	if cpu < 1 {
 		cpu = 1
 	}
-	switch kind {
-	case KindImport:
+	if kind == KindImport {
 		return cpu * 4
-	case KindPrecompute, KindExport, KindSeqCalc, KindFielding:
-		return cpu * 2
-	default:
-		return cpu
 	}
+	return cpu
 }
 
 func memoryBasedLimit(kind Kind) int {
@@ -145,16 +114,6 @@ func memoryBasedLimit(kind Kind) int {
 	if n < 1 {
 		n = 1
 	}
-	// SeqCalc workers run full-format ball_event scans and can each use more than the per-worker estimate.
-	// In low-memory containers, cap at 1 so we don't run multiple such workers.
-	seqCalcLowGiB := config.ResourcesSeqCalcLowMemoryLimitGiB(cfg)
-	if seqCalcLowGiB <= 0 {
-		seqCalcLowGiB = config.DefaultSeqCalcLowMemoryLimitGiB
-	}
-	seqcalcLowMemoryLimitBytes := int64(seqCalcLowGiB) * 1024 * 1024 * 1024
-	if kind == KindSeqCalc && limitBytes <= seqcalcLowMemoryLimitBytes && n > 1 {
-		n = 1
-	}
 	slog.Debug("resources: memory-based limit",
 		slog.String("kind", string(kind)),
 		slog.Int64("limit_mb", limitBytes/(1024*1024)),
@@ -172,22 +131,8 @@ func effectiveMBPerWorker(kind Kind) int {
 	return defaultMBPerWorker(kind)
 }
 
-func defaultMBPerWorker(kind Kind) int {
-	cfg := config.Load()
-	switch kind {
-	case KindPrecompute:
-		return config.ResourcesPrecomputeMBPerWorker(cfg)
-	case KindImport:
-		return config.ResourcesImportMBPerWorker(cfg)
-	case KindExport:
-		return config.ResourcesExportMBPerWorker(cfg)
-	case KindSeqCalc:
-		return config.ResourcesSeqCalcMBPerWorker(cfg)
-	case KindFielding:
-		return config.ResourcesFieldingMBPerWorker(cfg)
-	default:
-		return config.ResourcesImportMBPerWorker(cfg)
-	}
+func defaultMBPerWorker(_ Kind) int {
+	return config.ResourcesImportMBPerWorker(config.Load())
 }
 
 // clampToCeiling clamps n to [1, hi].

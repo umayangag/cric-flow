@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -20,10 +19,6 @@ var fixedNow = time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
 func testReporter() *progressReporter {
 	r := newProgressReporter()
 	r.now = func() time.Time { return fixedNow }
-	r.autoTuneProgress = func(context.Context) map[string]interface{} {
-		return map[string]interface{}{"phase": "fine_tuning"}
-	}
-	r.precomputeStatus = func() precompute.Status { return precompute.Status{} }
 	r.fetchStatus = func() (dataacquire.Progress, string, bool) { return dataacquire.Progress{}, "", false }
 	r.extractStatus = func() (dataacquire.ExtractProgress, string, bool) {
 		return dataacquire.ExtractProgress{}, "", false
@@ -47,15 +42,15 @@ func TestSnapshotReportsEveryRunningStep(t *testing.T) {
 	// Two steps in flight at once — the case the old single-slot payload could not
 	// express, and the one the data lane and the run-plan executor both produce.
 	payload := testReporter().snapshot(context.Background(), []tracking.Migration{
-		runningFor("train-win", 90*time.Second),
+		runningFor("xi-retrain", 90*time.Second),
 		runningFor("cricsheet-import", 5*time.Minute),
 	})
 
 	require.True(t, payload.Running)
 	require.Len(t, payload.Steps, 2)
 
-	assert.Equal(t, "train_win", payload.Steps[0].StepID)
-	assert.Equal(t, "Train Win", payload.Steps[0].StepLabel)
+	assert.Equal(t, "retrain", payload.Steps[0].StepID)
+	assert.Equal(t, "Retrain", payload.Steps[0].StepLabel)
 	assert.Equal(t, "compute", payload.Steps[0].Lane)
 	assert.Equal(t, int64(90), payload.Steps[0].ElapsedSec)
 
@@ -85,83 +80,6 @@ func TestDescribeFallsBackToTheCommandForUnknownSteps(t *testing.T) {
 	// An unrecognised job is assumed to touch the database, so it holds the compute lane.
 	assert.Equal(t, "compute", step.Lane)
 }
-
-func TestDescribeAttachesAutoTuneProgressOnlyToAutoTune(t *testing.T) {
-	t.Parallel()
-
-	reporter := testReporter()
-	autoTune := reporter.describe(context.Background(), runningFor("ml-auto-tune", time.Second))
-	assert.Equal(t, "fine_tuning", autoTune.AutoTune["phase"])
-
-	training := reporter.describe(context.Background(), runningFor("train-win", time.Second))
-	assert.Nil(t, training.AutoTune)
-}
-
-func TestPrecomputeETA(t *testing.T) {
-	t.Parallel()
-
-	migration := runningFor("precompute-features", 10*time.Minute)
-
-	testCases := []struct {
-		name   string
-		status precompute.Status
-		want   *int64
-	}{
-		{
-			name:   "no formats yields no estimate",
-			status: precompute.Status{},
-			want:   nil,
-		},
-		{
-			name: "current format not in list yields no estimate",
-			status: precompute.Status{
-				Formats:       []string{"TEST", "ODI"},
-				CurrentFormat: "T20",
-			},
-			want: nil,
-		},
-		{
-			name: "second format uses the observed average of the completed ones",
-			status: precompute.Status{
-				// 10 min elapsed, 4 min on the current format => 6 min for one
-				// completed format. One format remains after this one, and this one
-				// has 2 min left: 120 + 360 = 480.
-				Formats:         []string{"TEST", "ODI", "T20"},
-				CurrentFormat:   "ODI",
-				FormatStartedAt: fixedNow.Add(-4 * time.Minute),
-			},
-			want: ptr(int64(480)),
-		},
-		{
-			name: "last format counts only itself",
-			status: precompute.Status{
-				Formats:         []string{"TEST", "ODI"},
-				CurrentFormat:   "ODI",
-				FormatStartedAt: fixedNow.Add(-time.Minute),
-			},
-			// 9 min for the one completed format, 1 min spent => 8 min left, nothing after.
-			want: ptr(int64(480)),
-		},
-	}
-
-	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			reporter := testReporter()
-			reporter.precomputeStatus = func() precompute.Status { return tc.status }
-			_, eta := reporter.precomputeDetail(migration)
-			if tc.want == nil {
-				assert.Nil(t, eta)
-				return
-			}
-			require.NotNil(t, eta)
-			assert.Equal(t, *tc.want, *eta)
-		})
-	}
-}
-
-func ptr[T any](v T) *T { return &v }
 
 // TestFetchProgressReachesTheStream keeps acquisition on the one stream the UI
 // already listens to. A second endpoint for download progress would be a second thing
@@ -244,19 +162,19 @@ func TestTrainingProgressReachesTheStream(t *testing.T) {
 	r.stepProgress = func(_ context.Context, stepID string) (map[string]interface{}, error) {
 		askedFor = stepID
 		return map[string]interface{}{
-			"v": float64(1), "step": "train_win", "phase": "cv",
+			"v": float64(1), "step": "retrain", "phase": "grid",
 			"current": float64(3), "total": float64(5),
 			"metrics": map[string]interface{}{"rmse": 24.1},
 		}, nil
 	}
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("xi-retrain", time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	step := payload.Steps[0]
 
-	assert.Equal(t, "train_win", askedFor, "the step id is what ml-service keys progress by")
+	assert.Equal(t, "retrain", askedFor, "the step id is what ml-service keys progress by")
 	require.NotNil(t, step.Training)
-	assert.Equal(t, "cv", step.Training["phase"])
+	assert.Equal(t, "grid", step.Training["phase"])
 	assert.False(t, step.ProgressUnavailable)
 }
 
@@ -270,14 +188,14 @@ func TestUnreachableProgressIsUnknownNotFailure(t *testing.T) {
 		return nil, pipelinesvc.ErrProgressUnavailable
 	}
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("xi-retrain", time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	step := payload.Steps[0]
 
 	assert.True(t, step.ProgressUnavailable, "the operator can act on a broken link")
 	assert.Nil(t, step.Training)
 	assert.True(t, payload.Running, "the step is still running; only its progress is unknown")
-	assert.Equal(t, "Train Win", step.StepLabel)
+	assert.Equal(t, "Retrain", step.StepLabel)
 }
 
 // TestNothingPublishedYetIsNotUnavailable distinguishes the two empty panels: a run
@@ -286,14 +204,14 @@ func TestNothingPublishedYetIsNotUnavailable(t *testing.T) {
 	t.Parallel()
 	r := testReporter()
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Second)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("xi-retrain", time.Second)})
 	require.Len(t, payload.Steps, 1)
 
 	assert.Nil(t, payload.Steps[0].Training)
 	assert.False(t, payload.Steps[0].ProgressUnavailable)
 }
 
-// TestStepsRunByGoAppAreNotAskedOfMLService: import, precompute and export run here,
+// TestStepsRunByGoAppAreNotAskedOfMLService: import and reload run here,
 // so asking ml-service about them would be a request per SSE tick for an answer that
 // cannot exist.
 func TestStepsRunByGoAppAreNotAskedOfMLService(t *testing.T) {
@@ -305,7 +223,7 @@ func TestStepsRunByGoAppAreNotAskedOfMLService(t *testing.T) {
 		return nil, nil
 	}
 
-	for _, command := range []string{"cricsheet-import", "export-dataset", "some-external-command"} {
+	for _, command := range []string{"cricsheet-import", "xi-reload", "some-external-command"} {
 		_ = r.snapshot(context.Background(), []tracking.Migration{runningFor(command, time.Minute)})
 	}
 	assert.Zero(t, asked, "only ml-service steps have progress to fetch")
@@ -319,7 +237,7 @@ func TestTrainingETAUsesTheRunStartNotTheLastEvent(t *testing.T) {
 	}
 
 	// Two of six units done after four minutes: two minutes per unit, four remaining.
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", 4*time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("xi-retrain", 4*time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	require.NotNil(t, payload.Steps[0].EstimatedSec)
 	assert.Equal(t, int64(480), *payload.Steps[0].EstimatedSec)
@@ -342,7 +260,7 @@ func TestTrainingETAIsAbsentUntilSomethingFinishes(t *testing.T) {
 			r.stepProgress = func(context.Context, string) (map[string]interface{}, error) {
 				return progress, nil
 			}
-			payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
+			payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("xi-retrain", time.Minute)})
 			require.Len(t, payload.Steps, 1)
 			assert.Nil(t, payload.Steps[0].EstimatedSec)
 		})

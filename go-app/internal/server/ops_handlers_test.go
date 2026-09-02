@@ -8,156 +8,86 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
+// TestGenerateSuggestions walks the three-step chain: import, retrain, reload. Each
+// rule fires when a step has never completed or last ran before the step it depends
+// on, and only the earliest unmet one is offered -- suggesting every stale step at
+// once is how the console used to tell an operator to do three things in an order it
+// did not name.
 func TestGenerateSuggestions(t *testing.T) {
+	t.Parallel()
+
 	now := time.Now()
 	hourAgo := now.Add(-1 * time.Hour)
 	twoHoursAgo := now.Add(-2 * time.Hour)
-	threeHoursAgo := now.Add(-3 * time.Hour)
+
+	completed := func(command string, at time.Time) tracking.Migration {
+		return tracking.Migration{Command: command, Status: tracking.StatusCompleted, StartedAt: at}
+	}
 
 	testCases := []struct {
 		name           string
 		migrations     []tracking.Migration
-		seqPopulated   bool
 		expectedTitles []string
 	}{
 		{
-			name:         "No migrations",
-			migrations:   []tracking.Migration{},
-			seqPopulated: false, // Ignored because no import
-			expectedTitles: []string{
-				"Initialize Data",
-			},
+			name:           "no migrations",
+			migrations:     []tracking.Migration{},
+			expectedTitles: []string{"Initialize Data"},
 		},
 		{
-			name: "Import done, no precompute, no seq data",
-			migrations: []tracking.Migration{
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
-			},
-			seqPopulated: false,
-			expectedTitles: []string{
-				"Fix Missing Features",
-			},
+			name:           "imported but never retrained",
+			migrations:     []tracking.Migration{completed("cricsheet-import", now)},
+			expectedTitles: []string{"Retrain"},
 		},
 		{
-			name: "Import done, no precompute, seq data somehow exists (unlikely but possible)",
+			name: "retrain predates the import",
 			migrations: []tracking.Migration{
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
+				completed("cricsheet-import", now),
+				completed("xi-retrain", hourAgo),
+				completed("xi-reload", hourAgo),
 			},
-			seqPopulated: true,
-			expectedTitles: []string{
-				"Run Full Precompute",
-			},
+			expectedTitles: []string{"Retrain"},
 		},
 		{
-			name: "Import done, precompute old, seq data ok",
+			name: "a run trained but nothing is serving it",
 			migrations: []tracking.Migration{
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				completed("xi-retrain", now),
+				completed("cricsheet-import", hourAgo),
 			},
-			seqPopulated: true,
-			expectedTitles: []string{
-				"Run Full Precompute",
-			},
+			expectedTitles: []string{"Reload"},
 		},
 		{
-			name: "Precompute done, export old, seq data missing",
+			name: "reload predates the retrain",
 			migrations: []tracking.Migration{
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				completed("xi-retrain", now),
+				completed("xi-reload", hourAgo),
+				completed("cricsheet-import", twoHoursAgo),
 			},
-			seqPopulated: false,
-			expectedTitles: []string{
-				"Fix Missing Features",
-			},
+			expectedTitles: []string{"Reload"},
 		},
 		{
-			name: "Precompute done, export old, seq data ok",
+			name: "everything up to date",
 			migrations: []tracking.Migration{
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				completed("xi-reload", now),
+				completed("xi-retrain", hourAgo),
+				completed("cricsheet-import", twoHoursAgo),
 			},
-			seqPopulated: true,
-			expectedTitles: []string{
-				"Export Dataset",
-			},
-		},
-		{
-			name: "Export done, train old",
-			migrations: []tracking.Migration{
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-			},
-			seqPopulated: true,
-			expectedTitles: []string{
-				"Train Win Model",
-			},
-		},
-		{
-			name: "Conflict: Import new, Precompute old, Export older",
-			migrations: []tracking.Migration{
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-			},
-			seqPopulated: true,
-			// Current logic would suggest Precompute AND Export.
-			// Desired: Only Precompute.
-			expectedTitles: []string{
-				"Run Full Precompute",
-			},
-		},
-		{
-			name: "Conflict: Precompute new, Export old, Train older",
-			migrations: []tracking.Migration{
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-			},
-			seqPopulated: true,
-			// Current logic would suggest Export AND Train.
-			// Desired: Only Export.
-			expectedTitles: []string{
-				"Export Dataset",
-			},
-		},
-		{
-			name: "Everything up to date",
-			migrations: []tracking.Migration{
-				{Command: "ml-auto-tune", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: threeHoursAgo},
-			},
-			seqPopulated:   true,
 			expectedTitles: []string{},
 		},
 		{
-			name: "Failed Import (should be ignored)",
+			name: "a failed import is not an import",
 			migrations: []tracking.Migration{
-				{
-					Command:   "cricsheet-import",
-					Status:    tracking.StatusFailed,
-					StartedAt: hourAgo,
-				},
+				{Command: "cricsheet-import", Status: tracking.StatusFailed, StartedAt: hourAgo},
 			},
-			seqPopulated: false,
-			// Behaves like no migrations
-			expectedTitles: []string{
-				"Initialize Data",
-			},
+			expectedTitles: []string{"Initialize Data"},
 		},
 	}
 
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			suggestions := GenerateSuggestions(tc.migrations, tc.seqPopulated)
+			t.Parallel()
+			suggestions := GenerateSuggestions(tc.migrations)
 			titles := make([]string, 0, len(suggestions))
 			for _, s := range suggestions {
 				titles = append(titles, s.Title)

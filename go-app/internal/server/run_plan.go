@@ -66,14 +66,11 @@ func (a *App) newPlanExecutor() *runplan.Executor {
 // one step before starting the next. The work itself comes from stepJob, so a plan
 // runs the same code path a single-step trigger does rather than a parallel one.
 func (a *App) runPlanStep(ctx context.Context, step pipelinesvc.Step) error {
-	// A plan cannot stop to ask about training on default parameters, and asking for
-	// the whole pipeline is the confirmation. The run records that it happened.
 	return a.runPlanStepWith(ctx, step, StepRequest{})
 }
 
 // runPlanStepWith runs one step with the plan's own request options.
 func (a *App) runPlanStepWith(ctx context.Context, step pipelinesvc.Step, req StepRequest) error {
-	req.ConfirmDefaultParams = true
 	job := a.stepJob(step, req)
 
 	lane := pipelinesvc.Steps().LaneForCommand(job.Command)

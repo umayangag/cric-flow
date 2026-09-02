@@ -110,6 +110,93 @@ var retiredKeys = []retiredKey{
 		RemovedIn: "P-5",
 		Reason:    "see predictor.simulation",
 	},
+	{
+		Path:      "features",
+		RemovedIn: "P-6",
+		Reason: "the precompute pass and the export CSVs are gone; every feature the models " +
+			"read is computed as an as-of accumulator inside the rating pass",
+	},
+	{
+		Path:      "export",
+		RemovedIn: "P-6",
+		Reason:    "there is no export step; the rating pass writes the training frames into the run directory",
+	},
+	{
+		Path:      "backtest",
+		RemovedIn: "P-6",
+		Reason: "the per-match evaluate flow and the contributions export went with the models " +
+			"they scored (P-5); the backtest surface is L4's report",
+	},
+	{
+		Path:      "weather",
+		RemovedIn: "P-6",
+		Reason:    "nothing has ever populated weather_data; the tables and their probes are dropped",
+	},
+	{
+		Path:      "outputs.export_dir",
+		RemovedIn: "P-6",
+		Reason:    "renamed to outputs.dir: go-app writes no exports, only its resource observations",
+	},
+	{
+		Path:      "pipeline.precompute_concurrency",
+		RemovedIn: "P-6",
+		Reason:    "import is the only pipeline go-app runs workers for; see pipeline.import_concurrency",
+	},
+	{
+		Path:      "pipeline.seqcalc_concurrency",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "pipeline.export_concurrency",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "pipeline.fielding_concurrency",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "pipeline.precompute_eta_seconds_per_fmt",
+		RemovedIn: "P-6",
+		Reason:    "there is no per-format precompute to estimate",
+	},
+	{
+		Path:      "pipeline.replay_match_page_size",
+		RemovedIn: "P-6",
+		Reason:    "the precompute replay is gone",
+	},
+	{
+		Path:      "resources.precompute_mb_per_worker",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "resources.export_mb_per_worker",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "resources.seqcalc_mb_per_worker",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "resources.fielding_mb_per_worker",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "resources.seqcalc_low_memory_limit_gib",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
+	{
+		Path:      "resources.precompute_concurrency_when_no_limit",
+		RemovedIn: "P-6",
+		Reason:    "see pipeline.precompute_concurrency",
+	},
 }
 
 // RetiredKeys returns an error naming every retired setting the raw config carries.

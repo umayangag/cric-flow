@@ -107,27 +107,9 @@ func TestFetchStepProgress_EscapesTheStepID(t *testing.T) {
 		_, _ = w.Write([]byte(`{}`))
 	})
 
-	_, err := FetchStepProgress(context.Background(), "train_batting&run_id=other")
+	_, err := FetchStepProgress(context.Background(), "retrain&run_id=other")
 	require.NoError(t, err)
-	assert.Equal(t, "train_batting&run_id=other", gotStep, "the whole value stays one parameter")
-}
-
-// TestFetchAutoTuneProgress_KeepsItsNilOnErrorContract: its callers cannot act on the
-// difference, so it collapses both empties rather than pretending otherwise.
-func TestFetchAutoTuneProgress_KeepsItsNilOnErrorContract(t *testing.T) {
-	t.Setenv("ML_SERVICE_URL", "http://127.0.0.1:1")
-	assert.Nil(t, FetchAutoTuneProgress(context.Background()))
-}
-
-func TestFetchAutoTuneProgress_ReturnsProgress(t *testing.T) {
-	withMLService(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "auto_tune", r.URL.Query().Get("step"))
-		_, _ = w.Write([]byte(`{"phase":"fine_tuning","algorithm":"lgbm"}`))
-	})
-
-	progress := FetchAutoTuneProgress(context.Background())
-	require.NotNil(t, progress)
-	assert.Equal(t, "lgbm", progress["algorithm"])
+	assert.Equal(t, "retrain&run_id=other", gotStep, "the whole value stays one parameter")
 }
 
 // TestCallMLTrainEndpointWithResult_ReturnsTheSummary: the summary comes back on the
@@ -136,10 +118,10 @@ func TestFetchAutoTuneProgress_ReturnsProgress(t *testing.T) {
 func TestCallMLTrainEndpointWithResult_ReturnsTheSummary(t *testing.T) {
 	withMLService(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		_, _ = w.Write([]byte(`{"status":"ok","step":"batting","summary":{"formats_completed":4,"saved":4}}`))
+		_, _ = w.Write([]byte(`{"status":"ok","step":"retrain","summary":{"formats_completed":4,"saved":4}}`))
 	})
 
-	result, err := CallMLTrainEndpointWithResult(context.Background(), "batting", "?cutoff=2026-01-01")
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "retrain", "?cutoff=2026-01-01")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "ok", result.Status)
@@ -148,10 +130,10 @@ func TestCallMLTrainEndpointWithResult_ReturnsTheSummary(t *testing.T) {
 
 func TestCallMLTrainEndpointWithResult_NoSummaryIsFine(t *testing.T) {
 	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"ok","step":"combination_meta"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","step":"evaluate"}`))
 	})
 
-	result, err := CallMLTrainEndpointWithResult(context.Background(), "combination-meta", "")
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "evaluate", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Empty(t, result.Summary)
@@ -165,7 +147,7 @@ func TestCallMLTrainEndpointWithResult_UnreadableBodyDoesNotFailTheRun(t *testin
 		_, _ = w.Write([]byte(`{not json`))
 	})
 
-	result, err := CallMLTrainEndpointWithResult(context.Background(), "batting", "")
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "retrain", "")
 	require.NoError(t, err, "a 200 is a success whatever the body says")
 	assert.Nil(t, result)
 }
@@ -176,7 +158,7 @@ func TestCallMLTrainEndpointWithResult_PropagatesAFailure(t *testing.T) {
 		_, _ = w.Write([]byte(`{"detail":{"code":"CONTRIBUTIONS_CSV_MISSING","message":"nope"}}`))
 	})
 
-	result, err := CallMLTrainEndpointWithResult(context.Background(), "combination-meta", "")
+	result, err := CallMLTrainEndpointWithResult(context.Background(), "evaluate", "")
 	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "CONTRIBUTIONS_CSV_MISSING")
@@ -186,8 +168,8 @@ func TestCallMLTrainEndpointWithResult_PropagatesAFailure(t *testing.T) {
 // body.
 func TestCallMLTrainEndpoint_KeepsItsErrorOnlyContract(t *testing.T) {
 	withMLService(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"status":"ok","step":"batting"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","step":"retrain"}`))
 	})
 
-	require.NoError(t, CallMLTrainEndpoint(context.Background(), "batting", ""))
+	require.NoError(t, CallMLTrainEndpoint(context.Background(), "retrain", ""))
 }

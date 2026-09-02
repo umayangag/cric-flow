@@ -25,7 +25,9 @@ func TestOpsStatusHandler_ScaffoldShape(t *testing.T) {
 	require.Contains(t, body, "timestamp")
 	require.Contains(t, body, "services")
 	require.Contains(t, body, "db")
-	require.Contains(t, body, "precompute")
-	require.Contains(t, body, "exports")
 	require.Contains(t, body, "artifacts")
+	require.Contains(t, body, "pipeline")
+	require.NotContains(t, body, "precompute", "the precompute step and its section are gone")
+	require.NotContains(t, body, "exports", "there is no export step to report on")
+	require.NotContains(t, body, "weather", "nothing has ever populated weather_data")
 }

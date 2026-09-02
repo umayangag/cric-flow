@@ -25,19 +25,14 @@ import (
 const (
 	// PlanFull is the whole pipeline: acquire nothing, but import through training.
 	PlanFull = "full"
-	// PlanRetrainOnly re-trains the models against data already imported and exported.
-	PlanRetrainOnly = "retrain-only"
-	// PlanDataRefresh re-imports and re-derives without touching the models.
-	PlanDataRefresh = "data-refresh"
-	// PlanTune re-optimises hyperparameters and then retrains on what it found.
+	// PlanRetrainOnly re-trains against data already imported, and serves the result.
 	//
-	// The counterpart to PlanRetrainOnly, for the slower loop: PlanRetrainOnly refreshes
-	// artifacts against known params after new matches arrive, this one is what you run
-	// when the params are no longer trustworthy — the feature contract changed, a
-	// `features.*` parameter changed, a format is new. Searching before training is the
-	// whole point of it; training first would produce artifacts the search immediately
-	// invalidates.
-	PlanTune = "tune"
+	// The counterpart to PlanFull for the common case: new matches are already in the
+	// database and what is stale is the model, not the data. There is no separate
+	// "tune" plan any more -- the grid runs inside retrain and records its choice in
+	// the run manifest, so searching and training are one step and cannot be run in
+	// the order that throws the artifacts away.
+	PlanRetrainOnly = "retrain-only"
 	// PlanImport acquires a dataset and loads it: fetch, extract, import.
 	//
 	// This is what the Import action runs (consumer plan W6-2). It is a plan rather
@@ -119,11 +114,6 @@ func planSteps(name string) ([]string, error) {
 	registry := pipelinesvc.Steps()
 	graph := registry.OnSurface(pipelinesvc.SurfacePipeline)
 
-	// trainingStep is the non-optional ml-service work: the train steps and nothing
-	// else. Shared by the two plans that retrain, so "which steps produce artifacts"
-	// is answered once.
-	trainingStep := func(s pipelinesvc.Step) bool { return !s.Optional && s.RunsOnMLService() }
-
 	include := func(keep func(pipelinesvc.Step) bool) []string {
 		out := make([]string, 0, len(graph))
 		for _, step := range graph {
@@ -144,19 +134,11 @@ func planSteps(name string) ([]string, error) {
 	case PlanFull:
 		// Optional steps are excluded by definition: they are offered but never
 		// implied by the steps before them, and a "run everything" that silently
-		// included auto-tune would take hours nobody asked for.
+		// included evaluate would spend the whole harness on a run nobody asked to
+		// measure.
 		return include(func(s pipelinesvc.Step) bool { return !s.Optional }), nil
 	case PlanRetrainOnly:
-		return include(trainingStep), nil
-	case PlanTune:
-		// Named explicitly rather than filtered, because no predicate over registry
-		// order can produce it: auto-tune sits last on the graph, which is where the
-		// console offers it, but a tuning run has to search before it trains. Stating
-		// the order here is also the only place "tune, then retrain on the result" is
-		// written down.
-		return append([]string{"auto_tune"}, include(trainingStep)...), nil
-	case PlanDataRefresh:
-		return include(func(s pipelinesvc.Step) bool { return !s.Optional && !s.RunsOnMLService() }), nil
+		return include(func(s pipelinesvc.Step) bool { return !s.Optional && s.ID != "import" }), nil
 	default:
 		return nil, fmt.Errorf("unknown plan %q; known plans: %s", name, strings.Join(Names(), ", "))
 	}
@@ -164,7 +146,7 @@ func planSteps(name string) ([]string, error) {
 
 // Names returns the known plan names, sorted, for error messages and the API.
 func Names() []string {
-	names := []string{PlanFull, PlanRetrainOnly, PlanDataRefresh, PlanTune, PlanImport}
+	names := []string{PlanFull, PlanRetrainOnly, PlanImport}
 	sort.Strings(names)
 	return names
 }
@@ -198,7 +180,7 @@ func Describe(name string) ([]pipelinesvc.Step, error) {
 //
 // An explicit list is reordered into registry order rather than run as given: the
 // registry's order is the dependency order, and honouring a caller's arbitrary
-// sequence would mean running export before precompute because someone typed it that
+// sequence would mean running reload before retrain because someone typed it that
 // way — which `CanRunPipelineStep` would then refuse, one step in, having already run
 // the others.
 func Resolve(name string, stepIDs []string) ([]pipelinesvc.Step, error) {

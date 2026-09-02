@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -34,12 +33,8 @@ type stepProgress struct {
 	Params     map[string]interface{} `json:"params,omitempty"` // Current parameters (from migration args)
 	StartedAt  string                 `json:"started_at,omitempty"`
 	ElapsedSec int64                  `json:"elapsed_sec,omitempty"`
-	// Precompute carries per-format progress; only precompute reports it today.
-	Precompute *precomputeProgress `json:"precompute,omitempty"`
 	// EstimatedSec is seconds remaining, when the step can estimate it.
 	EstimatedSec *int64 `json:"estimated_remaining_sec,omitempty"`
-	// AutoTune carries live auto-tune progress (phase, algorithm, trial, ...).
-	AutoTune map[string]interface{} `json:"auto_tune,omitempty"`
 	// Fetch carries live download progress (bytes, rate, ETA) for a dataset fetch.
 	Fetch *dataacquire.Progress `json:"fetch,omitempty"`
 	// Extract carries live extraction progress (entries, bytes) for a dataset extract.
@@ -55,27 +50,14 @@ type stepProgress struct {
 	ProgressUnavailable bool `json:"progress_unavailable,omitempty"`
 }
 
-type precomputeProgress struct {
-	Formats       []string `json:"formats,omitempty"`
-	CurrentFormat string   `json:"current_format,omitempty"`
-	Phase         string   `json:"phase,omitempty"`
-	// Index of current format in Formats (0-based) for progress bar
-	CurrentIndex int `json:"current_index,omitempty"`
-	FormatsTotal int `json:"formats_total,omitempty"`
-}
-
 // progressReporter turns the in-flight rows of data_migrations into the SSE payload.
 // It is separated from the SSE transport so the shape of the payload can be read —
 // and tested — without a live HTTP stream.
 type progressReporter struct {
 	registry *pipelinesvc.Registry
-	// autoTuneProgress fetches live auto-tune state; a field so tests can stub it.
-	autoTuneProgress func(context.Context) map[string]interface{}
 	// stepProgress fetches live milestones for a training step, distinguishing
 	// "nothing yet" (nil, nil) from "could not ask" (nil, error).
 	stepProgress func(context.Context, string) (map[string]interface{}, error)
-	// precomputeStatus reads in-process precompute state; a field for the same reason.
-	precomputeStatus func() precompute.Status
 	// fetchStatus and extractStatus read in-process acquisition state, likewise stubbable.
 	fetchStatus   func() (dataacquire.Progress, string, bool)
 	extractStatus func() (dataacquire.ExtractProgress, string, bool)
@@ -84,13 +66,11 @@ type progressReporter struct {
 
 func newProgressReporter() *progressReporter {
 	return &progressReporter{
-		registry:         pipelinesvc.Steps(),
-		autoTuneProgress: pipelinesvc.FetchAutoTuneProgress,
-		stepProgress:     pipelinesvc.FetchStepProgress,
-		precomputeStatus: precompute.GetStatus,
-		fetchStatus:      dataacquire.Status,
-		extractStatus:    dataacquire.ExtractStatus,
-		now:              time.Now,
+		registry:      pipelinesvc.Steps(),
+		stepProgress:  pipelinesvc.FetchStepProgress,
+		fetchStatus:   dataacquire.Status,
+		extractStatus: dataacquire.ExtractStatus,
+		now:           time.Now,
 	}
 }
 
@@ -122,10 +102,6 @@ func (p *progressReporter) describe(ctx context.Context, m tracking.Migration) s
 	}
 
 	switch m.Command {
-	case "precompute-features":
-		out.Precompute, out.EstimatedSec = p.precomputeDetail(m)
-	case "ml-auto-tune":
-		out.AutoTune = p.autoTuneProgress(ctx)
 	case "dataset-fetch":
 		out.Fetch, out.EstimatedSec = p.fetchDetail()
 	case "dataset-extract":
@@ -228,64 +204,4 @@ func (p *progressReporter) extractDetail() (*dataacquire.ExtractProgress, *int64
 		return nil, nil
 	}
 	return &progress, progress.ETASec
-}
-
-// precomputeDetail reports per-format progress and an ETA for a precompute run.
-func (p *progressReporter) precomputeDetail(m tracking.Migration) (*precomputeProgress, *int64) {
-	status := p.precomputeStatus()
-	index := indexOf(status.Formats, status.CurrentFormat)
-	progress := &precomputeProgress{
-		Formats:       status.Formats,
-		CurrentFormat: status.CurrentFormat,
-		Phase:         status.Phase,
-		CurrentIndex:  index,
-		FormatsTotal:  len(status.Formats),
-	}
-	return progress, p.precomputeETA(m, status, index)
-}
-
-// precomputeETA estimates the seconds remaining across the formats still to process.
-//
-// Until a format has finished there is nothing to measure, so the config default
-// stands in; from the second format onwards the observed average per completed
-// format replaces it. Returns nil when there is nothing worth claiming.
-func (p *progressReporter) precomputeETA(
-	m tracking.Migration,
-	status precompute.Status,
-	index int,
-) *int64 {
-	if index < 0 || len(status.Formats) == 0 {
-		return nil
-	}
-
-	elapsedTotal := p.now().Sub(m.StartedAt).Seconds()
-	elapsedCurrent := 0.0
-	if !status.FormatStartedAt.IsZero() {
-		elapsedCurrent = p.now().Sub(status.FormatStartedAt).Seconds()
-	}
-
-	secPerFormat := float64(pipelinesvc.DefaultPrecomputeETASecPerFormat())
-	if index >= 1 && !status.FormatStartedAt.IsZero() {
-		if completed := elapsedTotal - elapsedCurrent; completed > 0 {
-			secPerFormat = max(completed/float64(index), 1)
-		}
-	}
-
-	remainingCurrent := max(secPerFormat-elapsedCurrent, 0)
-	remainingFormats := max(len(status.Formats)-index-1, 0)
-	total := int64(remainingCurrent + float64(remainingFormats)*secPerFormat)
-	if total <= 0 {
-		return nil
-	}
-	return &total
-}
-
-// indexOf returns the position of value in list, or -1.
-func indexOf(list []string, value string) int {
-	for i, v := range list {
-		if v == value {
-			return i
-		}
-	}
-	return -1
 }
