@@ -485,7 +485,7 @@ checklist.
 
 | id | PR | acceptance |
 |---|---|---|
-| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches gives `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stays off. The gate is also mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
+| P-0 | Land S-10; run its acceptance on the DB; set `selection.win_model: "xi"` for limited-overs formats (S-6) | **run; acceptance not met.** The model reproduces on Postgres (objective 0.72 T20 / 0.68 ODI / 0.74 T20I, display 0.75 / 0.73 / 0.72 — within 0.01 of the JSON path), but selection-comparison over 332 locked-window matches reported `xi` 0.560 vs `greedy` 0.569 winner accuracy, so win-probability selection stayed off. **That comparison has since been shown not to have run the arm it named** (§8.5, D-7a): the broken id contract made `/xi/optimize` refuse every limited-overs call on the bowler constraint, and go-app silently fell back to the windowed-form optimiser, so the figure belongs to two other arms. Re-run with the contract fixed it is `winprob` 0.622 vs a rating-ordered `ratings` 0.625 over 357 matches — one match apart, and still not an answer, because the gate is mis-specified: an arm that optimises *both* sides moves the fixture toward parity and must lose winner accuracy regardless of XI quality. Replace it with L4's specific-XI-beyond-typical-XI, swap monotonicity and E5 |
 | P-1 | Identity: Cricsheet registry id as `player.external_id`, team + gender as the team key (IDENTITY I-3/I-4) | **done** (`arch/p-1-identity`). 13,483 name-keyed player rows → **13,623** identity-keyed (140 people recovered, 0 fallbacks); `opposition` 394 → **524** (+130, the predicted count); squad gender disagrees with `match.gender` on 0 rows; the rating pass keys off `external_id` on both sources. E4 recorded below: **no format and no gender subset moves by more than its holdout can resolve.** Re-import is reproducible in row counts and in identity content; per-match squads became reproducible one PR later, with §10.4's match-identity fix. Franchise lineage (I-4) is not in this PR |
 | P-2 | L1 emits player-match rows + expected batting slot + phase splits; L4 harness skeleton with the performance metrics; **an as-of serving path** (`XiStore` answers "ratings as of date D", not only "through today") and **per-match rows** in the selection report | **done** (`arch/p-2-rating-rows-harness`). The day-close pass emits 463,818 player-match rows — all XI players, never only those who batted (H-20) — with expected batting slot, innings share and phase-split impact rates, identical from both sources. `ml.xi.asof` answers `ratings_as_of(D)` and raises rather than run backwards, so a backtest at date D provably cannot see D or later; `freeze_ratings.py` is retired, `/xi/*` accept `as_of`, the selection comparison sends each match's date and its report carries per-match rows. `make xi-evaluate` runs the walk-forward + locked window + H-8 parity from one command into one JSON report. Acceptance: career-mean within-match Spearman on the locked window 0.317 T20 / 0.318 ODI (the script's ≈ 0.32 / 0.34, computed there with cross-format career means — inside the 0.31–0.35 band §1 calls the ceiling); parity max abs difference 0.0 on both sources; E7 measured, no effect (§5.2) |
 | P-3 | L2-B performance model (quantile runs/balls, Poisson wickets) + `/performance/predict` taking XI ids; E1, E6 | **done** (`arch/p-3-performance-model`). `ml/xi/performance.py`: per format, quantile (0.1 / 0.5 / 0.9) models of runs, balls faced and runs conceded, a two-part zero-inflated Poisson of wickets, a Poisson rate of catches, and P(bats) / P(bowls) — all on the unconditional population (H-20), innings marginalised at prediction, three seeds, a three-point grid tuned inside the folds (flat), E1 (no family kept) and E6 (separate) in §5.3. Walk-forward over 7 folds, 3 seeds (§8.2): **runs** beat the career mean on Spearman (+0.040 ± 0.007 T20, +0.048 ± 0.013 ODI) and pinball (2.93 vs 5.09, 4.59 vs 7.96), median MAE −9 %; **wickets** beat it on pinball (0.141 vs 0.260, 0.163 vs 0.302) and tie on Spearman in ODI (+0.001 ± 0.012) but **trail it by 0.029 ± 0.012 in T20** — a tie-averaging artifact of the unconditional metric, recorded below rather than gamed; among the players who bowled the model ranks better in both. Locked window: per-end coverage inside ±0.03 everywhere, no recalibration triggered (H-5); width reported beside coverage (H-22). `POST /performance/predict` serves it; H-8 parity holds for rows and predictions on both sources at 0.0 — after it found the fifth defect, §10.4 |
@@ -852,6 +852,61 @@ with 1–3 lineup changes, asking whether Δobjective agrees with Δoutcome more
 It is the only one of the three gates that measures the thing selection actually claims, and
 it is the labelled empty slot in the Evaluation report tab.
 
+### 8.5 P-0's selection gate, re-run with the id contract fixed (2026-09-02)
+
+`scripts/experiments/xi/selection_gate_rerun.py`, 360 decided locked-window matches sampled
+120 per format (seed 20260902), 357 with a pool large enough to select from. Every arm's
+winner comes from the display model on the two XIs it chose, which is how P-0 scored its arms;
+every call carries `as_of` = the match date, so no arm is scored by a state containing its own
+result. Constraints are P-0's gate handler's own defaults: team size 11, `min_bowlers` 5,
+`require_keeper` false.
+
+| arm | what it is | winner accuracy | mean P(team1) |
+|---|---|---|---|
+| `winprob` | both XIs by alternating best response on the win objective | 0.622 ± 0.026 (222/357) | 0.497 |
+| `ratings` | both XIs rating-ordered, evaluating no model | 0.625 ± 0.026 (223/357) | 0.496 |
+| `d7a` | `winprob` with the numeric player id P-0 sent | **no result — see below** | — |
+| `fielded` | the XIs that actually took the field | 0.650 ± 0.025 (232/357) | 0.499 |
+
+Per format, `winprob` versus `ratings`: T20 0.644 / 0.636, T20I 0.625 / 0.592, ODI 0.597 /
+0.647. Divergence between the two arms is 9.6 players per match out of 22, so the search is
+doing something substantial; it is the *metric* that cannot see it.
+
+**P-0's `xi` arm never ran.** Reproducing D-7a exactly — sending `player.id` where the store
+is keyed by `player.external_id` — `/xi/optimize` returns `422
+OPTIMIZATION_CONSTRAINT_ERROR: "pool cannot satisfy the constraints (size / bowlers / keeper)"`
+on **every one of the 357 matches**, and did so identically before P-5: with every player
+unrated, `_Pool.is_bowler` reads `exp_balls_bowled` as 0 for the whole pool, so `_greedy_seed`
+can never reach `min_bowlers`. go-app then took the branch below it —
+
+    slog.WarnContext(ctx, "xi selection unavailable, falling back to the windowed-form win model", ...)
+
+— so "xi 0.560 vs greedy 0.569" was the **windowed-form** best-response optimiser versus
+greedy, both scored by the XI display model reading eleven debutants a side, which leaves only
+team and venue context. The number is not a depressed measurement of the xi arm; it is a
+measurement of two other arms under its label.
+
+**And the corrected number does not overturn P-0's conclusion either, because the gate still
+cannot answer the question.** `winprob` and `ratings` are one match apart out of 357 — inside
+noise by any reading — while the *fielded* XIs, the only asymmetric arm, score highest at
+0.650. That is the mis-specification §6 already named, now visible in the numbers: both
+selection arms optimise **both** sides, which moves the fixture toward parity (mean P(team1)
+0.497 and 0.496, against 0.499 for the real teams), and an arm that moves a fixture toward
+parity must lose winner accuracy however good its XIs are. Winner accuracy scores the
+*fixture*, not the selection.
+
+So P-5's decision stands on the same ground it already stood on: S-6 ships on L4's replacement
+gates (§8.4), not on this one, and the right resolution of the question is E5 (P-7), which is
+the only gate that varies one side at a time. What changes is the standing of the old figure —
+§8.1's "did not beat greedy on the P-0 gate" should be read as **unmeasured**, not as evidence
+against win-probability selection.
+
+**The `greedy` arm is not recoverable.** It scored players on the per-player batting, bowling
+and fielding models P-5 deleted, so there is nothing left to run it with. `ratings` stands in
+for it: the same pool and the same constraints, differing from `winprob` in nothing but whether
+the objective is consulted — a cleaner contrast than the original, which varied the features
+and the objective at once.
+
 ## 9. Database schema and pipeline steps: what changes, what does not
 
 The short answer is that the schema is not torn apart; it is *pruned by consequence*. The
@@ -1167,10 +1222,13 @@ carrying `external_id` on `db.PlayerPoolRow`, and keying go-app's selection path
 to `player_id` only where the response names a player. A pool row with no `external_id` is
 dropped with a warning rather than sent as a key the store cannot know.
 
-This also puts a question mark over P-0's selection gate (§8.1): the arm it scored as
-"winprob 0.560 vs greedy 0.569" ran through this contract, so it was choosing on
-all-debutant ratings. Not re-run here — P-5 ships on L4's gates, which run inside ml-service
-and never crossed the boundary — but recorded, because the number is still quoted.
+This also invalidates P-0's selection gate (§8.1). The arm it scored as "winprob 0.560 vs
+greedy 0.569" ran through this contract, and re-running it (§8.5) shows the consequence was
+harsher than "chose on all-debutant ratings": with nobody rated, nobody is a bowling option,
+so `/xi/optimize` refused **every** limited-overs call on `min_bowlers` and go-app fell back
+to the windowed-form optimiser without the caller ever seeing it. The gate never ran the arm
+it named. P-5's own decision is unaffected — it ships on L4's gates, which run inside
+ml-service and never crossed the boundary.
 
 **D-7b — a read of the rating state mutated it.** `side_vectors`, the read every prediction
 takes, resolved its keys through `_slots`, which *assigns* a slot to any key it has not seen.
