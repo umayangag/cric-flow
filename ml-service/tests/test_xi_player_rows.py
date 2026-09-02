@@ -131,6 +131,8 @@ def test_serving_rows_without_team_names_read_neutral_context() -> None:
     rows = pd.DataFrame(player_feature_rows(state, stub)[1])
 
     assert (rows.elo_edge == 0.0).all() and (rows.venue_bf_rate == 0.5).all() and (rows.venue_n == 0.0).all()
+    for col in C.FIXTURE_CONTEXT_COLS:
+        assert (rows[col] == 1.0).all(), "a fixture that names no venue or competition reads exactly 1.0"
 
 
 def test_player_frame_covers_all_xi_players_with_exact_columns() -> None:
@@ -237,3 +239,18 @@ def test_win_row_carries_innings_outcomes_and_simulation_context() -> None:
     assert first.ctx_innings_deliveries == 120.0  # nothing before the first match: the law
     assert second.ctx_innings_deliveries != 120.0  # the first match has been folded in
     assert not set(C.INNINGS_OUTCOME_COLS) & set(C.PLAYER_MATCH_COLS)
+
+
+def test_player_rows_repeat_the_win_rows_fixture_context() -> None:
+    """The four fixture-context columns are one number per match: the win row carries them
+    and every player row of the match repeats them, as-of (the second match at the ground
+    reads the first's level, the first reads neutral)."""
+    result = build(_two_match_source())
+    win_rows = result.frame.set_index("match_id")
+    players = result.player_frame
+
+    for col in C.FIXTURE_CONTEXT_COLS:
+        assert win_rows.loc["m1", col] == 1.0
+        for match_id in ("m1", "m2"):
+            assert (players[players.match_id == match_id][col] == win_rows.loc[match_id, col]).all()
+    assert win_rows.loc["m2", "venue_run_rate_rel"] != 1.0

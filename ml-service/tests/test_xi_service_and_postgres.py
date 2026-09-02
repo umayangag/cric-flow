@@ -360,9 +360,9 @@ class _FakeConnection:
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None),
-            (3, date(2024, 1, 3), "T20I", "male", 5, 10, 20, 10),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series"),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, ""),
+            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -384,6 +384,9 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert [r.match_id for r in recs] == ["1", "3"]
     first = recs[0]
     assert first.team1 == "10" and first.team2 == "20" and first.winner == "20" and first.outcome == 0.0
+    assert first.venue == "5" and first.competition == "Tri-series"
+    # a match without a venue or an event reads the empty key on both sources (A-1)
+    assert recs[1].venue == "" and recs[1].competition == ""
     assert first.team1_players[0] == "a0000000" and len(first.team2_players) == 11
     d = first.deliveries
     assert list(d.innings) == [0, 0, 1]

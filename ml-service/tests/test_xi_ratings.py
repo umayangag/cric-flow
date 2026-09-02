@@ -75,8 +75,11 @@ def test_features_are_as_of_and_never_see_their_own_match() -> None:
 
     first_short = short[short.match_id == "m1"].iloc[0]
     first_long = long[long.match_id == "m1"].iloc[0]
-    for col in C.XI_FEATURE_COLS + C.TEAM_CONTEXT_COLS:
+    for col in C.XI_FEATURE_COLS + C.TEAM_CONTEXT_COLS + C.FIXTURE_CONTEXT_COLS:
         assert first_short[col] == pytest.approx(first_long[col])
+    # a match's own scoreboard never reaches its own row: m1 is the first at the ground
+    for col in C.FIXTURE_CONTEXT_COLS:
+        assert first_short[col] == 1.0
     # before any history the two sides are indistinguishable
     assert first_short["d_imp_bat_sum"] == pytest.approx(0.0)
     assert first_short["team_elo_diff"] == pytest.approx(0.0)
@@ -219,6 +222,42 @@ def test_simulation_context_starts_at_the_laws_of_the_game_and_is_as_of() -> Non
     assert after["ctx_innings_deliveries"] == pytest.approx((120.0 + 12.0) / 2.0)  # one prior innings
     assert after["ctx_bowler_wicket_share"] == pytest.approx((1.0 + 8.0) / (1.0 + 10.0))
     assert state.simulation_context("ODI", "male")["ctx_innings_deliveries"] == 300.0  # per format
+
+
+def test_fixture_context_reads_the_grounds_and_the_competitions_as_of_level() -> None:
+    """Before any history every column is exactly 1.0; after one match at a ground the
+    ground reads that match's rate relative to the format's, shrunk; a ground or a
+    competition the state has never seen, or an unnamed one, keeps reading exactly 1.0."""
+    t1, t2 = _xi("a"), _xi("b")
+    # 24 deliveries at six an over-ball, no dismissals: far above any format baseline
+    heavy = _deliveries([t1[0]] * 24, [t2[5]] * 24, [6] * 24, [0] * 24)
+    played = _match("m1", 0, "A", t1, t2, heavy)
+    played.competition = "Cup"
+    state = RatingState()
+
+    before = state.fixture_context(played)
+    state.update(played)
+    same_ground = state.fixture_context(played)
+    other_ground = _match("m2", 1, "A", t1, t2, heavy)
+    other_ground.venue, other_ground.competition = "W", "League"
+    elsewhere = state.fixture_context(other_ground)
+    unnamed = _match("m3", 1, "A", t1, t2, heavy)
+    unnamed.venue, unnamed.competition = "", ""
+
+    assert all(value == 1.0 for value in before.values())
+    assert same_ground["venue_run_rate_rel"] > 1.0 and same_ground["competition_run_rate_rel"] > 1.0
+    assert same_ground["venue_wicket_rate_rel"] < 1.0, "no dismissal in 24 balls reads below the format's rate"
+    f = C.FORMAT_INDEX["T20"]
+    format_rate = state.ctx_runs[0, f].sum() / state.ctx_balls[0, f].sum()
+    expected = 1.0 + (24 * 6.0 - 24 * format_rate) / ((24 + C.FIXTURE_CONTEXT_PRIOR_BALLS) * format_rate)
+    assert same_ground["venue_run_rate_rel"] == pytest.approx(expected)
+    assert same_ground["venue_run_rate_rel"] == pytest.approx(same_ground["competition_run_rate_rel"])
+    assert all(value == 1.0 for value in elsewhere.values())
+    assert all(value == 1.0 for value in state.fixture_context(unnamed).values())
+    state.update(unnamed)
+    # neither a read of an unseen key nor an update under an empty one writes into the state
+    assert set(state.venue_scoring) == {("T20", "V")} and set(state.competition_scoring) == {("T20", "Cup")}
+    assert state.fixture_context(_match("m4", 2, "A", t1, t2, heavy, fmt="ODI"))["venue_run_rate_rel"] == 1.0
 
 
 def test_reading_an_unknown_player_does_not_register_him() -> None:

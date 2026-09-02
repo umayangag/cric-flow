@@ -17,7 +17,8 @@ structures are available per target and chosen on the walk-forward folds by pinb
                   the same population with the same loss.
 
 Inputs are the row's as-of vectors and role, the kept sequence families (E1), both sides'
-aggregates, venue context, the Elo edge, and the innings (bat first / chase). The innings
+aggregates, venue context, the Elo edge, the kept fixture-context families (A-1: the
+ground's and the competition's as-of scoring level), and the innings (bat first / chase). The innings
 is the toss, not the result; it is marginalised at prediction -- predict under both and
 average -- unless the caller knows it (the same knob the win model has). Every fit is
 repeated over three seeds, which enter through the early-stopping split, and the members'
@@ -110,6 +111,9 @@ class FitSpec:
     # Whether the simulator's shared match factor is fitted on the temporal calibration fold
     # (``simulator.SHARED_FACTOR`` decides the default; the fit then needs the match frame).
     shared_factor: bool = False
+    # Which fixture-context families the feature columns include (A-1), recorded so a run's
+    # manifest says what its performance model read.
+    fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT
 
     def as_dict(self) -> Dict:
         return {
@@ -122,6 +126,7 @@ class FitSpec:
             "recalibrate": list(self.recalibrate),
             "targets": list(self.targets),
             "shared_factor": self.shared_factor,
+            "fixture_context_families": list(self.fixture_context_families),
         }
 
     @property
@@ -150,11 +155,12 @@ def default_spec(
     recalibrate: Optional[Sequence[str]] = None,
     targets: Optional[Sequence[str]] = None,
     shared_factor: Optional[bool] = None,
+    fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
     test can shrink the seeds without rebinding every caller."""
     return FitSpec(
-        feature_cols=tuple(C.performance_feature_cols(sequence_families, joint_format)),
+        feature_cols=tuple(C.performance_feature_cols(sequence_families, joint_format, fixture_context_families)),
         hyperparameters=HYPERPARAMETER_GRID[hyperparameters],
         hyperparameters_name=hyperparameters,
         structure=dict(structure or DEFAULT_STRUCTURE),
@@ -162,6 +168,7 @@ def default_spec(
         recalibrate=tuple(RECALIBRATED_TARGETS if recalibrate is None else recalibrate),
         targets=tuple(targets) if targets is not None else tuple(t.name for t in TARGETS),
         shared_factor=simulator.SHARED_FACTOR if shared_factor is None else bool(shared_factor),
+        fixture_context_families=tuple(fixture_context_families),
     )
 
 

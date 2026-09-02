@@ -1234,7 +1234,10 @@ reordering can do. The distribution and every eleven's best order are in
 The row in `docs/FOLLOW_UP_PLAN.md` § 4. This section was written **before the run**: the
 design, the leakage surface and the gate's H-23 triple first, the tables after. The tables
 are appended below the design under *Results*; nothing above that heading was edited once
-a number existed.
+a number existed. (The design was first written against the pre-rotation window and
+revised, still before any run, once A-4 had rotated it: eleven folds rather than seven,
+and a locked window that is empty by construction — see the last paragraph before
+*Results*.)
 
 **The evidence it chases (§8.3).** The shared factor took the simulated totals' dispersion
 ratio to 1.0 and the PIT flat; what it cannot fix is a level shift between the calibration
@@ -1267,16 +1270,20 @@ For a key *k* (a venue or a competition, within a format) with as-of sums *R_k*,
 *B_k* — runs, dismissals and deliveries over every ball of every match under that key
 folded in before the match's date — the run-rate column is
 
-    ((R_k + P · r̄) / (B_k + P)) / r̄
+    ((R_k + P · r̄) / (B_k + P)) / r̄  =  1 + (R_k − B_k · r̄) / ((B_k + P) · r̄)
 
 where *r̄* is the format's as-of runs per delivery (the context baseline the impact ratings
-are measured against, summed over overs: `ctx_runs / ctx_balls`), and *P* =
-`contract.FIXTURE_CONTEXT_PRIOR_BALLS` = 600 deliveries — five T20 innings, two ODI
+are measured against, summed over overs: `ctx_runs / ctx_balls`, the unsplit group), and
+*P* = `contract.FIXTURE_CONTEXT_PRIOR_BALLS` = 600 deliveries — five T20 innings, two ODI
 innings. The wicket column is the same with *W_k* and the format's as-of dismissals per
-delivery. A key the state has never seen, or a fixture that names none, reads **exactly
-1.0**: the shrinkage target at zero deliveries, which is also what a serving request
-reads when it names no venue or competition — the neutral value is a property of the
-formula, not a second code path.
+delivery. The code computes the right-hand form — the key's runs above the format's
+expectation, shrunk, over the expectation, the shape the impact ratings already have — so
+a key the state has never seen, or a fixture that names none, reads **exactly 1.0** in
+floating point: the shrinkage target at zero deliveries, which is also what a serving
+request reads when it names no venue or competition. The neutral value is a property of
+the formula, not a second code path; and the read uses `dict.get`, so a fixture naming an
+unseen ground does not write a key into the serving state (the D-7 class; B-1 in
+`docs/BUG_BACKLOG.md` records that `team_context` still does).
 
 *Why relative rather than absolute.* T20 scoring has risen across the archive. An absolute
 runs-per-ball at a ground whose history is 2012 would read as low against a 2025 side, and
@@ -1297,10 +1304,14 @@ fix (a lineage file under `configs/`) applies. Not built here.
 the archive, the venue id in Postgres. Competition is (format, event name): `info.event.name`
 in the archive and `match.event_name` in Postgres, the same string on both sources (the
 importer stores the name verbatim), which is what lets the two sources agree on the column
-value as they do on every other. Gender is not in either key: the team key carries it (I-3)
-and the eleven's aggregates carry the eleven's level, and H-7 measured the unsplit context
-baseline as costing nothing. Recorded as a limitation: a women's match at a men's ground
-reads the ground's blended rate.
+value as they do on every other. An **unnamed key is no key**: a match without a venue or an
+event accumulates under neither and reads 1.0, on both sources — which needed one change to
+the Postgres source, whose match query used to spell a missing `venue_id` as `0` where the
+archive spells it as the empty string (the archive currently has no such match; the
+database is what a future import writes). Gender is not in either key: the team key
+carries it (I-3) and the eleven's aggregates carry the eleven's level, and H-7 measured the
+unsplit context baseline as costing nothing. Recorded as a limitation: a women's match at a
+men's ground reads the ground's blended rate.
 
 *No decay, no tuning.* Pitches are relaid, but slowly; `venue_bat_first` does not decay
 either, and a lifetime ratio against a lifetime reference is the stationary quantity. The
@@ -1352,22 +1363,32 @@ prints it first):
 
 - *varies:* which fixture-context families the performance model reads — none, venue,
   competition, both — one fit per arm per fold.
-- *fixed:* the rows, the seven quarterly cutoffs, the three seeds, the hyperparameters, the
-  shared factor's fitting rule (the 92-day calibration fold the members do not train on),
-  the display models, the simulator and its draw count, the labels.
+- *fixed:* the rows, the eleven quarterly cutoffs (A-4's rotated set, 2024-01 … 2026-06),
+  the three seeds, the hyperparameters, the shared factor's fitting rule (the 92-day
+  calibration fold the members do not train on), the display models (fitted once per fold,
+  shared by the arms), the simulator, its draw count and its seeds (common random numbers
+  across arms), the labels.
 - *decides:* a family is kept only if, against the no-context arm on the same folds, the
   mean over folds of |bias| of the simulated first-innings mean shrinks, the first-innings
   10–90 coverage stays within ± 0.03, the interval's width does not grow (H-22), and the
   pinball loss of every headline target is no worse by more than 0.5 % (E1's noise band) —
   in **both** T20 and ODI, the formats the evidence names and whose folds can resolve it.
   The `both` arm is shipped only if it passes the same test; T20I is reported, not decided
-  on (six folds, a 48-match calibration fold); TEST has no simulator and is reported for
-  pinball only. A recorded null — no family shrinks the bias — ships no feature.
+  on (ten folds of 23–57 matches); TEST has no simulator and is reported for pinball only.
+  A recorded null — no family shrinks the bias — ships no feature. The script is
+  `scripts/experiments/xi/a1_fixture_context.py`; it prints the triple first and writes
+  one JSON per format under `output/ml-service/a1/`.
 
-The locked window (≥ 2025-09-01; A-4 has not rotated it yet, so this is the window every
-prior release consulted, and it is scored here exactly once, after the choice) is then
-scored by `make evaluate` with the decided configuration; "before" is §8.3's locked table,
-the same code lineage with no model change since.
+**The locked window, after the choice.** A-4 rotated the window to ≥ 2026-09-02 before this
+item started, and the database ends 2026-09-01, so the window holds **no matches**: `make
+evaluate` scores it once with the decided configuration and reports `n_eval: 0`, which is
+the correct answer (`ml-and-training.md` § Rotating the locked window), not a number. The
+before/after this section can honestly report is therefore the harness's walk-forward
+table — A-4's baseline in `docs/FOLLOW_UP_PLAN.md` § 5 against the same run with the decided
+configuration — on the same eleven folds, the same source (the database) and the same
+seeds; the locked-window line is reported as empty in both. The evaluate run's other job
+is H-8: the parity check rebuilds the last 50 matches through the as-of path with the four
+new columns in both the win row and every player row, on both sources.
 
 ---
 

@@ -126,7 +126,7 @@ GATES: Tuple[Gate, ...] = (
         name="Fixture-conditional level",
         varies="which fixture-context families the performance model reads: none, venue, competition, both -- "
         "one fit per arm per fold",
-        fixed="the rows, the seven quarterly cutoffs, the three seeds, the hyperparameters, the shared factor's "
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three seeds, the hyperparameters, the shared factor's "
         "fitting rule (the 92-day calibration fold), the display models, the simulator and its draw count, "
         "the labels",
         decides="a family is kept only if, against the no-context arm on the same folds, the mean per-quarter |bias| "

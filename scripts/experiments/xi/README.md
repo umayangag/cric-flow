@@ -41,3 +41,14 @@ median total moves by more than 3 %. It states its gate's varies / fixed / decid
 
     python scripts/experiments/xi/e5_reproduce.py --run output/ml-service/runs/<id>
     python scripts/experiments/xi/e3_batting_order.py --postgres --out output/e3_batting_order.json
+
+`a1_fixture_context.py` is gate A-1 (follow-up plan, `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md`
+§8.9): on the walk-forward folds, four arms of the performance model -- reading none, the
+venue, the competition or both fixture-context families -- with everything else fixed, and per
+arm the simulated first-innings bias, 10-90 coverage and width, and the pinball per target.
+It runs on `sim_frame_cache.py`'s frames, one format per invocation, and `--decide` prints the
+per-family table and the cross-format verdict the plan records:
+
+    python scripts/experiments/xi/sim_frame_cache.py --cricsheet-dir data/go-app/cricsheet --out output/ml-service/a1/frames.pkl
+    python scripts/experiments/xi/a1_fixture_context.py --frames output/ml-service/a1/frames.pkl --format T20 --out output/ml-service/a1/a1_T20.json
+    python scripts/experiments/xi/a1_fixture_context.py --decide output/ml-service/a1/a1_T20.json output/ml-service/a1/a1_ODI.json

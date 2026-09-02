@@ -77,6 +77,8 @@ def elo_expected(rating_a: float, rating_b: float) -> float:
 
 
 _N_PHASES = len(C.PHASE_NAMES)
+#: What a fixture-context key the state has never seen reads: no runs, no dismissals, no balls.
+_NO_SCORING = (0.0, 0.0, 0.0)
 
 
 class RatingState:
@@ -133,6 +135,10 @@ class RatingState:
         self.head_to_head: Dict[tuple, List[float]] = defaultdict(list)
         self.venue_bat_first: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0])
         self.team_venue_matches: Dict[tuple, int] = defaultdict(int)
+        # fixture context (A-1): per (format, venue) and (format, competition) the as-of
+        # [runs, dismissals, deliveries] over every ball of every match under that key
+        self.venue_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+        self.competition_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
         self.matches_seen = 0
         self.last_date = None
 
@@ -229,6 +235,34 @@ class RatingState:
             - math.log1p(self.team_venue_matches[(t2, v)]),
         }
 
+    def fixture_context(self, match: MatchRecord) -> Dict[str, float]:
+        """The scoring level of the ground and of the competition, as-of
+        (``contract.FIXTURE_CONTEXT_COLS``): the key's runs (dismissals) per delivery over
+        the format's, shrunk toward the format's over ``FIXTURE_CONTEXT_PRIOR_BALLS``.
+
+        Written as 1 + (R_k - B_k * r) / ((B_k + P) * r) -- the key's runs above the
+        format's expectation, shrunk, over the expectation -- which is the shape the impact
+        ratings have and reads exactly 1.0 at zero deliveries, so a key the state has never
+        seen and a fixture that names none (a serving request without a venue or a
+        competition) get the neutral value from the formula, not from a second code path.
+        The reference is the unsplit format baseline (context group 0), as the accumulators
+        are: a women's match at a men's ground reads the ground's blended rate.
+        """
+        f = C.FORMAT_INDEX[match.format_code]
+        balls = float(self.ctx_balls[0, f].sum())
+        format_runs_per_ball = float(self.ctx_runs[0, f].sum()) / balls
+        format_wickets_per_ball = float(self.ctx_wickets[0, f].sum()) / balls
+        out: Dict[str, float] = {}
+        # ``get``, not indexing: a read must not write a key into the state (the D-7 class).
+        for family, sums in (
+            ("venue", self.venue_scoring.get((match.format_code, match.venue), _NO_SCORING)),
+            ("competition", self.competition_scoring.get((match.format_code, match.competition), _NO_SCORING)),
+        ):
+            run_col, wicket_col = C.FIXTURE_CONTEXT_FAMILIES[family]
+            out[run_col] = _shrunk_relative_rate(sums[0], sums[2], format_runs_per_ball)
+            out[wicket_col] = _shrunk_relative_rate(sums[1], sums[2], format_wickets_per_ball)
+        return out
+
     def simulation_context(self, format_code: str, gender: str) -> Dict[str, float]:
         """The as-of rates the simulator consumes (``contract.SIMULATION_CONTEXT_COLS``):
         extras per delivery, deliveries per full first innings and the bowler-credited share
@@ -251,6 +285,7 @@ class RatingState:
         if len(d):
             self._update_impact(f, self._ctx_group(match.gender), match.format_code, d)
             self._update_simulation_context(f, self._ctx_group(match.gender), d)
+            self._update_fixture_context(match, d)
         both = np.concatenate([s1, s2])
         self.career[f, both] += 1.0
         self.career_all[both] += 1.0
@@ -346,6 +381,21 @@ class RatingState:
             self.ctx_full_innings_deliveries[g, f] += float(first.sum())
             self.ctx_full_innings[g, f] += 1.0
 
+    def _update_fixture_context(self, match: MatchRecord, d: Deliveries) -> None:
+        """Both innings' deliveries land on the ground's and the competition's sums. An
+        unnamed key is no key: nothing accumulates under it, so it keeps reading 1.0."""
+        runs, wickets, balls = float(d.runs_total.sum()), float(d.wicket.sum()), float(len(d))
+        for sums, key in (
+            (self.venue_scoring, match.venue),
+            (self.competition_scoring, match.competition),
+        ):
+            if not key:
+                continue
+            entry = sums[(match.format_code, key)]
+            entry[0] += runs
+            entry[1] += wickets
+            entry[2] += balls
+
     def _accumulate(self, total, balls, wtotal, matches, f, who, value, wvalue, count) -> None:
         uniq, inv = np.unique(who, return_inverse=True)
         for arr in (total, balls, wtotal, matches):
@@ -407,6 +457,13 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
+
+
+def _shrunk_relative_rate(key_total: float, key_balls: float, format_rate: float) -> float:
+    """``fixture_context``'s formula for one column: the key's per-delivery rate over the
+    format's, shrunk toward 1.0 over ``FIXTURE_CONTEXT_PRIOR_BALLS`` deliveries."""
+    excess = key_total - key_balls * format_rate
+    return 1.0 + excess / ((key_balls + C.FIXTURE_CONTEXT_PRIOR_BALLS) * format_rate)
 
 
 # ---------------------------------------------------------------------------

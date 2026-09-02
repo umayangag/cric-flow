@@ -84,6 +84,10 @@ class MatchRecord:
     winner: Optional[str]  # team1 / team2 name, or None (no result, tie, draw)
     result: Optional[str]  # 'tie' | 'draw' | 'no result' | None
     deliveries: Deliveries
+    # The competition the match was played in: Cricsheet's ``info.event.name``, which the
+    # importer stores verbatim as ``match.event_name``, so both sources spell it the same.
+    # Empty when the source names none; an empty key is no key (``RatingState.update``).
+    competition: str = ""
 
     @property
     def outcome(self) -> Optional[float]:
@@ -259,6 +263,7 @@ def parse_cricsheet_file(
         winner=winner,
         result=outcome.get("result"),
         deliveries=_deliveries_from_cricsheet(innings, registry),
+        competition=(info.get("event") or {}).get("name") or "",
     )
 
 
@@ -348,11 +353,14 @@ class CricsheetJsonSource:
 # Team keys are the *club*: COALESCE(canonical_id, id) folds a club's superseded rows onto
 # its current one, so a rebrand does not restart the team's Elo, form and head-to-head
 # (I-4). The Cricsheet source does the same through configs/team_lineage.json.
+# A match without a venue yields the empty venue, as the archive path does, so neither
+# source accumulates unnamed grounds under a key the other cannot produce.
 _MATCH_SQL = """
-SELECT m.match_id, m.match_date, mf.code, m.gender, COALESCE(m.venue_id, 0),
+SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
        COALESCE(bowl.canonical_id, bowl.id),
-       COALESCE(win.canonical_id, win.id)
+       COALESCE(win.canonical_id, win.id),
+       COALESCE(m.event_name, '')
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
@@ -443,7 +451,7 @@ class PostgresSource:
             matches = cur.fetchall()
         self.counts = SourceCounts(offered=offered, out_of_scope=offered - len(matches))
         logger.info("postgres source: %d matches of %d in the date range", len(matches), offered)
-        for match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id in matches:
+        for match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id, event_name in matches:
             with self.connection.cursor() as cur:
                 cur.execute(_PLAYERS_SQL, (match_id,))
                 players = cur.fetchall()
@@ -462,13 +470,14 @@ class PostgresSource:
                 format_code=fmt,
                 team1=str(team1_id),
                 team2=str(team2_id),
-                venue=str(venue_id),
+                venue="" if venue_id is None else str(venue_id),
                 gender=gender or "",
                 team1_players=t1,
                 team2_players=t2,
                 winner=None if winner_id is None else str(winner_id),
                 result=None,
                 deliveries=_deliveries_from_rows(balls),
+                competition=event_name or "",
             )
 
 

@@ -77,6 +77,18 @@ CONTEXT_ARRAY_NAMES = (
 
 STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
 
+# The keyed tables beside the arrays: team and venue state, and the fixture-context sums
+# (A-1). Checked for presence the same way, for the same reason.
+STATE_TABLE_NAMES = (
+    "team_elo",
+    "team_results",
+    "head_to_head",
+    "venue_bat_first",
+    "team_venue_matches",
+    "venue_scoring",
+    "competition_scoring",
+)
+
 
 def model_artifact_name(format_code: str) -> str:
     return f"xi_win_{format_code}.joblib"
@@ -112,6 +124,8 @@ def _state_to_payload(state: RatingState) -> Dict:
         "head_to_head": dict(state.head_to_head),
         "venue_bat_first": dict(state.venue_bat_first),
         "team_venue_matches": dict(state.team_venue_matches),
+        "venue_scoring": dict(state.venue_scoring),
+        "competition_scoring": dict(state.competition_scoring),
         "matches_seen": state.matches_seen,
         "last_date": state.last_date,
     }
@@ -140,6 +154,12 @@ def _check_payload_shape(payload: Dict, run_id: str) -> None:
     """
     arrays = payload.get("arrays") or {}
     players = len(payload.get("keys") or [])
+    missing_tables = [name for name in STATE_TABLE_NAMES if name not in payload]
+    if missing_tables:
+        raise RunArtifactsInvalid(
+            f"run {run_id}: the rating artifact is missing {len(missing_tables)} table(s) this code reads "
+            f"({', '.join(missing_tables)}); it was written by an older pass and cannot be served. Retrain."
+        )
     missing = [name for name in STATE_ARRAY_NAMES if name not in arrays]
     if missing:
         raise RunArtifactsInvalid(
@@ -167,11 +187,8 @@ def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
         state.players.slot(k)
     for name, arr in payload["arrays"].items():
         setattr(state, name, arr)
-    state.team_elo.update(payload["team_elo"])
-    state.team_results.update(payload["team_results"])
-    state.head_to_head.update(payload["head_to_head"])
-    state.venue_bat_first.update(payload["venue_bat_first"])
-    state.team_venue_matches.update(payload["team_venue_matches"])
+    for name in STATE_TABLE_NAMES:
+        getattr(state, name).update(payload[name])
     state.matches_seen = payload["matches_seen"]
     state.last_date = payload["last_date"]
     return state

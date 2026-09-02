@@ -129,6 +129,31 @@ SEQUENCE_PRIOR_BALLS = PHASE_PRIOR_BALLS
 # by the > 1 % pinball-loss rule over three seeds (plan §5); the table is in the plan.
 SEQUENCE_FAMILIES_KEPT: Tuple[str, ...] = ()
 
+# Fixture context (A-1): the scoring level of the ground and of the competition, as-of, so
+# the performance model can forecast a different total at a ground where 140 is par than
+# at one where 190 is. Each column is the key's shrunk as-of runs (dismissals) per delivery
+# over the format's as-of rate, so 1.0 is "an average ground" and a key with no history
+# reads exactly 1.0 (``RatingState.fixture_context``). Keyed by (format, venue) and
+# (format, competition name); never decayed, like ``venue_bf_rate``. The columns are always
+# in the frame; a family is fed to the performance model only if gate A-1 kept it
+# (``FIXTURE_CONTEXT_FAMILIES_KEPT``, plan §8.9).
+FIXTURE_CONTEXT_FAMILIES: Dict[str, List[str]] = {
+    "venue": [
+        "venue_run_rate_rel",  # shrunk runs per delivery at the ground / the format's runs per delivery
+        "venue_wicket_rate_rel",  # shrunk dismissals per delivery at the ground / the format's
+    ],
+    "competition": [
+        "competition_run_rate_rel",  # the same, keyed by the competition (Cricsheet's event name)
+        "competition_wicket_rate_rel",
+    ],
+}
+FIXTURE_CONTEXT_COLS: List[str] = [col for cols in FIXTURE_CONTEXT_FAMILIES.values() for col in cols]
+#: Shrinkage of a key's rate toward the format's: the weight, in deliveries, of the prior --
+#: five T20 innings, two ODI innings. One number, chosen by the size of an innings, not swept.
+FIXTURE_CONTEXT_PRIOR_BALLS = 600.0
+#: Gate A-1's verdict: the families the performance model reads (plan §8.9).
+FIXTURE_CONTEXT_FAMILIES_KEPT: Tuple[str, ...] = ()
+
 
 # One side's aggregates, produced by ml.xi.ratings.aggregate_side. Order is the contract.
 SIDE_FEATURE_STEMS: List[str] = [
@@ -258,6 +283,7 @@ PLAYER_MATCH_FEATURE_COLS: List[str] = (
     + [f"own_{s}" for s in SIDE_FEATURE_STEMS]
     + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
     + ["venue_bf_rate", "venue_n", "elo_edge"]  # elo_edge = own team Elo minus opponent's
+    + FIXTURE_CONTEXT_COLS
 )
 
 # What the player then did. Counts are over deliveries, wides included -- the same
@@ -324,18 +350,24 @@ INNINGS_OUTCOME_COLS: List[str] = [
 
 
 def performance_feature_cols(
-    sequence_families: Tuple[str, ...] = SEQUENCE_FAMILIES_KEPT, joint_format: bool = False
+    sequence_families: Tuple[str, ...] = SEQUENCE_FAMILIES_KEPT,
+    joint_format: bool = False,
+    fixture_context_families: Tuple[str, ...] = FIXTURE_CONTEXT_FAMILIES_KEPT,
 ) -> List[str]:
     """The performance model's input columns: the row's as-of vectors and role, the kept
-    sequence families, both sides' aggregates, venue context, the Elo edge and the innings."""
+    sequence families, both sides' aggregates, venue context, the Elo edge, the kept
+    fixture-context families and the innings."""
     sequence_keys = [key for family in sequence_families for key in SEQUENCE_FAMILIES[family]]
+    fixture_keys = [key for family in fixture_context_families for key in FIXTURE_CONTEXT_FAMILIES[family]]
     cols = (
         PLAYER_VECTOR_KEYS
         + PLAYER_ROLE_KEYS
         + sequence_keys
         + [f"own_{s}" for s in SIDE_FEATURE_STEMS]
         + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
-        + ["venue_bf_rate", "venue_n", "elo_edge", BATS_FIRST_COL]
+        + ["venue_bf_rate", "venue_n", "elo_edge"]
+        + fixture_keys
+        + [BATS_FIRST_COL]
     )
     if joint_format:
         cols.append(FORMAT_INDICATOR_COL)
