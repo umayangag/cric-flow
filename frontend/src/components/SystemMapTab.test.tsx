@@ -4,16 +4,19 @@ import userEvent from '@testing-library/user-event';
 import SystemMapTab from './SystemMapTab';
 import { systemMap } from '../systemMap/contract';
 import { MISSING } from '../systemMap/bindings';
+import { MetricGlossaryProvider } from '../context/MetricGlossaryContext';
 
 const mockOpsStatus = vi.fn();
 const mockXiStatus = vi.fn();
 const mockEvaluationReport = vi.fn();
+const mockMetricGlossary = vi.fn();
 
 vi.mock('../api', () => ({
   api: {
     opsStatus: (...args: unknown[]) => mockOpsStatus(...args),
     xiStatus: (...args: unknown[]) => mockXiStatus(...args),
     evaluationReport: (...args: unknown[]) => mockEvaluationReport(...args),
+    metricGlossary: (...args: unknown[]) => mockMetricGlossary(...args),
   },
 }));
 
@@ -57,6 +60,7 @@ describe('SystemMapTab', () => {
     mockOpsStatus.mockReset().mockResolvedValue({ db: { counts: { matches: 19345 } } });
     mockXiStatus.mockReset().mockResolvedValue({ loaded: true, players: 14210, formats: ['T20I'] });
     mockEvaluationReport.mockReset().mockResolvedValue(report);
+    mockMetricGlossary.mockReset().mockResolvedValue({ entries: {} });
   });
 
   it('reads the three endpoints the map binds to', async () => {
@@ -133,6 +137,52 @@ describe('SystemMapTab', () => {
     const detail = screen.getByTestId('system-map-detail');
     await waitFor(() => expect(within(detail).getByText('Matches')).toBeInTheDocument());
     expect(within(detail).getAllByText(MISSING).length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The map holds no metric prose of its own: a binding names a glossary key and L-1's
+   * explainer supplies the words. This is the seam — that the key reaches `MetricInfo`,
+   * and that a metric the glossary has never heard of simply has no explainer rather
+   * than an empty one.
+   */
+  it('hands a metric key to L-1s explainer and shows what the glossary says', async () => {
+    mockMetricGlossary.mockResolvedValue({
+      entries: {
+        objective_auc: {
+          key: 'objective_auc',
+          name: 'Objective AUC',
+          explanation: 'How often the model ranks the actual winner higher.',
+          band: '0.70-0.75 is this system’s measured range.',
+          better: 'higher is better',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <MetricGlossaryProvider>
+        <SystemMapTab />
+      </MetricGlossaryProvider>,
+    );
+
+    const objective = await screen.findByTestId('system-map-node-win-objective');
+    await user.click(
+      within(objective).getByRole('button', { name: nodeCardName('Win model — objective') }),
+    );
+
+    const detail = screen.getByTestId('system-map-detail');
+    const explainer = await within(detail).findByRole('button', {
+      name: /Objective AUC \(walk-forward mean\)/,
+    });
+    await user.click(explainer);
+    expect(
+      screen.getByText('How often the model ranks the actual winner higher.'),
+    ).toBeInTheDocument();
+
+    // `swap_violation_share` is in the contract too; the stub glossary does not carry it,
+    // so it gets no explainer and no empty popover.
+    expect(
+      within(detail).queryByRole('button', { name: /Upgrades that lower/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('reports a failed call without taking the map down with it', async () => {

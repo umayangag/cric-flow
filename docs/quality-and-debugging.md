@@ -102,7 +102,7 @@ against a stale profile reports a number from a different run. `make go-app-chec
 |---|---|---|
 | go-app | `go-app/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_GO`), `.github/workflows/go-app-ci.yml` | 74 |
 | ml-service | `ml-service/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_ML`), `.github/workflows/ml-service-ci.yml` | 92 |
-| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 79, functions 75, statements 79, branches 79 |
+| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 80, functions 75, statements 80, branches 79 |
 
 The frontend gate has now been silently off twice, for the same reason in two shapes: first the
 threshold keys were set at the top level of `coverage`, where Vitest 2 ignores them, and then a

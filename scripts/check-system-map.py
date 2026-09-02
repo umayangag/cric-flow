@@ -11,9 +11,10 @@ structure is data, and the data is checked against the code on every PR.
 Two directions, and both matter:
 
 **Forward — everything the map names must exist.** Modules, Go packages, files,
-endpoints, tables, make targets, artifact kinds, pipeline steps, gates, feature groups and
-performance targets. Delete an endpoint or rename a module and this fails, so the map
-cannot go on drawing a box for something that is gone.
+endpoints, tables, make targets, artifact kinds, pipeline steps, gates, feature groups,
+performance targets and the metric-glossary keys the explainers resolve against (L-1).
+Delete an endpoint or rename a module and this fails, so the map cannot go on drawing a
+box for something that is gone.
 
 **Reverse — everything the code can enumerate must be on the map.** Every route both
 services serve, every step in the ops registry, every gate in the H-23 registry, every
@@ -22,7 +23,8 @@ kind. Add an endpoint and this fails, so the map cannot quietly fall behind eith
 
 Numbers are deliberately *not* checked here: none are written in the map. Nodes carry
 binding keys that the tab resolves live from /ops/status, /api/ml/xi-status and
-/api/backtest/report, so a stale number is not a thing the map can hold.
+/api/backtest/report, so a stale number is not a thing the map can hold. Nor is any metric
+prose: a binding names a glossary key and L-1's explainer supplies the words.
 
 Usage:
     python scripts/check-system-map.py          # exit 1 on any violation
@@ -221,7 +223,7 @@ def collect_anchors(nodes: Sequence[Dict[str, Any]]) -> Dict[str, Set[str]]:
     return collected
 
 
-def check_structure(system_map: Dict[str, Any], problems: Problems) -> None:
+def check_structure(system_map: Dict[str, Any], glossary_keys: Set[str], problems: Problems) -> None:
     """Ids, lanes, layout slots, edges and bindings hold together."""
     lanes = {lane["id"] for lane in system_map["lanes"]}
     sources = set(system_map["sources"])
@@ -275,6 +277,13 @@ def check_structure(system_map: Dict[str, Any], problems: Problems) -> None:
                 problems.add(where, f"binding {key!r} is per_format but its path names no {{format}}")
             if "{format}" in binding["path"] and not binding.get("per_format"):
                 problems.add(where, f"binding {key!r} uses {{format}} without per_format")
+            # The explainer is L-1's, resolved by key against the served glossary. A key
+            # with no entry renders no explainer and says nothing about why -- so the
+            # typo is caught here rather than read as "nobody has explained this yet".
+            if binding.get("glossary_key") and binding["glossary_key"] not in glossary_keys:
+                problems.add(
+                    where, f"binding {key!r} names glossary key {binding['glossary_key']!r}, which has no entry"
+                )
 
     for edge in system_map["edges"]:
         for end in ("from", "to"):
@@ -362,6 +371,7 @@ def check(root: str) -> List[str]:
     generator = load_generator(root)
     gates = import_ml(root, "ml.xi.gates")
     performance = import_ml(root, "ml.xi.performance")
+    glossary = import_ml(root, "ml.xi.glossary")
 
     known: Dict[str, Set[str]] = {
         "endpoints": served_endpoints(root, generator),
@@ -374,7 +384,7 @@ def check(root: str) -> List[str]:
         "targets": {target.name for target in performance.TARGETS},
     }
 
-    check_structure(system_map, problems)
+    check_structure(system_map, set(glossary.as_dict()), problems)
     check_documents(root, system_map, problems)
     check_forward(root, system_map, known, problems)
     check_reverse(system_map, known, problems)

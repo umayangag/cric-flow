@@ -337,6 +337,8 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - **Endpoints**:
     - `GET /ops/status`, `GET /api/ml/xi-status`, `GET /api/backtest/report` (Go API) — the
       three the map's live values are read from. No endpoint of its own.
+    - `GET /api/backtest/metric-glossary`, through the shared `MetricGlossaryProvider`, for
+      the explainer on a metric the map shows (L-1).
   - **Displays**:
     - The whole pipeline as a pan-and-zoom graph, from the Cricsheet archive to the
       prediction surfaces, drawn from `contracts/system-map.json`.

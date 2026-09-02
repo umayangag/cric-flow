@@ -307,11 +307,11 @@ verified in CI, and numbers are live.
    the map *is* that endpoint's figure. The harness's gates go further: the map names the gate
    ids and the report supplies each gate's terms **and the path to its own number**, so not
    even a report path is typed into the map. A key the endpoints do not carry reads as a dash.
-4. **One source for metric prose.** Where a shown metric has a glossary key, the explainer is
-   read from the report's embedded glossary (L-1). L-1 is not merged, so today no entry
-   resolves and no explainer renders; when it lands the map gains its explainers without a
-   line of new copy. `MetricExplainer` is the component L-1's step 3 should adopt rather than
-   write a second one.
+4. **One source for metric prose.** A binding names a glossary key and L-1's `MetricInfo`
+   supplies the words, resolved against the glossary the service serves — the map carries no
+   metric prose of its own. The keys are checked too: a binding naming a key with no entry
+   fails `make check-system-map`, because an explainer that silently does not render reads
+   as "nobody has explained this yet" rather than as a typo.
 5. **Read-only, and not the ops step graph.** `OpsPipelineGraph` is the control surface that
    starts and stops runs and is untouched. The system map describes the pipeline; the ops
    console drives it, and each says so on the other's node.
@@ -344,8 +344,8 @@ captain); a bigger E5 threshold (it is derived now); and any change judged on th
 window (H-19).
 
 **Order.** F-1 first — the pipeline must be clickable before anything retrains on cadence.
-Then L-1 and M-1 (both small and independent; M-1 reads L-1's glossary if it is there and
-renders no explainer if it is not, so either order works). Then A-4 before A-1/A-2/A-3, so the new modelling work is
+Then L-1, then M-1 stacked on it — M-1's explainers are L-1's component and its glossary
+keys are checked against L-1's registry. Then A-4 before A-1/A-2/A-3, so the new modelling work is
 judged against a clean window from the start; A-5 whenever convenient. A-1 and A-2 touch the
 same code and should land in that order; A-3 is independent and the most likely to end in a
 recorded null — which the plan treats as a result, not a failure.
@@ -358,7 +358,7 @@ recorded null — which the plan treats as a result, not a failure.
 |---|---|
 | F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
 | L-1 | **done** — `feat/l-1-metric-glossary`. `ml/xi/glossary.py` carries the table in § 3 verbatim, one entry per reported metric key; the harness embeds it in `xi_evaluate_report.json` and `GET /xi/metric-glossary` serves it from the code; `glossary.check_report` walks every metric key the report emits and a harness test fails on one with no entry (keys that are not metrics are declared with a reason). One shared popover component explains every metric label in the frontend — the evaluation tables and tiles, the Workbench's manifest metrics, the run summary and the prediction surfaces' ranges and marginal values — and the metric prose the components carried was deleted. |
-| M-1 | **done** — `feat/system-map-tab`. The System map tab, `contracts/system-map.json` and the two-way `make check-system-map`, wired into the Docs consistency workflow. Two things were found on the way and fixed here: `gen-architecture-map.py`'s route regex missed three go-app proxy routes (the endpoint table said 25, it is 28), and `frontend/vitest.config.ts` shadowed `vite.config.ts`, so the frontend coverage gate had never run — verified by renaming it, which turned three of the four thresholds red. The duplicate config is deleted and the gate ratcheted to the measured figures. |
+| M-1 | **done** — `feat/system-map-tab`, stacked on L-1 (its explainers are L-1's `MetricInfo`, and the glossary keys the map names are checked against L-1's registry). The System map tab, `contracts/system-map.json` and the two-way `make check-system-map`, wired into the Docs consistency workflow. Two things were found on the way and fixed here: `gen-architecture-map.py`'s route regex missed three go-app proxy routes (the endpoint table said 25, it is 28), and `frontend/vitest.config.ts` shadowed `vite.config.ts`, so the frontend coverage gate had never run — verified by renaming it, which turned three of the four thresholds red. The duplicate config is deleted and the gate ratcheted to the measured figures. |
 | A-1 | open |
 | A-2 | open |
 | A-3 | open |

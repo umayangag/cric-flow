@@ -111,7 +111,7 @@ const report: EvaluationReport = {
   n_rows: 19345,
   n_player_rows: 425590,
   formats: { T20I: formatReport },
-  serving_parity: { passed: true },
+  serving_parity: { passed: true, max_abs_difference: 0, matches_compared: 50 },
   gates: {
     registry: {
       'H-17': {
