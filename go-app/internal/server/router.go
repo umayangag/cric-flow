@@ -28,10 +28,10 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// ML health proxy (full response for Health tab: loaded formats, artifacts)
-	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy", nil)).
+	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy")).
 		Methods(http.MethodGet, http.MethodOptions)
 	// Which run is loaded, how far its ratings go, and whether they are stale (H-11, H-16).
-	admin.HandleFunc("/api/ml/xi-status", a.mlServiceProxy("/xi/status", "xi status proxy", nil)).
+	admin.HandleFunc("/api/ml/xi-status", a.mlServiceProxy("/xi/status", "xi status proxy")).
 		Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
@@ -81,7 +81,12 @@ func NewRouter(a *App) http.Handler {
 
 	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
 	// flow scored the batting / bowling / fielding models and went with them (P-5).
-	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy", nil)).
+	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy")).
+		Methods(http.MethodGet, http.MethodOptions)
+	// The metric glossary (L-1) is served from ml-service's code, not from a report on
+	// disk: every surface that shows a number renders it, including those that never read
+	// the evaluation report, and none of them holds metric prose of its own.
+	admin.HandleFunc("/api/backtest/metric-glossary", a.mlServiceProxy("/xi/metric-glossary", "xi metric glossary proxy")).
 		Methods(http.MethodGet, http.MethodOptions)
 	// Wrap with CORS middleware for frontend access
 	return corsMiddleware(r)

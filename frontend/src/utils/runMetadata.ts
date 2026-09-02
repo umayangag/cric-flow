@@ -1,4 +1,4 @@
-import type { Migration, RunMetadata } from '../types';
+import type { MetricGlossaryEntry, Migration, RunMetadata } from '../types';
 
 /**
  * Reading a finished run's recorded metadata (ops plan O-4/O-5).
@@ -31,6 +31,10 @@ const SPREAD = ['_std', 'stddev', 'variance', 'spread'];
  * A metric that matches nothing here is shown with its delta and no verdict —
  * "it changed by this much" is true regardless, while "this is an improvement"
  * would be a guess.
+ *
+ * This is the *fallback*. Where the glossary carries the key it decides (L-1): the
+ * service that computes a metric knows which way is progress, and a substring rule
+ * guessing alongside it is a second answer waiting to disagree.
  */
 const LOWER_IS_BETTER = ['rmse', 'mae', 'error', 'loss', 'brier', 'dropped'];
 
@@ -39,8 +43,23 @@ const HIGHER_IS_BETTER = ['accuracy', 'r2', 'score', 'auc', 'precision', 'recall
 
 export type MetricDirection = 'lower-is-better' | 'higher-is-better' | 'unknown';
 
-/** Which way is good for this metric, or 'unknown' when we should not claim. */
-export function metricDirection(name: string): MetricDirection {
+/** Resolves a metric key against the served glossary; see `MetricGlossaryContext`. */
+export type GlossaryLookup = (key: string | undefined) => MetricGlossaryEntry | undefined;
+
+/**
+ * Which way is good for this metric, or 'unknown' when we should not claim.
+ *
+ * `entry` is the glossary's word on it and wins where there is one. `nominal`, `exact`
+ * and `none` yield no verdict on purpose: a coverage moving from 0.83 to 0.86 is not an
+ * improvement, and colouring it green would say it was.
+ */
+export function metricDirection(name: string, lookup?: GlossaryLookup): MetricDirection {
+  // Run metrics are prefixed by format (`T20.objective_auc`); the glossary knows the key.
+  const entry = lookup?.(name.split('.').pop() ?? name);
+  if (entry?.direction === 'higher') return 'higher-is-better';
+  if (entry?.direction === 'lower') return 'lower-is-better';
+  if (entry) return 'unknown';
+
   const key = name.toLowerCase();
   if (SPREAD.some((s) => key.includes(s))) return 'lower-is-better';
   if (HIGHER_IS_BETTER.some((h) => key.includes(h))) return 'higher-is-better';
@@ -64,6 +83,7 @@ export type MetricComparison = {
 export function compareMetrics(
   current: Record<string, number>,
   previous?: Record<string, number>,
+  lookup?: GlossaryLookup,
 ): MetricComparison[] {
   return Object.entries(current)
     .map(([name, value]) => {
@@ -72,7 +92,7 @@ export function compareMetrics(
         return { name, current: value, verdict: 'unknown' as const };
       }
       const delta = value - before;
-      const direction = metricDirection(name);
+      const direction = metricDirection(name, lookup);
       let verdict: MetricComparison['verdict'] = 'unknown';
       if (delta === 0) {
         verdict = 'same';

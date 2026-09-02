@@ -29,6 +29,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   the hyperparameters the grid chose, the run's headline metrics), `ratings` (H-11: `fresh`,
   `age_days`, `max_age_days`, `code`) and `error` (D-6: why a run on disk was refused).
 - **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make evaluate` when the harness has not run.
+- **GET /xi/metric-glossary** — What every reported metric means (L-1): `{"entries": {<metric key>: {key, name, explanation, band, better, direction}}}`, from `ml/xi/glossary.py`. Always 200 — it is served from the code, so a surface can explain its numbers before any run exists.
 - **GET /artifacts/status** — Every run on disk, newest first, with `current_run`, `loaded_run`,
   the ratings verdict and the loader's refusal. A run directory with no manifest is listed as
   `has_manifest: false` rather than hidden: it is exactly what an operator is looking for when
@@ -111,8 +112,16 @@ shape, E2's serving decision, the lineup-only natural experiment (`e5_lineup_onl
 pooled with its derived bar, and the locked window labelled) and the selection decision it
 implies (`selection_decision`: agreement, bar, pass/fail, whether optimised selection is served,
 and the sentence saying why). Beside them: the data-quality counts, the leak canary with its
-TEST control, the train/serve parity verdict, and the gate registry (`gates`: every gate's
-varies / fixed / decides triple and whether the report carries all of them, H-23).
+TEST control, the train/serve parity verdict, the gate registry (`gates`: every gate's
+varies / fixed / decides triple and whether the report carries all of them, H-23) and the metric
+glossary (`glossary`: one entry per metric key the report prints, and whether it explained all
+of them, L-1).
+
+**`GET /api/backtest/metric-glossary`** proxies ml-service's `GET /xi/metric-glossary`: the same
+entries, served from the code rather than from a report on disk. It is what every metric label in
+the frontend opens — the evaluation tables, the Workbench's manifest metrics, the run summary's
+metrics and the prediction surfaces' ranges and marginal values — so no component carries prose
+about a metric, and a rewording is a change to `ml/xi/glossary.py` alone.
 
 **There is no per-match evaluate flow.** It scored the batting, bowling and fielding models
 against actuals and went with them in P-5; what replaced it is the harness, which scores every

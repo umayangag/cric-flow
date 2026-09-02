@@ -172,6 +172,19 @@ describe('frontend api client (DB-backed)', () => {
     vi.unstubAllGlobals();
   });
 
+  it('metricGlossary fetches the metric glossary, not the megabyte of folds beside it', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = { entries: { pinball: { key: 'pinball' } } };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.metricGlossary();
+
+    expect(result).toEqual(payload);
+    expect(fetchMock.mock.calls[0][0] as string).toContain('/api/backtest/metric-glossary');
+    vi.unstubAllGlobals();
+  });
+
   it('opsStatus and health go to their own routes', async () => {
     vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });

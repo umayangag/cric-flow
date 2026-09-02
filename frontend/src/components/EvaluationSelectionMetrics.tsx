@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, Grid, Paper, Stack, Typography } from '@mui/material';
 import type { EvaluationFormatReport, EvaluationGate } from '../types';
+import { MetricInfo } from './common/MetricInfo';
 import { formatShare, formatStat, statMean } from '../utils/evaluationReport';
 
 /**
@@ -19,12 +20,14 @@ const GateTriple: React.FC<{ gate?: EvaluationGate }> = ({ gate }) => {
 
 const Metric: React.FC<{
   label: string;
+  /** The glossary key this tile's number is reported under (L-1). */
+  metricKey: string;
   value: string;
   caption: string;
   gate?: EvaluationGate;
   dashed?: boolean;
   muted?: boolean;
-}> = ({ label, value, caption, gate, dashed, muted }) => (
+}> = ({ label, metricKey, value, caption, gate, dashed, muted }) => (
   <Grid item xs={12} md={4}>
     <Paper
       variant="outlined"
@@ -32,6 +35,7 @@ const Metric: React.FC<{
     >
       <Typography variant="overline" color="text.secondary">
         {label}
+        <MetricInfo metricKey={metricKey} label={label} value={value} />
       </Typography>
       <Typography variant="h5" sx={{ my: 0.5 }} color={muted ? 'text.disabled' : 'text.primary'}>
         {value}
@@ -76,11 +80,11 @@ const EvaluationSelectionMetrics: React.FC<{
   const decision = report.selection_decision;
   const bar = decision?.bar;
   const exactlyRight = decision?.expected_if_exactly_right;
+  // The caption is the harness's own definition and the run's numbers; what the metric
+  // *means* is the glossary's, one click away (L-1), and is not restated here.
   const e5Caption =
     e5 && decision?.agreement != null
-      ? `Sign agreement between the objective’s preference among one side’s consecutive elevens (1–3 changes, ` +
-        `both scored in the later fixture at its as-of) and the result change. Bar derived from the objective’s ` +
-        `own claimed effect: ${bar?.toFixed(3) ?? '—'} (an exactly-right objective would score ` +
+      ? `${e5.definition}. Bar ${bar?.toFixed(3) ?? '—'} (an exactly-right objective would score ` +
         `${exactlyRight?.toFixed(3) ?? '—'}) — ${decision.passes_derived_bar ? 'passes' : 'fails'}.`
       : e5
         ? `No pairs whose result moved could be scored in this format. ${e5.why_not_as_played}.`
@@ -94,21 +98,21 @@ const EvaluationSelectionMetrics: React.FC<{
       <Grid container spacing={2} sx={{ mb: 2 }}>
         <Metric
           label="Specific XI beyond typical XI"
+          metricKey="specific_vs_typical_delta"
           value={formatStat(summary.specific_vs_typical_delta)}
-          caption={
-            'AUC of the eleven that played minus the AUC of the side’s typical eleven. ' +
-            'Above zero means the model reads the XI, not just the badge.'
-          }
+          caption="Measured on the folds, against the side’s own typical eleven on the same fixtures."
           gate={gates?.['specific-vs-typical']}
         />
         <Metric
           label="Swap monotonicity"
+          metricKey="swap_violation_share"
           value={formatShare(summary.swap_violation_share)}
-          caption="Share of one-player upgrades that lower P(win). The gate is under 2% (H-4)."
+          caption="One player upgraded at a time, the other ten and the opponent held fixed (H-4)."
           gate={gates?.['H-4']}
         />
         <Metric
           label="Natural experiment (E5), lineup-only"
+          metricKey="agreement"
           value={formatAgreement(
             decision?.agreement ?? null,
             decision?.standard_error,

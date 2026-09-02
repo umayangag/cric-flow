@@ -135,6 +135,7 @@ Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|wa
 ## Evaluation report and Ops Status
 
 - **Evaluation report:** `GET /api/backtest/report` — proxies ml-service's `GET /xi/evaluate-report`, which serves `xi_evaluate_report.json` as `make evaluate` last wrote it. 503 with a hint when the harness has not run. Frontend: Evaluation report tab. Full contract: **docs/apis-backtest-and-ops.md**.
+- **Metric glossary:** `GET /api/backtest/metric-glossary` — proxies ml-service's `GET /xi/metric-glossary`: one entry per reported metric key (name, explanation, the measured reference band, which direction is better), from `ml/xi/glossary.py`. Every metric label in the frontend opens its entry, so no component holds metric prose of its own.
 - **Ops Status:** `GET /ops/status` — services, DB, the runs on disk with which one is serving and whether its ratings are fresh, and the next command the run history says is missing. `make dev-up && curl -s http://localhost:8080/ops/status | jq`. See **docs/apis-backtest-and-ops.md**.
 
 ## Frontend

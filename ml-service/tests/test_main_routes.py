@@ -51,6 +51,19 @@ def test_evaluate_report_says_where_it_looked(tmp_path):
     assert "xi_evaluate_report.json" in resp.json()["detail"]["message"]
 
 
+def test_metric_glossary_is_served_without_any_artifacts(tmp_path):
+    """The glossary comes from the code, so a surface can explain its numbers before a
+    single run has been built (L-1)."""
+    _, client = _app_client(tmp_path)
+
+    resp = client.get("/xi/metric-glossary")
+
+    assert resp.status_code == 200
+    entries = resp.json()["entries"]
+    assert entries["objective_auc"]["better"] == "higher is better"
+    assert "coin flip" in entries["objective_auc"]["explanation"]
+
+
 def test_predict_win_without_a_model_is_unavailable_not_a_crash(tmp_path):
     _, client = _app_client(tmp_path)
 
