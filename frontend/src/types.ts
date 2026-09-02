@@ -210,6 +210,76 @@ export type EvaluationTotals = {
   median_mae?: number | FoldStat;
 };
 
+/** A sign-agreement figure with its denominator and sampling error. */
+export type EvaluationAgreement = {
+  pairs_scored: number;
+  agreed?: number;
+  agreement: number | null;
+  standard_error?: number | null;
+  ci95?: [number, number] | null;
+  excluded_result_unchanged?: number;
+  excluded_objective_indifferent?: number;
+  skipped_reason?: string;
+  note?: string;
+};
+
+/**
+ * E5, lineup-only: one side's consecutive elevens 1–3 players apart, both scored in the
+ * later fixture at its as-of, sign agreement with the result change. The bar is derived
+ * from the objective's own claimed effect size (plan §8.8), not chosen.
+ */
+export type EvaluationE5 = {
+  definition: string;
+  why_not_as_played: string;
+  pairs: { total: number; development: number; locked: number; unscored_previous_eleven?: number };
+  walk_forward: {
+    folds: Array<EvaluationAgreement & { cutoff: string; end: string; pairs: number }>;
+    summary: { agreement: FoldStat | null };
+  };
+  development: EvaluationAgreement & {
+    effect_size?: {
+      n: number;
+      median_abs: number | null;
+      mean_abs?: number | null;
+      p90_abs: number | null;
+    };
+    derived_bar?: {
+      n_pairs: number;
+      expected_if_exactly_right: number | null;
+      simulated_mean?: number;
+      simulated_sd?: number;
+      bar: number | null;
+      bar_quantile?: number;
+      replicates?: number;
+    };
+    passes_derived_bar?: boolean | null;
+  };
+  locked: EvaluationAgreement;
+  decision: EvaluationSelectionDecision;
+};
+
+/** Per format: what E5 said against which bar, and whether optimised selection is served. */
+export type EvaluationSelectionDecision = {
+  agreement: number | null;
+  pairs_scored?: number;
+  standard_error?: number | null;
+  bar: number | null;
+  expected_if_exactly_right?: number | null;
+  passes_derived_bar: boolean | null;
+  optimised_selection_served: boolean;
+  reason: string;
+};
+
+/** H-23: what a gate varies, what it holds fixed and what decides, beside its number. */
+export type EvaluationGate = {
+  id: string;
+  name: string;
+  varies: string;
+  fixed: string;
+  decides: string;
+  report_path?: string | null;
+};
+
 export type EvaluationFormatReport = {
   n_matches: number;
   walk_forward: {
@@ -235,6 +305,8 @@ export type EvaluationFormatReport = {
     chase_orientation?: string;
     served?: boolean;
   };
+  e5_lineup_only?: EvaluationE5;
+  selection_decision?: EvaluationSelectionDecision;
 };
 
 export type EvaluationReport = {
@@ -255,6 +327,12 @@ export type EvaluationReport = {
     passed: boolean;
     mismatches?: unknown[];
     [key: string]: unknown;
+  };
+  /** The gate registry the harness checked the report against (H-23). */
+  gates?: {
+    registry: Record<string, EvaluationGate>;
+    passed?: boolean;
+    problems?: string[];
   };
 };
 

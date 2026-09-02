@@ -25,7 +25,7 @@ import { useEvaluationReport } from '../hooks/useEvaluationReport';
  * It used to evaluate one match at a time against the batting, bowling and fielding models
  * — which is what those models could be scored on, and also why the numbers never added up
  * to a verdict about the system. The harness runs rolling origins over every format and
- * writes one file (`make xi-evaluate`); this tab reads it. There is no form, because there
+ * writes one file (`make evaluate`); this tab reads it. There is no form, because there
  * is no choice for the browser to make: the folds, the locked window and the seeds are the
  * harness's, and a cutoff chosen here would be a choice made against the locked window.
  */
@@ -47,7 +47,7 @@ const EvaluationReportTab: React.FC = () => {
       <Box>
         <ErrorNotice error={error} title="No evaluation report" />
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          The report is written by <code>make xi-evaluate</code>, which runs the walk-forward folds,
+          The report is written by <code>make evaluate</code>, which runs the walk-forward folds,
           the locked window and the train/serve parity check, and lands beside the artifacts.
         </Typography>
         <Button sx={{ mt: 2 }} variant="outlined" onClick={() => void reload()}>
@@ -86,6 +86,12 @@ const EvaluationReportTab: React.FC = () => {
           ? 'Train/serve parity holds (H-8): the last matches rebuilt through the as-of serving path match the training frame exactly.'
           : 'Train/serve parity FAILED (H-8): the serving path and the training frame disagree. Nothing served from these artifacts can be trusted until it does.'}
       </Alert>
+      {report.gates && report.gates.passed === false && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Gate registry FAILED (H-23): the report prints a gate without saying what it varies and
+          what it holds fixed — {report.gates.problems?.join('; ')}.
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
         <FormControl size="small" sx={{ minWidth: 140 }}>
@@ -106,7 +112,7 @@ const EvaluationReportTab: React.FC = () => {
       {formatReport && (
         <>
           <EvaluationWalkForward report={formatReport} />
-          <EvaluationSelectionMetrics report={formatReport} />
+          <EvaluationSelectionMetrics report={formatReport} gates={report.gates?.registry} />
           <EvaluationPerformanceTable
             performance={formatReport.locked.performance}
             title="Performance, locked window"

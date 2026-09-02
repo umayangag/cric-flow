@@ -118,3 +118,78 @@ def test_harness_skips_formats_without_data(harness_report) -> None:
 
     assert odi["n_matches"] == 0
     assert all("skipped_reason" in fold for fold in odi["walk_forward"]["folds"])
+
+
+def test_harness_fills_the_e5_slot_with_the_lineup_only_metric_and_its_derived_bar(harness_report) -> None:
+    e5 = harness_report["formats"]["T20"]["e5_lineup_only"]
+
+    assert harness_report["e5_previous_elevens"]["fielded_eleven_max_abs_difference"] == pytest.approx(0.0, abs=1e-9)
+    assert e5["pairs"]["total"] > 0 and e5["pairs"]["unscored_previous_eleven"] == 0
+    assert e5["why_not_as_played"].startswith("§5's as-played form is not computed")
+    assert e5["development"]["pairs_scored"] > 0
+    assert e5["development"]["derived_bar"]["bar"] is not None
+    assert "locked window" in e5["locked"]["note"]
+    decision = harness_report["formats"]["T20"]["selection_decision"]
+    # The served flag is the policy (plan §8.8: T20 is scoped off by E5), read beside the verdict.
+    assert decision["optimised_selection_served"] is False
+    assert decision["reason"].startswith("optimised selection not served in T20, because E5 lineup-only agreement")
+
+
+def test_harness_e5_slot_exists_for_a_format_with_no_data(harness_report) -> None:
+    e5 = harness_report["formats"]["ODI"]["e5_lineup_only"]
+
+    assert e5["pairs"]["total"] == 0
+    assert e5["decision"]["agreement"] is None
+    assert e5["decision"]["reason"].endswith("E5 could not be scored (no pairs whose result moved)")
+
+
+def test_harness_embeds_the_gate_registry_and_checks_it(harness_report) -> None:
+    gates_node = harness_report["gates"]
+
+    assert gates_node["passed"], gates_node["problems"]
+    assert set(gates_node["registry"]) >= {"E5", "E2", "H-4", "H-8", "H-17", "E3"}
+    assert gates_node["registry"]["E5"]["varies"].startswith("the eleven")
+
+
+def _fake_report(parity_passed: bool = True, gates_passed: bool = True) -> dict:
+    """The shape ``main`` reads back: one format with a summary, a decision and the verdicts."""
+    return {
+        "formats": {
+            "T20": {
+                "walk_forward": {
+                    "summary": {"objective_auc": {"mean": 0.72, "sd": 0.01, "n_folds": 2}, "performance": None}
+                },
+                "simulation_decision": {
+                    "delta_brier_mean": 0.003,
+                    "delta_brier_sd": 0.004,
+                    "n_folds": 2,
+                    "simulated_win_probability_within_tolerance": True,
+                },
+                "selection_decision": {"reason": "optimised selection not served in T20, because E5 ... fails"},
+            }
+        },
+        "serving_parity": {"passed": parity_passed, "mismatches": [] if parity_passed else ["row 1"]},
+        "gates": {"passed": gates_passed, "problems": [] if gates_passed else ["gate E5: T20 carries nothing"]},
+    }
+
+
+@pytest.mark.parametrize(
+    "parity_passed, gates_passed, expected_exit",
+    [(True, True, 0), (False, True, 1), (True, False, 1)],
+)
+def test_main_writes_the_report_and_fails_on_parity_or_gate_problems(
+    tmp_path, monkeypatch, parity_passed: bool, gates_passed: bool, expected_exit: int
+) -> None:
+    """The run's exit code is the two verdicts that make a report untrustworthy: H-8 parity
+    and the H-23 gate registry. Everything else is reported, never fatal."""
+    monkeypatch.setattr(
+        ev, "evaluate", lambda source, factory, gender_split_context=False: _fake_report(parity_passed, gates_passed)
+    )
+    out = tmp_path / "report"
+
+    code = ev.main(["--cricsheet-dir", str(tmp_path), "--out", str(out)])
+
+    assert code == expected_exit
+    written = json.loads((out / ev.REPORT_NAME).read_text())
+    assert written["serving_parity"]["passed"] is parity_passed
+    assert written["gates"]["passed"] is gates_passed

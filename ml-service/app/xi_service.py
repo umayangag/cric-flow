@@ -42,6 +42,7 @@ from ml.xi import runs, simulator
 from ml.xi.asof import AsOfServer
 from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
 from ml.xi.optimizer import (
+    NOT_OPTIMISED_REASONS,
     OPTIMISED_SELECTION_FORMATS,
     Constraints,
     marginal_values,
@@ -286,7 +287,8 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
     # optimised selection is a rule (H-17), not a property of what happens to be loaded.
     if req.objective == "win" and req.format not in OPTIMISED_SELECTION_FORMATS:
         raise XiUnavailable(
-            f"format {req.format!r} has no objective that ranks (H-17); "
+            f"format {req.format!r} is not offered an optimised selection: "
+            f"{NOT_OPTIMISED_REASONS.get(req.format, 'unknown format')}; "
             f"ask for objective='ratings'. Optimised formats: {sorted(OPTIMISED_SELECTION_FORMATS)}"
         )
     if req.objective == "win" and not req.opponent_player_ids:
@@ -528,7 +530,7 @@ def status(registry: XiRegistry = REGISTRY) -> XiStatusResponse:
 
 
 def evaluate_report(registry: XiRegistry = REGISTRY) -> dict:
-    """L4's report (``xi_evaluate_report.json``), as `make xi-evaluate` last wrote it.
+    """L4's report (``xi_evaluate_report.json``), as `make evaluate` last wrote it.
 
     Read from the directory the artifacts were loaded from -- which is
     ``ML_SERVICE_OUTPUT_DIR`` before it is anything else -- so the report and the models it
@@ -544,13 +546,13 @@ def evaluate_report(registry: XiRegistry = REGISTRY) -> dict:
     if directory is None:
         raise XiUnavailable(
             "artifacts have never been loaded, so there is nowhere to read the report from",
-            hint="POST /admin/reload, then run `make xi-evaluate` if the report is missing",
+            hint="POST /admin/reload, then run `make evaluate` if the report is missing",
         )
     path = os.path.join(directory, EVALUATE_REPORT_NAME)
     if not os.path.exists(path):
         raise XiUnavailable(
             f"no evaluation report at {path}",
-            hint="run `make xi-evaluate` -- the harness writes the report the backtest surfaces read",
+            hint="run `make evaluate` -- the harness writes the report the backtest surfaces read",
         )
     with open(path) as fh:
         report = json.load(fh)

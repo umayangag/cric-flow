@@ -21,16 +21,35 @@ const (
 	SelectionObjectiveRatings = "ratings"
 )
 
-// notOptimisedNote is what every surface showing a rating-ordered XI has to say. One
-// sentence, in one place, so the API and the UI cannot drift apart about it.
-const notOptimisedNote = "Rating-ordered XI: this format has no win objective that ranks " +
-	"(holdout AUC below 0.65), so the eleven is picked by as-of rating under the same " +
-	"constraints and is not optimised for win probability."
+// notOptimisedReasons names every format that is served a rating-ordered XI rather than an
+// optimised one, with the reason every surface showing that XI has to give. One sentence
+// per format, in one place, so the API and the UI cannot drift apart about it.
+//
+// Two rules put a format here. H-17 (P-5): an objective whose holdout AUC is under 0.65
+// does not rank, so it is not searched over (TEST). E5 (P-7, plan §8.8): an objective that
+// ranks but whose preference between one side's consecutive elevens does not agree with
+// the result change at the bar derived from its own claimed effect size has not shown it
+// selects, so the search is not served there either. A format absent from this map is
+// optimised. Mirrors ml.xi.optimizer.NOT_OPTIMISED_REASONS; ml-service refuses the win
+// objective for every format listed there, so a drift here is a 503 with a message, never
+// a silent fallback.
+var notOptimisedReasons = map[string]string{
+	"TEST": "Rating-ordered XI: this format has no win objective that ranks (holdout AUC below " +
+		"0.65, H-17), so the eleven is picked by as-of rating under the same constraints and is " +
+		"not optimised for win probability.",
+	"T20": "Rating-ordered XI: this format's win objective ranks but has not shown it selects — " +
+		"in the natural experiment (E5) its preference between one side's consecutive elevens " +
+		"agreed with the result change 0.490 of the time against a bar of 0.501 derived from its " +
+		"own claimed effect — so the eleven is picked by as-of rating under the same constraints " +
+		"and is not optimised for win probability; the win probability shown still reads the eleven.",
+}
 
-// optimisedSelectionFormats are the formats whose objective ranks well enough to select on
-// (H-17). Mirrors ml.xi.optimizer.OPTIMISED_SELECTION_FORMATS; ml-service refuses the win
-// objective outside it, so a drift here is a 503 with a message, never a silent fallback.
-var optimisedSelectionFormats = map[string]bool{"T20": true, "T20I": true, "ODI": true}
+// isOptimisedSelectionFormat reports whether a format's XIs are searched for on the win
+// objective; the rest are rating-ordered and labelled with their reason.
+func isOptimisedSelectionFormat(format string) bool {
+	_, scopedOff := notOptimisedReasons[format]
+	return !scopedOff
+}
 
 // XISelectionOptimizer is the ml-service /xi/optimize contract: pick the XI from a pool of
 // player ids, either against the objective model or by rating alone.
@@ -96,7 +115,7 @@ func selectBothXIs(
 	optimizer XISelectionOptimizer,
 	fix fixture,
 ) (xi1, xi2 []string, summary SelectionSummary, marginals map[string]float64, err error) {
-	if !optimisedSelectionFormats[fix.format] {
+	if !isOptimisedSelectionFormat(fix.format) {
 		return selectByRatings(ctx, optimizer, fix)
 	}
 	return selectByWinProbability(ctx, optimizer, fix)
@@ -108,7 +127,11 @@ func selectByRatings(
 	optimizer XISelectionOptimizer,
 	fix fixture,
 ) ([]string, []string, SelectionSummary, map[string]float64, error) {
-	summary := SelectionSummary{Objective: SelectionObjectiveRatings, Optimised: false, Note: notOptimisedNote}
+	summary := SelectionSummary{
+		Objective: SelectionObjectiveRatings,
+		Optimised: false,
+		Note:      notOptimisedReasons[fix.format],
+	}
 	xi1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
 		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team1Code, err)

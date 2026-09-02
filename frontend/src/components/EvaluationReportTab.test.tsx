@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import EvaluationReportTab from './EvaluationReportTab';
-import type { EvaluationFormatReport, EvaluationReport } from '../types';
+import type {
+  EvaluationE5,
+  EvaluationFormatReport,
+  EvaluationGate,
+  EvaluationReport,
+} from '../types';
 
 const mockEvaluationReport = vi.fn();
 vi.mock('../api', () => ({
@@ -105,9 +110,65 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
       chase_orientation: 'chasing',
       served: false,
     },
+    e5_lineup_only: e5Report(),
+    selection_decision: e5Report().decision,
     ...overrides,
   };
 }
+
+function e5Report(): EvaluationE5 {
+  const development = {
+    pairs_scored: 1204,
+    agreed: 613,
+    agreement: 0.509,
+    standard_error: 0.014,
+    ci95: [0.481, 0.537] as [number, number],
+    effect_size: { n: 2600, median_abs: 0.021, p90_abs: 0.065 },
+    derived_bar: { n_pairs: 2600, expected_if_exactly_right: 0.523, bar: 0.501 },
+    passes_derived_bar: true,
+  };
+  return {
+    definition: 'both elevens scored in the later fixture at its as-of',
+    why_not_as_played: '§5’s as-played form is not computed: it scores mean reversion',
+    pairs: { total: 2600, development: 2600, locked: 400 },
+    walk_forward: {
+      folds: [
+        { cutoff: '2024-01-01', end: '2024-04-01', pairs: 300, pairs_scored: 140, agreement: 0.51 },
+      ],
+      summary: { agreement: { mean: 0.51, sd: 0.02, n_folds: 7 } },
+    },
+    development,
+    locked: { pairs_scored: 190, agreement: 0.52, standard_error: 0.036 },
+    decision: {
+      agreement: 0.509,
+      pairs_scored: 1204,
+      standard_error: 0.014,
+      bar: 0.501,
+      expected_if_exactly_right: 0.523,
+      passes_derived_bar: true,
+      optimised_selection_served: true,
+      reason:
+        'optimised selection served in T20, because E5 lineup-only agreement 0.509 over 1204 pairs against the derived bar 0.501 (an exactly-right objective would score 0.523): passes',
+    },
+  };
+}
+
+const gateRegistry: Record<string, EvaluationGate> = {
+  E5: {
+    id: 'E5',
+    name: 'Natural experiment, lineup-only',
+    varies: 'the eleven',
+    fixed: 'the opponent eleven and the as-of',
+    decides: 'sign agreement at or above the derived bar',
+  },
+  'H-4': {
+    id: 'H-4',
+    name: 'Swap monotonicity',
+    varies: 'one player’s ratings',
+    fixed: 'the other ten',
+    decides: 'violation share under 2%',
+  },
+};
 
 function report(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
   return {
@@ -120,6 +181,7 @@ function report(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
     n_player_rows: 463818,
     formats: { T20: formatReport() },
     serving_parity: { passed: true },
+    gates: { registry: gateRegistry, passed: true, problems: [] },
     ...overrides,
   };
 }
@@ -139,7 +201,7 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText('locked')).toBeInTheDocument();
   });
 
-  it('shows the two selection metrics and a labelled slot for the third', async () => {
+  it('shows the three selection gates with E5 against its derived bar', async () => {
     mockEvaluationReport.mockResolvedValue(report());
     render(<EvaluationReportTab />);
 
@@ -148,8 +210,85 @@ describe('EvaluationReportTab', () => {
     );
     expect(screen.getAllByText('0.045 ± 0.021').length).toBeGreaterThan(0);
     expect(screen.getByText(/Swap monotonicity/)).toBeInTheDocument();
-    expect(screen.getByText(/Natural experiment \(E5\)/)).toBeInTheDocument();
-    expect(screen.getByText('not measured')).toBeInTheDocument();
+    expect(screen.getByText(/Natural experiment \(E5\), lineup-only/)).toBeInTheDocument();
+    expect(screen.getByText('0.509 ± 0.014 (n=1,204)')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Bar derived from the objective’s own claimed effect: 0.501/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/would score 0.523\) — passes/)).toBeInTheDocument();
+  });
+
+  it('states the selection decision per format with the locked window labelled beside it', async () => {
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getByText('Optimised selection: yes.')).toBeInTheDocument());
+    expect(screen.getByText(/because E5 lineup-only agreement 0.509/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Locked window, labelled and never used for the choice: 0.520 ± 0.036 \(n=190\)/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says optimised selection is off where the policy scopes it off', async () => {
+    const scoped = formatReport();
+    scoped.selection_decision = {
+      ...e5Report().decision,
+      optimised_selection_served: false,
+      reason: 'optimised selection not served in T20, because E5 lineup-only agreement 0.509 fails',
+    };
+    mockEvaluationReport.mockResolvedValue(report({ formats: { T20: scoped } }));
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getByText('Optimised selection: no.')).toBeInTheDocument());
+    expect(screen.getByText(/optimised selection not served in T20/)).toBeInTheDocument();
+  });
+
+  it('renders each gate’s varies / fixed / decides triple beside its number (H-23)', async () => {
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getAllByText('Varies:').length).toBeGreaterThan(0));
+    expect(screen.getByText(/the opponent eleven and the as-of/)).toBeInTheDocument();
+    expect(screen.getByText(/violation share under 2%/)).toBeInTheDocument();
+  });
+
+  it('keeps the E5 slot labelled when the format has no scorable pairs', async () => {
+    const thin = formatReport();
+    thin.e5_lineup_only = {
+      ...e5Report(),
+      decision: {
+        agreement: null,
+        bar: null,
+        passes_derived_bar: null,
+        optimised_selection_served: false,
+        reason:
+          'optimised selection not served in TEST, because E5 could not be scored (no pairs whose result moved)',
+      },
+    };
+    thin.selection_decision = thin.e5_lineup_only.decision;
+    mockEvaluationReport.mockResolvedValue(report({ formats: { TEST: thin } }));
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getByText('not measured')).toBeInTheDocument());
+    expect(screen.getByText(/No pairs whose result moved could be scored/)).toBeInTheDocument();
+  });
+
+  it('reports a failed gate registry as an error (H-23)', async () => {
+    mockEvaluationReport.mockResolvedValue(
+      report({
+        gates: {
+          registry: gateRegistry,
+          passed: false,
+          problems: ['gate E5: ODI carries nothing'],
+        },
+      }),
+    );
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getByText(/Gate registry FAILED/)).toBeInTheDocument());
+    expect(screen.getByText(/gate E5: ODI carries nothing/)).toBeInTheDocument();
   });
 
   it('shows the per-target performance with width beside coverage', async () => {
@@ -185,7 +324,7 @@ describe('EvaluationReportTab', () => {
     render(<EvaluationReportTab />);
 
     await waitFor(() => expect(screen.getByText(/No evaluation report/)).toBeInTheDocument());
-    expect(screen.getByText(/make xi-evaluate/)).toBeInTheDocument();
+    expect(screen.getByText(/make evaluate/)).toBeInTheDocument();
   });
 
   it('warns when the specific XI does not beat the typical XI', async () => {
