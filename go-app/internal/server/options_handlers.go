@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
@@ -9,14 +10,30 @@ import (
 
 type OptionsHandler struct{}
 
-func (h *OptionsHandler) HandleGetTeams(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	teams, err := db.GetUniqueTeams(ctx)
-	if err != nil {
-		respondErr(w, err)
-		return
+// teamSideResponse is one side as a picker offers it.
+//
+// It carries the club id because that is what a prediction request must send: a name alone
+// names two teams for 130 of the 394 names in the dataset, and a picker that offers the name
+// once cannot say which of them the user chose (D-11). `display_name` comes from the backend
+// so the picker, the prediction's echo and the ambiguity error all spell a side the same way.
+type teamSideResponse struct {
+	ClubID      int64  `json:"club_id"`
+	Name        string `json:"name"`
+	Gender      string `json:"gender"`
+	DisplayName string `json:"display_name"`
+}
+
+func newTeamSideResponses(sides []db.TeamSide) []teamSideResponse {
+	out := make([]teamSideResponse, 0, len(sides))
+	for _, side := range sides {
+		out = append(out, teamSideResponse{
+			ClubID:      side.ClubID,
+			Name:        side.Name,
+			Gender:      side.Gender,
+			DisplayName: side.Label(),
+		})
 	}
-	writeJSON(w, http.StatusOK, teams)
+	return out
 }
 
 func (h *OptionsHandler) HandleGetFormats(w http.ResponseWriter, r *http.Request) {
@@ -35,35 +52,43 @@ func (h *OptionsHandler) HandleGetCanonicalFormats(w http.ResponseWriter, _ *htt
 	writeJSON(w, http.StatusOK, formats.CanonicalCodes())
 }
 
-func (h *OptionsHandler) HandleGetTeamsByFormat(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+// HandleGetTeamSidesByFormat returns the sides that have played the format.
+func (h *OptionsHandler) HandleGetTeamSidesByFormat(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	if format == "" {
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format is required"})
 		return
 	}
-	teams, err := db.GetTeamsByFormat(ctx, format)
+	sides, err := db.ListTeamSidesForFormat(r.Context(), format)
 	if err != nil {
 		respondErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, teams)
+	writeJSON(w, http.StatusOK, newTeamSideResponses(sides))
 }
 
-func (h *OptionsHandler) HandleGetOpponents(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	format := r.URL.Query().Get("format")
-	team := r.URL.Query().Get("team")
-	if format == "" || team == "" {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "format and team are required"})
+// HandleGetOpponentSides returns the sides this club has played in the format.
+//
+// It takes the club id the teams list returned, not a name: asking for "the opponents of
+// India" is the same unanswerable question one level along.
+func (h *OptionsHandler) HandleGetOpponentSides(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	format := query.Get("format")
+	clubID, err := strconv.ParseInt(query.Get("team_id"), 10, 64)
+	if format == "" || err != nil || clubID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_PARAM",
+			Message: "format and team_id are required",
+			Hint:    "team_id is the club_id from /api/options/teams-by-format",
+		})
 		return
 	}
-	opponents, err := db.GetOpponentsByFormatAndTeam(ctx, format, team)
+	sides, err := db.ListOpponentSidesForFormat(r.Context(), format, clubID)
 	if err != nil {
 		respondErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, opponents)
+	writeJSON(w, http.StatusOK, newTeamSideResponses(sides))
 }
 
 func (h *OptionsHandler) HandleGetVenues(w http.ResponseWriter, r *http.Request) {
