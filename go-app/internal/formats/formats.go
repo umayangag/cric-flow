@@ -15,7 +15,7 @@ const (
 )
 
 // CanonicalCodes returns the list of canonical format codes in standard order (TEST, ODI, T20, T20I).
-// Use this where a single shared list is needed (e.g. precompute handler, ops status artifacts).
+// Use this where a single shared list is needed (e.g. the ops status sections).
 func CanonicalCodes() []string {
 	return []string{CodeTest, CodeODI, CodeT20, CodeT20I}
 }

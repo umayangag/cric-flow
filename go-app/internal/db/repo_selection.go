@@ -13,11 +13,9 @@ type PlayerPoolRow struct {
 	// ExternalID is the Cricsheet registry id, and it is what the ML service knows a player
 	// by: the rating state has been keyed on it since P-1, on both sources. The database id
 	// is this repo's own and means nothing to ml-service.
-	ExternalID         string
-	PlayerName         string
-	IsWicketKeeper     int16
-	BattingConsistency sql.NullFloat64
-	BowlingConsistency sql.NullFloat64
+	ExternalID     string
+	PlayerName     string
+	IsWicketKeeper int16
 }
 
 // ListPlayerPoolByOpposition returns players who have played for the given team in the format,
@@ -49,7 +47,12 @@ func ListPlayerPoolByOpposition(
 	// Players who have batted or bowled for this team (opposition) in matches before cutoff.
 	// batting_team_opposition_id = team that batted (batters in batting_data play for that team);
 	// bowling_team_opposition_id = team that bowled (bowlers in bowling_data play for that team).
-	// Use a CTE to get distinct player_ids via JOINs (avoids EXISTS per-row); then join with player and consistency.
+	// A CTE gets the distinct player_ids via JOINs, avoiding EXISTS per row.
+	//
+	// The pool is who *may* play, and nothing more: it used to carry each player's windowed
+	// consistency from `feature_raw_stats_snapshots`, for the score weights P-5 deleted. P-6
+	// dropped that table, and the rating state ml-service holds is where a player's form
+	// lives now -- go-app sends ids and lets the model read them.
 	rows, err := Pool.Query(ctx, `
 		WITH club AS (
 		  -- Every opposition row belonging to the same club, so a rename does not halve
@@ -71,19 +74,9 @@ func ListPlayerPoolByOpposition(
 		  WHERE m.format_id = $1 AND m.match_date < $2
 		    AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
 		)
-		SELECT p.id, COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper,
-		       COALESCE(latest.batting_std_w10, 0)::real AS batting_consistency,
-		       COALESCE(latest.bowling_std_w10, 0)::real AS bowling_consistency
+		SELECT p.id, COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper
 		FROM player p
 		JOIN eligible e ON e.id = p.id
-		LEFT JOIN LATERAL (
-			SELECT batting_std_w10, bowling_std_w10
-			FROM feature_raw_stats_snapshots
-			WHERE player_id = p.id AND format_id = $1 AND scope = 'overall' AND scope_id IS NULL
-			  AND as_of_date <= $2
-			ORDER BY as_of_date DESC
-			LIMIT 1
-		) latest ON true
 		WHERE p.is_retired = 0
 		ORDER BY p.player_name, p.id
 	`, formatID, cutoffDate, oppID)
@@ -96,8 +89,7 @@ func ListPlayerPoolByOpposition(
 	var out []PlayerPoolRow
 	for rows.Next() {
 		var r PlayerPoolRow
-		if err := rows.Scan(&r.PlayerID, &r.ExternalID, &r.PlayerName, &r.IsWicketKeeper,
-			&r.BattingConsistency, &r.BowlingConsistency); err != nil {
+		if err := rows.Scan(&r.PlayerID, &r.ExternalID, &r.PlayerName, &r.IsWicketKeeper); err != nil {
 			return nil, err
 		}
 		if seen[r.PlayerID] {
@@ -127,12 +119,10 @@ func ListPlayerPoolByOpposition(
 		}
 		seen[pid] = true
 		out = append(out, PlayerPoolRow{
-			PlayerID:           pid,
-			ExternalID:         externalID,
-			PlayerName:         name,
-			IsWicketKeeper:     keeper,
-			BattingConsistency: sql.NullFloat64{},
-			BowlingConsistency: sql.NullFloat64{},
+			PlayerID:       pid,
+			ExternalID:     externalID,
+			PlayerName:     name,
+			IsWicketKeeper: keeper,
 		})
 	}
 

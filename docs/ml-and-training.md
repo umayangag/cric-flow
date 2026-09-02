@@ -1,8 +1,9 @@
 # ML models and training
 
-The XI layer — the rating pass, the win models, the player performance model, the match
-simulator and the L4 harness — plus what is left of the windowed-form win model, which P-6
-removes. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+The XI layer: the rating pass, the win models, the player performance model, the match
+simulator and the L4 harness. It is the whole ML surface — the windowed-form win model, the
+per-player models and the auto-tune stack are gone (P-5, P-6).
+**Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
@@ -15,59 +16,144 @@ removes. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../
 | L2-B performance model (`ml/xi/performance.py`) | Player | Quantile runs / balls / runs conceded, a two-part Poisson of wickets, a catch rate, and P(bats) / P(bowls) |
 | L2-C simulator (`ml/xi/simulator.py`) | Match | Draws whole matches from L2-B for two elevens; no training of its own |
 | L3 selection (`ml/xi/optimizer.py`) | Match | The XI that maximises the objective, its marginal values, and — where the objective does not rank — the rating-ordered pick |
-| Win, windowed form (`ml/train_win.py`) | Match | The original match-level classifier. Superseded; P-6 removes it |
+| L4 harness (`ml/xi/evaluate.py`) | — | Walk-forward folds and the locked window, the selection and performance metrics, the leak canary and the train/serve parity check |
 
 Every serving call into the XI layer takes **player ids and a format**, never a feature map.
 The rating state lives in ml-service, which is what makes the training and serving paths
 compute the same function of the same eleven names (H-8).
 
-**Training data (go-app):** `GET /api/backtest/training-data?cutoff=...&format=all` still serves
-the win section to `ml.train_win` and the auto-tune stack. The XI layer does not use it: it
-reads `match`, `match_player` and `ball_event` directly.
+**Training data:** there is none to export. The rating pass reads `match`, `match_player` and
+`ball_event` directly, one ordered scan, and writes its frames into the run directory. The
+precompute step, the export CSVs and go-app's `training-data` endpoint went with the models
+that read them (P-6).
 
-**Training commands:** `make train-xi CUTOFF=<YYYY-MM-DD>` builds the rating state and every XI
-model; `make xi-evaluate` scores them; `make train-win CUTOFF=<RFC3339>` builds the windowed-form
-win model.
+**Commands:** `make retrain CUTOFF=<YYYY-MM-DD>` builds one run; `make reload` serves it;
+`make evaluate` runs L4 over it. See *The pipeline* below.
 
 > **`CUTOFF` bounds the training data.** Rows with `match_date` on or after it are dropped,
 > leaving everything from the cutoff onward as a holdout. To produce a model you can honestly
 > evaluate, train with a cutoff that leaves a window behind it.
 
-**Artifacts:** `xi_ratings.joblib`, `xi_win_<FMT>.joblib` and `xi_perf_<FMT>.joblib` for the XI
-layer (loaded by `ml.xi.store`); `win_model_<FMT>.joblib` for the windowed-form model.
+**Artifacts:** `runs/<run_id>/` holds `xi_ratings.joblib`, `xi_win_<FMT>.joblib`,
+`xi_perf_<FMT>.joblib`, the run's report and `manifest.json`. `current_run.json` at the
+artifacts root names the run being served. See *Runs, manifests and staleness* below.
 
 ---
 
 ## Data normalization and best practices
 
-- **No future leakage:** Training uses only matches with `match_date < cutoff`. Same cutoff logic for export and for feature computation at prediction.
-- **Same feature computation:** go-app uses identical logic for export rows and for feature map at prediction (`ComputeFeaturesAtCutoffForMatch`). Form = EWM, consistency = coefficient of variation, venue/opposition = EWM at scope. The v2 contract includes raw windowed stats (e.g. batting_mean_w3, bowling_std_w10) from `feature_raw_stats_snapshots` (overall scope); export and prediction both populate these from precomputed snapshots when available.
-- **Feature order:** Training and prediction use the same order from `configs/feature_vectors.json` (batting, bowling, fielding). ML builds the vector from this config at prediction.
-- **Input normalization (X):** `StandardScaler` fitted only on training data; same scaler saved and used at prediction. No test/future data in fit.
-- **Targets (Y):** Kept in raw units (no scaling) for interpretability and to avoid inverse transform.
-- **Missing values:** Training drops or fills (e.g. 0) per script; prediction uses `ml.feature_defaults` in config for missing keys.
-
-## Pipeline
-
-You can run the pipeline from the **frontend** (Ops Status → Pipeline) or from the command line.
-
-**Steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form / consistency /
-sequence per format. (3) Export — writes the cross-format and per-format CSVs. (4) Train Win.
-(5) Optional: Auto-tune. Steps 2, 3 and 5 exist for the windowed-form model and the export
-consumers, and P-6 removes them; the XI layer needs only the import.
-
-**Auto-tune depends only on Export**, not on any trained artifact, so it can run before Train
-Win — and in Mode B below it must.
+- **No future leakage:** every row a model trains on has `match_date < cutoff`, and every
+  feature in it is an as-of accumulator that has seen only earlier matches (H-1). The rating
+  pass folds a day's matches in at day close, so a match never sees a same-day result (H-18).
+- **One feature computation:** training rows and serving rows come from the same code
+  (`ml.xi.rows`) over the same rating state, which is what makes the two paths compute the
+  same function of the same eleven names. The harness re-derives the last 50 matches through
+  the as-of serving path and fails the run on any difference (H-8).
+- **Input normalization (X):** the objective model is a `StandardScaler` + logistic regression
+  pipeline, fitted on training rows only and saved with the model. The display model is a
+  monotone-constrained gradient booster and needs none.
+- **Targets (Y):** raw units, no scaling — the performance model's quantiles are runs and
+  balls, and an inverse transform is one more place for a mistake to hide.
+- **Missing values:** a player the state has never seen reads as a debutant by construction
+  (H-10), not as a zero row.
 
 ---
 
-## Export width contract
+## The pipeline
 
-Every trainer and tuning loader reads its `*_encoded_all.csv` through `ml.export_csv.read_export_csv`, which compares the header against the first data row and raises `MisalignedExportError` when the two disagree.
+Three steps, and a harness beside them. Run them from the **frontend** (Ops Status → Pipeline)
+or from the command line; the console enforces step order, streams progress and can be
+cancelled, and the make targets do the same work without any of that.
 
-The check exists because pandas stays silent about the one corruption that matters here: a header naming fewer columns than the rows carry makes `read_csv` absorb the surplus leading fields as an index and shift every named column left by that many places. The win export shipped 64 header names over 72-field rows, so `team1_wins` took the values of `team1_bat_consistency_top3_mean`, the target collapsed to a single class, and the run died minutes later inside GradientBoosting complaining about class counts — nowhere near the cause.
+| Step | Command | What it does |
+|------|---------|--------------|
+| **import** | `make cricsheet-import` | Fetch the configured archive, extract it, load the matches. Fetch and extract are skipped, and say so, when the dataset directory already holds that archive. |
+| **retrain** | `make retrain CUTOFF=2025-09-01` | The whole model build: rating pass → XI win models (with the grid) → performance models → the run's report → `manifest.json`. Writes `runs/<run_id>/` and **publishes nothing**. |
+| **reload** | `make reload [RUN=<id>]` | Point `current` at a run and load it into the running service. With no run id: the run `current` already names, or the newest one. |
+| *evaluate* | `make evaluate` | L4 over the database: walk-forward folds, the locked window, the selection and performance metrics, the leak canary, the parity check. Touches no artifact `current` points at. Optional, and slow — see below. |
 
-If a train step now fails with `header names N columns but the first data row has M fields`, the CSV on disk predates the current exporter. Re-run `make export-dataset`, then re-run the train step.
+`make up-all CUTOFF=<date>` is the whole chain from an empty database; `make full-pipeline` is
+retrain → reload against data already imported.
+
+**Why reload is separate from retrain.** They answer different questions — "build a run" and
+"serve that run" — and a retrain that published itself would leave no way back to the run
+before it. Naming a run is how you swap back.
+
+**Why evaluate is separate from both.** The harness refits every model per fold per format:
+measured on the full database it takes ~54 minutes, against a whole pipeline that runs in a
+fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
+sensible cadence. What a retrain records is its *own* holdout report — the numbers the models
+it just fitted produced — and the manifest names it, so nothing quotes a measurement of a
+different run.
+
+> **`CUTOFF` bounds the training data.** Rows with `match_date` on or after it are dropped,
+> leaving everything from the cutoff onward as a holdout. To produce a model you can honestly
+> evaluate, train with a cutoff that leaves a window behind it.
+
+---
+
+## Hyperparameters
+
+There is one search, it is three points wide, and it runs inside `retrain`.
+
+`ml.xi.train.DISPLAY_GRID` holds three settings for the display model (depth, learning rate,
+iterations). Each is fitted on the first 80 % of the training rows *by date* and scored on the
+last 20 % — inside the training window, strictly before the holdout, so choosing a
+hyperparameter cannot see the rows the run is scored on (H-19). The incumbent (the setting the
+display model has always been fitted with) keeps its place unless a candidate beats it by more
+than `DISPLAY_GRID_MARGIN` = 0.002 AUC: differences under the noise floor are not evidence
+(H-14), and a grid that reshuffles the model on 0.001 every release is a source of drift.
+
+The choice, the reason and every candidate's score go into `manifest.json` under
+`hyperparameters`. That is the whole record — there is no tuned-params table, because a table
+nothing could join back to an artifact was how a model came to carry parameters from a search
+it had never seen.
+
+This replaced a two-phase Optuna search with PyCaret and AutoGluon ranking. It was removed
+because the model class was measured not to be the constraint, twice; the constraint is the
+game (§1 of the re-architecture plan), and no amount of search moves it.
+
+---
+
+## Runs, manifests and staleness
+
+**A run is a directory, and `current` is a pointer to one** (H-16):
+
+```
+output/ml-service/
+  current_run.json                    {"run_id": "...", "updated_at": "..."}
+  runs/20260902T101500Z-ab12cd34/
+    manifest.json
+    xi_ratings.joblib
+    xi_win_<FMT>.joblib
+    xi_perf_<FMT>.joblib
+    xi_win_report.json
+```
+
+`manifest.json` carries the run id, when it was created, the cutoff, the dataset sha (a digest
+of the matches the pass consumed — computed from what was read, because ml-service does not
+mount the dataset directory), the git sha, the rating params, the hyperparameters the grid
+chose *and why*, the run's headline metrics per format, and the rating state's shape. It is
+written **last**, so a directory only becomes a run once everything it names is on disk: a
+retrain that dies half-way leaves wreckage the loader never selects and `/artifacts/status`
+lists as "no manifest".
+
+**The loader refuses what it cannot serve.** `XiStore.load` reads the manifest first and
+raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when an array this
+code reads is absent, or when a player array is narrower than the number of players the
+payload registers. That is D-6: a rating artifact written before P-2 loaded without complaint
+and then raised `IndexError` on the first request past slot 1024, while `/xi/status` reported
+`loaded: true`. An artifact was trusted because it loaded; now it has to say which run it is
+from and what shape it is in. The refusal reaches `/xi/status`, `/health`, `/ops/status`, a
+409 `RUN_ARTIFACTS_INVALID` from `POST /admin/reload`, and the prediction tab.
+
+**Staleness (H-11).** A live prediction against ratings older than
+`ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
+`RATINGS_STALE` and a hint naming the step that fixes it. A request that names its own `as_of`
+is not refused: a backtest asks for a date and gets it, and refusing one would break the
+harness for a reason that does not describe it. Setting the limit to zero turns the check off
+— a decision visible in config rather than a state the code can drift into. The verdict, not
+just the date, is on `/xi/status` (`ratings.fresh`, `age_days`, `max_age_days`, `code`).
 
 ---
 
@@ -78,11 +164,11 @@ If a train step now fails with `header names N columns but the first data row ha
 - **Coverage configuration:**
   - `pyproject.toml` configures coverage to track `app` and `ml` packages, with `branch = true`.
   - Training/tuning entrypoints that are exercised via separate flows are excluded via `omit`:
-    - `ml/train_win.py` (the windowed-form training CLI),
-    - `ml/tuning/*.py` (auto‑tune orchestration),
-    - `ml/validate_exports.py`.
-  - This keeps the coverage number focused on `app.main`, `app/xi_service.py`, the `ml/xi`
-    package, config, and other request‑time paths.
+    - none, since P-6: the training CLIs it excluded (`ml/train_win.py`, `ml/tuning/*.py`,
+      `ml/validate_exports.py`) no longer exist, and `ml.xi.retrain` is thin enough to be
+      covered by the same tests that cover what it calls.
+  - The coverage number is focused on `app.main`, `app/xi_service.py`, the `ml/xi` package,
+    config, and other request‑time paths.
 
 - **Thresholds and CI integration:**
   - `ml-service/Makefile` defines `COV_MIN`, the minimum allowed coverage percentage for local `make coverage-check`.
@@ -91,106 +177,16 @@ If a train step now fails with `header names N columns but the first data row ha
 
 - **Raising, never lowering:**
   - When `coverage` reports that actual coverage is above the current threshold, we **bump the threshold up to `floor(actual)`** (e.g. 74.99% → 74) in `ml-service/Makefile`, the root `Makefile`, and the CI workflow.
+  - **`floor`, not the rounded figure the report prints.** pytest-cov decides `fail_under`
+    on the *rounded* total but writes its FAIL line from the exact one, so a threshold of
+    92 against 91.55 % prints "FAIL Required test coverage of 92% not reached" and still
+    exits 0 — a gate that says FAIL and passes, which is worse than one that does neither.
   - We do **not** lower thresholds; if coverage regresses below the gate, the fix is to add or repair tests.
 
 The same pattern applies to other components:
 
 - **Frontend:** Vitest coverage thresholds live in `frontend/vite.config.ts` under `test.coverage` (lines, functions, statements, branches). Whenever we meaningfully improve tests, we raise each threshold to the floor of the corresponding metric.
 - **Go app:** Go coverage gates use `COV_MIN` in `go-app/Makefile`, mirrored as `COV_MIN_GO` in the root `Makefile` and as the `COV_MIN` env var in `.github/workflows/go-app-ci.yml`. As with ML service, raise these only when coverage improves.
-
----
-
-## Pipeline modes: params known vs unknown
-
-**Single-train principle:** train the win model **once** with the params you intend to use.
-They come from `ml-service/config.json` (`ml.training.win`) and, when `GO_APP_URL` is set, are
-overlaid by tuned params in the go-app DB from a previous auto-tune.
-
-- **Mode A — params known.** Import → Precompute → Export → Train Win. Do not run auto-tune.
-- **Mode B — params unknown or being refreshed.** Import → Precompute → Export → Auto-tune →
-  Train Win, which is the `tune` run plan. **The search comes first** because hyperparameters
-  are a function of the feature space: when the feature space has changed, training before the
-  search produces artifacts the search invalidates an hour later.
-
-The XI layer has no equivalent choice. Its hyperparameters are a small grid tuned inside the
-L4 folds and recorded with the run, so `make train-xi` is the whole loop.
-
-**Precompute parameters are a separate, slower loop:** change `features.*` → re-precompute →
-re-export → re-train.
-
----
-
-## Feature contract v2 (raw windowed stats)
-
-**Contract version:** `configs/feature_vectors.json` and go-app use version **"2"**. Batting and bowling include **18 raw windowed stats** per type (e.g. `batting_mean_w3`, `batting_std_w10`, `batting_last_1`, …) alongside the existing formula features (form, form_short, form_long, momentum, consistency). These are computed in Go (`features.WindowedStats`) and stored in `feature_raw_stats_snapshots`; export and prediction emit them so the ML model can learn optimal combinations instead of fixed EWM/CV formulas.
-
-**The comparison this section described is moot.** It weighed formula features against raw
-windowed stats for the per-player models, which P-5 deleted. The contract survives because
-go-app's export queries still emit it, and P-6 removes those with the export step. The XI layer
-computes its own as-of features from the event store and reads none of this.
-
-Until then, both formula and raw stats remain in the contract and in precompute for phased rollout.
-
----
-
-## Precompute and feature parameters
-
-Feature-engineering parameters (go-app config: `features.ewm_alpha`, `features.consistency_last_n`, `form_window_n`, `momentum_last_n`, etc.) control how form, consistency, and venue/opposition features are computed. They are used in **precompute** and in the export/training-data path (`GetFeatureExtractionParams()`). Changing them changes the feature space, so you must **re-precompute → re-export → re-train** (or re-auto-tune). There is no joint optimization of precompute params and model params in one run; treat precompute-param tuning as a separate, slower loop (e.g. change config → precompute → export → train/eval → compare metrics). See **config-and-data.md** for the full list of `features.*` keys.
-
----
-
-## Auto-tune
-
-**Purpose:** Two-phase coarse-to-fine search: (1) **Algorithm screening** — coarse search over RF, GBM, ExtraTrees, HistGradientBoosting, quantile, stacked to pick the best; (2) **Fine-tuning** — Optuna TPE on the winner(s) for converging hyperparameter optimization. Saves best scaler+model in the same artifact format; writes live progress to a JSON file for frontend display (phase, algorithm, hyperparams, trial).
-
-**Config:** In `ml-service/config.json`, optional `ml.tuning`: `cv_splits`, `n_iter`, `scoring` (e.g. `neg_mean_absolute_error`), `algorithms`, `validation_method`.
-
-> **`scoring` applies to the regression models only.** The win model is a classifier and
-> is tuned for **`roc_auc`**, set in code rather than read from here. Team selection takes
-> an argmax over candidate XIs, so only the model's *ranking* of them can change which
-> side is picked: a threshold metric like accuracy is blind to every improvement that
-> does not cross 0.5, and rewards leaning on the majority outcome. Tuning the win model
-> for accuracy can buy a model that selects worse than the one it replaced.
->
-> AutoGluon, when enabled, is given the same metric — the two scores are compared with a
-> plain `>`, so a different metric on either side would decide the win model on a
-> category error rather than a close call.
->
-> Tuning reports carry the metric that produced them in their `scoring` field. A report
-> from before this change says `accuracy`, and its `best_cv_score` is not comparable with
-> a newer one.
-
-- **algorithms** — `"all"` or a list like `["rf", "gb"]`. Available: `rf` (RandomForest), `gb` (GradientBoosting), `et` (ExtraTrees), `hgb` (HistGradientBoosting), `quantile` (regression only), `stacked` (batting/bowling/fielding only). Extras and win support `rf`, `gb`, `et`, `hgb`.
-- **validation_method** — `"walk_forward"` (default; TimeSeriesSplit, temporal validation) or `"kfold"`.
-
-**Run:** From ml-service: `python -m ml.auto_tune --model batting --format T20` (or from CSV with `--csv`). From repo root: `make ml-auto-tune MODEL=batting FORMAT=T20` or `MODEL=all ALL_FORMATS=1`. **A format is required** — pass `--format` or `--all-formats`; a run without one exits with a hint, because both the artifact name and the tuned-params row are keyed by format. Options: `--algorithms rf,gb --validation-method walk_forward` or `make ml-auto-tune MODEL=batting ALGORITHMS="rf,gb" VALIDATION_METHOD=walk_forward`. Use `--parallel` to run multiple (model, format) tasks in parallel, using up to 80% of available CPUs (each subprocess uses one job to avoid oversubscription). Use `--fast` to reduce Optuna trials and skip PyCaret/AutoGluon; `--no-pycaret` to skip PyCaret ranking; `--no-autogluon` to skip AutoGluon. Can also be triggered via API (e.g. pipeline UI). Copy `config_snippet` into config and re-run normal training. When `GO_APP_URL` is set, best params (including `algorithms` and `validation_method`) are saved to the DB.
-
-**Resources:** Auto-tune and training use up to **80%** of available memory (config `ml.resources.memory_usage_fraction_percent`, default 80) and resource-aware `n_jobs` from `ml.resources` and `ml.tuning.n_jobs` (-1 = auto from CPU and memory). Set `AUTO_TUNE_N_JOBS` or `ML_N_JOBS` to override.
-
----
-
-## Win-model discrimination report
-
-**Purpose:** answer "does the win model rank teams at all?" on matches it never trained on,
-before spending effort on the search that maximises its output.
-
-**Run:** `make win-discrimination TRAIN_CUTOFF=2024-01-01T00:00:00Z` (optionally
-`EVAL_CUTOFF=...`; needs `GO_APP_URL`). Writes `win_discrimination.json` next to the
-artifacts and logs a per-format table of **AUC**, **Brier** and a reliability curve.
-
-The holdout is every exported match on or after `TRAIN_CUTOFF`. Features come from the
-trainer's own frame builder, and the columns come from each model's
-`win_model_<FMT>_metadata.json` — not re-derived, because the trainer's low-variance filter
-is fitted on the training batch and would select differently here.
-
-**Reading it.** AUC is the number that matters for selection: the optimiser takes an argmax,
-so only the model's *ranking* affects which XI it picks. An AUC near 0.5 means the search is
-maximising noise. Brier and the reliability curve describe the probability that gets
-*displayed*; no monotone recalibration can change an argmax, so poor calibration alone is not
-a reason to distrust a selection.
-
-Formats that cannot be scored — no artifact, no metadata sidecar, a one-sided window, a model
-returning one constant probability — are listed with the reason rather than omitted.
 
 ---
 
@@ -219,7 +215,7 @@ so monotone in practice (a one-player upgrade lowers p in <1% of cases vs 12% fo
 unconstrained boosting); this is what `/xi/optimize` maximises. `display` —
 monotone-constrained gradient boosting on XI + team-context columns; the probability shown.
 
-**Run:** `make train-xi CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
+**Run:** `make retrain CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
 `CRICSHEET_DIR=data/go-app/cricsheet` it reads the raw Cricsheet JSON instead (same format
 taxonomy as `format.go`, ~2 minutes for the full archive). Writes `xi_win_<FMT>.joblib`,
 `xi_ratings.joblib` and `xi_win_report.json` (AUC and Brier for both models over three seeds,
@@ -251,7 +247,7 @@ a gate: 20% of the dataset is women's cricket, and the men's subset dominates an
 
 ### Data-quality gate (H-15)
 
-Every rating pass counts what it dropped and what it found odd, and `train-xi` fails on the
+Every rating pass counts what it dropped and what it found odd, and `retrain` fails on the
 counts before the artifacts are worth anything. `ml/xi/quality.py` holds two rules:
 
 - **Everything is accounted for.** A source offers N matches; N must equal the matches it
@@ -268,7 +264,7 @@ does **not** update it, so re-running cannot clear the gate. When the new number
 say so explicitly:
 
 ```bash
-make train-xi CUTOFF=2025-09-01 ACCEPT_DATA_QUALITY=1
+make retrain CUTOFF=2025-09-01 ACCEPT_DATA_QUALITY=1
 ```
 
 Current baseline on the full dataset: 22,734 matches offered and 22,734 read, 1,710
@@ -380,9 +376,9 @@ end in every format without recalibration. Expect the point to stay modest: the 
 among batters sits at ≈ 0.33, the ceiling the plan measured for every predictor; the
 deliverable is the range.
 
-**Run.** `make train-xi CUTOFF=…` fits the performance models beside the win models and
+**Run.** `make retrain CUTOFF=…` fits the performance models beside the win models and
 writes `xi_perf_<FMT>.joblib`; `xi_win_report.json` carries the holdout numbers per target
-under `performance`. `make xi-evaluate` is where the choice-facing numbers come from. The
+under `performance`. `make evaluate` is where the choice-facing numbers come from. The
 choices themselves (grid, structure, E1, E6) are reproduced by
 `scripts/experiments/xi/perf_choices.py`, which runs on the walk-forward folds only.
 
@@ -448,7 +444,7 @@ first-innings totals on the last 92 days before the cutoff, the temporal calibra
 members do not train on (H-21), deconvolved of the simulator's own dispersion — never a
 hand-set CV. `simulator.SHARED_FACTOR` records the decision; §8.3 of the plan the before/after.
 
-**Measured by (E2, `ml/xi/sim_harness.py`, in `make xi-evaluate`).** Per format and window,
+**Measured by (E2, `ml/xi/sim_harness.py`, in `make evaluate`).** Per format and window,
 beside the display model on the same matches: Brier and reliability of the simulated P(win)
 (pre-toss, the comparable one; toss-known beside it) against the display model's and the base
 rate; coverage **and** width of the simulated totals' 10–90 interval against actual first
@@ -497,7 +493,7 @@ date-ascending, so the whole run costs one pass over the source), and its report
 carries per-match rows so the arms can be compared pairwise and filtered by date. Live
 predictions omit `as_of` and are served from the loaded state unchanged.
 
-### Evaluation harness (`make xi-evaluate`, L4 / H-19)
+### Evaluation harness (`make evaluate`, L4 / H-19)
 
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
 quarterly cutoffs 2024-01 … 2025-06 for every choice-facing number, and the **locked
@@ -518,29 +514,28 @@ performance predictions and simulator draws at a fixed seed alike — and the ru
 they differ.
 
 ```bash
-make xi-evaluate                                        # the database
-make xi-evaluate CRICSHEET_DIR=data/go-app/cricsheet    # the raw archive
+make evaluate                                        # the database
+make evaluate CRICSHEET_DIR=data/go-app/cricsheet    # the raw archive
 ```
 
-## Docker images: serve vs train
+It refits every model per fold per format, which on the full database takes about **54
+minutes**. That is why it is the optional `evaluate` step rather than part of `retrain`, and
+why it writes its report beside the runs rather than into one: it measures the harness's own
+refits, not the run `current` points at.
 
-`ml-service/Dockerfile` has two targets.
+## The Docker image
 
-| target | requirements | size | what it is for |
-|---|---|---|---|
-| `serve` (compose default) | `requirements-serve.txt` | **1.23 GB** | Serving predictions, `/admin/train/*`, and Optuna-only auto-tune |
-| `train` | `requirements.txt` | **5.02 GB** | Adds AutoGluon model ranking and SHAP explanations |
+`ml-service/Dockerfile` builds one image, from `requirements.txt`.
 
 ```bash
-docker build -f ml-service/Dockerfile --target serve -t cric-app-ml:serve .
-docker build -f ml-service/Dockerfile --target train -t cric-app-ml:train .
+docker build -f ml-service/Dockerfile -t cric-app-ml:latest .
 ```
 
-**The serve image is not limited to serving.** `/admin/train/win` shells out to `python -m ml.train_win`, which needs only scikit-learn; `/admin/train/auto-tune` runs `ml.auto_tune`, which needs Optuna. Both are in the serving set. AutoGluon and SHAP each sit behind a guarded import with a graceful fallback, so auto-tune degrades to Optuna-only instead of failing. Build `train` when you want AutoGluon's model ranking. The XI layer needs neither.
-
-`requirements-serve.txt` is also what CI installs, so the test suite runs against the same dependency set the serving image ships.
-
-> **PyCaret does not work on this project's Python and is not worth its weight.** PyCaret 3.3.0 raises at import on Python >= 3.12 — *"Pycaret only supports python 3.9, 3.10, 3.11"* — and both the Docker image (`python:3.12-slim`) and the local venv are 3.12. It is installed by `requirements.txt`, pulls a large dependency tree, and is rejected every time; `_HAS_PYCARET` is `False` in both. `ml/auto_tune_pycaret.py` is guarded, so nothing breaks — the cost is dead weight in the `train` image. Removing it from `requirements.in` is blocked by `make compile-requirements-docker` failing on a `setup.py egg_info` step (pre-existing, reproducible on unmodified input). See C6-3 in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md).
+There were two stages — a 1.23 GB `serve` and a 5.02 GB `train` carrying PyCaret, AutoGluon,
+SHAP and their transitive weight (torch, tensorboard, chronos) — until P-6 deleted the
+auto-tune stack they existed for. What is left of hyperparameter search is a three-point grid
+inside `retrain`, which runs on scikit-learn, so the serving image is also the training image
+and there is one dependency set for the image, for CI and for a local venv.
 
 ---
 
@@ -548,29 +543,13 @@ docker build -f ml-service/Dockerfile --target train -t cric-app-ml:train .
 
 For classifiers (e.g. the win model), predicted probabilities can be **calibrated** (Platt scaling or isotonic regression) so they reflect true frequencies, and evaluated with a reliability diagram, Brier score, or ECE.
 
-**Not currently implemented.** A `ml.calibrate` module existed but was never wired into training or serving — no caller, no pipeline step, no endpoint — and was removed in C1-4/C1-6 cleanup. The win model's output is used uncalibrated. If calibration is wanted, add it to the win training path in `ml/train_win.py` so it ships with the artifact, rather than as a standalone module.
-
----
-
-## Model sidecars
-
-`ml.artifact_sidecar` writes `win_model_<FMT>_metadata.json` beside each windowed-form win
-artifact. It pins `feature_names` — the exact column order the model was fitted on — so that
-per-format low-variance dropping cannot cause a shape mismatch at inference.
-
-The XI models carry their own metadata inside their artifacts (`ml.xi.store`) and do not use
-sidecars.
-
-The match-level derived features (`form_differential`, `consistency_differential`) and the
-`weather_composite` that preceded them went with the models that read them.
-
----
-
-## Data-quality: scale-aware low-variance column drop
-
-`ml.data_quality.drop_low_variance_columns` removes effectively constant columns before fitting. The threshold is **scale-aware**: a column is dropped when `std ≤ threshold · (|mean| + 1)`. The `+ 1` term gives a sensible bar for zero-mean features (like `form_differential`) while still flagging tiny noise on large-mean ones (like a raw venue or season id). The knob lives under `ml.data_quality.low_variance_threshold` (default `1e-6`); values are coefficients, not absolute variance thresholds.
-
-This is what absorbed `weather_composite` for as long as it survived: its inputs were removed in C2-2b, so it computed a constant zero and the filter discarded it at every fit. That is also why removing it needed no retrain — no artifact had ever named it.
+**Calibration of what is displayed is H-5, and it is measured.** The harness reports a
+reliability curve and Brier against the base rate per format for the win models, and per-end
+quantile coverage for the performance model; an isotonic recalibration
+(`ml/xi/perf_calibration.py`) is fitted on a temporal fold and applied when a quantile target's
+coverage is off nominal. It ships in place and, so far, unused — no target has tripped the
+check — and the harness re-decides it every run. The standalone `ml.calibrate` module that
+predated all this was never wired into anything and went in C1-4/C1-6.
 
 ---
 
@@ -581,51 +560,3 @@ Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fieldi
 Historical rows remain at `inning_number = 1` until operators run a full re-import/recompute flow from source event data. `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) can split aggregates per inning when `fielding_event` is available for the target matches.
 
 ---
-
-## Artifact kinds, reload, and staleness
-
-`app.artifacts.ARTIFACT_KINDS` is the single source of truth for which legacy model families
-exist and how they are named on disk (`<kind>_model_<FMT>.joblib`, plus
-`<kind>_scaler_<FMT>.joblib` where the kind has one). The loader, `/health` and
-`/artifacts/status` all derive from it, and go-app (`opsstatus.artifactKinds`) and the frontend
-(`utils/artifactKinds.ts`) mirror the list. **Adding a model kind means adding one entry per
-layer** — not editing every reader; a kind the service can load but health never mentions makes
-a completed run look like a missing model.
-
-One kind is left, `win`, and P-6 removes it. The XI artifacts are loaded by `ml.xi.store`, which
-keeps its own state and is reported through `GET /xi/status` rather than this registry.
-
-**A finished `/admin/train/*` run reloads the artifacts before it returns.** Training runs in a
-subprocess and writes to `MODELS_DIR`; the serving process holds its registries in memory. Without
-that reload the run is recorded `COMPLETED` in `data_migrations` and changes nothing about what
-the service predicts with until a restart. A reload failure is logged
-(`admin.train.artifacts_reload_failed`) but does not fail the run — the artifacts are on disk
-either way. `POST /admin/reload` still does the same thing on demand.
-
-**`/artifacts/status` reports `stale`.** `loaded` only says the registry holds an object for a
-format; `stale` says the file on disk is newer than the one that object was loaded from. A
-registry entry that cannot be attributed to a file this process loaded also reports `stale`,
-because being current cannot be claimed for it. The verdict passes through go-app `/ops/status`
-to the ops console, where a stale kind shows an amber loaded dot.
-
----
-
-## Loader contract: `LoaderResult`
-
-`ml.tuning.data_loaders` has one loader left, for the win model, and it returns
-`Dict[str, LoaderResult]` keyed by uppercase format code (`T20`, `ODI`, `TEST`, …). The envelope
-makes the optional fields (`feature_names`, `sample_weight`) explicit and prevents shape drift
-between training and tuning; `ml.tuning.cli` consumes them directly.
-
----
-
-## Pending validation work
-
-Not verified in this branch, and left as an operator follow-up because it needs a populated
-training DB and non-trivial auto-tune time:
-
-- **Feature transforms A/B for the win model.** Run `make auto-tune` per format with and without
-  the transform block on the same cutoff and compare `best_cv_score`,
-  `mlqa_audit.checks.overfitting.relative_delta`, `mlqa_audit.checks.stability.relative_cv_std`
-  and the per-fold CV spread. If the transforms help, move the block from `config.json` into
-  `config.default.json`; if not, remove it. P-6 may settle this by deleting the model.

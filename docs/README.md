@@ -13,7 +13,7 @@ Descriptions of how the system works now. These should always be true of `main`.
 | Doc | Purpose |
 |-----|--------|
 | [overview.md](overview.md) | Components, data flow, pipeline, how to run |
-| [config-and-data.md](config-and-data.md) | go-app and ml-service config, Cricsheet import, export schemas |
+| [config-and-data.md](config-and-data.md) | go-app and ml-service config, Cricsheet import, dataset acquisition |
 | [apis-backtest-and-ops.md](apis-backtest-and-ops.md) | API contracts, backtest/evaluate, ops status |
 | [ml-and-training.md](ml-and-training.md) | The XI layer: the rating pass, the win models, the performance model, the simulator, and the L4 harness |
 | [observability.md](observability.md) | Logging, metrics, health and artifact endpoints, tracing |
@@ -50,7 +50,7 @@ Kept for the reasoning, not as instructions. Nothing here is a to-do list.
 
 ## Cross-references
 
-- **Feature vectors:** `configs/feature_vectors.json`, now read by go-app's exports alone — the XI layer computes its own features from the event store. Described in [config-and-data.md](config-and-data.md).
+- **Feature contract:** `ml-service/ml/xi/contract.py` — the XI columns, the display columns and the target. The XI layer computes its own as-of features from the event store; there is no shared feature-vector file and no export contract (P-6). Described in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 - **Backtest / Evaluation report:** Endpoints and flow in [apis-backtest-and-ops.md](apis-backtest-and-ops.md).
 - **Team selection and the match simulator:** [ml-and-training.md](ml-and-training.md) and [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 

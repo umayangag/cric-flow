@@ -42,7 +42,7 @@ func TestUseObservationsEnvToggle(t *testing.T) {
 func TestObservationsFilePathEnvSanitized(t *testing.T) {
 	resetObservationsState(t)
 
-	defDir := config.DefaultExportDir()
+	defDir := config.DefaultOutputDir()
 
 	require.NoError(t, os.Setenv("RESOURCE_OBSERVATIONS_PATH", "/tmp/../custom/observations.json"))
 	// Reset any cached path
@@ -58,18 +58,17 @@ func TestObservedMBPerWorkerLoadsFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "obs.json")
 
-	data := `{"precompute": 42, "ignore_zero": 0}`
+	data := `{"import": 42, "ignore_zero": 0}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 
 	SetObservationsPathForTest(path)
 	require.NoError(t, os.Setenv("USE_RESOURCE_OBSERVATIONS", "true"))
 
 	// Triggers loadObservations via ObservedMBPerWorker.
-	got := ObservedMBPerWorker(KindPrecompute)
-	require.Equal(t, 42, got)
+	require.Equal(t, 42, ObservedMBPerWorker(KindImport))
 
-	// Unknown kind returns zero.
-	require.Equal(t, 0, ObservedMBPerWorker(KindImport))
+	// A kind the file says nothing about returns zero.
+	require.Equal(t, 0, ObservedMBPerWorker(Kind("nothing_recorded")))
 }
 
 func TestRecordWorkerMemorySamplePersistsAndIsReadable(t *testing.T) {
@@ -81,13 +80,13 @@ func TestRecordWorkerMemorySamplePersistsAndIsReadable(t *testing.T) {
 	require.NoError(t, os.Setenv("USE_RESOURCE_OBSERVATIONS", "true"))
 
 	// concurrency < 1 is ignored
-	RecordWorkerMemorySample(KindPrecompute, 0)
-	require.Equal(t, 0, ObservedMBPerWorker(KindPrecompute))
+	RecordWorkerMemorySample(KindImport, 0)
+	require.Equal(t, 0, ObservedMBPerWorker(KindImport))
 
 	// Valid concurrency records an observation and saves it.
-	RecordWorkerMemorySample(KindPrecompute, 4)
+	RecordWorkerMemorySample(KindImport, 4)
 
-	v := ObservedMBPerWorker(KindPrecompute)
+	v := ObservedMBPerWorker(KindImport)
 	require.GreaterOrEqual(t, v, 1)
 
 	// File should exist and be non-empty.

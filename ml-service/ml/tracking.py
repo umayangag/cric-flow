@@ -19,14 +19,9 @@ logger = logging.getLogger(__name__)
 # Future mitigation: shared config (JSON/YAML), API from go-app, or build-time generation. Until then, keep in sync manually.
 PIPELINE_COMMANDS = (
     "cricsheet-import",
-    "precompute-features",
-    "export-dataset",
-    "train-batting",
-    "train-bowling",
-    "train-fielding",
-    "train-extras",
-    "train-win",
-    "train-innings",
+    "xi-retrain",
+    "xi-evaluate",
+    "xi-reload",
 )
 
 

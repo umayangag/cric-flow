@@ -84,10 +84,10 @@ func TestExecute_RunsEveryStepInOrder(t *testing.T) {
 		return nil
 	})
 
-	plan := steps(t, "import", "precompute", "export")
+	plan := steps(t, "import", "retrain", "reload")
 	require.NoError(t, exec.Execute(context.Background(), PlanFull, plan))
 
-	assert.Equal(t, []string{"import", "precompute", "export"}, ran)
+	assert.Equal(t, []string{"import", "retrain", "reload"}, ran)
 	assert.Equal(t, []StepStatus{StatusCompleted, StatusCompleted, StatusCompleted}, statuses(store.final))
 	assert.NoError(t, store.finalErr)
 	assert.NotEmpty(t, store.final.FinishedAt)
@@ -102,28 +102,28 @@ func TestExecute_StopsAtTheFirstFailure(t *testing.T) {
 	var ran []string
 	exec := executorFor(store, func(_ context.Context, step pipelinesvc.Step) error {
 		ran = append(ran, step.ID)
-		if step.ID == "precompute" {
-			return errors.New("no rows to precompute")
+		if step.ID == "retrain" {
+			return errors.New("nothing to retrain")
 		}
 		return nil
 	})
 
-	plan := steps(t, "import", "precompute", "export")
+	plan := steps(t, "import", "retrain", "reload")
 	err := exec.Execute(context.Background(), PlanFull, plan)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no rows to precompute")
-	assert.Equal(t, []string{"import", "precompute"}, ran, "export must not run after a failure")
+	assert.Contains(t, err.Error(), "nothing to retrain")
+	assert.Equal(t, []string{"import", "retrain"}, ran, "reload must not run after a failure")
 	assert.Equal(t, []StepStatus{StatusCompleted, StatusFailed, StatusPending}, statuses(store.final))
 
 	failed, ok := store.final.Failed()
 	require.True(t, ok)
-	assert.Equal(t, "precompute", failed.StepID)
-	assert.Contains(t, failed.Error, "no rows to precompute")
+	assert.Equal(t, "retrain", failed.StepID)
+	assert.Contains(t, failed.Error, "nothing to retrain")
 
 	next, ok := store.final.FirstIncomplete()
 	require.True(t, ok)
-	assert.Equal(t, "precompute", next.StepID, "resume starts at the step that failed")
+	assert.Equal(t, "retrain", next.StepID, "resume starts at the step that failed")
 }
 
 // TestExecute_CancellationStopsThePlanNotJustTheStep: cancelling only the current step
@@ -144,7 +144,7 @@ func TestExecute_CancellationStopsThePlanNotJustTheStep(t *testing.T) {
 		return nil
 	})
 
-	plan := steps(t, "import", "precompute", "export")
+	plan := steps(t, "import", "retrain", "reload")
 	err := exec.Execute(ctx, PlanFull, plan)
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -168,7 +168,7 @@ func TestExecute_CancelledBetweenStepsDoesNotStartTheNext(t *testing.T) {
 		return nil
 	})
 
-	err := exec.Execute(ctx, PlanFull, steps(t, "import", "precompute"))
+	err := exec.Execute(ctx, PlanFull, steps(t, "import", "retrain"))
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, []string{"import"}, ran)
@@ -186,13 +186,13 @@ func TestExecute_RefusesAStepTheGateRejects(t *testing.T) {
 		return nil
 	})
 	exec.Gate = func(_ context.Context, stepID string) (bool, string) {
-		if stepID == "precompute" {
+		if stepID == "retrain" {
 			return false, "complete the previous step (Import) first"
 		}
 		return true, ""
 	}
 
-	err := exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute", "export"))
+	err := exec.Execute(context.Background(), PlanFull, steps(t, "import", "retrain", "reload"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "complete the previous step")
@@ -214,11 +214,11 @@ func TestResume_SkipsWhatTheLastRunFinished(t *testing.T) {
 
 	prior := State{Plan: PlanFull, Steps: []StepState{
 		{StepID: "import", Status: StatusCompleted},
-		{StepID: "precompute", Status: StatusFailed},
+		{StepID: "retrain", Status: StatusFailed},
 	}}
-	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "precompute"), prior))
+	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "retrain"), prior))
 
-	assert.Equal(t, []string{"precompute"}, ran)
+	assert.Equal(t, []string{"retrain"}, ran)
 	assert.Equal(t, []StepStatus{StatusSkipped, StatusCompleted}, statuses(store.final))
 }
 
@@ -235,12 +235,12 @@ func TestResume_RerunsTheStepThatFailed(t *testing.T) {
 
 	prior := State{Plan: PlanFull, Steps: []StepState{
 		{StepID: "import", Status: StatusCompleted},
-		{StepID: "precompute", Status: StatusFailed},
-		{StepID: "export", Status: StatusPending},
+		{StepID: "retrain", Status: StatusFailed},
+		{StepID: "reload", Status: StatusPending},
 	}}
-	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "precompute", "export"), prior))
+	require.NoError(t, exec.Resume(context.Background(), PlanFull, steps(t, "import", "retrain", "reload"), prior))
 
-	assert.Equal(t, []string{"precompute", "export"}, ran)
+	assert.Equal(t, []string{"retrain", "reload"}, ran)
 }
 
 // TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore is the regression guard for
@@ -263,12 +263,12 @@ func TestExecute_RunsEveryStepEvenOnABoxThatHasRunThemBefore(t *testing.T) {
 	// A previous run of this plan completed everything. A fresh Execute must ignore it.
 	store.final = State{Plan: PlanFull, Steps: []StepState{
 		{StepID: "import", Status: StatusCompleted},
-		{StepID: "precompute", Status: StatusCompleted},
+		{StepID: "retrain", Status: StatusCompleted},
 	}}
 
-	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute")))
+	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "retrain")))
 
-	assert.Equal(t, []string{"import", "precompute"}, ran,
+	assert.Equal(t, []string{"import", "retrain"}, ran,
 		"a fresh plan runs every step; skipping history is how a plan silently does nothing")
 	assert.Equal(t, []StepStatus{StatusCompleted, StatusCompleted}, statuses(store.final))
 }
@@ -312,8 +312,8 @@ func TestExecute_KeepsGoingWhenProgressCannotBeSaved(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute")))
-	assert.Equal(t, []string{"import", "precompute"}, ran)
+	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "retrain")))
+	assert.Equal(t, []string{"import", "retrain"}, ran)
 }
 
 // TestExecute_PersistsProgressAsItGoes is what survives a page reload, or a browser
@@ -324,7 +324,7 @@ func TestExecute_PersistsProgressAsItGoes(t *testing.T) {
 	store := &fakeStore{}
 	exec := executorFor(store, func(context.Context, pipelinesvc.Step) error { return nil })
 
-	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "precompute")))
+	require.NoError(t, exec.Execute(context.Background(), PlanFull, steps(t, "import", "retrain")))
 
 	sawRunning := false
 	for _, saved := range store.saves {

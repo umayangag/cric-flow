@@ -14,8 +14,6 @@ on:
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
-      - 'ml-service/requirements-serve.in'
-      - 'ml-service/requirements-serve.txt'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -24,8 +22,6 @@ on:
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
-      - 'ml-service/requirements-serve.in'
-      - 'ml-service/requirements-serve.txt'
 
 jobs:
   ci:
@@ -61,17 +57,12 @@ jobs:
         run: make -C ml-service check-reachability
 
       - name: Run tests with coverage (xml + term)
-        env:
-          REQUIREMENTS_FILE: requirements-serve.txt
         run: make -C ml-service coverage
 
       - name: Enforce coverage threshold
         env:
           # Keep aligned with ml-service/Makefile COV_MIN. Raise together once coverage improves.
-          # Measured with requirements-serve.txt (installed above): shap is absent, so the
-          # shap_explanations tests skip and that module counts as uncovered.
-          COV_MIN: "86"
-          REQUIREMENTS_FILE: requirements-serve.txt
+          COV_MIN: "91"
         run: make -C ml-service coverage-check
 
       - name: Upload coverage artifact

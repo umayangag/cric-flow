@@ -1,4 +1,4 @@
-// Package pipeline provides shared orchestration for pipeline steps (import, precompute, export).
+// Package pipeline provides shared orchestration for pipeline steps (import, retrain, reload).
 // Both HTTP handlers and CLI commands use these helpers to minimize logic duplication.
 // Concurrency is per lane: steps sharing a lane run one at a time (see steps.Lane).
 package pipeline

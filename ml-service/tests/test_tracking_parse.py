@@ -84,11 +84,10 @@ def test_parse_stale_cancel_age_legacy_invalid_returns_none():
         assert parse_stale_cancel_age_seconds() is None
 
 
-def test_pipeline_commands_non_empty():
-    """PIPELINE_COMMANDS is non-empty and contains expected commands."""
-    assert len(PIPELINE_COMMANDS) > 0
-    assert "train-batting" in PIPELINE_COMMANDS
-    assert "train-bowling" in PIPELINE_COMMANDS
+def test_pipeline_commands_are_the_registry_steps():
+    """The singleton list is the compute lane, and it has to name the same commands go-app's
+    registry does -- a step missing from one side is a step that can run twice at once."""
+    assert set(PIPELINE_COMMANDS) == {"cricsheet-import", "xi-retrain", "xi-evaluate", "xi-reload"}
 
 
 def test_db_connection_close_raises_logs_and_swallows():

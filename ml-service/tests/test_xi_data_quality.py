@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from datetime import date, timedelta
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -340,13 +341,16 @@ def _tiny_cricsheet_dir(tmp_path, n_files: int = 2):
     return src
 
 
-def test_a_clean_run_records_a_baseline_beside_the_artifacts(tmp_path) -> None:
-    from ml.xi.train import main as train_main
+def test_a_clean_run_records_a_baseline_beside_the_runs(tmp_path) -> None:
+    """The baseline lives at the artifacts root, not inside a run: it is the last accepted
+    counts *across* runs, and one written inside a run directory would compare every run
+    against nothing."""
+    from ml.xi.retrain import main as retrain_main
 
     src = _tiny_cricsheet_dir(tmp_path)
     out = tmp_path / "artifacts"
 
-    rc = train_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
+    rc = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
 
     assert rc == 0
     baseline = json.loads((out / quality.BASELINE_NAME).read_text())
@@ -357,7 +361,7 @@ def test_a_clean_run_records_a_baseline_beside_the_artifacts(tmp_path) -> None:
 def test_a_run_whose_counts_regress_fails_and_leaves_the_baseline_alone(tmp_path) -> None:
     """Re-running must not clear the gate: a failing run that recorded its own counts as
     the baseline would pass the second time, which is not a gate."""
-    from ml.xi.train import main as train_main
+    from ml.xi.retrain import main as retrain_main
     from tests.test_xi_optimizer_and_store import _cricsheet_doc
 
     src = _tiny_cricsheet_dir(tmp_path)
@@ -368,8 +372,8 @@ def test_a_run_whose_counts_regress_fails_and_leaves_the_baseline_alone(tmp_path
     twelve = {"X": [f"X{i}" for i in range(12)], "Y": [f"Y{i}" for i in range(11)]}
     (src / "9.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], twelve, "X", 9)))
 
-    first = train_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
-    second = train_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
+    first = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
+    second = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
 
     assert first == 1
     assert second == 1, "a re-run fails the same way; only --accept-data-quality moves the baseline"
@@ -379,8 +383,8 @@ def test_a_run_whose_counts_regress_fails_and_leaves_the_baseline_alone(tmp_path
 def test_the_report_records_the_counts_and_the_failures_even_when_the_gate_fails(tmp_path) -> None:
     """The artifacts and the report are written either way: an operator has to see what the
     run produced in order to judge whether the new counts are right."""
+    from ml.xi.retrain import main as retrain_main
     from ml.xi.train import REPORT_NAME
-    from ml.xi.train import main as train_main
 
     src = _tiny_cricsheet_dir(tmp_path)
     out = tmp_path / "artifacts"
@@ -391,17 +395,22 @@ def test_the_report_records_the_counts_and_the_failures_even_when_the_gate_fails
     twelve = {"X": [f"X{i}" for i in range(12)], "Y": [f"Y{i}" for i in range(11)]}
     (src / "9.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], twelve, "X", 9)))
 
-    rc = train_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
+    rc = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
 
     assert rc == 1
-    report = json.loads((out / REPORT_NAME).read_text())
+    from ml.xi import runs
+
+    run_id = runs.newest_run_id(str(out))
+    assert run_id, "the run and its manifest are written even when the gate fails"
+    directory = Path(runs.run_dir(str(out), run_id))
+    report = json.loads((directory / REPORT_NAME).read_text())
     assert report[quality.REPORT_KEY]["oversized_squads"] == 1
     assert report["data_quality_failures"] == ["oversized_squads was 0 and is now 1"]
-    assert (out / "xi_ratings.joblib").exists()
+    assert (directory / "xi_ratings.joblib").exists()
 
 
 def test_accepting_the_new_counts_moves_the_baseline(tmp_path) -> None:
-    from ml.xi.train import main as train_main
+    from ml.xi.retrain import main as retrain_main
 
     src = _tiny_cricsheet_dir(tmp_path)
     out = tmp_path / "artifacts"
@@ -412,7 +421,9 @@ def test_accepting_the_new_counts_moves_the_baseline(tmp_path) -> None:
     twelve = {"X": [f"X{i}" for i in range(12)], "Y": [f"Y{i}" for i in range(11)]}
     (src / "9.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], twelve, "X", 9)))
 
-    rc = train_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out), "--accept-data-quality"])
+    rc = retrain_main(
+        ["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out), "--accept-data-quality"]
+    )
 
     assert rc == 0
     assert json.loads((out / quality.BASELINE_NAME).read_text())["oversized_squads"] == 1

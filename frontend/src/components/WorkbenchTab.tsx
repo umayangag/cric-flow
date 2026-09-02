@@ -2,8 +2,7 @@ import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import SectionCard from './common/SectionCard';
 import WorkbenchRegistrySection from './WorkbenchRegistrySection';
-import WorkbenchModelFeaturesSection from './WorkbenchModelFeaturesSection';
-import WorkbenchProvenanceSection from './WorkbenchProvenanceSection';
+import WorkbenchRunSection from './WorkbenchRunSection';
 import { useWorkbench } from '../hooks/useWorkbench';
 
 const WorkbenchTab: React.FC = () => {
@@ -12,12 +11,9 @@ const WorkbenchTab: React.FC = () => {
     registryError,
     registry,
     handleRegistryFile,
-    modelMetadata,
-    modelMetadataLoading,
-    modelMetadataError,
-    modelStats,
-    modelStatsLoading,
-    modelStatsError,
+    runStatus,
+    runStatusLoading,
+    runStatusError,
   } = useWorkbench();
 
   return (
@@ -46,17 +42,7 @@ const WorkbenchTab: React.FC = () => {
         onFileChange={handleRegistryFile}
       />
 
-      <WorkbenchProvenanceSection
-        stats={modelStats}
-        loading={modelStatsLoading}
-        error={modelStatsError}
-      />
-
-      <WorkbenchModelFeaturesSection
-        modelMetadata={modelMetadata}
-        loading={modelMetadataLoading}
-        error={modelMetadataError}
-      />
+      <WorkbenchRunSection status={runStatus} loading={runStatusLoading} error={runStatusError} />
 
       <SectionCard
         title="Commands & docs"
@@ -69,22 +55,19 @@ const WorkbenchTab: React.FC = () => {
         >
           <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
             <li>
-              <strong>Accuracy trend</strong> — Data comes from the go-app backtest API. Ensure
-              precompute and ML artifacts are in place, then use the filters in the first section
-              and click &quot;Load accuracy trend&quot;.
+              <strong>Build a run</strong> — <code>make retrain CUTOFF=2025-09-01</code>, then{' '}
+              <code>make reload</code> to serve it. The run id, cutoff, dataset digest, commit and
+              chosen hyperparameters shown above come from that run&apos;s{' '}
+              <code>manifest.json</code>.
             </li>
             <li>
-              <strong>Walk-forward</strong> — From repo root:{' '}
-              <code>
-                make walk-forward INITIAL_CUTOFF=2020-01-01T00:00:00Z WINDOW_X=50 WALK_FORMAT=T20
-              </code>
-              . The registry is written to the ML service output dir; upload it in the section
-              above.
+              <strong>Score it</strong> — <code>make evaluate</code> runs L4&apos;s harness and
+              writes the report the <strong>Evaluation report</strong> tab renders. It touches no
+              artifact <code>current</code> points at.
             </li>
             <li>
-              <strong>Auto-tune</strong> — To search for better hyperparameters:{' '}
-              <code>make ml-auto-tune MODEL=batting FORMAT=T20</code>. See{' '}
-              <code>docs/ml-and-training.md</code> (walk-forward and auto-tune) in the repo.
+              <strong>Walk-forward registry</strong> — a JSON file describing rolling-window
+              evaluations, uploaded in the section above. See <code>docs/ml-and-training.md</code>.
             </li>
           </Box>
         </Typography>

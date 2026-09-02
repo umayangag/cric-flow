@@ -7,7 +7,7 @@ nothing go-app can see into. `training_orchestrator.run_training_subprocess` cal
 success the output is discarded, on failure only a tail is logged. During a ten-minute
 training run there is nothing to observe, anywhere (ops plan, gap 2).
 
-A subprocess cannot push into its parent's memory, but it can write a file. `auto_tune`
+A subprocess cannot push into its parent's memory, but it can write a file. `retrain`
 already solved this once; this module is that mechanism generalised so every step uses
 one channel rather than growing a second (ops plan O-1).
 
@@ -76,7 +76,7 @@ class Event:
     `step` and `phase` say where the run is; `current`/`total` say how far through a
     countable thing it is (folds, formats, epochs); `metrics` carries numbers worth
     showing (rmse, accuracy). `extra` is for step-specific fields that do not
-    generalise -- auto-tune's algorithm and trial number, for instance.
+    generalise -- the grid's chosen params, for instance.
     """
 
     step: str

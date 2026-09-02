@@ -7,29 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTrainingStepToModel(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name   string
-		stepID string
-		want   string
-	}{
-		{name: "win", stepID: "train_win", want: "win"},
-		{name: "retired_step_returns_empty", stepID: "train_batting", want: ""},
-		{name: "unknown_returns_empty", stepID: "auto_tune", want: ""},
-		{name: "empty_returns_empty", stepID: "", want: ""},
-	}
-
-	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tc.want, TrainingStepToModel(tc.stepID))
-		})
-	}
-}
-
 func TestMLServiceBaseURL(t *testing.T) {
 	testCases := []struct {
 		name    string

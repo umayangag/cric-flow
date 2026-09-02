@@ -13,7 +13,9 @@ Concise reference for data flow, ML models, and aggregation. Use `@ARCHITECTURE_
 ### Sources
 - **The event store** — `match`, `match_player`, `ball_event` — is the only input the XI layer reads. One chronological, as-of pass (`ml.xi.builder`) produces the win frame, the player-match frame and the serving rating state.
 - **go-app** knows who is available (the pool) and which fixture this is; it sends **registry ids** (`player.external_id`, the key the rating state is built under), a format, team ids, a venue id and a date. It sends no features.
-- `configs/feature_vectors.json` and `GET /api/backtest/training-data` still feed the windowed-form win model and the auto-tune stack, both of which P-6 removes.
+- There is no second source. The precompute snapshots, the export CSVs, the shared feature-vector
+  file and go-app's `training-data` endpoint went with the models that read them (P-5, P-6), so
+  there is no second feature computation to fall out of step with the first.
 
 ### Flow (prediction)
 
@@ -38,7 +40,7 @@ feature the objective reads is an aggregate over one eleven. The loop is capped
 ### Flow (evaluation)
 
 ```
-make xi-evaluate → rolling origins + the locked window → xi_evaluate_report.json
+make evaluate → rolling origins + the locked window → xi_evaluate_report.json
     → GET /xi/evaluate-report (ml-service) → GET /api/backtest/report (go-app) → the Evaluation report tab
 ```
 
@@ -46,8 +48,9 @@ make xi-evaluate → rolling origins + the locked window → xi_evaluate_report.
 
 ## 2. Core ML Models: Hyperparameters and Shape
 
-Training params come from `ml-service/config.json` → `ml.training.<model>` (defaults in
-`config.default.json`); the base estimator from `ml.utils.make_base_estimator`.
+Hyperparameters come from `ml.xi.train.DISPLAY_GRID`: three points for the display model,
+chosen on a temporal split inside the training rows, with the choice and its evidence written
+into the run's `manifest.json`. There is no tuned-params table and no config block.
 
 The shapes below are **generated** from the contracts themselves, so they cannot drift:
 
@@ -58,7 +61,6 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 | **XI win — objective** | Match | 42 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
 | **XI win — display** | Match | 49 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context |
 | **Performance (L2-B)** | Player | 42 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
-| **Win — windowed form** | Match | 68 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` — superseded, removed in P-6 |
 
 One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (L2-C) trains nothing — it draws from the performance model.
 
@@ -66,7 +68,6 @@ Input feature names, in order:
 
 - **XI win — objective** (42): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+30 more, see `ml.xi.contract.XI_FEATURE_COLS`)
 - **XI win — display** (49): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+37 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
-- **Win — windowed form** (68): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std`, `team1_bat_consistency_max` … (+56 more, see `ml.win_features`)
 
 <!-- END GENERATED: models -->
 
@@ -78,21 +79,16 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (17 routes, from `app/main.py`):
+**ml-service** (12 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
 | GET | `/health` |
 | GET | `/artifacts/status` |
-| GET | `/model-metadata` |
-| GET | `/model-stats` |
-| POST | `/predict/win` |
-| POST | `/predict/win-enhanced` |
 | POST | `/admin/reload` |
-| POST | `/admin/train/win` |
-| POST | `/admin/train/auto-tune` |
+| POST | `/admin/train/retrain` |
+| POST | `/admin/train/evaluate` |
 | GET | `/admin/train/progress` |
-| GET | `/admin/train/auto-tune/progress` |
 | GET | `/xi/status` |
 | GET | `/xi/evaluate-report` |
 | POST | `/xi/predict-win` |
@@ -100,18 +96,15 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (32 routes, from `internal/server/router.go`):
+**go-app** (25 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
 | GET | `/health` |
 | GET | `/readiness` |
-| POST | `/precompute` |
-| GET | `/precompute/status` |
 | POST | `/import/cricsheet` |
 | GET | `/ops/status` |
 | GET | `/ops/migrations` |
-| GET | `/ops/migrations/{id:[0-9]+}/auto-tune` |
 | GET | `/ops/suggestions` |
 | POST | `/ops/pipeline/run/{step}` |
 | POST | `/ops/pipeline/stop` |
@@ -132,10 +125,6 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/players/{id}` |
 | GET | `/matches/{id}` |
 | GET, POST | `/api/predict/team-selection` |
-| GET | `/api/backtest/training-data` |
-| GET | `/api/ml/tuned-params/list` |
-| GET | `/api/ml/tuned-params` |
-| POST | `/api/ml/tuned-params` |
 
 <!-- END GENERATED: endpoints -->
 
@@ -182,10 +171,17 @@ summing eleven medians and calling it an innings.
 
 ## 4. Pipeline Order
 
-**The XI layer:** import → `make train-xi CUTOFF=` → `POST /admin/reload`. It reads the event
-store, so there is no precompute and no export in front of it. `make xi-evaluate` scores what
-that produced and writes the report every backtest surface reads.
+**Three steps:** import → `make retrain CUTOFF=` → `make reload` (`POST /admin/reload`). The
+rating pass reads the event store, so there is no precompute and no export in front of it.
 
-**The windowed-form win model** (P-6 removes it, and these steps with it): precompute → export
-→ `make train-win CUTOFF=`, optionally with `make ml-auto-tune` before it when the feature space
-has changed.
+- **retrain** writes one run into `runs/<run_id>/` — artifacts, the run's report and
+  `manifest.json` — and publishes nothing.
+- **reload** points `current` at a run and loads it. Naming a run is how you swap back to an
+  earlier one; a retrain that published itself would leave nothing to swap back to.
+- **evaluate** (`make evaluate`) runs L4 beside the pipeline and writes the report every
+  backtest surface reads. It refits every model per fold per format, takes about an hour on the
+  full database, and touches no artifact `current` points at — which is why it is optional.
+
+An artifact set with no manifest, or whose arrays are not the arrays this code reads, is
+**refused at load** with an error naming the run (H-16, D-6), and a live prediction against
+ratings older than `ml.ratings_max_age_days` is refused with `RATINGS_STALE` (H-11).

@@ -208,9 +208,9 @@ func LastRunSucceededForCommand(ctx context.Context, command string) (bool, erro
 }
 
 // GetLastCompletedAtForCommand returns the completed_at of the most recent COMPLETED row
-// for the given command. Used so the precompute section can show "complete" from persisted
-// tracking (e.g. after API restart or when precompute was run via CLI). When db pool is nil
-// or no completed run exists, returns (nil, nil).
+// for the given command. Used so a step can show "complete" from persisted tracking (e.g.
+// after an API restart, or when the step was run from the CLI). When db pool is nil or no
+// completed run exists, returns (nil, nil).
 func GetLastCompletedAtForCommand(ctx context.Context, command string) (*time.Time, error) {
 	if !db.Available() || command == "" {
 		return nil, nil
@@ -252,29 +252,6 @@ func HasInProgressForAnyCommand(ctx context.Context, commands []string) (bool, e
 		return false, err
 	}
 	return exists, nil
-}
-
-// GetInProgressMigrationIDForCommand returns the ID of the most recent IN_PROGRESS migration
-// for the given command, or 0 if none. Used when inserting ml_tuned_params to link to the
-// current auto_tune run.
-func GetInProgressMigrationIDForCommand(ctx context.Context, command string) (int, error) {
-	if !db.Available() || command == "" {
-		return 0, nil
-	}
-	var id int
-	err := db.QueryRow(ctx, `
-		SELECT id FROM data_migrations
-		WHERE command = $1 AND status = $2
-		ORDER BY started_at DESC
-		LIMIT 1
-	`, command, StatusInProgress).Scan(&id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
-		}
-		return 0, err
-	}
-	return id, nil
 }
 
 // GetInProgressMigrations returns all rows with status IN_PROGRESS, ordered by started_at DESC.

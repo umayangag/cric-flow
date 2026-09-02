@@ -8,7 +8,7 @@ import type { OpsStatus } from '../components/OpsStatusTab';
  * other fails a test rather than shipping a UI that offers steps the backend
  * refuses — or hides steps it accepts.
  */
-export type PipelineStepId = 'import' | 'precompute' | 'export' | 'train_win' | 'auto_tune';
+export type PipelineStepId = 'import' | 'retrain' | 'evaluate' | 'reload';
 
 export type StepStatus = 'success' | 'stale' | 'pending' | 'error' | 'optional' | 'running';
 
@@ -41,11 +41,6 @@ function asObj(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
-function getFormats(section: unknown): Record<string, unknown> {
-  const obj = asObj(section);
-  return asObj(obj.formats);
-}
-
 export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   const steps: PipelineStep[] = [
     {
@@ -61,43 +56,41 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       runnable: true,
     },
     {
-      id: 'precompute',
-      label: 'Precompute',
+      id: 'retrain',
+      label: 'Retrain',
       status: 'pending',
-      command: 'make precompute-all-all-formats',
-      migrationCommand: 'precompute-features',
+      command: 'make retrain CUTOFF=2025-09-01',
+      migrationCommand: 'xi-retrain',
       description:
-        'Compute raw windowed stat snapshots (and sequence features when enabled) for all formats. Run from project root.',
+        'The whole model build in one step: the rating pass over ball_event, the XI win models ' +
+        '(with the small hyperparameter grid), the performance models, the run report and the run ' +
+        'manifest. Everything lands in runs/<run_id>/ and nothing is published — Reload decides ' +
+        'which run serves. Run from project root.',
       runnable: true,
     },
     {
-      id: 'export',
-      label: 'Export',
-      status: 'pending',
-      command: 'make export-dataset',
-      migrationCommand: 'export-dataset',
-      description:
-        'Export all-format and per-format batting/bowling CSVs to output/go-app. Run from project root.',
-      runnable: true,
-    },
-    {
-      id: 'train_win',
-      label: 'Train Win',
-      status: 'pending',
-      command: 'make train-win CUTOFF=2025-01-01T00:00:00Z',
-      migrationCommand: 'train-win',
-      description:
-        'Train per-format win models. Uses params from config and DB. Set CUTOFF and GO_APP_URL; or WIN_CSV=<path>. Run from project root.',
-      runnable: true,
-    },
-    {
-      id: 'auto_tune',
-      label: 'Auto-tune',
+      id: 'evaluate',
+      label: 'Evaluate',
       status: 'optional',
-      command: 'make ml-auto-tune ALL_FORMATS=1',
-      migrationCommand: 'ml-auto-tune',
+      command: 'make evaluate',
+      migrationCommand: 'xi-evaluate',
       description:
-        'Discover best algorithm and hyperparameters (saves to DB when GO_APP_URL is set). Needs only Export, so run it before the Train steps when the feature space has changed and the saved params are no longer trustworthy — then run the Train steps to build every artifact from the new DB params. The "tune" run plan does both in that order. Optional; skip it and train directly when params are already known.',
+        "L4's evaluation harness: rolling-origin walk-forward plus the locked window, the selection " +
+        'and performance metrics, the leak canary and the train/serve parity check. It writes a ' +
+        'report and touches no artifact `current` points at, which is why it sits beside the ' +
+        'pipeline rather than in it. Optional, and slow: it refits every model per fold per format.',
+      runnable: true,
+    },
+    {
+      id: 'reload',
+      label: 'Reload',
+      status: 'pending',
+      command: 'make reload',
+      migrationCommand: 'xi-reload',
+      description:
+        'Point `current` at a run and load it into the running ML service. With no run id it loads ' +
+        'the run `current` already names, or the newest one — so Retrain followed by Reload serves ' +
+        'the run just built. Naming a run is how you swap back to an earlier one.',
       runnable: true,
     },
   ];
@@ -109,51 +102,25 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
   const matchesCount = typeof counts.matches === 'number' ? counts.matches : 0;
   const importDone = data.services?.api_readiness === true && matchesCount > 0;
 
-  // A format map that is present but all "missing" means nothing has been computed,
-  // which is `pending`. It used to be forced to `stale` — amber, "there is something
-  // here, it is just old" — for the sole reason that the section existed at all.
-  const precomputeFormats = getFormats(data.precompute);
-  let precomputeStatus: StepStatus = 'pending';
-  for (const k of Object.keys(precomputeFormats)) {
-    const fmt = asObj(precomputeFormats[k]);
-    const s = fmt.status as string | undefined;
-    if (s === 'ok') {
-      precomputeStatus = 'success';
-      break;
-    }
-    if (s === 'stale') precomputeStatus = 'stale';
-  }
-
-  const exportFormats = getFormats(data.exports);
-  let exportDone = false;
-  for (const k of Object.keys(exportFormats)) {
-    const fmt = asObj(exportFormats[k]);
-    const files = Array.isArray(fmt.files) ? fmt.files : [];
-    if (files.some((f: unknown) => asObj(f).exists === true)) {
-      exportDone = true;
-      break;
-    }
-  }
-
-  const artifactFormats = getFormats(data.artifacts);
-  let winDone = false;
-  for (const k of Object.keys(artifactFormats)) {
-    const win = asObj(asObj(artifactFormats[k]).win);
-    if (win.loaded === true || win.exists === true) winDone = true;
-  }
+  // A run on disk means a retrain produced one; a *loaded* run means a reload served it.
+  // Both are evidence, and neither is a substitute for run history saying the step
+  // completed -- see the loop below.
+  const artifacts = asObj(data.artifacts);
+  const runs = Array.isArray(artifacts.runs) ? artifacts.runs : [];
+  const retrainDone = runs.some((r: unknown) => asObj(r).has_manifest !== false);
+  const reloadDone = typeof artifacts.loaded_run === 'string' && artifacts.loaded_run.length > 0;
 
   steps[0].status = importDone ? 'success' : 'pending';
-  steps[1].status = precomputeStatus;
-  steps[2].status = exportDone ? 'success' : 'pending';
-  steps[3].status = winDone ? 'success' : 'pending';
+  steps[1].status = retrainDone ? 'success' : 'pending';
+  steps[3].status = reloadDone ? 'success' : 'pending';
   //
   // The backend decides completion; the checks above only decide what to show for a
-  // step it has said nothing about. They read artifacts on disk and freshness dates,
-  // which outlive the run that produced them: a cancelled precompute left snapshots
-  // behind and the graph went on showing a green tick, because this loop could raise a
-  // step to success but never lower one. Where run history says a step has not
-  // completed, evidence on disk makes it stale — there is data, just not from a run
-  // that finished — and no evidence makes it pending.
+  // step it has said nothing about. They read artifacts on disk, which outlive the run
+  // that produced them: a cancelled precompute left snapshots behind and the graph went
+  // on showing a green tick, because this loop could raise a step to success but never
+  // lower one. Where run history says a step has not completed, evidence on disk makes
+  // it stale -- there is something there, just not from a run that finished -- and no
+  // evidence makes it pending.
   const pipelineSteps = asObj(asObj(data.pipeline).steps);
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];

@@ -1,22 +1,24 @@
 # Direct dependencies only. Pinned output: pip-compile requirements.in -> requirements.txt
-# NOTE: compile-requirements uses Python 3.9 (local venv) but Docker uses Python 3.12. Use
-# make compile-requirements-docker to regenerate requirements.txt for the Docker/Python 3.12 env.
+#
+# One set, for one image. There were two -- a `serve` set and a full `train` set carrying
+# pycaret, autogluon, shap and their transitive weight (torch, tensorboard, chronos) --
+# until P-6 deleted the auto-tune stack those were for. What is left of hyperparameter
+# search is a three-point grid inside the retrain step, which needs scikit-learn and
+# nothing else.
+#
+# NOTE: compile-requirements uses the local venv's Python but Docker uses Python 3.12. Use
+# make compile-requirements-docker to regenerate requirements.txt for the Docker env.
+# Pins on numpy/pandas/scipy keep the wheels stable across rebuilds.
 fastapi
 uvicorn
 pydantic
-numpy
-pandas
+numpy==1.26.4
+pandas==2.1.4
 scikit-learn==1.5.2
+scipy==1.11.4
 joblib
-optuna
 structlog
 httpx
 psycopg2-binary
 python-dotenv
-
-# Auto-tune enhancements (optional: auto_tune works without these via fallback)
-pycaret
-autogluon
-
-# Model interpretability (SHAP for MLP and tree-based auto-tuned models)
-shap
+psutil

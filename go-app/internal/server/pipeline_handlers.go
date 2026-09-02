@@ -10,11 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	exportsvc "github.com/umayangag/cric-flow/go-app/internal/services/exportdataset"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
-	"github.com/umayangag/cric-flow/go-app/internal/db"
-	"github.com/umayangag/cric-flow/go-app/internal/db/exportqueries"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
@@ -140,16 +136,14 @@ func (a *App) pipelineRunHandler(w http.ResponseWriter, r *http.Request) {
 	a.handlerForStep(step)(w, r)
 }
 
-// handlerForStep returns the handler that executes a step. Steps run by ml-service
-// all share makeMLTrainHandler; the three go-app-native steps have their own.
+// handlerForStep returns the handler that executes a step. retrain and evaluate run on
+// ml-service and share makeMLTrainHandler; import and reload are go-app's own.
 func (a *App) handlerForStep(step pipelinesvc.Step) http.HandlerFunc {
 	switch step.ID {
 	case "import":
 		return a.importCricSheetHandler
-	case "precompute":
-		return a.precomputeHandler
-	case "export":
-		return a.runExportHandler
+	case "reload":
+		return a.reloadRunHandler
 	}
 	if step.RunsOnMLService() {
 		return a.makeMLTrainHandler(step)
@@ -165,41 +159,16 @@ func (a *App) handlerForStep(step pipelinesvc.Step) http.HandlerFunc {
 	}
 }
 
-// runExportHandler starts export-dataset in the background with tracking.
-func (a *App) runExportHandler(w http.ResponseWriter, r *http.Request) {
-	if busy, _ := pipeline.LaneBusy(r.Context(), "export-dataset"); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
-		return
-	}
-
-	outDir := config.DefaultExportDir()
-	opts := exportsvc.Options{OutDir: outDir, Unified: true, Provenance: liveDatasetProvenance()}
-	a.startTrackedJob("export-dataset", map[string]any{"out_dir": outDir}, config.ExportTimeout(),
-		func(ctx context.Context) (any, error) {
-			repo := &exportqueries.Repo{}
-			runner := exportsvc.NewRunnerWithServices(
-				exportsvc.NewBattingService(repo),
-				exportsvc.NewBowlingService(repo),
-				exportsvc.NewFieldingService(repo),
-				exportsvc.NewExtrasService(repo),
-				exportsvc.NewWinService(repo),
-			)
-			return map[string]any{"out_dir": outDir}, runner.Run(ctx, opts)
-		})
-
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": "export"})
-}
-
-// autoTuneQueryParams are the extra query params auto_tune forwards to ml-service.
-// No other step forwards anything beyond cutoff.
-var autoTuneQueryParams = []string{"model", "format", "all_formats", "rescreen", "algorithms"}
-
 // makeMLTrainHandler returns the handler for a step executed by ml-service.
 //
-// Every such step follows the same shape: resolve the cutoff, confirm the operator
-// is happy to train on default parameters when none are tuned, then start a tracked
+// Both such steps follow the same shape: resolve the cutoff, then start a tracked
 // background job that POSTs to ml-service. Taking the whole Step rather than three
 // loose strings is what keeps the ID, the command and the endpoint from drifting.
+//
+// There is no "confirm you want the default parameters" prompt any more. It asked
+// whether to train on config defaults rather than auto-tuned ones, and retrain runs its
+// own small grid and records what it chose in the run manifest, so there is nothing left
+// to confirm and no second set of parameters to confirm it against.
 func (a *App) makeMLTrainHandler(step pipelinesvc.Step) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -212,20 +181,6 @@ func (a *App) makeMLTrainHandler(step pipelinesvc.Step) http.HandlerFunc {
 		args["cutoff"] = cutoff
 		query := url.Values{"cutoff": []string{cutoff}}
 
-		if step.IsTraining() {
-			if handled := a.confirmDefaultParams(w, r, step); handled {
-				return
-			}
-		}
-		if step.ID == "auto_tune" {
-			for _, name := range autoTuneQueryParams {
-				if v := strings.TrimSpace(q.Get(name)); v != "" {
-					query.Set(name, v)
-					args[name] = v
-				}
-			}
-		}
-
 		a.startTrackedJob(step.Command, args, pipelinesvc.TrainStepTimeout(),
 			func(ctx context.Context) (any, error) {
 				result, err := pipelinesvc.CallMLTrainEndpointWithResult(ctx, step.MLEndpoint, "?"+query.Encode())
@@ -236,35 +191,6 @@ func (a *App) makeMLTrainHandler(step pipelinesvc.Step) http.HandlerFunc {
 			})
 		respondJSON(w, http.StatusAccepted, map[string]string{"status": "started", "step": step.ID})
 	}
-}
-
-// confirmDefaultParams answers the request itself — and reports true — when the step
-// trains a model that has no auto-tuned parameters and the operator has not yet
-// confirmed training on config defaults. The client re-posts with confirm_use_default=1.
-func (a *App) confirmDefaultParams(w http.ResponseWriter, r *http.Request, step pipelinesvc.Step) bool {
-	if db.Pool == nil {
-		return false
-	}
-	switch strings.TrimSpace(strings.ToLower(r.URL.Query().Get("confirm_use_default"))) {
-	case "1", "true", "yes":
-		return false
-	}
-
-	hasParams, err := db.HasAnyTunedParamsForModel(r.Context(), step.Model)
-	if err != nil {
-		slog.Warn("pipeline: tuned params check failed", "step", step.ID, "model", step.Model, "err", err)
-		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check tuned params"})
-		return true
-	}
-	if hasParams {
-		return false
-	}
-	respondJSON(w, http.StatusOK, map[string]any{
-		"requires_confirmation": true,
-		"message":               "No auto-tuned parameters found for this model. Train with default config parameters?",
-		"step":                  step.ID,
-	})
-	return true
 }
 
 // startTrackedJob runs work in the background under the app's job context, recording
@@ -331,24 +257,4 @@ func trainRunMetadata(step pipelinesvc.Step, cutoff string, result *pipelinesvc.
 		}
 	}
 	return meta
-}
-
-// liveDatasetProvenance reads what is known about the dataset in the data directory.
-//
-// Read at the point of use rather than cached: the directory can be replaced by an
-// extract between one export and the next, and a cached digest would then describe
-// data that is no longer there — a provenance record that is quietly wrong is worse
-// than none, which is the whole reason P-2 exists.
-func liveDatasetProvenance() exportsvc.Provenance {
-	manifest, ok := dataacquire.ReadManifest(dataset.Dir())
-	if !ok {
-		return exportsvc.Provenance{}
-	}
-	return exportsvc.Provenance{
-		DatasetSHA256:    manifest.ArchiveSHA256,
-		DatasetSourceURL: manifest.SourceURL,
-		DatasetFeed:      manifest.FeedID,
-		DatasetExtracted: manifest.ExtractedAt,
-		DatasetMatchFile: manifest.MatchFiles,
-	}
 }

@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,9 +12,9 @@ import (
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
 
-func battingStep(t *testing.T) pipelinesvc.Step {
+func retrainStep(t *testing.T) pipelinesvc.Step {
 	t.Helper()
-	step, ok := pipelinesvc.Steps().ByID("train_win")
+	step, ok := pipelinesvc.Steps().ByID("retrain")
 	require.True(t, ok)
 	return step
 }
@@ -43,13 +42,13 @@ func TestTrainRunMetadata_ClosesTheProvenanceLoop(t *testing.T) {
 		MatchFiles:    19998,
 	})
 
-	meta := trainRunMetadata(battingStep(t), "2026-01-01T00:00:00Z", &pipelinesvc.TrainResult{
+	meta := trainRunMetadata(retrainStep(t), "2026-01-01T00:00:00Z", &pipelinesvc.TrainResult{
 		Status:  "ok",
-		Step:    "batting",
+		Step:    "retrain",
 		Summary: map[string]interface{}{"formats_completed": float64(4)},
 	})
 
-	assert.Equal(t, "train_win", meta["step"])
+	assert.Equal(t, "retrain", meta["step"])
 	assert.Equal(t, "2026-01-01T00:00:00Z", meta["cutoff"])
 
 	summary, ok := meta["summary"].(map[string]interface{})
@@ -71,9 +70,9 @@ func TestTrainRunMetadata_OmitsProvenanceItCannotEstablish(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(dataset.DirEnvVar, dir)
 
-	meta := trainRunMetadata(battingStep(t), "2026-01-01T00:00:00Z", nil)
+	meta := trainRunMetadata(retrainStep(t), "2026-01-01T00:00:00Z", nil)
 
-	assert.Equal(t, "train_win", meta["step"])
+	assert.Equal(t, "retrain", meta["step"])
 	assert.NotContains(t, meta, "provenance")
 	assert.NotContains(t, meta, "summary")
 }
@@ -83,7 +82,7 @@ func TestTrainRunMetadata_OmitsProvenanceItCannotEstablish(t *testing.T) {
 func TestTrainRunMetadata_PartialManifestRecordsWhatItHas(t *testing.T) {
 	writeManifest(t, dataacquire.ExtractResult{ArchiveSHA256: "abc123", MatchFiles: 12})
 
-	meta := trainRunMetadata(battingStep(t), "", nil)
+	meta := trainRunMetadata(retrainStep(t), "", nil)
 
 	provenance, ok := meta["provenance"].(map[string]any)
 	require.True(t, ok)
@@ -92,15 +91,15 @@ func TestTrainRunMetadata_PartialManifestRecordsWhatItHas(t *testing.T) {
 	assert.NotContains(t, provenance, "dataset_source_url")
 }
 
-// TestTrainRunMetadata_SurvivesAnUninstrumentedStep: combination_meta publishes no
+// TestTrainRunMetadata_SurvivesAnUninstrumentedStep: a step that publishes no
 // progress, so its result carries no summary. The run is still worth recording.
 func TestTrainRunMetadata_SurvivesAnUninstrumentedStep(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(dataset.DirEnvVar, dir)
 
-	meta := trainRunMetadata(battingStep(t), "cutoff", &pipelinesvc.TrainResult{Status: "ok", Step: "batting"})
+	meta := trainRunMetadata(retrainStep(t), "cutoff", &pipelinesvc.TrainResult{Status: "ok", Step: "retrain"})
 
-	assert.Equal(t, "train_win", meta["step"])
+	assert.Equal(t, "retrain", meta["step"])
 	assert.NotContains(t, meta, "summary", "an empty summary is not recorded as an empty object")
 }
 
@@ -109,7 +108,7 @@ func TestTrainRunMetadata_SurvivesAnUninstrumentedStep(t *testing.T) {
 func TestTrainRunMetadata_IsJSONSerialisable(t *testing.T) {
 	writeManifest(t, dataacquire.ExtractResult{ArchiveSHA256: "abc", FeedID: "t20s"})
 
-	meta := trainRunMetadata(battingStep(t), "cutoff", &pipelinesvc.TrainResult{
+	meta := trainRunMetadata(retrainStep(t), "cutoff", &pipelinesvc.TrainResult{
 		Summary: map[string]interface{}{
 			"formats": []interface{}{map[string]interface{}{"format": "T20I", "rows": float64(1200)}},
 		},
@@ -119,71 +118,4 @@ func TestTrainRunMetadata_IsJSONSerialisable(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(encoded), `"dataset_sha256":"abc"`)
 	assert.Contains(t, string(encoded), `"format":"T20I"`)
-}
-
-// TestLiveDatasetProvenance_ReadsTheDirectoryNotACache: the dataset directory can be
-// replaced by an extract between one export and the next, and a cached digest would
-// then describe data that is no longer there. A provenance record that is quietly
-// wrong is worse than none — the whole reason P-2 exists.
-func TestLiveDatasetProvenance_ReadsTheDirectoryNotACache(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(dataset.DirEnvVar, dir)
-
-	assert.False(t, liveDatasetProvenance().Known(), "an empty directory knows nothing")
-
-	first, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "first", FeedID: "t20s"})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), first, 0o600))
-	assert.Equal(t, "first", liveDatasetProvenance().DatasetSHA256)
-
-	// A later extract replaces the dataset; the next export must say so.
-	second, err := json.Marshal(dataacquire.ExtractResult{ArchiveSHA256: "second", FeedID: "all"})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), second, 0o600))
-	assert.Equal(t, "second", liveDatasetProvenance().DatasetSHA256)
-	assert.Equal(t, "all", liveDatasetProvenance().DatasetFeed)
-}
-
-func TestLiveDatasetProvenance_CarriesEveryFieldTheManifestHas(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(dataset.DirEnvVar, dir)
-	encoded, err := json.Marshal(dataacquire.ExtractResult{
-		ArchiveSHA256: "abc",
-		SourceURL:     "https://cricsheet.org/downloads/all_json.zip",
-		FeedID:        "all",
-		ExtractedAt:   "2026-08-26T10:00:00Z",
-		MatchFiles:    19998,
-	})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(dataacquire.ManifestPath(dir), encoded, 0o600))
-
-	got := liveDatasetProvenance()
-	assert.Equal(t, "abc", got.DatasetSHA256)
-	assert.Contains(t, got.DatasetSourceURL, "cricsheet.org")
-	assert.Equal(t, "all", got.DatasetFeed)
-	assert.Equal(t, "2026-08-26T10:00:00Z", got.DatasetExtracted)
-	assert.Equal(t, 19998, got.DatasetMatchFile)
-}
-
-// TestEveryExportPathStampsProvenance guards the gap this nearly shipped with: the
-// run-plan executor builds its own export options (stepJob), and a manually triggered
-// export builds another (runExportHandler). One carried provenance and the other did
-// not, so a plan-driven export would have written a manifest naming no dataset —
-// silently, which is the failure this phase exists to prevent.
-//
-// A source check because the two call sites are what must agree, and constructing a
-// real export needs a database.
-func TestEveryExportPathStampsProvenance(t *testing.T) {
-	t.Parallel()
-	for _, path := range []string{"step_work.go", "pipeline_handlers.go"} {
-		source, err := os.ReadFile(path)
-		require.NoError(t, err)
-
-		text := string(source)
-		if !strings.Contains(text, "exportsvc.Options{") {
-			continue
-		}
-		assert.Contains(t, text, "liveDatasetProvenance()",
-			"%s builds export options without provenance; its manifest would name no dataset", path)
-	}
 }

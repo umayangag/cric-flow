@@ -1,5 +1,5 @@
 // Package resources: memory and goroutine logging for pipeline diagnostics.
-// Use LogMemoryAndGoroutines at key points (e.g. precompute, seqcalc) to capture
+// Use LogMemoryAndGoroutines at key points (e.g. inside the importer) to capture
 // heap and goroutine counts so the last log before a crash shows actual usage.
 
 package resources

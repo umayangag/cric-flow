@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import type { MLModelStat, ModelStatsResponse } from '../types';
+import React, { useState } from 'react';
 import { api } from '../api';
 import {
   Box,
@@ -10,12 +9,10 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  TextField,
   Typography,
 } from '@mui/material';
-import AutoTuneForm from './AutoTuneForm';
 import type { PipelineStep } from '../utils/pipelineSteps';
-
-const DEFAULT_ALGORITHMS = ['rf', 'gb', 'quantile'];
 
 /** "fetch" -> "Fetch", so a backend step id reads as the start of a sentence. */
 const titleCase = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : '');
@@ -29,67 +26,25 @@ export interface PipelineStepDialogProps {
 const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, onRefresh }) => {
   const [copied, setCopied] = useState(false);
   const [runState, setRunState] = useState<
-    'idle' | 'loading' | 'started' | 'run_from_root' | 'error' | 'requires_confirmation'
+    'idle' | 'loading' | 'started' | 'run_from_root' | 'error'
   >('idle');
   const [runMessage, setRunMessage] = useState('');
   const [runHint, setRunHint] = useState('');
   const [runCommand, setRunCommand] = useState('');
   const [runSkipped, setRunSkipped] = useState<Record<string, string>>({});
   const [importRefresh, setImportRefresh] = useState(false);
-  const [autoTuneModel, setAutoTuneModel] = useState('all');
-  const [autoTuneFormat, setAutoTuneFormat] = useState('');
-  const [autoTuneRescreen, setAutoTuneRescreen] = useState(false);
-  const [autoTuneCutoff, setAutoTuneCutoff] = useState('');
-  const [autoTuneAlgorithms, setAutoTuneAlgorithms] = useState<Set<string>>(
-    () => new Set(DEFAULT_ALGORITHMS),
-  );
+  const [cutoff, setCutoff] = useState('');
+  const [runID, setRunID] = useState('');
 
-  const modelNameForLookup = (m: string) =>
-    m === 'all' ? '' : m.charAt(0).toUpperCase() + m.slice(1);
-  const formatForLookup = (f: string) => f || '';
-
-  const loadDefaultAlgorithms = useCallback(async () => {
-    const modelName = modelNameForLookup(autoTuneModel);
-    const fmt = formatForLookup(autoTuneFormat);
-    if (!modelName) {
-      setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
-      return;
-    }
-    try {
-      const res = await api.getModelStats();
-      const payload = res as unknown as ModelStatsResponse;
-      const models = payload?.models ?? [];
-      const match = models.find((m: MLModelStat) => {
-        if (m.model_name !== modelName) return false;
-        if (fmt) return m.match_format === fmt;
-        return true;
-      });
-      setAutoTuneAlgorithms(
-        match?.algorithms_requested?.length
-          ? new Set(match.algorithms_requested)
-          : new Set(DEFAULT_ALGORITHMS),
-      );
-    } catch {
-      setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
-    }
-  }, [autoTuneModel, autoTuneFormat]);
-
-  useEffect(() => {
-    if (step?.id === 'auto_tune') loadDefaultAlgorithms();
-  }, [step?.id, autoTuneModel, autoTuneFormat, loadDefaultAlgorithms]);
+  /** Steps that take a training cutoff. Reload takes a run id instead; import takes neither. */
+  const takesCutoff = (id: PipelineStep['id']) => id === 'retrain' || id === 'evaluate';
 
   const buildRunParams = (s: PipelineStep, extra?: Record<string, string>) => {
-    if (s.id === 'auto_tune') {
-      return {
-        model: autoTuneModel,
-        ...(autoTuneFormat === '' ? { all_formats: '1' } : { format: autoTuneFormat }),
-        ...(autoTuneRescreen ? { rescreen: '1' } : {}),
-        ...(autoTuneCutoff.trim() ? { cutoff: autoTuneCutoff.trim() } : {}),
-        ...(autoTuneAlgorithms.size > 0
-          ? { algorithms: [...autoTuneAlgorithms].sort().join(',') }
-          : {}),
-        ...extra,
-      };
+    if (takesCutoff(s.id)) {
+      return { ...(cutoff.trim() ? { cutoff: cutoff.trim() } : {}), ...extra };
+    }
+    if (s.id === 'reload') {
+      return { ...(runID.trim() ? { run_id: runID.trim() } : {}), ...extra };
     }
     if (s.id === 'import') {
       return { ...(importRefresh ? { refresh: '1' } : {}), ...extra };
@@ -97,16 +52,14 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     return { ...extra };
   };
 
-  const handleRun = async (s: PipelineStep, confirmUseDefault = false) => {
+  const handleRun = async (s: PipelineStep) => {
     setRunState('loading');
     setRunMessage('');
     setRunHint('');
     setRunCommand('');
     setRunSkipped({});
     try {
-      const params = confirmUseDefault
-        ? { ...buildRunParams(s), confirm_use_default: '1' }
-        : buildRunParams(s);
+      const params = buildRunParams(s);
       const effectiveParams = Object.keys(params).length ? params : undefined;
       const { status, data: res } = await api.opsPipelineRun(s.id, effectiveParams);
       if (status === 202) {
@@ -120,9 +73,6 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
         setRunState('run_from_root');
         setRunMessage(res.error || 'Run from project root');
         setRunCommand(res.command || s.command);
-      } else if (status === 200 && res.requires_confirmation) {
-        setRunState('requires_confirmation');
-        setRunMessage(res.message || 'No auto-tuned parameters found. Train with default config?');
       } else {
         // The backend answers preconditions with {code, message, hint} so the UI can
         // name the next action instead of showing a bare red toast.
@@ -136,22 +86,16 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     }
   };
 
-  const getAutoTuneCommand = () => {
-    const parts = [`MODEL=${autoTuneModel}`];
-    if (autoTuneFormat === '') parts.push('ALL_FORMATS=1');
-    else parts.push(`FORMAT=${autoTuneFormat}`);
-    if (autoTuneRescreen) parts.push('RESCREEN=1');
-    if (autoTuneCutoff.trim()) parts.push(`CUTOFF="${autoTuneCutoff.trim()}"`);
-    if (autoTuneAlgorithms.size > 0)
-      parts.push(`ALGORITHMS="${[...autoTuneAlgorithms].sort().join(',')}"`);
-    return `make ml-auto-tune ${parts.join(' ')}`;
+  /** The command as the operator's own inputs would make it, so Copy matches Run. */
+  const commandFor = (s: PipelineStep) => {
+    if (takesCutoff(s.id) && cutoff.trim()) return `make ${s.id} CUTOFF=${cutoff.trim()}`;
+    if (s.id === 'reload' && runID.trim()) return `make reload RUN=${runID.trim()}`;
+    return s.command;
   };
 
   const handleCopy = async (s: PipelineStep) => {
     try {
-      await navigator.clipboard.writeText(
-        s.id === 'auto_tune' ? getAutoTuneCommand() : runCommand || s.command,
-      );
+      await navigator.clipboard.writeText(runCommand || commandFor(s));
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -166,9 +110,8 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
     setRunCommand('');
     setRunSkipped({});
     setImportRefresh(false);
-    setAutoTuneRescreen(false);
-    setAutoTuneCutoff('');
-    setAutoTuneAlgorithms(new Set(DEFAULT_ALGORITHMS));
+    setCutoff('');
+    setRunID('');
     onClose();
   };
 
@@ -181,19 +124,35 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
               {step.description}
             </Typography>
-            {step.id === 'auto_tune' && (
-              <AutoTuneForm
-                model={autoTuneModel}
-                onModelChange={setAutoTuneModel}
-                format={autoTuneFormat}
-                onFormatChange={setAutoTuneFormat}
-                rescreen={autoTuneRescreen}
-                onRescreenChange={setAutoTuneRescreen}
-                cutoff={autoTuneCutoff}
-                onCutoffChange={setAutoTuneCutoff}
-                algorithms={autoTuneAlgorithms}
-                onAlgorithmsChange={setAutoTuneAlgorithms}
-              />
+            {takesCutoff(step.id) && (
+              <Box sx={{ mb: 1.5 }}>
+                <TextField
+                  label="Cutoff (YYYY-MM-DD)"
+                  value={cutoff}
+                  onChange={(e) => setCutoff(e.target.value)}
+                  size="small"
+                  fullWidth
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Rows before the cutoff train the models; rows at or after it are the holdout the
+                  run is scored on. Leave blank to use today.
+                </Typography>
+              </Box>
+            )}
+            {step.id === 'reload' && (
+              <Box sx={{ mb: 1.5 }}>
+                <TextField
+                  label="Run id (optional)"
+                  value={runID}
+                  onChange={(e) => setRunID(e.target.value)}
+                  size="small"
+                  fullWidth
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Leave blank to load the run <code>current</code> already names, or the newest one.
+                  Name a run to swap back to it — the Artifacts panel lists the ones on disk.
+                </Typography>
+              </Box>
             )}
             {step.id === 'import' && (
               <Box sx={{ mb: 1.5 }}>
@@ -241,7 +200,7 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                   bgcolor:
                     runState === 'error'
                       ? 'error.light'
-                      : runState === 'run_from_root' || runState === 'requires_confirmation'
+                      : runState === 'run_from_root'
                         ? 'warning.light'
                         : 'action.selected',
                 }}
@@ -280,48 +239,22 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                   borderColor: 'divider',
                 }}
               >
-                {runState === 'run_from_root' && runCommand
-                  ? runCommand
-                  : step.id === 'auto_tune'
-                    ? getAutoTuneCommand()
-                    : step.command}
+                {runState === 'run_from_root' && runCommand ? runCommand : commandFor(step)}
               </Box>
             ) : null}
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClose}>Close</Button>
-            {runState === 'requires_confirmation' ? (
-              <>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setRunState('idle');
-                    setRunMessage('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button variant="contained" color="warning" onClick={() => handleRun(step, true)}>
-                  Train with defaults
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outlined"
-                  onClick={() => handleCopy({ ...step, command: runCommand || step.command })}
-                >
-                  {copied ? 'Copied!' : 'Copy command'}
-                </Button>
-                <Button
-                  variant="contained"
-                  onClick={() => handleRun(step)}
-                  disabled={runState === 'loading' || !step.runnable}
-                >
-                  {runState === 'loading' ? 'Running…' : 'Run'}
-                </Button>
-              </>
-            )}
+            <Button variant="outlined" onClick={() => handleCopy(step)}>
+              {copied ? 'Copied!' : 'Copy command'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => handleRun(step)}
+              disabled={runState === 'loading' || !step.runnable}
+            >
+              {runState === 'loading' ? 'Running…' : 'Run'}
+            </Button>
           </DialogActions>
         </>
       )}

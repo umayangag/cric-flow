@@ -1,4 +1,4 @@
-package opsstatus
+package opsstatus_test
 
 import (
 	"encoding/json"
@@ -9,200 +9,140 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 )
 
-// helper: simple HTTP client pointing at a test server
-func newHTTPClientForServer(ts *httptest.Server) *http.Client {
-	c := ts.Client()
-	// Reduce potential flakiness
-	c.Timeout = 2 * time.Second
-	os.Setenv("ML_SERVICE_URL", ts.URL)
-	return c
+// mlServiceStub answers /health and /artifacts/status and points ML_SERVICE_URL at itself.
+func mlServiceStub(t *testing.T, health, artifacts func(http.ResponseWriter)) *http.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			health(w)
+		case "/artifacts/status":
+			artifacts(w)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("ML_SERVICE_URL", server.URL)
+	client := server.Client()
+	client.Timeout = 2 * time.Second
+	return client
 }
 
-func TestBuildArtifactsSection_Table(t *testing.T) {
-	type assertion func(t *testing.T, sec map[string]any, mlOK bool)
-
-	// Case 1: ML /health ok, /artifacts/status returns detailed formats JSON
-	tsDetail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/health":
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "batting_model": true, "bowling_model": true})
-		case "/artifacts/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"formats": map[string]any{
-					"ODI": map[string]any{
-						"batting": map[string]any{"exists": true, "loaded": true, "path": "/a.joblib"},
-						"bowling": map[string]any{"exists": false},
-					},
-					"TEST": map[string]any{
-						"batting": map[string]any{"exists": false},
-						"bowling": map[string]any{"exists": true, "path": "/b.joblib"},
-					},
-					"T20I": map[string]any{
-						"batting": map[string]any{"exists": false},
-						"bowling": map[string]any{"exists": false},
-					},
-					"T20": map[string]any{
-						"batting": map[string]any{"exists": false},
-						"bowling": map[string]any{"exists": false},
-					},
-				},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer tsDetail.Close()
-
-	// Case 2: ML unhealthy, FS fallback with files
-	tsUnhealthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/health":
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "fail"})
-		case "/artifacts/status":
-			w.WriteHeader(http.StatusServiceUnavailable)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer tsUnhealthy.Close()
-
-	// Case 3: ML reports an innings model that is loaded from an older file than the one on disk
-	tsInnings := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/health":
-			_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
-		case "/artifacts/status":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"formats": map[string]any{
-					"T20": map[string]any{
-						"innings": map[string]any{
-							"exists": true,
-							"loaded": true,
-							"stale":  true,
-							"path":   "/innings_model_T20.joblib",
-						},
-					},
-				},
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer tsInnings.Close()
-
-	testCases := []struct {
-		name   string
-		setup  func(t *testing.T) (*http.Client, string) // client, fsRoot
-		assert assertion
-	}{
-		{
-			name: "ml_detail_endpoint_used",
-			setup: func(t *testing.T) (*http.Client, string) {
-				client := newHTTPClientForServer(tsDetail)
-				return client, t.TempDir()
-			},
-			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
-				require.True(t, mlOK)
-				fm := sec["formats"].(map[string]any)
-				// Check values came from HTTP detail payload
-				odi := fm["ODI"].(map[string]any)["batting"].(map[string]any)
-				require.True(t, odi["exists"].(bool), "ODI batting should exist from detail endpoint")
-				testBowl := fm["TEST"].(map[string]any)["bowling"].(map[string]any)
-				require.True(t, testBowl["exists"].(bool), "TEST bowling should exist from detail endpoint")
-			},
-		},
-		{
-			name: "filesystem_fallback_when_ml_unhealthy",
-			setup: func(t *testing.T) (*http.Client, string) {
-				client := newHTTPClientForServer(tsUnhealthy)
-				root := t.TempDir()
-				// Per-format artifacts: scaler+model for batting/bowling
-				writeFileWithLines(t, root, "batting_scaler_ODI.joblib", 1)
-				writeFileWithLines(t, root, "batting_model_ODI.joblib", 1)
-				writeFileWithLines(t, root, "bowling_scaler_ODI.joblib", 1)
-				writeFileWithLines(t, root, "bowling_model_ODI.joblib", 1)
-				writeFileWithLines(t, root, "bowling_scaler_TEST.joblib", 1)
-				writeFileWithLines(t, root, "bowling_model_TEST.joblib", 1)
-				return client, root
-			},
-			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
-				require.False(t, mlOK)
-				fm := sec["formats"].(map[string]any)
-				odi := fm["ODI"].(map[string]any)
-				require.True(t, odi["batting"].(map[string]any)["exists"].(bool), "ODI batting via FS fallback")
-				require.True(t, odi["bowling"].(map[string]any)["exists"].(bool), "ODI bowling via FS fallback")
-				testFmt := fm["TEST"].(map[string]any)
-				require.False(
-					t,
-					testFmt["batting"].(map[string]any)["exists"].(bool),
-					"TEST batting should not exist in FS fallback",
-				)
-				require.True(t, testFmt["bowling"].(map[string]any)["exists"].(bool), "TEST bowling via FS fallback")
-			},
-		},
-		{
-			name: "missing_dir_results_in_all_false",
-			setup: func(t *testing.T) (*http.Client, string) {
-				// No server needed; still set a benign client and URL
-				ts := httptest.NewServer(
-					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }),
-				)
-				defer ts.Close()
-				client := newHTTPClientForServer(ts)
-				return client, filepath.Join(t.TempDir(), "does-not-exist")
-			},
-			assert: func(t *testing.T, sec map[string]any, _ bool) {
-				fm := sec["formats"].(map[string]any)
-				for _, f := range []string{"TEST", "ODI", "T20I", "T20"} {
-					ent := fm[f].(map[string]any)
-					require.False(t, ent["batting"].(map[string]any)["exists"].(bool), "batting exists for %s", f)
-					require.False(t, ent["bowling"].(map[string]any)["exists"].(bool), "bowling exists for %s", f)
-				}
-			},
-		},
-		{
-			name: "innings_reported_via_filesystem_fallback",
-			setup: func(t *testing.T) (*http.Client, string) {
-				client := newHTTPClientForServer(tsUnhealthy)
-				root := t.TempDir()
-				writeFileWithLines(t, root, "innings_scaler_T20.joblib", 1)
-				writeFileWithLines(t, root, "innings_model_T20.joblib", 1)
-				return client, root
-			},
-			assert: func(t *testing.T, sec map[string]any, _ bool) {
-				fm := sec["formats"].(map[string]any)
-				t20 := fm["T20"].(map[string]any)["innings"].(map[string]any)
-				require.True(t, t20["exists"].(bool), "T20 innings via FS fallback")
-				odi := fm["ODI"].(map[string]any)["innings"].(map[string]any)
-				require.False(t, odi["exists"].(bool), "ODI innings has no artifacts")
-			},
-		},
-		{
-			name: "ml_innings_cell_including_stale_verdict_passed_through",
-			setup: func(t *testing.T) (*http.Client, string) {
-				return newHTTPClientForServer(tsInnings), t.TempDir()
-			},
-			assert: func(t *testing.T, sec map[string]any, mlOK bool) {
-				require.True(t, mlOK)
-				cell := sec["formats"].(map[string]any)["T20"].(map[string]any)["innings"].(map[string]any)
-				require.True(t, cell["exists"].(bool))
-				require.True(t, cell["loaded"].(bool))
-				require.True(t, cell["stale"].(bool), "stale verdict must reach the ops console")
-			},
-		},
+func writeRun(t *testing.T, root, runID string, manifest map[string]any) {
+	t.Helper()
+	dir := filepath.Join(root, opsstatus.RunsDirName, runID)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	if manifest == nil {
+		return
 	}
+	raw, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "manifest.json"), raw, 0o600))
+}
 
-	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			client, root := tc.setup(t)
-			sec, mlOK := BuildArtifactsSection(client, root)
-			// marshal for potential debug
-			_, _ = json.Marshal(sec)
-			tc.assert(t, sec, mlOK)
+func okHealth(w http.ResponseWriter) {
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+}
+
+// TestBuildArtifactsSection_MLServiceRunViewIsPassedThrough: ml-service is the only
+// process that can say which run it loaded, so its answer is copied whole rather than
+// re-derived here from filenames.
+func TestBuildArtifactsSection_MLServiceRunViewIsPassedThrough(t *testing.T) {
+	client := mlServiceStub(t, okHealth, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"root":            "/models",
+			"current_run":     "20260902T101500Z-ab12cd34",
+			"loaded_run":      "20260902T101500Z-ab12cd34",
+			"ratings_through": "2026-08-30",
+			"ratings_stale":   false,
+			"runs": []map[string]any{
+				{"run_id": "20260902T101500Z-ab12cd34", "loaded": true, "current": true},
+			},
 		})
-	}
+	})
+
+	section, mlOK := opsstatus.BuildArtifactsSection(client, t.TempDir())
+
+	require.True(t, mlOK)
+	assert.Equal(t, "20260902T101500Z-ab12cd34", section["loaded_run"])
+	assert.Equal(t, "2026-08-30", section["ratings_through"])
+	assert.Len(t, section["runs"], 1)
+}
+
+// TestBuildArtifactsSection_RefusalReachesTheConsole: a run whose arrays this code
+// cannot serve is refused rather than loaded (D-6), and the refusal is the thing an
+// operator needs to see -- not an empty panel that reads as "nothing trained yet".
+func TestBuildArtifactsSection_RefusalReachesTheConsole(t *testing.T) {
+	client := mlServiceStub(t, okHealth, func(w http.ResponseWriter) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"current_run": "20260902T101500Z-ab12cd34",
+			"loaded_run":  nil,
+			"error":       "run 20260902T101500Z-ab12cd34: bat_pos_sum has width 1024, expected 13427",
+			"runs":        []map[string]any{{"run_id": "20260902T101500Z-ab12cd34", "loaded": false}},
+		})
+	})
+
+	section, _ := opsstatus.BuildArtifactsSection(client, t.TempDir())
+
+	assert.Nil(t, section["loaded_run"])
+	assert.Contains(t, section["error"], "expected 13427")
+}
+
+// TestBuildArtifactsSection_FallsBackToTheRunsOnDisk when ml-service cannot be asked.
+// The scan can say what exists; it cannot say what is loaded, and does not claim to.
+func TestBuildArtifactsSection_FallsBackToTheRunsOnDisk(t *testing.T) {
+	client := mlServiceStub(t,
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
+	root := t.TempDir()
+	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
+		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "git_sha": "abc1234",
+	})
+	writeRun(t, root, "20260902T090000Z-22222222", map[string]any{
+		"run_id": "20260902T090000Z-22222222", "cutoff": "2025-09-01", "git_sha": "def5678",
+	})
+
+	section, mlOK := opsstatus.BuildArtifactsSection(client, root)
+
+	require.False(t, mlOK)
+	assert.Equal(t, false, section["reachable"])
+	runs := section["runs"].([]map[string]any)
+	require.Len(t, runs, 2)
+	assert.Equal(t, "20260902T090000Z-22222222", runs[0]["run_id"], "newest first")
+	assert.Equal(t, true, runs[0]["has_manifest"])
+}
+
+// TestBuildArtifactsSection_ADirectoryWithNoManifestIsNotARun: H-16's question in its
+// on-disk form. Artifacts nothing can attribute to a run are reported as exactly that.
+func TestBuildArtifactsSection_ADirectoryWithNoManifestIsNotARun(t *testing.T) {
+	client := mlServiceStub(t,
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
+	root := t.TempDir()
+	writeRun(t, root, "20260901T090000Z-11111111", nil)
+
+	section, _ := opsstatus.BuildArtifactsSection(client, root)
+
+	runs := section["runs"].([]map[string]any)
+	require.Len(t, runs, 1)
+	assert.Equal(t, false, runs[0]["has_manifest"])
+}
+
+// TestBuildArtifactsSection_NoRunsDirectoryIsAnEmptyList, not an error: a box that has
+// never trained is a normal state.
+func TestBuildArtifactsSection_NoRunsDirectoryIsAnEmptyList(t *testing.T) {
+	client := mlServiceStub(t,
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
+
+	section, _ := opsstatus.BuildArtifactsSection(client, filepath.Join(t.TempDir(), "nope"))
+
+	assert.Empty(t, section["runs"])
 }

@@ -90,7 +90,7 @@ def test_env_int_invalid_returns_default(monkeypatch):
     """_env_int returns default when env value is not an integer."""
     from app.settings import _env_int, load_ml_service_settings
 
-    monkeypatch.setenv("MAX_PREDICT_BATCH_SIZE", "not_a_number")
-    assert _env_int("MAX_PREDICT_BATCH_SIZE", default=10000) == 10000
+    monkeypatch.setenv("MAX_CONCURRENT_TRAINING_JOBS", "not_a_number")
+    assert _env_int("MAX_CONCURRENT_TRAINING_JOBS", default=4) == 4
     settings = load_ml_service_settings()
-    assert settings.max_predict_batch_size == 10000
+    assert settings.max_concurrent_training_jobs == 1

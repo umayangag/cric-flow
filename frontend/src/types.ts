@@ -1,5 +1,3 @@
-import type { ArtifactKind, ArtifactUnit } from './utils/artifactKinds';
-
 // --- Upcoming match prediction ---
 
 /** A 10-90 interval shown beside a point. */
@@ -78,145 +76,59 @@ export type PredictTeamSelectionResponse = {
   scorecard?: PredictScorecard;
 };
 
+/** ml-service GET /health, via the go-app proxy. */
 export type HealthResponse = {
   status: string;
-  loaded_batting_formats: string[];
-  loaded_bowling_formats: string[];
-  loaded_fielding_formats?: string[];
-  loaded_extras_formats?: string[];
-  loaded_win_formats?: string[];
-  loaded_innings_formats?: string[];
   models_dir: string;
-  /** One entry per artifact kind; see ARTIFACT_KINDS for the kinds the UI reports on. */
-  artifacts: Partial<Record<ArtifactKind, ArtifactFile[]>> & {
-    batting: ArtifactFile[];
-    bowling: ArtifactFile[];
-  };
-  metadata: {
-    batting: string[];
-    bowling: string[];
-    fielding?: string[];
-  };
+  loaded: boolean;
+  /** The run being served (H-16), or null when nothing loaded. */
+  run_id: string | null;
+  loaded_xi_formats?: string[];
+  loaded_performance_formats?: string[];
+  /** H-11's verdict on the loaded ratings, not just their date. */
+  ratings?: RatingsFreshness | null;
+  /** Why nothing is loaded, when artifacts on disk were refused (D-6). */
+  error?: string | null;
 };
 
-export type ArtifactFile = { file: string; size_bytes?: number; modified?: number };
+/** How old the loaded rating state is, and whether that is old enough to refuse with. */
+export type RatingsFreshness = {
+  fresh: boolean;
+  age_days: number | null;
+  max_age_days: number;
+  ratings_through: string | null;
+  /** RATINGS_STALE when a live prediction would be refused; absent when it would not. */
+  code?: string | null;
+};
+
+/** ml-service GET /xi/status, via the go-app proxy: run identity (H-16) and freshness (H-11). */
+export type XiStatusResponse = {
+  loaded: boolean;
+  formats: string[];
+  performance_formats?: string[];
+  players: number;
+  ratings_through: string | null;
+  run_id?: string | null;
+  manifest?: RunManifestSummary | null;
+  /** Why nothing is loaded, when a run on disk was refused (D-6). */
+  error?: string | null;
+  ratings?: RatingsFreshness | null;
+  report?: Record<string, unknown> | null;
+};
+
+/** The short form of a run's manifest, as /xi/status carries it. */
+export type RunManifestSummary = {
+  run_id: string;
+  created_at?: string;
+  cutoff?: string;
+  dataset_sha?: string;
+  git_sha?: string;
+  formats?: string[];
+  hyperparameters?: Record<string, unknown>;
+  metrics?: Record<string, unknown>;
+};
 
 /** Model metadata from ml-service GET /model-metadata (via go-app proxy). One source of truth for Workbench UI. */
-export type ModelMetadataEntry = {
-  features: string[];
-  outputs: string[];
-  level: 'player' | 'match' | 'meta';
-  hasScaler?: boolean;
-  artifactsPattern: { perFormat: string };
-  note?: string;
-};
-
-/** Full API response: one entry per model kind (batting, bowling, etc.). */
-export type ModelMetadataApiResponse = Record<string, ModelMetadataEntry | undefined>;
-
-/** Map of model kind -> entry. Used where we iterate model entries. */
-export type ModelMetadataResponse = Record<string, ModelMetadataEntry>;
-
-/** MLQA audit from auto_tune MLQA Agent. */
-export type MLQAAudit = {
-  audit_status: 'PASS' | 'FAIL' | 'WARNING';
-  key_findings: string[];
-  bias_report: string;
-  final_verdict: string;
-  checks?: {
-    overfitting?: { delta: number; relative_delta?: number; threshold?: number; flagged: boolean };
-    stability?: {
-      cv_std: number;
-      relative_cv_std?: number;
-      threshold?: number;
-      flagged: boolean;
-      cv_fold_scores?: number[];
-    };
-  };
-};
-
-/** ML model stats from ml-service GET /model-stats (via go-app proxy). Used by ML Model Stats tab. */
-export type MLModelStat = {
-  /** Machine-readable kind (e.g. "batting_share", "innings"). */
-  model_kind?: string;
-  model_name: string;
-  match_format: string;
-  size_bytes?: number;
-  modified?: string;
-  tuned?: boolean;
-  best_cv_score?: number;
-  scoring?: string;
-  algorithm?: string;
-  tuned_parameters?: Record<string, unknown>;
-  cv_splits?: number;
-  validation_method?: string;
-  n_samples?: number;
-  n_features?: number;
-  metrics?: Record<string, unknown>;
-  /** Feature importance from auto-tuning (tree-based models only). */
-  feature_importance?: Record<string, number>;
-  accuracy_display?: string;
-  /**
-   * How `accuracy_display` was measured: `tuning_cv` from an auto-tune run's
-   * cross-validation, `holdout` from the trailing slice a single-train run held back.
-   * They share a column but are not comparable — the stronger CV score is computed over
-   * the whole dataset, the holdout over unseen recent rows only.
-   */
-  score_source?: 'tuning_cv' | 'holdout';
-  /** MLQA audit (overfitting, stability, bias, sensitivity, complexity). */
-  mlqa_audit?: MLQAAudit;
-  /** Algorithms used in last auto-tune run for this model+format (for default selection in UI). */
-  algorithms_requested?: string[];
-  /** Training start time (from linked data_migration) — when auto_tune run started. */
-  trained_at?: string;
-  /** Training completion time (from linked data_migration). */
-  completed_at?: string;
-  /** Training duration in seconds (from data_migration.completed_at - started_at). */
-  duration_seconds?: number;
-  /**
-   * The dataset this model was trained on, from its sidecar (ops plan P-1).
-   *
-   * Absent for a model trained before provenance existed, or from CSVs with no export
-   * manifest. Absent means genuinely unknown — never assume it matches the live one.
-   */
-  provenance?: DatasetProvenance;
-  /**
-   * Whether `provenance.dataset_sha256` matches the dataset currently on the box.
-   *
-   * Absent when either side is unknown, which is a third state and not a synonym for
-   * false: "we cannot tell" and "it is stale" are different things to show an operator.
-   */
-  dataset_is_live?: boolean;
-};
-
-/** Where a dataset came from. Every field optional — absent means unknown. */
-export type DatasetProvenance = {
-  dataset_sha256?: string;
-  dataset_source_url?: string;
-  dataset_feed?: string;
-  dataset_extracted_at?: string;
-  dataset_match_files?: number;
-  /** When the CSVs this model trained on were exported. */
-  exported_at?: string;
-  /** The training cutoff, which varies per run and is recorded nowhere else. */
-  training_cutoff?: string;
-};
-
-export type ModelStatsResponse = {
-  models_dir: string;
-  models: MLModelStat[];
-  hierarchy?: FormatHierarchyNode[];
-  /** The dataset currently in the data directory, when one is identifiable. */
-  live_dataset?: DatasetProvenance;
-};
-
-// --- L4 evaluation report (GET /api/backtest/report) ---
-//
-// The harness (`make xi-evaluate`) writes one JSON file and every backtest surface reads
-// it. Numeric leaves are summarised over folds as {mean, sd, n_folds}; the locked window
-// is a single fold, scored once per release and never used for a choice (H-19).
-
-/** Mean and spread of one number over the walk-forward folds. */
 export type FoldStat = {
   mean: number;
   sd: number;
@@ -372,16 +284,26 @@ export type OpsStatusDTO = {
     table_stats?: TableStat[];
     [key: string]: unknown;
   };
-  precompute?: {
-    formats?: Record<string, { status?: 'ok' | 'stale' | 'missing' | string } | undefined>;
-    /** Why the last run did not finish, when it did not. Empty after a clean run. */
-    last_error?: string;
-  };
-  exports?: {
-    formats?: Record<string, { files?: Array<{ name?: string; exists?: boolean }> } | undefined>;
-  };
+  /** The runs on disk, which is current and which is loaded (H-16), plus H-11's verdict. */
   artifacts?: {
-    formats?: Record<string, Partial<Record<ArtifactKind, ArtifactUnit>> | undefined> | undefined;
+    root?: string;
+    reachable?: boolean;
+    current_run?: string | null;
+    loaded_run?: string | null;
+    ratings_through?: string | null;
+    ratings?: { fresh?: boolean; age_days?: number | null; max_age_days?: number } | null;
+    error?: string | null;
+    runs?: Array<{
+      run_id?: string;
+      created_at?: string;
+      cutoff?: string;
+      git_sha?: string;
+      dataset_sha?: string;
+      formats?: string[];
+      has_manifest?: boolean;
+      current?: boolean;
+      loaded?: boolean;
+    }>;
   };
   /** Pipeline step running state from backend */
   pipeline?: {
@@ -390,14 +312,12 @@ export type OpsStatusDTO = {
   [key: string]: unknown;
 };
 
-/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 200 requires_confirmation, 4xx/5xx error) */
+/** Response from POST /ops/pipeline/run/:step (202 started, 501 run from root, 4xx/5xx error) */
 export type PipelineRunResponse = {
   status?: string;
   step?: string;
   error?: string;
   command?: string;
-  /** When true, no auto-tuned params in DB; UI should prompt before training with default config */
-  requires_confirmation?: boolean;
   /** Machine-readable failure reason, e.g. UNIFIED_MODEL_REMOVED. */
   code?: string;
   message?: string;
@@ -609,30 +529,7 @@ export type PipelineStepProgress = {
   params?: Record<string, unknown>;
   started_at?: string;
   elapsed_sec?: number;
-  precompute?: {
-    formats?: string[];
-    current_format?: string;
-    phase?: string;
-    current_index?: number;
-    formats_total?: number;
-  };
   estimated_remaining_sec?: number;
-  /** Live auto-tune progress: phase, algorithm, hyperparams, trial, trials_total, best_score, etc. */
-  auto_tune?: {
-    phase?: string;
-    model_kind?: string;
-    format_suffix?: string;
-    algorithm?: string;
-    hyperparams?: Record<string, unknown>;
-    trial?: number;
-    trials_total?: number;
-    best_score?: number;
-    best_algorithm?: string;
-    message?: string;
-    algorithms_screened?: string[];
-    algorithms_requested?: string[];
-    activity?: string;
-  };
   /** Live download progress for a dataset fetch. Absent until the first sample. */
   fetch?: {
     downloaded_bytes?: number;
@@ -764,21 +661,6 @@ export type Migration = {
   error_message?: string;
 };
 
-// --- Ops: Auto-tune migration details ---
-export type AutoTuneRunDetailsEntry = {
-  id: number;
-  model: string;
-  format: string;
-  created_at: string;
-  params?: Record<string, unknown>;
-  metrics?: Record<string, unknown>;
-};
-
-export type AutoTuneRunDetailsResponse = {
-  migration_id: number;
-  runs: AutoTuneRunDetailsEntry[];
-};
-
 export type Suggestion = {
   title: string;
   description: string;
@@ -811,7 +693,6 @@ export type WalkForwardWindowEntry = {
   window_start_date?: string;
   window_end_date?: string;
   training_params?: Record<string, unknown>;
-  auto_tune_used?: boolean;
   metrics: Record<string, number>;
   n_training_samples?: number;
   n_holdout_samples?: number;

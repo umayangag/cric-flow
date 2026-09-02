@@ -66,7 +66,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
       <Stack spacing={2}>
         <SectionCard
           title="Pipeline"
-          subtitle="Import → precompute → export → train (uses config + DB params) or auto-tune (discover params). Click a step to copy its command."
+          subtitle="Import → retrain → reload, with Evaluate beside them. Click a step to run it or copy its command."
         >
           <OpsPipelineGraph data={data} onRefresh={onRefresh} />
           <RunPlanPanel onRefresh={onRefresh} />

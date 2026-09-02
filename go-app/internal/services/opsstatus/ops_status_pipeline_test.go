@@ -47,8 +47,11 @@ func (r *latestRunRows) Close() {}
 
 func (r *latestRunRows) Err() error { return nil }
 
-// prerequisiteRun mocks the latest-run lookup for one command.
-func prerequisiteRun(m *mocks.MockDB, command string, status tracking.MigrationStatus) {
+// importRun mocks the latest-run lookup for the import step, which is the only
+// prerequisite left on the graph: every other step requires it, directly or through
+// retrain.
+func importRun(m *mocks.MockDB, status tracking.MigrationStatus) {
+	const command = "cricsheet-import"
 	m.On("Query", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 		arr, ok := a.([]any)
 		return ok && len(arr) >= 1 && arr[0] == command
@@ -115,30 +118,30 @@ func TestCanRunPipelineStep(t *testing.T) {
 			wantMsg: "",
 		},
 		{
-			name: "precompute_prev_done_runnable",
+			name: "retrain_prev_done_runnable",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-retrain" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "cricsheet-import", tracking.StatusCompleted)
+				importRun(m, tracking.StatusCompleted)
 			},
-			stepID:  "precompute",
+			stepID:  "retrain",
 			wantOk:  true,
 			wantMsg: "",
 		},
 		{
-			name: "precompute_prev_cancelled_not_runnable",
+			name: "retrain_prev_cancelled_not_runnable",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-retrain" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "cricsheet-import", tracking.StatusCancelled)
+				importRun(m, tracking.StatusCancelled)
 			},
-			stepID:  "precompute",
+			stepID:  "retrain",
 			wantOk:  false,
 			wantMsg: "complete the previous step (Import) first",
 		},
@@ -146,64 +149,64 @@ func TestCanRunPipelineStep(t *testing.T) {
 			// The generalisation of the cancelled-precompute bug: it is the latest run
 			// that decides, so a step whose newest run failed blocks what comes after
 			// it however many times it succeeded before.
-			name: "precompute_prev_failed_not_runnable",
+			name: "retrain_prev_failed_not_runnable",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-retrain" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "cricsheet-import", tracking.StatusFailed)
+				importRun(m, tracking.StatusFailed)
 			},
-			stepID:  "precompute",
+			stepID:  "retrain",
 			wantOk:  false,
 			wantMsg: "complete the previous step (Import) first",
 		},
 		{
-			name: "precompute_prev_never_run_not_runnable",
+			name: "retrain_prev_never_run_not_runnable",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "precompute-features" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-retrain" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "cricsheet-import", "")
+				importRun(m, "")
 			},
-			stepID:  "precompute",
+			stepID:  "retrain",
 			wantOk:  false,
 			wantMsg: "complete the previous step (Import) first",
 		},
 		{
-			// Auto-tune needs the export and nothing after it: it reads the same
-			// inputs the train steps read, so requiring them would force the one
-			// order the pipeline exists to avoid — train on stale params, then
-			// search for better ones.
-			name: "auto_tune_allowed_after_export_without_any_training",
+			// Evaluate needs the import and nothing after it: it is L4 at a cutoff of
+			// the operator's choosing over rows already in the database, so requiring
+			// the retrain would gate "what would this have scored?" behind producing
+			// the artifacts it is not measuring.
+			name: "evaluate_allowed_after_import_without_any_retrain",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "ml-auto-tune" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-evaluate" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "export-dataset", tracking.StatusCompleted)
+				importRun(m, tracking.StatusCompleted)
 			},
-			stepID:  "auto_tune",
+			stepID:  "evaluate",
 			wantOk:  true,
 			wantMsg: "",
 		},
 		{
-			name: "auto_tune_without_export_not_runnable",
+			name: "evaluate_without_import_not_runnable",
 			setup: func(m *mocks.MockDB) {
 				setupPipelineDB(t, m)
 				m.On("QueryRow", mock.Anything, mock.Anything, mock.MatchedBy(func(a any) bool {
 					arr, ok := a.([]any)
-					return ok && len(arr) >= 2 && arr[0] == "ml-auto-tune" && arr[1] == tracking.StatusInProgress
+					return ok && len(arr) >= 2 && arr[0] == "xi-evaluate" && arr[1] == tracking.StatusInProgress
 				})).Return(scanBoolRow(false))
-				prerequisiteRun(m, "export-dataset", "")
+				importRun(m, "")
 			},
-			stepID:  "auto_tune",
+			stepID:  "evaluate",
 			wantOk:  false,
-			wantMsg: "complete the previous step (Export) first",
+			wantMsg: "complete the previous step (Import) first",
 		},
 	}
 

@@ -15,10 +15,10 @@ from pydantic import ValidationError
 from app import xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi.builder import build
+from ml.xi.retrain import main as retrain_main
+from ml.xi.retrain import retrain
 from ml.xi.simulator import SimulationUnavailable
 from ml.xi.sources import BOWLER_CREDITED_KINDS, Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
-from ml.xi.train import main as train_main
-from ml.xi.train import train_all
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.xi_perf_fixtures import fast_fits
 
@@ -64,13 +64,23 @@ def _registry_keyed_history(n: int = 160):
     return out, [rename[k] for k in squad_a], [rename[k] for k in squad_b]
 
 
+@pytest.fixture(autouse=True)
+def _staleness_off(monkeypatch) -> None:
+    """This module's fixtures are a synthetic 2023 history, so every state in it is stale.
+    H-11 has its own tests (``test_runs_and_reload``); turning it off here keeps these
+    tests measuring what they name."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+
+
 @pytest.fixture(scope="module")
 def artifacts_dir(tmp_path_factory) -> tuple:
+    """One run, written the way ``retrain`` writes one: artifacts and manifest under
+    ``runs/<id>/``. The registry is pointed at the root, not at the run directory."""
     matches, squad_a, squad_b = _registry_keyed_history()
     out = tmp_path_factory.mktemp("xi_service_artifacts")
     with fast_fits():
-        summary = train_all(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
-    assert "targets" in summary["formats"][0]["performance"]
+        written = retrain(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
+    assert "targets" in written["summary"]["formats"][0]["performance"]
     return str(out), squad_a, squad_b, matches
 
 
@@ -135,9 +145,32 @@ def test_registry_reports_absent_artifacts_without_raising(tmp_path) -> None:
 
 
 def test_registry_survives_a_corrupt_artifact(tmp_path) -> None:
-    (tmp_path / "xi_ratings.joblib").write_bytes(b"not a joblib file")
+    """A run whose manifest reads but whose joblib does not: refused, and the reason is
+    kept rather than the process taken down."""
+    from ml.xi import runs
+
+    directory = runs.run_dir(str(tmp_path), "20260902T101500Z-corrupt0")
+    (directory + "/").replace("//", "/")
+    import os
+
+    os.makedirs(directory)
+    (tmp_path / "runs" / "20260902T101500Z-corrupt0" / "xi_ratings.joblib").write_bytes(b"not a joblib file")
+    runs.write_manifest(
+        directory,
+        runs.RunManifest(
+            run_id="20260902T101500Z-corrupt0",
+            created_at="2026-09-02T10:15:00+00:00",
+            cutoff="2025-09-01",
+            dataset_sha="",
+            git_sha="",
+        ),
+    )
     reg = xi_service.XiRegistry()
-    assert reg.reload(str(tmp_path))["loaded"] is False
+
+    status = reg.reload(str(tmp_path))
+
+    assert status["loaded"] is False
+    assert status["error"]
 
 
 def test_registry_status_after_load(registry, artifacts_dir) -> None:
@@ -146,6 +179,10 @@ def test_registry_status_after_load(registry, artifacts_dir) -> None:
     assert status.players > 20
     assert status.ratings_through is not None
     assert status.report["formats"][0]["format_code"] == "T20"
+    # H-16: the status names the run and what its manifest recorded.
+    assert status.run_id
+    assert status.manifest["formats"] == ["T20"]
+    assert status.manifest["hyperparameters"]["T20"]["params"]
     with pytest.raises(xi_service.XiUnavailable, match="ODI"):
         registry.store("ODI")
 
@@ -378,9 +415,9 @@ def test_deliveries_from_rows_handles_empty() -> None:
     assert len(_deliveries_from_rows([])) == 0
 
 
-def test_train_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:
-    """The CLI end to end on two files: every format is skipped for lack of rows, the report
-    and the rating state are still written."""
+def test_retrain_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:
+    """The command end to end on two files: every format is skipped for lack of rows, and
+    the run -- report, rating state and manifest -- is still written."""
     from tests.test_xi_optimizer_and_store import _cricsheet_doc
 
     src = tmp_path / "json"
@@ -389,18 +426,21 @@ def test_train_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:
     (src / "a.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], players, "X", 1)))
     (src / "b.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], players, "Y", 2)))
     out = tmp_path / "artifacts"
-    frame_out = tmp_path / "frame.csv"
 
-    rc = train_main(
-        ["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out), "--frame-out", str(frame_out)]
-    )
+    rc = retrain_main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
 
     assert rc == 0
-    report = json.loads((out / "xi_win_report.json").read_text())
+    from ml.xi import runs
+
+    run_id = runs.newest_run_id(str(out))
+    assert run_id, "a completed retrain leaves a run with a manifest"
+    directory = runs.run_dir(str(out), run_id)
+    report = json.loads(
+        (directory + "/xi_win_report.json").replace("//", "/") and open(directory + "/xi_win_report.json").read()
+    )
     assert report["n_rows"] == 2
     assert all("skipped_reason" in f for f in report["formats"])
-    assert (out / "xi_ratings.joblib").exists()
-    assert frame_out.exists()
+    assert (out / "runs" / run_id / "xi_ratings.joblib").exists()
 
 
 # ---------------------------------------------------------------------------

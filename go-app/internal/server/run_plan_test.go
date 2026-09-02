@@ -70,27 +70,27 @@ func TestStepJob_IsTheSameWorkForEveryCaller(t *testing.T) {
 	}
 }
 
-// TestStepJob_RecordsTrainingOnDefaultParameters: a plan cannot stop to ask, and
-// asking for the whole pipeline is the confirmation — but "why is this model worse?"
-// should have an answer in the history rather than nowhere.
-func TestStepJob_RecordsTrainingOnDefaultParameters(t *testing.T) {
+// TestStepJob_ReloadCarriesTheRunItWasAskedFor: reload is the step that decides which
+// run serves, so the run id has to survive being run by a plan rather than a handler --
+// and a reload with no run id is a legitimate request (reload what `current` names).
+func TestStepJob_ReloadCarriesTheRunItWasAskedFor(t *testing.T) {
 	t.Parallel()
 	app := &App{}
-	step, ok := pipelinesvc.Steps().ByID("train_win")
+	step, ok := pipelinesvc.Steps().ByID("reload")
 	require.True(t, ok)
 
-	planned := app.stepJob(step, StepRequest{ConfirmDefaultParams: true})
-	assert.Equal(t, true, planned.Args["confirm_use_default"])
+	named := app.stepJob(step, StepRequest{RunID: "20260902T101500Z-ab12cd34"})
+	assert.Equal(t, "20260902T101500Z-ab12cd34", named.Args["run_id"])
 
-	manual := app.stepJob(step, StepRequest{})
-	assert.NotContains(t, manual.Args, "confirm_use_default",
-		"a single-step run still asks, so it must not record a confirmation nobody gave")
+	unnamed := app.stepJob(step, StepRequest{})
+	assert.NotContains(t, unnamed.Args, "run_id",
+		"an unnamed reload must not claim a run it was not given")
 }
 
 func TestStepJob_DefaultsTheCutoff(t *testing.T) {
 	t.Parallel()
 	app := &App{}
-	step, ok := pipelinesvc.Steps().ByID("train_win")
+	step, ok := pipelinesvc.Steps().ByID("retrain")
 	require.True(t, ok)
 
 	job := app.stepJob(step, StepRequest{})
@@ -155,7 +155,7 @@ func TestRunPlanStart_EmptyBodyDefaultsToFull(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.Equal(t, runplan.PlanFull, body.Plan)
 	assert.Contains(t, body.Steps, "import")
-	assert.NotContains(t, body.Steps, "auto_tune", "optional steps are never implied")
+	assert.NotContains(t, body.Steps, "evaluate", "optional steps are never implied")
 }
 
 func TestRunPlanState_SaysNothingHasRunRatherThanErroring(t *testing.T) {

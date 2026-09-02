@@ -1,14 +1,11 @@
 package server
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
 
-	"github.com/gorilla/mux"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
-	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
@@ -70,67 +67,6 @@ func (h *OpsHandler) ListMigrations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// GetAutoTuneDetails returns details of tuned params linked to a specific data migration.
-// Route: GET /ops/migrations/{id}/auto-tune
-func (h *OpsHandler) GetAutoTuneDetails(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	idStr := vars["id"]
-	migrationID, err := strconv.Atoi(idStr)
-	if err != nil || migrationID <= 0 {
-		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: "invalid migration id"})
-		return
-	}
-
-	rows, err := db.ListMLTunedParamsByMigration(r.Context(), migrationID)
-	if err != nil {
-		slog.Error(
-			"ops: ListMLTunedParamsByMigration failed",
-			slog.Int("migration_id", migrationID),
-			slog.Any("err", err),
-		)
-		respondErr(w, err)
-		return
-	}
-
-	type responseRun struct {
-		ID        int             `json:"id"`
-		Model     string          `json:"model"`
-		Format    string          `json:"format"`
-		CreatedAt string          `json:"created_at"`
-		Params    json.RawMessage `json:"params,omitempty"`
-		Metrics   json.RawMessage `json:"metrics,omitempty"`
-	}
-
-	resp := struct {
-		MigrationID int           `json:"migration_id"`
-		Runs        []responseRun `json:"runs"`
-	}{
-		MigrationID: migrationID,
-		Runs:        make([]responseRun, 0, len(rows)),
-	}
-
-	for _, row := range rows {
-		var paramsRaw, metricsRaw json.RawMessage
-		if len(row.Params) > 0 {
-			paramsRaw = row.Params
-		}
-		if len(row.Metrics) > 0 {
-			metricsRaw = row.Metrics
-		}
-
-		resp.Runs = append(resp.Runs, responseRun{
-			ID:        row.ID,
-			Model:     row.Model,
-			Format:    row.Format,
-			CreatedAt: row.CreatedAt,
-			Params:    paramsRaw,
-			Metrics:   metricsRaw,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, resp)
-}
-
 type Suggestion struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -146,18 +82,18 @@ func (h *OpsHandler) GetSuggestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seqPopulated, err := db.IsSequenceFeaturesPopulated(ctx)
-	if err != nil {
-		slog.Error("ops: IsSequenceFeaturesPopulated check failed", slog.Any("err", err))
-		seqPopulated = false
-	}
-
-	suggestions := GenerateSuggestions(migrations, seqPopulated)
+	suggestions := GenerateSuggestions(migrations)
 
 	writeJSON(w, http.StatusOK, suggestions)
 }
 
-func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []Suggestion {
+// GenerateSuggestions names the next step the run history says is missing.
+//
+// The chain is the pipeline: import, then retrain, then reload. Each rule fires when a
+// step has never run or last ran before the step it depends on, which is the same
+// ordering the registry's Requires graph states -- read here from what actually
+// happened rather than from what is configured.
+func GenerateSuggestions(migrations []tracking.Migration) []Suggestion {
 	lastRuns := make(map[string]*tracking.Migration)
 	for i := range migrations {
 		m := &migrations[i]
@@ -172,11 +108,9 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	}
 
 	lastImport := lastRuns["cricsheet-import"]
-	lastPrecompute := lastRuns["precompute-features"]
-	lastExport := lastRuns["export-dataset"]
-	lastTrainWin := lastRuns["train-win"]
+	lastRetrain := lastRuns["xi-retrain"]
+	lastReload := lastRuns["xi-reload"]
 
-	// Rule 0: Initialize if no successful import found
 	if lastImport == nil {
 		return []Suggestion{{
 			Title:       "Initialize Data",
@@ -186,45 +120,23 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 		}}
 	}
 
-	// Rule: Missing Sequence Data (Critical fix)
-	// Even if precompute is recent, if data is missing, we must re-run.
-	if !seqPopulated {
+	if lastRetrain == nil || lastRetrain.StartedAt.Before(lastImport.StartedAt) {
 		return []Suggestion{{
-			Title:       "Fix Missing Features",
-			Description: "Feature tables (form, consistency, sequence) are empty or incomplete. Run from project root to compute all features for all formats.",
-			Command:     "make precompute-all-all-formats",
-			Priority:    "HIGH",
+			Title: "Retrain",
+			Description: "New data imported, so the ratings and the models are behind it. Retrain runs the " +
+				"rating pass, the XI win models, the performance models and L4's report into a new run.",
+			Command:  "make retrain CUTOFF=2025-09-01",
+			Priority: "HIGH",
 		}}
 	}
 
-	// Rule 1: Import -> Precompute
-	if lastPrecompute == nil || lastPrecompute.StartedAt.Before(lastImport.StartedAt) {
+	if lastReload == nil || lastReload.StartedAt.Before(lastRetrain.StartedAt) {
 		return []Suggestion{{
-			Title:       "Run Full Precompute",
-			Description: "New data imported. Run from project root to compute all features (form, consistency, sequence) for all formats (TEST, ODI, T20, T20I).",
-			Command:     "make precompute-all-all-formats",
-			Priority:    "HIGH",
-		}}
-	}
-
-	// Rule 2: Precompute -> Export
-	if lastExport == nil || lastExport.StartedAt.Before(lastPrecompute.StartedAt) {
-		return []Suggestion{{
-			Title:       "Export Dataset",
-			Description: "Features updated. Exports the cross-format and per-format CSVs to output/go-app.",
-			Command:     "make export-dataset",
-			Priority:    "MEDIUM",
-		}}
-	}
-
-	// Rule 3: Export -> Train
-	if lastTrainWin == nil || lastTrainWin.StartedAt.Before(lastExport.StartedAt) {
-		return []Suggestion{{
-			Title: "Train Win Model",
-			Description: "New dataset exported. Run from project root. Produces one model per format. " +
-				"Run make ml-install first if venv deps are missing.",
-			Command:  "make train-win",
-			Priority: "MEDIUM",
+			Title: "Reload",
+			Description: "A run has been trained but nothing is serving it: reload points `current` at a run " +
+				"and loads it into the running service.",
+			Command:  "make reload",
+			Priority: "HIGH",
 		}}
 	}
 

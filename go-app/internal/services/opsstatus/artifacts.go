@@ -6,46 +6,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
-	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
-// formats supported for reporting (canonical order from internal/formats)
-var artifactFormats = formatsPkg.CanonicalCodes()
+// RunsDirName is the directory under the artifacts root that holds one subdirectory per
+// training run. It mirrors ml.xi.runs.RUNS_DIRNAME; the fallback scan below is the only
+// reason go-app needs to know it.
+const RunsDirName = "runs"
 
-// artifactKind names one family of per-format model artifacts and how it is named on disk.
-// A kind with a scaler needs both files before it counts as present: the model alone cannot
-// be loaded for inference.
-type artifactKind struct {
-	name         string
-	modelPrefix  string
-	scalerPrefix string // empty when the kind trains without one
-}
-
-// artifactKinds is the single list this package reports on: the models `make train-models`
-// produces. Everything below derives from it, so a model kind cannot be trained by the
-// pipeline and stay invisible in /ops/status -- which is what happened to innings.
-var artifactKinds = []artifactKind{
-	{name: "batting", modelPrefix: "batting_model_", scalerPrefix: "batting_scaler_"},
-	{name: "bowling", modelPrefix: "bowling_model_", scalerPrefix: "bowling_scaler_"},
-	{name: "fielding", modelPrefix: "fielding_model_", scalerPrefix: "fielding_scaler_"},
-	{name: "extras", modelPrefix: "extras_model_"},
-	{name: "win", modelPrefix: "win_model_"},
-	{name: "innings", modelPrefix: "innings_model_", scalerPrefix: "innings_scaler_"},
-}
-
-func artifactKindByName(name string) (artifactKind, bool) {
-	for _, k := range artifactKinds {
-		if k.name == name {
-			return k, true
-		}
-	}
-	return artifactKind{}, false
-}
+// manifestName is the file that makes a directory a run (H-16). A directory of joblib
+// files without one is not a run and is not reported as one.
+const manifestName = "manifest.json"
 
 // ArtifactsFallbackRoot returns the filesystem root for the artifacts fallback scan
 // when the ML service is unreachable. GO_APP_ARTIFACTS_ROOT overrides the default.
@@ -56,8 +32,18 @@ func ArtifactsFallbackRoot() string {
 	return filepath.Join("output", "ml-service")
 }
 
-// BuildArtifactsSection probes the ML service (if available) and/or filesystem to
-// construct the artifacts section for /ops/status. It also returns the mlHealth bool.
+// BuildArtifactsSection reports which run ml-service is serving and which runs exist.
+//
+// It reports runs rather than a formats-by-model-kind matrix because a run is what an
+// artifact belongs to now (H-16): the question "is the model current?" is answered by
+// which run `current` points at and whether that is the run the process loaded, not by
+// six per-format files each of which could come from a different training session.
+//
+// ml-service is the authority — it is the process that loaded something — and its
+// /artifacts/status answer is copied through whole, including any refusal it reports
+// (D-6: a run whose arrays this code cannot serve is refused, not loaded). The
+// filesystem scan is the fallback for an unreachable service and can only say what is
+// on disk, never what is loaded.
 func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[string]any, mlHealth bool) {
 	base := os.Getenv("ML_SERVICE_URL")
 	if strings.TrimSpace(base) == "" {
@@ -68,66 +54,65 @@ func BuildArtifactsSection(client *http.Client, fsRoot string) (section map[stri
 		client = &http.Client{Timeout: time.Duration(sec) * time.Second}
 	}
 
-	section = map[string]any{
-		"root":    fsRoot,
-		"formats": map[string]any{},
-	}
-	fm := map[string]any{}
-	for _, f := range artifactFormats {
-		row := map[string]any{}
-		for _, kind := range artifactKinds {
-			row[kind.name] = map[string]any{"exists": false}
-		}
-		fm[f] = row
-	}
-	section["formats"] = fm
-
 	type healthResp struct {
-		Status       string `json:"status"`
-		BattingModel bool   `json:"batting_model"`
-		BowlingModel bool   `json:"bowling_model"`
+		Status string `json:"status"`
 	}
 	if h, err := httpGetJSON[healthResp](client, base+"/health"); err == nil && strings.EqualFold(h.Status, "ok") {
 		mlHealth = true
 	}
 
-	var art map[string]any
 	if resp, code, err := httpGetRaw(client, base+"/artifacts/status"); err == nil && code >= 200 && code < 300 {
-		if err := json.Unmarshal(resp, &art); err == nil {
-			if formatsAny, ok := art["formats"].(map[string]any); ok {
-				for _, f := range artifactFormats {
-					if fa, ok := formatsAny[f].(map[string]any); ok {
-						tgt := fm[f].(map[string]any)
-						// Copied whole, so whatever the ML service reports per cell -- including
-						// its `loaded` and `stale` verdicts -- reaches the console unflattened.
-						for _, kind := range artifactKinds {
-							if b, ok := fa[kind.name].(map[string]any); ok {
-								tgt[kind.name] = b
-							}
-						}
-						fm[f] = tgt
-					}
-				}
-				section["formats"] = fm
-				return section, mlHealth
-			}
+		var art map[string]any
+		if err := json.Unmarshal(resp, &art); err == nil && art["runs"] != nil {
+			return art, mlHealth
 		}
 	}
 
-	entries, _ := os.ReadDir(fsRoot)
-	for _, f := range artifactFormats {
-		for _, kind := range artifactKinds {
-			if p, mod, ok := findPerFormatArtifact(entries, fsRoot, f, kind.name); ok {
-				m := fm[f].(map[string]any)[kind.name].(map[string]any)
-				m["exists"] = true
-				m["path"] = p
-				m["modified"] = mod.UTC().Format(time.RFC3339)
-				fm[f].(map[string]any)[kind.name] = m
-			}
+	return scanRuns(fsRoot), mlHealth
+}
+
+// scanRuns lists the runs on disk when ml-service cannot be asked. It reports each run's
+// manifest and says so when a directory has none, which is the on-disk half of D-6's
+// question: a directory of artifacts nothing can attribute to a run.
+func scanRuns(fsRoot string) map[string]any {
+	section := map[string]any{"root": fsRoot, "reachable": false, "runs": []map[string]any{}}
+	entries, err := os.ReadDir(filepath.Join(fsRoot, RunsDirName))
+	if err != nil {
+		return section
+	}
+	runs := make([]map[string]any, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		runs = append(runs, describeRunDir(filepath.Join(fsRoot, RunsDirName, e.Name()), e.Name()))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i]["run_id"].(string) > runs[j]["run_id"].(string)
+	})
+	section["runs"] = runs
+	return section
+}
+
+// describeRunDir reads one run directory's manifest, reporting the absence of one rather
+// than guessing at the contents.
+func describeRunDir(dir, name string) map[string]any {
+	out := map[string]any{"run_id": name, "path": dir, "has_manifest": false}
+	raw, err := os.ReadFile(filepath.Join(dir, manifestName))
+	if err != nil {
+		return out
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return out
+	}
+	out["has_manifest"] = true
+	for _, key := range []string{"run_id", "created_at", "cutoff", "git_sha", "dataset_sha", "formats"} {
+		if v, ok := manifest[key]; ok {
+			out[key] = v
 		}
 	}
-	section["formats"] = fm
-	return section, mlHealth
+	return out
 }
 
 func httpGetJSON[T any](client *http.Client, url string) (T, error) {
@@ -167,53 +152,6 @@ func httpGetRaw(client *http.Client, url string) ([]byte, int, error) {
 		return nil, resp.StatusCode, err
 	}
 	return b, resp.StatusCode, nil
-}
-
-func findPerFormatArtifact(
-	entries []os.DirEntry,
-	root string,
-	format string,
-	kind string,
-) (path string, mod time.Time, ok bool) {
-	ak, known := artifactKindByName(kind)
-	if !known {
-		return "", time.Time{}, false
-	}
-	needScaler, modelPrefix := ak.scalerPrefix, ak.modelPrefix
-	modelSuffix := format + ".joblib"
-	scalerSuffix := format + ".joblib"
-	hasScaler := needScaler == ""
-	var modelPath string
-	var modelMod time.Time
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		lower := strings.ToLower(name)
-		if !strings.HasSuffix(lower, ".joblib") {
-			continue
-		}
-		if needScaler != "" && strings.HasPrefix(lower, strings.ToLower(needScaler)) &&
-			strings.HasSuffix(lower, strings.ToLower(scalerSuffix)) {
-			hasScaler = true
-			continue
-		}
-		if strings.HasPrefix(lower, strings.ToLower(modelPrefix)) &&
-			strings.HasSuffix(lower, strings.ToLower(modelSuffix)) {
-			full := filepath.Join(root, name)
-			info, err := os.Stat(full)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			modelPath = full
-			modelMod = info.ModTime()
-		}
-	}
-	if hasScaler && modelPath != "" {
-		return modelPath, modelMod, true
-	}
-	return "", time.Time{}, false
 }
 
 type httpError struct{ code int }

@@ -1,8 +1,12 @@
 """Training orchestration: subprocess invocation and job helpers for /admin/train/*.
 
-Handlers in main.py validate HTTP input and call these functions; they do not
-embed subprocess or env logic. Concurrency (semaphore) remains in main so async
-boundaries stay clear.
+Two steps run through here: ``retrain`` (``ml.xi.retrain`` -- the rating pass, the win
+models, the performance models, the report and the run manifest) and ``evaluate``
+(``ml.xi.evaluate`` -- L4 at a cutoff, touching no artifact ``current`` points at).
+
+Handlers in main.py validate HTTP input and call these functions; they do not embed
+subprocess or env logic. Concurrency (semaphore) remains in main so async boundaries
+stay clear.
 """
 
 from __future__ import annotations
@@ -11,9 +15,6 @@ import os
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
-
-from ml import auto_tune_progress
-from ml.config import get_format_codes
 
 # Logger type: any object with info, warning, error, debug
 Logger = Any
@@ -92,43 +93,36 @@ def run_training_subprocess(
         raise ValueError(f"Training failed (exit {proc.returncode})")
 
 
-def export_csvs_available(prefix: str) -> bool:
-    """True if GO_APP_OUTPUT_DIR contains at least one CSV matching prefix."""
-    out_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
-    if not out_dir or not os.path.isdir(out_dir):
-        return False
-    try:
-        for name in os.listdir(out_dir):
-            if name.startswith(prefix) and name.endswith(".csv"):
-                return True
-    except OSError:
-        pass
-    return False
+def run_retrain(cutoff: str, artifacts_dir: str, logger: Optional[Logger] = None) -> None:
+    """Run the retrain step. Raises ValueError on failure.
 
-
-def run_win_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run win model training (requires cutoff). Raises ValueError on failure."""
+    Reads the database rather than any exported CSV: the rating pass is one ordered scan
+    of ``ball_event``, which is why the precompute and export steps could go at all.
+    """
     if logger:
-        logger.info("admin.train.start", step="win", cutoff=cutoff, go_app_url=go_app_url)
+        logger.info("admin.train.start", step="retrain", cutoff=cutoff, artifacts_dir=artifacts_dir)
     run_training_subprocess(
-        "ml.train_win",
-        ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        {"ML_N_JOBS": "-1"},
+        "ml.xi.retrain",
+        ["--postgres", "--cutoff", cutoff, "--out", artifacts_dir],
         logger=logger,
     )
     if logger:
-        logger.info("admin.train.success", step="win")
+        logger.info("admin.train.success", step="retrain")
 
 
-def get_auto_tune_progress_path() -> Optional[str]:
-    """Return an explicitly configured auto-tune progress file, or None.
+def run_evaluate(cutoff: str, artifacts_dir: str, logger: Optional[Logger] = None) -> None:
+    """Run L4 at a cutoff, writing its report beside the runs and publishing nothing.
 
-    Progress files are now per-run (ops plan O-1), so there is no single path to
-    return in the ordinary case -- `get_auto_tune_progress` finds the live one. This
-    survives only for `AUTO_TUNE_PROGRESS_FILE`, which pins a path for tests and for
-    an operator who wants to watch one file with `tail`.
+    ``cutoff`` is accepted and logged but not passed on: the harness's rolling origins
+    and its locked window are the definition of L4 (H-19), and letting a caller move
+    them would make two runs of "evaluate" incomparable -- which is the failure H-23
+    is about. It is here because the pipeline step carries a cutoff for every step.
     """
-    return os.environ.get("AUTO_TUNE_PROGRESS_FILE") or None
+    if logger:
+        logger.info("admin.train.start", step="evaluate", cutoff=cutoff, artifacts_dir=artifacts_dir)
+    run_training_subprocess("ml.xi.evaluate", ["--postgres", "--out", artifacts_dir], logger=logger)
+    if logger:
+        logger.info("admin.train.success", step="evaluate")
 
 
 def get_step_progress(step: str, run_id: str = "") -> Dict[str, Any]:
@@ -152,13 +146,6 @@ def get_step_progress(step: str, run_id: str = "") -> Dict[str, Any]:
 
     if run_id.strip():
         return run_progress.read(run_progress.progress_path(step, run_id.strip()))
-
-    # AUTO_TUNE_PROGRESS_FILE pins a path for tests and for an operator watching one
-    # file with tail. It only ever described auto-tune, so it only applies there.
-    if step == auto_tune_progress.STEP:
-        pinned = get_auto_tune_progress_path()
-        if pinned:
-            return run_progress.read(pinned)
 
     return run_progress.latest_for_step(step)
 
@@ -200,73 +187,3 @@ def train_response(step: str, run_id: str = "") -> Dict[str, Any]:
     if summary:
         body["summary"] = summary
     return body
-
-
-def get_auto_tune_progress() -> Dict[str, Any]:
-    """Return live auto-tune progress. The auto-tune view of `get_step_progress`.
-
-    Kept because `GET /admin/train/auto-tune/progress` is a released endpoint, but it
-    delegates rather than duplicating: one implementation, two routes.
-    """
-    return get_step_progress(auto_tune_progress.STEP)
-
-
-# One model is left to tune; the regression trainers went in P-5.
-VALID_AUTO_TUNE_MODELS = ("win",)
-VALID_AUTO_TUNE_FORMATS = tuple(get_format_codes())
-
-
-def run_auto_tune(
-    cutoff: str,
-    go_app_url: str,
-    model: str,
-    use_all_formats: bool,
-    fmt: str,
-    rescreen: bool,
-    algorithms: str,
-    logger: Optional[Logger] = None,
-) -> None:
-    """Run auto-tune subprocess. Raises ValueError on failure.
-
-    A format is required: artifacts and tuned-params rows are both keyed by it.
-    """
-    if not use_all_formats and not fmt.strip():
-        raise ValueError("auto-tune requires a format: pass format=<CODE> or all_formats=1")
-    extra = [
-        "--model",
-        model,
-        "--from-api",
-        "--cutoff",
-        cutoff,
-        "--go-app-url",
-        go_app_url,
-    ]
-    if use_all_formats:
-        extra.append("--all-formats")
-    else:
-        extra.extend(["--format", fmt])
-    if rescreen:
-        extra.append("--rescreen")
-    if algorithms.strip():
-        extra.extend(["--algorithms", algorithms.strip()])
-    extra.append("--parallel")
-    subprocess_env: Optional[Dict[str, str]] = None
-    single_task = model != "all" and not use_all_formats
-    if single_task:
-        subprocess_env = {"AUTO_TUNE_N_JOBS": "-1"}
-    if logger:
-        logger.info(
-            "admin.train.start",
-            step="auto-tune",
-            cutoff=cutoff,
-            go_app_url=go_app_url,
-            model=model,
-            all_formats=use_all_formats,
-            format=fmt or None,
-            rescreen=rescreen,
-            algorithms=algorithms.strip() or None,
-            single_task=single_task,
-        )
-    run_training_subprocess("ml.auto_tune", extra, subprocess_env, logger=logger)
-    if logger:
-        logger.info("admin.train.success", step="auto-tune")

@@ -144,7 +144,7 @@ func TestLaneBusy(t *testing.T) {
 	setupPipelineDB(t, mockDB)
 	mockDB.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 		Return(scanBoolRow(true))
-	busy, err := LaneBusy(context.Background(), "export-dataset")
+	busy, err := LaneBusy(context.Background(), "xi-retrain")
 	require.NoError(t, err)
 	assert.True(t, busy)
 
@@ -152,7 +152,7 @@ func TestLaneBusy(t *testing.T) {
 	setupPipelineDB(t, mockDB2)
 	mockDB2.On("QueryRow", mock.Anything, mock.Anything, mock.Anything).
 		Return(scanBoolRow(false))
-	busy, err = LaneBusy(context.Background(), "export-dataset")
+	busy, err = LaneBusy(context.Background(), "xi-retrain")
 	require.NoError(t, err)
 	assert.False(t, busy)
 }
@@ -173,8 +173,8 @@ func TestLaneBusyCoversEveryComputeStep(t *testing.T) {
 		assert.Contains(t, compute, step.Command,
 			"%s is a compute step but does not hold the compute lane", step.ID)
 	}
-	assert.Contains(t, compute, "train-win")
-	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "train-win")
+	assert.Contains(t, compute, "xi-retrain")
+	assert.NotContains(t, registry.CommandsInLane(steps.LaneData), "xi-retrain")
 }
 
 func TestRunJob_WithTimeout(t *testing.T) {

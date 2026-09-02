@@ -18,16 +18,6 @@ type ServerConfig struct {
 	ListenAddress          string `json:"listen_address"`                 // default :8080; PORT env overrides
 }
 
-// BacktestJobConfig holds job cleanup and duration for backtest export-contributions and eval jobs.
-type BacktestJobConfig struct {
-	CleanupAgeHours             int `json:"job_cleanup_age_hours"`                    // remove jobs older than this (default 24)
-	CleanupIntervalMin          int `json:"job_cleanup_interval_min"`                 // cleanup run interval (default 15)
-	ExportContributionsMaxDurHr int `json:"export_contributions_job_max_duration_hr"` // max duration per job (default 2)
-	EvalJobMaxDurationHr        int `json:"eval_job_max_duration_hr"`                 // max duration for eval job (default 6)
-	EvalJobConcurrencyMin       int `json:"eval_job_concurrency_min"`                 // min concurrent eval jobs (default 2)
-	EvalJobConcurrencyMax       int `json:"eval_job_concurrency_max"`                 // max concurrent eval jobs (default 8)
-}
-
 // OpsConfig holds ops dashboard pagination and caps.
 type OpsConfig struct {
 	MigrationsPageDefault int `json:"migrations_page_default"` // default page size (default 10)
@@ -36,19 +26,16 @@ type OpsConfig struct {
 	RecentMigrationsCount int `json:"recent_migrations_count"` // number of recent migrations for suggestions (default 100)
 }
 
-// ResourcesConfig holds memory estimates and concurrency knobs (overridable by env for pipeline kinds).
+// ResourcesConfig holds the memory estimate and the headroom fraction the import
+// pipeline's concurrency is derived from. Import is the only pipeline left that runs
+// workers in this process; everything else moved to ml-service (P-5) or was deleted
+// with its producer (P-6).
 type ResourcesConfig struct {
-	PrecomputeMBPerWorker            int `json:"precompute_mb_per_worker"`             // default 450
-	ImportMBPerWorker                int `json:"import_mb_per_worker"`                 // default 150
-	ExportMBPerWorker                int `json:"export_mb_per_worker"`                 // default 100
-	SeqCalcMBPerWorker               int `json:"seqcalc_mb_per_worker"`                // default 500
-	FieldingMBPerWorker              int `json:"fielding_mb_per_worker"`               // default 100
-	MemoryUsageFractionPercent       int `json:"memory_usage_fraction_percent"`        // percent of limit for workers (default 85)
-	SeqCalcLowMemoryLimitGiB         int `json:"seqcalc_low_memory_limit_gib"`         // cap seqcalc concurrency to 1 below this (default 2)
-	PrecomputeConcurrencyWhenNoLimit int `json:"precompute_concurrency_when_no_limit"` // 0 = auto (NumCPU); set >0 to cap (default 0)
+	ImportMBPerWorker          int `json:"import_mb_per_worker"`          // default 150
+	MemoryUsageFractionPercent int `json:"memory_usage_fraction_percent"` // percent of limit for workers (default 85)
 }
 
-// Config holds directory defaults for go-app commands.
+// Config holds directory defaults and the settings go-app still honours.
 type Config struct {
 	Server ServerConfig `json:"server"`
 	Inputs struct {
@@ -61,71 +48,23 @@ type Config struct {
 		CricsheetSourceURL string `json:"cricsheet_source_url"`
 	} `json:"inputs"`
 	Outputs struct {
-		ExportDir string `json:"export_dir"`
+		// Dir is go-app's own output directory. It held the export CSVs until P-6
+		// deleted them; what is left is the resource-observation file the import
+		// pipeline's concurrency is derived from.
+		Dir string `json:"dir"`
 	} `json:"outputs"`
 	Formats struct {
 		TreatT20ISubset    bool     `json:"treat_t20i_as_subset"`
 		InternationalTeams []string `json:"international_teams"`
 	} `json:"formats"`
-	Features struct {
-		PrecomputeTimeoutMs  int     `json:"precompute_timeout_ms"`
-		ExportTimeoutMs      int     `json:"export_timeout_ms"` // optional; 0 = use pipeline timeout
-		MinBattingInnings    int     `json:"min_batting_innings"`
-		MinBowlingInnings    int     `json:"min_bowling_innings"`
-		FormShrinkageAlpha   float32 `json:"form_shrinkage_alpha"`
-		ConsistencyPerFormat bool    `json:"consistency_per_format"`
-		HistoryWindowMatches int     `json:"history_window_matches"`
-		// Feature extraction (EWM form, consistency). Used by export/training-data and precompute when not overridden by CLI.
-		EWMAlpha         float64 `json:"ewm_alpha"`          // (0,1]; default 0.3
-		EWMAlphaShort    float64 `json:"ewm_alpha_short"`    // for form_short (more recent); default 0.5
-		EWMAlphaLong     float64 `json:"ewm_alpha_long"`     // for form_long (longer horizon); default 0.2
-		ConsistencyLastN int     `json:"consistency_last_n"` // last-N innings for consistency; default 10
-		FormWindowN      int     `json:"form_window_n"`      // max innings for form (0 = no limit); default 0
-		MomentumLastN    int     `json:"momentum_last_n"`    // last-N innings for momentum slope; default 5
-		FieldingEnrich   struct {
-			EWMAlpha           float64 `json:"ewm_alpha"`             // EWM alpha for fielding form fallback; default 0.3
-			FormToCatchesRatio float64 `json:"form_to_catches_ratio"` // split of form into catches (rest = run_outs); default 0.7
-		} `json:"fielding_enrich"`
-	} `json:"features"`
-	Export struct {
-		RequiredFormat string `json:"required_format"`
-	} `json:"export"`
 	Team struct {
 		MinBowlers     int `json:"min_bowlers"`
 		DefaultBatters int `json:"default_batters"`
 		DefaultBowlers int `json:"default_bowlers"`
 	} `json:"team"`
-	Weather struct {
-		Enabled           bool     `json:"enabled"`
-		RateLimitPerSec   int      `json:"rate_limit_per_sec"`
-		MaxAttempts       int      `json:"max_attempts"`
-		GeocodeCacheOnly  bool     `json:"geocode_cache_only"`
-		OverwriteExisting bool     `json:"overwrite_existing"`
-		WhitelistVenues   []string `json:"whitelist_venues"`
-		Mocks             struct {
-			Temp      int `json:"temp"`
-			Wind      int `json:"wind"`
-			Rain      int `json:"rain"`
-			Humidity  int `json:"humidity"`
-			Cloud     int `json:"cloud"`
-			Pressure  int `json:"pressure"`
-			Viscosity int `json:"viscosity"`
-			Session   int `json:"session"`
-		} `json:"mocks"`
-	} `json:"weather"`
 	Predictor struct {
 		TeamSize int `json:"team_size"`
 	} `json:"predictor"`
-	Backtest struct {
-		ExportMaxMatchIDs              int                `json:"export_max_match_ids"`             // max match_ids per export-contributions request (0 = use default)
-		ListDefaultLimit               int                `json:"list_default_limit"`               // default limit for matches-after/holdout (0 = 50)
-		ListMaxLimit                   int                `json:"list_max_limit"`                   // max limit (0 = 500)
-		AccuracyTrendDefaultLimit      int                `json:"accuracy_trend_default_limit"`     // default accuracy-trend limit (0 = 100)
-		AccuracyTrendMaxLimit          int                `json:"accuracy_trend_max_limit"`         // max (0 = 500)
-		AccuracyTrendConcurrency       int                `json:"accuracy_trend_concurrency"`       // max concurrent workers for accuracy-trend computations (0 = use default)
-		ExportContributionsConcurrency int                `json:"export_contributions_concurrency"` // max concurrent workers for export-contributions jobs (0 = use default)
-		Job                            *BacktestJobConfig `json:"job"`                              // job cleanup/duration; nil = use defaults
-	} `json:"backtest"`
 	Ops       OpsConfig        `json:"ops"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants
 	// Selection is what go-app still decides about an XI. The objective, the search and the
@@ -135,14 +74,10 @@ type Config struct {
 		MaxWinProbEvalBudget int `json:"max_win_prob_eval_budget"` // XIs ml-service may score per side per round (0 = 500)
 		BestResponseRounds   int `json:"best_response_rounds"`     // alternating best-response rounds (0 = 3)
 	} `json:"selection"`
-	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {
-		PrecomputeConcurrency      int `json:"precompute_concurrency"`         // 0 = auto
-		ImportConcurrency          int `json:"import_concurrency"`             // 0 = auto (cricsheet)
-		SeqCalcConcurrency         int `json:"seqcalc_concurrency"`            // 0 = auto
-		ExportConcurrency          int `json:"export_concurrency"`             // 0 = auto
-		FieldingConcurrency        int `json:"fielding_concurrency"`           // 0 = auto
-		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180; only used before any format completes; after that ETA uses observed time per format (e.g. set ~2700 for ~45 min per format on slower machines)
-		ReplayMatchPageSize        int `json:"replay_match_page_size"`         // matches per chunk in precompute replay (0 = 500)
+		// ImportTimeoutMs bounds an import run. 0 = no timeout (only shutdown cancels).
+		ImportTimeoutMs int `json:"import_timeout_ms"`
+		// ImportConcurrency overrides the resource-aware derivation. 0 = auto.
+		ImportConcurrency int `json:"import_concurrency"`
 	} `json:"pipeline"`
 }

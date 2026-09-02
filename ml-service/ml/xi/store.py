@@ -22,10 +22,60 @@ from ml.xi import contract as C
 from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState, aggregate_side, xi_feature_vector
 from ml.xi.rows import serving_match, team_context_or_neutral
+from ml.xi.runs import RunArtifactsInvalid, read_manifest
 
 logger = logging.getLogger(__name__)
 
 RATINGS_ARTIFACT = "xi_ratings.joblib"
+
+# The arrays the serving path reads, split by what their last axis is.
+#
+# They are named constants because they are the shape a run has to have: D-6 (§10.5) was
+# an artifact written before P-2, missing the nine arrays P-2 and P-3 added, which
+# ``_state_from_payload`` left at the constructor's initial width -- so the first request
+# touching a player past slot 1024 raised IndexError while /xi/status said loaded: true.
+#
+# The split matters to the check, not just to the reader. A player array's last axis is
+# the player slot, so its width has to cover every registered key; a context array is
+# indexed by (innings, format) or (innings, format, over), so its width says nothing
+# about players and checking it against them would refuse every healthy run.
+PLAYER_ARRAY_NAMES = (
+    "bat_rae",
+    "bat_balls",
+    "bat_wae",
+    "bat_matches",
+    "bowl_rse",
+    "bowl_balls",
+    "bowl_wae",
+    "bowl_matches",
+    "career",
+    "career_all",
+    "keeper",
+    "pelo",
+    "bat_pos_sum",
+    "bat_pos_n",
+    "xi_n",
+    "bat_ph_rae",
+    "bat_ph_balls",
+    "bowl_ph_rse",
+    "bowl_ph_balls",
+    "seq_num",
+    "seq_den",
+)  # fmt: skip
+
+CONTEXT_ARRAY_NAMES = (
+    "ctx_balls",
+    "ctx_runs",
+    "ctx_wickets",
+    "ctx_extras",
+    "ctx_deliveries",
+    "ctx_bowler_wickets",
+    "ctx_dismissals",
+    "ctx_full_innings_deliveries",
+    "ctx_full_innings",
+)  # fmt: skip
+
+STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
 
 
 def model_artifact_name(format_code: str) -> str:
@@ -56,41 +106,7 @@ def _state_to_payload(state: RatingState) -> Dict:
     return {
         "keys": list(state.players.keys),
         "gender_split_context": state.gender_split_context,
-        "arrays": {
-            name: getattr(state, name)
-            for name in (
-                "bat_rae",
-                "bat_balls",
-                "bat_wae",
-                "bat_matches",
-                "bowl_rse",
-                "bowl_balls",
-                "bowl_wae",
-                "bowl_matches",
-                "career",
-                "career_all",
-                "keeper",
-                "pelo",
-                "bat_pos_sum",
-                "bat_pos_n",
-                "xi_n",
-                "bat_ph_rae",
-                "bat_ph_balls",
-                "bowl_ph_rse",
-                "bowl_ph_balls",
-                "seq_num",
-                "seq_den",
-                "ctx_balls",
-                "ctx_runs",
-                "ctx_wickets",
-                "ctx_extras",
-                "ctx_deliveries",
-                "ctx_bowler_wickets",
-                "ctx_dismissals",
-                "ctx_full_innings_deliveries",
-                "ctx_full_innings",
-            )  # fmt: skip
-        },
+        "arrays": {name: getattr(state, name) for name in STATE_ARRAY_NAMES},
         "team_elo": dict(state.team_elo),
         "team_results": dict(state.team_results),
         "head_to_head": dict(state.head_to_head),
@@ -101,7 +117,51 @@ def _state_to_payload(state: RatingState) -> Dict:
     }
 
 
-def _state_from_payload(payload: Dict) -> RatingState:
+def state_shape(state: RatingState) -> Dict:
+    """The shape a run's rating state is in, for its manifest.
+
+    Recorded so a manifest can be read without loading the joblib, and so the refusal
+    below can quote what the run claims as well as what the payload holds.
+    """
+    return {
+        "players": len(state.players),
+        "arrays": {name: list(getattr(state, name).shape) for name in STATE_ARRAY_NAMES},
+    }
+
+
+def _check_payload_shape(payload: Dict, run_id: str) -> None:
+    """Refuse a rating payload this code cannot serve, naming the run and the shape (D-6).
+
+    Two things can be wrong. An array this code reads may be absent, which is the
+    pre-P-2 artifact: assigning only what the payload carries leaves the rest at the
+    constructor's initial width and the failure surfaces as an IndexError deep inside a
+    prediction. Or a *player* array may be present but narrower than the number of
+    registered players, which is the same failure with the arrays half-written.
+    """
+    arrays = payload.get("arrays") or {}
+    players = len(payload.get("keys") or [])
+    missing = [name for name in STATE_ARRAY_NAMES if name not in arrays]
+    if missing:
+        raise RunArtifactsInvalid(
+            f"run {run_id}: the rating artifact is missing {len(missing)} array(s) this code reads "
+            f"({', '.join(missing)}); it was written by an older pass and cannot be served. "
+            f"Retrain to produce a run with all {len(STATE_ARRAY_NAMES)} arrays."
+        )
+    narrow = [
+        f"{name} has width {arrays[name].shape[-1]}, expected {players}"
+        for name in PLAYER_ARRAY_NAMES
+        if arrays[name].shape[-1] < players
+    ]
+    if narrow:
+        raise RunArtifactsInvalid(
+            f"run {run_id}: the rating artifact registers {players} players but "
+            f"{len(narrow)} array(s) are narrower than that ({'; '.join(narrow[:3])}"
+            f"{', ...' if len(narrow) > 3 else ''}); it cannot answer for every player it names"
+        )
+
+
+def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
+    _check_payload_shape(payload, run_id)
     state = RatingState(gender_split_context=bool(payload.get("gender_split_context", False)))
     for k in payload["keys"]:
         state.players.slot(k)
@@ -124,8 +184,8 @@ def save_ratings(state: RatingState, artifacts_dir: str) -> str:
     return path
 
 
-def load_ratings(artifacts_dir: str) -> RatingState:
-    return _state_from_payload(joblib.load(os.path.join(artifacts_dir, RATINGS_ARTIFACT)))
+def load_ratings(artifacts_dir: str, run_id: str = "unnamed") -> RatingState:
+    return _state_from_payload(joblib.load(os.path.join(artifacts_dir, RATINGS_ARTIFACT)), run_id)
 
 
 def save_models(models: FormatModels, artifacts_dir: str) -> str:
@@ -154,10 +214,20 @@ class XiStore:
         self.state = state
         self.models = models
         self.performance = performance or {}
+        # The run these models came from, set by ``load``. None for a store assembled in
+        # a test or by ``with_state``, which serves the same models over another state.
+        self.manifest = None
 
     @classmethod
-    def load(cls, artifacts_dir: str) -> "XiStore":
-        state = load_ratings(artifacts_dir)
+    def load(cls, run_directory: str) -> "XiStore":
+        """Load one run's artifacts, or refuse with an error naming the run (H-16, D-6).
+
+        The manifest is read first and on purpose: a directory of joblib files nothing
+        can attribute to a run is not a run, and "it loaded" was never the question.
+        """
+        manifest = read_manifest(run_directory)
+        artifacts_dir = run_directory
+        state = load_ratings(artifacts_dir, manifest.run_id)
         models: Dict[str, FormatModels] = {}
         performance: Dict[str, PerformanceModels] = {}
         for fmt in C.FORMAT_CODES:
@@ -168,14 +238,20 @@ class XiStore:
             if os.path.exists(performance_path):
                 performance[fmt] = joblib.load(performance_path)
         if not models:
-            raise FileNotFoundError(f"no xi_win_<FORMAT>.joblib artifacts in {artifacts_dir}")
+            raise RunArtifactsInvalid(
+                f"run {manifest.run_id}: no xi_win_<FORMAT>.joblib artifacts in {artifacts_dir}, "
+                f"though its manifest names formats {manifest.formats}"
+            )
         logger.info(
-            "xi store loaded: win formats %s, performance formats %s, %d players",
+            "xi store loaded: run %s, win formats %s, performance formats %s, %d players",
+            manifest.run_id,
             sorted(models),
             sorted(performance),
             len(state.players),
         )
-        return cls(state, models, performance)
+        store = cls(state, models, performance)
+        store.manifest = manifest
+        return store
 
     def has_format(self, format_code: str) -> bool:
         return format_code in self.models
@@ -186,7 +262,9 @@ class XiStore:
     def with_state(self, state: RatingState) -> "XiStore":
         """The same models over a different rating state -- how a backtest serves
         "ratings as of date D" (see ``ml.xi.asof``) instead of "through today"."""
-        return XiStore(state, self.models, self.performance)
+        store = XiStore(state, self.models, self.performance)
+        store.manifest = self.manifest
+        return store
 
     def covers_as_of(self, as_of) -> bool:
         """Whether the loaded through-today state already is the as-of state for ``as_of``:

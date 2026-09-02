@@ -112,7 +112,7 @@ func (c *EntityCache) GetFormatID(ctx context.Context, code string) (int64, erro
 	return id, nil
 }
 
-// GetFormatIDsForTrainingBucket returns format IDs to use for training-data queries.
+// GetFormatIDsForTrainingBucket returns the format IDs one format bucket covers.
 // T20 and T20I are treated as one bucket: both IDs are returned so matches stored
 // under either format_id are included (Cricsheet/ingest may store T20I as T20).
 func (c *EntityCache) GetFormatIDsForTrainingBucket(ctx context.Context, format string) ([]int64, error) {

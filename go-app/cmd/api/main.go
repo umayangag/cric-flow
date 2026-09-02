@@ -27,7 +27,7 @@ func main() {
 }
 
 func run() int {
-	// Ensure any panic is logged with stack trace before exit (e.g. precompute or init crash).
+	// Ensure any panic is logged with stack trace before exit (e.g. an import or init crash).
 	defer func() {
 		if v := recover(); v != nil {
 			slog.Error(

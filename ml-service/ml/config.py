@@ -1,102 +1,25 @@
 import json
 import logging
 import os
-import urllib.error
-import urllib.parse
-import urllib.request
 from typing import Any, Dict, List, Optional
-
-from ml.resources import suggested_n_jobs
 
 logger = logging.getLogger(__name__)
 
 # Simple JSON config loader for ml-service.
 # Precedence: flag/arg > env > config.json (merged over config.default.json) > config.default.json only.
 # Defaults when config is missing or invalid are defined below; same values are in config.default.json.
-DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC = 3600
-# Used only when ml.tuning.stability_focus_sample_size_low/high are missing (see config.default.json).
-DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW = 35_000
-DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH = 80_000
-DEFAULT_STABILITY_VIOLATION_WEIGHT = 5.0
-# ml.mlqa relative thresholds when keys are absent or config cannot be loaded (see get_mlqa_config).
-MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT = 0.10
-MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT = 0.08
-MLQA_SENSITIVITY_TOP_N_FEATURES_DEFAULT = 3
-# Permutation importance in tuning / MLQA (see ml.tuning in config.default.json).
-DEFAULT_PERMUTATION_IMPORTANCE_N_REPEATS = 5
-DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES = 6
-# Phase 2 Optuna bounds when ml.tuning.default_bounds / stability_focus_bounds are missing (see config.default.json).
-DEFAULT_PHASE2_DEFAULT_BOUNDS: Dict[str, Any] = {
-    "min_samples_leaf_min": 4,
-    "min_samples_leaf_max": 24,
-    "learning_rate_min": 0.01,
-    "learning_rate_max": 0.2,
-    "n_estimators_min": 50,
-    "n_estimators_max": 600,
-    "rf_max_depth_min": 4,
-    "rf_max_depth_max": 24,
-    "gb_max_depth_min": 3,
-    "gb_max_depth_max": 20,
-    "et_max_depth_min": 4,
-    "et_max_depth_max": 24,
-    "hgb_max_depth_min": 3,
-    "hgb_max_depth_max": 20,
-    "hgb_max_iter_max": 400,
-    "quantile_max_depth_min": 4,
-    "quantile_max_depth_max": 20,
-    "mlp_alpha_min": 1e-4,
-    "mlp_alpha_max": 1e-1,
-    "mlp_lr_init_min": 1e-4,
-    "mlp_lr_init_max": 1e-1,
-    "mlp_max_iter_min": 500,
-    "mlp_max_iter_max": 2000,
-    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64), (256, 128, 64)],
-}
-# Tighter Phase 2 search when stability_focus is on (see ml.tuning.stability_focus_* in config.default.json).
-# mlp_alpha_min is 1e-3 vs 1e-4 in default_bounds: higher floor on L2 regularization to favour smoother fits
-# when CV variance is expected to be higher. mlp_hidden_layer_sizes omits the largest arch [256,128,64] to
-# cap capacity during stability-focused search (mirrors stability_focus_bounds in config.default.json).
-DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS: Dict[str, Any] = {
-    "min_samples_leaf_min": 8,
-    "min_samples_leaf_max": 24,
-    "learning_rate_min": 0.01,
-    "learning_rate_max": 0.08,
-    "n_estimators_min": 200,
-    "n_estimators_max": 600,
-    "rf_max_depth_min": 4,
-    "rf_max_depth_max": 24,
-    "gb_max_depth_min": 3,
-    "gb_max_depth_max": 20,
-    "et_max_depth_min": 4,
-    "et_max_depth_max": 24,
-    "hgb_max_depth_min": 3,
-    "hgb_max_depth_max": 20,
-    "hgb_max_iter_max": 400,
-    "quantile_max_depth_min": 4,
-    "quantile_max_depth_max": 20,
-    "mlp_alpha_min": 1e-3,
-    "mlp_alpha_max": 1e-1,
-    "mlp_lr_init_min": 1e-4,
-    "mlp_lr_init_max": 1e-1,
-    "mlp_max_iter_min": 500,
-    "mlp_max_iter_max": 2000,
-    "mlp_hidden_layer_sizes": [(64, 64), (128, 64), (128, 128, 64)],
-}
-DEFAULT_QUANTILE_FALLBACK: Dict[str, Any] = {"n_estimators": 200, "max_depth": 12, "alpha": 0.5}
-DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC = 600
-DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC = 30
-DEFAULT_MIN_ROWS_FOR_TRAINING = 10
-# Fraction of the (chronologically ordered) rows held back from a single-train run to
-# score the model. 0 disables the evaluation and its extra fit; capped at 0.5 because a
-# holdout larger than the training half stops measuring the model you ship.
-DEFAULT_HOLDOUT_FRACTION = 0.2
-MAX_HOLDOUT_FRACTION = 0.5
-# Near-constant feature removal (see ml.data_quality in config.default.json).
-DEFAULT_LOW_VARIANCE_THRESHOLD = 1e-6
 
-_cached: Optional[Dict[str, Any]] = None
+# Default for the training subprocess (`/admin/train/*`): 7 days.
+DEFAULT_TRAINING_SUBPROCESS_TIMEOUT_SEC = 7 * 24 * 3600  # 604800
+
+# H-11: a prediction against ratings older than this fails rather than answering. Fourteen
+# days is roughly two cricket weeks -- long enough that a box between imports is not
+# nagged, short enough that a rating state nobody has refreshed cannot quietly serve.
+DEFAULT_RATINGS_MAX_AGE_DAYS = 14
 
 _CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+_cached: Optional[Dict[str, Any]] = None
 
 
 def _find_user_config_path() -> Optional[str]:
@@ -127,22 +50,6 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
     return out
 
 
-def _load_and_merge_dict(config_dict: Dict[str, Any], key: str, default_dict: Dict[str, Any]) -> Dict[str, Any]:
-    """Loads a dictionary from config, falling back to an empty dict, and merges it with defaults."""
-    value = config_dict.get(key)
-    if not isinstance(value, dict):
-        value = {}
-    return _deep_merge(dict(default_dict), value)
-
-
-def _load_numeric(config: Dict[str, Any], key: str, default: Any, coerce: type) -> Any:
-    """Load a numeric value from config with coercion; on ValueError/TypeError return default."""
-    try:
-        return coerce(config.get(key, default))
-    except (ValueError, TypeError):
-        return default
-
-
 def _load() -> Dict[str, Any]:
     global _cached
     if _cached is not None:
@@ -169,15 +76,8 @@ def _load() -> Dict[str, Any]:
 
 
 def get_config() -> Dict[str, Any]:
-    """Return the merged config (same as internal _load). Used by resources and other modules."""
+    """Return the merged config. Used by every other accessor here."""
     return _load()
-
-
-def default_go_app_export_dir() -> str:
-    """Return go_app_export_dir from config (inputs.go_app_export_dir)."""
-    cfg = _load()
-    val = (cfg.get("inputs") or {}).get("go_app_export_dir")
-    return str(val) if val else os.path.join("..", "..", "output", "go-app")
 
 
 def default_artifacts_dir() -> str:
@@ -185,10 +85,6 @@ def default_artifacts_dir() -> str:
     cfg = _load()
     val = (cfg.get("outputs") or {}).get("artifacts_dir")
     return str(val) if val else os.path.join("..", "..", "output", "ml-service")
-
-
-# Default for training subprocess (admin train batting/bowling/fielding/etc.): 7 days.
-DEFAULT_TRAINING_SUBPROCESS_TIMEOUT_SEC = 7 * 24 * 3600  # 604800
 
 
 def get_training_subprocess_timeout_sec() -> int:
@@ -210,370 +106,31 @@ def get_training_subprocess_timeout_sec() -> int:
     return DEFAULT_TRAINING_SUBPROCESS_TIMEOUT_SEC
 
 
-def get_training_data_fetch_timeout_sec() -> int:
-    """Return timeout in seconds for fetching training data from go-app (inputs.training_data_fetch_timeout_sec)."""
+def get_ratings_max_age_days() -> int:
+    """How old the loaded rating state may be before a live prediction is refused (H-11).
+
+    ``ml.ratings_max_age_days`` in config, or ``XI_RATINGS_MAX_AGE_DAYS`` in the
+    environment, which is what a deployment overrides. Zero or negative turns the check
+    off, which is a decision an operator can make and see in the config rather than a
+    state the code can drift into.
+    """
+    env_val = os.environ.get("XI_RATINGS_MAX_AGE_DAYS")
+    if env_val is not None:
+        try:
+            return int(env_val)
+        except ValueError:
+            logger.warning("config.ratings_max_age_days.invalid_env value=%s", env_val)
     cfg = _load()
-    inputs = cfg.get("inputs") or {}
-    val = inputs.get("training_data_fetch_timeout_sec", DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_SEC)
-    invalid_fallback = inputs.get(
-        "training_data_fetch_timeout_invalid_fallback_sec", DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC
-    )
+    ml = cfg.get("ml") if isinstance(cfg, dict) else None
+    val = (ml or {}).get("ratings_max_age_days", DEFAULT_RATINGS_MAX_AGE_DAYS)
     try:
         return int(val)
     except (TypeError, ValueError):
-        return (
-            int(invalid_fallback)
-            if isinstance(invalid_fallback, (int, float))
-            else DEFAULT_TRAINING_DATA_FETCH_TIMEOUT_INVALID_FALLBACK_SEC
-        )
-
-
-# Required keys per model under ml.training.<model>; all training scripts use these strictly (no magic defaults).
-TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_compress")
-
-# Models that have their own training block in config (ml.training.<model>).
-# One is left; the rest went with their trainers in P-5.
-TRAINING_MODELS = ("win",)
-
-
-def _go_app_request_timeout_sec() -> int:
-    """Return timeout in seconds for go-app HTTP requests (inputs.go_app_request_timeout_sec)."""
-    cfg = _load()
-    val = (cfg.get("inputs") or {}).get("go_app_request_timeout_sec", DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC)
-    try:
-        return int(val) if val else DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC
-    except (TypeError, ValueError):
-        return DEFAULT_GO_APP_REQUEST_TIMEOUT_SEC
-
-
-def get_tuned_params_from_go_app(
-    go_app_url: str, model: str, format_code: str, api_key: Optional[str] = None
-) -> Optional[Dict[str, Any]]:
-    """Fetch latest tuned params for model+format from go-app. Returns None on 404 or error."""
-    base = go_app_url.rstrip("/")
-    url = f"{base}/api/ml/tuned-params?model={urllib.parse.quote(model)}&format={urllib.parse.quote(format_code)}"
-    req = urllib.request.Request(url)
-    if api_key:
-        req.add_header("X-API-Key", api_key)
-    try:
-        with urllib.request.urlopen(req, timeout=_go_app_request_timeout_sec()) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None
-        logger.warning("config.get_tuned_params_from_go_app.http_error url=%s code=%s", url, e.code)
-        return None
-    except OSError as e:
-        logger.warning("config.get_tuned_params_from_go_app.request_failed url=%s error=%s", url, e)
-        return None
-    params = data.get("params")
-    if isinstance(params, dict):
-        return params
-    if isinstance(params, str):
-        try:
-            return json.loads(params)
-        except json.JSONDecodeError:
-            return None
-    return None
-
-
-def save_tuned_params_to_go_app(
-    go_app_url: str,
-    model: str,
-    format_code: str,
-    params: Dict[str, Any],
-    api_key: Optional[str] = None,
-    metrics: Optional[Dict[str, Any]] = None,
-) -> None:
-    """POST tuned params and metrics to go-app so they are stored in the DB for future training."""
-    base = go_app_url.rstrip("/")
-    url = f"{base}/api/ml/tuned-params"
-    payload_dict: Dict[str, Any] = {"model": model, "format": format_code, "params": params}
-    if metrics is not None:
-        payload_dict["metrics"] = metrics
-    payload = json.dumps(payload_dict).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST")
-    req.add_header("Content-Type", "application/json")
-    if api_key:
-        req.add_header("X-API-Key", api_key)
-    try:
-        with urllib.request.urlopen(req, timeout=_go_app_request_timeout_sec()) as resp:
-            if 200 <= resp.status < 300:
-                logger.info("config.save_tuned_params_to_go_app.saved model=%s format=%s", model, format_code)
-            return
-    except urllib.error.HTTPError as e:
-        logger.warning("config.save_tuned_params_to_go_app.http_error url=%s code=%s body=%s", url, e.code, e.read())
-        raise ValueError(f"go-app tuned-params POST failed: HTTP {e.code}") from e
-    except OSError as e:
-        logger.warning("config.save_tuned_params_to_go_app.request_failed url=%s error=%s", url, e)
-        raise ValueError(f"go-app tuned-params request failed: {e}") from e
-
-
-def get_training_params(model: str, format_code: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Load ML training parameters from config for the given model (ml.training.<model>).
-    If format_code is set and GO_APP_URL is set, fetches latest tuned params from go-app and
-    merges them over config (DB params override config). Falls back to config only when no
-    tuned params exist for that model+format.
-    Raises ValueError if config is missing or any required key is absent.
-    """
-    if model not in TRAINING_MODELS:
-        logger.error("config.get_training_params.unknown_model model=%s allowed=%s", model, TRAINING_MODELS)
-        raise ValueError(f"Unknown model {model!r}. Must be one of: {', '.join(TRAINING_MODELS)}.")
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    if not isinstance(ml, dict):
-        logger.error("config.get_training_params.missing_ml_block model=%s", model)
-        raise ValueError(
-            "config.json must define 'ml'. Add ml.training.win with "
-            "n_estimators, max_depth, random_state, joblib_compress."
-        )
-    training = ml.get("training")
-    if not isinstance(training, dict):
-        logger.error("config.get_training_params.missing_training_block model=%s", model)
-        raise ValueError("config.json must define 'ml.training' with a per-model block (win).")
-    block = dict(training.get(model) or {})
-    if not isinstance(training.get(model), dict):
-        logger.error("config.get_training_params.missing_model_block model=%s", model)
-        raise ValueError(
-            f"config.json must define 'ml.training.{model}' with keys: " + ", ".join(TRAINING_REQUIRED_KEYS)
-        )
-    # Overlay latest tuned params from go-app when available (per-format or unified with format "")
-    go_app_url = os.environ.get("GO_APP_URL", "").strip()
-    if go_app_url:
-        format_key = format_code if format_code is not None else ""
-        overlay = get_tuned_params_from_go_app(go_app_url, model, format_key, os.environ.get("GO_APP_API_KEY"))
-        if overlay:
-            block = _deep_merge(block, overlay)
-    missing = [k for k in TRAINING_REQUIRED_KEYS if k not in block]
-    if missing:
-        logger.error("config.get_training_params.missing_keys model=%s missing=%s", model, missing)
-        raise ValueError(
-            f"ml.training.{model} is missing required keys: " + ", ".join(missing) + ". Set them in config.json."
-        )
-    # Optional: n_jobs for RandomForest (default -1 = resource-aware)
-    n_jobs = block.get("n_jobs", -1)
-    if n_jobs == -1:
-        n_jobs = suggested_n_jobs("training")
-    result = dict(block)
-    result["n_jobs"] = int(n_jobs)
-    n_estimators = block["n_estimators"]
-    max_depth = block["max_depth"]
-    random_state = block["random_state"]
-    joblib_compress = block["joblib_compress"]
-    try:
-        n_estimators = int(n_estimators)
-        max_depth = int(max_depth)
-        random_state = int(random_state)
-        joblib_compress = int(joblib_compress)
-    except (TypeError, ValueError) as e:
-        logger.error("config.get_training_params.invalid_types model=%s error=%s", model, e)
-        raise ValueError(
-            f"ml.training.{model} values must be integers: n_estimators, max_depth, random_state, joblib_compress."
-        ) from e
-    if joblib_compress < 0 or joblib_compress > 9:
-        logger.error(
-            "config.get_training_params.invalid_joblib_compress model=%s joblib_compress=%s", model, joblib_compress
-        )
-        raise ValueError(f"ml.training.{model}.joblib_compress must be between 0 and 9.")
-    estimator = (block.get("estimator") or "rf").strip().lower()
-    if estimator in ("gb", "gbm", "gradient_boosting"):
-        estimator = "gb"
-    elif estimator in ("stacked", "stacking", "ensemble"):
-        estimator = "stacked"
-    elif estimator in ("quantile", "qr"):
-        estimator = "quantile"
-    elif estimator not in ("rf", "random_forest"):
-        estimator = "rf"
-    learning_rate = block.get("learning_rate", 0.1)
-    try:
-        learning_rate = float(learning_rate)
-    except (TypeError, ValueError):
-        learning_rate = 0.1
-    quantile_level = block.get("quantile_level", 0.5)
-    try:
-        quantile_level = float(quantile_level)
-    except (TypeError, ValueError):
-        quantile_level = 0.5
-    quantile_level = max(0.01, min(0.99, quantile_level))
-    return {
-        "n_estimators": n_estimators,
-        "max_depth": max_depth,
-        "random_state": random_state,
-        "joblib_compress": joblib_compress,
-        "n_jobs": result["n_jobs"],
-        "estimator": estimator,
-        "learning_rate": learning_rate,
-        "quantile_level": quantile_level,
-    }
-
-
-def get_tuning_config() -> Dict[str, Any]:
-    """
-    Load tuning config from ml.tuning. Used by auto_tune.
-    All values come from config (config.default.json or user config.json).
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    tuning = (ml.get("tuning") if isinstance(ml, dict) else None) or {}
-    n_jobs = tuning.get("n_jobs", -1)
-    if n_jobs == -1:
-        n_jobs = suggested_n_jobs("tuning")
-    algorithms = tuning.get("algorithms")
-    if algorithms == "all" or algorithms is None:
-        algorithms = ["rf", "gb", "quantile"]
-    elif isinstance(algorithms, (list, tuple)):
-        algorithms = [str(a).lower().strip() for a in algorithms if a]
-    else:
-        algorithms = ["rf", "gb"]
-
-    validation_method = str(tuning.get("validation_method", "walk_forward")).lower().strip()
-    if validation_method not in ("kfold", "walk_forward"):
-        validation_method = "walk_forward"
-
-    stages = tuning.get("stages") or {}
-    # Data-driven stability focus: when n_samples is outside [low, high], bias search toward
-    # more stable configs (and optionally weight stability higher in the penalized objective).
-    stability_low = _load_numeric(
-        tuning, "stability_focus_sample_size_low", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_LOW, int
-    )
-    stability_high = _load_numeric(
-        tuning, "stability_focus_sample_size_high", DEFAULT_STABILITY_FOCUS_SAMPLE_SIZE_HIGH, int
-    )
-    stability_weight = _load_numeric(tuning, "stability_violation_weight", DEFAULT_STABILITY_VIOLATION_WEIGHT, float)
-    if stability_weight < 1.0:
-        effective = max(1.0, stability_weight)
-        logger.warning(
-            "config.stability_violation_weight_clamped configured=%s effective=%s",
-            stability_weight,
-            effective,
-        )
-    # Bounds for Phase 2 search: when n_samples triggers stability focus we use
-    # stability_focus_bounds (tighter); otherwise default_bounds. Fully populated from config + defaults.
-    stability_focus_bounds = _load_and_merge_dict(
-        tuning, "stability_focus_bounds", DEFAULT_PHASE2_STABILITY_FOCUS_BOUNDS
-    )
-    default_bounds = _load_and_merge_dict(tuning, "default_bounds", DEFAULT_PHASE2_DEFAULT_BOUNDS)
-
-    stability_seed_params = tuning.get("stability_seed_params")
-    if not isinstance(stability_seed_params, dict):
-        stability_seed_params = {}
-    quantile_fallback = _load_and_merge_dict(tuning, "quantile_fallback", DEFAULT_QUANTILE_FALLBACK)
-    perm_n_repeats = _load_numeric(
-        tuning, "permutation_importance_n_repeats", DEFAULT_PERMUTATION_IMPORTANCE_N_REPEATS, int
-    )
-    perm_n_repeats = max(1, perm_n_repeats)
-    perm_decimals = _load_numeric(
-        tuning, "permutation_importance_decimal_places", DEFAULT_PERMUTATION_IMPORTANCE_DECIMAL_PLACES, int
-    )
-    perm_decimals = max(0, perm_decimals)
-    return {
-        "cv_splits": int(tuning.get("cv_splits", 5)),
-        "n_iter": int(tuning.get("n_iter", 25)),
-        "n_jobs": int(n_jobs),
-        "optuna_tpe_n_startup_trials": int(tuning.get("optuna_tpe_n_startup_trials", 5)),
-        "random_state": int(tuning.get("random_state", 42)),
-        "scoring": str(tuning.get("scoring", "neg_mean_absolute_error")),
-        "search_space": tuning.get("search_space"),
-        "algorithms": algorithms,
-        "validation_method": validation_method,
-        "timeseries_split_gap": int(tuning.get("timeseries_split_gap", 0) or 0),
-        "timeseries_small_dataset_threshold": int(tuning.get("timeseries_small_dataset_threshold", 5000) or 5000),
-        "stages": stages if isinstance(stages, dict) else {},
-        "stability_focus_sample_size_low": stability_low,
-        "stability_focus_sample_size_high": stability_high,
-        "stability_violation_weight": max(1.0, stability_weight),
-        "stability_focus_bounds": stability_focus_bounds,
-        "default_bounds": default_bounds,
-        "stability_seed_params": stability_seed_params,
-        "quantile_fallback": quantile_fallback,
-        "permutation_importance_n_repeats": perm_n_repeats,
-        "permutation_importance_decimal_places": perm_decimals,
-    }
-
-
-def get_mlqa_config() -> Dict[str, Any]:
-    """
-    Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.
-    Fallbacks match the previous hardcoded values.
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    mlqa = (ml.get("mlqa") if isinstance(ml, dict) else None) or {}
-    sens_top_n = _load_numeric(mlqa, "sensitivity_top_n_features", MLQA_SENSITIVITY_TOP_N_FEATURES_DEFAULT, int)
-    sens_top_n = max(1, sens_top_n)
-    return {
-        "overfitting_delta_threshold": float(
-            mlqa.get("overfitting_delta_threshold", MLQA_OVERFITTING_DELTA_THRESHOLD_DEFAULT)
-        ),
-        "stability_fold_std_threshold": float(
-            mlqa.get("stability_fold_std_threshold", MLQA_STABILITY_FOLD_STD_THRESHOLD_DEFAULT)
-        ),
-        "bias_dip_low": float(mlqa.get("bias_dip_low", 0.8)),
-        "bias_dip_high": float(mlqa.get("bias_dip_high", 1.25)),
-        "sensitivity_top_weight_threshold": float(mlqa.get("sensitivity_top_weight_threshold", 0.70)),
-        "sensitivity_top_n_features": sens_top_n,
-    }
-
-
-def get_data_quality_config() -> Dict[str, float]:
-    """Load thresholds for ml.data_quality from ml.data_quality."""
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    block = (ml.get("data_quality") if isinstance(ml, dict) else None) or {}
-    thresh = _load_numeric(block, "low_variance_threshold", DEFAULT_LOW_VARIANCE_THRESHOLD, float)
-    if thresh < 0.0:
-        thresh = DEFAULT_LOW_VARIANCE_THRESHOLD
-    return {"low_variance_threshold": float(thresh)}
-
-
-def get_tuning_search_space(estimator_key: str) -> Optional[Dict[str, Any]]:
-    """Return search space for auto_tune from ml.tuning.search_space.<key>. None if not configured.
-    estimator_key: 'rf', 'gb', or 'et' for RandomForest, GradientBoosting, ExtraTrees.
-    """
-    cfg = get_tuning_config()
-    space = cfg.get("search_space")
-    if not isinstance(space, dict):
-        return None
-    return space.get(estimator_key) if isinstance(space.get(estimator_key), dict) else None
-
-
-def get_pipeline_common_config() -> Dict[str, Any]:
-    """Load shared pipeline settings from ml.pipeline_common. Used by all train_* scripts."""
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    gp = (ml.get("pipeline_common") if isinstance(ml, dict) else None) or {}
-    min_rows = gp.get("min_rows_for_training", DEFAULT_MIN_ROWS_FOR_TRAINING)
-    try:
-        min_rows = int(min_rows)
-    except (TypeError, ValueError):
-        min_rows = DEFAULT_MIN_ROWS_FOR_TRAINING
-    min_rows = max(1, min_rows)
-
-    holdout_fraction = gp.get("holdout_fraction", DEFAULT_HOLDOUT_FRACTION)
-    try:
-        holdout_fraction = float(holdout_fraction)
-    except (TypeError, ValueError):
-        logger.warning(
-            "config.get_pipeline_common_config.invalid_holdout_fraction value=%s default=%s",
-            gp.get("holdout_fraction"),
-            DEFAULT_HOLDOUT_FRACTION,
-        )
-        holdout_fraction = DEFAULT_HOLDOUT_FRACTION
-    holdout_fraction = max(0.0, min(MAX_HOLDOUT_FRACTION, holdout_fraction))
-
-    return {
-        "use_robust_scaler": bool(gp.get("use_robust_scaler", True)),
-        "time_decay_halflife_years": float(gp.get("time_decay_halflife_years", 2.0)),
-        "delta_threshold": float(gp.get("delta_threshold", 0.08)),
-        "min_rows_for_training": min_rows,
-        "holdout_fraction": holdout_fraction,
-    }
+        return DEFAULT_RATINGS_MAX_AGE_DAYS
 
 
 # Canonical cricket format codes. Mirrors go-app/internal/formats.CanonicalCodes();
 # the two are kept in step by scripts/check-frontend-backend-sync.mjs via cmd/print_canonical.
-# Order is significant: it fixes one-hot column order in win_features.
 CANONICAL_FORMAT_CODES: List[str] = ["TEST", "ODI", "T20", "T20I"]
 
 

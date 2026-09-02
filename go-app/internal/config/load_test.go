@@ -21,14 +21,14 @@ func TestLoad_EnvPathPrecedence(t *testing.T) {
 	cached = nil
 
 	tmp := t.TempDir()
-	cfgJSON := `{"inputs":{"cricsheet_dir":"/env/cricsheet"},"outputs":{"export_dir":"/env/export"}}`
+	cfgJSON := `{"inputs":{"cricsheet_dir":"/env/cricsheet"},"outputs":{"dir":"/env/export"}}`
 	p := filepath.Join(tmp, "custom.json")
 	require.NoError(t, os.WriteFile(p, []byte(cfgJSON), 0o600))
 	t.Setenv("GO_APP_CONFIG", p)
 
 	c := Load()
 	assert.Equal(t, "/env/cricsheet", c.Inputs.CricsheetDir)
-	assert.Equal(t, "/env/export", c.Outputs.ExportDir)
+	assert.Equal(t, "/env/export", c.Outputs.Dir)
 }
 
 func TestLoad_ConfigJsonFromCWD(t *testing.T) {
@@ -38,13 +38,13 @@ func TestLoad_ConfigJsonFromCWD(t *testing.T) {
 
 	tmp := t.TempDir()
 	_ = os.Chdir(tmp)
-	cfgJSON := `{"inputs":{"cricsheet_dir":"/cwd/cricsheet"},"outputs":{"export_dir":"/cwd/export"}}`
+	cfgJSON := `{"inputs":{"cricsheet_dir":"/cwd/cricsheet"},"outputs":{"dir":"/cwd/export"}}`
 	_ = writeConfigFile(t, tmp, cfgJSON)
 	t.Setenv("GO_APP_CONFIG", "")
 
 	c := Load()
 	assert.Equal(t, "/cwd/cricsheet", c.Inputs.CricsheetDir)
-	assert.Equal(t, "/cwd/export", c.Outputs.ExportDir)
+	assert.Equal(t, "/cwd/export", c.Outputs.Dir)
 }
 
 func TestValidateForServer_FailsWhenNoConfig(t *testing.T) {
@@ -66,32 +66,16 @@ func TestValidateForServer_FailsWhenNoConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "config file not found")
 }
 
-func TestValidateForServer_FailsWhenPrecomputeTimeoutNegative(t *testing.T) {
+func TestValidateForServer_FailsWhenImportTimeoutNegative(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"pipeline":{"import_timeout_ms":-1}}`), 0o600))
+	t.Setenv("GO_APP_CONFIG", path)
 	cached = nil
-	tmp := t.TempDir()
-	p := filepath.Join(tmp, "config.json")
-	cfgJSON := `{"features":{"precompute_timeout_ms":-1}}`
-	require.NoError(t, os.WriteFile(p, []byte(cfgJSON), 0o600))
-	t.Setenv("GO_APP_CONFIG", p)
 
-	Load()
 	err := ValidateForServer()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "precompute_timeout_ms")
-}
-
-func TestValidateForServer_FailsWhenExportTimeoutNegative(t *testing.T) {
-	cached = nil
-	tmp := t.TempDir()
-	p := filepath.Join(tmp, "config.json")
-	cfgJSON := `{"features":{"export_timeout_ms":-1}}`
-	require.NoError(t, os.WriteFile(p, []byte(cfgJSON), 0o600))
-	t.Setenv("GO_APP_CONFIG", p)
-
-	Load()
-	err := ValidateForServer()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "export_timeout_ms")
+	assert.Contains(t, err.Error(), "import_timeout_ms")
 }
 
 func TestLoad_CachePersistsUntilReset(t *testing.T) {

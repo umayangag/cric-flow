@@ -24,21 +24,14 @@ func NewRouter(a *App) http.Handler {
 	// used to read them. See removed_params.go.
 	admin.Use(rejectRemovedParams)
 
-	// Precompute controls
-	admin.HandleFunc("/precompute", a.precomputeHandler).Methods(http.MethodPost, http.MethodOptions)
-	admin.HandleFunc("/precompute/status", precomputeStatusHandler).Methods(http.MethodGet, http.MethodOptions)
-
 	// Import cricsheet data
 	admin.HandleFunc("/import/cricsheet", a.importCricSheetHandler).Methods(http.MethodPost, http.MethodOptions)
 
 	// ML health proxy (full response for Health tab: loaded formats, artifacts)
 	admin.HandleFunc("/api/health/ml", a.mlServiceProxy("/health", "ml health proxy", nil)).
 		Methods(http.MethodGet, http.MethodOptions)
-	// ML model metadata (features, outputs, artifacts pattern for Workbench UI)
-	admin.HandleFunc("/api/ml/model-metadata", a.mlServiceProxy("/model-metadata", "ml model-metadata proxy", nil)).
-		Methods(http.MethodGet, http.MethodOptions)
-	// ML model stats (name, format, params, accuracy, size for ML Model Stats tab)
-	admin.HandleFunc("/api/ml/model-stats", a.mlServiceProxy("/model-stats", "ml model-stats proxy", enrichModelStatsPayload)).
+	// Which run is loaded, how far its ratings go, and whether they are stale (H-11, H-16).
+	admin.HandleFunc("/api/ml/xi-status", a.mlServiceProxy("/xi/status", "xi status proxy", nil)).
 		Methods(http.MethodGet, http.MethodOptions)
 	// Ops status aggregator (observability)
 	admin.HandleFunc("/ops/status", a.opsStatusHandler).Methods(http.MethodGet, http.MethodOptions)
@@ -46,8 +39,6 @@ func NewRouter(a *App) http.Handler {
 	// Ops Migrations
 	opsHandler := &OpsHandler{}
 	admin.HandleFunc("/ops/migrations", opsHandler.ListMigrations).Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/ops/migrations/{id:[0-9]+}/auto-tune", opsHandler.GetAutoTuneDetails).
-		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/suggestions", opsHandler.GetSuggestions).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/run/{step}", a.pipelineRunHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/pipeline/stop", a.pipelineStopHandler).Methods(http.MethodPost, http.MethodOptions)
@@ -92,16 +83,6 @@ func NewRouter(a *App) http.Handler {
 	// flow scored the batting / bowling / fielding models and went with them (P-5).
 	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy", nil)).
 		Methods(http.MethodGet, http.MethodOptions)
-	// Training rows for the win model and the auto-tune stack, both of which P-6 owns.
-	admin.HandleFunc("/api/backtest/training-data", a.backtestTrainingDataHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-
-	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)
-	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsGetHandler).Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsPostHandler).Methods(http.MethodPost, http.MethodOptions)
-
 	// Wrap with CORS middleware for frontend access
 	return corsMiddleware(r)
 }

@@ -1,7 +1,5 @@
 {
   "inputs": {
-    "go_app_export_dir": "../output/go-app",
-    "training_data_fetch_timeout_sec": 604800,
     "training_subprocess_timeout_sec": 604800
   },
   "outputs": {
@@ -14,44 +12,6 @@
       "T20",
       "T20I"
     ],
-    "artifact_template": "{kind}_{name}_{format}.joblib",
-    "training": {
-      "win": {
-        "n_estimators": 100,
-        "max_depth": 8,
-        "max_depth_cap": 6,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": 1
-      }
-    },
-    "tuning": {
-      "cv_splits": 5,
-      "n_iter": 40,
-      "scoring": "neg_mean_absolute_error",
-      "n_jobs": -1,
-      "random_state": 42,
-      "algorithms": "all",
-      "validation_method": "walk_forward",
-      "permutation_importance_n_repeats": 5,
-      "permutation_importance_decimal_places": 6
-    },
-    "cv_splits": 5,
-    "test_size": 0.2,
-    "learning_rate": 0.1,
-    "subsample": 1,
-    "colsample_bytree": 1,
-    "reg_lambda": 1,
-    "reg_alpha": 0,
-    "early_stopping_rounds": 50,
-    "max_iter": 1000,
-    "mlqa": {
-      "overfitting_delta_threshold": 0.1,
-      "stability_fold_std_threshold": 0.08,
-      "bias_dip_low": 0.8,
-      "bias_dip_high": 1.25,
-      "sensitivity_top_weight_threshold": 0.7,
-      "sensitivity_top_n_features": 3
-    }
+    "ratings_max_age_days": 14
   }
 }

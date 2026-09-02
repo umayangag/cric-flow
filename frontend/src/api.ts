@@ -1,8 +1,7 @@
 import { ApiError } from './lib/apiError';
 import type {
   HealthResponse,
-  ModelMetadataApiResponse,
-  ModelStatsResponse,
+  XiStatusResponse,
   EvaluationReport,
   Migration,
   Suggestion,
@@ -17,7 +16,6 @@ import type {
   OpsDataStartResponse,
   RunPlanState,
   RunPlanStartResponse,
-  AutoTuneRunDetailsResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -145,13 +143,9 @@ export const api = {
   health(): Promise<HealthResponse> {
     return httpApi('/api/health/ml');
   },
-  /** Model metadata (features, outputs, artifacts pattern) from ml-service for Workbench UI. */
-  getModelMetadata(): Promise<ModelMetadataApiResponse> {
-    return httpApi('/api/ml/model-metadata');
-  },
-  /** Model stats (name, format, params, accuracy, size) from ml-service for ML Model Stats tab. */
-  getModelStats(): Promise<ModelStatsResponse> {
-    return httpApi('/api/ml/model-stats');
+  /** Which run is loaded, what its manifest records, and whether its ratings are fresh. */
+  xiStatus(): Promise<XiStatusResponse> {
+    return httpApi('/api/ml/xi-status');
   },
   // --- Ops Status (go-app API) ---
   opsStatus(): Promise<OpsStatusDTO> {
@@ -162,15 +156,6 @@ export const api = {
     u.searchParams.set('page', String(page));
     u.searchParams.set('limit', String(limit));
     return httpApi(u.toString());
-  },
-  /** Auto-tune details for a completed migration (selected algorithm, params, metrics, audit). */
-  autoTuneDetailsForMigration(
-    migrationId: number,
-    options?: { signal?: AbortSignal },
-  ): Promise<AutoTuneRunDetailsResponse> {
-    return httpApi(`/ops/migrations/${encodeURIComponent(String(migrationId))}/auto-tune`, {
-      signal: options?.signal,
-    });
   },
   opsSuggestions(): Promise<Suggestion[]> {
     return httpApi('/ops/suggestions');
@@ -258,8 +243,9 @@ export const api = {
     return httpApi(u.toString(), { signal: options?.signal });
   },
   /**
-   * Trigger a pipeline step (import, precompute, export, train_*, auto_tune).
-   * For auto_tune, pass params: { model?, format?, all_formats?, rescreen?, cutoff?, algorithms? } (query string).
+   * Trigger a pipeline step (import, retrain, evaluate, reload).
+   * Params go on the query string: `cutoff` for retrain and evaluate, `run_id` for reload,
+   * `refresh` for import.
    * Returns status and body so UI can handle 202 (started), 501 (run from root), or error.
    */
   async opsPipelineRun(

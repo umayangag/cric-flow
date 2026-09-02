@@ -33,73 +33,26 @@ func TestPlansAreDerivedFromTheRegistry(t *testing.T) {
 	assert.Equal(t, expected, ids(full))
 }
 
-// TestFullExcludesOptionalSteps: a "run everything" that silently included auto-tune
-// would take hours nobody asked for. Optional means offered, never implied.
+// TestFullExcludesOptionalSteps: a "run everything" that silently included evaluate
+// would spend the whole harness on a run nobody asked to measure. Optional means
+// offered, never implied.
 func TestFullExcludesOptionalSteps(t *testing.T) {
 	t.Parallel()
 	full, err := Describe(PlanFull)
 	require.NoError(t, err)
 
-	assert.NotContains(t, ids(full), "auto_tune")
-	assert.Contains(t, ids(full), "import")
-	assert.Contains(t, ids(full), "train_win")
+	assert.NotContains(t, ids(full), "evaluate")
+	assert.Equal(t, []string{"import", "retrain", "reload"}, ids(full))
 }
 
-func TestRetrainOnlySkipsTheDataSteps(t *testing.T) {
+// TestRetrainOnlySkipsTheImport: the data is already in the database; what is stale is
+// the model. It still ends in a reload, because a run nothing points at is not serving.
+func TestRetrainOnlySkipsTheImport(t *testing.T) {
 	t.Parallel()
 	plan, err := Describe(PlanRetrainOnly)
 	require.NoError(t, err)
 
-	assert.NotContains(t, ids(plan), "import")
-	assert.NotContains(t, ids(plan), "precompute")
-	assert.NotContains(t, ids(plan), "export")
-	assert.Contains(t, ids(plan), "train_win")
-}
-
-// TestTuneSearchesBeforeItTrains is the whole reason the plan exists: hyperparameters
-// are a function of the feature space, so a run that trains first produces artifacts
-// the search that follows immediately invalidates.
-func TestTuneSearchesBeforeItTrains(t *testing.T) {
-	t.Parallel()
-	plan, err := Describe(PlanTune)
-	require.NoError(t, err)
-
-	stepIDs := ids(plan)
-	require.NotEmpty(t, stepIDs)
-	assert.Equal(t, "auto_tune", stepIDs[0])
-	assert.Contains(t, stepIDs, "train_win")
-}
-
-// TestTuneRetrainsExactlyWhatRetrainOnlyDoes: the two plans differ in the search, not
-// in which artifacts they rebuild. A train step that joined one and not the other
-// would leave a model carrying params from a search it never saw.
-func TestTuneRetrainsExactlyWhatRetrainOnlyDoes(t *testing.T) {
-	t.Parallel()
-	tune, err := Describe(PlanTune)
-	require.NoError(t, err)
-	retrain, err := Describe(PlanRetrainOnly)
-	require.NoError(t, err)
-
-	assert.Equal(t, append([]string{"auto_tune"}, ids(retrain)...), ids(tune))
-}
-
-// TestTuneSkipsTheDataSteps: tuning consumes the export, it does not produce it.
-func TestTuneSkipsTheDataSteps(t *testing.T) {
-	t.Parallel()
-	plan, err := Describe(PlanTune)
-	require.NoError(t, err)
-
-	assert.NotContains(t, ids(plan), "import")
-	assert.NotContains(t, ids(plan), "precompute")
-	assert.NotContains(t, ids(plan), "export")
-}
-
-func TestDataRefreshSkipsTheModels(t *testing.T) {
-	t.Parallel()
-	plan, err := Describe(PlanDataRefresh)
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"import", "precompute", "export"}, ids(plan))
+	assert.Equal(t, []string{"retrain", "reload"}, ids(plan))
 }
 
 func TestUnknownPlanNamesTheOnesThatExist(t *testing.T) {
@@ -112,14 +65,14 @@ func TestUnknownPlanNamesTheOnesThatExist(t *testing.T) {
 }
 
 // TestResolveReordersAnExplicitList: the registry's order is the dependency order.
-// Running a caller's arbitrary sequence would mean export before precompute because
+// Running a caller's arbitrary sequence would mean reload before retrain because
 // someone typed it that way — which the gate would then refuse one step in, having
 // already run the others.
 func TestResolveReordersAnExplicitList(t *testing.T) {
 	t.Parallel()
-	steps, err := Resolve("", []string{"export", "import", "precompute"})
+	steps, err := Resolve("", []string{"reload", "import", "retrain"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"import", "precompute", "export"}, ids(steps))
+	assert.Equal(t, []string{"import", "retrain", "reload"}, ids(steps))
 }
 
 func TestResolveRejectsAmbiguityRatherThanPickingOne(t *testing.T) {
@@ -145,34 +98,34 @@ func TestResolveRejectsUnknownAndNonPipelineSteps(t *testing.T) {
 
 func TestResolveDeduplicates(t *testing.T) {
 	t.Parallel()
-	steps, err := Resolve("", []string{"import", "import", "precompute"})
+	steps, err := Resolve("", []string{"import", "import", "retrain"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"import", "precompute"}, ids(steps))
+	assert.Equal(t, []string{"import", "retrain"}, ids(steps))
 }
 
 func TestFirstIncompleteFindsWhereToResume(t *testing.T) {
 	t.Parallel()
 	state := State{Steps: []StepState{
 		{StepID: "import", Status: StatusCompleted},
-		{StepID: "precompute", Status: StatusFailed},
-		{StepID: "export", Status: StatusPending},
+		{StepID: "retrain", Status: StatusFailed},
+		{StepID: "reload", Status: StatusPending},
 	}}
 
 	next, ok := state.FirstIncomplete()
 	require.True(t, ok)
-	assert.Equal(t, "precompute", next.StepID, "resume from the failure, not from the top")
+	assert.Equal(t, "retrain", next.StepID, "resume from the failure, not from the top")
 }
 
 func TestFirstIncompleteSkipsSkipped(t *testing.T) {
 	t.Parallel()
 	state := State{Steps: []StepState{
 		{StepID: "import", Status: StatusSkipped},
-		{StepID: "precompute", Status: StatusPending},
+		{StepID: "retrain", Status: StatusPending},
 	}}
 
 	next, ok := state.FirstIncomplete()
 	require.True(t, ok)
-	assert.Equal(t, "precompute", next.StepID)
+	assert.Equal(t, "retrain", next.StepID)
 }
 
 func TestDoneRequiresEveryStepTerminal(t *testing.T) {
@@ -206,7 +159,7 @@ func TestCloneIsDeep(t *testing.T) {
 
 func TestStateSurvivesAJSONRoundTrip(t *testing.T) {
 	t.Parallel()
-	original := NewState(PlanFull, mustResolve(t, "import", "precompute"), "2026-08-27T12:00:00Z")
+	original := NewState(PlanFull, mustResolve(t, "import", "retrain"), "2026-08-27T12:00:00Z")
 	original.Steps[0].Status = StatusCompleted
 
 	encoded, err := json.Marshal(original)

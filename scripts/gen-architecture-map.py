@@ -11,10 +11,8 @@ So the parts that can be derived are derived, between marker comments. The prose
 them stays hand-written -- data flow and aggregation logic are not mechanically knowable.
 
 Sources:
-  configs/feature_vectors.json          batting / bowling / fielding inputs
   ml-service/ml/xi/contract.py          XI_FEATURE_COLS, DISPLAY_FEATURE_COLS, TARGET_COL
   ml-service/ml/xi/performance.py       TARGETS
-  ml-service/ml/win_features.py         WIN_ENHANCED_FEATURE_COLS
   ml-service/app/main.py                @app.get/@app.post routes
   go-app/internal/server/router.go      HandleFunc routes
 
@@ -27,21 +25,14 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import re
 import sys
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 MAP_PATH = "ARCHITECTURE_MAP.md"
 BEGIN = "<!-- BEGIN GENERATED: {name} -- edit scripts/gen-architecture-map.py, not this block -->"
 END = "<!-- END GENERATED: {name} -->"
-
-
-def read_json_contract(root: str) -> Dict[str, List[str]]:
-    with open(os.path.join(root, "configs/feature_vectors.json"), encoding="utf-8") as fh:
-        data = json.load(fh)
-    return {k: v for k, v in data.items() if isinstance(v, list)}
 
 
 def list_from_import(root: str, module: str, name: str) -> List[str]:
@@ -80,7 +71,9 @@ def list_from_module(path: str, name: str) -> List[str]:
     with open(path, encoding="utf-8") as fh:
         tree = ast.parse(fh.read(), filename=path)
     for node in tree.body:
-        targets = node.targets if isinstance(node, ast.Assign) else ([node.target] if isinstance(node, ast.AnnAssign) else [])
+        targets = (
+            node.targets if isinstance(node, ast.Assign) else ([node.target] if isinstance(node, ast.AnnAssign) else [])
+        )
         for t in targets:
             if isinstance(t, ast.Name) and t.id == name and isinstance(node.value, (ast.List, ast.Tuple)):
                 out = []
@@ -108,7 +101,7 @@ def go_routes(path: str) -> List[Tuple[str, str]]:
     routes = []
     for m in re.finditer(r'HandleFunc\(\s*"([^"]+)"[^)]*?\)\s*\.?\s*(?:\n\s*)?Methods\(([^)]*)\)', src, re.S):
         path_, methods = m.group(1), m.group(2)
-        verbs = sorted({v.split("Method")[-1].upper() for v in re.findall(r'http\.Method(\w+)', methods)} - {"OPTIONS"})
+        verbs = sorted({v.split("Method")[-1].upper() for v in re.findall(r"http\.Method(\w+)", methods)} - {"OPTIONS"})
         routes.append((", ".join(verbs) or "GET", path_))
     return routes
 
@@ -116,27 +109,32 @@ def go_routes(path: str) -> List[Tuple[str, str]]:
 def render_models(root: str) -> str:
     """The model table, read from the contracts the code actually fits on.
 
-    The XI layer is the whole serving surface after P-5: two win models over the same XI
-    columns, one performance model with five targets, and a simulator that trains nothing.
-    The windowed-form win model is listed beside them until P-6 removes it.
+    The XI layer is the whole serving surface: two win models over the same XI columns,
+    one performance model with several targets, and a simulator that trains nothing. The
+    windowed-form win model went in P-6, with the precompute and export steps that fed it.
     """
     objective_in = list_from_import(root, "ml.xi.contract", "XI_FEATURE_COLS")
     display_in = list_from_import(root, "ml.xi.contract", "DISPLAY_FEATURE_COLS")
     win_target = scalar_from_import(root, "ml.xi.contract", "TARGET_COL")
     formats = list_from_import(root, "ml.xi.contract", "FORMAT_CODES")
     perf_targets = performance_targets(root)
-    legacy_win_in = list_from_import(root, "ml.win_features", "WIN_ENHANCED_FEATURE_COLS")
 
     rows = [
-        ("XI win — objective", "Match", len(objective_in), [win_target],
-         "`ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens"),
-        ("XI win — display", "Match", len(display_in), [win_target],
-         "`ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context"),
-        ("Performance (L2-B)", "Player", len(objective_in), perf_targets,
-         "as-of player-match rows from `ml.xi.rows`"),
-        ("Win — windowed form", "Match", len(legacy_win_in),
-         [scalar_from_import(root, "ml.train_win", "WIN_TARGET_COL")],
-         "`ml.win_features.WIN_ENHANCED_FEATURE_COLS` — superseded, removed in P-6"),
+        (
+            "XI win — objective",
+            "Match",
+            len(objective_in),
+            [win_target],
+            "`ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens",
+        ),
+        (
+            "XI win — display",
+            "Match",
+            len(display_in),
+            [win_target],
+            "`ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context",
+        ),
+        ("Performance (L2-B)", "Player", len(objective_in), perf_targets, "as-of player-match rows from `ml.xi.rows`"),
     ]
 
     out = ["| Model | Level | Inputs | Outputs | Input source |", "|-------|-------|--------|---------|--------------|"]
@@ -144,15 +142,16 @@ def render_models(root: str) -> str:
         out.append(f"| **{name}** | {level} | {n_in} | {len(outs)} — {', '.join(f'`{o}`' for o in outs)} | {source} |")
 
     out.append("")
-    out.append(f"One model of each kind per format: {', '.join(f'`{f}`' for f in formats)}. "
-               "The simulator (L2-C) trains nothing — it draws from the performance model.")
+    out.append(
+        f"One model of each kind per format: {', '.join(f'`{f}`' for f in formats)}. "
+        "The simulator (L2-C) trains nothing — it draws from the performance model."
+    )
     out.append("")
     out.append("Input feature names, in order:")
     out.append("")
     for label, names, source in (
         ("XI win — objective", objective_in, "ml.xi.contract.XI_FEATURE_COLS"),
         ("XI win — display", display_in, "ml.xi.contract.DISPLAY_FEATURE_COLS"),
-        ("Win — windowed form", legacy_win_in, "ml.win_features"),
     ):
         shown = ", ".join(f"`{n}`" for n in names[:12])
         more = f" … (+{len(names) - 12} more, see `{source}`)" if len(names) > 12 else ""
@@ -217,8 +216,7 @@ def main() -> int:
         return 0
     if args.check:
         print(
-            "ERROR: ARCHITECTURE_MAP.md generated sections are stale.\n"
-            "Run: python scripts/gen-architecture-map.py",
+            "ERROR: ARCHITECTURE_MAP.md generated sections are stale.\nRun: python scripts/gen-architecture-map.py",
             file=sys.stderr,
         )
         return 1

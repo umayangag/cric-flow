@@ -13,9 +13,9 @@ import pytest
 from ml.xi import contract as C
 from ml.xi.builder import build
 from ml.xi.optimizer import Constraints, marginal_values, select_xi, select_xi_by_ratings
+from ml.xi.retrain import retrain
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
 from ml.xi.store import XiStore, load_ratings, save_ratings
-from ml.xi.train import train_all
 
 
 def _deliveries(
@@ -101,9 +101,9 @@ def trained_store(tmp_path_factory) -> tuple:
     out = tmp_path_factory.mktemp("xi_artifacts")
     import pandas as pd
 
-    summary = train_all(result, str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
-    assert summary["formats"][0]["n_train"] > 50
-    return XiStore.load(str(out)), squad_a, squad_b, matches
+    written = retrain(result, str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
+    assert written["summary"]["formats"][0]["n_train"] > 50
+    return XiStore.load(written["run_dir"]), squad_a, squad_b, matches
 
 
 def test_store_round_trip_preserves_state(tmp_path) -> None:

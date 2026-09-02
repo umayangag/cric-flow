@@ -17,9 +17,9 @@ export function asRunMetadata(metadata: unknown): RunMetadata | null {
 /**
  * Spread measures, where less is better whatever the underlying quantity is.
  *
- * Checked *first*, and that ordering is load-bearing: `train_win` emits
- * `cv_accuracy_std`, which contains "accuracy" and would otherwise be read as
- * higher-is-better — reporting a model that got less consistent as an improvement.
+ * Checked *first*, and that ordering is load-bearing: a name like `display_auc_sd`
+ * contains "auc" and would otherwise be read as higher-is-better — reporting a model
+ * that got less consistent across seeds as an improvement.
  */
 const SPREAD = ['_std', 'stddev', 'variance', 'spread'];
 
@@ -27,7 +27,7 @@ const SPREAD = ['_std', 'stddev', 'variance', 'spread'];
  * Metrics where a *lower* value is the better one.
  *
  * Matched by substring on the metric name, because the trainers name them
- * per-target (`player_runs_mae`, `cv_brier_mean`) rather than from a fixed list.
+ * per-target (`runs_pinball`, `display_auc_mean`) rather than from a fixed list.
  * A metric that matches nothing here is shown with its delta and no verdict —
  * "it changed by this much" is true regardless, while "this is an improvement"
  * would be a guess.

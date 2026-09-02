@@ -21,15 +21,6 @@ type PlayerDisplayName struct {
 	NameAsOf string // YYYY-MM-DD
 }
 
-// PlayerConsistency holds consistency values for a player/format (from feature_raw_stats_snapshots std_w10).
-type PlayerConsistency struct {
-	PlayerID           int64
-	SeasonID           int64
-	FormatID           int64
-	BattingConsistency float32
-	BowlingConsistency float32
-}
-
 // GetPlayerByID returns a player by their ID.
 func GetPlayerByID(ctx context.Context, id int64) (*Player, error) {
 	if Pool == nil {
@@ -45,42 +36,6 @@ func GetPlayerByID(ctx context.Context, id int64) (*Player, error) {
 		return nil, err
 	}
 	return p, nil
-}
-
-// GetPlayerConsistency returns a player”'s consistency data for a given season and format.
-func GetPlayerConsistency(
-	ctx context.Context,
-	playerID int64,
-	seasonName, formatCode string,
-) (*PlayerConsistency, error) {
-	if Pool == nil {
-		return nil, errors.New("db pool not initialized")
-	}
-
-	sid, err := GetOrCreateSeason(ctx, seasonName)
-	if err != nil {
-		return nil, err
-	}
-
-	fid, err := GetOrCreateMatchFormat(ctx, formatCode)
-	if err != nil {
-		return nil, err
-	}
-
-	// Read from feature_raw_stats_snapshots (std_w10 as consistency; latest per player/format); seasonID kept for API compatibility.
-	row := Pool.QueryRow(ctx, `
-		SELECT $1::bigint, $2::bigint, $3::bigint, batting_std_w10::real, bowling_std_w10::real
-		FROM feature_raw_stats_snapshots
-		WHERE player_id = $1 AND format_id = $3 AND scope = 'overall' AND scope_id IS NULL
-		ORDER BY as_of_date DESC
-		LIMIT 1
-	`, playerID, sid, fid)
-
-	pc := &PlayerConsistency{}
-	if err := row.Scan(&pc.PlayerID, &pc.SeasonID, &pc.FormatID, &pc.BattingConsistency, &pc.BowlingConsistency); err != nil {
-		return nil, err
-	}
-	return pc, nil
 }
 
 // GetOrCreatePlayer fetches a player id by Cricsheet person identifier, creating the row

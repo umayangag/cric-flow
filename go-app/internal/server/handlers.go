@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,9 +16,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
-	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
-	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
@@ -98,199 +95,6 @@ func (a *App) mlServiceProxy(
 	}
 }
 
-// enrichModelStatsPayload adds migration info (trained_at, duration) and params/metrics from ml_tuned_params
-// to each model when available. DB data takes precedence over disk-based model-stats so the latest auto-tune
-// results are shown even when tuning_report_*.json on disk is stale.
-// It also attaches the static match-type hierarchy so the ML Model Stats tab can render it
-// without a separate API call.
-func enrichModelStatsPayload(payload map[string]any, r *http.Request) {
-	payload["hierarchy"] = formatsPkg.GetHierarchy()
-
-	modelsVal, ok := payload["models"]
-	if !ok {
-		return
-	}
-	modelsList, ok := modelsVal.([]any)
-	if !ok {
-		return
-	}
-
-	// The live dataset is go-app's to know: ml-service can say what a model was
-	// trained on, but not whether that is still what is on the box (ops plan P-2).
-	// Attached before the DB check below, because a model being stale is worth
-	// knowing whether or not Postgres is up.
-	attachLiveDataset(payload, modelsList)
-
-	if !db.Available() {
-		return
-	}
-	ctx := r.Context()
-
-	// Migration info (trained_at, duration)
-	migrationInfo, err := db.GetMigrationInfoForTunedParams(ctx)
-	if err != nil {
-		slog.Warn("ml model-stats proxy: migration info fetch failed", slog.Any("err", err))
-	}
-	// Params and metrics from ml_tuned_params (source of truth for latest auto-tune)
-	paramsMetrics, err := db.ListLatestParamsMetricsForModelStats(ctx)
-	if err != nil {
-		slog.Warn("ml model-stats proxy: params/metrics fetch failed", slog.Any("err", err))
-	}
-
-	for _, m := range modelsList {
-		modelMap, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		modelName, ok := modelMap["model_name"].(string)
-		if !ok {
-			continue
-		}
-		formatKey, _ := modelMap["match_format"].(string)
-		// model_kind is the machine-readable kind (e.g. "batting_share");
-		// fall back to lowercased model_name for backward compatibility.
-		kindStr, ok := modelMap["model_kind"].(string)
-		if !ok || kindStr == "" {
-			kindStr = strings.ToLower(modelName)
-		}
-		key := kindStr + "|" + formatKey
-
-		if info, has := migrationInfo[key]; has {
-			modelMap["trained_at"] = info.TrainedAt
-			if info.CompletedAt != "" {
-				modelMap["completed_at"] = info.CompletedAt
-			}
-			if info.DurationSecs > 0 {
-				modelMap["duration_seconds"] = info.DurationSecs
-			}
-		}
-
-		// Override with latest params/metrics from ml_tuned_params (DB is source of truth after auto-tune)
-		if paramsMetrics != nil {
-			if pm, has := paramsMetrics[key]; has {
-				enrichWithDBParams(modelMap, pm.Params)
-				enrichWithDBMetrics(modelMap, pm.Metrics)
-			}
-		}
-	}
-}
-
-// enrichWithDBParams enriches modelMap with tuned params from DB (tuned_parameters, algorithm).
-func enrichWithDBParams(modelMap map[string]any, params json.RawMessage) {
-	if len(params) == 0 {
-		return
-	}
-	var p map[string]any
-	if err := json.Unmarshal(params, &p); err != nil || len(p) == 0 {
-		return
-	}
-	modelMap["tuned_parameters"] = p
-	modelMap["tuned"] = true
-	if algo := p["algorithm"]; algo != nil {
-		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algo))
-	} else if algos, ok := p["algorithms"].([]any); ok && len(algos) > 0 {
-		modelMap["algorithm"] = algorithmDisplayName(fmt.Sprintf("%v", algos[0]))
-	}
-}
-
-// enrichWithDBMetrics enriches modelMap with metrics from DB (metrics, mlqa_audit, accuracy_display).
-func enrichWithDBMetrics(modelMap map[string]any, metrics json.RawMessage) {
-	if len(metrics) == 0 {
-		return
-	}
-	var m map[string]any
-	if err := json.Unmarshal(metrics, &m); err != nil || len(m) == 0 {
-		return
-	}
-	modelMap["metrics"] = m
-	modelMap["tuned"] = true
-	if mlqa, ok := m["mlqa_audit"].(map[string]any); ok && len(mlqa) > 0 {
-		modelMap["mlqa_audit"] = mlqa
-	}
-	if disp := formatAccuracyDisplayFromMetrics(m); disp != "" {
-		modelMap["accuracy_display"] = disp
-		// The DB row comes from an auto-tune run, so it re-labels a score ml-service may
-		// have reported as a single-train holdout. Without this the value changes but the
-		// label does not, which is worse than either alone.
-		modelMap["score_source"] = "tuning_cv"
-	}
-}
-
-// formatAccuracyDisplayFromMetrics builds the accuracy_display string from metrics.
-func formatAccuracyDisplayFromMetrics(metrics map[string]any) string {
-	if acc := metrics["accuracy_pct"]; acc != nil {
-		return formatAccuracyPct(acc)
-	}
-	if maeVal, ok := metrics["mae"]; ok {
-		if mae, ok := toFloat64(maeVal); ok {
-			parts := []string{fmt.Sprintf("MAE=%.2f", mae)}
-			if rmseVal, ok := metrics["rmse"]; ok {
-				if rmse, ok := toFloat64(rmseVal); ok {
-					parts = append(parts, fmt.Sprintf("RMSE=%.2f", rmse))
-				}
-			}
-			if r2Val, ok := metrics["r2_pct"]; ok {
-				if r2, ok := toFloat64(r2Val); ok {
-					parts = append(parts, fmt.Sprintf("R²=%.1f%%", r2))
-				}
-			}
-			return strings.Join(parts, ", ")
-		}
-	}
-	if r2Val, ok := metrics["r2_pct"]; ok {
-		if r2, ok := toFloat64(r2Val); ok {
-			return fmt.Sprintf("R²=%.1f%%", r2)
-		}
-	}
-	return ""
-}
-
-// toFloat64 safely converts an any value to float64 if it's a known numeric type.
-func toFloat64(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int32:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	default:
-		return 0, false
-	}
-}
-
-func formatAccuracyPct(v any) string {
-	switch x := v.(type) {
-	case float64:
-		return fmt.Sprintf("%.1f%%", x)
-	case int:
-		return fmt.Sprintf("%d%%", x)
-	case string:
-		return x + "%"
-	default:
-		return fmt.Sprintf("%v%%", v)
-	}
-}
-
-var algorithmDisplayNames = map[string]string{
-	"rf": "Random Forest", "gb": "Gradient Boosting", "quantile": "Quantile Regressor",
-	"stacked": "Stacking Regressor", "ridge": "Ridge", "mlp": "MLP Regressor",
-	"et": "Extra Trees", "hgb": "Hist Gradient Boosting",
-}
-
-func algorithmDisplayName(key string) string {
-	trimmedKey := strings.TrimSpace(key)
-	k := strings.ToLower(trimmedKey)
-	if name, ok := algorithmDisplayNames[k]; ok {
-		return name
-	}
-	return trimmedKey
-}
-
 // readinessHandler pings the DB to verify readiness.
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Load()
@@ -305,69 +109,6 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-}
-
-// precomputeHandler triggers precompute with optional filters.
-// Optional JSON body: {"season":"2019", "formats":["ODI","T20I"]}. Empty body is allowed (defaults to all seasons/formats).
-func (a *App) precomputeHandler(w http.ResponseWriter, r *http.Request) {
-	var body precomputeRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		slog.Error("precompute: decode request body failed", slog.Any("err", err))
-		respondBadRequest(w, err)
-		return
-	}
-	season := body.Season
-	formats := body.Formats
-	// Empty formats means "all": precompute's discoverFormatCodes reads match_format,
-	// which holds exactly the canonical codes.
-	if busy, _ := pipeline.LaneBusy(r.Context(), "precompute-features"); busy {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
-		return
-	}
-	slog.Info(
-		"precompute: request accepted, starting background job",
-		slog.String("season", season),
-		slog.Any("formats", formats),
-	)
-	precomputeLane := pipelinesvc.Steps().LaneForCommand("precompute-features")
-	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetJobCancel(precomputeLane, cancel)
-	go func() {
-		defer a.ClearJobCancel(precomputeLane)
-		timeout := config.PipelineTimeout()
-		slog.Info(
-			"precompute job started",
-			slog.Duration("timeout", timeout),
-			slog.String("season", season),
-			slog.Any("formats", formats),
-		)
-		runErr := pipeline.RunJob(
-			jobCtx,
-			"precompute-features",
-			map[string]any{"season": season, "formats": formats},
-			timeout,
-			func(ctx context.Context) (any, error) {
-				err := precompute.Run(ctx, season, formats, nil)
-				return map[string]any{"season": season, "formats": formats}, err
-			},
-		)
-		if runErr != nil {
-			slog.Error(
-				"precompute job failed (DB connections may show 'connection to client lost' if cancelled or crashed)",
-				slog.Any("err", runErr),
-				slog.String("season", season),
-				slog.Any("formats", formats),
-			)
-		} else {
-			slog.Info("precompute job completed successfully", slog.String("season", season), slog.Any("formats", formats))
-		}
-	}()
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
-}
-
-// precomputeStatusHandler returns in-memory status of the last run.
-func precomputeStatusHandler(w http.ResponseWriter, _ *http.Request) {
-	respondJSON(w, http.StatusOK, precompute.GetStatus())
 }
 
 // importCricSheetHandler runs import of the cricsheet data directory.
@@ -436,7 +177,7 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 
-// getPlayerHandler returns player info with optional consistency stats.
+// getPlayerHandler returns one player's row: id, name, keeper and retired flags.
 func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
@@ -447,10 +188,6 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	season := r.URL.Query().Get("season")
-	format := r.URL.Query().Get("format")
-
-	// Get base player data
 	player, err := db.GetPlayerByID(r.Context(), id)
 	if err != nil {
 		slog.Error("getPlayer: GetPlayerByID failed", slog.Int64("player_id", id), slog.Any("err", err))
@@ -458,32 +195,15 @@ func getPlayerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get consistency data
-	consistency, err := db.GetPlayerConsistency(r.Context(), id, season, format)
-	if err != nil {
-		// It's okay for consistency data to be missing, so just log the error
-		slog.Warn(
-			"could not get player consistency",
-			slog.Any("err", err),
-			slog.Int64("player_id", id),
-			slog.String("season", season),
-			slog.String("format", format),
-		)
-	}
-
-	resp := playerResponse{
+	// No consistency numbers: they came from `feature_raw_stats_snapshots`, which P-6
+	// dropped with the precompute pass that filled it. A player's form lives in the rating
+	// state ml-service holds, and is read there rather than served from a stale snapshot.
+	respondJSON(w, http.StatusOK, playerResponse{
 		ID:             player.ID,
 		Name:           player.Name,
 		IsWicketKeeper: player.IsWicketKeeper,
 		IsRetired:      player.IsRetired,
-	}
-
-	if consistency != nil {
-		resp.BattingConsistency = &consistency.BattingConsistency
-		resp.BowlingConsistency = &consistency.BowlingConsistency
-	}
-
-	respondJSON(w, http.StatusOK, resp)
+	})
 }
 
 // getMatchHandler returns match details for a given match id.
@@ -513,45 +233,4 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, resp)
-}
-
-// attachLiveDataset records which dataset is currently on the box, and marks each
-// model as trained on it or not.
-//
-// The comparison lives here rather than in the browser because "which dataset is live"
-// is a fact about this server's filesystem — the frontend would have to be told it
-// anyway, and computing the verdict once beats every client deriving it slightly
-// differently.
-//
-// A model with no provenance is *not* marked stale. It predates P-1, or was trained
-// from CSVs with no export manifest, and "we do not know" is a different answer from
-// "it is out of date" — treating unknown as stale would flag every model on a box that
-// has not retrained since, which is noise rather than a warning.
-func attachLiveDataset(payload map[string]any, models []any) {
-	live := liveDatasetProvenance()
-	if live.Known() {
-		payload["live_dataset"] = map[string]any{
-			"dataset_sha256":       live.DatasetSHA256,
-			"dataset_feed":         live.DatasetFeed,
-			"dataset_source_url":   live.DatasetSourceURL,
-			"dataset_extracted_at": live.DatasetExtracted,
-			"dataset_match_files":  live.DatasetMatchFile,
-		}
-	}
-
-	for _, m := range models {
-		modelMap, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
-		provenance, ok := modelMap["provenance"].(map[string]any)
-		if !ok {
-			continue
-		}
-		digest, _ := provenance["dataset_sha256"].(string)
-		if digest == "" || !live.Known() {
-			continue
-		}
-		modelMap["dataset_is_live"] = digest == live.DatasetSHA256
-	}
 }

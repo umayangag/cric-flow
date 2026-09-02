@@ -32,7 +32,7 @@ describe('api error parsing', () => {
       }),
     );
 
-    const err = await api.getModelStats().catch((e: unknown) => e);
+    const err = await api.xiStatus().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     const apiError = err as ApiError;
     expect(apiError.status).toBe(404);
@@ -48,7 +48,7 @@ describe('api error parsing', () => {
       JSON.stringify({ detail: { code: 'MISSING_FORMAT', message: "Missing 'format'" } }),
     );
 
-    const err = (await api.getModelStats().catch((e: unknown) => e)) as ApiError;
+    const err = (await api.xiStatus().catch((e: unknown) => e)) as ApiError;
     expect(err.code).toBe('MISSING_FORMAT');
     expect(err.message).toBe("Missing 'format'");
   });
@@ -56,7 +56,7 @@ describe('api error parsing', () => {
   it('falls back to the raw body when the response is not JSON', async () => {
     respondWith(502, '<html>upstream is down</html>');
 
-    const err = (await api.getModelStats().catch((e: unknown) => e)) as ApiError;
+    const err = (await api.xiStatus().catch((e: unknown) => e)) as ApiError;
     expect(err.message).toContain('upstream is down');
     expect(err.status).toBe(502);
   });

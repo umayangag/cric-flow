@@ -18,16 +18,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
-// TrainingStepToModel maps a pipeline train step ID to the ML model name for
-// tuned-params lookup, or "" when the step trains no single model.
-func TrainingStepToModel(stepID string) string {
-	step, ok := Steps().ByID(stepID)
-	if !ok {
-		return ""
-	}
-	return step.Model
-}
-
 // MLServiceBaseURL returns the ML service base URL from env or config fallback.
 // The returned URL never has a trailing slash.
 func MLServiceBaseURL() string {
@@ -36,6 +26,16 @@ func MLServiceBaseURL() string {
 		return strings.TrimSuffix(s, "/")
 	}
 	return config.ServerMLBaseURLFallback(config.Load())
+}
+
+// AdminAPIKey is the key ml-service's admin endpoints are called with. ML_SERVICE_ADMIN_API_KEY
+// names it explicitly; API_KEY is the single-key local setup. Empty means ml-service is not
+// protecting its admin surface, which is the docker-compose default.
+func AdminAPIKey() string {
+	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(os.Getenv("API_KEY"))
 }
 
 // TrainStepTimeout returns the timeout duration for a training step from config.
@@ -87,9 +87,7 @@ func CallMLTrainEndpointWithResult(ctx context.Context, step string, querySuffix
 	if err != nil {
 		return nil, err
 	}
-	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
+	if key := AdminAPIKey(); key != "" {
 		req.Header.Set("X-API-Key", key)
 	}
 	client := &http.Client{Timeout: TrainStepTimeout()}
@@ -129,11 +127,6 @@ func ProgressInterval() time.Duration {
 // It is short on purpose: this runs once per SSE tick, and a slow ml-service must
 // degrade the progress panel to "unknown" rather than stall the whole stream behind it.
 func ProgressFetchTimeout() time.Duration { return 5 * time.Second }
-
-// DefaultPrecomputeETASecPerFormat returns the config precompute_eta_seconds_per_fmt (used for ETA before any format completes).
-func DefaultPrecomputeETASecPerFormat() int {
-	return config.PipelinePrecomputeETASecondsPerFmt(config.Load())
-}
 
 // StepIDForCommand maps a data_migrations command to the pipeline step ID the UI
 // knows it by. Returns "" for a command written by something outside the registry.
@@ -175,9 +168,7 @@ func FetchStepProgress(ctx context.Context, stepID string) (map[string]interface
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrProgressUnavailable, err)
 	}
-	if key := strings.TrimSpace(os.Getenv("ML_SERVICE_ADMIN_API_KEY")); key != "" {
-		req.Header.Set("X-API-Key", key)
-	} else if key := strings.TrimSpace(os.Getenv("API_KEY")); key != "" {
+	if key := AdminAPIKey(); key != "" {
 		req.Header.Set("X-API-Key", key)
 	}
 
@@ -202,16 +193,6 @@ func FetchStepProgress(ctx context.Context, stepID string) (map[string]interface
 	return m, nil
 }
 
-// FetchAutoTuneProgress fetches live auto-tune progress. Returns nil on error or when
-// nothing is running -- kept for callers that cannot distinguish the two anyway.
-func FetchAutoTuneProgress(ctx context.Context) map[string]interface{} {
-	progress, err := FetchStepProgress(ctx, "auto_tune")
-	if err != nil {
-		return nil
-	}
-	return progress
-}
-
 // BuildProgressDetailAndParams returns a short human-readable detail string and a params map from migration command and args.
 func BuildProgressDetailAndParams(
 	command string,
@@ -231,58 +212,24 @@ func BuildProgressDetailAndParams(
 		} else {
 			detail = "Importing Cricsheet data"
 		}
-	case "precompute-features":
-		detail = "Computing features and consistency per format"
-		if season, _ := params["season"].(string); season != "" {
-			params["season"] = season
-		}
-	case "export-dataset":
-		if outDir, _ := params["out_dir"].(string); outDir != "" {
-			detail = fmt.Sprintf("Exporting training dataset to %s", outDir)
-		} else {
-			detail = "Exporting training dataset"
-		}
-	case "train-batting", "train-bowling", "train-fielding", "train-extras", "train-win":
-		model := strings.TrimPrefix(command, "train-")
-		if len(model) > 0 {
-			model = strings.ToUpper(model[:1]) + model[1:]
-		}
+	case "xi-retrain":
 		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
-			detail = fmt.Sprintf("Training %s models (cutoff %s)", model, cutoff)
+			detail = fmt.Sprintf("Rating pass, XI win models, performance models and L4 report (cutoff %s)", cutoff)
 		} else {
-			detail = fmt.Sprintf("Training %s models", model)
+			detail = "Rating pass, XI win models, performance models and L4 report"
 		}
-	case "ml-auto-tune":
-		model, _ := params["model"].(string)
-		if model == "" {
-			model = "all"
-		}
-		format, _ := params["format"].(string)
-		allFormats, _ := params["all_formats"].(string)
-		switch {
-		case allFormats != "":
-			detail = fmt.Sprintf(
-				"Auto-tuning: model %s, all formats (searching best algorithm and hyperparameters)",
-				model,
-			)
-		case format != "":
-			detail = fmt.Sprintf(
-				"Auto-tuning: model %s, format %s (searching best algorithm and hyperparameters)",
-				model,
-				format,
-			)
-		default:
-			detail = fmt.Sprintf("Auto-tuning: model %s (searching best algorithm and hyperparameters)", model)
-		}
-		params["model"] = model
-		if format != "" {
-			params["format"] = format
-		}
+	case "xi-evaluate":
 		if cutoff, _ := params["cutoff"].(string); cutoff != "" {
-			params["cutoff"] = cutoff
+			detail = fmt.Sprintf("Evaluating at cutoff %s (leaves `current` alone)", cutoff)
+		} else {
+			detail = "Evaluating (leaves `current` alone)"
 		}
-	case "train-combination-meta":
-		detail = "Training combination meta-model"
+	case "xi-reload":
+		if run, _ := params["run_id"].(string); run != "" {
+			detail = fmt.Sprintf("Pointing `current` at run %s and loading it", run)
+		} else {
+			detail = "Reloading the run `current` points at"
+		}
 	default:
 		detail = command
 	}

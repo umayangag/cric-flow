@@ -1,24 +1,15 @@
-"""Unit tests for ml.config (config load, merge, training params, defaults)."""
+"""Unit tests for ml.config: load, merge, and the settings the service still honours."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 import ml.config as config_mod
 from ml.config import (
-    TRAINING_MODELS,
-    TRAINING_REQUIRED_KEYS,
+    DEFAULT_RATINGS_MAX_AGE_DAYS,
     _deep_merge,
     default_artifacts_dir,
-    default_go_app_export_dir,
-    get_mlqa_config,
-    get_pipeline_common_config,
-    get_training_data_fetch_timeout_sec,
-    get_training_params,
+    get_format_codes,
+    get_ratings_max_age_days,
     get_training_subprocess_timeout_sec,
-    get_tuned_params_from_go_app,
-    get_tuning_config,
-    get_tuning_search_space,
 )
 
 
@@ -47,251 +38,11 @@ def test_deep_merge_override_replaces_non_dict():
     assert out == {"a": "string"}
 
 
-def test_get_training_params_win_from_default_config():
-    """get_training_params('win') with the default config returns valid params."""
-    config_mod._cached = None
-    params = get_training_params("win")
-    assert params["n_estimators"] >= 1
-    assert params["max_depth"] >= 1
-    assert params["random_state"] is not None
-    assert params["joblib_compress"] in range(10)
-    assert params["estimator"] in ("rf", "gb", "stacked", "quantile")
-    assert "n_jobs" in params
-
-
-def test_get_training_params_unknown_model_raises():
-    """Unknown model raises ValueError."""
-    with pytest.raises(ValueError, match="Unknown model"):
-        get_training_params("unknown_model")
-
-
-def test_get_training_params_missing_ml_block_raises(monkeypatch):
-    """Config without ml block raises ValueError."""
-    config_mod._cached = {"inputs": {}}
-    try:
-        with pytest.raises(ValueError, match="ml.training"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_missing_training_block_raises(monkeypatch):
-    """Config with ml but no training raises ValueError."""
-    config_mod._cached = {"ml": {}}
-    try:
-        with pytest.raises(ValueError, match="ml.training"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_missing_model_block_raises(monkeypatch):
-    """Config with ml.training but no win block raises ValueError."""
-    config_mod._cached = {"ml": {"training": {"other": {}}}}
-    try:
-        with pytest.raises(ValueError, match="ml.training.win"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_missing_keys_raises(monkeypatch):
-    """ml.training.win missing a required key raises ValueError."""
-    config_mod._cached = {
-        "ml": {
-            "training": {
-                "win": {
-                    "n_estimators": 100,
-                    "max_depth": 8,
-                    # missing random_state, joblib_compress
-                }
-            }
-        }
-    }
-    try:
-        with pytest.raises(ValueError, match="missing required keys"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_invalid_types_raises(monkeypatch):
-    """Invalid integer types in block raise ValueError."""
-    config_mod._cached = {
-        "ml": {
-            "training": {
-                "win": {
-                    "n_estimators": "many",
-                    "max_depth": 8,
-                    "random_state": 42,
-                    "joblib_compress": 3,
-                }
-            }
-        }
-    }
-    try:
-        with pytest.raises(ValueError, match="must be integers"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_invalid_joblib_compress_raises(monkeypatch):
-    """joblib_compress outside 0-9 raises ValueError."""
-    config_mod._cached = {
-        "ml": {
-            "training": {
-                "win": {
-                    "n_estimators": 100,
-                    "max_depth": 8,
-                    "random_state": 42,
-                    "joblib_compress": 10,
-                }
-            }
-        }
-    }
-    try:
-        with pytest.raises(ValueError, match="0 and 9"):
-            get_training_params("win")
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_estimator_aliases(monkeypatch):
-    """Estimator gb, stacked, quantile and aliases are normalized."""
-    base = {
-        "n_estimators": 50,
-        "max_depth": 5,
-        "random_state": 42,
-        "joblib_compress": 1,
-    }
-    for est_val, expected in [
-        ("gb", "gb"),
-        ("GBM", "gb"),
-        ("gradient_boosting", "gb"),
-        ("stacked", "stacked"),
-        ("stacking", "stacked"),
-        ("ensemble", "stacked"),
-        ("quantile", "quantile"),
-        ("qr", "quantile"),
-        ("rf", "rf"),
-        ("random_forest", "random_forest"),  # config keeps as-is (no normalize to "rf")
-    ]:
-        config_mod._cached = {"ml": {"training": {"win": {**base, "estimator": est_val}}}}
-        try:
-            params = get_training_params("win")
-            assert params["estimator"] == expected
-        finally:
-            config_mod._cached = None
-
-
-def test_get_training_params_learning_rate_float_parsing(monkeypatch):
-    """learning_rate and quantile_level parsed as float; invalid -> default."""
-    config_mod._cached = {
-        "ml": {
-            "training": {
-                "win": {
-                    "n_estimators": 50,
-                    "max_depth": 5,
-                    "random_state": 42,
-                    "joblib_compress": 1,
-                    "estimator": "gb",
-                    "learning_rate": "0.05",
-                    "quantile_level": "0.9",
-                }
-            }
-        }
-    }
-    try:
-        params = get_training_params("win")
-        assert params["learning_rate"] == 0.05
-        assert params["quantile_level"] == 0.9
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_params_invalid_learning_rate_quantile_defaults(monkeypatch):
-    """Invalid learning_rate/quantile_level (non-float) fall back to 0.1 and 0.5."""
-    config_mod._cached = {
-        "ml": {
-            "training": {
-                "win": {
-                    "n_estimators": 50,
-                    "max_depth": 5,
-                    "random_state": 42,
-                    "joblib_compress": 1,
-                    "estimator": "gb",
-                    "learning_rate": "bad",
-                    "quantile_level": "nope",
-                }
-            }
-        }
-    }
-    try:
-        params = get_training_params("win")
-        assert params["learning_rate"] == 0.1
-        assert params["quantile_level"] == 0.5
-    finally:
-        config_mod._cached = None
-
-
-def test_default_go_app_export_dir_from_config(monkeypatch):
-    """default_go_app_export_dir returns config value when set."""
-    config_mod._cached = {"inputs": {"go_app_export_dir": "/custom/export"}}
-    try:
-        assert default_go_app_export_dir() == "/custom/export"
-    finally:
-        config_mod._cached = None
-
-
-def test_default_go_app_export_dir_fallback(monkeypatch):
-    """default_go_app_export_dir returns fallback when inputs missing."""
-    config_mod._cached = {}
-    try:
-        out = default_go_app_export_dir()
-        assert "output" in out and "go-app" in out
-    finally:
-        config_mod._cached = None
-
-
 def test_default_artifacts_dir_from_config(monkeypatch):
     """default_artifacts_dir returns config value when set."""
     config_mod._cached = {"outputs": {"artifacts_dir": "/custom/artifacts"}}
     try:
         assert default_artifacts_dir() == "/custom/artifacts"
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_data_fetch_timeout_sec_default(monkeypatch):
-    """Timeout from config or 3600 default; invalid int -> 600."""
-    config_mod._cached = {"inputs": {}}
-    try:
-        # default 3600 when key missing
-        assert get_training_data_fetch_timeout_sec() == 3600
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_data_fetch_timeout_sec_invalid_returns_600(monkeypatch):
-    """Invalid timeout value returns 600."""
-    config_mod._cached = {"inputs": {"training_data_fetch_timeout_sec": "x"}}
-    try:
-        assert get_training_data_fetch_timeout_sec() == 600
-    finally:
-        config_mod._cached = None
-
-
-def test_get_training_data_fetch_timeout_sec_invalid_and_invalid_fallback_non_numeric(monkeypatch):
-    """When both val and invalid_fallback are non-numeric, returns DEFAULT fallback 600."""
-    config_mod._cached = {
-        "inputs": {
-            "training_data_fetch_timeout_sec": "bad",
-            "training_data_fetch_timeout_invalid_fallback_sec": "also_bad",
-        }
-    }
-    try:
-        assert get_training_data_fetch_timeout_sec() == 600
     finally:
         config_mod._cached = None
 
@@ -333,82 +84,6 @@ def test_get_training_subprocess_timeout_sec_invalid_env_falls_back(monkeypatch)
         assert get_training_subprocess_timeout_sec() == 7 * 24 * 3600
     finally:
         config_mod._cached = None
-
-
-def test_get_tuned_params_from_go_app_invalid_timeout_config(monkeypatch):
-    """Invalid go_app_request_timeout_sec in config falls back to default (exercises _go_app_request_timeout_sec)."""
-    config_mod._cached = {"inputs": {"go_app_request_timeout_sec": "not_an_int"}}
-    try:
-        with patch("urllib.request.urlopen") as mock_urlopen:
-            mock_resp = MagicMock()
-            mock_resp.read.return_value = b'{"params": {}}'
-            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_urlopen.return_value = mock_resp
-            result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
-            assert result == {}
-            mock_urlopen.assert_called_once()
-    finally:
-        config_mod._cached = None
-
-
-def test_get_tuning_config(monkeypatch):
-    """get_tuning_config returns cv_splits, n_iter, n_jobs, etc."""
-    config_mod._cached = None
-    cfg = get_tuning_config()
-    assert "cv_splits" in cfg
-    assert "n_iter" in cfg
-    assert "n_jobs" in cfg
-    assert "random_state" in cfg
-    assert "scoring" in cfg
-    assert "search_space" in cfg
-    assert cfg["permutation_importance_n_repeats"] >= 1
-    assert cfg["permutation_importance_decimal_places"] >= 0
-
-
-def test_get_mlqa_config_includes_sensitivity_top_n() -> None:
-    """get_mlqa_config exposes sensitivity_top_n_features for MLQA audit."""
-    config_mod._cached = None
-    mlqa = get_mlqa_config()
-    assert mlqa["sensitivity_top_n_features"] >= 1
-
-
-def test_get_tuning_search_space_rf(monkeypatch):
-    """get_tuning_search_space('rf') returns dict when configured."""
-    config_mod._cached = None
-    space = get_tuning_search_space("rf")
-    # default config has search_space.rf
-    assert space is None or isinstance(space, dict)
-
-
-def test_get_tuning_search_space_missing_returns_none(monkeypatch):
-    """get_tuning_search_space with no search_space returns None."""
-    config_mod._cached = {"ml": {"tuning": {}}}
-    try:
-        assert get_tuning_search_space("rf") is None
-        assert get_tuning_search_space("gb") is None
-    finally:
-        config_mod._cached = None
-
-
-def test_get_pipeline_common_config():
-    """get_pipeline_common_config returns pipeline_common defaults."""
-    config_mod._cached = None
-    cfg = get_pipeline_common_config()
-    assert "use_robust_scaler" in cfg
-    assert "time_decay_halflife_years" in cfg
-    assert "delta_threshold" in cfg
-    assert "min_rows_for_training" in cfg
-    assert isinstance(cfg["use_robust_scaler"], bool)
-    assert cfg["time_decay_halflife_years"] == 2.0
-    assert cfg["delta_threshold"] == 0.08
-    assert cfg["min_rows_for_training"] == 10
-
-
-def test_training_required_keys_constant():
-    """TRAINING_REQUIRED_KEYS and TRAINING_MODELS are defined."""
-    assert "n_estimators" in TRAINING_REQUIRED_KEYS
-    assert TRAINING_MODELS == ("win",), "P-5 left one model with a training block"
 
 
 def test_config_load_default_missing_returns_empty():
@@ -486,86 +161,47 @@ def test_config_load_user_fails_keeps_default(monkeypatch):
         config_mod._cached = None
 
 
-def test_get_tuned_params_from_go_app_404_returns_none():
-    """get_tuned_params_from_go_app returns None on 404."""
-    import urllib.error
-
-    err = urllib.error.HTTPError("http://x", 404, "Not Found", None, None)
-    with patch("urllib.request.urlopen", side_effect=err):
-        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
-    assert result is None
-
-
-def test_get_tuned_params_from_go_app_http_error_non_404_returns_none():
-    """get_tuned_params_from_go_app returns None on non-404 HTTPError."""
-    import urllib.error
-
-    err = urllib.error.HTTPError("http://x", 500, "Internal Error", None, None)
-    with patch("urllib.request.urlopen", side_effect=err):
-        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
-    assert result is None
+def test_ratings_max_age_days_default(monkeypatch):
+    """H-11's limit, when nothing overrides it."""
+    monkeypatch.delenv("XI_RATINGS_MAX_AGE_DAYS", raising=False)
+    config_mod._cached = {"ml": {}}
+    try:
+        assert get_ratings_max_age_days() == DEFAULT_RATINGS_MAX_AGE_DAYS
+    finally:
+        config_mod._cached = None
 
 
-def test_get_tuned_params_from_go_app_os_error_returns_none():
-    """get_tuned_params_from_go_app returns None on OSError (connection refused)."""
-    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
-        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
-    assert result is None
+def test_ratings_max_age_days_from_config(monkeypatch):
+    monkeypatch.delenv("XI_RATINGS_MAX_AGE_DAYS", raising=False)
+    config_mod._cached = {"ml": {"ratings_max_age_days": 3}}
+    try:
+        assert get_ratings_max_age_days() == 3
+    finally:
+        config_mod._cached = None
 
 
-def test_get_tuned_params_from_go_app_params_string_json_decode_fails():
-    """get_tuned_params_from_go_app returns None when params is invalid JSON string."""
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = b'{"params": "not valid json {"}'
-    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    with patch("urllib.request.urlopen", return_value=mock_resp):
-        result = get_tuned_params_from_go_app("http://localhost:8080", "batting", "ODI")
-    assert result is None
+def test_ratings_max_age_days_env_wins(monkeypatch):
+    """A deployment overrides the limit without editing config.json."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "30")
+    config_mod._cached = {"ml": {"ratings_max_age_days": 3}}
+    try:
+        assert get_ratings_max_age_days() == 30
+    finally:
+        config_mod._cached = None
 
 
-def test_save_tuned_params_to_go_app_success(monkeypatch):
-    """save_tuned_params_to_go_app returns without raising on 2xx response."""
-    mock_resp = MagicMock()
-    mock_resp.status = 200
-    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    with patch("urllib.request.urlopen", return_value=mock_resp):
-        config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
+def test_ratings_max_age_days_invalid_env_falls_back(monkeypatch):
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "soon")
+    config_mod._cached = {"ml": {"ratings_max_age_days": 5}}
+    try:
+        assert get_ratings_max_age_days() == 5
+    finally:
+        config_mod._cached = None
 
 
-def test_save_tuned_params_to_go_app_http_error_raises():
-    """save_tuned_params_to_go_app raises ValueError on HTTPError."""
-    import urllib.error
-
-    err = urllib.error.HTTPError("http://x", 500, "Error", None, None)
-    err.read = lambda: b"error body"
-    with patch("urllib.request.urlopen", side_effect=err):
-        with pytest.raises(ValueError, match="HTTP 500"):
-            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
-
-
-def test_save_tuned_params_to_go_app_os_error_raises():
-    """save_tuned_params_to_go_app raises ValueError on OSError."""
-    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
-        with pytest.raises(ValueError, match="request failed"):
-            config_mod.save_tuned_params_to_go_app("http://localhost:8080", "batting", "ODI", {"n_estimators": 100})
-
-
-def test_get_tuning_config_algorithms_all_expands_to_list(monkeypatch):
-    """get_tuning_config with algorithms='all' or None uses default list."""
-    config_mod._cached = None
-    with patch("ml.config._load", return_value={"ml": {"tuning": {"algorithms": "all", "cv_splits": 5, "n_iter": 25}}}):
-        cfg = get_tuning_config()
-    assert cfg["algorithms"] == ["rf", "gb", "quantile"]
-
-
-def test_get_tuning_config_validation_method_invalid_falls_back_to_walk_forward(monkeypatch):
-    """get_tuning_config with invalid validation_method uses walk_forward."""
-    config_mod._cached = None
-    with patch(
-        "ml.config._load",
-        return_value={"ml": {"tuning": {"validation_method": "other", "cv_splits": 5, "n_iter": 25}}},
-    ):
-        cfg = get_tuning_config()
-    assert cfg["validation_method"] == "walk_forward"
+def test_format_codes_fall_back_to_the_canonical_list(monkeypatch):
+    config_mod._cached = {"ml": {}}
+    try:
+        assert get_format_codes() == ["TEST", "ODI", "T20", "T20I"]
+    finally:
+        config_mod._cached = None

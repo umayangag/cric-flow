@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 /**
- * Check that go-app and ml-service expose canonical config used by the frontend.
- * Frontend fetches formats from GET /api/canonical/formats and model metadata from GET /api/ml/model-metadata.
- * This script validates the backend sources only (no frontend constants to compare).
+ * Check that go-app and ml-service agree on the two things the frontend depends on and
+ * cannot see for itself: the canonical format codes, and the format codes the ML service
+ * serves models for.
+ *
+ * The frontend fetches formats from GET /api/canonical/formats. It used to fetch a
+ * model-metadata card too, describing the windowed-form win model's feature order; P-6
+ * deleted that model, and the XI models describe themselves through GET /xi/status and
+ * L4's report. What replaces the check is the one below: two independent lists of format
+ * codes, in two languages, that have to be the same list.
+ *
  * Run from repo root. Used by: make frontend-backend-sync-check, check-all, and CI.
  */
 
@@ -14,10 +21,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
 const EXPECTED_FORMATS = ['TEST', 'ODI', 'T20', 'T20I'];
-// The model-metadata card the Workbench renders. One family is left: the windowed-form win
-// classifier, which P-6 removes. The XI models describe themselves through GET /xi/status and
-// L4's report, not through this endpoint.
-const EXPECTED_MODEL_KEYS = ['win'];
 
 function run(cwd, cmd, args, env = {}) {
   const r = spawnSync(cmd, args, {
@@ -57,37 +60,37 @@ function main() {
     }
   }
 
-  // 2) ml-service model metadata (expected keys present with features/outputs)
+  // 2) ml-service's own format codes. They are a separate list in a separate language
+  // (ml.config.CANONICAL_FORMAT_CODES), and a run trained for formats go-app cannot name
+  // is a model nothing will ever ask for.
   const mlCode = `
 import json
-from app.model_metadata import get_model_metadata
-print(json.dumps(get_model_metadata()))
+from ml.config import get_format_codes
+print(json.dumps(get_format_codes()))
 `;
   const mlResult = run(path.join(ROOT, 'ml-service'), 'python', ['-c', mlCode], { PYTHONPATH: '.' });
   if (mlResult.status !== 0) {
-    console.error('[check-frontend-backend-sync] ml-service model_metadata failed:', mlResult.stderr || mlResult.stdout);
+    console.error('[check-frontend-backend-sync] ml-service format codes failed:', mlResult.stderr || mlResult.stdout);
     process.exit(1);
   }
-  let mlOut;
+  let mlFormats;
   try {
-    mlOut = JSON.parse(mlResult.stdout.trim());
+    mlFormats = JSON.parse(mlResult.stdout.trim());
   } catch (e) {
     console.error('[check-frontend-backend-sync] Failed to parse ml-service JSON:', e.message);
     process.exit(1);
   }
-  for (const key of EXPECTED_MODEL_KEYS) {
-    if (!mlOut[key] || !Array.isArray(mlOut[key].features) || !Array.isArray(mlOut[key].outputs)) {
-      console.error('[check-frontend-backend-sync] ml-service model_metadata missing or invalid key:', key);
-      process.exit(1);
-    }
-  }
-  const extra = Object.keys(mlOut).filter((k) => !EXPECTED_MODEL_KEYS.includes(k));
-  if (extra.length) {
-    console.error('[check-frontend-backend-sync] ml-service model_metadata has unexpected keys:', extra);
+  if ([...mlFormats].sort().join(',') !== [...formats].sort().join(',')) {
+    console.error(
+      '[check-frontend-backend-sync] go-app and ml-service disagree on the format codes:',
+      formats,
+      'vs',
+      mlFormats,
+    );
     process.exit(1);
   }
 
-  console.log('[check-frontend-backend-sync] Backend canonical formats and model metadata OK.');
+  console.log('[check-frontend-backend-sync] go-app and ml-service agree on the format codes.');
 }
 
 main();

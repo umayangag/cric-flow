@@ -24,16 +24,17 @@ def test_admin_reload_disabled_returns_403(tmp_path):
     assert detail["code"] == "RELOAD_DISABLED"
 
 
-def test_admin_reload_enabled_returns_summary(tmp_path):
+def test_admin_reload_enabled_returns_status(tmp_path):
+    """With no runs on disk there is nothing to load, which is a normal state and not an
+    error: the reload reports what /xi/status would say, and says nothing is loaded."""
     m = _load_app(tmp_path, enable_reload=True)
     client = TestClient(m.app)
     resp = client.post("/admin/reload")
     assert resp.status_code == 200
     data = resp.json()
-    # Summary comes from app.artifacts.summary()
     assert data["status"] == "reloaded"
-    assert "loaded_win_formats" in data
-    assert "loaded_batting_formats" not in data
+    assert data["loaded"] is False
+    assert data["run_id"] is None
 
 
 def test_admin_reload_with_api_key_wrong_returns_401(tmp_path):
