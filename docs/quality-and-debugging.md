@@ -50,6 +50,11 @@ tested — against their own assumption — and the seam between them was tested
 test that says "our default is valid RFC3339" proves nothing about a service that never
 accepted RFC3339.
 
+The rule also covers a literal *nobody had declared yet*: D-11 found go-app, ml-service and
+the frontend each holding a private copy of `"male"` / `"female"` — ml-service compared
+against its own string to pick E7's context-baseline group — and the vocabulary joined the
+contract as `team_genders` in the same commit that put gender on the request wire.
+
 **Where it lives.** `contracts/ops-console.contract.json` is generated from go-app's pipeline
 registry (`go test ./internal/services/pipeline -run TestPipelineContract -update`) and is the
 one file all three components assert against:
@@ -61,6 +66,7 @@ one file all three components assert against:
 | `cutoff` (pattern, hint, example) | `DefaultCutoff()` matches the pattern | the CLI parses the example, and go-app's default | the dialog's field asks for `cutoff.hint` |
 | `ml_service_calls` (method, path, query) | its call sites use these constants | every path is a route accepting those query parameters | — |
 | `format_codes` | generated from `internal/formats` | the same set as `ml.xi.contract.FORMAT_CODES` | — |
+| `team_genders` | generated from `internal/teams`; every published value is one the API accepts | the same set as `ml.xi.contract.TEAM_GENDERS`, and E7's context-group split keys on one of them | its `TEAM_GENDERS` union matches, and no other source file spells a gender literal |
 
 **How to add one.** Declare it in Go beside the code that uses it
 (`internal/services/pipeline/boundary.go` for the ml-service boundary), add it to

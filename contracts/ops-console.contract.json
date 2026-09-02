@@ -110,5 +110,9 @@
     "ODI",
     "T20",
     "T20I"
+  ],
+  "team_genders": [
+    "male",
+    "female"
   ]
 }

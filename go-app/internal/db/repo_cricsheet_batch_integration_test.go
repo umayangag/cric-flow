@@ -14,6 +14,24 @@ import (
 //
 // Run with: RUN_DB_TESTS=1 go test -v ./internal/db -run TestMultiBatch|TestRecomputeFieldingAggregatesTx
 
+// namedPlayerID returns the id of a player keyed by name alone, creating the row if it is
+// new. batting_data, bowling_data and fielding_event all have a foreign key to player, so
+// each of these tests needs one before it can insert anything.
+//
+// It goes through GetOrCreatePlayer rather than its own INSERT. Each of these tests used to
+// carry a copy of that statement, and the copies went stale: migration 0004 made the
+// player_name unique index *partial* (`WHERE external_id IS NULL`, because a registry id is
+// the identity where there is one), so `ON CONFLICT (player_name)` stopped naming a
+// constraint and the insert began erroring. The error went to `_`, the following SELECT
+// found no row, and three tests failed on a line that looked nothing like the cause. A test
+// fixture that duplicates production SQL is a copy that can rot; this one cannot.
+func namedPlayerID(ctx context.Context, t *testing.T, name string) int64 {
+	t.Helper()
+	id, _, err := GetOrCreatePlayer(ctx, "", name, "")
+	require.NoError(t, err)
+	return id
+}
+
 func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
 	if !guardIntegration(t) {
 		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
@@ -57,16 +75,7 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
-	// Ensure we have at least one player (batting_data has FK to player)
-	_ = PoolAPI.Exec(
-		ctx,
-		"INSERT INTO player(player_name) VALUES ('TestBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
-	)
-	var playerID int64
-	require.NoError(
-		t,
-		PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBatchPlayer'").Scan(&playerID),
-	)
+	playerID := namedPlayerID(ctx, t, "TestBatchPlayer")
 
 	tx, err := PoolAPI.Begin(ctx)
 	require.NoError(t, err)
@@ -98,15 +107,7 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
-	_ = PoolAPI.Exec(
-		ctx,
-		"INSERT INTO player(player_name) VALUES ('TestBowlBatchPlayer') ON CONFLICT (player_name) DO NOTHING",
-	)
-	var playerID int64
-	require.NoError(
-		t,
-		PoolAPI.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestBowlBatchPlayer'").Scan(&playerID),
-	)
+	playerID := namedPlayerID(ctx, t, "TestBowlBatchPlayer")
 
 	tx, err := PoolAPI.Begin(ctx)
 	require.NoError(t, err)
@@ -138,18 +139,13 @@ func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
 
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 
-	// Run in a single transaction: insert player, insert fielding_events, then RecomputeFieldingAggregatesTx.
+	// The fielder exists before the transaction: he is a foreign key this test needs, not
+	// part of the regression it guards.
+	playerID := namedPlayerID(ctx, t, "TestRecomputeFielder")
+
+	// Run in a single transaction: insert fielding_events, then RecomputeFieldingAggregatesTx.
 	// Without consuming and closing the aggregation query rows before calling UpsertFieldingTx, we get "conn busy".
 	err = RunInTx(ctx, func(ctx context.Context, tx CopyFromTx) error {
-		_ = tx.Exec(
-			ctx,
-			"INSERT INTO player(player_name) VALUES ('TestRecomputeFielder') ON CONFLICT (player_name) DO NOTHING",
-		)
-		var playerID int64
-		if err := tx.QueryRow(ctx, "SELECT id FROM player WHERE player_name = 'TestRecomputeFielder'").Scan(&playerID); err != nil {
-			return err
-		}
-
 		// Insert fielding events so the aggregation query returns rows
 		events := []FieldingEvent{
 			{MatchID: 888884, Innings: 1, Over: 0, Ball: 1, FielderID: &playerID, Kind: "caught", AssistRole: ""},

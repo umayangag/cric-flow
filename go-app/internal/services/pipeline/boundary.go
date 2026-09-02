@@ -3,6 +3,8 @@ package pipeline
 import (
 	"regexp"
 	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
 // This file declares every literal go-app puts on the wire to ml-service: the paths it
@@ -77,6 +79,16 @@ type MLCall struct {
 	Path   string
 	Query  []string
 }
+
+// TeamGenders is the gender half of a team's identity, as both services spell it.
+//
+// It is here for D-11's reason, which is D-9's reason one table along: go-app writes these
+// values into `opposition.gender` and `match.gender` from Cricsheet's `info.gender`, the
+// frontend now names a side to go-app with one of them, and ml-service *matches on the
+// literal* -- `RatingState._ctx_group` reads `gender == "female"` to pick E7's context
+// baseline group. Three components, one vocabulary, and until now three private copies of
+// it. Declared once here, generated into the contract, asserted from all three sides.
+func TeamGenders() []string { return teams.Genders() }
 
 // MLCalls returns the ml-service admin endpoints go-app calls, derived from the step
 // registry so a training step added there is a call ml-service is tested for.

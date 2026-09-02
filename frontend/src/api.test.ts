@@ -50,52 +50,47 @@ describe('frontend api client (DB-backed)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('getTeamsByFormat fetches with format query param', async () => {
+  it('getTeamSidesByFormat fetches with format query param and returns sides', async () => {
     vi.stubGlobal('localStorage', {
       getItem: () => null,
       setItem: () => {},
       removeItem: () => {},
     });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ['IND', 'AUS', 'ENG'],
-    });
+    const sides = [
+      { club_id: 43, name: 'India', gender: 'male', display_name: 'India (men)' },
+      { club_id: 132, name: 'India', gender: 'female', display_name: 'India (women)' },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => sides });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
-    const teams = await api.getTeamsByFormat('T20');
+    const teams = await api.getTeamSidesByFormat('T20I');
 
-    expect(teams).toEqual(['IND', 'AUS', 'ENG']);
+    expect(teams).toEqual(sides);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/options/teams-by-format'),
       expect.any(Object),
     );
     const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain('format=T20');
+    expect(url).toContain('format=T20I');
     vi.unstubAllGlobals();
   });
 
-  it('getOpponents fetches with format and team query params', async () => {
+  it('getOpponentSides addresses the club by id, not by name', async () => {
     vi.stubGlobal('localStorage', {
       getItem: () => null,
       setItem: () => {},
       removeItem: () => {},
     });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ['AUS', 'ENG', 'PAK'],
-    });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
-    const opponents = await api.getOpponents('ODI', 'IND');
+    await api.getOpponentSides('ODI', 43);
 
-    expect(opponents).toEqual(['AUS', 'ENG', 'PAK']);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/options/opponents'),
-      expect.any(Object),
-    );
     const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/api/options/opponents');
     expect(url).toContain('format=ODI');
-    expect(url).toContain('team=IND');
+    expect(url).toContain('team_id=43');
+    expect(url).not.toContain('team=');
     vi.unstubAllGlobals();
   });
 
@@ -113,16 +108,23 @@ describe('frontend api client (DB-backed)', () => {
         },
       ],
       team2: [],
+      team1_side: { club_id: 132, name: 'India', gender: 'female', display_name: 'India (women)' },
+      team2_side: {
+        club_id: 12,
+        name: 'Australia',
+        gender: 'female',
+        display_name: 'Australia (women)',
+      },
       selection: { objective: 'win', optimised: true },
-      win_probability: { team1: 0.61, source: 'display', predicted_winner: 'IND' },
+      win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
     };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
     const result = await api.predictTeamSelection({
-      format: 'T20',
-      team1: 'IND',
-      team2: 'AUS',
+      format: 'T20I',
+      team1_id: 132,
+      team2_id: 12,
       match_date: '2024-06-15',
     });
 
@@ -131,7 +133,8 @@ describe('frontend api client (DB-backed)', () => {
       expect.stringContaining('/api/predict/team-selection'),
       expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"format":"T20"'),
+        // The side is named by id: "India" would not say which of two teams to score (D-11).
+        body: expect.stringContaining('"team1_id":132'),
       }),
     );
     vi.unstubAllGlobals();
