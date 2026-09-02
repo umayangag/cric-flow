@@ -16,6 +16,7 @@ import type {
   OpsDataStartResponse,
   RunPlanState,
   RunPlanStartResponse,
+  TeamSideOption,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -342,18 +343,20 @@ export const api = {
     }
   },
   // --- Options ---
-  getTeams(): Promise<string[]> {
-    return httpApi('/api/options/teams');
-  },
-  getTeamsByFormat(format: string): Promise<string[]> {
+  /**
+   * The sides that have played a format, each with the `club_id` a prediction is requested
+   * with. Not names: a name is not a team (D-11).
+   */
+  getTeamSidesByFormat(format: string): Promise<TeamSideOption[]> {
     const u = new URL('/api/options/teams-by-format', BASE_API_URL);
     u.searchParams.set('format', format);
     return httpApi(u.toString());
   },
-  getOpponents(format: string, team: string): Promise<string[]> {
+  /** The sides this club has played in the format, addressed by its club id. */
+  getOpponentSides(format: string, teamId: number): Promise<TeamSideOption[]> {
     const u = new URL('/api/options/opponents', BASE_API_URL);
     u.searchParams.set('format', format);
-    u.searchParams.set('team', team);
+    u.searchParams.set('team_id', String(teamId));
     return httpApi(u.toString());
   },
   getFormats(): Promise<string[]> {
@@ -383,8 +386,10 @@ export const api = {
    */
   predictTeamSelection(params: {
     format: string;
-    team1: string;
-    team2: string;
+    /** The `club_id` of each side, from {@link getTeamSidesByFormat}. A name would not say
+     * which of two teams it meant, and the API refuses an ambiguous one (D-11). */
+    team1_id: number;
+    team2_id: number;
     venue?: string;
     match_date: string; // YYYY-MM-DD or RFC3339
     extra_team1?: number[];

@@ -59,10 +59,11 @@ func NewRouter(a *App) http.Handler {
 
 	// Options
 	optionsHandler := &OptionsHandler{}
-	admin.HandleFunc("/api/options/teams", optionsHandler.HandleGetTeams).Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/options/teams-by-format", optionsHandler.HandleGetTeamsByFormat).
+	// Team options are *sides*, not names: each carries the club id a prediction request
+	// must send, because a name alone names two teams for a third of the dataset (D-11).
+	admin.HandleFunc("/api/options/teams-by-format", optionsHandler.HandleGetTeamSidesByFormat).
 		Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/options/opponents", optionsHandler.HandleGetOpponents).
+	admin.HandleFunc("/api/options/opponents", optionsHandler.HandleGetOpponentSides).
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/formats", optionsHandler.HandleGetFormats).
 		Methods(http.MethodGet, http.MethodOptions)

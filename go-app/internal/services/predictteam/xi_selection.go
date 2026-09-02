@@ -134,11 +134,11 @@ func selectByRatings(
 	}
 	xi1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team1Code, err)
+		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team1.Label(), err)
 	}
 	xi2, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool2, nil, false)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team2Code, err)
+		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team2.Label(), err)
 	}
 	slog.InfoContext(ctx, "rating-ordered XIs selected", slog.String("format", fix.format))
 	return xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys, summary, nil, nil
@@ -160,11 +160,11 @@ func selectByWinProbability(
 	summary := SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true}
 	seed1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team1Code, err)
+		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team1.Label(), err)
 	}
 	seed2, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool2, nil, false)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team2Code, err)
+		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team2.Label(), err)
 	}
 	xi1, xi2 := seed1.SelectedPlayerKeys, seed2.SelectedPlayerKeys
 	marginals := map[string]float64{}
@@ -172,7 +172,7 @@ func selectByWinProbability(
 	for round := 1; round <= config.SelectionBestResponseRounds(config.Load()); round++ {
 		next1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveWin, fix.pool1, xi2, true)
 		if err != nil {
-			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team1Code, round, err)
+			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team1.Label(), round, err)
 		}
 		next2, err := optimizeSide(
 			ctx,
@@ -184,7 +184,7 @@ func selectByWinProbability(
 			false,
 		)
 		if err != nil {
-			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team2Code, round, err)
+			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team2.Label(), round, err)
 		}
 		settled := sameXI(xi1, next1.SelectedPlayerKeys) && sameXI(xi2, next2.SelectedPlayerKeys)
 		xi1, xi2 = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys

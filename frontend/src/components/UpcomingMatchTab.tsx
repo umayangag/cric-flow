@@ -20,14 +20,25 @@ import MatchScorecard from './MatchScorecard';
 import ErrorNotice from './common/ErrorNotice';
 import PredictionReadiness from './PredictionReadiness';
 import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
+import type { TeamSideOption } from '../types';
 
-const filter = createFilterOptions<string>();
+// Sides are matched on their display name -- "India (men)" -- so typing "women" narrows the
+// list to the women's sides, which is the distinction the picker exists to make (D-11).
+const filter = createFilterOptions<TeamSideOption>({ stringify: (side) => side.display_name });
 
-function teamFilterOptions(options: string[], params: Parameters<typeof filter>[1]): string[] {
+function teamFilterOptions(
+  options: TeamSideOption[],
+  params: Parameters<typeof filter>[1],
+): TeamSideOption[] {
   const filtered = filter(options, params);
   if (params.inputValue === '') return filtered;
   if (params.inputValue.length < 2) return [];
   return filtered;
+}
+
+/** Two sides are the same option when they are the same club, never when they share a name. */
+function isSameSide(option: TeamSideOption, value: TeamSideOption): boolean {
+  return option.club_id === value.club_id;
 }
 
 const UpcomingMatchTab: React.FC = () => {
@@ -66,8 +77,10 @@ const UpcomingMatchTab: React.FC = () => {
         Upcoming match prediction
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Select format, teams, venue (optional), and a future match date. Date must be today or
-        within {maxFutureDays} days to ensure accurate predictions.
+        Select format, teams, venue (optional), and a future match date. Teams are listed one side
+        at a time — India (men) and India (women) are different teams — and both sides of a fixture
+        are the same. Date must be today or within {maxFutureDays} days to ensure accurate
+        predictions.
       </Typography>
 
       <Stack spacing={2} sx={{ mb: 3 }}>
@@ -89,8 +102,9 @@ const UpcomingMatchTab: React.FC = () => {
           size="small"
           options={availableTeam1s}
           value={team1}
-          onChange={(_, v) => setTeam1(v ?? '')}
-          onInputChange={(_, v) => setTeam1(v)}
+          onChange={(_, v) => setTeam1(v)}
+          getOptionLabel={(side) => side.display_name}
+          isOptionEqualToValue={isSameSide}
           filterOptions={teamFilterOptions}
           renderInput={(params) => (
             <TextField {...params} label="Team 1" placeholder="Select or type team" />
@@ -101,8 +115,9 @@ const UpcomingMatchTab: React.FC = () => {
           size="small"
           options={availableTeam2s}
           value={team2}
-          onChange={(_, v) => setTeam2(v ?? '')}
-          onInputChange={(_, v) => setTeam2(v)}
+          onChange={(_, v) => setTeam2(v)}
+          getOptionLabel={(side) => side.display_name}
+          isOptionEqualToValue={isSameSide}
           filterOptions={teamFilterOptions}
           renderInput={(params) => (
             <TextField {...params} label="Team 2" placeholder="Select or type team" />
@@ -161,8 +176,8 @@ const UpcomingMatchTab: React.FC = () => {
           <MatchScorecard
             scorecard={result.scorecard}
             winProbability={result.win_probability}
-            team1={team1}
-            team2={team2}
+            team1={result.team1_side.display_name}
+            team2={result.team2_side.display_name}
           />
           {!result.selection.optimised && (
             <Alert severity="info" sx={{ mb: 2 }}>
@@ -178,12 +193,12 @@ const UpcomingMatchTab: React.FC = () => {
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
             <TeamTable
-              teamName={team1}
+              teamName={result.team1_side.display_name}
               players={result.team1}
               optimised={result.selection.optimised}
             />
             <TeamTable
-              teamName={team2}
+              teamName={result.team2_side.display_name}
               players={result.team2}
               optimised={result.selection.optimised}
             />

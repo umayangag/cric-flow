@@ -116,6 +116,103 @@ semaphore be released only when the process is gone), with go-app's stop waiting
 answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
 about another's process.
 
+### 1.4 D-11 — a prediction for "India" silently chose one of the two Indias — **fixed**
+
+*Numbered D-11, not D-10: the branch (`fix/d-10-gendered-team-resolution`) was named before
+the collision with §1.3 was noticed, and renumbering a defect already recorded in a merged
+commit would break the register.*
+
+**Root cause: the identity migration split teams by gender and the serving path never
+followed.** `opposition` has been keyed `(opposition_name, gender)` since migration `0004`,
+because 130 of the 394 team names in the dataset are used by both a men's and a women's side.
+The prediction request kept taking a bare name, so `FindOppositionIDForFormat` had to turn a
+name into one id with no gender to go on — and it did, by **picking the side that played the
+format most recently** and writing a `slog.Warn` nobody reads. Its own doc comment said so:
+"the real fix is for the caller to carry the gender".
+
+Measured against the live database on 2026-09-02, the query that resolver ran for
+`("India", "T20I")`:
+
+| club_id | gender | last_played | innings |
+|---|---|---|---|
+| 43 | male | 2026-07-26 | 531 |
+| 132 | female | 2026-06-28 | 323 |
+
+Every request naming India in T20I was answered with the men's side, whichever the user
+meant, and the response said only `"India"` — so the answer could not be told apart from the
+one that was asked for. The picker could not help: `/api/options/teams-by-format` returned
+`SELECT DISTINCT opposition_name`, one entry for two teams. The ambiguity is not marginal —
+names with both sides active in one format: **T20 130, T20I 31, ODI 25, TEST 4**.
+
+Worse than the guess, `predictteam` resolved the two sides independently, so nothing stopped
+a fixture from resolving to India (men) versus Australia (women). The XIs, the Elo, the
+head-to-head and the context baselines would come from two different games, and the model has
+never been shown such a match, so the probability it returned would be arithmetic with no
+referent.
+
+**Why the gates missed it.** It is not a seam defect like D-9; it is the *absence* of a field.
+Every component behaved as specified — the resolver was tested for "unknown team is an error",
+the handler for "team1 is required", the picker for "cascades formats to teams" — and no test
+could fail, because no layer ever held two candidate sides at once except the one that
+discarded one of them. §8.7's rule is what names it: *a substitution that changes which model
+answered must say so in the response.* Substituting the men's side for the women's is a
+substitution, and it was announced only in a server log.
+
+**Fixed here** (branch `fix/d-10-gendered-team-resolution`), ends-in:
+
+1. **The API stops guessing.** `db.ResolveTeamSide` takes a `TeamRef` — a club id, or a name
+   with a gender, or a bare name — and refuses what it cannot resolve: a bare name that names
+   two sides in the format returns `*db.AmbiguousTeamNameError` carrying **both** candidates,
+   which the handler answers as `400 TEAM_AMBIGUOUS` with them in `available`. A bare name
+   that names one side still resolves; the fix refuses doubt, not names.
+2. **The response echoes what was scored.** `team1_side` / `team2_side` carry `club_id`,
+   `name`, `gender` and `display_name` on **every** prediction, ambiguous or not — naming the
+   side only when the request was unclear would make silence mean agreement, which is what
+   this defect was. `predicted_winner` names the resolved side too ("India (women)", not
+   "India").
+3. **A cross-gender fixture is `400 FIXTURE_CROSS_GENDER`**, not a prediction.
+4. **The options endpoint returns sides, not names**: `{club_id, name, gender, display_name}`,
+   folded onto the club (`COALESCE(canonical_id, id)`) so a renamed club is listed once under
+   its current name. `/api/options/opponents` takes `team_id`, since "the opponents of India"
+   is the same unanswerable question one level along. The frontend picker shows "India (men)"
+   and "India (women)" as distinct options and sends the id; it keeps or drops a chosen side by
+   `club_id`, never by name. Venue and format flows are untouched. `/api/options/teams` (bare
+   names, no format, no reader in the UI) is deleted with `db.GetUniqueTeams`,
+   `GetTeamsByFormat` and `GetOpponentsByFormatAndTeam`.
+5. **Every other caller.** `FindOppositionIDForFormat` had exactly two call sites, both in
+   `predictteam.resolveFixture`; it is gone. The other paths were audited and have no
+   ambiguity to fix, for reasons worth recording: the **importer** resolves through
+   `matchIdentity.OppositionID`, which carries the match's own `info.gender`, so it has never
+   guessed; **backtest** is now `GET /api/backtest/report`, a proxy to L4's report, and
+   resolves no team name; the **L4 harness** reads club ids straight out of Postgres
+   (`sources._MATCH_SQL` selects `COALESCE(bat.canonical_id, bat.id)`) and keys teams
+   `club|gender`, so it never sees a name; and `ListPlayerPoolByOpposition` already took an id.
+6. **The data check.** No team-lineage link may join two genders — one would merge two teams'
+   Elo, form and head-to-head invisibly. `ApplyTeamLineage` already requires
+   `predecessor.gender = successor.gender = $3`, so the importer cannot write one, but the
+   column carries no such constraint. Run against the live database on 2026-09-02:
+
+   ```sql
+   SELECT p.id, p.opposition_name, p.gender, s.id, s.opposition_name, s.gender
+   FROM opposition p JOIN opposition s ON s.id = p.canonical_id
+   WHERE p.gender IS DISTINCT FROM s.gender;
+   -- (0 rows), against 10 lineage links in total; opposition holds 370 male and 160 female rows
+   ```
+
+   **Zero bridging links, so no migration was needed.** The check is now a test against the
+   migrated schema —
+   `go-app/internal/db/repo_team_side_integration_test.go::TestTeamLineageNeverBridgesTwoGenders_Integration`
+   — so a future mapping that bridges genders fails a run rather than silently merging.
+7. **H-24.** The literal that carries gender on the wire is `team_genders` in
+   `contracts/ops-console.contract.json`, generated from `go-app/internal/teams`. All three
+   components assert against it: go-app in
+   `pipeline.TestTeamGendersMatchTheContract`, ml-service in
+   `test_both_services_match_on_the_same_team_genders` plus a test that the E7 context-group
+   split keys on a value the contract publishes, and the frontend in "spells the team genders
+   the way the backend does" plus a source sweep refusing any gender literal outside the one
+   declaration. ml-service's `RatingState._ctx_group` now reads `C.GENDER_FEMALE` instead of
+   its own `"female"` — that comparison was the third private copy of the word.
+
 ---
 
 ## 2. Plan F — fix the defects (one PR)
@@ -248,6 +345,7 @@ recorded null — which the plan treats as a result, not a failure.
 | id | status |
 |---|---|
 | F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
+| F-2 | **done** — `fix/d-10-gendered-team-resolution`. D-11 fixed ends-in: the prediction request names a side (club id, or name plus gender) and an ambiguous name is a 400 listing both candidates; every response echoes the sides it scored; a cross-gender fixture is a 400; the options endpoints and the picker deal in sides. `team_genders` joins the H-24 contract, asserted from all three components. The lineage data check found 0 cross-gender links in 10, so no migration. |
 | L-1 | open |
 | A-1 | open |
 | A-2 | open |

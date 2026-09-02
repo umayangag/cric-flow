@@ -121,7 +121,7 @@ func TestGetOrCreateOpposition_SameNameDifferentGenderAreTwoTeams_Integration(t 
 	assert.Equal(t, mens, againMens)
 }
 
-func TestFindOppositionIDForFormat_UnknownTeamIsAnError_Integration(t *testing.T) {
+func TestResolveTeamSide_UnknownTeamIsAnError_Integration(t *testing.T) {
 	if !guardIntegration(t) {
 		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
 	}
@@ -130,7 +130,7 @@ func TestFindOppositionIDForFormat_UnknownTeamIsAnError_Integration(t *testing.T
 	require.NoError(t, err)
 
 	// The team row exists but has played nothing, so no format can claim it.
-	_, err = FindOppositionIDForFormat(ctx, "Australia", "T20")
+	_, err = ResolveTeamSide(ctx, TeamRef{Name: "Australia"}, "T20")
 
 	require.ErrorIs(t, err, ErrOppositionNotFound)
 }

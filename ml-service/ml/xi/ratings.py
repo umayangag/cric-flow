@@ -204,8 +204,11 @@ class RatingState:
         return out
 
     def _ctx_group(self, gender: str) -> int:
-        """Which context-baseline group a match belongs to (E7)."""
-        return 1 if self.gender_split_context and gender == "female" else 0
+        """Which context-baseline group a match belongs to (E7).
+
+        The literal comes from ``contract`` rather than from here: go-app writes this value
+        and the contract publishes it, so a private copy is a seam nothing checks (H-24)."""
+        return 1 if self.gender_split_context and gender == C.GENDER_FEMALE else 0
 
     def team_context(self, match: MatchRecord) -> Dict[str, float]:
         """Team-level features (constant w.r.t. the XI)."""

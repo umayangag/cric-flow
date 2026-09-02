@@ -55,6 +55,11 @@ type contractDoc struct {
 	// FormatCodes is the format vocabulary both services match on. go-app writes these
 	// into match rows; ml-service switches on them when it reads them back.
 	FormatCodes []string `json:"format_codes"`
+	// TeamGenders is the gender half of a team's identity. go-app writes it into
+	// opposition and match rows and now accepts it on the prediction request; the
+	// frontend's picker sends it; ml-service matches on the literal when it groups the
+	// E7 context baselines. Three copies of one vocabulary is the D-9 shape (D-11).
+	TeamGenders []string `json:"team_genders"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -131,6 +136,7 @@ func buildContract() contractDoc {
 		},
 		MLCalls:     contractMLCalls(),
 		FormatCodes: formats.CanonicalCodes(),
+		TeamGenders: TeamGenders(),
 	}
 }
 
