@@ -20,8 +20,7 @@ func connectAndMigrateForIdentity(t *testing.T) context.Context {
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 	require.NoError(t, Exec(ctx, `TRUNCATE TABLE
 		ball_event, match_player, batting_data, bowling_data, fielding_data, fielding_event,
-		match_inning, match, feature_raw_stats_snapshots,
-		player_window_features, player, opposition RESTART IDENTITY`))
+		match_inning, match, player, opposition RESTART IDENTITY`))
 	return ctx
 }
 

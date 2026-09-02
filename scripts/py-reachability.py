@@ -36,11 +36,10 @@ SOURCE_ROOTS = ("app", "ml")
 # a root's own imports are reachable, which an allowlist entry would not achieve.
 #
 #   app.main            the ASGI app uvicorn serves
-#   ml.train_win        invoked as `python -m ml.train_win` by app/training_orchestrator.py
+#   ml.xi.retrain       invoked as `python -m ml.xi.retrain` by app/training_orchestrator.py
 #                       (run_training_subprocess) and by the Makefiles
-#   ml.auto_tune        invoked as `python -m ml.auto_tune`
-#   ml.win_discrimination  invoked by `make -C ml-service win-discrimination`
-#   ml.xi.train         invoked by `make train-xi`
+#   ml.xi.evaluate      invoked by `make evaluate`
+#   ml.xi.parity        invoked by `make xi-parity`
 #
 # Keep this in step with the `-m ml.` call sites; the check fails loudly if an
 # entrypoint listed here no longer exists on disk.

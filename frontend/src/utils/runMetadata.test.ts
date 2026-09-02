@@ -45,7 +45,7 @@ describe('metricDirection', () => {
     }
   });
 
-  // train_win emits cv_accuracy_std. It contains "accuracy", and read as
+  // A retrain emits display_auc_sd. It contains "auc", and read as
   // higher-is-better it would report a model that got *less* consistent as an
   // improvement. Spread beats the quantity it measures.
   it('treats a spread measure as lower-is-better even when it names a good metric', () => {

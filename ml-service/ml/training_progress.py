@@ -69,19 +69,19 @@ def never_raises(fn: F) -> F:
 
 
 def step_name(model_name: str) -> str:
-    """Map a model name to the pipeline step id go-app and the UI already use.
+    """Return the pipeline step id go-app and the UI speak in.
 
-    `train_batting`, not `batting`: the step registry, `data_migrations.command` and
-    the ops console all speak in step ids, and a second vocabulary here would need
-    translating at every boundary.
+    It used to prefix `train_` -- the six per-model steps were `train_batting`,
+    `train_bowling` and so on. There are two ml-service steps left, `retrain` and
+    `evaluate`, and their ids carry no prefix; adding one here would make go-app poll
+    `/admin/train/progress?step=retrain` for events published under `train_retrain` and
+    find nothing, which is the second vocabulary this function exists to avoid.
     """
     try:
         name = (model_name or "").strip()
     except Exception:
         name = ""
-    if not name:
-        return "train_unknown"
-    return name if name.startswith("train_") else f"train_{name}"
+    return name or "unknown"
 
 
 class _FormatCounter:

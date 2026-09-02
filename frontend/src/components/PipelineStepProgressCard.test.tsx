@@ -95,7 +95,7 @@ describe('PipelineStepProgressCard — training milestones', () => {
     render(
       <PipelineStepProgressCard
         step={{
-          step_id: 'train_win',
+          step_id: 'retrain',
           training: {
             phase: 'features',
             dropped_columns: ['weather_composite', 'rain'],
@@ -112,7 +112,7 @@ describe('PipelineStepProgressCard — training milestones', () => {
     render(
       <PipelineStepProgressCard
         step={{
-          step_id: 'train_win',
+          step_id: 'retrain',
           training: { phase: 'features', dropped_columns: ['a'], dropped_columns_truncated: 12 },
         }}
       />,

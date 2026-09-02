@@ -85,7 +85,7 @@ def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
         return 1
 
     def fake_run(*_args: Any, **_kwargs: Any) -> Any:
-        raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.train_win", timeout=1)
+        raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.xi.retrain", timeout=1)
 
     import ml.config as ml_config
 

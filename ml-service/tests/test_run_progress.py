@@ -42,7 +42,7 @@ def test_event_carries_the_versioned_envelope():
 
 def test_event_omits_what_was_not_given():
     """Absent is absent: a null metric is not the same as no metric."""
-    payload = Event(step="train_win").to_payload("run-1")
+    payload = Event(step="retrain").to_payload("run-1")
 
     for key in ("phase", "current", "total", "metrics", "message"):
         assert key not in payload
@@ -50,7 +50,7 @@ def test_event_omits_what_was_not_given():
 
 def test_current_zero_is_reported_not_dropped():
     """Fold 0 of 5 is real progress; a falsy-check would silently drop it."""
-    payload = Event(step="train_win", current=0, total=5).to_payload("run-1")
+    payload = Event(step="retrain", current=0, total=5).to_payload("run-1")
 
     assert payload["current"] == 0
     assert payload["total"] == 5
@@ -66,10 +66,10 @@ def test_extra_is_merged_at_the_top_level():
 
 def test_extra_cannot_overwrite_the_envelope():
     """A step-specific field shadowing run_id would make the event describe another run."""
-    payload = Event(step="train_win", extra={"run_id": "spoofed", "step": "other", "v": 99}).to_payload("run-1")
+    payload = Event(step="retrain", extra={"run_id": "spoofed", "step": "other", "v": 99}).to_payload("run-1")
 
     assert payload["run_id"] == "run-1"
-    assert payload["step"] == "train_win"
+    assert payload["step"] == "retrain"
     assert payload["v"] == run_progress.SCHEMA_VERSION
 
 
@@ -88,7 +88,7 @@ def test_configure_gives_each_run_its_own_file(tmp_path):
 
 def test_configure_defaults_the_run_id_to_the_pid(tmp_path):
     """A caller with no run id of its own still gets a distinct file."""
-    path = run_progress.configure("train_win", directory=str(tmp_path))
+    path = run_progress.configure("retrain", directory=str(tmp_path))
 
     assert str(os.getpid()) in path
     assert run_progress.get_run_id() == str(os.getpid())
@@ -96,7 +96,7 @@ def test_configure_defaults_the_run_id_to_the_pid(tmp_path):
 
 def test_run_id_is_sanitised_into_the_filename(tmp_path):
     """Run ids arrive from go-app and from env, so they choose no paths of their own."""
-    path = run_progress.configure("train_win", run_id="../../etc/passwd", directory=str(tmp_path))
+    path = run_progress.configure("retrain", run_id="../../etc/passwd", directory=str(tmp_path))
 
     resolved = Path(path).resolve()
     assert str(tmp_path.resolve()) in str(resolved), "a crafted run id must not escape the directory"
@@ -148,7 +148,7 @@ def test_write_is_atomic_via_rename(tmp_path):
 def test_emit_without_a_file_is_a_no_op():
     """A step with no configured channel still runs."""
     run_progress.set_progress_file(None)
-    run_progress.emit(Event(step="train_win", phase="cv"))  # no error
+    run_progress.emit(Event(step="retrain", phase="cv"))  # no error
 
 
 def test_emit_never_raises_when_the_directory_is_unwritable(tmp_path):
@@ -157,7 +157,7 @@ def test_emit_never_raises_when_the_directory_is_unwritable(tmp_path):
     blocked.write_text("not a directory")
     run_progress.set_progress_file(str(blocked / "progress" / "x.json"), "r1")
 
-    run_progress.emit(Event(step="train_win", phase="cv"))  # no error
+    run_progress.emit(Event(step="retrain", phase="cv"))  # no error
 
 
 def test_callback_failure_never_reaches_the_caller():
@@ -165,12 +165,12 @@ def test_callback_failure_never_reaches_the_caller():
         raise ValueError("observer exploded")
 
     run_progress.set_callback(boom)
-    run_progress.emit(Event(step="train_win"))  # no error
+    run_progress.emit(Event(step="retrain"))  # no error
 
 
 def test_clear_removes_the_file(tmp_path):
-    path = run_progress.configure("train_win", run_id="r1", directory=str(tmp_path))
-    run_progress.emit(Event(step="train_win"))
+    path = run_progress.configure("retrain", run_id="r1", directory=str(tmp_path))
+    run_progress.emit(Event(step="retrain"))
     assert Path(path).exists()
 
     run_progress.clear()
@@ -178,7 +178,7 @@ def test_clear_removes_the_file(tmp_path):
 
 
 def test_clear_is_quiet_when_there_is_nothing_to_remove(tmp_path):
-    run_progress.configure("train_win", run_id="r1", directory=str(tmp_path))
+    run_progress.configure("retrain", run_id="r1", directory=str(tmp_path))
     run_progress.clear()
     run_progress.clear()  # already gone; no error
 
@@ -234,7 +234,7 @@ def test_latest_for_step_does_not_confuse_steps(tmp_path):
 
 
 def test_latest_for_step_is_empty_when_nothing_ran(tmp_path):
-    assert run_progress.latest_for_step("train_win", directory=str(tmp_path)) == {}
+    assert run_progress.latest_for_step("retrain", directory=str(tmp_path)) == {}
 
 
 def test_safe_component_never_returns_empty():

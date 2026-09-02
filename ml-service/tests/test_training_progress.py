@@ -30,16 +30,16 @@ def test_step_name_matches_the_pipeline_registry():
     A second vocabulary here would need translating at every boundary, so the mapping
     is asserted rather than left to convention.
     """
-    assert tp.step_name("batting") == "train_batting"
-    assert tp.step_name("win") == "train_win"
-    assert tp.step_name("train_innings") == "train_innings", "already-prefixed names are left alone"
+    assert tp.step_name("retrain") == "retrain"
+    assert tp.step_name("evaluate") == "evaluate"
+    assert tp.step_name("") == "unknown", "a nameless step is named, not left blank"
 
 
 def test_data_loaded_reports_shape(captured):
-    tp.data_loaded("batting", "T20I", rows=12345, features=42, targets=5)
+    tp.data_loaded("retrain", "T20I", rows=12345, features=42, targets=5)
 
     event = captured[0]
-    assert event["step"] == "train_batting"
+    assert event["step"] == "retrain"
     assert event["phase"] == tp.PHASE_LOAD
     assert event["metrics"] == {"rows": 12345, "features": 42, "targets": 5}
     assert event["format"] == "T20I"
@@ -50,7 +50,7 @@ def test_data_loaded_reports_shape(captured):
 # and every one discarded the result, so a feature that had gone silently constant was
 # removed without anyone being told.
 def test_columns_dropped_names_the_columns(captured):
-    tp.columns_dropped("win", "ODI", ["weather_composite", "rain"], kept=40)
+    tp.columns_dropped("retrain", "ODI", ["weather_composite", "rain"], kept=40)
 
     event = captured[0]
     assert event["phase"] == tp.PHASE_FEATURES
@@ -61,8 +61,8 @@ def test_columns_dropped_names_the_columns(captured):
 
 def test_columns_dropped_is_silent_when_nothing_was_dropped(captured):
     """A healthy run should not emit an event saying nothing happened."""
-    tp.columns_dropped("win", "ODI", [], kept=42)
-    tp.columns_dropped("win", "ODI", None, kept=42)
+    tp.columns_dropped("retrain", "ODI", [], kept=42)
+    tp.columns_dropped("retrain", "ODI", None, kept=42)
 
     assert captured == []
 
@@ -70,7 +70,7 @@ def test_columns_dropped_is_silent_when_nothing_was_dropped(captured):
 def test_columns_dropped_truncates_a_pathological_list(captured):
     """A progress file is not a log; the count is the signal, the names are detail."""
     names = [f"col_{i}" for i in range(tp.MAX_REPORTED_COLUMNS + 10)]
-    tp.columns_dropped("win", None, names, kept=1)
+    tp.columns_dropped("retrain", None, names, kept=1)
 
     event = captured[0]
     assert len(event["dropped_columns"]) == tp.MAX_REPORTED_COLUMNS
@@ -79,7 +79,7 @@ def test_columns_dropped_truncates_a_pathological_list(captured):
 
 
 def test_fold_reports_index_and_metrics(captured):
-    tp.fold("win", "T20I", index=3, total_folds=5, metrics={"accuracy": 0.71, "brier": 0.19})
+    tp.fold("retrain", "T20I", index=3, total_folds=5, metrics={"accuracy": 0.71, "brier": 0.19})
 
     event = captured[0]
     assert event["phase"] == tp.PHASE_CV
@@ -93,14 +93,14 @@ def test_metrics_drop_values_that_are_not_json(captured):
 
     One bad metric must not make the whole progress file unparseable.
     """
-    tp.fold("win", None, 1, 2, {"accuracy": float("nan"), "brier": float("inf"), "log_loss": 0.4})
+    tp.fold("retrain", None, 1, 2, {"accuracy": float("nan"), "brier": float("inf"), "log_loss": 0.4})
 
     assert captured[0]["metrics"] == {"log_loss": 0.4}
 
 
 def test_metrics_survive_numpy_scalars(captured):
     np = pytest.importorskip("numpy")
-    tp.fold("win", None, 1, 2, {"accuracy": np.float64(0.75), "n": np.int64(3)})
+    tp.fold("retrain", None, 1, 2, {"accuracy": np.float64(0.75), "n": np.int64(3)})
 
     assert captured[0]["metrics"] == {"accuracy": 0.75, "n": 3.0}
 
@@ -111,7 +111,7 @@ def test_artifact_written_reports_names_and_sizes(captured, tmp_path):
     scaler = tmp_path / "win_scaler_T20I.joblib"
     scaler.write_bytes(b"y" * 512)
 
-    tp.artifact_written("win", "T20I", [str(scaler), str(model)])
+    tp.artifact_written("retrain", "T20I", [str(scaler), str(model)])
 
     event = captured[0]
     assert event["phase"] == tp.PHASE_ARTIFACT
@@ -123,15 +123,15 @@ def test_artifact_written_reports_names_and_sizes(captured, tmp_path):
 
 
 def test_artifact_written_skips_files_that_are_not_there(captured, tmp_path):
-    tp.artifact_written("win", "T20I", [str(tmp_path / "never_written.joblib")])
+    tp.artifact_written("retrain", "T20I", [str(tmp_path / "never_written.joblib")])
 
     assert captured == [], "nothing was written, so there is nothing to report"
 
 
 def test_format_done_advances_the_completed_count(captured):
     tp.set_total_formats(3)
-    tp.format_done("batting", "T20I")
-    tp.format_done("batting", "ODI")
+    tp.format_done("retrain", "T20I")
+    tp.format_done("retrain", "ODI")
 
     assert captured[0]["current"] == 1
     assert captured[0]["total"] == 3
@@ -144,7 +144,7 @@ def test_completed_count_is_correct_under_concurrency(captured):
     tp.set_total_formats(20)
 
     def worker(fmt):
-        tp.format_done("batting", fmt)
+        tp.format_done("retrain", fmt)
 
     threads = [threading.Thread(target=worker, args=(f"F{i}",)) for i in range(20)]
     for t in threads:
@@ -173,9 +173,9 @@ def test_set_total_formats_starts_the_count_over(captured):
 
 
 def test_start_and_finish_bracket_a_run(captured, tmp_path):
-    path = tp.start("batting", total_formats=2, out_dir=str(tmp_path))
+    path = tp.start("retrain", total_formats=2, out_dir=str(tmp_path))
     assert path is not None
-    tp.finish("batting", saved=2)
+    tp.finish("retrain", saved=2)
 
     assert phases(captured) == [tp.PHASE_LOAD, tp.PHASE_DONE]
     assert captured[-1]["saved"] == 2
@@ -184,11 +184,11 @@ def test_start_and_finish_bracket_a_run(captured, tmp_path):
 def test_finish_removes_the_progress_file(tmp_path):
     """A file left behind reads as a run still going."""
     run_progress.set_callback(None)
-    path = tp.start("batting", total_formats=1, out_dir=str(tmp_path))
-    tp.data_loaded("batting", "T20I", 10, 5)
+    path = tp.start("retrain", total_formats=1, out_dir=str(tmp_path))
+    tp.data_loaded("retrain", "T20I", 10, 5)
     assert path and __import__("os").path.exists(path)
 
-    tp.finish("batting", saved=1)
+    tp.finish("retrain", saved=1)
     assert not __import__("os").path.exists(path)
 
 
@@ -198,11 +198,11 @@ def test_finish_removes_the_progress_file(tmp_path):
 @pytest.mark.parametrize(
     "call",
     [
-        pytest.param(lambda: tp.data_loaded("batting", None, "not-a-number", 5), id="non-numeric-rows"),
+        pytest.param(lambda: tp.data_loaded("retrain", None, "not-a-number", 5), id="non-numeric-rows"),
         pytest.param(lambda: tp.columns_dropped("batting", None, ["a"], "not-a-number"), id="non-numeric-kept"),
         pytest.param(lambda: tp.fold("batting", None, "x", "y", {"a": object()}), id="non-numeric-fold"),
         pytest.param(lambda: tp.artifact_written("batting", None, [None]), id="none-path"),
-        pytest.param(lambda: tp.format_done("batting", None, {"a": object()}), id="unserialisable-metric"),
+        pytest.param(lambda: tp.format_done("retrain", None, {"a": object()}), id="unserialisable-metric"),
         pytest.param(lambda: tp.step_name(None), id="no-model-name"),
     ],
 )
@@ -218,9 +218,9 @@ def test_emitters_swallow_their_own_failures(captured, monkeypatch):
 
     monkeypatch.setattr(run_progress, "emit", exploding_emit)
 
-    tp.data_loaded("batting", "T20I", 10, 5)
+    tp.data_loaded("retrain", "T20I", 10, 5)
     tp.columns_dropped("batting", "T20I", ["a"], 4)
     tp.fold("batting", "T20I", 1, 2, {"x": 1.0})
     tp.fitting("batting", "T20I", 10, 5)
-    tp.format_done("batting", "T20I")
-    tp.finish("batting", 1)
+    tp.format_done("retrain", "T20I")
+    tp.finish("retrain", 1)

@@ -76,22 +76,13 @@ function formatCutoff(v: unknown): string {
 type ArgFormatter = (args: Record<string, unknown>) => string[];
 
 const CMD_FORMATTERS: Record<string, ArgFormatter> = {
-  'ml-auto-tune': (args) => {
-    const parts: string[] = [];
-    if (args.model) parts.push(`model=${args.model}`);
-    if (args.format) parts.push(`format=${args.format}`);
-    if (args.all_formats && String(args.all_formats) !== '0') parts.push('all_formats');
-    if (args.algorithms) parts.push(`algorithms=${args.algorithms}`);
-    if (args.cutoff) parts.push(`cutoff=${formatCutoff(args.cutoff)}`);
-    if (args.rescreen && String(args.rescreen) !== '0') parts.push('rescreen');
-    return parts;
-  },
-  'export-dataset': (args) => (args.out_dir ? [`out=${String(args.out_dir)}`] : []),
-  'precompute-features': (args) => (args.season ? [`season=${args.season}`] : []),
+  'xi-retrain': (args) => (args.cutoff ? [`cutoff=${formatCutoff(args.cutoff)}`] : []),
+  'xi-evaluate': (args) => (args.cutoff ? [`cutoff=${formatCutoff(args.cutoff)}`] : []),
+  'xi-reload': (args) => (args.run_id ? [`run=${String(args.run_id)}`] : []),
   'cricsheet-import': (args) => (args.dir ? [`dir=${String(args.dir)}`] : []),
 };
 
-/** Format command + params for display in the Command column (model, format, algorithms, cutoff, etc.) */
+/** Format command + params for display in the Command column (cutoff, run id, dataset dir). */
 function formatCommandWithParams(m: Migration): string {
   const cmd = m.command || '';
   const args = (m.args as Record<string, unknown>) || {};
