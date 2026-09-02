@@ -17,6 +17,7 @@ import type {
   RunPlanState,
   RunPlanStartResponse,
   TeamSideOption,
+  PipelineStopResult,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -280,18 +281,21 @@ export const api = {
    * lane stops only that one — the lanes overlap by design, so cancelling a download
    * should not have to abandon a training run that is eight minutes in.
    *
-   * Returns 200 with { status: 'cancelled', cancelled: n } or 409 if nothing is running.
+   * Returns 200 with { status: 'cancelled', cancelled: n, training_stopped: [...] }, 409
+   * if nothing is running, or 502 with `status: 'partially_cancelled'` when this run was
+   * cancelled here but ml-service could not confirm its training process stopped — the
+   * case that used to be reported as a plain success while a retrain kept running (D-10).
    */
   async opsPipelineStop(
     lane?: PipelineLane,
-  ): Promise<{ status: number; data: { status?: string; cancelled?: number; error?: string } }> {
+  ): Promise<{ status: number; data: PipelineStopResult }> {
     const query = lane ? `?lane=${encodeURIComponent(lane)}` : '';
     const url = `${BASE_API_URL}/ops/pipeline/stop${query}`;
     const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
-    let data: { status?: string; cancelled?: number; error?: string } = {};
+    let data: PipelineStopResult = {};
     try {
       const text = await res.text();
-      if (text) data = JSON.parse(text) as { status?: string; cancelled?: number; error?: string };
+      if (text) data = JSON.parse(text) as PipelineStopResult;
     } catch {
       data = { error: res.statusText || 'Invalid response' };
     }

@@ -98,7 +98,7 @@ codes (it renders `{code, message, hint}` opaquely, so there is no literal to dr
 does not parse run ids (it forwards them as opaque strings). Both become H-24 items the moment
 either side starts matching on them.
 
-### 1.3 D-10 — "Stop pipeline" cancels go-app's job, not ml-service's training — **open**
+### 1.3 D-10 — "Stop pipeline" cancels go-app's job, not ml-service's training — **fixed**
 
 Found while verifying F-1's acceptance against the containers. `POST /ops/pipeline/stop`
 answered `{"cancelled": 1}` and the console stopped showing the run, but
@@ -115,6 +115,58 @@ handle per step, terminate it when the request is cancelled, and let the trainin
 semaphore be released only when the process is gone), with go-app's stop waiting for that
 answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
 about another's process.
+
+**Fixed in F-3** (branch `fix/d-10-stop-that-stops`), along the line that entry drew.
+
+**On ml-service.** `run_training_subprocess` used `subprocess.run`, which keeps its handle
+on its own stack — so while a retrain ran there was no object in the process that could
+address it. It now uses `Popen`, registers the handle in `_TrainingProcesses` keyed by
+module, and unregisters in a `finally`. `start_new_session=True` puts the child at the head
+of its own process group, so a stop signals the *group*: the model-fitting workers a retrain
+spawns went down with it rather than being orphaned, which was the other half of what kept
+burning CPU. `stop_training` sends SIGTERM, waits `TERMINATE_GRACE_SEC` (10 s), escalates to
+SIGKILL, and **waits for the process to be gone before returning** — returning on the signal
+would move the same lie one layer along.
+
+`POST /admin/train/stop` (optional `?step=`) exposes it, answering `{"stopped": [...]}` with
+the steps whose process it watched exit. Nothing running is `200` with an empty list: a Stop
+pressed twice is not an error. A run that ends this way raises `TrainingStopped` and is
+answered `409 TRAIN_STOPPED` and logged at info — it used to come back `500 TRAIN_FAILED`
+with a stack trace, which is the same species of untruth wearing a different hat.
+
+**The compute slot, which was the subtler half.** `asyncio.to_thread` hands the event loop a
+future it can cancel, but cancelling it neither stops the thread nor touches the subprocess
+the thread is waiting on. When go-app dropped its request the `async with` exited, the
+training semaphore was released, and the lane read as free while the retrain was still
+writing — so a second retrain started then would have run beside the first.
+`_run_training_step` now shields the thread's future, and on cancellation stops the process
+and waits for the thread before letting the semaphore go.
+
+**On go-app.** `StopRun` takes a `StopTrainingFunc` and returns a `StopOutcome` carrying what
+it *achieved* rather than what it attempted. The remote stop goes first and on purpose:
+cancelling the local job closes the request the step is waiting on, and after that the run
+looks finished from here whatever is still happening over there. A stop it could not confirm
+is answered `502` with `status: "partially_cancelled"` and a message saying the run was
+cancelled here but the training process could not be confirmed stopped — never a plain
+success. Training is compute-lane work, so a data-lane stop leaves it alone.
+
+Note a case worse than the one recorded above, found while fixing it: with the tracking row
+already gone, `cancelled` was `0`, so the old handler answered **`409 "no pipeline step is
+running"`** while `ml.xi.retrain` was running. The stop now counts a confirmed training kill
+as something having been stopped.
+
+**H-24.** `/admin/train/stop` joins `ml_service_calls`, and the `stopped` field joins the
+contract as `stop_response_field` — the audit under D-9 recorded that go-app parsed nothing
+out of ml-service's bodies "and both become H-24 items the moment either side starts matching
+on them". This is that moment. go-app asserts the *struct tag* against the contract (a
+constant that agreed while the tag did not would be a green test over a stop that always read
+zero steps); ml-service asserts the route exists and that its answer carries the field.
+
+**Verified against a real retrain**, the D-6 way: `POST /ops/pipeline/run/retrain` started
+`ml.xi.retrain` (pid 1984, 43 % CPU); `POST /ops/pipeline/stop` answered
+`{"status": "cancelled", "training_stopped": ["retrain"]}` in 8.8 ms; the process was gone
+(`returncode -15`) and `pgrep` found nothing. A second retrain started immediately afterwards,
+so the lane was genuinely free. Stop with nothing running still answers `409`.
 
 ### 1.4 D-11 — a prediction for "India" silently chose one of the two Indias — **fixed**
 
@@ -346,6 +398,7 @@ recorded null — which the plan treats as a result, not a failure.
 |---|---|
 | F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
 | F-2 | **done** — `fix/d-10-gendered-team-resolution`. D-11 fixed ends-in: the prediction request names a side (club id, or name plus gender) and an ambiguous name is a 400 listing both candidates; every response echoes the sides it scored; a cross-gender fixture is a 400; the options endpoints and the picker deal in sides. `team_genders` joins the H-24 contract, asserted from all three components. The lineage data check found 0 cross-gender links in 10, so no migration. |
+| F-3 | **done** — `fix/d-10-stop-that-stops`. D-10 fixed at both ends: ml-service holds the `Popen`, stops the process group and waits for it to be gone; the compute slot is held until the thread finishes, so a cancelled request no longer frees a lane a retrain is still writing in; go-app asks rather than assumes, and a stop it could not confirm is a 502 `partially_cancelled`, never a plain success. `/admin/train/stop` and `stop_response_field` join the H-24 contract. Verified against a real retrain. |
 | L-1 | open |
 | A-1 | open |
 | A-2 | open |

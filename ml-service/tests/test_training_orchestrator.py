@@ -1,7 +1,6 @@
 """Tests for training_orchestrator helpers and subprocess wrapper."""
 
 import os
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 import pytest
@@ -32,34 +31,54 @@ def test_ml_service_root_points_to_ml_package_root() -> None:
     assert os.path.isfile(os.path.join(root, "ml", "__init__.py"))
 
 
-def test_run_training_subprocess_success_uses_env_and_timeout(monkeypatch) -> None:
+class FakePopen:
+    """A training subprocess that never was.
+
+    The wrapper holds a Popen rather than calling subprocess.run, because a run nobody
+    holds a handle to is a run nobody can stop (D-10) -- so these tests stand in for the
+    handle, not for the call.
+    """
+
+    def __init__(self, returncode: int = 0, stdout: str = "ok", stderr: str = "", raise_timeout: bool = False) -> None:
+        self.returncode = returncode
+        self.pid = -1  # no such process, so a signal falls through harmlessly
+        self._stdout, self._stderr = stdout, stderr
+        self._raise_timeout = raise_timeout
+        self.signals: List[int] = []
+        self.calls: Dict[str, Any] = {}
+
+    def communicate(self, timeout: Optional[float] = None) -> Any:
+        self.calls["timeout"] = timeout
+        if self._raise_timeout:
+            raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.xi.retrain", timeout=timeout or 0)
+        return self._stdout, self._stderr
+
+    def send_signal(self, sig: int) -> None:
+        self.signals.append(sig)
+
+    def wait(self, timeout: Optional[float] = None) -> int:
+        return self.returncode
+
+
+def patch_popen(monkeypatch, process: FakePopen, timeout_sec: int) -> Dict[str, Any]:
+    """Route subprocess creation to `process` and record how it was asked for."""
     calls: Dict[str, Any] = {}
 
-    def fake_get_timeout() -> int:
-        return 42
-
-    def fake_run(
-        cmd: List[str],
-        cwd: str,
-        env: Dict[str, str],
-        capture_output: bool,
-        text: bool,
-        timeout: int,
-    ) -> Any:
+    def fake_popen(cmd: List[str], **kwargs: Any) -> FakePopen:
         calls["cmd"] = cmd
-        calls["cwd"] = cwd
-        calls["env"] = env
-        calls["capture_output"] = capture_output
-        calls["text"] = text
-        calls["timeout"] = timeout
-        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+        calls.update(kwargs)
+        return process
 
-    # Patch lower-level dependencies
     import ml.config as ml_config
 
-    monkeypatch.setattr(ml_config, "get_training_subprocess_timeout_sec", fake_get_timeout)
-    monkeypatch.setattr(training_orchestrator.subprocess, "run", fake_run)
+    monkeypatch.setattr(ml_config, "get_training_subprocess_timeout_sec", lambda: timeout_sec)
+    monkeypatch.setattr(training_orchestrator.subprocess, "Popen", fake_popen)
+    return calls
 
+
+def test_run_training_subprocess_success_uses_env_and_timeout(monkeypatch) -> None:
+    process = FakePopen()
+    calls = patch_popen(monkeypatch, process, timeout_sec=42)
     logger = DummyLogger()
 
     training_orchestrator.run_training_subprocess(
@@ -73,43 +92,41 @@ def test_run_training_subprocess_success_uses_env_and_timeout(monkeypatch) -> No
     assert calls["cwd"] == training_orchestrator.ml_service_root()
     assert calls["env"]["SKIP_PIPELINE_TRACKING"] == "1"
     assert calls["env"]["EXTRA_FLAG"] == "1"
-    assert calls["timeout"] == 42
+    assert process.calls["timeout"] == 42
+    # The child leads its own process group, so stopping it reaches the workers it spawns.
+    assert calls["start_new_session"] is True
     # Logger should have been used at least once
     assert any(
         "pipeline: starting training subprocess" in (rec["args"][0] if rec["args"] else "") for rec in logger.infos
     )
 
 
+def test_run_training_subprocess_deregisters_the_process_when_it_finishes(monkeypatch) -> None:
+    """A handle left behind would make a later stop address a run that is already over."""
+    patch_popen(monkeypatch, FakePopen(), timeout_sec=10)
+
+    training_orchestrator.run_training_subprocess("ml.xi.retrain")
+
+    assert training_orchestrator._processes.running_modules() == []
+
+
 def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
-    def fake_get_timeout() -> int:
-        return 1
-
-    def fake_run(*_args: Any, **_kwargs: Any) -> Any:
-        raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.xi.retrain", timeout=1)
-
-    import ml.config as ml_config
-
-    monkeypatch.setattr(ml_config, "get_training_subprocess_timeout_sec", fake_get_timeout)
-    monkeypatch.setattr(training_orchestrator.subprocess, "run", fake_run)
+    process = FakePopen(raise_timeout=True)
+    patch_popen(monkeypatch, process, timeout_sec=1)
 
     logger = DummyLogger()
     with pytest.raises(ValueError) as exc:
         training_orchestrator.run_training_subprocess("ml.xi.retrain", logger=logger)
     assert "timed out" in str(exc.value)
     assert logger.errors, "expected timeout to log an error"
+    # A run abandoned on timeout is killed rather than left behind, which is the same
+    # orphan D-10 was about arriving by a different route.
+    assert process.signals, "a timed-out subprocess must still be terminated"
+    assert training_orchestrator._processes.running_modules() == []
 
 
 def test_run_training_subprocess_failure_raises(monkeypatch) -> None:
-    def fake_get_timeout() -> int:
-        return 10
-
-    def fake_run(*_args: Any, **_kwargs: Any) -> Any:
-        return SimpleNamespace(returncode=2, stdout="some\nstdout", stderr="some\nstderr")
-
-    import ml.config as ml_config
-
-    monkeypatch.setattr(ml_config, "get_training_subprocess_timeout_sec", fake_get_timeout)
-    monkeypatch.setattr(training_orchestrator.subprocess, "run", fake_run)
+    patch_popen(monkeypatch, FakePopen(returncode=2, stdout="some\nstdout", stderr="some\nstderr"), timeout_sec=10)
 
     logger = DummyLogger()
     with pytest.raises(ValueError) as exc:

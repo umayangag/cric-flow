@@ -140,6 +140,32 @@ def _get_training_semaphore() -> asyncio.Semaphore:
     return _training_semaphore
 
 
+async def _run_training_step(step: str, func: Any, *args: Any) -> None:
+    """Run one training step in a worker thread, holding its compute slot until the
+    subprocess is really gone.
+
+    Both halves matter, and D-10 got both wrong. `asyncio.to_thread` hands back a future
+    the event loop can cancel, but cancelling it does not touch the thread and certainly
+    does not touch the subprocess the thread is waiting on: when go-app dropped its
+    request, the `async with` exited, the semaphore was released, and the compute lane
+    read as free while `ml.xi.retrain` was still writing -- so a second retrain started
+    then would have run beside the first.
+
+    Shielding the task keeps the thread's own future alive when this coroutine is
+    cancelled, which gives us somewhere to stand: stop the process, wait for the thread
+    to notice, and only then let the semaphore go.
+    """
+    async with _get_training_semaphore():
+        task = asyncio.create_task(asyncio.to_thread(func, *args))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            logger.info("admin.train.cancelled", step=step)
+            await asyncio.to_thread(training_orchestrator.stop_training, step, logger)
+            await asyncio.wait({task})
+            raise
+
+
 def _verify_admin_api_key(request: Request) -> None:
     """If ADMIN_API_KEY is set, require X-API-Key header. Raises HTTPException 401 if invalid."""
     if not ADMIN_API_KEY:
@@ -358,6 +384,19 @@ def _require_admin_train(step: str, fail_message: str):
             _verify_admin_api_key(request)
             try:
                 response = await f(request, *args, **kwargs)
+            except training_orchestrator.TrainingStopped as e:
+                # A Stop is an operator doing their job, not this service breaking. It is
+                # logged as the event it is, with no stack trace, and answered 409 rather
+                # than 500 so nothing downstream reports a failure nobody had (D-10).
+                logger.info("admin.train.stopped", step=step, reason=str(e))
+                raise HTTPException(
+                    status_code=409,
+                    detail=_error_payload(
+                        code="TRAIN_STOPPED",
+                        message="Training was stopped",
+                        hint="The run ended because a stop was requested; start it again when ready.",
+                    ),
+                ) from e
             except ValueError as e:
                 logger.error("admin.train.failed", step=step, error=str(e), exc_info=True)
                 raise HTTPException(
@@ -393,8 +432,7 @@ async def admin_train_retrain(request: Request, cutoff: str = ""):
                 hint="Pass query param cutoff (RFC3339 or YYYY-MM-DD), e.g. ?cutoff=2025-09-01",
             ),
         )
-    async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_retrain, cutoff, MODELS_DIR, logger)
+    await _run_training_step("retrain", training_orchestrator.run_retrain, cutoff, MODELS_DIR, logger)
     return training_orchestrator.train_response("retrain")
 
 
@@ -402,9 +440,37 @@ async def admin_train_retrain(request: Request, cutoff: str = ""):
 @_require_admin_train("evaluate", "Evaluate failed")
 async def admin_train_evaluate(request: Request, cutoff: str = ""):
     """Run L4 and write its report. Touches no artifact `current` points at."""
-    async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_evaluate, (cutoff or "").strip(), MODELS_DIR, logger)
+    await _run_training_step("evaluate", training_orchestrator.run_evaluate, (cutoff or "").strip(), MODELS_DIR, logger)
     return training_orchestrator.train_response("evaluate")
+
+
+@app.post("/admin/train/stop")
+@_require_admin_train("stop", "Stop failed")
+async def admin_train_stop(request: Request, step: str = ""):
+    """Stop the running training subprocess and report which steps were stopped.
+
+    This endpoint exists because a stop has to be something one service can *ask* another
+    for, rather than infer. go-app's Stop used to cancel only its own outgoing request:
+    the console showed the run gone while `ml.xi.retrain` kept running here, and the
+    compute lane read as free while a retrain was still writing (D-10).
+
+    `stopped` names the steps whose process this call watched exit, so it is a fact and
+    not an intention. An empty list means nothing was running, which is a normal answer
+    and a 200 -- a Stop pressed twice is not an error.
+    """
+    try:
+        stopped = await asyncio.to_thread(training_orchestrator.stop_training, (step or "").strip(), logger)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=_error_payload(
+                code="UNKNOWN_STEP",
+                message=str(e),
+                hint="Omit step to stop every training step, or name one of: retrain, evaluate.",
+            ),
+        ) from e
+    logger.info("admin.train.stop", requested_step=step or "(all)", stopped=stopped)
+    return {"status": "ok", "stopped": stopped}
 
 
 @app.get("/admin/train/progress")

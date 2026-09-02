@@ -56,6 +56,13 @@ const (
 	// MLProgressPath reports what a running step has published so far.
 	MLProgressPath = MLTrainPathPrefix + "progress"
 
+	// MLStopPath stops the training subprocess ml-service is running.
+	//
+	// Stopping is a request, not an inference. Cancelling our own outgoing HTTP call
+	// closes a socket; it does not reach the process on the other side, which is how a
+	// Stop could report success while `ml.xi.retrain` kept running (D-10).
+	MLStopPath = MLTrainPathPrefix + "stop"
+
 	// MLReloadPath points `current` at a run and loads it.
 	MLReloadPath = "/admin/reload"
 )
@@ -106,6 +113,16 @@ func MLCalls() []MLCall {
 	}
 	return append(calls,
 		MLCall{Method: "GET", Path: MLProgressPath, Query: []string{MLQueryStep}},
+		MLCall{Method: "POST", Path: MLStopPath, Query: []string{MLQueryStep}},
 		MLCall{Method: "POST", Path: MLReloadPath, Query: []string{MLQueryRun}},
 	)
 }
+
+// StopResponseField is the field ml-service's stop answers with: the steps whose process
+// it watched exit.
+//
+// It is declared here, and asserted from both sides, because go-app now *matches on it*.
+// H-24's own note said go-app parsed nothing out of ml-service's bodies and so had no
+// literal that could drift — that stopped being true the moment a Stop depended on
+// reading this one (D-10).
+const StopResponseField = "stopped"

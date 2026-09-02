@@ -140,6 +140,54 @@ describe('frontend api client (DB-backed)', () => {
     vi.unstubAllGlobals();
   });
 
+  // D-10: a Stop used to report success whatever happened to the training process. The
+  // console now depends on being told which steps really stopped, and on a partial stop
+  // arriving as one — so both shapes are read here rather than assumed.
+  it('opsPipelineStop reports the training steps that were stopped', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const body = {
+      status: 'cancelled',
+      cancelled: 1,
+      plan_stopped: false,
+      training_stopped: ['retrain'],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(body),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const { status, data } = await api.opsPipelineStop();
+
+    expect(status).toBe(200);
+    expect(data.training_stopped).toEqual(['retrain']);
+    expect(data.status).toBe('cancelled');
+    vi.unstubAllGlobals();
+  });
+
+  it('opsPipelineStop surfaces a stop ml-service could not confirm', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const body = {
+      status: 'partially_cancelled',
+      cancelled: 1,
+      error: 'cancelled this run, but ml-service could not confirm its training process stopped',
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => JSON.stringify(body),
+    });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const { status, data } = await api.opsPipelineStop();
+
+    expect(status).toBe(502);
+    expect(data.status).toBe('partially_cancelled');
+    expect(data.error).toMatch(/could not confirm/);
+    vi.unstubAllGlobals();
+  });
+
   it('searchVenues returns empty array when query has fewer than 3 characters', async () => {
     const result = await api.searchVenues('ab');
     expect(result).toEqual([]);

@@ -55,6 +55,11 @@ type contractDoc struct {
 	// FormatCodes is the format vocabulary both services match on. go-app writes these
 	// into match rows; ml-service switches on them when it reads them back.
 	FormatCodes []string `json:"format_codes"`
+	// StopResponseField is the field go-app reads out of ml-service's stop answer to
+	// learn which training steps really stopped. H-24's audit recorded that go-app
+	// parsed nothing out of ml-service's bodies, and said this would become an H-24
+	// item the moment it started; D-10's fix is that moment.
+	StopResponseField string `json:"stop_response_field"`
 	// TeamGenders is the gender half of a team's identity. go-app writes it into
 	// opposition and match rows and now accepts it on the prediction request; the
 	// frontend's picker sends it; ml-service matches on the literal when it groups the
@@ -134,9 +139,10 @@ func buildContract() contractDoc {
 			Hint:    CutoffHint,
 			Example: CutoffExample,
 		},
-		MLCalls:     contractMLCalls(),
-		FormatCodes: formats.CanonicalCodes(),
-		TeamGenders: TeamGenders(),
+		MLCalls:           contractMLCalls(),
+		FormatCodes:       formats.CanonicalCodes(),
+		TeamGenders:       TeamGenders(),
+		StopResponseField: StopResponseField,
 	}
 }
 

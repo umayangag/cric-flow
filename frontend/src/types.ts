@@ -69,6 +69,23 @@ export type PredictScorecard = {
 };
 
 /**
+ * What a Stop achieved, which is not the same as what it attempted.
+ *
+ * `training_stopped` names the steps ml-service confirmed it killed — a Stop that ended a
+ * twelve-minute retrain and a Stop that found nothing running are different events, and the
+ * console could not previously tell them apart. `status: 'partially_cancelled'` (with 502)
+ * means the run was cancelled here but the training process could not be confirmed stopped,
+ * which used to be reported as a plain success while `ml.xi.retrain` kept going (D-10).
+ */
+export type PipelineStopResult = {
+  status?: 'cancelled' | 'partially_cancelled';
+  cancelled?: number;
+  plan_stopped?: boolean;
+  training_stopped?: string[];
+  error?: string;
+};
+
+/**
  * The gender half of a team's identity, exactly as the wire spells it.
  *
  * Declared in contracts/ops-console.contract.json and asserted against it by
