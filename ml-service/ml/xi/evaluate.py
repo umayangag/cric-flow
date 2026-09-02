@@ -28,7 +28,9 @@ such, never used for a choice. Per format it reports, with mean and spread over 
 
 Every gate the report prints is registered in ``ml.xi.gates`` with what it varies, what it
 holds fixed and what decides (H-23); the report embeds the registry and fails if a gate is
-printed without one.
+printed without one. Every metric the report prints is explained in ``ml.xi.glossary``
+(L-1); the report embeds the glossary, and a metric with no entry is a problem the report
+carries rather than a number a reader has to guess at.
 
 One command, one JSON report:
 
@@ -50,7 +52,16 @@ import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import gates, natural_experiment, perf_baselines, perf_harness, selection_metrics, sim_harness, simulator
+from ml.xi import (
+    gates,
+    glossary,
+    natural_experiment,
+    perf_baselines,
+    perf_harness,
+    selection_metrics,
+    sim_harness,
+    simulator,
+)
 from ml.xi.asof import serving_parity
 from ml.xi.builder import build
 from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
@@ -315,6 +326,12 @@ def evaluate(
     report["gates"] = {"registry": gates.as_dict()}
     problems = gates.check_report(report)
     report["gates"].update({"passed": not problems, "problems": problems})
+    # L-1: the report carries the glossary of every metric it prints, so the surfaces that
+    # render it hold no metric prose of their own, and says so when it prints one it cannot
+    # explain.
+    report["glossary"] = {"entries": glossary.as_dict()}
+    unexplained = glossary.check_report(report)
+    report["glossary"].update({"passed": not unexplained, "problems": unexplained})
     return report
 
 
@@ -416,6 +433,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not report["gates"]["passed"]:
         logger.error("gate registry (H-23) FAILED: %s", report["gates"]["problems"])
         return 1
+    glossary_node = report.get("glossary", {})
+    if not glossary_node.get("passed", True):
+        logger.error("metric glossary (L-1) incomplete: %s", glossary_node["problems"])
     return 0
 
 

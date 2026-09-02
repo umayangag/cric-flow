@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { EvaluationFold, EvaluationFormatReport } from '../types';
+import { MetricLabel } from './common/MetricInfo';
 import { foldWindow, formatShare, formatStat } from '../utils/evaluationReport';
 
 /**
@@ -48,21 +49,43 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
               <TableCell>Window</TableCell>
               <TableCell align="right">Train</TableCell>
               <TableCell align="right">Eval</TableCell>
-              <TableCell align="right" title="The value the optimiser maximises">
-                Objective AUC
+              <TableCell align="right">
+                <MetricLabel
+                  metricKey="objective_auc"
+                  label="Objective AUC"
+                  value={formatStat(summary.objective_auc)}
+                />
               </TableCell>
-              <TableCell align="right" title="The probability that is displayed">
-                Display AUC
+              <TableCell align="right">
+                <MetricLabel
+                  metricKey="display_auc_mean"
+                  label="Display AUC"
+                  value={formatStat(summary.display_auc)}
+                />
               </TableCell>
-              <TableCell align="right">Brier</TableCell>
-              <TableCell align="right" title="Brier of always predicting the training base rate">
-                Base rate
+              <TableCell align="right">
+                <MetricLabel metricKey="display_brier_mean" label="Brier" />
               </TableCell>
-              <TableCell align="right" title="Share of one-player upgrades that lower P(win) (H-4)">
-                Swap violations
+              <TableCell align="right">
+                <MetricLabel
+                  metricKey="base_rate_brier"
+                  label="Base rate"
+                  value={formatStat(summary.base_rate_brier)}
+                />
               </TableCell>
-              <TableCell align="right" title="AUC of the specific XI beyond the side's typical XI">
-                Specific-XI Δ
+              <TableCell align="right">
+                <MetricLabel
+                  metricKey="swap_violation_share"
+                  label="Swap violations"
+                  value={formatShare(summary.swap_violation_share)}
+                />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel
+                  metricKey="specific_vs_typical_delta"
+                  label="Specific-XI Δ"
+                  value={formatStat(summary.specific_vs_typical_delta)}
+                />
               </TableCell>
             </TableRow>
           </TableHead>

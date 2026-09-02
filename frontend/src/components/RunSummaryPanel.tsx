@@ -12,6 +12,8 @@ import {
 } from '@mui/material';
 import { formatBytes } from '../utils/format';
 import { formatCount, formatMetricValue, formatWhen, shortDigest } from '../utils/format';
+import { MetricLabel } from './common/MetricInfo';
+import { useMetricGlossary } from '../context/MetricGlossaryContext';
 import { compareMetrics, type MetricComparison } from '../utils/runMetadata';
 import type { Migration, RunMetadata } from '../types';
 
@@ -107,6 +109,7 @@ const RunSummaryPanel: React.FC<Props> = ({
   previousRun,
   comparisonReady,
 }) => {
+  const glossary = useMetricGlossary();
   const summary = metadata.summary;
   const formats = summary?.formats ?? [];
   const dropped = Object.entries(summary?.dropped_columns ?? {});
@@ -117,7 +120,7 @@ const RunSummaryPanel: React.FC<Props> = ({
       currentMetrics[`${fmt.format}.${name}`] = value;
     }
   }
-  const comparisons = compareMetrics(currentMetrics, previousMetrics);
+  const comparisons = compareMetrics(currentMetrics, previousMetrics, glossary);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -207,7 +210,14 @@ const RunSummaryPanel: React.FC<Props> = ({
               <TableBody>
                 {comparisons.map((c) => (
                   <TableRow key={c.name}>
-                    <TableCell>{c.name}</TableCell>
+                    <TableCell>
+                      {/* `T20.objective_auc`: the format prefixes the key the glossary knows. */}
+                      <MetricLabel
+                        metricKey={c.name.split('.').pop() ?? c.name}
+                        label={c.name}
+                        value={formatMetricValue(c.current)}
+                      />
+                    </TableCell>
                     <TableCell align="right">{formatMetricValue(c.current)}</TableCell>
                     <TableCell align="right">
                       <Delta comparison={c} />

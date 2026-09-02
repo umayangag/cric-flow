@@ -1,5 +1,6 @@
 import React from 'react';
 import { Chip, Paper, Stack, Typography } from '@mui/material';
+import { MetricInfo } from './common/MetricInfo';
 import type { PredictInningsTotal, PredictScorecard, PredictWinProbability } from '../types';
 
 type Props = {
@@ -22,6 +23,11 @@ const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = (
   <Typography variant="body2">
     <strong>{label}:</strong> {innings.total.toFixed(0)} runs ({innings.p10.toFixed(0)}–
     {innings.p90.toFixed(0)}), extras {innings.extras.toFixed(0)}
+    <MetricInfo
+      metricKey="range_10_90"
+      label={`${label} 10–90 range`}
+      value={`${innings.p10.toFixed(0)}–${innings.p90.toFixed(0)}`}
+    />
   </Typography>
 );
 
@@ -43,6 +49,11 @@ const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, team1, tea
       <Stack direction="row" spacing={3} flexWrap="wrap" sx={{ mb: 1 }}>
         <Typography variant="body2">
           <strong>Win probability ({team1}):</strong> {(winProbability.team1 * 100).toFixed(1)}%
+          <MetricInfo
+            metricKey="win_probability"
+            label="Win probability"
+            value={`${(winProbability.team1 * 100).toFixed(1)}%`}
+          />
         </Typography>
         <Typography variant="body2">
           <strong>Predicted winner:</strong> {winProbability.predicted_winner}

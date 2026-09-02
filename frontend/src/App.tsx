@@ -1,6 +1,7 @@
 import React, { useMemo, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { MetricGlossaryProvider } from './context/MetricGlossaryContext';
 import {
   AppBar,
   Box,
@@ -174,7 +175,8 @@ const AppContent: React.FC = () => {
           </Tabs>
         )}
 
-        {/* Content Card */}
+        {/* Content Card. The metric glossary (L-1) is fetched once here and read by every
+            surface that shows a number; it needs the API key, so it waits for the login. */}
         <Fade in timeout={240}>
           <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
             <Suspense
@@ -184,51 +186,53 @@ const AppContent: React.FC = () => {
                 </Box>
               }
             >
-              <Routes>
-                <Route path="/" element={<Navigate to="/health" replace />} />
-                <Route path="/login" element={<Login />} />
-                <Route
-                  path="/health"
-                  element={
-                    <ProtectedRoute>
-                      <HealthTab />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/ops"
-                  element={
-                    <ProtectedRoute>
-                      <OpsStatusTab />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/evaluate"
-                  element={
-                    <ProtectedRoute>
-                      <EvaluationReportTab />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/upcoming"
-                  element={
-                    <ProtectedRoute>
-                      <UpcomingMatchTab />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/workbench"
-                  element={
-                    <ProtectedRoute>
-                      <WorkbenchTab />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="*" element={<Navigate to="/health" replace />} />
-              </Routes>
+              <MetricGlossaryProvider enabled={isAuthenticated}>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/health" replace />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route
+                    path="/health"
+                    element={
+                      <ProtectedRoute>
+                        <HealthTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/ops"
+                    element={
+                      <ProtectedRoute>
+                        <OpsStatusTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/evaluate"
+                    element={
+                      <ProtectedRoute>
+                        <EvaluationReportTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/upcoming"
+                    element={
+                      <ProtectedRoute>
+                        <UpcomingMatchTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/workbench"
+                    element={
+                      <ProtectedRoute>
+                        <WorkbenchTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/health" replace />} />
+                </Routes>
+              </MetricGlossaryProvider>
             </Suspense>
           </Paper>
         </Fade>

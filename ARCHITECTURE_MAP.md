@@ -92,6 +92,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/admin/train/progress` |
 | GET | `/xi/status` |
 | GET | `/xi/evaluate-report` |
+| GET | `/xi/metric-glossary` |
 | POST | `/xi/predict-win` |
 | POST | `/performance/predict` |
 | POST | `/simulate` |

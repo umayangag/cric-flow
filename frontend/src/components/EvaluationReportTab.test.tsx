@@ -201,6 +201,21 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText('locked')).toBeInTheDocument();
   });
 
+  it('says when the report prints a metric the glossary does not explain', async () => {
+    mockEvaluationReport.mockResolvedValue({
+      ...report(),
+      glossary: {
+        entries: {},
+        passed: false,
+        problems: ["metric 'brand_new_score' is reported with no glossary entry"],
+      },
+    });
+    render(<EvaluationReportTab />);
+
+    expect(await screen.findByText(/Metric glossary incomplete/)).toBeInTheDocument();
+    expect(screen.getByText(/brand_new_score/)).toBeInTheDocument();
+  });
+
   it('shows the three selection gates with E5 against its derived bar', async () => {
     mockEvaluationReport.mockResolvedValue(report());
     render(<EvaluationReportTab />);
@@ -212,8 +227,10 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText(/Swap monotonicity/)).toBeInTheDocument();
     expect(screen.getByText(/Natural experiment \(E5\), lineup-only/)).toBeInTheDocument();
     expect(screen.getByText('0.509 ± 0.014 (n=1,204)')).toBeInTheDocument();
+    // The caption is the harness's own definition and the run's numbers -- the frontend
+    // adds no prose of its own about what E5 means (L-1).
     expect(
-      screen.getByText(/Bar derived from the objective’s own claimed effect: 0.501/),
+      screen.getByText(/both elevens scored in the later fixture at its as-of\. Bar 0.501/),
     ).toBeInTheDocument();
     expect(screen.getByText(/would score 0.523\) — passes/)).toBeInTheDocument();
   });

@@ -54,6 +54,23 @@ describe('metricDirection', () => {
     expect(metricDirection('r2_variance')).toBe('lower-is-better');
   });
 
+  // L-1: the service that computes a metric says which way is progress. The substring
+  // rule stays only for the keys the glossary does not carry.
+  it('takes the direction from the glossary where it carries the key', () => {
+    const lookup = (key: string | undefined) =>
+      key === 'objective_auc'
+        ? ({ direction: 'higher' } as never)
+        : key === 'coverage_80'
+          ? ({ direction: 'nominal' } as never)
+          : undefined;
+
+    expect(metricDirection('T20.objective_auc', lookup)).toBe('higher-is-better');
+    // Nominal: neither up nor down is an improvement, so no verdict is claimed.
+    expect(metricDirection('T20.coverage_80', lookup)).toBe('unknown');
+    // A key the glossary does not carry still falls back to the substring rule.
+    expect(metricDirection('T20I.rmse', lookup)).toBe('lower-is-better');
+  });
+
   it('declines to guess for a metric it does not recognise', () => {
     expect(metricDirection('rows')).toBe('unknown');
     expect(metricDirection('duration_seconds')).toBe('unknown');

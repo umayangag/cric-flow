@@ -513,6 +513,15 @@ async def xi_evaluate_report():
         raise HTTPException(status_code=503, detail=exc.payload) from exc
 
 
+@app.get("/xi/metric-glossary")
+async def xi_metric_glossary():
+    """The metric glossary (L-1): one entry per reported metric key -- a plain-language
+    name, what it means, the reference band this system measured, and which direction is
+    better. Every surface that shows a number renders these, so the prose lives beside the
+    code that computes the metric and nowhere else."""
+    return xi_service.metric_glossary()
+
+
 @app.post("/xi/predict-win", response_model=XiWinResponse)
 async def xi_predict_win(request: XiWinRequest):
     """P(team1 wins) for two elevens given by player id. team1 is the side batting first."""

@@ -3,6 +3,7 @@ import type {
   HealthResponse,
   XiStatusResponse,
   EvaluationReport,
+  MetricGlossary,
   Migration,
   Suggestion,
   PaginatedResponse,
@@ -381,6 +382,17 @@ export const api = {
   /** L4's evaluation report, as `make evaluate` last wrote it. */
   evaluationReport(): Promise<EvaluationReport> {
     return httpApi('/api/backtest/report');
+  },
+
+  /**
+   * What every reported metric means (L-1), from the service that computes them.
+   *
+   * Its own endpoint rather than a read of the evaluation report: the prediction surfaces
+   * show metrics and never load that report, and the report is a megabyte of folds nobody
+   * needs in order to explain the word "pinball".
+   */
+  metricGlossary(): Promise<MetricGlossary> {
+    return httpApi('/api/backtest/metric-glossary');
   },
 
   /**

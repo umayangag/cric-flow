@@ -38,7 +38,7 @@ from app.models.xi import (
     XiWinResponse,
 )
 from ml.config import get_ratings_max_age_days
-from ml.xi import runs, simulator
+from ml.xi import glossary, runs, simulator
 from ml.xi.asof import AsOfServer
 from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
 from ml.xi.optimizer import (
@@ -558,6 +558,16 @@ def evaluate_report(registry: XiRegistry = REGISTRY) -> dict:
         report = json.load(fh)
     logger.info("xi.evaluate_report.served", path=path, formats=sorted(report.get("formats", {})))
     return report
+
+
+def metric_glossary() -> dict:
+    """What every reported metric means (L-1), from ``ml.xi.glossary``.
+
+    Served from the code rather than from a report on disk, so a surface can explain its
+    numbers before any harness has run and cannot be left rendering the prose of a report
+    two releases old. The harness embeds the same dict in its report.
+    """
+    return {"entries": glossary.as_dict()}
 
 
 def loaded_formats(registry: XiRegistry = REGISTRY) -> Dict[str, List[str]]:

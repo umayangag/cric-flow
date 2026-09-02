@@ -21,6 +21,10 @@ const LOADED = {
     dataset_sha: 'abc123def4567890',
     git_sha: 'deadbeefcafe',
     formats: ['T20', 'ODI'],
+    metrics: {
+      T20: { objective_auc: 0.723, display_auc_mean: 0.711 },
+      ODI: { objective_auc: 0.702, display_auc_mean: 0.698 },
+    },
   },
 };
 
@@ -49,6 +53,18 @@ describe('WorkbenchTab', () => {
     expect(await screen.findByText('20260902T101500Z-ab12cd34')).toBeInTheDocument();
     expect(screen.getByText('2025-09-01')).toBeInTheDocument();
     expect(screen.getByText('deadbee')).toBeInTheDocument();
+  });
+
+  /** L-1: the run's headline metrics are a table keyed by metric, not a JSON dump. */
+  it('shows the run headline metrics per format, by their metric keys', async () => {
+    mockXiStatus.mockResolvedValue(LOADED);
+    render(<WorkbenchTab />);
+    await waitFor(() => expect(mockXiStatus).toHaveBeenCalled());
+
+    expect(await screen.findByText('objective_auc')).toBeInTheDocument();
+    expect(screen.getByText('display_auc_mean')).toBeInTheDocument();
+    expect(screen.getByText('0.7230')).toBeInTheDocument();
+    expect(screen.getByText('0.6980')).toBeInTheDocument();
   });
 
   /** D-6: a refused artifact set has to read as refused, not as "nothing trained yet". */

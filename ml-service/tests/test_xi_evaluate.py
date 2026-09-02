@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from ml.xi import evaluate as ev
+from ml.xi import glossary
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.xi_perf_fixtures import fast_fits
 
@@ -149,6 +150,17 @@ def test_harness_embeds_the_gate_registry_and_checks_it(harness_report) -> None:
     assert gates_node["passed"], gates_node["problems"]
     assert set(gates_node["registry"]) >= {"E5", "E2", "H-4", "H-8", "H-17", "E3"}
     assert gates_node["registry"]["E5"]["varies"].startswith("the eleven")
+
+
+def test_harness_explains_every_metric_it_reports(harness_report) -> None:
+    """L-1's completeness gate, over a real harness report: a metric the report prints
+    with no glossary entry fails here, before it can reach a surface unexplained."""
+    glossary_node = harness_report["glossary"]
+
+    assert glossary_node["passed"], glossary_node["problems"]
+    assert glossary.metric_keys(harness_report), "the report should carry metrics to explain"
+    assert set(glossary_node["entries"]) == set(glossary.REGISTRY)
+    assert glossary_node["entries"]["dispersion_ratio"]["band"].startswith("1.0 calibrated")
 
 
 def _fake_report(parity_passed: bool = True, gates_passed: bool = True) -> dict:

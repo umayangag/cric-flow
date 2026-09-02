@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { EvaluationFormatReport } from '../types';
+import { MetricLabel } from './common/MetricInfo';
 import { formatShare, formatStat } from '../utils/evaluationReport';
 
 const totalLabels: Record<string, string> = {
@@ -85,14 +86,18 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
           <TableHead>
             <TableRow>
               <TableCell>Total</TableCell>
-              <TableCell align="right">10–90 coverage</TableCell>
-              <TableCell align="right" title="Narrower is progress only while coverage holds">
-                10–90 width
+              <TableCell align="right">
+                <MetricLabel metricKey="coverage_80" label="10–90 coverage" />
               </TableCell>
-              <TableCell align="right" title="Above 1: actual totals scatter more than the draws">
-                Dispersion ratio
+              <TableCell align="right">
+                <MetricLabel metricKey="width_80" label="10–90 width" />
               </TableCell>
-              <TableCell align="right">Median MAE</TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="dispersion_ratio" label="Dispersion ratio" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="median_mae" label="Median MAE" />
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -106,7 +111,9 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
               </TableRow>
             ))}
             <TableRow>
-              <TableCell>Brier, simulated vs display</TableCell>
+              <TableCell>
+                <MetricLabel metricKey="brier" label="Brier, simulated vs display" />
+              </TableCell>
               <TableCell align="right" colSpan={4}>
                 {formatStat(locked?.win?.brier?.simulated ?? folds?.win?.brier?.simulated)} vs{' '}
                 {formatStat(locked?.win?.brier?.display ?? folds?.win?.brier?.display)}
