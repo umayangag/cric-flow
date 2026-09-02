@@ -77,7 +77,9 @@ best response), gives the displayed P(win) (`/xi/predict-win`), and either draws
 constraints go-app supplies are the ones it alone knows: team size, minimum bowlers, keeper.
 
 **Formats:** models are per format (`TEST`, `ODI`, `T20`, `T20I`). Selection is *optimised* only
-where the objective ranks (H-17): TEST is served a rating-ordered XI, marked not optimised.
+where the objective ranks (H-17) and has shown it selects (E5, plan §8.8); the others are served a
+rating-ordered XI, marked not optimised, with the reason on the wire and in the UI
+(`ml.xi.optimizer.NOT_OPTIMISED_REASONS`).
 
 ---
 

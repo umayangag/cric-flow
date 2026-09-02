@@ -371,7 +371,7 @@ export const api = {
     u.searchParams.set('q', trimmed);
     return httpApi(u.toString());
   },
-  /** L4's evaluation report, as `make xi-evaluate` last wrote it. */
+  /** L4's evaluation report, as `make evaluate` last wrote it. */
   evaluationReport(): Promise<EvaluationReport> {
     return httpApi('/api/backtest/report');
   },

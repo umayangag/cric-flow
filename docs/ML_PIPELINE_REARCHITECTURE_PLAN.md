@@ -304,9 +304,9 @@ to two model families and one derived simulator, all fed by one pass over one ta
 |---|---|---|---|
 | E1 | Do sequence features add to L2-B? | Ablate `seqcalc` families as extra as-of accumulators in L1; measure Spearman / pinball on the holdout | Keep a family only if it moves pinball loss by > 1% over three seeds; otherwise drop it and its tables — **run in P-3, §5.3: no family moves pinball by more than 0.21 %; none kept** |
 | E2 | Is the simulator consistent with the display model? | Simulated P(win) vs display P(win) on holdout matches; calibration of each | If simulated P(win) is worse-calibrated by > 0.01 Brier, keep it as a display-only distribution and never as a probability — **run in P-4, §8.3: simulated − display Brier +0.0028 ± 0.0057 T20, +0.0034 ± 0.0131 ODI on the folds — within tolerance, a probability, served beside the display model's, which stays the headline** |
-| E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain |
+| E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain — **run in P-7, §8.8: the best of 64 sampled orders of the top seven, confirmed with a fresh seed, moves the simulated median total by > 3 % for 25.0 % ± 3.1 of T20 elevens and 12.6 % ± 2.3 of ODI elevens (median move 1.5–1.7 %); under the line in both, order stays with the captain** |
 | E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
-| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way — **run for all three limited-overs formats in §8.6. The as-played form is confounded (Δresult is an identity on `won_k`, which the as-of update already anticipates), so read the lineup-only form: T20I 0.589 ± 0.016, CI [0.556, 0.621] — **passes**; ODI 0.521 ± 0.010, CI [0.502, 0.541] — above chance, threshold outside; T20 0.509 ± 0.007, CI [0.496, 0.522] — excluded** |
+| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | ~~If agreement > 55% on ≥ 300 pairs~~ — **the bar is derived from the objective's own claimed effect size (P-7, §8.8): an exactly-right objective would score about 0.52, so 0.55 was never reachable.** The metric is the *lineup-only* form, in L4 (`ml/xi/natural_experiment.py`): both elevens scored against match k+1's opponent at match k+1's as-of; §5's as-played form is confounded (Δresult is an identity on `won_k`, §8.6) and is not computed. Walk-forward, against the derived bar: **T20I 0.586 (n=111) vs 0.469 — passes; ODI 0.562 (n=429) vs 0.487 — passes; T20 0.490 (n=1,358) vs 0.501 — fails.** On every development pair (in-sample for the weights, well-powered): T20I 0.589 vs 0.496, ODI 0.521 vs 0.504, T20 0.509 vs 0.512 — the same verdicts. Optimised selection is scoped off in T20 on this reading, on beside TEST's H-17 rule |
 | E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's — **run in P-2, §5.2: no effect; the split ships off** |
 | E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) — **run in P-3, §5.3: joint moves Spearman by at most 0.003; separate stays** |
 
@@ -492,9 +492,26 @@ checklist.
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | **done** (`arch/p-4-simulator`). Design written first (§3, "The innings sample"); `ml/xi/simulator.py` draws whole matches from L2-B's forecasts — sequential by expected slot under the as-of innings length, chase ended at the target, bowlers attributed, toss marginalised — with one shared as-of match factor (deconvolved residuals of the calibration fold) that the folds showed was needed (§8.3: dispersion ratio 1.42 → 1.02 T20, 1.36 → 1.02 ODI; coverage 0.64 → 0.76, 0.58 → 0.74; before/after recorded). Locked window (§8.3): first-innings 10–90 coverage **0.786 T20 / 0.790 ODI** (acceptance ±0.03 met), dispersion ratio 0.98 / 1.02, width 90.6 / 154.1 runs; 9.4–9.9 ms per fixture at 2,000 draws. E2 within tolerance (+0.003 / +0.003 Brier on the folds), so the simulated P(win) is served as a probability beside the display model, which stays the headline. `POST /simulate`; the go-app xi scorecard reads it (totals, points and ranges from the draws; extras / innings models and the rescale unused on that path); L3 explanation = marginal values + spread shares. H-8 parity extended to the draws at a fixed seed: max abs difference 0.0 over 39 simulated matches on both sources, and the two sources agree on every locked-window figure (T20 coverage 0.786 / 0.786, ODI 0.790 / 0.787, Brier to 0.0004) |
 | P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete the greedy weights, the meta-model, the rescaling layers, the Normal Monte Carlo and the per-call optimiser | **done** (`arch/p-5-repoint-surfaces`). A limited-overs `/api/predict/*` response now carries the display model's P(win) with `source` on the wire, the simulated totals with their 10-90 ranges, per-player ranges and marginal values, and a `scorecard` block whose lines and extras sum to the total by construction; nothing rescales a simulated total toward anything, on any path. **S-6 ships here**: the XI path is the only selection path for T20 / T20I / ODI, on L4's replacement gates rather than P-0's mis-specified winner accuracy. **Re-measured on the database for this PR (§8.4), and one of the two gates is weaker than §8.1 recorded**: swap monotonicity passes comfortably (0.0–0.8 % violations against a 2 % line), but the specific-XI-beyond-typical-XI delta is **+0.012 ± 0.010 in T20** over seven folds — positive, about 1.2 sd from zero — and inside its own noise in ODI (+0.024 ± 0.069) and T20I (+0.021 ± 0.068), not the +0.045 ± 0.021 this document carried. The switch ships on that reading, recorded rather than rounded up. **TEST** gets `objective: "ratings"` on `/xi/optimize` — the search's own seed order under the same constraints, evaluating no model — labelled `optimised: false` in the API and shown as a *Not optimised* notice in the UI (H-17); its per-player numbers come from `/performance/predict`, and it has no innings total because it has no innings length. The backtest surface is L4's report, served by the new `GET /xi/evaluate-report` and proxied at `/api/backtest/report`: walk-forward folds with the locked window labelled beside them, the two selection metrics with a labelled slot for E5, per-target performance with width beside coverage, the E2 section and the serving-parity verdict. `ml/metrics.py` and both its callers are gone (H-12). Migration `0007` drops `match_prediction_aggregates`, the one table whose last reader and last writer both died here; nothing else was orphaned by P-5 that P-6 does not already own. Coverage ratcheted: Go 68, ml-service 86, frontend 74/69/74/77. **Also fixes two defects found while smoke-testing this PR (D-7a, D-7b, §10.6)**: the id contract now carries the registry id end to end, and a read of the rating state no longer mutates it |
 | P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | **done** (`arch/p-6-run-pipeline`). **Deleted, with every reader re-pointed or removed in the same commit:** `internal/precompute` and its two commands; `internal/seqcalc` and its nine calculators; `internal/services/exportdataset`, `internal/db/exportqueries`, `internal/features` and the `export-dataset` command; go-app's `training-data` endpoint, the tuned-params store and handlers, the model-stats DB enrichment and the weather probes; and in ml-service `ml.train_win`, `ml.win_features`, `ml.win_discrimination`, `ml.auto_tune` with its PyCaret / AutoGluon / Optuna wrappers, the whole `ml/tuning` package, `ml.export_csv`, `ml.validate_exports`, and the per-format artifact registry they shared (`app/artifacts.py`, `app/artifact_service.py`, `app/model_metadata.py`, `app/model_stats_service.py`, `app/prediction_service`). Optuna, PyCaret, AutoGluon and SHAP leave `requirements.in` and CI, which **collapses the two Docker stages into one image** and the two requirements files into one. **Migration `0008` drops fourteen tables** — `feature_raw_stats_snapshots`, `player_window_features`, the nine `*_features` tables, `ml_tuned_params`, `weather_data`, `weather_job` — every one of which lost its last reader *and* its last writer here. **Survivors, recorded rather than dropped:** `batting_data`, `bowling_data`, `fielding_data` and `fielding_event` lost their last reader but the importer still writes them, and the importer is the one component §4 marks *keep*; they are write-only now, and the PR that stops the importer writing them is the one that drops them. **Three steps:** import → retrain → reload, with `evaluate` beside them as `Optional`; `Requires` is retrain←import, reload←retrain, evaluate←import (asking "what would this have scored?" is not gated behind producing the artifacts it is not measuring). `confirmDefaultParams` had nothing left to confirm and is gone; the run plans lose `tune` and `data-refresh`. **The grid** is `ml.xi.train.DISPLAY_GRID`: three points for the display model, scored on a temporal split *inside* the training rows, the incumbent kept unless a candidate beats it by more than 0.002 AUC (H-14 applied to a choice). Measured on the database, **it kept the incumbent in all four formats** — the manifest records the reason and every candidate's score — so **no number in this document moves**: objective/display AUC is 0.721/0.737 T20, 0.748/0.731 T20I, 0.677/0.716 ODI, 0.575/0.598 TEST, identical to the pre-P-6 report on the same data. **H-16 and D-6 close together**, because they are the same question: every retrain writes `runs/<id>/` with the artifacts, the run's report and `manifest.json` (run id, cutoff, dataset sha, git sha, rating params, the hyperparameters chosen *and why*, headline metrics, and the rating state's shape), `current` is a pointer file naming one run, and the loader refuses a run with no manifest or whose arrays are not the arrays this code reads, with an error naming the run and the widths (§10.5). **H-11**: a live prediction against ratings older than `ml.ratings_max_age_days` (default 14) is refused with `RATINGS_STALE`; an `as_of` request is not, because a backtest asks for a date and gets it. **§8.7's rule is enforced on every substitution**: `selection`, the new `forecast` block and `win_probability.source` each name which model answered, and the two paths that used to leave a player's row at zeros when a response omitted him now fail instead — a substitution that cannot be labelled must not be made. **Acceptance, measured on this database (22,734 matches, on the machine this branch was written on).** From an empty database: migrate (1 s) → import (**2 min 06 s**) → retrain (**12 min 26 s**) → reload (**6 s**), **14 min 40 s** end to end, inside the 15-minute line but not comfortably — and that retrain was competing with a test suite; the same retrain uncontended took **9 min 52 s** (rating pass 3 min 34 s, then the four formats' win and performance models), which puts an idle chain at about 12 minutes. `fetch` is not in the figure: it is a ~4 GB download whose time is the link's, and the archive was already extracted. The run the chain produced loaded under its own manifest — 13,569 players, four formats, `ratings_through 2026-08-25`, fresh against the 14-day limit — and its `dataset_sha` (`38f99adb…`) is **identical** to the one a retrain against the pre-existing database produced, which is the digest doing its job. A second retrain wrote a second run and `POST /admin/reload?run=<id>` swapped between them in both directions. The two D-6 shapes were checked against the real artifacts: a run with its `manifest.json` removed, and one with the nine post-P-2 arrays stripped from `xi_ratings.joblib`, each answered **409 `RUN_ARTIFACTS_INVALID`** naming the run and the missing arrays rather than loading and raising `IndexError` later. With `XI_RATINGS_MAX_AGE_DAYS=3` against 8-day-old ratings, `/xi/predict-win` answered **503 `RATINGS_STALE`** with the hint naming retrain, while the same request carrying `as_of` was served. The L4 harness is **not** in that chain and is not in `retrain`: measured here it takes **53 min 40 s**, so folding it in would put the budget out of reach — `evaluate` is the optional step, and what a retrain records is its own holdout report, which the manifest names. Coverage ratcheted: Go 68 → 74, ml-service 86 → 91, frontend lines/statements 74 → 75 and functions 69 → 73 |
-| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report. **E5 has been run for all three limited-overs formats ahead of this PR (§8.6)**: the metric P-7 should implement is the *lineup-only* one, per format — both elevens scored in the same fixture at the same as-of — because §5's as-played definition is confounded by an identity between Δresult and `won_k` that the as-of rating update already anticipates. The answers are T20I 0.589 ± 0.016 (passes), ODI 0.521 ± 0.010, T20 0.509 ± 0.007. P-7 also owns the three follow-ups §8.7 sets out — scoping selection by E5 the way H-17 scopes serving by AUC, re-deriving E5's threshold from the measured effect size, and enforcing H-23 |
+| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | **done** (`arch/p-7-e5-and-order`). **E5 lives in L4** (`ml/xi/natural_experiment.py`), lineup-only, per format: both elevens scored in the later fixture at its as-of, the previous eleven read from the as-of serving path in one advancing pass and the fielded one checked against the frame (parity 0.0 over 25,650 pairs), per fold, pooled, and on the locked window labelled; §5's as-played form is not computed and the slot says why. The wiring test (`e5_reproduce.py`) lands on §8.6 exactly (T20 0.509, ODI 0.521, T20I 0.589; same pairs, same counts). **The bar is derived** (§8.8): Bernoulli outcomes at the objective's own probabilities give the agreement an exactly-right objective would score — about 0.52 in every format, so 0.55 was never reachable — and the bar is that distribution's 5th percentile for the pairs available. Walk-forward: **T20I 0.586 vs 0.469 passes, ODI 0.562 vs 0.487 passes (a flip of §8.6's reading), T20 0.490 vs 0.501 fails** — the same verdicts on every development pair. **Scoping decided**: T20 is served the rating-ordered eleven (`NOT_OPTIMISED_REASONS`, mirrored in go-app, the reason on the wire and in the UI as TEST's is); T20I and ODI stay optimised; the harness restates the decision every run beside its verdict. **E3 answered**: the best of 64 sampled top-seven orders, confirmed with a fresh seed, moves the simulated median total by > 3 % for 25.0 % ± 3.1 of T20 and 12.6 % ± 2.3 of ODI development elevens — under the 30 % line, order stays with the captain. **H-23 enforced**: `ml/xi/gates.py` registers every gate's varies / fixed / decides triple, the report embeds it and fails without it, the UI renders it beside each number, E3 printed its triple before running. Coverage ratcheted: ml-service 91 → 92, frontend lines/statements 75 → 76 and functions 73 → 74; Go holds at 74 |
 
 Each of P-2 … P-6 removes more than it adds. The end state is smaller than the current tree.
+
+**The migration is complete (P-7, 2026-09-02).** Every claim this document makes is now a
+number `make evaluate` reproduces, and every gate it runs says what it varies. Where the
+system's numbers stand, walk-forward unless labelled: objective / display AUC 0.721 / 0.737
+T20, 0.748 / 0.731 T20I, 0.677 / 0.716 ODI, 0.575 / 0.598 TEST (§8.4, unchanged by P-6's grid);
+swap monotonicity under 1 % everywhere; specific-XI delta +0.012 ± 0.010 T20; E5 lineup-only
+against its derived bar — T20I 0.586 vs 0.469, ODI 0.562 vs 0.487, T20 0.490 vs 0.501 (§8.8);
+runs Spearman +0.040 / +0.048 over the career mean with intervals at nominal coverage (§8.2);
+simulated totals' 10–90 coverage 0.786 T20 / 0.790 ODI on the locked window, simulated P(win)
+within 0.003 Brier of the display model (§8.3); parity 0.0 on both sources. **Selection is
+optimised in T20I and ODI, rating-ordered in T20 (E5) and TEST (H-17)**, each with its reason on
+the wire. Still open, none of it blocking: the T20 objective's lineup-only agreement is the
+number to move, and its bar is written down; T20 wickets trail the career mean on the
+unconditional Spearman (a tie artifact, §8.2); the chase total under-covers from the low side
+(§8.3); the four write-only importer tables await the PR that stops writing them (P-6); the
+women's-holdout question behind H-7 waits for more women's matches. The plan has no further
+PRs.
 
 ---
 
@@ -548,12 +565,11 @@ names the experiment that will.
 | H-20 | **Unconditional training population.** Rows are never selected by the outcome (who batted, who bowled) | performance | Training rows are all XI players with as-of expected involvement; two-part targets allowed only if both parts are unconditional | **done (P-3)**: every target trains and is scored on all XI players with "did not bat / bowl" as 0; the baselines are defined on the same population (the unconditional career mean, not the mean over innings batted). The one two-part target, wickets, fits P(bowls) on the unconditional rows and reads the involvement from that classifier at prediction, never from the outcome; a unit test asserts no outcome column is an input |
 | H-21 | **No in-sample stacking.** A model output consumed downstream is out-of-sample for that row | performance → simulator, any meta-model | as-of features or out-of-fold predictions from a temporal split; the harness asserts the second stage never scores a row the first stage trained on | **done for P-3's second stage**: the only fitted consumer of a model output is H-5's quantile recalibration, and it is fitted on the last quarter of the training rows by date, which the members do not train on (`performance._temporal_calibration_split`; unit-tested). The two-part mixture is arithmetic, not a fit. **Done for the simulator (P-4):** it consumes L2-B's forecasts for the fixture (as-of predictions, never a row's own outcome), three as-of rates from the rating pass (`SIMULATION_CONTEXT_COLS`), the runs–balls copula correlation from the training rows, and a shared factor whose residual distribution comes from the 92-day calibration fold the members do not train on; the harness's E2 rows are fixtures after each fold's cutoff |
 | H-22 | **Sharpness at fixed calibration is the progress metric.** For a distributional system "better" means narrower intervals while coverage stays nominal, never a smaller point error | performance, simulator | L4 reports mean 80% interval width beside coverage, per target and format, release over release; narrower with coverage held is progress, narrower with coverage falling is a regression and fails the gate. CRPS / pinball as the single proper score | **reported (P-3)** — width beside coverage for every target and format in §8.2 and in `xi_evaluate_report.json`, with the career-quantile baseline's width and coverage beside them. First release: T20 runs 29.1 wide at 0.897 inclusive coverage against the career quantiles' 26.0 at 0.782 — the baseline is narrower only by under-covering. Pinball is the proper score (mean over the three levels; CRPS was not added: two proper scores buy nothing a second column cannot). The release-over-release gate has one release to compare against so far. **Applied to totals (P-4, §8.3):** the simulated 10–90 interval's coverage and width per format — without the shared factor 0.638 / 60.6 (T20) and 0.576 / 107.3 (ODI), with it 0.764 / 82.8 and 0.743 / 150.6 on the folds; the narrower interval was the under-covering one, so the wider is the progress. Locked window: first-innings 10–90 coverage 0.786 at 90.6 runs wide (T20), 0.790 at 154.1 (ODI), the widths the next release has to narrow without giving that up |
-| H-23 | **A gate must name what varies between its arms and what is held fixed.** Three gates in this project reported a clean pass or fail while moving for a reason other than the thing they named: P-0's winner accuracy scored the *fixture* (both arms optimise both sides, pushing it toward parity, §8.5); E5's as-played form scores mean reversion (a nonzero Δresult is an identity on `won_k`, which the as-of rating update already anticipates, §8.6); and the P-0 run reached neither arm it named because the id contract made the optimiser refuse (D-7a) | all | Every gate in L4 states, beside its number, the quantity it varies and the quantities it holds fixed; a gate that cannot say so is not reported as a pass or a fail | **open (P-7)** — the three cases above are written up; the rule is not yet enforced in the harness |
+| H-23 | **A gate must name what varies between its arms and what is held fixed.** Three gates in this project reported a clean pass or fail while moving for a reason other than the thing they named: P-0's winner accuracy scored the *fixture* (both arms optimise both sides, pushing it toward parity, §8.5); E5's as-played form scores mean reversion (a nonzero Δresult is an identity on `won_k`, which the as-of rating update already anticipates, §8.6); and the P-0 run reached neither arm it named because the id contract made the optimiser refuse (D-7a) | all | Every gate in L4 states, beside its number, the quantity it varies and the quantities it holds fixed; a gate that cannot say so is not reported as a pass or a fail | **done (P-7)** — `ml/xi/gates.py` is the registry: every gate the report prints (H-17's AUC line, H-4, specific-vs-typical, E5, E2, H-5, H-22, H-2, H-8) and the one a script runs (E3) declares its *varies / fixed / decides* triple and the path at which the report carries its number. The report embeds the registry, `gates.check_report` fails `make evaluate` if a gate is printed without an entry or an entry has nowhere to be read from (unit-tested both ways), the Evaluation tab renders the triple beside each number, and `e3_batting_order.py` prints its triple before it runs. The first gate written under the rule, E5 lineup-only, is the one whose as-played form the rule would have caught |
 
-Items marked *open* are folded into the migration: H-11 into P-6 alongside H-16, H-23 into
-P-7 (H-2, H-4, H-7, H-8, H-15 and H-19 are done as of P-2; H-5, H-12, H-20, H-21 and H-22 as
-of P-3 and, for the simulator, P-4). Nothing left in the list needs new modelling; it is
-measurement, guards and two small serving rules.
+Nothing in the list is open: H-11 and H-16 closed in P-6, H-23 in P-7 (H-2, H-4, H-7, H-8,
+H-15 and H-19 as of P-2; H-5, H-12, H-20, H-21 and H-22 as of P-3 and, for the simulator,
+P-4). Every row is now a gate the harness runs or a rule the serving path enforces.
 
 ### 8.1 First walk-forward report (H-19, P-2)
 
@@ -1036,6 +1052,180 @@ a player the simulator or the performance model returned no line for was logged 
 zeros, which reads on screen as a forecast of nothing rather than as a missing forecast. That
 one is now an error, on the rule that a substitution which cannot be labelled must not be made.
 
+### 8.8 P-7: E5's bar re-derived, the selection scope decided, E3 answered (2026-09-02)
+
+Three questions §8.7 left for this PR, in the order they have to be answered: what bar E5
+can reach at all, whether each format clears it, and whether batting order is worth
+optimising. Every number below is one `make evaluate` reproduces, and each gate's
+*varies / fixed / decides* triple is in `ml/xi/gates.py` (H-23), stated before the gate ran.
+
+**Where the metric lives.** `ml/xi/natural_experiment.py` is E5, lineup-only, in L4: for
+each consecutive pair of one side's matches with 1–3 lineup changes, both elevens scored
+against match k+1's opponent at match k+1's as-of — the previous eleven read from the as-of
+serving path (`AsOfRatings`) in one advancing pass over the source, the fielded eleven from
+the frame's own row, the two checked against each other as a parity check on the pairing
+(max abs difference **0.0** over 25,650 pairs). §5's as-played form is not computed, and the
+report's slot says why in one line. **The wiring test** (`scripts/experiments/xi/e5_reproduce.py`)
+scores the same pairs through the same as-of path with one run's objective, and lands on
+§8.6 exactly — the same 12,413 / 5,882 / 2,185 development pairs, the same 5,505 / 2,568 /
+890 scored, the same 2,801 / 1,339 / 524 agreed: **T20 0.509 ± 0.007, ODI 0.521 ± 0.010,
+T20I 0.589 ± 0.016**, and the same locked-window figures (0.520 / 0.572 / 0.514).
+
+**1. The bar, derived.** §5 set 0.55 with no estimate of what the objective claims a lineup
+change is worth. It claims a median |Δ| of **0.022 / 0.020 / 0.022** win probability (mean
+0.029 / 0.029 / 0.032, p90 0.065–0.073) for a 1–3 player change in T20 / ODI / T20I. Take the
+objective at its word: every fixture's result is Bernoulli at the objective's own P(win) —
+match k's at its as-played probability, match k+1's at its as-played probability, so the
+lineup-only Δ is exactly what the objective says it is and the opponent change between the
+two matches is priced the way the objective prices it. The sign-agreement rate an
+exactly-right objective would then produce has a closed form (per pair, P(result moves up) =
+(1−a)·b and P(down) = a·(1−b); agreement is the one the claimed sign picks, over the pairs
+that move), and 2,000 Bernoulli replicates (seed 20260902) give its sampling distribution for
+the pairs available. The bar is that distribution's **5th percentile** — the number minus
+sampling noise, so an exactly-right objective falls below it one run in twenty:
+
+| format | pairs (dev) | exactly-right agreement | simulated sd | **derived bar** | observed | verdict |
+|---|---|---|---|---|---|---|
+| T20 | 12,392 | 0.523 | 0.006 | **0.512** | 0.509 ± 0.007 | **fails**, by 0.003 |
+| ODI | 5,882 | 0.520 | 0.010 | **0.504** | 0.521 ± 0.010 | **passes**, at the exactly-right figure |
+| T20I | 2,182 | 0.522 | 0.016 | **0.496** | 0.589 ± 0.016 | **passes**, 4 se above exactly-right |
+
+Two things follow. **0.55 was never reachable.** A 2 pp lineup effect implies an agreement
+rate of about 0.52, in every format; the objective's opponent pricing, which is real, does
+not help here because both matches in a pair move the fixture probability by more than the
+lineup does and in unrelated directions. §5's threshold asked the objective to be more
+right than the effect it claims could ever show. **And the derived bar flips one reading and
+sharpens another.** ODI, which §8.6 called a narrow fail, agrees with the result *exactly as
+often as an exactly-right objective would* (0.521 against 0.520) — it passes, and there is
+nothing left for it to gain on this gate short of claiming a larger effect. T20, the
+well-powered null, fails the derived bar by 0.003 — half a standard error — and sits 2.1 se
+below the exactly-right figure: the objective's direction on a T20 lineup change is not
+distinguishable from chance (0.509 is 1.3 se above 0.5), and it is *less* right than its own
+claims. T20I is right far more often than its claimed magnitudes imply (0.589 against 0.522,
+4 se), which says its lineup deltas are too *small* there — a shrunk effect with the right
+sign, not a lucky slice; the same-opponent arm in §8.6 (0.622) said the same.
+
+Locked window, labelled and never used for the choice: T20 0.520 ± 0.018 against a bar of
+0.494, ODI 0.572 ± 0.031 against 0.498, T20I 0.514 ± 0.048 against 0.436 — all above their
+bars, all inside two standard errors of the development figures.
+
+The figures above are the well-powered ones, and they are in-sample for the model's
+*weights*: the run's objective is fitted through its cutoff on rows including these pairs
+(the ratings are as-of either way). The choice-facing figure is the harness's walk-forward
+one (H-19), where each pair is scored by the objective fitted before its fold's cutoff, on the
+2024-01 → 2025-09 pairs only, with the bar re-derived for that many pairs:
+
+| format | fold pairs | scored | walk-forward agreement | per-fold mean ± sd | exactly-right | **derived bar** | verdict | locked (labelled) |
+|---|---|---|---|---|---|---|---|---|
+| T20 | 3,202 | 1,358 | **0.490 ± 0.014** [0.463, 0.516] | 0.492 ± 0.030 (7) | 0.522 | **0.501** | **fails** | 0.520 ± 0.018 vs 0.494 |
+| ODI | 941 | 429 | **0.562 ± 0.024** [0.515, 0.609] | 0.569 ± 0.078 (7) | 0.525 | **0.487** | **passes** | 0.572 ± 0.031 vs 0.498 |
+| T20I | 320 | 111 | **0.586 ± 0.047** [0.494, 0.677] | 0.571 ± 0.104 (6) | 0.539 | **0.469** | **passes** | 0.514 ± 0.048 vs 0.436 |
+| TEST | 339 | 157 | 0.529 ± 0.040 [0.451, 0.607] | 0.524 ± 0.081 (7) | 0.528 | 0.463 | passes — moot, off under H-17 | 0.625 ± 0.065 vs 0.425 |
+
+The walk-forward verdicts are the in-sample ones, format for format. T20 is below a coin
+flip on the folds (five of seven under 0.52, the 2024-10 fold at 0.439, three-player changes
+at 0.417) and fails a bar of 0.501; ODI and T20I clear their bars with room and again sit above
+the exactly-right figure. T20I has only 111 scored pairs in the fold windows (one fold has too
+few rows to fit an objective at all), so its walk-forward interval is wide; the 890-pair
+development figure is the one that carries its pass. TEST passes E5 at low power and stays
+off: H-17 and E5 are two rules, and an objective whose AUC does not clear 0.65 is not searched
+over whatever E5 says of it. The report carries every one of these numbers under
+`e5_lineup_only` — per fold, pooled, effect size, bar, locked window — with the gate's triple
+beside them; the harness run was 70 minutes contended with two other jobs, of which the E5 pass
+is under three.
+
+
+**2. The scoping decision.** §8.7 point 2 asked whether selection is scoped by E5 the way
+serving is scoped by AUC (H-17), and listed what to weigh: T20's well-powered null and the
+cost of the search, against the positive-but-small specific-XI delta (+0.012 ± 0.010, §8.4)
+and the coherence of the XI and P(win) coming from one model. With the derived bar in hand
+the decision is per format, and it is driven by that bar, not by the old 0.55:
+
+- **T20I — optimised selection stays on.** Passes the derived bar on the walk-forward folds
+  (0.586 against 0.469) and on every development pair (0.589 against 0.496), and in both it
+  sits *above* what an exactly-right objective would score. The objective is a demonstrated
+  selector here; §8.6 already said so and the derived bar agrees.
+- **ODI — optimised selection stays on.** §8.6 read it as a narrow fail against 0.55; against
+  the bar it can reach it passes on the folds (0.562 against 0.487) and on every development
+  pair (0.521 against 0.504, with the exactly-right figure at 0.520). The objective agrees
+  with the result exactly as often as its own effect size implies. The old reading was the
+  threshold's fault, not the format's.
+- **T20 — optimised selection is scoped off.** It fails the derived bar on the walk-forward
+  folds (0.490 over 1,358 pairs against 0.501; below a coin flip, though not significantly)
+  and on every development pair (0.509 over 5,505 against 0.512, 2.1 se under the
+  exactly-right 0.523). This is the best-powered E5 of the three, and it fails a bar the
+  objective could in principle reach. Weighed against it: the specific-XI delta is positive
+  but 1.2 sd from zero; the search is a best-response loop per request whose output E5 cannot
+  distinguish from the rating order; and coherence is kept where it matters — the headline
+  P(win) still reads the fielded eleven through the display model, only the *choice* of
+  eleven stops consulting the objective. Rating order is not a downgrade E5 can see: it is
+  the search's own seed, under the same constraints. Domestic T20 is also where §8.6 noted
+  that a "1–3 player change" is most often squad rotation rather than a change in strength,
+  which is a reason the signal is weakest there and not a reason to keep searching for it.
+
+So the rule is now **two rules in one map**, `ml.xi.optimizer.NOT_OPTIMISED_REASONS`, mirrored
+by go-app's `notOptimisedReasons`: a format is offered an optimised selection unless its
+objective does not rank (H-17: TEST) or has not shown it selects (E5: T20), and the reason
+travels — `/xi/optimize` refuses `objective: "win"` for a listed format with the reason in the
+503, go-app serves the rating-ordered eleven with `optimised: false` and the reason as the
+`selection.note`, and the Upcoming-match tab shows it as the *Not optimised* notice, exactly as
+TEST's. The harness **revisits the decision every run**: per format the report states
+"optimised selection: yes/no, because E5 said X against bar Y" with the served policy read
+from the map beside the verdict, so a run whose verdict disagrees with the policy says so in
+the report and in the Evaluation tab. The policy itself is set by hand from the report, as E2's
+is. Covered by tests both ways in ml-service (T20 refused with its reason, T20I optimised, the
+map and the optimised set partition the formats) and go-app (T20 rating-ordered with its note,
+T20I searched against the opposing eleven, every reason names its rule).
+
+What this does *not* say: that win-probability selection is wrong in T20, or that the
+rating-ordered eleven is better. E5 cannot see a difference between them there, at the best
+power this dataset has, and the search costs a loop per request; the cheaper arm is served
+until a run of the harness shows the other one selecting. The number to move is the T20
+objective's lineup-only agreement, and the bar it has to clear is now written down beside it.
+
+
+**3. E3 — batting order stays with the captain.** `scripts/experiments/xi/e3_batting_order.py`,
+gate stated before it ran (H-23): *varies* the order of the top seven batting slots; *fixed*
+the eleven, the opponent eleven, the as-of date, batting first, and the random numbers;
+*decides* the share of elevens whose best sampled order moves the confirmed simulated median
+first-innings total by more than 3 %, against §5's 30 % line. Method: 100 fixtures sampled
+per format and window (seed 20260902), both fielded elevens each, the expected-slot order as
+the baseline; **N = 64** random permutations of the top seven (identity included), each
+reassigning the seven's slot *values* among the seven so L2-B reads the same feature set with
+different holders — the tail untouched — re-predicted through L2-B and simulated batting
+first at 1,000 draws with common random numbers; the best order by search median then
+**re-simulated with a fresh seed at 4,000 draws** beside the baseline, because the best of 64
+noisy medians is biased upward by the search itself, and the baseline re-simulated once more
+for the noise floor. The decision runs on the last walk-forward fold's fixtures
+(2025-06-01 → 2025-09-01, performance model fitted before its cutoff); the locked window is
+scored beside it with its own pre-locked fit and labelled (H-19).
+
+| format | window | elevens | confirmed Δ median | p90 | max | share > 3 % | share > 1 % | share > 5 % | noise floor p90 |
+|---|---|---|---|---|---|---|---|---|---|
+| T20 | development (decides) | 200 | 1.7 % | 4.7 % | 18.3 % | **25.0 % ± 3.1** | 74 % | 9 % | 1.1 % |
+| T20 | locked (labelled) | 180 | 1.7 % | 5.1 % | 21.3 % | 19.4 % ± 2.9 | 67 % | 11 % | 1.2 % |
+| ODI | development (decides) | 199 | 1.5 % | 3.2 % | 4.6 % | **12.6 % ± 2.3** | 68 % | 0 % | 1.0 % |
+| ODI | locked (labelled) | 199 | 1.6 % | 3.2 % | 5.6 % | 10.6 % ± 2.2 | 73 % | 2 % | 1.1 % |
+
+**Neither format crosses the line.** Reordering the top seven moves the simulated median total
+by a median of 1.5–1.7 % (about 2.5 runs on a T20 total of 158, 4 runs on an ODI 262), by more
+than 3 % for **25 % of T20 elevens and 13 % of ODI elevens**, against 30 %; by more than 5 %
+for 9 % of T20 elevens and none in ODI. The search-only share was 27 % / 19 % — the
+confirmation step removed a winner's curse worth 2–6 points of share, which is what it was
+there for — and the noise floor (the same order re-simulated) sits at a p90 of 1.1 %, so the
+3 % line is well clear of Monte Carlo error. T20 is the closer call: 25 % ± 3 % is inside two
+standard errors of 30 %, and the tail is real (one eleven in ten gains 5 % or more, once 18 %),
+which is the profile of a few elevens with a badly placed hitter rather than a general
+sensitivity. Per §5 the outcome is **recorded and order stays with the captain**; nothing is
+added to L3, and the simulator keeps ordering by expected slot. A caveat that bounds the
+number rather than moves it: the counterfactual runs through L2-B's response to
+`exp_bat_position`, which is a correlational feature — a tail-ender promoted to open is
+forecast the way players who *usually* open are forecast, which if anything overstates what
+reordering can do. The distribution and every eleven's best order are in
+`output/e3_batting_order.json`; the run is reproducible from the seed.
+
+
+---
 
 ## 9. Database schema and pipeline steps: what changes, what does not
 

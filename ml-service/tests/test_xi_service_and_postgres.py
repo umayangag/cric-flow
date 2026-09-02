@@ -49,7 +49,9 @@ def _registry_keyed_history(n: int = 160):
             MatchRecord(
                 m.match_id,
                 m.match_date,
-                m.format_code,
+                # T20I: the same laws as the synthetic T20 history, and a format that is
+                # offered an optimised selection (T20 is scoped off by E5, plan §8.8).
+                "T20I",
                 "7",
                 "8",
                 "3",
@@ -79,7 +81,7 @@ def artifacts_dir(tmp_path_factory) -> tuple:
     matches, squad_a, squad_b = _registry_keyed_history()
     out = tmp_path_factory.mktemp("xi_service_artifacts")
     with fast_fits():
-        written = retrain(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
+        written = retrain(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20I"])
     assert "targets" in written["summary"]["formats"][0]["performance"]
     return str(out), squad_a, squad_b, matches
 
@@ -92,13 +94,13 @@ def registry(artifacts_dir) -> xi_service.XiRegistry:
 
 
 def test_status_lists_the_performance_formats(registry) -> None:
-    assert registry.status().performance_formats == ["T20"]
+    assert registry.status().performance_formats == ["T20I"]
 
 
 def test_predict_performance_returns_distributions_for_both_elevens(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
     req = PerformancePredictRequest(
-        format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + ["nosuchplayer"]
+        format="t20i", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + ["nosuchplayer"]
     )
 
     res = xi_service.predict_performance(req, registry)
@@ -114,7 +116,7 @@ def test_predict_performance_returns_distributions_for_both_elevens(registry, ar
 
 def test_predict_performance_marginalises_unless_the_toss_is_known(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
-    base = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+    base = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
 
     unknown = xi_service.predict_performance(PerformancePredictRequest(**base), registry)
     first = xi_service.predict_performance(PerformancePredictRequest(**base, team1_bats_first=True), registry)
@@ -131,7 +133,7 @@ def test_predict_performance_without_an_artifact_is_unavailable(registry) -> Non
 
     with pytest.raises(xi_service.XiUnavailable, match="no performance model"):
         xi_service.predict_performance(
-            PerformancePredictRequest(format="T20", team1_player_ids=["a"], team2_player_ids=["b"]), registry
+            PerformancePredictRequest(format="T20I", team1_player_ids=["a"], team2_player_ids=["b"]), registry
         )
 
 
@@ -140,7 +142,7 @@ def test_registry_reports_absent_artifacts_without_raising(tmp_path) -> None:
     status = reg.reload(str(tmp_path))
     assert status["loaded"] is False
     with pytest.raises(xi_service.XiUnavailable):
-        reg.store("T20")
+        reg.store("T20I")
     assert xi_service.loaded_formats(reg) == {"loaded_xi_formats": []}
 
 
@@ -175,14 +177,14 @@ def test_registry_survives_a_corrupt_artifact(tmp_path) -> None:
 
 def test_registry_status_after_load(registry, artifacts_dir) -> None:
     status = xi_service.status(registry)
-    assert status.loaded and status.formats == ["T20"]
+    assert status.loaded and status.formats == ["T20I"]
     assert status.players > 20
     assert status.ratings_through is not None
-    assert status.report["formats"][0]["format_code"] == "T20"
+    assert status.report["formats"][0]["format_code"] == "T20I"
     # H-16: the status names the run and what its manifest recorded.
     assert status.run_id
-    assert status.manifest["formats"] == ["T20"]
-    assert status.manifest["hyperparameters"]["T20"]["params"]
+    assert status.manifest["formats"] == ["T20I"]
+    assert status.manifest["hyperparameters"]["T20I"]["params"]
     with pytest.raises(xi_service.XiUnavailable, match="ODI"):
         registry.store("ODI")
 
@@ -197,10 +199,10 @@ def test_evaluate_report_is_read_from_the_loaded_artifacts_directory(registry, t
     """
     models_dir = tmp_path / "artifacts"
     models_dir.mkdir()
-    (models_dir / "xi_evaluate_report.json").write_text(json.dumps({"formats": {"T20": {}}}))
+    (models_dir / "xi_evaluate_report.json").write_text(json.dumps({"formats": {"T20I": {}}}))
     registry.reload(str(models_dir))
 
-    assert xi_service.evaluate_report(registry)["formats"] == {"T20": {}}
+    assert xi_service.evaluate_report(registry)["formats"] == {"T20I": {}}
 
 
 def test_evaluate_report_reports_a_missing_report_with_the_path_it_looked_in(registry, tmp_path) -> None:
@@ -223,7 +225,7 @@ def test_optimize_returns_ids_marginals_and_unknowns(registry, artifacts_dir) ->
     _, squad_a, squad_b, matches = artifacts_dir
     opponent = list(matches[-1].team2_players)
     req = XiOptimizeRequest(
-        format="t20",
+        format="t20i",
         pool_player_ids=squad_a + ["nosuchplayer"],
         opponent_player_ids=opponent,
         constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False, must_exclude=[squad_a[0]]),
@@ -241,7 +243,7 @@ def test_optimize_returns_ids_marginals_and_unknowns(registry, artifacts_dir) ->
 def test_optimize_rating_ordered_needs_no_opponent_and_is_marked_not_optimised(registry, artifacts_dir) -> None:
     _, squad_a, _, _ = artifacts_dir
     req = XiOptimizeRequest(
-        format="t20",
+        format="t20i",
         pool_player_ids=squad_a,
         objective="ratings",
         constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
@@ -263,13 +265,27 @@ def test_optimize_refuses_the_win_objective_where_it_does_not_rank(registry, art
         pool_player_ids=squad_a,
         opponent_player_ids=list(matches[-1].team2_players),
     )
-    with pytest.raises(xi_service.XiUnavailable, match="H-17"):
+    with pytest.raises(xi_service.XiUnavailable, match="H-17") as excinfo:
         xi_service.optimize(req, registry)
+    assert "not offered an optimised selection" in str(excinfo.value)
+    assert "objective='ratings'" in str(excinfo.value)
+
+
+def test_every_format_is_either_optimised_or_names_why_not() -> None:
+    """The two policy tables are one map: a format is searched on the win objective unless
+    NOT_OPTIMISED_REASONS says why it is not, and every reason names its rule."""
+    from ml.xi import contract as C
+    from ml.xi.optimizer import NOT_OPTIMISED_REASONS, OPTIMISED_SELECTION_FORMATS
+
+    assert OPTIMISED_SELECTION_FORMATS | set(NOT_OPTIMISED_REASONS) == set(C.FORMAT_CODES)
+    assert not OPTIMISED_SELECTION_FORMATS & set(NOT_OPTIMISED_REASONS)
+    for format_code, reason in NOT_OPTIMISED_REASONS.items():
+        assert "H-17" in reason or "E5" in reason, (format_code, reason)
 
 
 def test_optimize_win_objective_requires_an_opponent_xi(registry, artifacts_dir) -> None:
     _, squad_a, _, _ = artifacts_dir
-    req = XiOptimizeRequest(format="T20", pool_player_ids=squad_a)
+    req = XiOptimizeRequest(format="T20I", pool_player_ids=squad_a)
     with pytest.raises(xi_service.XiUnavailable, match="opponent_player_ids"):
         xi_service.optimize(req, registry)
 
@@ -277,7 +293,7 @@ def test_optimize_win_objective_requires_an_opponent_xi(registry, artifacts_dir)
 def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_dir) -> None:
     _, squad_a, _, matches = artifacts_dir
     req = XiOptimizeRequest(
-        format="T20", pool_player_ids=squad_a[:5], opponent_player_ids=list(matches[-1].team2_players)
+        format="T20I", pool_player_ids=squad_a[:5], opponent_player_ids=list(matches[-1].team2_players)
     )
     with pytest.raises(ValueError):
         xi_service.optimize(req, registry)
@@ -287,9 +303,9 @@ def test_predict_win_with_and_without_context(registry, artifacts_dir) -> None:
     _, _, _, matches = artifacts_dir
     last = matches[-1]
     t1, t2 = list(last.team1_players), list(last.team2_players)
-    plain = xi_service.predict_win(XiWinRequest(format="T20", team1_player_ids=t1, team2_player_ids=t2), registry)
+    plain = xi_service.predict_win(XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2), registry)
     ctx = xi_service.predict_win(
-        XiWinRequest(format="T20", team1_player_ids=t1, team2_player_ids=t2, team1_id=7, team2_id=8, venue_id=3),
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, team1_id=7, team2_id=8, venue_id=3),
         registry,
     )
     for r in (plain, ctx):
@@ -344,9 +360,9 @@ class _FakeConnection:
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
         "matches": [
-            (1, date(2024, 1, 1), "T20", "male", 5, 10, 20, 20),
-            (2, date(2024, 1, 2), "T20", "male", 5, 10, 20, None),
-            (3, date(2024, 1, 3), "T20", "male", 5, 10, 20, 10),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None),
+            (3, date(2024, 1, 3), "T20I", "male", 5, 10, 20, 10),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -363,7 +379,7 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
             3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None)],
         },
     }
-    recs = list(PostgresSource(_FakeConnection(tables), formats=["T20"]).iter_matches())
+    recs = list(PostgresSource(_FakeConnection(tables), formats=["T20I"]).iter_matches())
 
     assert [r.match_id for r in recs] == ["1", "3"]
     first = recs[0]
@@ -533,7 +549,7 @@ def _registry_with_as_of(artifacts_dir) -> tuple:
 def test_store_as_of_none_serves_the_loaded_state(artifacts_dir) -> None:
     reg, _, _, _ = _registry_with_as_of(artifacts_dir)
 
-    assert reg.store_as_of("T20", None) is reg.store("T20")
+    assert reg.store_as_of("T20I", None) is reg.store("T20I")
 
 
 def test_store_as_of_future_date_serves_the_loaded_state(artifacts_dir) -> None:
@@ -541,24 +557,24 @@ def test_store_as_of_future_date_serves_the_loaded_state(artifacts_dir) -> None:
     reg, _, _, matches = _registry_with_as_of(artifacts_dir)
     after_everything = matches[-1].match_date + timedelta(days=1)
 
-    assert reg.store_as_of("T20", after_everything) is reg.store("T20")
+    assert reg.store_as_of("T20I", after_everything) is reg.store("T20I")
 
 
 def test_store_as_of_past_date_serves_a_state_that_stops_there(artifacts_dir) -> None:
     reg, _, _, matches = _registry_with_as_of(artifacts_dir)
     as_of = matches[80].match_date
 
-    store = reg.store_as_of("T20", as_of)
+    store = reg.store_as_of("T20I", as_of)
 
-    assert store is not reg.store("T20")
+    assert store is not reg.store("T20I")
     assert store.state.last_date < as_of
-    assert store.state.matches_seen < reg.store("T20").state.matches_seen
-    assert store.models is reg.store("T20").models  # same fitted models, earlier ratings
+    assert store.state.matches_seen < reg.store("T20I").state.matches_seen
+    assert store.models is reg.store("T20I").models  # same fitted models, earlier ratings
 
 
 def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
     reg, squad_a, squad_b, matches = _registry_with_as_of(artifacts_dir)
-    request = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+    request = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
 
     today = xi_service.predict_win(XiWinRequest(**request), registry=reg)
     early = xi_service.predict_win(XiWinRequest(**request, as_of=matches[30].match_date), registry=reg)
@@ -568,11 +584,11 @@ def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
 
 def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
-    req = SimulateRequest(format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=300)
+    req = SimulateRequest(format="t20i", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=300)
 
     res = xi_service.simulate(req, registry)
 
-    assert res.n_samples == 300 and res.toss_marginalised is True and res.format == "T20"
+    assert res.n_samples == 300 and res.toss_marginalised is True and res.format == "T20I"
     assert len(res.team1.players) == 11 and [p.side for p in res.team2.players] == [2] * 11
     lines = sum(p.scorecard.runs for p in res.team1.players) + res.team1.extras_scorecard
     assert lines == pytest.approx(res.team1.total.scorecard)  # the scorecard sums to the total by construction
@@ -586,7 +602,7 @@ def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, 
 
 def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
-    base = dict(format="T20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=200)
+    base = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=200)
 
     first = xi_service.simulate(SimulateRequest(**base, seed=5), registry)
     again = xi_service.simulate(SimulateRequest(**base, seed=5), registry)
@@ -606,4 +622,4 @@ def test_a_numeric_player_id_is_refused_rather_than_silently_unrated() -> None:
     `player_id` used to be accepted and match nobody, so every player came back unrated and
     the XI was eleven debutants. The contract now rejects it at the boundary."""
     with pytest.raises(ValidationError):
-        XiOptimizeRequest(format="T20", pool_player_ids=[1, 2, 3], opponent_player_ids=["2911de16"])
+        XiOptimizeRequest(format="T20I", pool_player_ids=[1, 2, 3], opponent_player_ids=["2911de16"])

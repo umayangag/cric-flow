@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,12 +75,44 @@ func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing
 	assert.Equal(t, []string{"k4", "k5"}, xi2)
 	assert.Equal(t, SelectionObjectiveRatings, summary.Objective)
 	assert.False(t, summary.Optimised)
-	assert.NotEmpty(t, summary.Note, "a rating-ordered XI must carry the note every surface shows")
+	assert.Equal(t, notOptimisedReasons["TEST"], summary.Note, "a rating-ordered XI carries its format's reason")
+	assert.Contains(t, summary.Note, "H-17")
 	assert.Nil(t, marginals, "nothing was maximised, so no player has a margin")
 	require.Len(t, optimizer.calls, 2, "rating order does not depend on the opponent: one call per side")
 	for _, call := range optimizer.calls {
 		assert.Equal(t, SelectionObjectiveRatings, call.Objective)
 		assert.Empty(t, call.OpponentPlayerKeys)
+	}
+}
+
+func TestIsOptimisedSelectionFormat_FollowsTheReasonsMapBothWays(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name      string
+		format    string
+		optimised bool
+	}{
+		{name: "T20 is rating-ordered under E5", format: "T20", optimised: false},
+		{name: "T20I is searched on the win objective", format: "T20I", optimised: true},
+		{name: "ODI is searched on the win objective", format: "ODI", optimised: true},
+		{name: "TEST is rating-ordered under H-17", format: "TEST", optimised: false},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.optimised, isOptimisedSelectionFormat(tc.format))
+			_, hasReason := notOptimisedReasons[tc.format]
+			assert.Equal(t, !tc.optimised, hasReason, "every format that is not optimised names its reason")
+		})
+	}
+}
+
+func TestNotOptimisedReasons_EveryReasonNamesTheRule(t *testing.T) {
+	t.Parallel()
+	for format, reason := range notOptimisedReasons {
+		assert.Contains(t, reason, "Rating-ordered XI", format)
+		assert.True(t, strings.Contains(reason, "H-17") || strings.Contains(reason, "E5"), "%s: %s", format, reason)
 	}
 }
 
@@ -90,7 +123,7 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 		answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k3"}, {"k4", "k6"}, {"k1", "k3"}, {"k4", "k6"}},
 	}
 
-	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20"))
+	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"k1", "k3"}, xi1)
@@ -127,7 +160,7 @@ func TestSelectBothXIs_PropagatesTheOptimiserFailure(t *testing.T) {
 	t.Parallel()
 	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}}, err: errors.New("model not loaded")}
 
-	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20"))
+	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "model not loaded")
@@ -135,7 +168,7 @@ func TestSelectBothXIs_PropagatesTheOptimiserFailure(t *testing.T) {
 
 func TestOptimizeSide_RefusesAPoolTooSmallForTheConstraints(t *testing.T) {
 	t.Parallel()
-	fix := twoSidedFixture("T20")
+	fix := twoSidedFixture("T20I")
 	fix.constraints.Size = 11
 
 	_, err := optimizeSide(context.Background(), &fakeOptimizer{}, fix,
@@ -147,7 +180,7 @@ func TestOptimizeSide_RefusesAPoolTooSmallForTheConstraints(t *testing.T) {
 
 func TestOptimizeSide_RefusesTheWinObjectiveWithoutAnOpposingXI(t *testing.T) {
 	t.Parallel()
-	fix := twoSidedFixture("T20")
+	fix := twoSidedFixture("T20I")
 
 	_, err := optimizeSide(context.Background(), &fakeOptimizer{}, fix,
 		SelectionObjectiveWin, fix.pool1, nil, true)

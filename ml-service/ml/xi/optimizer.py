@@ -34,11 +34,26 @@ from ml.xi.store import XiStore
 
 logger = logging.getLogger(__name__)
 
-# H-17, as a serving rule: the formats whose objective ranks well enough to select on
-# (holdout AUC >= 0.65 in the L4 harness). TEST is absent by measurement -- every feature
-# family leaves it near 0.6 -- so it gets ``select_xi_by_ratings`` and is labelled as not
-# optimised all the way to the UI. Mirrored by the go-app xi path.
-OPTIMISED_SELECTION_FORMATS = frozenset({"T20", "T20I", "ODI"})
+# The formats served a rating-ordered XI instead of an optimised one, each with its reason.
+# Two rules put a format here, and the reason says which. H-17 (P-5): an objective whose
+# holdout AUC is under 0.65 does not rank, so it is not searched over -- TEST, by
+# measurement, every feature family leaves it near 0.6. E5 (P-7, plan §8.8): an objective
+# that ranks but whose preference between one side's consecutive elevens does not agree
+# with the result change at the bar derived from its own claimed effect size has not shown
+# that it selects, so the search is not served there either. The harness re-decides E5
+# every run and reports whether this policy still agrees with it (``selection_decision``);
+# the policy itself is set here by hand, from the report, like E2's. A format absent from
+# the map is optimised. Mirrored by the go-app xi path (``notOptimisedReasons``), which
+# carries the reason to the UI as the *Not optimised* notice.
+NOT_OPTIMISED_REASONS: Dict[str, str] = {
+    "TEST": "no win objective that ranks (holdout AUC below 0.65, H-17)",
+    "T20": (
+        "the objective ranks (holdout AUC 0.72) but has not shown it selects: E5 lineup-only agreement "
+        "0.490 over 1,358 walk-forward pairs against the derived bar 0.501, and 0.509 against 0.512 on all "
+        "12,413 development pairs (plan §8.8)"
+    ),
+}
+OPTIMISED_SELECTION_FORMATS = frozenset(fmt for fmt in C.FORMAT_CODES if fmt not in NOT_OPTIMISED_REASONS)
 
 
 @dataclass

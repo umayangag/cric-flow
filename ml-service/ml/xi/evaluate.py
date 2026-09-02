@@ -17,9 +17,18 @@ such, never used for a choice. Per format it reports, with mean and spread over 
 * the simulator (L2-C, E2): simulated P(win) against the display model's (Brier,
   reliability), simulated totals' 10-90 coverage and width against actual innings totals,
   margins, latency; E2's display rule decided on the folds (``ml.xi.sim_harness``);
+* the natural experiment for selection (E5, ``ml.xi.natural_experiment``), lineup-only:
+  one side's consecutive matches 1-3 players apart, both elevens scored in the later
+  fixture at its as-of, sign agreement with the result change against a bar derived from
+  the objective's own claimed effect size -- per fold, pooled (the decision), and on the
+  locked window; with the format's selection policy stated beside the verdict;
 * the train/serve parity check (H-8): the last ``PARITY_LAST_N`` matches rebuilt from the
   as-of serving path and compared with the training frame -- rows, performance
   predictions and simulator outputs at a fixed seed alike.
+
+Every gate the report prints is registered in ``ml.xi.gates`` with what it varies, what it
+holds fixed and what decides (H-23); the report embeds the registry and fails if a gate is
+printed without one.
 
 One command, one JSON report:
 
@@ -41,9 +50,10 @@ import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import perf_baselines, perf_harness, selection_metrics, sim_harness, simulator
+from ml.xi import gates, natural_experiment, perf_baselines, perf_harness, selection_metrics, sim_harness, simulator
 from ml.xi.asof import serving_parity
 from ml.xi.builder import build
+from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
 from ml.xi.train import _score_marginalised, _xy, make_display_model, make_objective_model
@@ -139,10 +149,12 @@ def _evaluate_fold(
     cutoff: pd.Timestamp,
     end: pd.Timestamp,
     recalibrate: Tuple[str, ...] = (),
-) -> Tuple[Dict, Optional[PerformanceModels]]:
+) -> Tuple[Dict, Optional[PerformanceModels], Optional[object]]:
+    """One window's report, its performance model and its fitted objective (which E5
+    scores the window's lineup pairs with)."""
     fold, objective, displays = _evaluate_win_window(format_frame, cutoff, end)
     if objective is None:
-        return fold, None
+        return fold, None, None
     format_players = player_frame[player_frame.format_code == format_code]
     window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
     fold["swap_monotonicity"] = selection_metrics.swap_monotonicity(
@@ -158,7 +170,7 @@ def _evaluate_fold(
         fold["simulation"] = sim_harness.evaluate_window(
             performance.model, displays, window_matches, window_players, format_code, fold["train_positive_rate"]
         )
-    return fold, performance.model
+    return fold, performance.model, objective
 
 
 def _summarize_folds(folds: List[Dict]) -> Dict:
@@ -191,21 +203,45 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
     return summary
 
 
+def _proba(objective: Optional[object]) -> Optional[natural_experiment.Proba]:
+    if objective is None:
+        return None
+    return lambda x: objective.predict_proba(x)[:, 1]
+
+
 def evaluate_format(
-    format_code: str, frame: pd.DataFrame, player_frame: pd.DataFrame
+    format_code: str,
+    frame: pd.DataFrame,
+    player_frame: pd.DataFrame,
+    pairs: Sequence[natural_experiment.LineupPair] = (),
 ) -> Tuple[Dict, Optional[PerformanceModels]]:
     """The format's walk-forward folds and its locked window; also returns the locked
-    window's performance model, which the parity check serves through the as-of path."""
+    window's performance model, which the parity check serves through the as-of path.
+    ``pairs`` are E5's lineup pairs (all formats; filtered here), already carrying the
+    previous eleven's as-of aggregates."""
     format_frame = frame[frame.format_code == format_code]
-    folds = [_evaluate_fold(format_code, format_frame, player_frame, cutoff, end)[0] for cutoff, end in fold_windows()]
+    folds: List[Dict] = []
+    fold_objectives: List[Tuple[pd.Timestamp, pd.Timestamp, Optional[natural_experiment.Proba]]] = []
+    for cutoff, end in fold_windows():
+        fold, _, objective = _evaluate_fold(format_code, format_frame, player_frame, cutoff, end)
+        folds.append(fold)
+        fold_objectives.append((cutoff, end, _proba(objective)))
     summary = _summarize_folds(folds)
     # H-5: the folds, never the locked window, decide which quantiles get recalibrated.
     recalibrate = tuple(perf_harness.recalibration_needed(summary["performance"]))
-    locked, locked_model = _evaluate_fold(
+    locked, locked_model, locked_objective = _evaluate_fold(
         format_code, format_frame, player_frame, pd.Timestamp(LOCKED_START), pd.Timestamp.max, recalibrate
     )
     locked["note"] = "locked window (H-19): scored once per release, never used for a choice"
     locked["recalibrated_targets"] = list(recalibrate)
+    e5 = natural_experiment.evaluate_format(
+        format_code,
+        pairs,
+        fold_objectives,
+        (pd.Timestamp(LOCKED_START), _proba(locked_objective)),
+        C.XI_FEATURE_COLS,
+        served=format_code in OPTIMISED_SELECTION_FORMATS,
+    )
     return {
         "n_matches": int(len(format_frame)),
         "walk_forward": {"folds": folds, "summary": summary},
@@ -218,6 +254,10 @@ def evaluate_format(
             "chase_orientation": simulator.CHASE_ORIENTATION,
             "served": simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED.get(format_code, False),
         },
+        # E5's rule, applied to the folds only; what the serving path does is the constant
+        # ``optimizer.OPTIMISED_SELECTION_FORMATS``, set from this by hand (plan §8.8).
+        "e5_lineup_only": e5,
+        "selection_decision": e5["decision"],
     }, locked_model
 
 
@@ -234,6 +274,13 @@ def evaluate(
     )
     player_frame = perf_baselines.add_baseline_predictors(result.player_frame)
     dev_start, dev_end = pd.Timestamp(WALK_FORWARD_CUTOFFS[0]), pd.Timestamp(LOCKED_START)
+    # E5's pairs, with the previous eleven read from the as-of serving path at the later
+    # match's date: one advancing pass over the source, before any fold is scored.
+    pairs = natural_experiment.build_pairs(result.frame, result.player_frame)
+    logger.info("E5: reading %d previous elevens from the as-of serving path", len(pairs))
+    previous_elevens = natural_experiment.score_previous_elevens(
+        pairs, parity_source_factory(), gender_split_context=gender_split_context
+    )
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": type(source).__name__,
@@ -245,12 +292,13 @@ def evaluate(
         "n_player_rows": int(len(result.player_frame)),
         "data_quality": result.quality.as_dict(),
         "leak_canary": selection_metrics.leak_canary(result.frame, dev_start, dev_end),
+        "e5_previous_elevens": previous_elevens,
         "formats": {},
     }
     locked_models: Dict[str, PerformanceModels] = {}
     for format_code in C.FORMAT_CODES:
         logger.info("evaluating %s", format_code)
-        report["formats"][format_code], model = evaluate_format(format_code, result.frame, player_frame)
+        report["formats"][format_code], model = evaluate_format(format_code, result.frame, player_frame, pairs)
         if model is not None:
             locked_models[format_code] = model
     logger.info("serving parity (H-8): rebuilding the last %d matches from the as-of path", PARITY_LAST_N)
@@ -262,6 +310,11 @@ def evaluate(
         gender_split_context=gender_split_context,
         performance_models=locked_models,
     )
+    # H-23: the report carries every gate's varied / fixed / decides triple, and is checked
+    # against the registry -- a gate printed without one is a defect of the report.
+    report["gates"] = {"registry": gates.as_dict()}
+    problems = gates.check_report(report)
+    report["gates"].update({"passed": not problems, "problems": problems})
     return report
 
 
@@ -354,8 +407,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 decision["n_folds"],
                 "a probability" if decision["simulated_win_probability_within_tolerance"] else "a description only",
             )
+        logger.info(
+            "%-5s selection (E5): %s", format_code, report["formats"][format_code]["selection_decision"]["reason"]
+        )
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])
+        return 1
+    if not report["gates"]["passed"]:
+        logger.error("gate registry (H-23) FAILED: %s", report["gates"]["problems"])
         return 1
     return 0
 

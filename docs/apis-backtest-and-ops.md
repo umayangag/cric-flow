@@ -20,7 +20,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   hex string such as `2911de16` — never the numeric `player.player_id`. That is the key the
   rating state is built under (P-1), so a numeric id sent here matches nobody and every player
   comes back unrated (D-7a). A player whose row has no `external_id` cannot be sent.
-- **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format whose objective does not rank (H-17: TEST) — the hint names `"ratings"`.
+- **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format that is not offered an optimised selection — the message carries the format's reason from `ml.xi.optimizer.NOT_OPTIMISED_REASONS` (H-17: the objective does not rank, TEST; or E5: the objective has not shown it selects, plan §8.8) and the hint names `"ratings"`.
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
 - **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
@@ -75,7 +75,7 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 | Field | Meaning |
 |-------|---------|
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
-| `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI |
+| `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects) |
 | `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
 | `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
 | `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and per innings the median-band `total`, its `extras` and the 10-90 range of the draws |
@@ -107,8 +107,12 @@ has not run.
 The report carries, per format: the walk-forward folds and their summary (objective and display
 AUC, Brier against the base rate, swap monotonicity, the specific-XI-beyond-typical-XI delta,
 per-target performance metrics, the simulator's E2 section), the locked window in the same
-shape, and E2's serving decision. Beside them: the data-quality counts, the leak canary with its
-TEST control, and the train/serve parity verdict.
+shape, E2's serving decision, the lineup-only natural experiment (`e5_lineup_only`: per fold,
+pooled with its derived bar, and the locked window labelled) and the selection decision it
+implies (`selection_decision`: agreement, bar, pass/fail, whether optimised selection is served,
+and the sentence saying why). Beside them: the data-quality counts, the leak canary with its
+TEST control, the train/serve parity verdict, and the gate registry (`gates`: every gate's
+varies / fixed / decides triple and whether the report carries all of them, H-23).
 
 **There is no per-match evaluate flow.** It scored the batting, bowling and fielding models
 against actuals and went with them in P-5; what replaced it is the harness, which scores every

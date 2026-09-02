@@ -506,12 +506,48 @@ model on the player-match rows — per target and format, within-match Spearman,
 the median's MAE, pinball loss and the 10–90 interval's coverage beside its width (H-22),
 with the career-mean, career-quantile and rating-expectation baselines on the same
 population, and quantile targets whose walk-forward coverage is off nominal recalibrated
-on a temporal fold for the locked window (H-5); and the simulator (E2) — simulated P(win)
+on a temporal fold for the locked window (H-5); the simulator (E2) — simulated P(win)
 against the display model's, totals coverage and width, margins, latency, with E2's display
-rule decided on the folds. It ends with the train/serve parity check (H-8): the last 50
-matches rebuilt from the as-of serving path and compared with the training frame — rows,
-performance predictions and simulator draws at a fixed seed alike — and the run fails if
-they differ.
+rule decided on the folds; and the natural experiment for selection (E5, below). It ends
+with the train/serve parity check (H-8): the last 50 matches rebuilt from the as-of serving
+path and compared with the training frame — rows, performance predictions and simulator
+draws at a fixed seed alike — and the run fails if they differ.
+
+**E5, lineup-only (`ml/xi/natural_experiment.py`, P-7).** The one selection gate that
+varies one side while holding the rest of the world still. For each consecutive pair of one
+side's matches in a format with 1–3 lineup changes, *both* elevens are scored against match
+k+1's opponent at match k+1's as-of ratings — the previous eleven is read from the as-of
+serving path (`AsOfRatings`) in one advancing pass, the fielded eleven from the frame's own
+row, and the two are checked against each other as a parity check on the pairing — and the
+metric is sign agreement between the objective's preference and the result change, over the
+pairs whose result moved. A pair is scored by the objective of the fold whose window holds
+match k+1, fitted before that fold's cutoff; the report carries the per-fold rates, the pooled
+development rate (the decision) with its standard error and the effect size the objective
+claims (median |Δ|), and the locked window beside them, labelled. §5's *as-played* definition
+is not computed, and the report's slot says why in one line: scoring each match against its
+own opponent makes a nonzero Δresult an identity on `won_k`, which match k+1's as-of state
+already contains, so it measures mean reversion, not selection (plan §8.6).
+
+*The bar is derived, not chosen* (plan §8.8). The harness takes the objective at its word —
+every fixture's result Bernoulli at the objective's own probability, so the lineup-only Δ is
+exactly what it claims — and simulates the agreement rate an exactly-right objective would
+produce on these pairs; the bar is that distribution's 5th percentile, so it already carries
+the sampling noise of the pairs available. A format passes or fails a bar it could in
+principle reach, and the report says what an exactly-right objective would have scored beside
+it. Per format the report then states the selection decision — `optimised selection: yes/no,
+because E5 said X against bar Y` — with the serving policy read from
+`ml.xi.optimizer.NOT_OPTIMISED_REASONS`, so a run whose verdict disagrees with the policy says
+so. The policy itself is set by hand from the report, as E2's is. As of P-7 (plan §8.8): T20I
+and ODI pass their derived bars and are searched on the win objective; **T20 fails its bar and
+is served the rating-ordered eleven**, labelled with that reason, beside TEST's H-17 reason.
+
+**Gate registry (H-23, `ml/xi/gates.py`).** Every gate the report prints — H-17's AUC line,
+swap monotonicity, specific-vs-typical, E5, E2, the quantile coverage, width beside coverage,
+the leak canary, parity, and E3 for the script that runs it — declares what it *varies*, what
+it holds *fixed* and what *decides*, with the path at which the report carries its number. The
+report embeds the registry, `gates.check_report` fails the run if a gate is printed without an
+entry or an entry has nowhere to be read from, and the Evaluation tab renders the triple beside
+each number. An experiment script prints its gate's triple before it runs.
 
 ```bash
 make evaluate                                        # the database

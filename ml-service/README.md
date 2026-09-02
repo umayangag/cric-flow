@@ -108,7 +108,7 @@ eleven names.
 |--------|------|-------------|
 | GET | `/xi/status` | The loaded run and its manifest (H-16), loaded formats, how far the ratings run and whether they are stale (H-11), the run's own report |
 | GET | `/xi/evaluate-report` | L4's evaluation report (`xi_evaluate_report.json`) |
-| POST | `/xi/optimize` | Pool + constraints → XI. `objective: "win"` maximises P(win); `objective: "ratings"` is the rating-ordered pick, the only mode offered where the objective does not rank (H-17) |
+| POST | `/xi/optimize` | Pool + constraints → XI. `objective: "win"` maximises P(win); `objective: "ratings"` is the rating-ordered pick, the only mode offered where the format is not optimised — because the objective does not rank (H-17) or has not shown it selects (E5) — with the reason in the 503 |
 | POST | `/xi/predict-win` | Two elevens → displayed P(team1 wins) |
 | POST | `/performance/predict` | Two elevens → per-player distributions (L2-B) |
 | POST | `/simulate` | Two elevens → totals, per-player ranges, the median-band scorecard and P(win), all from one set of draws (L2-C). Limited-overs formats only |
