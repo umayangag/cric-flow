@@ -126,12 +126,39 @@ def _match_keys(result: BuildResult) -> List[str]:
     return [f"{row.match_id}|{row.match_date}" for row in frame.itertuples(index=False)]
 
 
+def parse_cutoff(value: str) -> pd.Timestamp:
+    """Parse a training cutoff off the wire, tolerating a timestamp.
+
+    A cutoff is a *date*: rows before it train, rows at or after it are the holdout, and
+    the time of day names no different set of rows. So an RFC3339 value is truncated to
+    its date rather than refused -- go-app formatted its default cutoff that way until
+    F-1 (D-9), the endpoint's own hint has always promised it, and an operator typing a
+    timestamp into the console's cutoff box means the day they typed.
+
+    The wire format is declared in ``contracts/ops-console.contract.json`` and asserted
+    from both sides (H-24); this is ml-service's half of it.
+    """
+    text = (value or "").strip()
+    # Both separators RFC3339 allows between the date and the time, so "2026-09-02T18:33:11Z"
+    # and "2026-09-02 18:33:11" reduce to the same day.
+    head = text.split("T", 1)[0].split(" ", 1)[0]
+    try:
+        return pd.Timestamp(date.fromisoformat(head))
+    except ValueError as exc:
+        raise ValueError(f"--cutoff must be a date (YYYY-MM-DD) or an RFC3339 timestamp; got {value!r}") from exc
+
+
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--cricsheet-dir", help="directory of Cricsheet JSON files")
     src.add_argument("--postgres", action="store_true", help="read the go-app database (POSTGRES_* env vars)")
-    p.add_argument("--cutoff", required=True, help="YYYY-MM-DD; rows before it train, rows at/after it are the holdout")
+    p.add_argument(
+        "--cutoff",
+        required=True,
+        help="YYYY-MM-DD (an RFC3339 timestamp is accepted and read as its date); "
+        "rows before it train, rows at/after it are the holdout",
+    )
     p.add_argument("--out", default=None, help="artifacts root (default: ml.config.default_artifacts_dir())")
     p.add_argument("--formats", nargs="+", default=list(C.FORMAT_CODES))
     p.add_argument(
@@ -150,7 +177,7 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     args = _parse_args(argv)
-    cutoff = pd.Timestamp(date.fromisoformat(args.cutoff))
+    cutoff = parse_cutoff(args.cutoff)
 
     if args.cricsheet_dir:
         from ml.xi.sources import CricsheetJsonSource

@@ -1,6 +1,6 @@
 {
   "$comment": "Generated from go-app/internal/services/pipeline/registry.go. Do not edit by hand; run: go test ./internal/services/pipeline -run TestPipelineContract -update",
-  "version": 1,
+  "version": 2,
   "pipeline_steps": [
     {
       "id": "import",
@@ -69,5 +69,46 @@
     "simulate",
     "use_reconciled_scorecard",
     "include_both_scorecards"
+  ],
+  "cutoff": {
+    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+    "hint": "YYYY-MM-DD",
+    "example": "2025-09-01"
+  },
+  "ml_service_calls": [
+    {
+      "method": "POST",
+      "path": "/admin/train/retrain",
+      "query": [
+        "cutoff"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/train/evaluate",
+      "query": [
+        "cutoff"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/train/progress",
+      "query": [
+        "step"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/reload",
+      "query": [
+        "run"
+      ]
+    }
+  ],
+  "format_codes": [
+    "TEST",
+    "ODI",
+    "T20",
+    "T20I"
   ]
 }

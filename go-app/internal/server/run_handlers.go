@@ -29,7 +29,7 @@ func (a *App) reloadRunHandler(w http.ResponseWriter, r *http.Request) {
 	query := url.Values{}
 	if runID != "" {
 		args["run_id"] = runID
-		query.Set("run", runID)
+		query.Set(pipeline.MLQueryRun, runID)
 	}
 
 	a.startTrackedJob("xi-reload", args, pipeline.TrainStepTimeout(),
@@ -42,7 +42,7 @@ func (a *App) reloadRunHandler(w http.ResponseWriter, r *http.Request) {
 // callMLReload POSTs ml-service /admin/reload and returns what it loaded, so the run's
 // data_migrations row records which run is now serving (H-16).
 func callMLReload(ctx context.Context, query url.Values) (map[string]any, error) {
-	endpoint := pipeline.MLServiceBaseURL() + "/admin/reload"
+	endpoint := pipeline.MLServiceBaseURL() + pipeline.MLReloadPath
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
 	}

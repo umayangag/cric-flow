@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -40,17 +39,4 @@ func TestMLServiceBaseURL(t *testing.T) {
 			assert.NotRegexp(t, `/$`, got)
 		})
 	}
-}
-
-func TestDefaultCutoff(t *testing.T) {
-	t.Parallel()
-
-	before := time.Now().UTC()
-	cutoff := DefaultCutoff()
-	after := time.Now().UTC()
-
-	parsed, err := time.Parse(time.RFC3339, cutoff)
-	assert.NoError(t, err)
-	assert.False(t, parsed.Before(before.Truncate(time.Second)), "cutoff should not be before test start")
-	assert.False(t, parsed.After(after.Add(time.Second)), "cutoff should not be after test end")
 }

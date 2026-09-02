@@ -44,11 +44,6 @@ func TrainStepTimeout() time.Duration {
 	return time.Duration(mins) * time.Minute
 }
 
-// DefaultCutoff returns the current UTC time formatted as RFC3339, used as the default cutoff for training steps.
-func DefaultCutoff() string {
-	return time.Now().UTC().Format(time.RFC3339)
-}
-
 // CallMLTrainEndpoint POSTs to ML service /admin/train/{step} and returns an error on non-2xx or context cancel.
 // When ml-service ADMIN_API_KEY is set, sends X-API-Key header.
 func CallMLTrainEndpoint(ctx context.Context, step string, querySuffix string) error {
@@ -79,7 +74,7 @@ type TrainResult struct {
 // moment the outcome is still available.
 func CallMLTrainEndpointWithResult(ctx context.Context, step string, querySuffix string) (*TrainResult, error) {
 	base := MLServiceBaseURL()
-	url := base + "/admin/train/" + step + querySuffix
+	url := base + MLTrainPathPrefix + step + querySuffix
 	slog.Info("pipeline: calling ML service train endpoint",
 		slog.String("step", step),
 		slog.String("url", url))
@@ -163,7 +158,7 @@ func FetchStepProgress(ctx context.Context, stepID string) (map[string]interface
 		return nil, nil
 	}
 
-	endpoint := MLServiceBaseURL() + "/admin/train/progress?step=" + url.QueryEscape(stepID)
+	endpoint := MLServiceBaseURL() + MLProgressPath + "?" + MLQueryStep + "=" + url.QueryEscape(stepID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrProgressUnavailable, err)

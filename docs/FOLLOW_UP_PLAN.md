@@ -17,7 +17,7 @@ left on the table.
 
 ## 1. Two investigations, answered first
 
-### 1.1 D-8 — the Workbench "walk-forward registry" upload is an orphan
+### 1.1 D-8 — the Workbench "walk-forward registry" upload is an orphan — **fixed**
 
 **The question it answers:** "where do I get a JSON file for the walk-forward registry?"
 **Nowhere — the producer no longer exists.** The widget asks for a
@@ -33,7 +33,12 @@ The information it promised is not lost; it moved. Walk-forward evaluation is L4
 proxies it at `GET /api/backtest/report`, and the Evaluation tab renders it. The fix (F-1)
 is deletion plus a pointer, not a new producer.
 
-### 1.2 D-9 — retrain from the ops console fails instantly
+**Fixed in F-1** (branch `fix/f-1-ops-defects`, commit `11ced17`): `WorkbenchRegistrySection`,
+the upload handling in `useWorkbench` and the `WalkForwardRegistry` types are deleted, the
+Workbench's Commands & docs card points at the Evaluation report tab for walk-forward numbers,
+and `docs/observability.md` no longer names the widget. The frontend has no file input left.
+
+### 1.2 D-9 — retrain from the ops console fails instantly — **fixed**
 
 **Root cause: the two sides of one query parameter speak different date formats.**
 
@@ -62,6 +67,19 @@ species, after D-7a (go-app sent numeric ids where the store was keyed by regist
 the `train_`-prefix step-name mismatch (commit `996b11d`): a literal string crossing the
 go-app ↔ ml-service boundary, valid on each side, meaningless in transit.
 
+**Fixed in F-1** (branch `fix/f-1-ops-defects`, commit `11ced17`), at both ends:
+`pipelinesvc.DefaultCutoff()` returns `time.DateOnly` — a retrain cutoff is a date, and the
+time part named no different set of rows — and `ml.xi.retrain.parse_cutoff` truncates an
+RFC3339 value to its date instead of refusing it, so an old caller or a hand-typed timestamp
+cannot reproduce the failure and the endpoint's "RFC3339 or YYYY-MM-DD" hint is true. A value
+that is no date at all is still refused, now with a message naming the formats that would have
+worked. `ml.xi.evaluate` does not share the parse — it takes no `--cutoff`, because L4's
+rolling origins are its definition (H-19) — so there was nothing to change there.
+
+Verified the D-6 way as well as by test: against rebuilt containers, clicking **Retrain** with
+the cutoff box empty starts a run — ml-service logs `cutoff: "2026-09-02"` and
+`--cutoff 2026-09-02`, and the console shows the step running rather than failing instantly.
+
 **H-24 (rule, enforced by F-1):** every literal that crosses a service boundary — step ids,
 id kinds, date formats, error codes the other side matches on — is declared once in a
 generated contract, and **both** sides carry a test asserting their behaviour against the
@@ -69,6 +87,34 @@ contract, not against their own copy of the assumption. The precedent exists:
 `contracts/ops-console.contract.json` already does this for step ids between go-app and the
 frontend; D-9 happened on an edge the contract does not yet cover. H-23 said a *gate* must
 name what varies; H-24 is the same discipline for *interfaces*.
+
+The rule is written up in [quality-and-debugging.md](quality-and-debugging.md) § H-24, with the
+table of what each side asserts. F-1's audit of the boundary added three declarations to the
+contract beyond step ids: `cutoff` (pattern, hint, example), `ml_service_calls` (every admin
+path go-app posts to with the query parameter names it uses — asserted against ml-service's own
+OpenAPI schema), and `format_codes` (go-app's `internal/formats` against `ml.xi.contract`).
+Two candidates were audited and left out on purpose: go-app does not match on ml-service's error
+codes (it renders `{code, message, hint}` opaquely, so there is no literal to drift), and it
+does not parse run ids (it forwards them as opaque strings). Both become H-24 items the moment
+either side starts matching on them.
+
+### 1.3 D-10 — "Stop pipeline" cancels go-app's job, not ml-service's training — **open**
+
+Found while verifying F-1's acceptance against the containers. `POST /ops/pipeline/stop`
+answered `{"cancelled": 1}` and the console stopped showing the run, but
+`ml.xi.retrain` was still running inside `cric-ml-service` and still burning CPU: go-app's
+cancellation closes its HTTP request to `/admin/train/retrain`, and ml-service's
+`asyncio.to_thread(run_retrain, ...)` keeps waiting on a `subprocess.run` that nothing
+cancels. The process had to be killed by hand.
+
+Two things are wrong and both are one level below F-1's scope, so this is recorded rather
+than fixed here: the console reports a cancellation that did not happen, and the compute
+lane reads as free while a retrain is still writing — so a second retrain started
+immediately would run beside the first. The fix belongs on ml-service (keep the `Popen`
+handle per step, terminate it when the request is cancelled, and let the training
+semaphore be released only when the process is gone), with go-app's stop waiting for that
+answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
+about another's process.
 
 ---
 
@@ -103,6 +149,13 @@ name what varies; H-24 is the same discipline for *interfaces*.
 rebuilt containers, the D-6 smoke-test way — by pointing a browser at it, not only by unit
 tests); the contract test fails if either side's format drifts; the Workbench has no upload;
 `make check-all` green; coverage gates never move down. **Model: Opus.**
+
+**Met.** All five acceptance clauses hold; the browser run is recorded under D-9 above. The
+ml-service coverage gate ratcheted 92 → 93 and the frontend's branch gate 77 → 78 (both to the
+measured figure rounded down); go-app's stayed at 74. The seam test is
+`ml-service/tests/test_ops_console_contract.py::test_retrain_endpoint_accepts_the_cutoff_go_app_sends`
+— unskipped, in CI, running `ml.xi.retrain`'s real parser over the arguments the orchestrator
+actually builds. One new defect was found on the way and recorded as D-10 above.
 
 ---
 
@@ -194,7 +247,7 @@ recorded null — which the plan treats as a result, not a failure.
 
 | id | status |
 |---|---|
-| F-1 | open |
+| F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
 | L-1 | open |
 | A-1 | open |
 | A-2 | open |
