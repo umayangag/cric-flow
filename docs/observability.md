@@ -333,6 +333,25 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
     - The train/serve parity verdict, as a success or error alert.
   - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
+- **`SystemMapTab`**
+  - **Endpoints**:
+    - `GET /ops/status`, `GET /api/ml/xi-status`, `GET /api/backtest/report` (Go API) — the
+      three the map's live values are read from. No endpoint of its own.
+    - `GET /api/backtest/metric-glossary`, through the shared `MetricGlossaryProvider`, for
+      the explainer on a metric the map shows (L-1).
+  - **Displays**:
+    - The whole pipeline as a pan-and-zoom graph, from the Cricsheet archive to the
+      prediction surfaces, drawn from `contracts/system-map.json`.
+    - Per step: a plain-language summary, the code it is (modules, packages, endpoints,
+      tables, make targets, artifacts), the documents that describe it, and its current
+      live values. A value the endpoints do not carry reads as a dash.
+    - Inner structure for the three steps that have it: the rating pass's feature
+      families, the frames, and the harness's gates — the gates read from the report's own
+      H-23 registry, so the map holds no copy of their terms.
+  - **Read-only.** The control surface is `OpsStatusTab`'s step graph; this one describes
+    the pipeline rather than driving it.
+  - **Polling**: none. A Refresh button re-reads all three.
+
 - **Data acquisition** (`OpsDatasetSection` + `DatasetRegistrySection`, inside `OpsStatusTab`)
   - **Endpoints**:
     - `GET /ops/data/feeds` (named feeds, host allowlist, staging directory).

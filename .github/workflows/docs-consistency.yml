@@ -6,6 +6,11 @@
 #                         the contract said 42, and documenting a /predict/fielding route
 #                         that does not exist.
 #
+#   system-map.json       is drawn as the System map tab, which tells its reader that this
+#                         is what the system does. A diagram answers a rename by going
+#                         quietly wrong, so the map's anchors are checked against the code
+#                         and the code's own enumerations are checked against the map.
+#
 # The check does not belong in a per-component workflow: it reads from go-app, ml-service and
 # configs/ at once, so a path filter scoped to one component would miss changes made in
 # another. Hence its own job.
@@ -17,10 +22,16 @@ on:
   pull_request:
     paths:
       - 'ARCHITECTURE_MAP.md'
+      - 'contracts/**'
+      - 'docs/**'
       - 'scripts/gen-architecture-map.py'
+      - 'scripts/check-system-map.py'
       - 'ml-service/ml/**'
       - 'ml-service/app/main.py'
       - 'go-app/internal/server/router.go'
+      - 'go-app/migrations/**'
+      - 'frontend/src/**'
+      - 'Makefile'
       - '.github/workflows/docs-consistency.yml'
 
 jobs:
@@ -44,3 +55,6 @@ jobs:
 
       - name: ARCHITECTURE_MAP.md is up to date
         run: make gen-architecture-map-check
+
+      - name: The system map agrees with the code, in both directions
+        run: make check-system-map

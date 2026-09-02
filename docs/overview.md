@@ -18,6 +18,10 @@ Architecture, data flow, and how to run the pipeline. For a concise data-flow an
   - `ml/xi/retrain.py` — the `retrain` step: one run, artifacts and manifest
   - `app/main.py` — FastAPI; loads a run, selection and prediction endpoints
   - Runs in `output/ml-service/runs/<run_id>/`, with `current_run.json` naming the one served
+- **frontend (React):** the control panel. Its **System map** tab draws the whole pipeline
+  from the Cricsheet archive to the prediction, one step at a time, from
+  `contracts/system-map.json` — whose anchors CI checks against the code
+  (`make check-system-map`) and whose numbers are read live from the endpoints.
 
 Config precedence: CLI → env → `config.json` → defaults. See [config-and-data.md](config-and-data.md).
 

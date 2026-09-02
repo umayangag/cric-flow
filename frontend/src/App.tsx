@@ -22,6 +22,7 @@ const EvaluationReportTab = lazy(() => import('./components/EvaluationReportTab'
 const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
 const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
 const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
+const SystemMapTab = lazy(() => import('./components/SystemMapTab'));
 const Login = lazy(() => import('./pages/Login'));
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,6 +48,7 @@ const AppContent: React.FC = () => {
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
     if (location.pathname.startsWith('/upcoming')) return 'upcoming';
     if (location.pathname.startsWith('/workbench')) return 'workbench';
+    if (location.pathname.startsWith('/system-map')) return 'systemMap';
     return 'health';
   })();
 
@@ -56,6 +58,7 @@ const AppContent: React.FC = () => {
     else if (newValue === 'evaluateDb') navigate('/evaluate');
     else if (newValue === 'upcoming') navigate('/upcoming');
     else if (newValue === 'workbench') navigate('/workbench');
+    else if (newValue === 'systemMap') navigate('/system-map');
   };
 
   return (
@@ -172,6 +175,7 @@ const AppContent: React.FC = () => {
             <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluation report" />
             <Tab value="upcoming" label="Upcoming match prediction" />
+            <Tab value="systemMap" label="System map" />
           </Tabs>
         )}
 
@@ -227,6 +231,14 @@ const AppContent: React.FC = () => {
                     element={
                       <ProtectedRoute>
                         <WorkbenchTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/system-map"
+                    element={
+                      <ProtectedRoute>
+                        <SystemMapTab />
                       </ProtectedRoute>
                     }
                   />
