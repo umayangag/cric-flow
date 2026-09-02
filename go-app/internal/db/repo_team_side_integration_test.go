@@ -26,7 +26,7 @@ func playFixture(ctx context.Context, t *testing.T, matchID int64, formatCode st
 }
 
 // bothIndias creates the two sides one name stands for, plus an opponent for each, and
-// returns the men's and women's India ids. It is the shape D-11 is about: "India" in T20I
+// returns the men's and women's India ids. It is the shape D-10 is about: "India" in T20I
 // names two teams, and 130 of the 394 names in the dataset are like this.
 func bothIndias(ctx context.Context, t *testing.T) (mens, womens int64) {
 	t.Helper()
@@ -179,7 +179,7 @@ func TestListOpponentSidesForFormat_ListsWhoThisClubHasPlayed_Integration(t *tes
 		"the men's side has played the men's side; the cascade cannot offer a cross-gender fixture")
 }
 
-// The data check D-11 records: no club's lineage may join a men's row to a women's row.
+// The data check D-10 records: no club's lineage may join a men's row to a women's row.
 //
 // ApplyTeamLineage requires both sides of a rename to share a gender, so the importer cannot
 // write one -- but the column itself carries no such constraint, and a link written by any

@@ -98,29 +98,14 @@ codes (it renders `{code, message, hint}` opaquely, so there is no literal to dr
 does not parse run ids (it forwards them as opaque strings). Both become H-24 items the moment
 either side starts matching on them.
 
-### 1.3 D-10 — "Stop pipeline" cancels go-app's job, not ml-service's training — **open**
+### 1.3 D-10 — a prediction for "India" silently chose one of the two Indias — **fixed**
 
-Found while verifying F-1's acceptance against the containers. `POST /ops/pipeline/stop`
-answered `{"cancelled": 1}` and the console stopped showing the run, but
-`ml.xi.retrain` was still running inside `cric-ml-service` and still burning CPU: go-app's
-cancellation closes its HTTP request to `/admin/train/retrain`, and ml-service's
-`asyncio.to_thread(run_retrain, ...)` keeps waiting on a `subprocess.run` that nothing
-cancels. The process had to be killed by hand.
-
-Two things are wrong and both are one level below F-1's scope, so this is recorded rather
-than fixed here: the console reports a cancellation that did not happen, and the compute
-lane reads as free while a retrain is still writing — so a second retrain started
-immediately would run beside the first. The fix belongs on ml-service (keep the `Popen`
-handle per step, terminate it when the request is cancelled, and let the training
-semaphore be released only when the process is gone), with go-app's stop waiting for that
-answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
-about another's process.
-
-### 1.4 D-11 — a prediction for "India" silently chose one of the two Indias — **fixed**
-
-*Numbered D-11, not D-10: the branch (`fix/d-10-gendered-team-resolution`) was named before
-the collision with §1.3 was noticed, and renumbering a defect already recorded in a merged
-commit would break the register.*
+*This defect and D-11 were briefly numbered the other way round. F-1 recorded the
+stop-that-does-not-stop as D-10 (commit `4615883`); this one was then found and written up as
+D-11, on a branch already named `fix/d-10-gendered-team-resolution`. The two numbers were
+swapped so each matches the branch that fixed it — `fix/d-10-gendered-team-resolution` here,
+`fix/d-11-stop-that-stops` for D-11. The only stale reference left is the F-1 commit message,
+which calls D-11 "D-10"; every file says what this table says.*
 
 **Root cause: the identity migration split teams by gender and the serving path never
 followed.** `opposition` has been keyed `(opposition_name, gender)` since migration `0004`,
@@ -212,6 +197,76 @@ substitution, and it was announced only in a server log.
    the way the backend does" plus a source sweep refusing any gender literal outside the one
    declaration. ml-service's `RatingState._ctx_group` now reads `C.GENDER_FEMALE` instead of
    its own `"female"` — that comparison was the third private copy of the word.
+### 1.4 D-11 — "Stop pipeline" cancels go-app's job, not ml-service's training — **fixed**
+
+Found while verifying F-1's acceptance against the containers. `POST /ops/pipeline/stop`
+answered `{"cancelled": 1}` and the console stopped showing the run, but
+`ml.xi.retrain` was still running inside `cric-ml-service` and still burning CPU: go-app's
+cancellation closes its HTTP request to `/admin/train/retrain`, and ml-service's
+`asyncio.to_thread(run_retrain, ...)` keeps waiting on a `subprocess.run` that nothing
+cancels. The process had to be killed by hand.
+
+Two things are wrong and both are one level below F-1's scope, so this is recorded rather
+than fixed here: the console reports a cancellation that did not happen, and the compute
+lane reads as free while a retrain is still writing — so a second retrain started
+immediately would run beside the first. The fix belongs on ml-service (keep the `Popen`
+handle per step, terminate it when the request is cancelled, and let the training
+semaphore be released only when the process is gone), with go-app's stop waiting for that
+answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
+about another's process.
+
+**Fixed in F-3** (branch `fix/d-11-stop-that-stops`), along the line that entry drew.
+
+**On ml-service.** `run_training_subprocess` used `subprocess.run`, which keeps its handle
+on its own stack — so while a retrain ran there was no object in the process that could
+address it. It now uses `Popen`, registers the handle in `_TrainingProcesses` keyed by
+module, and unregisters in a `finally`. `start_new_session=True` puts the child at the head
+of its own process group, so a stop signals the *group*: the model-fitting workers a retrain
+spawns went down with it rather than being orphaned, which was the other half of what kept
+burning CPU. `stop_training` sends SIGTERM, waits `TERMINATE_GRACE_SEC` (10 s), escalates to
+SIGKILL, and **waits for the process to be gone before returning** — returning on the signal
+would move the same lie one layer along.
+
+`POST /admin/train/stop` (optional `?step=`) exposes it, answering `{"stopped": [...]}` with
+the steps whose process it watched exit. Nothing running is `200` with an empty list: a Stop
+pressed twice is not an error. A run that ends this way raises `TrainingStopped` and is
+answered `409 TRAIN_STOPPED` and logged at info — it used to come back `500 TRAIN_FAILED`
+with a stack trace, which is the same species of untruth wearing a different hat.
+
+**The compute slot, which was the subtler half.** `asyncio.to_thread` hands the event loop a
+future it can cancel, but cancelling it neither stops the thread nor touches the subprocess
+the thread is waiting on. When go-app dropped its request the `async with` exited, the
+training semaphore was released, and the lane read as free while the retrain was still
+writing — so a second retrain started then would have run beside the first.
+`_run_training_step` now shields the thread's future, and on cancellation stops the process
+and waits for the thread before letting the semaphore go.
+
+**On go-app.** `StopRun` takes a `StopTrainingFunc` and returns a `StopOutcome` carrying what
+it *achieved* rather than what it attempted. The remote stop goes first and on purpose:
+cancelling the local job closes the request the step is waiting on, and after that the run
+looks finished from here whatever is still happening over there. A stop it could not confirm
+is answered `502` with `status: "partially_cancelled"` and a message saying the run was
+cancelled here but the training process could not be confirmed stopped — never a plain
+success. Training is compute-lane work, so a data-lane stop leaves it alone.
+
+Note a case worse than the one recorded above, found while fixing it: with the tracking row
+already gone, `cancelled` was `0`, so the old handler answered **`409 "no pipeline step is
+running"`** while `ml.xi.retrain` was running. The stop now counts a confirmed training kill
+as something having been stopped.
+
+**H-24.** `/admin/train/stop` joins `ml_service_calls`, and the `stopped` field joins the
+contract as `stop_response_field` — the audit under D-9 recorded that go-app parsed nothing
+out of ml-service's bodies "and both become H-24 items the moment either side starts matching
+on them". This is that moment. go-app asserts the *struct tag* against the contract (a
+constant that agreed while the tag did not would be a green test over a stop that always read
+zero steps); ml-service asserts the route exists and that its answer carries the field.
+
+**Verified against a real retrain**, the D-6 way: `POST /ops/pipeline/run/retrain` started
+`ml.xi.retrain` (pid 1984, 43 % CPU); `POST /ops/pipeline/stop` answered
+`{"status": "cancelled", "training_stopped": ["retrain"]}` in 8.8 ms; the process was gone
+(`returncode -15`) and `pgrep` found nothing. A second retrain started immediately afterwards,
+so the lane was genuinely free. Stop with nothing running still answers `409`.
+
 
 ---
 
@@ -252,7 +307,7 @@ ml-service coverage gate ratcheted 92 → 93 and the frontend's branch gate 77 �
 measured figure rounded down); go-app's stayed at 74. The seam test is
 `ml-service/tests/test_ops_console_contract.py::test_retrain_endpoint_accepts_the_cutoff_go_app_sends`
 — unskipped, in CI, running `ml.xi.retrain`'s real parser over the arguments the orchestrator
-actually builds. One new defect was found on the way and recorded as D-10 above.
+actually builds. One new defect was found on the way and recorded as D-11 above.
 
 ---
 
@@ -400,10 +455,10 @@ recorded null — which the plan treats as a result, not a failure.
 
 | id | status |
 |---|---|
-| F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
+| F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-11 (a stop that does not stop), left open. |
+| F-2 | **done** — `fix/d-10-gendered-team-resolution`. D-10 fixed ends-in: the prediction request names a side (club id, or name plus gender) and an ambiguous name is a 400 listing both candidates; every response echoes the sides it scored; a cross-gender fixture is a 400; the options endpoints and the picker deal in sides. `team_genders` joins the H-24 contract, asserted from all three components. The lineage data check found 0 cross-gender links in 10, so no migration. |
+| F-3 | **done** — `fix/d-11-stop-that-stops`. D-11 fixed at both ends: ml-service holds the `Popen`, stops the process group and waits for it to be gone; the compute slot is held until the thread finishes, so a cancelled request no longer frees a lane a retrain is still writing in; go-app asks rather than assumes, and a stop it could not confirm is a 502 `partially_cancelled`, never a plain success. `/admin/train/stop` and `stop_response_field` join the H-24 contract. Verified against a real retrain. |
 | L-1 | **done** — `feat/l-1-metric-glossary`. `ml/xi/glossary.py` carries the table in § 3 verbatim, one entry per reported metric key; the harness embeds it in `xi_evaluate_report.json` and `GET /xi/metric-glossary` serves it from the code; `glossary.check_report` walks every metric key the report emits and a harness test fails on one with no entry (keys that are not metrics are declared with a reason). One shared popover component explains every metric label in the frontend — the evaluation tables and tiles, the Workbench's manifest metrics, the run summary and the prediction surfaces' ranges and marginal values — and the metric prose the components carried was deleted. |
-| F-2 | **done** — `fix/d-10-gendered-team-resolution`. D-11 fixed ends-in: the prediction request names a side (club id, or name plus gender) and an ambiguous name is a 400 listing both candidates; every response echoes the sides it scored; a cross-gender fixture is a 400; the options endpoints and the picker deal in sides. `team_genders` joins the H-24 contract, asserted from all three components. The lineage data check found 0 cross-gender links in 10, so no migration. |
-| L-1 | open |
 | A-1 | open |
 | A-2 | open |
 | A-3 | open |

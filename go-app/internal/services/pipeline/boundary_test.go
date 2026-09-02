@@ -3,6 +3,7 @@ package pipeline
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
@@ -116,9 +117,27 @@ func TestContractDeclaresTheSameBoundaryAsTheCode(t *testing.T) {
 	}
 }
 
+// TestStopResponseFieldMatchesTheContract is go-app's half of H-24 for the one field it
+// reads out of an ml-service response body.
+//
+// The assertion is on the struct tag rather than on the constant, because the tag is what
+// actually decodes the body: a constant that agreed with the contract while the tag said
+// something else would be a green test over a Stop that always read zero steps (D-11).
+func TestStopResponseFieldMatchesTheContract(t *testing.T) {
+	t.Parallel()
+	contract := readContract(t)
+
+	field, ok := reflect.TypeOf(stopTrainingResponse{}).FieldByName("Stopped")
+	require.True(t, ok)
+
+	assert.Equal(t, StopResponseField, contract.StopResponseField, "the contract is stale; regenerate it")
+	assert.Equal(t, contract.StopResponseField, field.Tag.Get("json"),
+		"go-app decodes a field ml-service does not send")
+}
+
 // TestTeamGendersMatchTheContract is go-app's half of H-24 for the gender vocabulary.
 //
-// D-11's fix puts gender on the request wire, and ml-service already matched on the literal
+// D-10's fix puts gender on the request wire, and ml-service already matched on the literal
 // (`RatingState._ctx_group` reads `gender == "female"` to pick E7's baseline group). Two
 // services matching on one word with a private copy each is the shape D-9 had; this is the
 // near side asserting against the contract rather than against itself.

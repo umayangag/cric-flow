@@ -28,7 +28,7 @@ func (s TeamSide) Label() string { return teams.SideLabel(s.Name, s.Gender) }
 // TeamRef is how a request names a side, in the order of decreasing doubt: a club id says
 // exactly which side; a name with a gender says it as well but has to be looked up; a bare
 // name may say nothing at all, and where it does not, resolving it is refused rather than
-// guessed (D-11).
+// guessed (D-10).
 type TeamRef struct {
 	ClubID int64
 	Name   string
@@ -143,7 +143,7 @@ func ListOpponentSidesForFormat(ctx context.Context, formatCode string, clubID i
 
 // ResolveTeamSide turns a reference into the one side it names, or refuses.
 //
-// Three cases, and the third is D-11's: a club id resolves to itself; a name with a gender
+// Three cases, and the third is D-10's: a club id resolves to itself; a name with a gender
 // resolves to at most one row, because (opposition_name, gender) is unique; a bare name
 // resolves only when the format holds exactly one side of that name, and otherwise returns
 // an *AmbiguousTeamNameError naming the candidates. Nothing here picks for the caller.

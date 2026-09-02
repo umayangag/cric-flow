@@ -55,7 +55,7 @@ func pool(ids ...int64) []db.PlayerPoolRow {
 }
 
 // indiaMen and australiaMen are two resolved sides, which is the only thing a fixture holds
-// now: a name alone could name either of two teams (D-11).
+// now: a name alone could name either of two teams (D-10).
 var (
 	indiaMen     = db.TeamSide{ClubID: 43, Name: "India", Gender: teams.GenderMale}
 	australiaMen = db.TeamSide{ClubID: 7, Name: "Australia", Gender: teams.GenderMale}

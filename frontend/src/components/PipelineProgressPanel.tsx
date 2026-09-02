@@ -57,6 +57,10 @@ const PipelineProgressPanel: React.FC<PipelineProgressPanelProps> = ({
       if (status === 200) {
         onRefresh?.();
       } else {
+        // A partial stop still cancelled the run here, so the panel refreshes as well as
+        // reporting it: leaving the old state on screen beside "could not confirm" would
+        // be a second thing for the operator to disbelieve (D-11).
+        if (res.status === 'partially_cancelled') onRefresh?.();
         setStopError(res.error || `Failed (${status})`);
       }
     } catch (e) {

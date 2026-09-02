@@ -141,7 +141,7 @@ def test_both_services_match_on_the_same_format_codes(contract) -> None:
 def test_both_services_match_on_the_same_team_genders(contract) -> None:
     """go-app writes ``match.gender`` and now accepts a gender on the prediction request;
     this service matches on the literal to group E7's context baselines. A value spelled
-    differently on one side is a match quietly read into the wrong baseline group (D-11)."""
+    differently on one side is a match quietly read into the wrong baseline group (D-10)."""
     assert set(contract["team_genders"]) == set(C.TEAM_GENDERS)
 
 

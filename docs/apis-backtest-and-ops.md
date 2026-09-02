@@ -77,7 +77,7 @@ by both a men's and a women's side — so a side is named by `team1_id` / `team2
 `club_id` from `GET /api/options/teams-by-format`, or by `team1` / `team2` with
 `team1_gender` / `team2_gender`. A bare name is accepted only where the format holds one side
 of that name; where it holds two the request is **`400 TEAM_AMBIGUOUS`** with both candidates
-in `available`, never a silent pick (D-11). A side that has not played the format is
+in `available`, never a silent pick (D-10). A side that has not played the format is
 `400 TEAM_NOT_FOUND`, and a fixture whose two sides are different genders is
 **`400 FIXTURE_CROSS_GENDER`** — no such match is played, so a probability for one would have
 no referent.
@@ -103,7 +103,7 @@ same draws — so nothing is rescaled toward the win probability.
 
 **Every substitution is named on the wire (§8.7).** Four fields say what answered: `team1_side`
 and `team2_side` say which sides were scored — substituting the men's side for the women's is
-a substitution, and it used to be announced only in a server log (D-11) — `selection` says
+a substitution, and it used to be announced only in a server log (D-10) — `selection` says
 whether the XIs were optimised or rating-ordered, `forecast` says whether the per-player
 numbers came from the simulator's draws or from L2-B's own quantiles, and
 `win_probability.source` says which model produced the headline. The rule exists because

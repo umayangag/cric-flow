@@ -18,7 +18,7 @@ import (
 // A side is named by `team1_id` -- the `club_id` the options endpoint returned -- or by
 // `team1` plus `team1_gender`. A bare `team1` is honoured only where the format holds one
 // side of that name; it used to be honoured always, and the resolver picked the more
-// recently active side with nothing but a server log to say so (D-11).
+// recently active side with nothing but a server log to say so (D-10).
 type predictTeamRequest struct {
 	Format      string `json:"format"`
 	Team1ID     int64  `json:"team1_id"`
@@ -204,7 +204,7 @@ func validateSideReferences(body predictTeamRequest) *apiError {
 	return nil
 }
 
-// respondPredictErr turns the two refusals D-11 introduced into 400s that say what to do
+// respondPredictErr turns the two refusals D-10 introduced into 400s that say what to do
 // next, and leaves everything else to respondErr.
 //
 // Both are the caller's request being unanswerable rather than this service failing: a name

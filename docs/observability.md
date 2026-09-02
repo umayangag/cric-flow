@@ -61,7 +61,7 @@ in between. A run plan is the server-side executor that closes that asymmetry.
 |---|---|
 | `POST /ops/pipeline/run-plan` | A named plan or an explicit step list, never both. An empty body means `full` |
 | `GET /ops/pipeline/plan` | The latest plan, running or not, with `resume_from` |
-| `POST /ops/pipeline/stop` | Stops the plan **and** the step it is on |
+| `POST /ops/pipeline/stop` | Stops the plan, the step it is on, **and the training process on ml-service** |
 
 - **Named plans are derived from the step registry**, not written out: `full` is every
   non-optional pipeline step (import → retrain → reload), `retrain-only` is the same

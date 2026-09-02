@@ -37,7 +37,7 @@ type Contract = {
   rejected_body_params: string[];
   /** The training cutoff's wire format: what go-app sends and ml-service parses (H-24). */
   cutoff: { pattern: string; hint: string; example: string };
-  /** The gender half of a team's identity, as all three components spell it (H-24, D-11). */
+  /** The gender half of a team's identity, as all three components spell it (H-24, D-10). */
   team_genders: string[];
 };
 
@@ -148,7 +148,7 @@ describe('ops console contract', () => {
   /**
    * The UI's gender vocabulary is the contract's, not a copy of it.
    *
-   * D-11 put gender on the request wire; ml-service already matched on the literal to group
+   * D-10 put gender on the request wire; ml-service already matched on the literal to group
    * E7's context baselines. Three components agreeing on one word by hand-typing it three
    * times is the shape D-9 had, so this is the third side's assertion.
    */

@@ -14,7 +14,7 @@ type OptionsHandler struct{}
 //
 // It carries the club id because that is what a prediction request must send: a name alone
 // names two teams for 130 of the 394 names in the dataset, and a picker that offers the name
-// once cannot say which of them the user chose (D-11). `display_name` comes from the backend
+// once cannot say which of them the user chose (D-10). `display_name` comes from the backend
 // so the picker, the prediction's echo and the ambiguity error all spell a side the same way.
 type teamSideResponse struct {
 	ClubID      int64  `json:"club_id"`

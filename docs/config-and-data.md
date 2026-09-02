@@ -315,4 +315,12 @@ not their only copy.
 not block a training run. `POST /ops/pipeline/stop` stops everything by default, or one
 lane with `?lane=data`.
 
+**A stop stops the work, not just the bookkeeping.** Stopping the compute lane asks
+ml-service to terminate its training subprocess (`POST /admin/train/stop`) and waits for it
+to be gone before answering; the reply's `training_stopped` names the steps whose process
+really exited. When that cannot be confirmed the answer is `502` with
+`status: "partially_cancelled"` — the local run is cancelled either way, but a stop nobody
+confirmed is never reported as a stop. A `?lane=data` stop leaves training alone, which is
+the point of the lanes. See D-11 in [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) § 1.4.
+
 ---
