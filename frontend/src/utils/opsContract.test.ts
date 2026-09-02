@@ -34,6 +34,8 @@ type Contract = {
   pipeline_steps: ContractStep[];
   rejected_query_params: string[];
   rejected_body_params: string[];
+  /** The training cutoff's wire format: what go-app sends and ml-service parses (H-24). */
+  cutoff: { pattern: string; hint: string; example: string };
 };
 
 const contract: Contract = JSON.parse(
@@ -111,6 +113,19 @@ describe('ops console contract', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The console's cutoff box is where an operator types this value, so the format it
+   * asks for is the third side of the same contract (H-24). D-9 was the two services
+   * disagreeing about it; a dialog that asked for a different one would be the same
+   * defect with a person in the middle.
+   */
+  it('asks the operator for the cutoff format the services agreed on', () => {
+    const dialog = readFileSync(join(frontendSrc, 'components', 'PipelineStepDialog.tsx'), 'utf8');
+
+    expect(dialog).toContain(`Cutoff (${contract.cutoff.hint})`);
+    expect(contract.cutoff.example).toMatch(new RegExp(contract.cutoff.pattern));
   });
 
   /**

@@ -146,7 +146,7 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 		query := url.Values{}
 		args := map[string]any{"step": step.ID}
 		if req.RunID != "" {
-			query.Set("run", req.RunID)
+			query.Set(pipelinesvc.MLQueryRun, req.RunID)
 			args["run_id"] = req.RunID
 		}
 		return StepJob{
@@ -164,7 +164,7 @@ func (a *App) stepJob(step pipelinesvc.Step, req StepRequest) StepJob {
 	if cutoff == "" {
 		cutoff = pipelinesvc.DefaultCutoff()
 	}
-	query := url.Values{"cutoff": []string{cutoff}}
+	query := url.Values{pipelinesvc.MLQueryCutoff: []string{cutoff}}
 	args := map[string]any{"step": step.ID, "cutoff": cutoff}
 	return StepJob{
 		Command: step.Command,

@@ -1,0 +1,175 @@
+"""ml-service's half of the go-app <-> ml-service contract (H-24).
+
+``contracts/ops-console.contract.json`` is generated from go-app's pipeline registry and
+declares every literal that crosses the boundary: the wire format of the training cutoff,
+the admin endpoints go-app posts to with the query parameters it names, and the format
+vocabulary both services match on. go-app asserts its behaviour against that file; these
+are the assertions from this side.
+
+They exist because of D-9. go-app formatted the cutoff as RFC3339, this service parsed it
+as a date, and each side's tests agreed with its own component -- so the console's Retrain
+button failed on the subprocess's first line of work with every gate green. A literal on a
+service boundary is declared once and checked from both ends, or it is not checked at all.
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import training_orchestrator
+from ml.xi import contract as C
+from ml.xi import retrain
+
+CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "ops-console.contract.json"
+
+
+@pytest.fixture(scope="module")
+def contract() -> Dict[str, Any]:
+    """The generated contract, read off disk the way the other side wrote it."""
+    with open(CONTRACT_PATH) as fh:
+        return json.load(fh)
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch) -> TestClient:
+    monkeypatch.setenv("ML_SERVICE_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("ENABLE_HOT_RELOAD", "1")
+    monkeypatch.delenv("ADMIN_API_KEY", raising=False)
+    module = importlib.reload(importlib.import_module("app.main"))
+    return TestClient(module.app)
+
+
+def go_app_default_cutoff() -> str:
+    """The string go-app sends when the console's cutoff box is left empty.
+
+    ``pipelinesvc.DefaultCutoff()`` is ``time.Now().UTC().Format(time.DateOnly)``; this is
+    that value, computed the same way. go-app's own test asserts its default matches the
+    contract's pattern, so the two ends meet on the contract rather than on this line.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+# --- the cutoff's wire format -------------------------------------------------------
+
+
+def test_the_contract_example_matches_the_pattern_it_publishes(contract) -> None:
+    """A contract whose own example fails its pattern would prove nothing on either side."""
+    assert re.fullmatch(contract["cutoff"]["pattern"], contract["cutoff"]["example"])
+
+
+def test_the_cutoff_parser_accepts_the_contract_format(contract) -> None:
+    """The CLI accepts every value the contract says go-app may send."""
+    parsed = retrain.parse_cutoff(contract["cutoff"]["example"])
+
+    assert parsed.date().isoformat() == contract["cutoff"]["example"]
+
+
+def test_the_cutoff_parser_accepts_go_apps_default(contract) -> None:
+    default = go_app_default_cutoff()
+    assert re.fullmatch(contract["cutoff"]["pattern"], default), "go-app's default must be in the wire format"
+
+    assert retrain.parse_cutoff(default).date().isoformat() == default
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("2026-09-02", "2026-09-02"),
+        ("2026-09-02T18:33:11Z", "2026-09-02"),  # the string D-9 died on
+        ("2026-09-02T18:33:11+05:30", "2026-09-02"),
+        ("2026-09-02 18:33:11", "2026-09-02"),
+        ("  2026-09-02  ", "2026-09-02"),
+    ],
+)
+def test_the_cutoff_parser_reads_a_timestamp_as_its_date(value: str, expected: str) -> None:
+    """A cutoff is a date, so the time of day is truncated rather than refused: a
+    hand-typed timestamp -- and any caller still formatting one -- cannot reproduce D-9."""
+    assert retrain.parse_cutoff(value).date().isoformat() == expected
+
+
+@pytest.mark.parametrize("value", ["", "not-a-date", "01-09-2025", "2025-13-40"])
+def test_the_cutoff_parser_names_the_format_it_wanted(value: str) -> None:
+    """Refusing is still the right answer for a value that is no date at all -- and the
+    message says which formats would have worked, which the raw isoformat error did not."""
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        retrain.parse_cutoff(value)
+
+
+# --- the admin surface go-app calls -------------------------------------------------
+
+
+def test_every_declared_call_is_a_route_that_takes_those_query_parameters(contract, client) -> None:
+    """Each endpoint go-app posts to exists here, by that method, with those parameters.
+
+    Renaming a route or a query parameter on either side now fails a test instead of a
+    run -- the same species of defect as D-9, one level up from the value.
+    """
+    schema = client.app.openapi()["paths"]
+
+    for call in contract["ml_service_calls"]:
+        operation = schema.get(call["path"], {}).get(call["method"].lower())
+        assert operation is not None, f"go-app calls {call['method']} {call['path']}, which this service does not serve"
+        accepted = {
+            parameter["name"] for parameter in operation.get("parameters", []) if parameter.get("in") == "query"
+        }
+        missing = set(call["query"]) - accepted
+        assert not missing, f"{call['path']} does not accept {sorted(missing)}"
+
+
+# --- the format vocabulary ----------------------------------------------------------
+
+
+def test_both_services_match_on_the_same_format_codes(contract) -> None:
+    """go-app writes these codes into match rows; the rating pass switches on them when
+    it reads them back. A code added on one side only is a format silently trained on
+    nothing."""
+    assert set(contract["format_codes"]) == set(C.FORMAT_CODES)
+
+
+# --- the regression seam D-9 needed -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cutoff",
+    [
+        pytest.param(go_app_default_cutoff(), id="go_apps_default"),
+        pytest.param("2026-09-02T18:33:11Z", id="a_hand_typed_timestamp"),
+        pytest.param("2025-09-01", id="a_typed_date"),
+    ],
+)
+def test_retrain_endpoint_accepts_the_cutoff_go_app_sends(client, monkeypatch, cutoff: str) -> None:
+    """POST /admin/train/retrain end to end, with the real argument parser.
+
+    The subprocess is stubbed -- a retrain takes minutes -- but the stub runs
+    ``ml.xi.retrain``'s own ``_parse_args`` and ``parse_cutoff`` over the arguments the
+    orchestrator actually built. That is the seam D-9 crossed: every layer above and
+    below it was tested, and the join was tested by nothing. Unskipped and in CI, because
+    a regression test behind RUN_E2E=1 is a regression test that does not run.
+    """
+    parsed: Dict[str, Any] = {}
+
+    def parsing_stub(
+        module: str,
+        extra_args: Optional[List[str]] = None,
+        extra_env: Optional[Dict[str, str]] = None,
+        logger: Optional[Any] = None,
+    ) -> None:
+        args = retrain._parse_args(extra_args or [])
+        parsed["module"] = module
+        parsed["cutoff"] = retrain.parse_cutoff(args.cutoff)
+
+    monkeypatch.setattr(training_orchestrator, "run_training_subprocess", parsing_stub)
+
+    resp = client.post(f"/admin/train/retrain?cutoff={cutoff}")
+
+    assert resp.status_code == 200, resp.text
+    assert parsed["module"] == "ml.xi.retrain"
+    assert parsed["cutoff"].date().isoformat() == cutoff[:10]

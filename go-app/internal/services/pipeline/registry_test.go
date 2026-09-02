@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 )
 
@@ -42,6 +43,33 @@ type contractDoc struct {
 	// so only the module that builds requests is checked.
 	Rejected     []string `json:"rejected_query_params"`
 	RejectedBody []string `json:"rejected_body_params"`
+	// Cutoff is the wire format of the training cutoff. It is in the contract because
+	// D-9 was a value in *this* field being formatted by go-app as RFC3339 and parsed
+	// by ml-service as a date — two components each tested against their own copy of
+	// the assumption. H-24: the format is declared once and asserted from both sides.
+	Cutoff contractCutoff `json:"cutoff"`
+	// MLCalls is the ml-service admin surface go-app calls. ml-service's contract test
+	// asserts every path here is a route that accepts these query parameters, so a
+	// renamed endpoint fails a test rather than a run.
+	MLCalls []contractMLCall `json:"ml_service_calls"`
+	// FormatCodes is the format vocabulary both services match on. go-app writes these
+	// into match rows; ml-service switches on them when it reads them back.
+	FormatCodes []string `json:"format_codes"`
+}
+
+// contractCutoff is the cutoff's declared format: the pattern a value must match, how
+// it is spelled to an operator, and one value of it for the far side to parse.
+type contractCutoff struct {
+	Pattern string `json:"pattern"`
+	Hint    string `json:"hint"`
+	Example string `json:"example"`
+}
+
+// contractMLCall is one endpoint on the go-app -> ml-service boundary.
+type contractMLCall struct {
+	Method string   `json:"method"`
+	Path   string   `json:"path"`
+	Query  []string `json:"query"`
 }
 
 type contractStep struct {
@@ -77,16 +105,32 @@ func contractSteps(surface Surface) []contractStep {
 	return steps
 }
 
+func contractMLCalls() []contractMLCall {
+	calls := MLCalls()
+	out := make([]contractMLCall, 0, len(calls))
+	for _, call := range calls {
+		out = append(out, contractMLCall(call))
+	}
+	return out
+}
+
 func buildContract() contractDoc {
 	return contractDoc{
 		Comment: "Generated from go-app/internal/services/pipeline/registry.go. Do not edit by hand; " +
 			"run: go test ./internal/services/pipeline -run TestPipelineContract -update",
-		Version:      1,
+		Version:      2,
 		Steps:        contractSteps(SurfacePipeline),
 		DataSteps:    contractSteps(SurfaceData),
 		Lanes:        LaneNames(),
 		Rejected:     apiparams.QueryNames(),
 		RejectedBody: apiparams.BodyNames(),
+		Cutoff: contractCutoff{
+			Pattern: CutoffPattern,
+			Hint:    CutoffHint,
+			Example: CutoffExample,
+		},
+		MLCalls:     contractMLCalls(),
+		FormatCodes: formats.CanonicalCodes(),
 	}
 }
 

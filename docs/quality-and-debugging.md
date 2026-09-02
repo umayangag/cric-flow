@@ -33,6 +33,50 @@ These standards define the gold-standard unit test style for the Go codebase. Al
 
 ---
 
+## H-24 — literals that cross a service boundary
+
+**The rule:** every literal that crosses a service boundary — step ids, id kinds, date
+formats, endpoint paths, query parameter names, format codes, error codes the other side
+matches on — is declared **once** in a generated contract, and **both** sides carry a test
+asserting their behaviour against the contract, not against their own copy of the
+assumption.
+
+**Why.** Three defects of one species reached `main` with every gate green: go-app sent
+numeric ids where the store was keyed by registry ids (D-7a); go-app wrote `train_`-prefixed
+step names the other side did not know (`996b11d`); and go-app formatted the training cutoff
+as RFC3339 while ml-service's parser accepted `YYYY-MM-DD` only, so the ops console's Retrain
+button failed on the subprocess's first line of work (D-9). In each case both components were
+tested — against their own assumption — and the seam between them was tested by nothing. A
+test that says "our default is valid RFC3339" proves nothing about a service that never
+accepted RFC3339.
+
+**Where it lives.** `contracts/ops-console.contract.json` is generated from go-app's pipeline
+registry (`go test ./internal/services/pipeline -run TestPipelineContract -update`) and is the
+one file all three components assert against:
+
+| declared | go-app asserts | ml-service asserts | frontend asserts |
+|---|---|---|---|
+| `pipeline_steps`, `data_steps`, `lanes` | the registry generates them | — | offers exactly these steps, in this order, with these commands |
+| `rejected_query_params`, `rejected_body_params` | `apiparams` generates them | — | constructs none of them |
+| `cutoff` (pattern, hint, example) | `DefaultCutoff()` matches the pattern | the CLI parses the example, and go-app's default | the dialog's field asks for `cutoff.hint` |
+| `ml_service_calls` (method, path, query) | its call sites use these constants | every path is a route accepting those query parameters | — |
+| `format_codes` | generated from `internal/formats` | the same set as `ml.xi.contract.FORMAT_CODES` | — |
+
+**How to add one.** Declare it in Go beside the code that uses it
+(`internal/services/pipeline/boundary.go` for the ml-service boundary), add it to
+`contractDoc` in `registry_test.go`, regenerate, then add the far side's assertion —
+`ml-service/tests/test_ops_console_contract.py` or `frontend/src/utils/opsContract.test.ts`.
+A declaration with an assertion on only one side is not H-24; it is the same untested seam
+with a JSON file next to it.
+
+**Its companion:** H-23 requires a *gate* to name what varies and what is held fixed. H-24 is
+the same discipline for *interfaces*. A boundary also deserves one unskipped seam test that
+runs the far side's real parser over the near side's real value — the D-9 case is
+`test_retrain_endpoint_accepts_the_cutoff_go_app_sends`. A regression test gated behind
+`RUN_E2E=1` is a regression test that does not run.
+
+---
+
 ## Checks and coverage gates
 
 **The rule:** local `make check-all` matches CI. Run it in the documented order — frontend →

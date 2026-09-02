@@ -376,9 +376,11 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
       hyperparameters the grid chose and the run's headline metrics — all from
       `manifest.json`, which the run wrote beside the artifacts it produced (H-16). A run
       the loader refused says so, with the reason (D-6).
-    - **Walk-forward registry**: uploaded JSON describing rolling-window evaluations.
     - How well the models predict is the Evaluation report tab, which reads L4's own
-      measurements rather than re-scoring anything here.
+      measurements rather than re-scoring anything here. That includes the walk-forward
+      numbers: the tab renders L4's per-fold, per-format tables. The Workbench uploads
+      nothing (F-1, D-8) — the walk-forward registry upload it used to carry asked for a
+      file no module has written since P-5 deleted `ml.walk_forward`.
 
 ---
 
@@ -420,8 +422,8 @@ acquisition is a section of Ops Status rather than a tab of its own.
      hyperparameters, headline metrics).
    - `GET /xi/status` and `GET /health` (ML).
 4. **Validate model behaviour**
-   - `frontend → EvaluationReportTab` (L4's folds, locked window, parity check).
-   - `frontend → WorkbenchTab` (the walk-forward registry upload).
+   - `frontend → EvaluationReportTab` (L4's folds, locked window, parity check) — including
+     the walk-forward tables, which are the harness's and nothing else's.
 5. **Correlate logs**
    - Filter Go and ML logs by `pipeline_id`, `run_id`, `format`, and `artifact_type` when present.
 

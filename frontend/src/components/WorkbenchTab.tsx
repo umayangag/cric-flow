@@ -1,20 +1,11 @@
 import React from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import SectionCard from './common/SectionCard';
-import WorkbenchRegistrySection from './WorkbenchRegistrySection';
 import WorkbenchRunSection from './WorkbenchRunSection';
 import { useWorkbench } from '../hooks/useWorkbench';
 
 const WorkbenchTab: React.FC = () => {
-  const {
-    registryFile,
-    registryError,
-    registry,
-    handleRegistryFile,
-    runStatus,
-    runStatusLoading,
-    runStatusError,
-  } = useWorkbench();
+  const { runStatus, runStatusLoading, runStatusError } = useWorkbench();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -34,13 +25,6 @@ const WorkbenchTab: React.FC = () => {
           <code>docs/ml-and-training.md</code>.
         </Typography>
       </Alert>
-
-      <WorkbenchRegistrySection
-        registryFile={registryFile}
-        registryError={registryError}
-        registry={registry}
-        onFileChange={handleRegistryFile}
-      />
 
       <WorkbenchRunSection status={runStatus} loading={runStatusLoading} error={runStatusError} />
 
@@ -66,8 +50,9 @@ const WorkbenchTab: React.FC = () => {
               artifact <code>current</code> points at.
             </li>
             <li>
-              <strong>Walk-forward registry</strong> — a JSON file describing rolling-window
-              evaluations, uploaded in the section above. See <code>docs/ml-and-training.md</code>.
+              <strong>Walk-forward numbers</strong> — per-fold, per-format tables are part of that
+              report: the <strong>Evaluation report</strong> tab renders them. Nothing is uploaded
+              here; the harness is the only thing that measures folds.
             </li>
           </Box>
         </Typography>

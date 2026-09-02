@@ -758,30 +758,3 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
 }
-
-// --- Workbench: accuracy trend (go-app /api/backtest/accuracy-trend) ---
-
-// --- Workbench: walk-forward registry (from walk_forward_registry.json) ---
-export type WalkForwardWindowEntry = {
-  run_id?: string;
-  model_type: string;
-  format: string;
-  cutoff_trained_before: string;
-  window_x: number;
-  window_start_date?: string;
-  window_end_date?: string;
-  training_params?: Record<string, unknown>;
-  metrics: Record<string, number>;
-  n_training_samples?: number;
-  n_holdout_samples?: number;
-  window_index?: number;
-  created_at?: string;
-  artifact_paths?: { scaler?: string; model?: string } | null;
-  error?: string;
-};
-
-export type WalkForwardRegistry = {
-  run_id: string;
-  windows: WalkForwardWindowEntry[];
-  config?: { initial_cutoff?: string; window_x?: number; format?: string };
-};

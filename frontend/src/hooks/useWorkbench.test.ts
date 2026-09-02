@@ -1,66 +1,50 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useWorkbench } from './useWorkbench';
 
+const mockXiStatus = vi.fn();
 vi.mock('../api', () => ({
   api: {
-    getModelMetadata: vi.fn().mockResolvedValue({}),
-    getModelStats: vi.fn().mockResolvedValue({ models: [] }),
+    xiStatus: (...args: unknown[]) => mockXiStatus(...args),
   },
 }));
 
-/** A change event carrying one file, as the file input produces it. */
-function fileEvent(contents: string) {
-  const file = new File([contents], 'registry.json', { type: 'application/json' });
-  return { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
-}
+const LOADED = {
+  loaded: true,
+  formats: ['T20'],
+  players: 13569,
+  ratings_through: '2026-08-30',
+  run_id: '20260902T101500Z-ab12cd34',
+};
 
+/**
+ * The hook is one request wide since F-1 (D-8): the walk-forward registry upload it
+ * also carried asked for a file no module has written since P-5, and walk-forward
+ * numbers come from L4's report on the Evaluation tab.
+ */
 describe('useWorkbench', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('accepts a walk-forward registry', async () => {
+  it('asks for the loaded run once and reports what it is', async () => {
+    mockXiStatus.mockResolvedValue(LOADED);
+
     const { result } = renderHook(() => useWorkbench());
 
-    act(() => result.current.handleRegistryFile(fileEvent('{"windows": [{"format": "T20"}]}')));
-
-    await waitFor(() => expect(result.current.registry).not.toBeNull());
-    expect(result.current.registryError).toBeNull();
-    expect(result.current.registryFile?.name).toBe('registry.json');
+    await waitFor(() => expect(result.current.runStatus).not.toBeNull());
+    expect(mockXiStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.runStatus?.run_id).toBe('20260902T101500Z-ab12cd34');
+    expect(result.current.runStatusLoading).toBe(false);
+    expect(result.current.runStatusError).toBeNull();
   });
 
-  it('states the shape it expected when the file is the wrong one', async () => {
+  it('surfaces the failure rather than reporting no run', async () => {
+    mockXiStatus.mockRejectedValue(new Error('Connection refused'));
+
     const { result } = renderHook(() => useWorkbench());
 
-    act(() => result.current.handleRegistryFile(fileEvent('{"folds": []}')));
-
-    await waitFor(() => expect(result.current.registryError).not.toBeNull());
-    expect(result.current.registryError).toMatch(/"windows" array/);
-    expect(result.current.registry).toBeNull();
-  });
-
-  it('reports unparseable JSON rather than swallowing it', async () => {
-    const { result } = renderHook(() => useWorkbench());
-
-    act(() => result.current.handleRegistryFile(fileEvent('{not json')));
-
-    await waitFor(() => expect(result.current.registryError).not.toBeNull());
-    expect(result.current.registry).toBeNull();
-  });
-
-  it('clears the previous file when the picker is cancelled', async () => {
-    const { result } = renderHook(() => useWorkbench());
-    act(() => result.current.handleRegistryFile(fileEvent('{"windows": []}')));
-    await waitFor(() => expect(result.current.registry).not.toBeNull());
-
-    act(() =>
-      result.current.handleRegistryFile({
-        target: { files: [] },
-      } as unknown as React.ChangeEvent<HTMLInputElement>),
-    );
-
-    expect(result.current.registryFile).toBeNull();
-    expect(result.current.registry).toBeNull();
+    await waitFor(() => expect(result.current.runStatusError).not.toBeNull());
+    expect(result.current.runStatus).toBeNull();
   });
 });

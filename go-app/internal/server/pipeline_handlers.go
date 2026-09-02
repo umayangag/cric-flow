@@ -174,12 +174,12 @@ func (a *App) makeMLTrainHandler(step pipelinesvc.Step) http.HandlerFunc {
 		q := r.URL.Query()
 		args := map[string]any{"step": step.ID}
 
-		cutoff := strings.TrimSpace(q.Get("cutoff"))
+		cutoff := strings.TrimSpace(q.Get(pipelinesvc.MLQueryCutoff))
 		if cutoff == "" {
 			cutoff = pipelinesvc.DefaultCutoff()
 		}
 		args["cutoff"] = cutoff
-		query := url.Values{"cutoff": []string{cutoff}}
+		query := url.Values{pipelinesvc.MLQueryCutoff: []string{cutoff}}
 
 		a.startTrackedJob(step.Command, args, pipelinesvc.TrainStepTimeout(),
 			func(ctx context.Context) (any, error) {
