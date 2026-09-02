@@ -107,7 +107,7 @@ describe('UpcomingMatchTab', () => {
     expect(screen.getByLabelText(/match date/i)).toBeInTheDocument();
   });
 
-  // The whole of D-11 at the picker: one name, two options, and the user says which.
+  // The whole of D-10 at the picker: one name, two options, and the user says which.
   it('offers the two sides of one name as distinct options', async () => {
     const user = userEvent.setup();
     render(<UpcomingMatchTab />);

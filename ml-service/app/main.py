@@ -144,7 +144,7 @@ async def _run_training_step(step: str, func: Any, *args: Any) -> None:
     """Run one training step in a worker thread, holding its compute slot until the
     subprocess is really gone.
 
-    Both halves matter, and D-10 got both wrong. `asyncio.to_thread` hands back a future
+    Both halves matter, and D-11 got both wrong. `asyncio.to_thread` hands back a future
     the event loop can cancel, but cancelling it does not touch the thread and certainly
     does not touch the subprocess the thread is waiting on: when go-app dropped its
     request, the `async with` exited, the semaphore was released, and the compute lane
@@ -387,7 +387,7 @@ def _require_admin_train(step: str, fail_message: str):
             except training_orchestrator.TrainingStopped as e:
                 # A Stop is an operator doing their job, not this service breaking. It is
                 # logged as the event it is, with no stack trace, and answered 409 rather
-                # than 500 so nothing downstream reports a failure nobody had (D-10).
+                # than 500 so nothing downstream reports a failure nobody had (D-11).
                 logger.info("admin.train.stopped", step=step, reason=str(e))
                 raise HTTPException(
                     status_code=409,
@@ -452,7 +452,7 @@ async def admin_train_stop(request: Request, step: str = ""):
     This endpoint exists because a stop has to be something one service can *ask* another
     for, rather than infer. go-app's Stop used to cancel only its own outgoing request:
     the console showed the run gone while `ml.xi.retrain` kept running here, and the
-    compute lane read as free while a retrain was still writing (D-10).
+    compute lane read as free while a retrain was still writing (D-11).
 
     `stopped` names the steps whose process this call watched exit, so it is a fact and
     not an intention. An empty list means nothing was running, which is a normal answer

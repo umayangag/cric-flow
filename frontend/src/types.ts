@@ -75,7 +75,7 @@ export type PredictScorecard = {
  * twelve-minute retrain and a Stop that found nothing running are different events, and the
  * console could not previously tell them apart. `status: 'partially_cancelled'` (with 502)
  * means the run was cancelled here but the training process could not be confirmed stopped,
- * which used to be reported as a plain success while `ml.xi.retrain` kept going (D-10).
+ * which used to be reported as a plain success while `ml.xi.retrain` kept going (D-11).
  */
 export type PipelineStopResult = {
   status?: 'cancelled' | 'partially_cancelled';
@@ -101,7 +101,7 @@ export type TeamGender = (typeof TEAM_GENDERS)[number];
  * gender that make it one team.
  *
  * A name alone is not a team — 130 of the 394 names in the dataset are used by both a men's
- * and a women's side — so the picker offers sides and sends `club_id` (D-11).
+ * and a women's side — so the picker offers sides and sends `club_id` (D-10).
  */
 export type TeamSideOption = {
   club_id: number;

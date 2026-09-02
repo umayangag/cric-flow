@@ -35,7 +35,7 @@ class TrainingStopped(ValueError):
     It subclasses ValueError so every existing caller still handles it, and exists so the
     ones that care can tell an operator's Stop from a run that broke. Reporting a stop as
     `admin.train.failed` with a stack trace sends whoever reads the log looking for a bug
-    that is not there -- which is the same species of untruth as D-10 itself.
+    that is not there -- which is the same species of untruth as D-11 itself.
     """
 
 
@@ -56,7 +56,7 @@ def ml_service_root() -> str:
 class _TrainingProcesses:
     """The training subprocesses this service currently has running, by module.
 
-    It exists because of D-10: go-app's Stop cancelled its own HTTP request and reported
+    It exists because of D-11: go-app's Stop cancelled its own HTTP request and reported
     `{"cancelled": 1}`, while `ml.xi.retrain` carried on inside this container burning CPU
     with nothing holding a handle to it. A process nobody can address is a process nobody
     can stop, and "cancelled" was a claim about it that was not true.
@@ -103,7 +103,7 @@ class _TrainingProcesses:
 
         # The child runs in its own session (start_new_session below), so signalling the
         # group reaches the model-fitting workers it spawned. Orphaned workers were half
-        # of what D-10 left burning CPU.
+        # of what D-11 left burning CPU.
         _signal_group(process, signal.SIGTERM)
         try:
             process.wait(timeout=TERMINATE_GRACE_SEC)
@@ -190,7 +190,7 @@ def run_training_subprocess(
         env.update(extra_env)
     timeout_sec = get_training_subprocess_timeout_sec()
     # Popen rather than subprocess.run, so the process is addressable while it runs: run()
-    # keeps its handle on its own stack, which is why a stop had nothing to stop (D-10).
+    # keeps its handle on its own stack, which is why a stop had nothing to stop (D-11).
     # start_new_session puts the child at the head of its own process group, so stopping it
     # reaches the workers it spawns.
     proc = subprocess.Popen(

@@ -23,7 +23,7 @@ import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
 import type { TeamSideOption } from '../types';
 
 // Sides are matched on their display name -- "India (men)" -- so typing "women" narrows the
-// list to the women's sides, which is the distinction the picker exists to make (D-11).
+// list to the women's sides, which is the distinction the picker exists to make (D-10).
 const filter = createFilterOptions<TeamSideOption>({ stringify: (side) => side.display_name });
 
 function teamFilterOptions(

@@ -21,7 +21,7 @@ type StopTrainingFunc func(ctx context.Context) ([]string, error)
 //
 // TrainingStopped lists the steps ml-service confirmed it killed; TrainingErr is set when
 // it could not be asked or would not say. A caller must not report a stop as done while
-// TrainingErr is non-nil — that is D-10 exactly: the console said `{"cancelled": 1}` while
+// TrainingErr is non-nil — that is D-11 exactly: the console said `{"cancelled": 1}` while
 // `ml.xi.retrain` ran on.
 type StopOutcome struct {
 	Cancelled       int

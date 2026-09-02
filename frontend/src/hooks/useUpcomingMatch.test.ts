@@ -108,7 +108,7 @@ describe('useUpcomingMatch', () => {
 
   // The chosen side is kept or dropped by club id. Matching on the name would leave the
   // women's side selected against a list that only offers the men's — a request for one
-  // side under the label of the other, which is D-11 with extra steps.
+  // side under the label of the other, which is D-10 with extra steps.
   it('drops a chosen side the new format does not offer', async () => {
     const { result } = renderHook(() => useUpcomingMatch());
     act(() => result.current.setFormat('T20I'));

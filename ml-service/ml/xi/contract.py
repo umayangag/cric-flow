@@ -21,7 +21,7 @@ FORMAT_INDEX: Dict[str, int] = {code: i for i, code in enumerate(FORMAT_CODES)}
 # ``opposition.gender`` from Cricsheet's ``info.gender``. This service *matches on the
 # literal*: ``RatingState._ctx_group`` reads ``GENDER_FEMALE`` to pick E7's context-baseline
 # group, and ``team_key`` folds it into the key a team is rated under. It is declared in
-# contracts/ops-console.contract.json and asserted from both sides (H-24, D-11) -- a private
+# contracts/ops-console.contract.json and asserted from both sides (H-24, D-10) -- a private
 # copy of a word two services agree on is exactly what D-9 was.
 GENDER_MALE = "male"
 GENDER_FEMALE = "female"

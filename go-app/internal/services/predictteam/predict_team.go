@@ -26,7 +26,7 @@ import (
 // Team1 and Team2 are *references to a side*, not names: a club id, or a name with the
 // gender that makes it one. A bare name is accepted only where the format holds exactly one
 // side of that name; where it holds two, the request is refused rather than resolved by
-// guess (D-11).
+// guess (D-10).
 type Input struct {
 	Format        string     `json:"format"`
 	Team1         db.TeamRef `json:"team1"`
@@ -147,7 +147,7 @@ type Scorecard struct {
 //
 // It is on the wire for unambiguous names as well as ambiguous ones, because §8.7's rule is
 // about the *answer*, not about the doubt: naming the side only when the request was unclear
-// would make silence mean "we agreed", and silence is exactly what D-11 was.
+// would make silence mean "we agreed", and silence is exactly what D-10 was.
 type ResolvedSide struct {
 	ClubID      int64  `json:"club_id"`
 	Name        string `json:"name"`
@@ -169,7 +169,7 @@ func newResolvedSide(side db.TeamSide) ResolvedSide {
 // ranges come from.
 //
 // Every substitution it makes is named on the wire: `team1_side` and `team2_side` say which
-// sides were scored (D-11), `selection` says whether the XIs were optimised or rating-ordered
+// sides were scored (D-10), `selection` says whether the XIs were optimised or rating-ordered
 // (H-17), `forecast` says which model produced the per-player numbers, and
 // `win_probability.source` says which produced the headline probability. Nothing here falls
 // back silently (§8.7).

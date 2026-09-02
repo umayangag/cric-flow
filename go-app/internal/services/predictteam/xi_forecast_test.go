@@ -247,7 +247,7 @@ func TestWinnerFrom_NamesTeam2OnAnExactTie(t *testing.T) {
 }
 
 // The winner is named as the side that was scored, not as the caller spelled it: two teams
-// answer to "India", and a result that says only "India" does not say which one won (D-11).
+// answer to "India", and a result that says only "India" does not say which one won (D-10).
 func TestWinnerFrom_NamesTheResolvedSideNotTheTypedName(t *testing.T) {
 	t.Parallel()
 	indiaWomen := db.TeamSide{ClubID: 132, Name: "India", Gender: teams.GenderFemale}

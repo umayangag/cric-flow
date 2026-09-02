@@ -54,7 +54,7 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A training process we could not confirm is stopped is the defect this endpoint had
-	// (D-10): it answered `{"cancelled": 1}` while `ml.xi.retrain` kept running and the
+	// (D-11): it answered `{"cancelled": 1}` while `ml.xi.retrain` kept running and the
 	// compute lane read as free. The local run *is* cancelled by here, so this is a
 	// partial stop, and the operator is told exactly that rather than "cancelled".
 	if outcome.TrainingErr != nil {

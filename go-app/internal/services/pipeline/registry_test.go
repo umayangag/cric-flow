@@ -58,12 +58,12 @@ type contractDoc struct {
 	// StopResponseField is the field go-app reads out of ml-service's stop answer to
 	// learn which training steps really stopped. H-24's audit recorded that go-app
 	// parsed nothing out of ml-service's bodies, and said this would become an H-24
-	// item the moment it started; D-10's fix is that moment.
+	// item the moment it started; D-11's fix is that moment.
 	StopResponseField string `json:"stop_response_field"`
 	// TeamGenders is the gender half of a team's identity. go-app writes it into
 	// opposition and match rows and now accepts it on the prediction request; the
 	// frontend's picker sends it; ml-service matches on the literal when it groups the
-	// E7 context baselines. Three copies of one vocabulary is the D-9 shape (D-11).
+	// E7 context baselines. Three copies of one vocabulary is the D-9 shape (D-10).
 	TeamGenders []string `json:"team_genders"`
 }
 

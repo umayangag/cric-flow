@@ -35,7 +35,7 @@ class FakePopen:
     """A training subprocess that never was.
 
     The wrapper holds a Popen rather than calling subprocess.run, because a run nobody
-    holds a handle to is a run nobody can stop (D-10) -- so these tests stand in for the
+    holds a handle to is a run nobody can stop (D-11) -- so these tests stand in for the
     handle, not for the call.
     """
 
@@ -120,7 +120,7 @@ def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
     assert "timed out" in str(exc.value)
     assert logger.errors, "expected timeout to log an error"
     # A run abandoned on timeout is killed rather than left behind, which is the same
-    # orphan D-10 was about arriving by a different route.
+    # orphan D-11 was about arriving by a different route.
     assert process.signals, "a timed-out subprocess must still be terminated"
     assert training_orchestrator._processes.running_modules() == []
 

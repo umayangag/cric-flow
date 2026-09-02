@@ -15,7 +15,7 @@ import (
 // It is generous because the far side does not answer until the process is gone, and a
 // process is given TERMINATE_GRACE_SEC (10s) to exit on SIGTERM before it is killed. A
 // stop that returned before that would be back to reporting an intention as a fact — the
-// whole of D-10 — so this waits for the truth rather than truncating it.
+// whole of D-11 — so this waits for the truth rather than truncating it.
 func StopTrainingTimeout() time.Duration { return 30 * time.Second }
 
 // stopTrainingResponse is ml-service's answer, of which go-app reads exactly one field.
@@ -31,7 +31,7 @@ type stopTrainingResponse struct {
 // An empty list with no error means nothing was running there, which is the honest answer
 // to a Stop pressed when the compute lane is idle — not a failure. An error means the
 // question could not be answered, and a caller must not report the run as stopped: that
-// is the state D-10 was in every time.
+// is the state D-11 was in every time.
 func StopMLTraining(ctx context.Context) ([]string, error) {
 	url := MLServiceBaseURL() + MLStopPath
 	// A stop must not inherit the caller's cancellation. The request that is being

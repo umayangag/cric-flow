@@ -75,7 +75,7 @@ func TestStopMLTraining_AnUnreadableBodyIsAnError(t *testing.T) {
 	assert.Contains(t, err.Error(), "unreadable stop response")
 }
 
-// The heart of D-10's go-app half: the context being stopped is usually the one about to
+// The heart of D-11's go-app half: the context being stopped is usually the one about to
 // be cancelled, so a stop that inherited its cancellation would be a stop that never
 // happened — which is precisely the state the console used to report success from.
 func TestStopMLTraining_SurvivesACancelledCallerContext(t *testing.T) {

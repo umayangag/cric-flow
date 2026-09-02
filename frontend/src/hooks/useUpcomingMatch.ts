@@ -55,7 +55,7 @@ function keepIfStillOffered(
 export function useUpcomingMatch() {
   const [format, setFormat] = useState('');
   // Both sides are the chosen option, not the typed text: the request carries a club id,
-  // because a name names two teams for a third of the dataset (D-11).
+  // because a name names two teams for a third of the dataset (D-10).
   const [team1, setTeam1] = useState<TeamSideOption | null>(null);
   const [team2, setTeam2] = useState<TeamSideOption | null>(null);
   const [venue, setVenue] = useState('');

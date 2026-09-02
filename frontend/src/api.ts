@@ -284,7 +284,7 @@ export const api = {
    * Returns 200 with { status: 'cancelled', cancelled: n, training_stopped: [...] }, 409
    * if nothing is running, or 502 with `status: 'partially_cancelled'` when this run was
    * cancelled here but ml-service could not confirm its training process stopped — the
-   * case that used to be reported as a plain success while a retrain kept running (D-10).
+   * case that used to be reported as a plain success while a retrain kept running (D-11).
    */
   async opsPipelineStop(
     lane?: PipelineLane,
@@ -349,7 +349,7 @@ export const api = {
   // --- Options ---
   /**
    * The sides that have played a format, each with the `club_id` a prediction is requested
-   * with. Not names: a name is not a team (D-11).
+   * with. Not names: a name is not a team (D-10).
    */
   getTeamSidesByFormat(format: string): Promise<TeamSideOption[]> {
     const u = new URL('/api/options/teams-by-format', BASE_API_URL);
@@ -391,7 +391,7 @@ export const api = {
   predictTeamSelection(params: {
     format: string;
     /** The `club_id` of each side, from {@link getTeamSidesByFormat}. A name would not say
-     * which of two teams it meant, and the API refuses an ambiguous one (D-11). */
+     * which of two teams it meant, and the API refuses an ambiguous one (D-10). */
     team1_id: number;
     team2_id: number;
     venue?: string;

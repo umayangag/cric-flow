@@ -122,7 +122,7 @@ func TestContractDeclaresTheSameBoundaryAsTheCode(t *testing.T) {
 //
 // The assertion is on the struct tag rather than on the constant, because the tag is what
 // actually decodes the body: a constant that agreed with the contract while the tag said
-// something else would be a green test over a Stop that always read zero steps (D-10).
+// something else would be a green test over a Stop that always read zero steps (D-11).
 func TestStopResponseFieldMatchesTheContract(t *testing.T) {
 	t.Parallel()
 	contract := readContract(t)
@@ -137,7 +137,7 @@ func TestStopResponseFieldMatchesTheContract(t *testing.T) {
 
 // TestTeamGendersMatchTheContract is go-app's half of H-24 for the gender vocabulary.
 //
-// D-11's fix puts gender on the request wire, and ml-service already matched on the literal
+// D-10's fix puts gender on the request wire, and ml-service already matched on the literal
 // (`RatingState._ctx_group` reads `gender == "female"` to pick E7's baseline group). Two
 // services matching on one word with a private copy each is the shape D-9 had; this is the
 // near side asserting against the contract rather than against itself.

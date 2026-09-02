@@ -36,7 +36,7 @@ func GetUniqueFormats(ctx context.Context) ([]string, error) {
 
 // Team option lists are not here. A team is (name, gender), so a list of names is not a
 // list of teams: the three name-keyed queries that used to live here fed a picker that
-// could not say which side it meant (D-11). They are replaced by the side queries in
+// could not say which side it meant (D-10). They are replaced by the side queries in
 // repo_team_side.go, which return the club id every downstream read is keyed by.
 
 // GetVenuesByQuery returns venue names (display_name or venue_name) that match the query.

@@ -67,7 +67,7 @@ func TestStopRun_ReturnsCancelMigrationResult(t *testing.T) {
 	assert.Zero(t, outcome.Cancelled)
 }
 
-// The D-10 guards. A Stop used to cancel go-app's own HTTP request and report
+// The D-11 guards. A Stop used to cancel go-app's own HTTP request and report
 // `{"cancelled": 1}` while `ml.xi.retrain` carried on inside ml-service: the console
 // showed the run gone, the compute lane read as free, and the process had to be killed by
 // hand. Stopping the training is now part of stopping the run, and its failure is carried

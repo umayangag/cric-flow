@@ -19,7 +19,7 @@ import (
 
 // The two sides "India" names in T20I, with the club ids and the last-played order the
 // live database holds. The men's side played most recently, which is the side the old
-// resolver silently returned for every request naming "India" (D-11).
+// resolver silently returned for every request naming "India" (D-10).
 var (
 	indiaMen   = db.TeamSide{ClubID: 43, Name: "India", Gender: teams.GenderMale}
 	indiaWomen = db.TeamSide{ClubID: 132, Name: "India", Gender: teams.GenderFemale}
@@ -108,7 +108,7 @@ func TestValidateSideReferences_ListsTheGendersItWouldAccept(t *testing.T) {
 }
 
 // An ambiguous name is refused with both candidates named, because the caller's next move is
-// to pick one. Before D-11 this request was answered with the more recently active side and
+// to pick one. Before D-10 this request was answered with the more recently active side and
 // a server-log warning nobody reads.
 func TestRespondPredictErr_AmbiguousNameIs400NamingBothSides(t *testing.T) {
 	t.Parallel()
@@ -152,7 +152,7 @@ func TestRespondPredictErr_UnknownSideIs400(t *testing.T) {
 	assert.Equal(t, "TEAM_NOT_FOUND", decodeAPIError(t, rec).Code)
 }
 
-// Anything that is not one of D-11's refusals is still this service failing, and still a 500.
+// Anything that is not one of D-10's refusals is still this service failing, and still a 500.
 func TestRespondPredictErr_LeavesEveryOtherFailureAlone(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()

@@ -50,14 +50,14 @@ tested — against their own assumption — and the seam between them was tested
 test that says "our default is valid RFC3339" proves nothing about a service that never
 accepted RFC3339.
 
-The rule also covers a literal *nobody had declared yet*: D-11 found go-app, ml-service and
+The rule also covers a literal *nobody had declared yet*: D-10 found go-app, ml-service and
 the frontend each holding a private copy of `"male"` / `"female"` — ml-service compared
 against its own string to pick E7's context-baseline group — and the vocabulary joined the
 contract as `team_genders` in the same commit that put gender on the request wire.
 
 And it covers the audit's own deferred item. The D-9 write-up recorded that go-app parsed
 nothing out of ml-service's response bodies, so there was no literal to drift, and that this
-"becomes an H-24 item the moment either side starts matching on them". D-10's fix is that
+"becomes an H-24 item the moment either side starts matching on them". D-11's fix is that
 moment: go-app now reads `stopped` out of the stop answer to learn what really stopped, so
 the field name is declared as `stop_response_field` and asserted from both sides.
 

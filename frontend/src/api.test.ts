@@ -133,14 +133,14 @@ describe('frontend api client (DB-backed)', () => {
       expect.stringContaining('/api/predict/team-selection'),
       expect.objectContaining({
         method: 'POST',
-        // The side is named by id: "India" would not say which of two teams to score (D-11).
+        // The side is named by id: "India" would not say which of two teams to score (D-10).
         body: expect.stringContaining('"team1_id":132'),
       }),
     );
     vi.unstubAllGlobals();
   });
 
-  // D-10: a Stop used to report success whatever happened to the training process. The
+  // D-11: a Stop used to report success whatever happened to the training process. The
   // console now depends on being told which steps really stopped, and on a partial stop
   // arriving as one — so both shapes are read here rather than assumed.
   it('opsPipelineStop reports the training steps that were stopped', async () => {

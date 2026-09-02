@@ -1,4 +1,4 @@
-"""A stop that stops (D-10).
+"""A stop that stops (D-11).
 
 `POST /ops/pipeline/stop` used to answer `{"cancelled": 1}` while `ml.xi.retrain` carried
 on inside this container, still burning CPU, until someone killed it by hand. go-app's
@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from app import training_orchestrator
 
 # A stand-in for a training run: a process that spawns a worker (as the model fits do) and
-# then sits there. Both have to die -- orphaned workers were half of what D-10 left behind.
+# then sits there. Both have to die -- orphaned workers were half of what D-11 left behind.
 _PARENT_WITH_WORKER = (
     "import subprocess,sys,time;"
     "w=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)']);"
@@ -150,7 +150,7 @@ def test_a_stopped_retrain_answers_409_not_500(client, monkeypatch) -> None:
     """A Stop is an operator doing their job, so the run it ends is not a failure.
 
     Answering 500 TRAIN_FAILED (and logging a stack trace) told everything downstream that
-    something broke, which is the same untruth as D-10 wearing a different hat.
+    something broke, which is the same untruth as D-11 wearing a different hat.
     """
 
     def stopped_run(*_args: Any, **_kwargs: Any) -> None:
@@ -200,7 +200,7 @@ def test_stop_endpoint_is_declared_on_the_boundary_contract(client) -> None:
 
 
 def test_the_compute_slot_is_held_until_the_subprocess_is_gone() -> None:
-    """The second half of D-10, and the subtler one.
+    """The second half of D-11, and the subtler one.
 
     `asyncio.to_thread` gives the event loop a future it can cancel, but cancelling it
     neither stops the thread nor touches the subprocess the thread is waiting on. Before
