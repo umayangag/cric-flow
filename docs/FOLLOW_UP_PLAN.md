@@ -7,11 +7,12 @@ are made on walk-forward folds, the locked window is scored once and never guide
 (H-19), sharpness at fixed calibration is the progress metric (H-22), every gate states what
 varies and what is held fixed (H-23), and never commit to main.
 
-Three threads, in the order they should land: **Plan F** fixes two defects found by using the
+Four threads, in the order they should land: **Plan F** fixes two defects found by using the
 ops console (one of them the third instance of a known failure class, which gets a rule);
-**Plan L** makes the evaluation surfaces legible to a person who has not read the plan; and
-**Plan A** is the accuracy roadmap, taking the gains the migration identified and deliberately
-left on the table.
+**Plan L** makes the evaluation surfaces legible to a person who has not read the plan;
+**Plan M** makes the pipeline itself legible, as a map that CI will not let drift from the
+code; and **Plan A** is the accuracy roadmap, taking the gains the migration identified and
+deliberately left on the table.
 
 ---
 
@@ -271,6 +272,57 @@ table above is the source of truth the PR implements.
 
 ---
 
+## 3b. Plan M — the system map (one PR)
+
+The system is now small enough to describe and too layered to hold in one head: a zip becomes
+event rows, becomes an as-of pass, becomes four kinds of model, becomes a selection, becomes a
+verdict, becomes a run, becomes a prediction. That story is told in four documents and one
+mermaid block, and none of them can say what the pipeline is *doing right now*.
+
+| id | what |
+|---|---|
+| M-1 | A **System map** tab: the whole pipeline as an interactive graph, click-to-open detail on every step, structure verified in CI and numbers read live |
+
+**The rule it is built on:** *the map may not be able to drift from the code.* A hand-drawn
+diagram answers a rename by going quietly wrong — which is exactly the failure
+`gen-architecture-map.py` was written to end for `ARCHITECTURE_MAP.md`. So structure is data,
+verified in CI, and numbers are live.
+
+**M-1 steps.**
+1. **The graph is a contract.** `contracts/system-map.json`: nodes and edges for the full flow
+   — archive → import → event tables → the as-of rating pass → the frames → the four models →
+   the selector → the harness and its gates → runs and the manifest → serving → the surfaces.
+   Each node carries a plain-language summary written for the same reader as the metric
+   explainers, its code anchors (modules, packages, files, endpoints, tables, make targets,
+   artifact kinds, pipeline steps, gates, feature groups, performance targets), the documents
+   that describe it, and binding **keys** — never values. Layout is part of the contract (lane
+   and column), so a moved node is a reviewable diff.
+2. **The check runs both ways** (`make check-system-map`, in the Docs consistency workflow).
+   Forward: everything the map names exists — a renamed module or a deleted endpoint fails.
+   Reverse: everything the code can enumerate is on the map — every route both services serve,
+   every step in the ops registry, every gate in the H-23 registry, every column-family
+   constant in `ml.xi.contract`, every performance target, every artifact kind.
+3. **Numbers are read, not written.** The tab resolves binding keys against the three endpoints
+   it already has — `/ops/status`, `/api/ml/xi-status`, `/api/backtest/report` — so a figure on
+   the map *is* that endpoint's figure. The harness's gates go further: the map names the gate
+   ids and the report supplies each gate's terms **and the path to its own number**, so not
+   even a report path is typed into the map. A key the endpoints do not carry reads as a dash.
+4. **One source for metric prose.** Where a shown metric has a glossary key, the explainer is
+   read from the report's embedded glossary (L-1). L-1 is not merged, so today no entry
+   resolves and no explainer renders; when it lands the map gains its explainers without a
+   line of new copy. `MetricExplainer` is the component L-1's step 3 should adopt rather than
+   write a second one.
+5. **Read-only, and not the ops step graph.** `OpsPipelineGraph` is the control surface that
+   starts and stops runs and is untouched. The system map describes the pipeline; the ops
+   console drives it, and each says so on the other's node.
+
+**Acceptance:** the tab shows the full archive-to-prediction flow; every step opens details a
+non-expert can read; the numbers match `/xi/status` and the evaluation report because they are
+them; deleting an endpoint or a module the map names fails CI; the ops console's step graph is
+untouched; `make check-all` green; coverage gates never move down. **Model: Opus.**
+
+---
+
 ## 4. Plan A — the accuracy roadmap
 
 The migration's own record names where accuracy is still to be had. Ordered by expected
@@ -292,7 +344,8 @@ captain); a bigger E5 threshold (it is derived now); and any change judged on th
 window (H-19).
 
 **Order.** F-1 first — the pipeline must be clickable before anything retrains on cadence.
-Then L-1 (small, independent). Then A-4 before A-1/A-2/A-3, so the new modelling work is
+Then L-1 and M-1 (both small and independent; M-1 reads L-1's glossary if it is there and
+renders no explainer if it is not, so either order works). Then A-4 before A-1/A-2/A-3, so the new modelling work is
 judged against a clean window from the start; A-5 whenever convenient. A-1 and A-2 touch the
 same code and should land in that order; A-3 is independent and the most likely to end in a
 recorded null — which the plan treats as a result, not a failure.
@@ -305,6 +358,7 @@ recorded null — which the plan treats as a result, not a failure.
 |---|---|
 | F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
 | L-1 | **done** — `feat/l-1-metric-glossary`. `ml/xi/glossary.py` carries the table in § 3 verbatim, one entry per reported metric key; the harness embeds it in `xi_evaluate_report.json` and `GET /xi/metric-glossary` serves it from the code; `glossary.check_report` walks every metric key the report emits and a harness test fails on one with no entry (keys that are not metrics are declared with a reason). One shared popover component explains every metric label in the frontend — the evaluation tables and tiles, the Workbench's manifest metrics, the run summary and the prediction surfaces' ranges and marginal values — and the metric prose the components carried was deleted. |
+| M-1 | **done** — `feat/system-map-tab`. The System map tab, `contracts/system-map.json` and the two-way `make check-system-map`, wired into the Docs consistency workflow. Two things were found on the way and fixed here: `gen-architecture-map.py`'s route regex missed three go-app proxy routes (the endpoint table said 25, it is 28), and `frontend/vitest.config.ts` shadowed `vite.config.ts`, so the frontend coverage gate had never run — verified by renaming it, which turned three of the four thresholds red. The duplicate config is deleted and the gate ratcheted to the measured figures. |
 | A-1 | open |
 | A-2 | open |
 | A-3 | open |

@@ -31,11 +31,19 @@ export default defineConfig({
     // on 5174 leaves the browser talking to the original one, whose dep cache
     // `dev:clean` has just deleted — which presents as a blank page.
     strictPort: true,
+    fs: {
+      // The System map imports contracts/system-map.json directly rather than keeping a
+      // copy of it under src/. That file is the source of truth CI checks against the
+      // code, and a mirrored copy would be exactly the drift the map exists to prevent —
+      // so the dev server is allowed to read the repo root. The build resolves it as an
+      // ordinary relative import and inlines it.
+      allow: ['..'],
+    },
   },
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: ['src/setupTests.ts'],
+    setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
@@ -50,12 +58,19 @@ export default defineConfig({
       ],
       // Vitest 2 reads the gate from coverage.thresholds. Set at the top level these
       // keys are silently ignored, so the numbers below had never failed a run.
+      //
+      // The second time the same gate was silently off: a `vitest.config.ts` beside this
+      // file took precedence over it, so vitest read its `test` block and never saw these
+      // thresholds -- verified by renaming it, which turned three of the four gates red.
+      // That file duplicated what is here and has been deleted; the setup file it owned
+      // moved to `setupFiles` above.
+      //
       // Set to the measured figures rounded down; raise them, never lower them.
       thresholds: {
-        lines: 77,
-        functions: 74,
-        statements: 77,
-        branches: 78,
+        lines: 79,
+        functions: 75,
+        statements: 79,
+        branches: 79,
       },
     },
   },

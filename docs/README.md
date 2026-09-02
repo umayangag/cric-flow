@@ -4,6 +4,8 @@ Reference for the cricket prediction system: architecture, configuration, APIs, 
 
 **Start here:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md) at the repo root — data flow, ML model shapes, and aggregation in one place. Its model shapes and endpoint tables are **generated** (`make gen-architecture-map`), so they cannot drift from the code.
 
+**Or look at it:** the frontend's **System map** tab draws the same pipeline end to end — the Cricsheet archive through to the prediction — with click-to-open detail on every step, the code it is, and its current numbers read live from the endpoints. It is drawn from `contracts/system-map.json`, which `make check-system-map` verifies against the code on every PR.
+
 Everything in this directory describes the system as it is on `main`. The plans, checklists and
 audits that described the pipeline deleted during the P-0…P-7 re-architecture were removed once
 that migration completed; git history is the archive.
@@ -36,7 +38,7 @@ It is a record, not a to-do list: the plan has no further PRs.
 
 | Doc | Purpose |
 |-----|--------|
-| [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) | **The to-do list.** Post-migration follow-ups: two ops defects (D-8 orphaned walk-forward upload, D-9 the console retrain cutoff mismatch) with the H-24 boundary-contract rule, the metric-glossary/legibility PR, and the accuracy roadmap (venue & competition context, chase tails, the T20 lineup signal, locked-window rotation, data cadence) |
+| [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) | **The to-do list.** Post-migration follow-ups: two ops defects (D-8 orphaned walk-forward upload, D-9 the console retrain cutoff mismatch) with the H-24 boundary-contract rule, the metric-glossary/legibility PR, the System map tab, and the accuracy roadmap (venue & competition context, chase tails, the T20 lineup signal, locked-window rotation, data cadence) |
 
 ---
 
@@ -56,10 +58,15 @@ It is a record, not a to-do list: the plan has no further PRs.
 - **Evaluation report:** endpoints and flow in [apis-backtest-and-ops.md](apis-backtest-and-ops.md); what it measures in [ml-and-training.md](ml-and-training.md) § Evaluation harness.
 - **Team selection and the match simulator:** [ml-and-training.md](ml-and-training.md) and [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
-## Generated files — do not hand-edit
+## Files that cannot be allowed to drift
 
-| File | Regenerate with | Guarded by |
-|------|-----------------|-----------|
-| The marked blocks of [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md) | `make gen-architecture-map` | `make gen-architecture-map-check` |
+| File | How it is written | Guarded by |
+|------|-------------------|-----------|
+| The marked blocks of [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md) | generated — do not hand-edit; run `make gen-architecture-map` | `make gen-architecture-map-check` |
+| `contracts/system-map.json` — the graph the System map tab draws | hand-curated prose, machine-verified structure | `make check-system-map` |
 
-It runs in the `Docs consistency` workflow on every PR that touches its inputs.
+Both run in the `Docs consistency` workflow on every PR that touches their inputs. The system
+map's check runs in both directions: every module, endpoint, table, gate, feature group,
+performance target and make target the map names must exist, and everything the code can
+enumerate must appear on the map — so a deleted endpoint fails CI rather than fading from a
+diagram.

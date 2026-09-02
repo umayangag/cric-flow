@@ -102,7 +102,14 @@ against a stale profile reports a number from a different run. `make go-app-chec
 |---|---|---|
 | go-app | `go-app/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_GO`), `.github/workflows/go-app-ci.yml` | 74 |
 | ml-service | `ml-service/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_ML`), `.github/workflows/ml-service-ci.yml` | 92 |
-| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 76, functions 74, statements 76, branches 77 |
+| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 79, functions 75, statements 79, branches 79 |
+
+The frontend gate has now been silently off twice, for the same reason in two shapes: first the
+threshold keys were set at the top level of `coverage`, where Vitest 2 ignores them, and then a
+second `frontend/vitest.config.ts` took precedence over `vite.config.ts` so its `test` block —
+thresholds included — was never read. Both are fixed; the duplicate config is deleted. The way
+to prove a gate is on is to raise it above the measured figure and watch a run go red, which is
+how the second one was found.
 
 When a run passes, raise each threshold to the **floor** of the measured figure — not the
 rounded one the report prints. pytest-cov decides `fail_under` on the rounded total but writes

@@ -285,7 +285,7 @@ frontend-stop:
 # --- Unified Quality Checks ---
 
 # Run all quality checks for all components
-check-all: frontend-check go-app-check ml-service-check frontend-backend-sync-check
+check-all: frontend-check go-app-check ml-service-check frontend-backend-sync-check check-system-map
 	@echo "All quality checks passed!"
 
 # Ensure go-app and ml-service expose canonical formats and model metadata (frontend fetches these dynamically)
@@ -345,6 +345,12 @@ gen-architecture-map:
 
 gen-architecture-map-check:
 	$(MAP_PYTHON) scripts/gen-architecture-map.py --check
+
+# The System map tab draws contracts/system-map.json and tells its reader that this is
+# what the system does. This is what stops that claim going quietly wrong: every anchor
+# the map names must exist, and everything the code can enumerate must be on the map.
+check-system-map:
+	$(MAP_PYTHON) scripts/check-system-map.py
 
 install-hooks:
 	git config core.hooksPath .githooks

@@ -95,12 +95,28 @@ def ml_routes(path: str) -> List[Tuple[str, str]]:
 
 
 def go_routes(path: str) -> List[Tuple[str, str]]:
-    """Extract HandleFunc paths and their HTTP methods from the router."""
+    """Extract HandleFunc paths and their HTTP methods from the router.
+
+    The path and the ``.Methods(...)`` call are matched in two steps rather than one.
+    A single expression has to skip over the handler argument, and the handler is
+    sometimes itself a call -- ``a.mlServiceProxy("/health", "ml health proxy", nil)``
+    -- whose parentheses ended the scan early: three proxy routes were missing from
+    the generated table, which is exactly the drift this file exists to prevent.
+    So: find each registration, then read the ``Methods(...)`` that follows it and
+    precedes the next one.
+
+    Commented-out lines are dropped first. A route someone has commented out is a route
+    the service does not serve, and a generated table that still lists it is the exact
+    lie this file exists to stop.
+    """
     with open(path, encoding="utf-8") as fh:
-        src = fh.read()
+        src = "".join(line for line in fh if not line.lstrip().startswith("//"))
+    starts = [(m.start(), m.group(1), m.end()) for m in re.finditer(r'HandleFunc\(\s*"([^"]+)"', src)]
     routes = []
-    for m in re.finditer(r'HandleFunc\(\s*"([^"]+)"[^)]*?\)\s*\.?\s*(?:\n\s*)?Methods\(([^)]*)\)', src, re.S):
-        path_, methods = m.group(1), m.group(2)
+    for i, (_, path_, end) in enumerate(starts):
+        stop = starts[i + 1][0] if i + 1 < len(starts) else len(src)
+        methods_match = re.search(r"Methods\(([^)]*)\)", src[end:stop], re.S)
+        methods = methods_match.group(1) if methods_match else ""
         verbs = sorted({v.split("Method")[-1].upper() for v in re.findall(r"http\.Method(\w+)", methods)} - {"OPTIONS"})
         routes.append((", ".join(verbs) or "GET", path_))
     return routes

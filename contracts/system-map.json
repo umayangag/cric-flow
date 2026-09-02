@@ -1,0 +1,840 @@
+{
+  "$comment": "The system map: the whole prediction pipeline as data. Hand-curated prose, machine-verified structure. Every anchor named here must exist in the code (forward check) and every pipeline step, served endpoint, gate, feature group, performance target and artifact kind the code can enumerate must appear here (reverse check). Both directions run in `make check-system-map` and in the Docs consistency workflow. Layout is part of the contract — lane + column, so a diff shows a moved node. Numbers are never written here: nodes carry binding keys, resolved live from the endpoints in `sources`.",
+  "version": 1,
+  "layout": {
+    "node_width": 210,
+    "node_height": 74,
+    "column_gap": 52,
+    "lane_gap": 46,
+    "child_height": 22,
+    "padding": 28
+  },
+  "sources": {
+    "ops_status": {
+      "label": "Ops status",
+      "endpoint": "GET /ops/status",
+      "note": "go-app's own probes: the dataset directory, row counts, the runs on disk."
+    },
+    "xi_status": {
+      "label": "XI status",
+      "endpoint": "GET /api/ml/xi-status",
+      "note": "The loaded run and its manifest, proxied from ml-service's /xi/status. The manifest is read from here rather than from disk, so the map shows the run that is actually serving."
+    },
+    "report": {
+      "label": "Evaluation report",
+      "endpoint": "GET /api/backtest/report",
+      "note": "L4's report, proxied from ml-service's /xi/evaluate-report. Absent until `make evaluate` has run, in which case every value from it reads as a dash."
+    }
+  },
+  "lanes": [
+    {
+      "id": "l0",
+      "label": "L0 — the events",
+      "note": "What happened, stored as it happened."
+    },
+    {
+      "id": "l1",
+      "label": "L1 — the as-of pass",
+      "note": "One chronological pass turns events into features that could have been known at the time."
+    },
+    {
+      "id": "l2",
+      "label": "L2 — the models",
+      "note": "Two win models, one performance model, one simulator that trains nothing."
+    },
+    {
+      "id": "l3",
+      "label": "L3 — selection",
+      "note": "The search that picks an eleven and says why."
+    },
+    {
+      "id": "l4",
+      "label": "L4 — evaluation",
+      "note": "Where every choice-facing number comes from."
+    },
+    {
+      "id": "l5",
+      "label": "L5 — runs and publication",
+      "note": "Building a model set and publishing one are separate acts."
+    },
+    {
+      "id": "serve",
+      "label": "Serving and surfaces",
+      "note": "From the loaded run to the screen."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "cricsheet-archive",
+      "label": "Cricsheet archive",
+      "lane": "l0",
+      "column": 0,
+      "kind": "data",
+      "summary": "Every match this system knows about begins as a file inside a Cricsheet zip — one JSON document per match, downloaded from a fixed list of allowed hosts into a staging directory and unpacked from there. Fetching and extracting are separate steps on purpose: a download can be inspected before it replaces the data the last import read. The archive's sha256 is recorded when it lands, and that is the identity a run later quotes when it says which data it was built from.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/services/dataacquire",
+          "go-app/internal/services/dataset",
+          "go-app/internal/services/datasetregistry"
+        ],
+        "endpoints": [
+          "GET /ops/data/feeds",
+          "POST /ops/data/fetch",
+          "GET /ops/data/staged",
+          "POST /ops/data/extract",
+          "GET /ops/data/datasets"
+        ],
+        "tables": ["datasets"],
+        "pipeline_steps": ["fetch", "extract"]
+      },
+      "documented_in": [
+        { "doc": "docs/config-and-data.md", "section": "## Acquiring a dataset" }
+      ],
+      "bindings": [
+        {
+          "key": "match_files",
+          "label": "Match files in the data directory",
+          "source": "ops_status",
+          "path": "dataset.match_files",
+          "value_kind": "integer"
+        },
+        {
+          "key": "dataset_bytes",
+          "label": "Size on disk",
+          "source": "ops_status",
+          "path": "dataset.bytes",
+          "value_kind": "bytes"
+        },
+        {
+          "key": "dataset_path",
+          "label": "Data directory",
+          "source": "ops_status",
+          "path": "dataset.path",
+          "value_kind": "text"
+        }
+      ]
+    },
+    {
+      "id": "importer",
+      "label": "Importer",
+      "lane": "l0",
+      "column": 1,
+      "kind": "process",
+      "summary": "The importer reads each match file once and writes the rows every later step reads: the match with its teams, venue and date; the eleven players each side picked; and one row per delivery bowled. It also settles identity — a player is keyed by the registry id Cricsheet carries, not by name, because two players can share a name and one player's name can be spelled three ways across a career. Nothing is aggregated here. The importer records what happened, never what it means.",
+      "anchors": {
+        "packages": ["go-app/internal/cricsheet", "go-app/internal/services/cricsheetimporter"],
+        "files": ["go-app/cmd/cricsheet-importer/main.go"],
+        "endpoints": ["POST /import/cricsheet"],
+        "make_targets": ["cricsheet-import", "migrate"],
+        "pipeline_steps": ["import"]
+      },
+      "documented_in": [
+        { "doc": "docs/config-and-data.md", "section": "## Cricsheet import" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### 9.1 Tables" }
+      ],
+      "bindings": [
+        {
+          "key": "last_import",
+          "label": "Last match import",
+          "source": "ops_status",
+          "path": "db.last_match_import_at",
+          "value_kind": "timestamp"
+        },
+        {
+          "key": "migration",
+          "label": "Schema migration applied",
+          "source": "ops_status",
+          "path": "db.migration.current",
+          "value_kind": "integer"
+        }
+      ]
+    },
+    {
+      "id": "event-store",
+      "label": "Event store",
+      "lane": "l0",
+      "column": 2,
+      "kind": "data",
+      "summary": "The system of record: what happened, ball by ball, in the order it happened. Everything the models read is a function of these tables sorted by date, which is why there is no feature table to keep in step and no precompute pass in front of the models. A delivery row already carries the striker, the bowler, the split of runs, the kind of extra, the kind of dismissal and the fielders involved, so a new feature is a new way of reading these rows rather than a new column in them.",
+      "anchors": {
+        "tables": ["match", "match_player", "ball_event", "fielding_event", "player", "venue", "opposition", "season", "match_inning", "match_format"],
+        "packages": ["go-app/internal/db"],
+        "files": ["go-app/migrations/0001_baseline.sql", "go-app/migrations/0004_identity.sql"]
+      },
+      "documented_in": [
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### 9.2 Why the event core is enough" }
+      ],
+      "bindings": [
+        {
+          "key": "matches",
+          "label": "Matches",
+          "source": "ops_status",
+          "path": "db.counts.matches",
+          "value_kind": "integer"
+        },
+        {
+          "key": "players",
+          "label": "Players",
+          "source": "ops_status",
+          "path": "db.counts.players",
+          "value_kind": "integer"
+        },
+        {
+          "key": "ball_events",
+          "label": "Deliveries recorded",
+          "source": "ops_status",
+          "path": "db.table_stats[table_name=ball_event].row_count",
+          "value_kind": "integer"
+        }
+      ]
+    },
+    {
+      "id": "rating-pass",
+      "label": "The rating pass",
+      "lane": "l1",
+      "column": 0,
+      "kind": "process",
+      "expandable": true,
+      "summary": "One pass over every match in date order. Before a match is scored, the pass reads what each player's record said at that moment and builds the match's rows from it; only afterwards does it fold that match's own events back into the record. The ordering is the whole point — no row can contain anything from a match that had not been played yet, so nothing a model learns is knowledge from the future. The same pass, carried through to today, is the state a live prediction is served from.",
+      "anchors": {
+        "modules": ["ml.xi.ratings", "ml.xi.builder", "ml.xi.asof", "ml.xi.sequence", "ml.xi.rows"],
+        "make_targets": ["xi-parity"]
+      },
+      "documented_in": [
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### L1 — extend the rating pass to emit player-match rows" },
+        { "doc": "docs/ml-and-training.md", "section": "### As-of serving (`ratings_as_of`, P-2)" }
+      ],
+      "bindings": [
+        {
+          "key": "players_rated",
+          "label": "Players in the serving state",
+          "source": "xi_status",
+          "path": "players",
+          "value_kind": "integer"
+        },
+        {
+          "key": "ratings_through",
+          "label": "Ratings through",
+          "source": "xi_status",
+          "path": "ratings_through",
+          "value_kind": "date"
+        },
+        {
+          "key": "ratings_age",
+          "label": "Age of the ratings (days)",
+          "source": "ops_status",
+          "path": "artifacts.ratings.age_days",
+          "value_kind": "integer"
+        }
+      ],
+      "children": [
+        {
+          "id": "family-player-vectors",
+          "label": "What a player is worth",
+          "summary": "Ten numbers per player per format: how many balls he is expected to face and bowl, how many runs he scores and saves above what an average player would in the same situation, how hard he is to dismiss, how many matches he has played, his Elo rating, and whether he has ever kept wicket. Each is decayed, so recent cricket counts for more, and shrunk toward average, so a player with two innings does not read as the best in the world.",
+          "anchors": { "feature_groups": ["PLAYER_VECTOR_KEYS"] }
+        },
+        {
+          "id": "family-roles",
+          "label": "What job a player does",
+          "summary": "Where in the order he is expected to bat, how often he bats at all, and how his scoring and economy split across the phases of an innings — the powerplay, the middle, the death. A death-overs hitter and an opener are not the same player with different totals, and this is where the difference is written down.",
+          "anchors": { "feature_groups": ["PLAYER_ROLE_KEYS"] }
+        },
+        {
+          "id": "family-sequence",
+          "label": "Sequence rates (measured, not used)",
+          "summary": "Rates over particular balls rather than all of them: scoring after being stuck on dots, the ball after a boundary, the first over of a spell against its later overs. They are computed on every pass and kept in the frame so the question can be re-asked, but the folds found none of them worth a place in the performance model, so none is fed to it. A recorded null, left visible.",
+          "anchors": { "feature_groups": ["PLAYER_SEQUENCE_KEYS"] }
+        }
+      ]
+    },
+    {
+      "id": "feature-frames",
+      "label": "The frames",
+      "lane": "l1",
+      "column": 1,
+      "kind": "data",
+      "expandable": true,
+      "summary": "The pass emits two tables and one serving state. The match frame has one row per match, with both elevens summarised into numbers a model can read. The player-match frame has one row per player per match, with what that player then did attached to it. Both come out of the same code path the live service uses, which is what makes it possible to check that training and serving agree to the last decimal.",
+      "anchors": {
+        "modules": ["ml.xi.contract", "ml.xi.rows", "ml.xi.quality"],
+        "feature_groups": ["PLAYER_MATCH_COLS"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "### Player-match rows (L1, P-2)" },
+        { "doc": "docs/ml-and-training.md", "section": "### Data-quality gate (H-15)" }
+      ],
+      "bindings": [
+        {
+          "key": "n_rows",
+          "label": "Match rows the harness scored",
+          "source": "report",
+          "path": "n_rows",
+          "value_kind": "integer"
+        },
+        {
+          "key": "n_player_rows",
+          "label": "Player-match rows the harness scored",
+          "source": "report",
+          "path": "n_player_rows",
+          "value_kind": "integer"
+        }
+      ],
+      "children": [
+        {
+          "id": "frame-xi-columns",
+          "label": "The eleven, as numbers",
+          "summary": "One side's players summed and sliced into a fixed list of quantities — top-six batting strength, tail batting, the wicketkeeper's bat, the five main bowlers, how many bowling options there are, the mean and the weakest link of the Elo ratings — and then the two sides' values differenced. Change one player and these move; change nothing but the ground and they do not.",
+          "anchors": { "feature_groups": ["SIDE_FEATURE_STEMS", "XI_FEATURE_COLS"] }
+        },
+        {
+          "id": "frame-team-context",
+          "label": "Team and venue context",
+          "summary": "The things the selector cannot pick: the two teams' Elo difference, their recent form, their head-to-head record, and how the venue has behaved. They make the displayed probability more accurate and they are deliberately kept out of the selection objective, because a model that credits an eleven for the ground it is playing on cannot be used to choose the eleven.",
+          "anchors": { "feature_groups": ["TEAM_CONTEXT_COLS", "DISPLAY_FEATURE_COLS"] }
+        },
+        {
+          "id": "frame-player-rows",
+          "label": "Player-match rows",
+          "summary": "One row per player per match: who he was, what his record said beforehand, what his own side and the opposition looked like, and then what he actually did — runs, balls, wickets, runs conceded, catches. Every player of the eleven gets a row, including the ones who never batted, because who got to bat is decided by how the match went.",
+          "anchors": { "feature_groups": ["PLAYER_MATCH_META_COLS", "PLAYER_MATCH_FEATURE_COLS", "PLAYER_MATCH_TARGET_COLS"] }
+        }
+      ]
+    },
+    {
+      "id": "win-objective",
+      "label": "Win model — objective",
+      "lane": "l2",
+      "column": 0,
+      "kind": "model",
+      "summary": "The model the selector optimises. Every column it reads is a function of the two elevens and nothing else, so the only way to move its answer is to change a player — which is exactly the property a selection objective needs. It is fitted with monotone constraints, meaning that replacing a player with a better one can never lower the predicted chance of winning. Where a format's version of this model cannot rank results well enough, that format is not offered an optimised selection at all.",
+      "anchors": {
+        "modules": ["ml.xi.train", "ml.xi.contract"],
+        "artifacts": ["xi_win_<FORMAT>.joblib"],
+        "feature_groups": ["XI_FEATURE_COLS"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "## XI-responsive win model (`ml.xi`)" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### L3 — selection and explanation" }
+      ],
+      "bindings": [
+        {
+          "key": "objective_auc",
+          "label": "Objective AUC (walk-forward mean)",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.objective_auc",
+          "per_format": true,
+          "value_kind": "ratio3",
+          "glossary_key": "objective_auc"
+        },
+        {
+          "key": "swap_violation_share",
+          "label": "Upgrades that lower P(win)",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.swap_violation_share",
+          "per_format": true,
+          "value_kind": "percent",
+          "glossary_key": "swap_violation_share"
+        },
+        {
+          "key": "specific_vs_typical",
+          "label": "Knowing the exact eleven is worth (AUC)",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.specific_vs_typical_delta",
+          "per_format": true,
+          "value_kind": "signed3",
+          "glossary_key": "specific_vs_typical_delta"
+        }
+      ]
+    },
+    {
+      "id": "win-display",
+      "label": "Win model — display",
+      "lane": "l2",
+      "column": 1,
+      "kind": "model",
+      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice.",
+      "anchors": {
+        "modules": ["ml.xi.train", "ml.xi.store"],
+        "endpoints": ["POST /xi/predict-win"],
+        "artifacts": ["xi_win_<FORMAT>.joblib"],
+        "feature_groups": ["DISPLAY_FEATURE_COLS"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "## Hyperparameters" }
+      ],
+      "bindings": [
+        {
+          "key": "display_auc",
+          "label": "Display AUC (walk-forward mean)",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.display_auc",
+          "per_format": true,
+          "value_kind": "ratio3",
+          "glossary_key": "display_auc"
+        },
+        {
+          "key": "base_rate_brier",
+          "label": "Base-rate Brier to beat",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.base_rate_brier",
+          "per_format": true,
+          "value_kind": "ratio3",
+          "glossary_key": "base_rate_brier"
+        }
+      ]
+    },
+    {
+      "id": "performance-model",
+      "label": "Performance model",
+      "lane": "l2",
+      "column": 2,
+      "kind": "model",
+      "summary": "What each player is likely to do: runs, balls faced, wickets, runs conceded, catches. It answers with a range — a 10th, a 50th and a 90th percentile — rather than a single number, because a batting score is not a true value plus noise; it is a distribution with a long tail and a lot of mass near zero. Every player in the eleven gets a forecast, including those who will not bat, because who got to bat is decided by how the match went and conditioning on it would be reading the result.",
+      "anchors": {
+        "modules": ["ml.xi.performance", "ml.xi.perf_baselines", "ml.xi.perf_calibration", "ml.xi.perf_metrics", "ml.xi.perf_harness"],
+        "endpoints": ["POST /performance/predict"],
+        "artifacts": ["xi_perf_<FORMAT>.joblib"],
+        "targets": ["runs", "balls_faced", "wickets", "runs_conceded", "catches"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "### Performance model (L2-B, `ml/xi/performance.py`, P-3)" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### L2-B — the performance model" }
+      ],
+      "bindings": [
+        {
+          "key": "runs_coverage",
+          "label": "Runs: how often reality lands in the 10–90 range",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.performance.targets.runs.model.interval.coverage_80",
+          "per_format": true,
+          "value_kind": "ratio3",
+          "glossary_key": "coverage_80"
+        },
+        {
+          "key": "runs_width",
+          "label": "Runs: how wide that range is",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.performance.targets.runs.model.interval.width_80",
+          "per_format": true,
+          "value_kind": "number1",
+          "glossary_key": "width_80"
+        },
+        {
+          "key": "runs_spearman",
+          "label": "Runs: rank agreement within a match",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.performance.targets.runs.model.within_match_spearman",
+          "per_format": true,
+          "value_kind": "ratio3",
+          "glossary_key": "within_match_spearman"
+        }
+      ]
+    },
+    {
+      "id": "simulator",
+      "label": "Match simulator",
+      "lane": "l2",
+      "column": 3,
+      "kind": "model",
+      "summary": "The simulator learns nothing. It plays the fixture a couple of thousand times, drawing each batter's runs and balls from the performance model and spending them under the laws of the game — one innings' worth of deliveries, ten wickets, no bowler more than a fifth of the overs. The batting side's innings is drawn first and the bowlers' figures are shares of that same innings, so the scorecard adds up to the total by construction and nothing is rescaled toward a second estimate. Formats with no innings length get no simulated total at all.",
+      "anchors": {
+        "modules": ["ml.xi.simulator", "ml.xi.sim_harness"],
+        "endpoints": ["POST /simulate"],
+        "feature_groups": ["SIMULATION_CONTEXT_COLS", "INNINGS_OUTCOME_COLS"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "### Match simulator (L2-C, `ml/xi/simulator.py`, P-4)" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "#### The innings sample (P-4 design, written before the code)" }
+      ],
+      "bindings": [
+        {
+          "key": "sim_win_within_tolerance",
+          "label": "Simulated P(win) agrees with the display model",
+          "source": "report",
+          "path": "formats.{format}.simulation_decision.simulated_win_probability_within_tolerance",
+          "per_format": true,
+          "value_kind": "yes_no"
+        },
+        {
+          "key": "shared_factor",
+          "label": "Shared match factor applied",
+          "source": "report",
+          "path": "formats.{format}.simulation_decision.shared_factor",
+          "per_format": true,
+          "value_kind": "yes_no"
+        },
+        {
+          "key": "sim_served",
+          "label": "Simulated probability served as the headline",
+          "source": "report",
+          "path": "formats.{format}.simulation_decision.served",
+          "per_format": true,
+          "value_kind": "yes_no"
+        }
+      ]
+    },
+    {
+      "id": "optimizer",
+      "label": "The selector",
+      "lane": "l3",
+      "column": 0,
+      "kind": "process",
+      "summary": "The search that picks an eleven. Each side is optimised against the other side's currently chosen eleven rather than against its whole squad, because every feature the objective reads is a property of one complete eleven; the two sides take turns until neither wants to change. Beside each chosen player it reports a marginal value — how much win probability would be lost if that player were swapped for an average one. Where the objective has not shown it can rank a format's results, the selector refuses to optimise, returns the rating-ordered eleven, and every surface says so.",
+      "anchors": {
+        "modules": ["ml.xi.optimizer", "app.xi_service"],
+        "packages": ["go-app/internal/services/predictteam"],
+        "endpoints": ["POST /xi/optimize"]
+      },
+      "documented_in": [
+        { "doc": "ARCHITECTURE_MAP.md", "section": "### Selection" },
+        { "doc": "docs/apis-backtest-and-ops.md", "section": "## Prediction" }
+      ],
+      "bindings": [
+        {
+          "key": "optimised_selection_served",
+          "label": "Optimised selection served",
+          "source": "report",
+          "path": "formats.{format}.selection_decision.optimised_selection_served",
+          "per_format": true,
+          "value_kind": "yes_no"
+        },
+        {
+          "key": "selection_reason",
+          "label": "Why",
+          "source": "report",
+          "path": "formats.{format}.selection_decision.reason",
+          "per_format": true,
+          "value_kind": "text"
+        }
+      ]
+    },
+    {
+      "id": "harness",
+      "label": "The evaluation harness",
+      "lane": "l4",
+      "column": 0,
+      "kind": "process",
+      "expandable": true,
+      "summary": "The only place a number that decides something is allowed to come from. It re-fits every model from scratch at a series of past cutoffs and scores each on the matches that followed, so every figure is what the system would have said at the time rather than what it can say now that it has seen the answer. It also scores one locked window that no decision may read. That costs about 54 minutes, which is why it stands beside the pipeline instead of inside it, and why it is run when a number is about to be quoted.",
+      "anchors": {
+        "modules": ["ml.xi.evaluate", "ml.xi.gates", "ml.xi.parity", "ml.xi.natural_experiment", "ml.xi.selection_metrics"],
+        "endpoints": ["POST /admin/train/evaluate", "GET /xi/evaluate-report", "GET /api/backtest/report"],
+        "make_targets": ["evaluate"],
+        "pipeline_steps": ["evaluate"],
+        "gates": ["H-17", "H-4", "specific-vs-typical", "E5", "E2", "H-5", "H-22", "H-2", "H-8", "E3"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "### Evaluation harness (`make evaluate`, L4 / H-19)" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### L4 — one evaluation harness" }
+      ],
+      "bindings": [
+        {
+          "key": "generated_at",
+          "label": "Report generated",
+          "source": "report",
+          "path": "generated_at",
+          "value_kind": "timestamp"
+        },
+        {
+          "key": "locked_start",
+          "label": "Locked window starts",
+          "source": "report",
+          "path": "locked_start",
+          "value_kind": "date"
+        },
+        {
+          "key": "parity",
+          "label": "Training and serving agree",
+          "source": "report",
+          "path": "serving_parity.passed",
+          "value_kind": "yes_no",
+          "glossary_key": "serving_parity"
+        },
+        {
+          "key": "gates_passed",
+          "label": "Every gate found its number",
+          "source": "report",
+          "path": "gates.passed",
+          "value_kind": "yes_no"
+        }
+      ],
+      "children_from": "gates",
+      "children_note": "Each gate below says what it varies, what it holds fixed and what it decides. That prose is not written here — it is read live from the report's own gate registry, so the map cannot describe a gate differently from the code that runs it. The measured value comes from the path the gate itself declares."
+    },
+    {
+      "id": "retrain",
+      "label": "Retrain",
+      "lane": "l5",
+      "column": 0,
+      "kind": "process",
+      "summary": "One command builds the whole model set: the rating pass over the events, the two win models with their small hyperparameter grid, the performance models, the run's own report and its manifest. It publishes nothing. A retrain that published itself would leave nothing to swap back to, so choosing what serves is a separate act.",
+      "anchors": {
+        "modules": ["ml.xi.retrain", "app.training_orchestrator"],
+        "endpoints": ["POST /admin/train/retrain"],
+        "make_targets": ["retrain", "full-pipeline", "up-all"],
+        "pipeline_steps": ["retrain"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "## The pipeline" },
+        { "doc": "docs/ML_PIPELINE_REARCHITECTURE_PLAN.md", "section": "### 9.3 Pipeline steps (ops console)" }
+      ],
+      "bindings": [
+        {
+          "key": "cutoff",
+          "label": "Cutoff of the loaded run",
+          "source": "xi_status",
+          "path": "manifest.cutoff",
+          "value_kind": "date"
+        },
+        {
+          "key": "git_sha",
+          "label": "Code it was built from",
+          "source": "xi_status",
+          "path": "manifest.git_sha",
+          "value_kind": "sha"
+        }
+      ]
+    },
+    {
+      "id": "run-artifacts",
+      "label": "Run artifacts",
+      "lane": "l5",
+      "column": 1,
+      "kind": "artifact",
+      "summary": "Every retrain writes one directory: the fitted files, the run's own report, and a manifest naming the dataset it read, the cutoff it honoured, the code it was built from, the hyperparameters it chose and the metrics it measured. The manifest is written last, so a directory without one is a run that did not finish. A set whose arrays are not the arrays this code reads is refused at load, with the run named in the error, rather than served quietly.",
+      "anchors": {
+        "modules": ["ml.xi.runs", "ml.xi.store"],
+        "endpoints": ["GET /artifacts/status"],
+        "artifacts": ["xi_ratings.joblib", "xi_win_<FORMAT>.joblib", "xi_perf_<FORMAT>.joblib", "manifest.json", "current_run.json"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "## Runs, manifests and staleness" },
+        { "doc": "docs/observability.md", "section": "### 2.2. Run identity" }
+      ],
+      "bindings": [
+        {
+          "key": "current_run",
+          "label": "Run `current` points at",
+          "source": "ops_status",
+          "path": "artifacts.current_run",
+          "value_kind": "text"
+        },
+        {
+          "key": "dataset_sha",
+          "label": "Dataset it was built from",
+          "source": "xi_status",
+          "path": "manifest.dataset_sha",
+          "value_kind": "sha"
+        },
+        {
+          "key": "created_at",
+          "label": "Built at",
+          "source": "xi_status",
+          "path": "manifest.created_at",
+          "value_kind": "timestamp"
+        }
+      ]
+    },
+    {
+      "id": "reload",
+      "label": "Reload",
+      "lane": "l5",
+      "column": 2,
+      "kind": "process",
+      "summary": "Points `current` at a run and loads it into the running service. Naming a run is how you go back to an earlier one, which is the reason building and publishing are two steps rather than one. A live prediction made against ratings older than the configured limit is refused rather than answered, because a stale rating is a confident wrong answer.",
+      "anchors": {
+        "modules": ["ml.xi.runs", "app.xi_service"],
+        "endpoints": ["POST /admin/reload"],
+        "make_targets": ["reload"],
+        "pipeline_steps": ["reload"],
+        "artifacts": ["current_run.json"]
+      },
+      "documented_in": [
+        { "doc": "docs/ml-and-training.md", "section": "## Runs, manifests and staleness" }
+      ],
+      "bindings": [
+        {
+          "key": "loaded_run",
+          "label": "Run actually loaded",
+          "source": "xi_status",
+          "path": "run_id",
+          "value_kind": "text"
+        },
+        {
+          "key": "loaded",
+          "label": "A run is serving",
+          "source": "xi_status",
+          "path": "loaded",
+          "value_kind": "yes_no"
+        },
+        {
+          "key": "formats_loaded",
+          "label": "Formats with a win model loaded",
+          "source": "xi_status",
+          "path": "formats",
+          "value_kind": "list"
+        },
+        {
+          "key": "performance_formats",
+          "label": "Formats with a performance model loaded",
+          "source": "xi_status",
+          "path": "performance_formats",
+          "value_kind": "list"
+        }
+      ]
+    },
+    {
+      "id": "ops-console",
+      "label": "Ops console",
+      "lane": "l5",
+      "column": 3,
+      "kind": "service",
+      "summary": "The pipeline as buttons. go-app owns the step registry — which steps exist, what each needs before it can run, and which are optional — runs them as jobs, and streams their progress. The Ops Status tab draws that registry as its own small step graph, which is a control surface: it starts and stops runs. This map is the opposite, and deliberately read-only: it describes the pipeline rather than driving it.",
+      "anchors": {
+        "packages": ["go-app/internal/services/pipeline", "go-app/internal/services/runplan", "go-app/internal/services/opsstatus"],
+        "files": ["contracts/ops-console.contract.json", "frontend/src/components/OpsPipelineGraph.tsx"],
+        "endpoints": [
+          "GET /ops/status",
+          "GET /ops/migrations",
+          "GET /ops/suggestions",
+          "POST /ops/pipeline/run/{step}",
+          "POST /ops/pipeline/stop",
+          "POST /ops/pipeline/run-plan",
+          "GET /ops/pipeline/plan",
+          "GET /ops/pipeline/stream",
+          "GET /admin/train/progress"
+        ],
+        "tables": ["data_migrations"]
+      },
+      "documented_in": [
+        { "doc": "docs/apis-backtest-and-ops.md", "section": "## Ops status dashboard" },
+        { "doc": "docs/observability.md", "section": "### 1.2. Tracking and Pipeline State" }
+      ],
+      "bindings": [
+        {
+          "key": "api_readiness",
+          "label": "go-app ready",
+          "source": "ops_status",
+          "path": "services.api_readiness",
+          "value_kind": "yes_no"
+        },
+        {
+          "key": "ml_health",
+          "label": "ml-service healthy",
+          "source": "ops_status",
+          "path": "services.ml_health",
+          "value_kind": "yes_no"
+        }
+      ]
+    },
+    {
+      "id": "ml-endpoints",
+      "label": "ml-service",
+      "lane": "serve",
+      "column": 0,
+      "kind": "service",
+      "summary": "The Python service holding the loaded run. It is handed player ids, a format, two team ids, a venue and a date, and it answers with the elevens, the probability, and either a simulated scorecard or per-player ranges. It computes every feature it needs from its own as-of state — the caller sends no features at all, which is what removes the possibility of two different feature computations disagreeing.",
+      "anchors": {
+        "modules": ["app.main", "app.xi_service", "ml.xi.store"],
+        "files": ["ml-service/app/main.py"],
+        "endpoints": ["GET /health", "GET /xi/status"],
+        "make_targets": ["ml-serve"]
+      },
+      "documented_in": [
+        { "doc": "docs/apis-backtest-and-ops.md", "section": "### ML service (FastAPI) — base `http://localhost:8000`" },
+        { "doc": "docs/observability.md", "section": "### 2.1. Health and Artifacts" }
+      ],
+      "bindings": [
+        {
+          "key": "load_error",
+          "label": "Why nothing is loaded",
+          "source": "xi_status",
+          "path": "error",
+          "value_kind": "text"
+        }
+      ]
+    },
+    {
+      "id": "go-api",
+      "label": "go-app API",
+      "lane": "serve",
+      "column": 1,
+      "kind": "service",
+      "summary": "The Go API resolves the things only it knows: which fixture this is, who is available on each side, how big a team is, how many bowlers it needs and whether it must contain a keeper. It sends registry ids and a format across to ml-service and never sends a feature. It also proxies ml-service's status and evaluation report, which is how a browser reads both services through one origin.",
+      "anchors": {
+        "packages": ["go-app/internal/server", "go-app/internal/services/predictteam"],
+        "files": ["go-app/internal/server/router.go"],
+        "endpoints": [
+          "GET /health",
+          "GET /readiness",
+          "GET /api/health/ml",
+          "GET /api/ml/xi-status",
+          "GET /players/{id}",
+          "GET /matches/{id}",
+          "GET, POST /api/predict/team-selection"
+        ],
+        "make_targets": ["api"]
+      },
+      "documented_in": [
+        { "doc": "docs/apis-backtest-and-ops.md", "section": "### Go API (mux) — base `http://localhost:8080`" },
+        { "doc": "ARCHITECTURE_MAP.md", "section": "### Flow (prediction)" }
+      ],
+      "bindings": []
+    },
+    {
+      "id": "surfaces",
+      "label": "Prediction surfaces",
+      "lane": "serve",
+      "column": 2,
+      "kind": "surface",
+      "summary": "The end of the line: the tabs a person actually reads. The upcoming-match tab shows both elevens, how they were chosen, the probability with its source, and — where the format has an innings length — a scorecard whose lines and extras add up to the total beside them. The evaluation tab shows the harness's report. This system map is a sibling of those tabs and shows the same numbers, because it reads the same two endpoints they do.",
+      "anchors": {
+        "files": [
+          "frontend/src/components/UpcomingMatchTab.tsx",
+          "frontend/src/components/EvaluationReportTab.tsx",
+          "frontend/src/components/MatchScorecard.tsx",
+          "frontend/src/components/SystemMapTab.tsx"
+        ],
+        "endpoints": [
+          "GET /api/options/teams",
+          "GET /api/options/teams-by-format",
+          "GET /api/options/opponents",
+          "GET /api/options/formats",
+          "GET /api/canonical/formats",
+          "GET /api/options/venues"
+        ],
+        "make_targets": ["frontend-dev"]
+      },
+      "documented_in": [
+        { "doc": "docs/observability.md", "section": "### 3.1. Tabs and Their Data Sources" }
+      ],
+      "bindings": []
+    }
+  ],
+  "edges": [
+    { "from": "cricsheet-archive", "to": "importer", "label": "one JSON file per match" },
+    { "from": "importer", "to": "event-store", "label": "matches, elevens, deliveries" },
+    { "from": "event-store", "to": "rating-pass", "label": "one ordered scan" },
+    { "from": "rating-pass", "to": "feature-frames" },
+    { "from": "feature-frames", "to": "win-objective" },
+    { "from": "feature-frames", "to": "win-display" },
+    { "from": "feature-frames", "to": "performance-model" },
+    { "from": "performance-model", "to": "simulator", "label": "draws from its ranges" },
+    { "from": "win-objective", "to": "optimizer", "label": "the value the search maximises" },
+    { "from": "simulator", "to": "optimizer", "label": "the scorecard for the chosen eleven" },
+    { "from": "retrain", "to": "rating-pass", "kind": "control", "label": "runs the pass, fits the models" },
+    { "from": "retrain", "to": "run-artifacts", "label": "runs/<run_id>/ + manifest.json" },
+    { "from": "run-artifacts", "to": "reload", "label": "`current` names one run" },
+    { "from": "reload", "to": "ml-endpoints", "label": "the loaded store" },
+    { "from": "optimizer", "to": "ml-endpoints" },
+    { "from": "ml-endpoints", "to": "go-api", "label": "elevens, P(win), scorecard" },
+    { "from": "go-api", "to": "surfaces" },
+    { "from": "event-store", "to": "harness", "label": "refits every model per fold" },
+    { "from": "harness", "to": "surfaces", "label": "the evaluation report" },
+    { "from": "ops-console", "to": "importer", "kind": "control" },
+    { "from": "ops-console", "to": "retrain", "kind": "control" },
+    { "from": "ops-console", "to": "harness", "kind": "control" },
+    { "from": "ops-console", "to": "reload", "kind": "control" }
+  ]
+}

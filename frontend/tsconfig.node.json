@@ -6,6 +6,6 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["vite.config.*", "vitest.config.*", "*.config.*", "vitest.setup.ts"],
+  "include": ["vite.config.*", "*.config.*", "vitest.setup.ts"],
   "exclude": ["dist", "node_modules"]
 }
