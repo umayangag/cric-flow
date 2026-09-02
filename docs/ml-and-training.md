@@ -80,8 +80,8 @@ retrain → reload against data already imported.
 before it. Naming a run is how you swap back.
 
 **Why evaluate is separate from both.** The harness refits every model per fold per format:
-measured on the full database it takes ~54 minutes, against a whole pipeline that runs in a
-fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
+measured on the full database it takes ~67 minutes over the eleven folds the rotation left
+(A-4; it was ~54 over seven), against a whole pipeline that runs in a fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
 sensible cadence. What a retrain records is its *own* holdout report — the numbers the models
 it just fitted produced — and the manifest names it, so nothing quotes a measurement of a
 different run.

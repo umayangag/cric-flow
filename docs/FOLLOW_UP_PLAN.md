@@ -516,5 +516,43 @@ recorded null — which the plan treats as a result, not a failure.
 | A-1 | open |
 | A-2 | open |
 | A-3 | open |
-| A-4 | open |
+| A-4 | **done** — `chore/a-4-locked-window-rotation`. The locked window rotates to **2026-09-02** (the P-7 merge date, the line no decision has read past); the spent ≥ 2025-09-01 window retires into four new quarterly folds (2025-09, 2025-12, 2026-03, 2026-06), so the harness runs **eleven** folds, not seven, and the retired data is scored where reuse is allowed. The report carries `locked_window` (start, rotation date, previous start, reason, retired cutoffs) and repeats both dates on every locked figure; the Evaluation tab and the System map render them. **The new window is empty** — the database ends 2026-09-01, so it holds 0 matches and says so (`n_eval: 0`, `skipped_reason`) rather than reporting noise; it fills as `make import` runs (A-5). While it cannot fit a model, H-8's parity check serves the last fold's (`parity_model_window: 2026-06-01`) and still compares 50 matches / 1,100 predictions / 50 simulations at max diff **0.0**. Policy in `ml-and-training.md` § Rotating the locked window. **Baseline for A-1/A-2/A-3** below. Run: 67 min, gates and glossary pass. |
 | A-5 | open |
+
+### A-4's baseline — what A-1/A-2/A-3 are judged against
+
+`make evaluate` on the rotated window set (2026-09-02, run 2026-09-02, 21,093 training rows /
+465,336 player rows, eleven folds 2024-01 … 2026-06, gates and glossary pass, H-8 parity 0.0).
+These are **walk-forward** figures — mean ± sd over folds — because the locked window is empty
+by construction until the data catches up, which is what a fresh rotation means (A-4). Read the
+spreads: several are wide enough that a small move is noise.
+
+| | T20 (11 folds) | T20I (10) | ODI (11) | TEST (11) |
+|---|---|---|---|---|
+| objective AUC | 0.697 ± 0.039 | 0.756 ± 0.038 | 0.673 ± 0.066 | 0.626 ± 0.113 |
+| display AUC | 0.730 ± 0.050 | 0.753 ± 0.037 | 0.707 ± 0.069 | 0.646 ± 0.101 |
+| swap violation share | 0.002 ± 0.003 | 0.007 ± 0.005 | 0.000 ± 0.000 | 0.005 ± 0.005 |
+| specific − typical | +0.024 ± 0.018 | +0.012 ± 0.056 | +0.016 ± 0.065 | +0.004 ± 0.048 |
+| **E5 lineup-only vs bar** | **0.503 vs 0.506 — fails** (n=2,168) | 0.564 vs 0.472 — passes (n=220) | 0.566 vs 0.503 — passes (n=692) | 0.549 vs 0.478 — passes (n=213) |
+| runs Spearman (vs career mean) | 0.544 (+0.038) | 0.587 (+0.036) | 0.493 (+0.045) | 0.452 (+0.042) |
+| runs pinball | 2.920 ± 0.117 | 3.221 ± 0.177 | 4.715 ± 0.325 | 8.328 ± 0.463 |
+| runs 10–90 coverage / width | 0.897 / 29.1 | 0.889 / 31.1 | 0.901 / 47.9 | 0.774 / 82.1 |
+| wickets Spearman (vs career mean) | 0.477 (−0.034) | 0.548 (−0.018) | 0.574 (+0.007) | 0.777 (+0.038) |
+| E2 Δ Brier (sim − display) | +0.0016 ± 0.0063 | −0.0004 ± 0.0134 | +0.0082 ± 0.0134 | — |
+| **first-innings totals** coverage / width / bias | 0.772 / 84.8 / +0.5 | 0.781 / 81.1 / +2.6 | 0.758 / 149.6 / +0.4 | — |
+| **chase totals** coverage / width / bias | 0.711 / 70.1 / −6.5 | 0.689 / 66.5 / −2.7 | 0.699 / 130.2 / −9.0 | — |
+| chase below q10 (nominal 0.10) | 0.192 | 0.184 | 0.181 | — |
+| margin: runs when bat-first wins | 0.664 | 0.738 | 0.649 | — |
+| margin: balls left when chaser wins | 0.601 | 0.648 | 0.524 | — |
+
+**What each accuracy item has to move.** **A-1** (venue/competition context) owns the totals
+rows: first-innings bias is already small in the mean (+0.5 T20, +0.4 ODI) but the per-quarter
+swing is what §8.3 named, and coverage must hold within ±0.03 while width does not grow.
+**A-2** (chase tails) owns the chase rows: coverage 0.689–0.711 against nominal 0.80, and the
+error is one-sided — 18–19 % of real chases finish below the simulated 10th percentile against
+a nominal 10 %, the same shape §8.3 reported. Margin coverage (0.52–0.74 at nominal 0.80) is
+reported beside it, not tuned. **A-3** owns one number: T20 E5 lineup-only **0.503 against its
+derived bar 0.506** — still a fail, and now on 2,168 pairs rather than 1,358, so the verdict is
+better powered than the one P-7 recorded (0.490 vs 0.501). T20I, ODI and TEST clear their bars;
+TEST stays rating-ordered on H-17's AUC line, not on E5.
+
