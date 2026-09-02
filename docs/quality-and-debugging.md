@@ -115,7 +115,7 @@ against a stale profile reports a number from a different run. `make go-app-chec
 |---|---|---|
 | go-app | `go-app/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_GO`), `.github/workflows/go-app-ci.yml` | 74 |
 | ml-service | `ml-service/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_ML`), `.github/workflows/ml-service-ci.yml` | 92 |
-| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 76, functions 75, statements 76, branches 78 |
+| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 77, functions 75, statements 77, branches 79 |
 
 When a run passes, raise each threshold to the **floor** of the measured figure — not the
 rounded one the report prints. pytest-cov decides `fail_under` on the rounded total but writes
