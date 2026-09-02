@@ -72,6 +72,13 @@ const EvaluationReportTab: React.FC = () => {
         />
         <Chip size="small" variant="outlined" label={`source ${report.source}`} />
         <Chip size="small" variant="outlined" label={`locked from ${report.locked_start}`} />
+        {report.locked_window && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`window rotated ${report.locked_window.rotated_on}, from ${report.locked_window.previous_start}`}
+          />
+        )}
         <Chip size="small" variant="outlined" label={`${report.n_rows.toLocaleString()} matches`} />
         <Chip
           size="small"

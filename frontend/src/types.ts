@@ -390,6 +390,14 @@ export type EvaluationReport = {
   source: string;
   cutoffs: string[];
   locked_start: string;
+  /** A-4: where the locked window's line is, and when it was last moved there. */
+  locked_window?: {
+    start: string;
+    rotated_on: string;
+    previous_start: string;
+    reason: string;
+    retired_into_folds: string[];
+  };
   seeds: number[];
   n_rows: number;
   n_player_rows: number;

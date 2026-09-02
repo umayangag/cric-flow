@@ -33,12 +33,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 from ml.xi import natural_experiment as ne  # noqa: E402
 from ml.xi.builder import build  # noqa: E402
-from ml.xi.evaluate import LOCKED_START  # noqa: E402
 from ml.xi.store import XiStore  # noqa: E402
 
 logger = logging.getLogger("e5_reproduce")
 
 REFERENCE = {"T20": 0.509, "ODI": 0.521, "T20I": 0.589}  # §8.6, development pairs, lineup-only
+# §8.6's development set is every pair before the locked window as it stood at P-7. The
+# harness's LOCKED_START rotates (A-4) and this reproduction must not, or it would compare
+# a different set of pairs against a fixed reference.
+DEVELOPMENT_END = "2025-09-01"
 
 
 def _source_factory(cricsheet_dir: str | None):
@@ -71,7 +74,7 @@ def main() -> int:
     logger.info("frame, pairs and previous elevens in %.0f s", time.perf_counter() - started)
 
     store = XiStore.load(args.run)
-    locked_start = pd.Timestamp(LOCKED_START)
+    locked_start = pd.Timestamp(DEVELOPMENT_END)
     report: Dict[str, Dict] = {"run": store.manifest.run_id, "previous_elevens": previous, "formats": {}}
     for format_code in REFERENCE:
         models = store.models[format_code]

@@ -377,7 +377,9 @@ def evaluate_format(
         locked = _section(score_pairs(locked_pairs, locked_proba, columns))
     else:
         locked = {"pairs_scored": 0, "agreement": None, "skipped_reason": "no objective or no pairs"}
-    locked["note"] = "locked window (H-19): scored once per release, never used for a choice"
+    locked["note"] = (
+        f"locked window from {locked_start.date().isoformat()} (H-19): scored once per release, never used for a choice"
+    )
     rates = [f.get("agreement") for f in folds if f.get("agreement") is not None]
     decision = {
         "agreement": development["agreement"],

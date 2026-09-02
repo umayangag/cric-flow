@@ -134,7 +134,9 @@ and the sentence saying why). Beside them: the data-quality counts, the leak can
 TEST control, the train/serve parity verdict, the gate registry (`gates`: every gate's
 varies / fixed / decides triple and whether the report carries all of them, H-23) and the metric
 glossary (`glossary`: one entry per metric key the report prints, and whether it explained all
-of them, L-1).
+of them, L-1). At the top it names the window every locked figure came from: `locked_start`,
+and `locked_window` with the date the line was last moved, the window it replaced and why
+(A-4 — see **docs/ml-and-training.md** § Rotating the locked window).
 
 **`GET /api/backtest/metric-glossary`** proxies ml-service's `GET /xi/metric-glossary`: the same
 entries, served from the code rather than from a report on disk. It is what every metric label in

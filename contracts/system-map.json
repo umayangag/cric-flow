@@ -751,6 +751,13 @@
           "value_kind": "date"
         },
         {
+          "key": "locked_rotated_on",
+          "label": "Locked window last rotated",
+          "source": "report",
+          "path": "locked_window.rotated_on",
+          "value_kind": "date"
+        },
+        {
           "key": "parity",
           "label": "Training and serving agree",
           "source": "report",
