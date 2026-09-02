@@ -3,11 +3,9 @@
 This module wires together route handlers, middleware, and startup logic.
 Domain logic lives in dedicated modules:
 - xi_service: selection, the displayed win probability, the performance model, the
-  simulator, and L4's evaluation report -- the whole prediction surface after P-5
-- prediction_service.endpoints: the windowed-form win model, which P-6 removes
-- artifact_service: artifact discovery, health, artifacts status
-- model_stats_service: model stats scanning and reporting
-- training_orchestrator: training subprocess management
+  simulator, L4's evaluation report, and which run is loaded -- the whole surface
+- ml.xi.runs: run identity (H-16) -- the manifest, the `current` pointer, the refusal
+- training_orchestrator: retrain and evaluate subprocess management
 """
 
 import asyncio
@@ -20,28 +18,20 @@ import time
 import traceback
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from ml.xi import runs
+from ml.xi.runs import RunArtifactsInvalid
 from ml.xi.simulator import SimulationUnavailable
 
 from . import settings as app_settings
 from . import training_orchestrator, xi_service
-from .artifact_service import build_artifacts_status, build_health_response
-from .artifacts import reload as reload_artifacts
-from .artifacts import summary as artifacts_summary
 from .errors import error_payload
 from .logging import bind_request_context, get_struct_logger, init_logging
-from .model_metadata import get_model_metadata
-from .model_stats_service import build_model_stats
-from .models.predict import (
-    WinFeatures,
-    WinFeaturesEnhanced,
-    WinPrediction,
-)
 from .models.xi import (
     PerformancePredictRequest,
     PerformancePredictResponse,
@@ -52,10 +42,6 @@ from .models.xi import (
     XiStatusResponse,
     XiWinRequest,
     XiWinResponse,
-)
-from .prediction_service.endpoints import (
-    run_win_prediction,
-    run_win_prediction_enhanced,
 )
 
 # ---------------------------------------------------------------------------
@@ -143,9 +129,6 @@ _settings = app_settings.load_ml_service_settings()
 ENABLE_HOT_RELOAD = _settings.enable_hot_reload
 ADMIN_API_KEY = _settings.admin_api_key
 MAX_CONCURRENT_TRAINING_JOBS = _settings.max_concurrent_training_jobs
-MAX_PREDICT_BATCH_SIZE = _settings.max_predict_batch_size
-TRAIN_LATEST_CACHE_GRANULARITY = _settings.train_latest_cache_granularity
-MODEL_STATS_CACHE_TTL = _settings.model_stats_cache_ttl
 
 _training_semaphore: Optional[asyncio.Semaphore] = None
 
@@ -172,12 +155,6 @@ def _verify_admin_api_key(request: Request) -> None:
             ),
         )
 
-
-# ---------------------------------------------------------------------------
-# Model stats cache
-# ---------------------------------------------------------------------------
-
-_model_stats_cache: Optional[Tuple[float, Dict[str, Any]]] = None
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -242,21 +219,14 @@ MODELS_DIR = app_settings.get_models_dir(svc_config)
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 
-def _reload_artifacts() -> dict:
-    """Rescan MODELS_DIR, reload the registries, and drop the model-stats cache it feeds."""
-    global _model_stats_cache
-    _model_stats_cache = None
-    reload_artifacts(MODELS_DIR)
-    xi_service.REGISTRY.reload(MODELS_DIR)
-    summary = artifacts_summary()
-    summary.update(xi_service.loaded_formats())
-    return summary
+def _reload_run(run_id: Optional[str] = None) -> dict:
+    """Load a run and serve it, returning what /xi/status would say about the result."""
+    return xi_service.REGISTRY.reload(MODELS_DIR, run_id)
 
 
 try:
     logger.info("startup.artifacts.load.start", models_dir=MODELS_DIR)
-    reload_artifacts(MODELS_DIR)
-    xi_service.REGISTRY.reload(MODELS_DIR)
+    _reload_run()
     logger.info("startup.artifacts.load.done", models_dir=MODELS_DIR)
 except Exception as e:
     logger.error("startup.artifacts.load.failed", models_dir=MODELS_DIR, error=str(e), exc_info=True)
@@ -269,77 +239,58 @@ except Exception as e:
 
 @app.get("/health")
 async def health():
+    """Liveness plus the one fact that decides whether a prediction can be served: which
+    run is loaded, how far its ratings go, and whether they are fresh enough (H-11, H-16)."""
     logger.info("health.check.start")
-    return build_health_response(MODELS_DIR)
+    status = xi_service.status()
+    return {
+        "status": "ok",
+        "models_dir": MODELS_DIR,
+        "loaded": status.loaded,
+        "run_id": status.run_id,
+        "loaded_xi_formats": status.formats,
+        "loaded_performance_formats": status.performance_formats,
+        "ratings": None if status.ratings is None else status.ratings.model_dump(),
+        "error": status.error,
+    }
 
 
 @app.get("/artifacts/status")
 async def artifacts_status():
-    """Report presence and loaded state of artifacts per format and legacy."""
-    return build_artifacts_status(MODELS_DIR)
+    """Every run on disk, which one `current` points at, and which one is loaded.
 
-
-@app.get("/model-metadata")
-async def model_metadata():
-    """Return the win model's metadata: feature order, output, artifact naming."""
-    try:
-        return get_model_metadata()
-    except Exception as e:
-        logger.exception("model_metadata.error", error=str(e))
-        raise HTTPException(status_code=500, detail={"code": "METADATA_ERROR", "message": str(e)}) from e
-
-
-@app.get("/model-stats")
-async def model_stats():
-    """Return details of trained ML models: name, format, tuned params, algorithm, accuracy, size, modified."""
-    global _model_stats_cache
-    try:
-        if MODEL_STATS_CACHE_TTL > 0 and _model_stats_cache is not None:
-            ts, payload = _model_stats_cache
-            if (time.time() - ts) <= MODEL_STATS_CACHE_TTL:
-                return payload
-        result = build_model_stats(MODELS_DIR)
-        if MODEL_STATS_CACHE_TTL > 0:
-            _model_stats_cache = (time.time(), result)
-        return result
-    except Exception as e:
-        logger.exception("model_stats.error", error=str(e))
-        raise HTTPException(status_code=500, detail={"code": "MODEL_STATS_ERROR", "message": str(e)}) from e
-
-
-@app.post("/predict/win", response_model=List[WinPrediction])
-async def predict_win(features: List[WinFeatures]):
-    if len(features) > MAX_PREDICT_BATCH_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=error_payload(
-                code="BATCH_TOO_LARGE",
-                message=f"win batch of {len(features)} exceeds the limit of {MAX_PREDICT_BATCH_SIZE}",
-                hint="Split the request, or raise MAX_PREDICT_BATCH_SIZE.",
-            ),
-        )
-    return run_win_prediction(features)
-
-
-@app.post("/predict/win-enhanced", response_model=WinPrediction)
-async def predict_win_enhanced(request: WinFeaturesEnhanced):
-    """Enhanced win prediction using per-player features with on-the-fly aggregation.
-
-    Accepts per-player feature maps for both teams and computes distribution
-    statistics (mean, std, max, min, top3_mean) and derived matchup features
-    before running the win model.
+    It reports runs rather than a formats-by-model-kind matrix because a run is what an
+    artifact belongs to now (H-16). A run that was refused appears here with the reason
+    (D-6): an empty panel and a refused artifact set look the same otherwise, and only
+    one of them is something an operator has to act on.
     """
-    return run_win_prediction_enhanced(
-        fmt=request.format or "",
-        match_context=request.to_match_context_dict(),
-        team1_player_features=request.team1_player_features,
-        team2_player_features=request.team2_player_features,
-    )
+    status = xi_service.status()
+    current = runs.read_current(MODELS_DIR)
+    listing = runs.list_runs(MODELS_DIR)
+    for entry in listing:
+        entry["current"] = entry.get("run_id") == current
+        entry["loaded"] = entry.get("run_id") == status.run_id
+    return {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "root": MODELS_DIR,
+        "reachable": True,
+        "current_run": current,
+        "loaded_run": status.run_id,
+        "ratings_through": status.ratings_through,
+        "ratings": None if status.ratings is None else status.ratings.model_dump(),
+        "error": status.error,
+        "runs": listing,
+    }
 
 
 @app.post("/admin/reload")
-async def admin_reload(request: Request):
-    """Rescan the models directory and reload artifacts."""
+async def admin_reload(request: Request, run: str = ""):
+    """Point `current` at a run and load it -- the `reload` pipeline step.
+
+    ``?run=<id>`` names the run, which is how an operator swaps between two runs. With
+    no ``run`` it loads whichever run `current` names, and if nothing does, the newest
+    one -- so `retrain` followed by `reload` serves the run just built.
+    """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.reload.rejected", reason="disabled")
         raise HTTPException(
@@ -351,17 +302,41 @@ async def admin_reload(request: Request):
             ),
         )
     _verify_admin_api_key(request)
-    logger.info("admin.reload.start", models_dir=MODELS_DIR)
+    run_id = (run or "").strip() or None
+    logger.info("admin.reload.start", models_dir=MODELS_DIR, run_id=run_id)
     try:
-        summary = _reload_artifacts()
-        logger.info("admin.reload.success", models_dir=MODELS_DIR, summary=summary)
-        return {"status": "reloaded", **summary}
+        summary = _reload_run(run_id)
+    except RunArtifactsInvalid as e:
+        # A named run that is not one, or whose arrays this code cannot serve (D-6).
+        # 409 rather than 500: nothing is broken, the request named something unusable.
+        logger.error("admin.reload.refused", models_dir=MODELS_DIR, run_id=run_id, error=str(e))
+        raise HTTPException(
+            status_code=409,
+            detail=_error_payload(
+                code="RUN_ARTIFACTS_INVALID",
+                message=str(e),
+                hint="run the retrain step to produce a run this code wrote, then reload",
+            ),
+        ) from e
     except Exception as e:
-        logger.error("admin.reload.failed", models_dir=MODELS_DIR, error=str(e), exc_info=True)
+        logger.error("admin.reload.failed", models_dir=MODELS_DIR, run_id=run_id, error=str(e), exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=_error_payload(code="RELOAD_FAILED", message="Artifact reload failed", hint=str(e)),
         ) from e
+    if summary.get("error"):
+        # The run was refused on load rather than by a raised exception: the registry
+        # keeps serving whatever it had, and the refusal is the answer.
+        raise HTTPException(
+            status_code=409,
+            detail=_error_payload(
+                code="RUN_ARTIFACTS_INVALID",
+                message=summary["error"],
+                hint="run the retrain step to produce a run this code wrote, then reload",
+            ),
+        )
+    logger.info("admin.reload.success", models_dir=MODELS_DIR, run_id=summary.get("run_id"))
+    return {"status": "reloaded", **summary}
 
 
 def _require_admin_train(step: str, fail_message: str):
@@ -393,20 +368,6 @@ def _require_admin_train(step: str, fail_message: str):
                         hint="Check server logs with the provided request_id for details.",
                     ),
                 ) from e
-            # Training just wrote new artifact files. Without this the process keeps serving
-            # the objects it loaded at startup, so a COMPLETED run never reaches inference.
-            # A reload failure does not fail the run: the artifacts are on disk either way.
-            try:
-                summary = await asyncio.to_thread(_reload_artifacts)
-                logger.info("admin.train.artifacts_reloaded", step=step, summary=summary)
-            except Exception as e:
-                logger.error(
-                    "admin.train.artifacts_reload_failed",
-                    step=step,
-                    models_dir=MODELS_DIR,
-                    error=str(e),
-                    exc_info=True,
-                )
             return response
 
         return wrapped
@@ -414,62 +375,36 @@ def _require_admin_train(step: str, fail_message: str):
     return decorator
 
 
-@app.post("/admin/train/win")
-@_require_admin_train("win", "Win training failed")
-async def admin_train_win(request: Request, cutoff: str = ""):
-    """Run win model training. Requires cutoff."""
+@app.post("/admin/train/retrain")
+@_require_admin_train("retrain", "Retrain failed")
+async def admin_train_retrain(request: Request, cutoff: str = ""):
+    """Build one run: rating pass, XI win models, performance models, report, manifest.
+
+    It publishes nothing. `reload` moves `current`, so a retrain that turns out badly
+    leaves the run before it exactly where it was.
+    """
     cutoff = (cutoff or "").strip()
     if not cutoff:
         raise HTTPException(
             status_code=400,
             detail=_error_payload(
                 code="CUTOFF_REQUIRED",
-                message="Win training requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
+                message="Retrain requires cutoff",
+                hint="Pass query param cutoff (RFC3339 or YYYY-MM-DD), e.g. ?cutoff=2025-09-01",
             ),
         )
     async with _get_training_semaphore():
-        await asyncio.to_thread(training_orchestrator.run_win_training, cutoff, _settings.go_app_url, logger)
-    return training_orchestrator.train_response("win")
+        await asyncio.to_thread(training_orchestrator.run_retrain, cutoff, MODELS_DIR, logger)
+    return training_orchestrator.train_response("retrain")
 
 
-@app.post("/admin/train/auto-tune")
-@_require_admin_train("auto-tune", "Auto-tune failed")
-async def admin_train_auto_tune(
-    request: Request,
-    cutoff: str = "",
-    model: str = "all",
-    format: str = "",
-    all_formats: str = "",
-    rescreen: str = "",
-    algorithms: str = "",
-):
-    """Run auto-tune hyperparameter search."""
-    cutoff = (cutoff or "").strip()
-    if not cutoff:
-        raise HTTPException(
-            status_code=400,
-            detail=_error_payload(
-                code="CUTOFF_REQUIRED",
-                message="Auto-tune requires cutoff",
-                hint="Pass query param cutoff (RFC3339), e.g. ?cutoff=2025-01-01T00:00:00Z",
-            ),
-        )
-    use_all_formats = (all_formats or "").strip().lower() in ("1", "true", "yes")
-    do_rescreen = (rescreen or "").strip().lower() in ("1", "true", "yes")
+@app.post("/admin/train/evaluate")
+@_require_admin_train("evaluate", "Evaluate failed")
+async def admin_train_evaluate(request: Request, cutoff: str = ""):
+    """Run L4 and write its report. Touches no artifact `current` points at."""
     async with _get_training_semaphore():
-        await asyncio.to_thread(
-            training_orchestrator.run_auto_tune,
-            cutoff,
-            _settings.go_app_url,
-            model,
-            use_all_formats,
-            (format or "").strip(),
-            do_rescreen,
-            (algorithms or "").strip(),
-            logger,
-        )
-    return {"status": "ok", "step": "auto-tune"}
+        await asyncio.to_thread(training_orchestrator.run_evaluate, (cutoff or "").strip(), MODELS_DIR, logger)
+    return training_orchestrator.train_response("evaluate")
 
 
 @app.get("/admin/train/progress")
@@ -487,17 +422,6 @@ async def admin_train_progress(request: Request, step: str = "", run_id: str = "
     return training_orchestrator.get_step_progress(step, run_id)
 
 
-@app.get("/admin/train/auto-tune/progress")
-async def admin_train_auto_tune_progress(request: Request):
-    """Return current auto-tune progress (if running).
-
-    The auto-tune view of `/admin/train/progress`. It delegates rather than
-    duplicating; it survives because it is a released endpoint.
-    """
-    _verify_admin_api_key(request)
-    return training_orchestrator.get_auto_tune_progress()
-
-
 # ---------------------------------------------------------------------------
 # XI-responsive win model (S-10): every input is a function of the two elevens.
 # ---------------------------------------------------------------------------
@@ -505,7 +429,9 @@ async def admin_train_auto_tune_progress(request: Request):
 
 @app.get("/xi/status", response_model=XiStatusResponse)
 async def xi_status():
-    """Which formats have an XI win model loaded, how far the ratings run, and the last training report."""
+    """Which run is loaded and what its manifest says (H-16), which formats it serves, how
+    far its ratings run and whether they are fresh enough to answer with (H-11), and the
+    run's own training report."""
     return xi_service.status()
 
 

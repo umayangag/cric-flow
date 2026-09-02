@@ -33,16 +33,3 @@ func BuildFieldingSection(ctx context.Context, probe DBProbe) map[string]any {
 	}
 	return out
 }
-
-// BuildWeatherSection reports availability stats for weather data using DBProbe.
-func BuildWeatherSection(ctx context.Context, probe DBProbe) map[string]any {
-	out := map[string]any{"available": false}
-	if probe == nil {
-		return out
-	}
-	if n, err := probe.Count(ctx, "weather_data"); err == nil {
-		out["rows"] = n
-		out["available"] = n > 0
-	}
-	return out
-}

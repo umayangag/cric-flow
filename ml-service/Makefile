@@ -7,17 +7,13 @@ PIP:=$(VENV)/bin/pip
 UVICORN:=$(VENV)/bin/uvicorn
 LINE_LENGTH?=120
 # Enforced by CI and make coverage-check. Keep aligned with .github/workflows/ml-service-ci.yml COV_MIN.
-# This is the figure CI measures, and CI installs requirements-serve.txt. A local venv built
-# from requirements.in also has shap, so tests/test_shap_explanations.py runs instead of
-# skipping and `make coverage` reports ~0.9 points higher here than the gate will. Ratchet
-# from the CI number, not the local one.
+# One requirements set now serves both CI and a local venv (P-6 removed the optional
+# pycaret / autogluon / shap extras), so the local figure and the gate's are the same run.
 COV_MIN?=86
-# CI sets REQUIREMENTS_FILE=requirements-serve.txt so venv gets the serving deps (no pycaret/autogluon/shap).
 REQUIREMENTS_FILE?=requirements.txt
 
-.PHONY: all venv install compile-requirements compile-requirements-serve compile-requirements-serve-docker run train-batting train-bowling train-fielding train-extras train-win train-models
-.PHONY: auto-tune walk-forward train-combination-meta validate-exports validate-exports-infer
-.PHONY: docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
+.PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload
+.PHONY: xi-parity docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
@@ -39,15 +35,6 @@ compile-requirements: venv
 compile-requirements-docker:
 	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements.in -o requirements.txt"
 
-# Regenerate requirements-serve.txt from requirements-serve.in (serving + CI deps).
-compile-requirements-serve: venv
-	$(PIP) install --upgrade pip pip-tools
-	$(VENV)/bin/pip-compile -U --strip-extras requirements-serve.in -o requirements-serve.txt
-
-# Same as above but with Python 3.12 (matches CI runner).
-compile-requirements-serve-docker:
-	docker run --rm -v $(CURDIR):/app -w /app python:3.12-slim sh -c "pip install pip-tools && pip-compile -U --strip-extras requirements-serve.in -o requirements-serve.txt"
-
 # Initialize local Python development environment (venv + deps + dev tools)
 init: install
 	@echo "Setting up Python dev environment in $(VENV)..."
@@ -58,18 +45,17 @@ init: install
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Windowed-form win model (P-6 removes it). Set GO_APP_URL and CUTOFF, or pass --csv.
-train-win:
-	$(PY) -m ml.train_win
-
-train-xi: venv
-	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make train-xi CUTOFF=2025-09-01" && exit 1)
-	$(PY) -m ml.xi.train --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
+# The whole model build, in one step: rating pass -> XI win models (with the grid) ->
+# performance models -> report -> run manifest, written into runs/<run_id>/. It publishes
+# nothing; `make reload` moves `current`.
+retrain: venv
+	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make retrain CUTOFF=2025-09-01" && exit 1)
+	$(PY) -m ml.xi.retrain --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
 
 # L4 evaluation harness (H-19): rolling-origin walk-forward + the locked window, selection
 # and performance metrics, the leak canary, and the train/serve parity check (H-8). Writes
-# one JSON report (xi_evaluate_report.json). Fails if serving parity does not hold.
-xi-evaluate: venv
+# one JSON report (xi_evaluate_report.json) and touches no artifact `current` points at.
+evaluate: venv
 	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,)
 
 # Check the database against the Cricsheet archive: both rating sources are supposed to
@@ -79,61 +65,13 @@ xi-parity: venv
 	@test -n "$(CRICSHEET_DIR)" || (echo "CRICSHEET_DIR is required, e.g. make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet" && exit 1)
 	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)"
 
-# Auto-tune the win model: find best algorithm and hyperparameters (see docs/ml-and-training.md).
-# Usage: make auto-tune FORMAT=T20; or make auto-tune ALL_FORMATS=1
-MODEL ?= win
-FORMAT ?=
-ALL_FORMATS ?=
-CUTOFF ?= 2024-01-01T00:00:00Z
-ALGORITHMS ?=
-VALIDATION_METHOD ?=
-FAST ?=
-NO_PYCARET ?=
-RESCREEN ?=
-AUTO_TUNE_ARGS := --model $(MODEL)
-ifneq ($(FORMAT),)
-AUTO_TUNE_ARGS += --format $(FORMAT)
-endif
-ifeq ($(ALL_FORMATS),1)
-AUTO_TUNE_ARGS += --all-formats
-endif
-ifneq ($(ALGORITHMS),)
-AUTO_TUNE_ARGS += --algorithms "$(ALGORITHMS)"
-endif
-ifneq ($(VALIDATION_METHOD),)
-AUTO_TUNE_ARGS += --validation-method $(VALIDATION_METHOD)
-endif
-ifeq ($(PARALLEL),1)
-AUTO_TUNE_ARGS += --parallel
-endif
-ifeq ($(FAST),1)
-AUTO_TUNE_ARGS += --fast
-endif
-ifeq ($(NO_PYCARET),1)
-AUTO_TUNE_ARGS += --no-pycaret
-endif
-ifeq ($(NO_AUTOGLUON),1)
-AUTO_TUNE_ARGS += --no-autogluon
-endif
-ifeq ($(RESCREEN),1)
-AUTO_TUNE_ARGS += --rescreen
-endif
-auto-tune: venv
-	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
-
-# Held-out discrimination report for the win model (AUC, Brier, reliability).
-# Usage: make win-discrimination TRAIN_CUTOFF=2024-01-01T00:00:00Z [EVAL_CUTOFF=...]
-TRAIN_CUTOFF ?=
-EVAL_CUTOFF ?=
-win-discrimination: venv
-	@test -n "$(TRAIN_CUTOFF)" || (echo "TRAIN_CUTOFF is required (the cutoff the win model was trained to)" && exit 1)
-	$(PY) -m ml.win_discrimination --train-cutoff "$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),--eval-cutoff "$(EVAL_CUTOFF)",)
-
-validate-exports:
-	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)
-
-validate-exports-infer:
-	(cd ml && ../$(PY) validate_exports.py --all-formats --schema inference)
+# Point `current` at a run and load it into the running service (the `reload` step).
+# RUN names one; with none, the run `current` already names, or the newest one.
+API_KEY ?= dev-local-key
+ML_URL ?= http://localhost:8000
+RUN ?=
+reload:
+	curl -fsS -X POST -H "X-API-Key: $(API_KEY)" "$(ML_URL)/admin/reload$(if $(RUN),?run=$(RUN),)" | tee /dev/stderr >/dev/null
 
 # Format Python code with ruff (format + lint fix)
 fmt: venv _install_ruff
@@ -164,11 +102,11 @@ _install_ruff: venv
 	@$(PIP) show ruff >/dev/null 2>&1 || { echo "Installing ruff into $(VENV)..."; $(PIP) install ruff >/dev/null; }
 
 # --- CI convenience targets ---
-# Install deps for CI (lint + tests). Uses requirements-serve.txt, the same set the serve image ships.
-# Regenerate with: make compile-requirements-serve-docker
+# Install deps for CI (lint + tests). The same set the image ships.
+# Regenerate with: make compile-requirements-docker
 ci-setup:
 	python -m pip install --upgrade pip
-	python -m pip install -r requirements-serve.txt
+	python -m pip install -r requirements.txt
 	python -m pip install ruff pytest pytest-cov httpx
 
 # Helper to ensure pytest and pytest-cov are available in the project venv
@@ -206,7 +144,7 @@ coverage-check: _install_test_tools
 ci: fmt-check lint-check check-reachability coverage coverage-check
 
 
-# Build from repo root so configs/feature_vectors.json is available (app/feature_config.py).
+# Build from repo root: the Dockerfile's context is the repo, not ml-service.
 docker-build:
 	docker build -t $(APP_NAME):latest -f Dockerfile ..
 
@@ -229,23 +167,17 @@ help:
 	@echo
 	@echo "[Run & Train]"
 	@echo "  run                Start FastAPI with uvicorn (reload)"
-	@echo "  train-batting      Train batting model (from exported CSVs)"
-	@echo "  train-bowling      Train bowling model (from exported CSVs)"
-	@echo "  train-fielding    Train fielding (GO_APP_URL + CUTOFF or FIELDING_CSV)"
-	@echo "  train-extras      Train extras model (GO_APP_URL + CUTOFF or EXTRAS_CSV)"
-	@echo "  train-win         Train win model (GO_APP_URL + CUTOFF or WIN_CSV)"
-	@echo "  train-models      Train all (batting, bowling, fielding, extras, win)"
-	@echo "  auto-tune         Auto-tune: best algorithm + hyperparams (MODEL=, FORMAT=, ALL_FORMATS=1)"
+	@echo "  retrain            Build one run (CUTOFF=YYYY-MM-DD); writes runs/<id>/, publishes nothing"
+	@echo "  evaluate           Run L4 and write its report; touches no artifact current points at"
+	@echo "  reload             Point current at a run and load it (RUN=<id> optional)"
 	@echo ""
-	@echo "  Pipeline: precompute (go-app) → export-dataset → train-* → run (or restart ML service)."
+	@echo "  Pipeline: import (go-app) → retrain → reload."
 	@echo
 	@echo "[Validate & Test]"
-	@echo "  validate-exports   Validate training exports (all formats, golden)"
-	@echo "  validate-exports-infer  Validate inference schemas"
+	@echo "  xi-parity          Compare both rating sources (CRICSHEET_DIR=...)"
 	@echo "  test               Run pytest"
 	@echo "  coverage           Run pytest with coverage (xml + term)"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"
-	@echo "  win-discrimination Held-out AUC/Brier report for the win model (TRAIN_CUTOFF=...)"
 	@echo "  ci                 Run fmt-check, lint-check, check-reachability, and coverage gates"
 	@echo
 	@echo "[Quality]"

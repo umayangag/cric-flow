@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from datetime import date
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -19,6 +20,7 @@ from app.models.xi import (
     PerformancePredictResponse,
     PerformanceRange,
     PlayerPerformance,
+    RatingsFreshness,
     SimulatedMargin,
     SimulatedPlayer,
     SimulatedScorecardLine,
@@ -35,7 +37,8 @@ from app.models.xi import (
     XiWinRequest,
     XiWinResponse,
 )
-from ml.xi import simulator
+from ml.config import get_ratings_max_age_days
+from ml.xi import runs, simulator
 from ml.xi.asof import AsOfServer
 from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
 from ml.xi.optimizer import (
@@ -46,7 +49,8 @@ from ml.xi.optimizer import (
     select_xi_by_ratings,
 )
 from ml.xi.rows import player_feature_rows, serving_match
-from ml.xi.store import RATINGS_ARTIFACT, XiStore
+from ml.xi.runs import RunArtifactsInvalid
+from ml.xi.store import XiStore
 from ml.xi.train import REPORT_NAME
 
 logger = get_struct_logger()
@@ -63,9 +67,33 @@ def _postgres_as_of_source():
 class XiUnavailable(Exception):
     """Raised when no XI artifacts are loaded; routes map it to 503."""
 
-    def __init__(self, message: str, hint: str = "run `make train-xi` and POST /admin/reload"):
+    def __init__(
+        self,
+        message: str,
+        hint: str = "run `make retrain` then `make reload`",
+        code: str = "XI_MODEL_UNAVAILABLE",
+    ):
         super().__init__(message)
-        self.payload = error_payload(code="XI_MODEL_UNAVAILABLE", message=message, hint=hint)
+        self.payload = error_payload(code=code, message=message, hint=hint)
+
+
+class RatingsStale(XiUnavailable):
+    """H-11: the ratings are older than the configured limit, so a live prediction is
+    refused rather than answered.
+
+    It is a refusal, not a warning, because the alternative is the failure this plan
+    keeps meeting: a number that looks like every other number and is quietly describing
+    a squad from a month ago. The code is machine-readable so an operator's tooling can
+    act on it without parsing prose, and the message names the step that fixes it.
+    """
+
+    def __init__(self, freshness: RatingsFreshness):
+        super().__init__(
+            f"ratings run through {freshness.ratings_through} "
+            f"({freshness.age_days} days old, limit {freshness.max_age_days})",
+            hint="run the retrain step, then reload -- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate",
+            code="RATINGS_STALE",
+        )
 
 
 class XiRegistry:
@@ -75,32 +103,62 @@ class XiRegistry:
         self._store: Optional[XiStore] = None
         self._report: Optional[dict] = None
         self._models_dir: Optional[str] = None
+        self._run_dir: Optional[str] = None
+        self._error: Optional[str] = None
         self._lock = threading.Lock()
         self._as_of_server: Optional[AsOfServer] = None
         # A seam, so tests can serve the as-of pass from an in-memory source.
         self.as_of_source_factory = _postgres_as_of_source
 
-    def reload(self, models_dir: str) -> dict:
+    def reload(self, models_dir: str, run_id: Optional[str] = None) -> dict:
+        """Load a run and serve it. ``run_id`` names one; without it, whichever run
+        ``current`` points at, and if nothing does, the newest run -- which is then
+        published, so `retrain` followed by `reload` serves the run just built without
+        either step having to pass an id to the other.
+
+        A run that cannot be served is *refused*, and the reason is kept and reported
+        (D-6): loading is where an operator can still be told to retrain, and an
+        exception swallowed here becomes an IndexError in a prediction an hour later.
+        """
         with self._lock:
-            self._store, self._report = None, None
+            self._store, self._report, self._error = None, None, None
             self._as_of_server = None
-            # Remembered even when there are no artifacts to load: L4's report lives in the
-            # same directory, and reading it from anywhere else is how the two drift.
+            # Remembered even when there is nothing to load: L4's report lives under the
+            # same root, and reading it from anywhere else is how the two drift.
             self._models_dir = models_dir
-            if not os.path.exists(os.path.join(models_dir, RATINGS_ARTIFACT)):
-                logger.info("xi.artifacts.absent", models_dir=models_dir)
+            self._run_dir = None
+
+            target = run_id or runs.read_current(models_dir) or runs.newest_run_id(models_dir)
+            if target is None:
+                logger.info("xi.runs.absent", models_dir=models_dir)
                 return self.status().model_dump()
+            directory = runs.run_dir(models_dir, target)
             try:
-                self._store = XiStore.load(models_dir)
-            except Exception as e:  # a corrupt artifact must not take the service down
-                logger.error("xi.artifacts.load_failed", models_dir=models_dir, error=str(e), exc_info=True)
+                store = XiStore.load(directory)
+                runs.set_current(models_dir, target)
+            except RunArtifactsInvalid as e:
+                # The refusal is the answer, not a failure to report one.
+                self._error = str(e)
+                logger.error("xi.artifacts.refused", run_id=target, models_dir=models_dir, error=str(e))
                 return self.status().model_dump()
-            report_path = os.path.join(models_dir, REPORT_NAME)
+            except Exception as e:  # a corrupt artifact must not take the service down
+                self._error = f"run {target}: {e}"
+                logger.error(
+                    "xi.artifacts.load_failed", run_id=target, directory=directory, error=str(e), exc_info=True
+                )
+                return self.status().model_dump()
+
+            self._store = store
+            self._run_dir = directory
+            report_path = os.path.join(directory, REPORT_NAME)
             if os.path.exists(report_path):
                 with open(report_path) as fh:
                     self._report = json.load(fh)
             logger.info(
-                "xi.artifacts.loaded", formats=sorted(self._store.models), players=len(self._store.state.players)
+                "xi.artifacts.loaded",
+                run_id=target,
+                formats=sorted(store.models),
+                players=len(store.state.players),
             )
             return self.status().model_dump()
 
@@ -126,7 +184,16 @@ class XiRegistry:
         a backtest walking matches in date order pays one sweep of the source in total.
         """
         store = self.store(format_code)
-        if as_of is None or store.covers_as_of(as_of):
+        if as_of is None:
+            # H-11 applies to live requests only. A backtest names the date it wants
+            # served and gets exactly that, so "how old is today's state?" is not a
+            # question about it -- refusing one would break the harness for a reason
+            # that does not describe it.
+            freshness = self.freshness()
+            if not freshness.fresh:
+                raise RatingsStale(freshness)
+            return store
+        if store.covers_as_of(as_of):
             return store
         with self._lock:
             if self._as_of_server is None:
@@ -139,13 +206,48 @@ class XiRegistry:
 
     @property
     def models_dir(self) -> Optional[str]:
-        """The directory the artifacts were last loaded from. ``None`` before the first reload."""
+        """The artifacts root. ``None`` before the first reload."""
         return self._models_dir
+
+    @property
+    def run_dir(self) -> Optional[str]:
+        """The loaded run's directory -- where its report lives. ``None`` when nothing loaded."""
+        return self._run_dir
+
+    def freshness(self, today: Optional[date] = None) -> RatingsFreshness:
+        """H-11's verdict on the loaded state.
+
+        With nothing loaded there is no state to be stale, so the verdict is "not fresh"
+        with no age: the request will be refused for the other reason, and inventing an
+        age would be inventing a fact.
+        """
+        limit = get_ratings_max_age_days()
+        through = self._store.state.last_date if self._store is not None else None
+        if through is None:
+            return RatingsFreshness(fresh=False, age_days=None, max_age_days=limit, ratings_through=None)
+        age = ((today or date.today()) - through).days
+        fresh = limit <= 0 or age <= limit
+        return RatingsFreshness(
+            fresh=fresh,
+            age_days=age,
+            max_age_days=limit,
+            ratings_through=through.isoformat(),
+            code=None if fresh else "RATINGS_STALE",
+        )
 
     def status(self) -> XiStatusResponse:
         s = self._store
         if s is None:
-            return XiStatusResponse(loaded=False, formats=[], players=0, ratings_through=None, report=None)
+            return XiStatusResponse(
+                loaded=False,
+                formats=[],
+                players=0,
+                ratings_through=None,
+                report=None,
+                error=self._error,
+                ratings=self.freshness(),
+            )
+        manifest = s.manifest
         return XiStatusResponse(
             loaded=True,
             formats=sorted(s.models),
@@ -153,6 +255,9 @@ class XiRegistry:
             players=len(s.state.players),
             ratings_through=s.state.last_date.isoformat() if s.state.last_date else None,
             report=self._report,
+            run_id=None if manifest is None else manifest.run_id,
+            manifest=None if manifest is None else manifest.summary(),
+            ratings=self.freshness(),
         )
 
 

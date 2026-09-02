@@ -46,18 +46,14 @@ SOURCE_ROOTS = ("app", "ml")
 # entrypoint listed here no longer exists on disk.
 MODULE_ENTRYPOINTS = (
     "app.main",
-    "ml.train_win",
-    "ml.auto_tune",
-    "ml.win_discrimination",
-    "ml.xi.train",
+    "ml.xi.retrain",
 )
 
 # Run as scripts rather than imported, so no module imports them -- but they and
 # everything they pull in are live. Value is the command that runs them.
 SCRIPT_ENTRYPOINTS: Dict[str, str] = {
-    "ml.validate_exports": "make -C ml-service validate-exports",
     "ml.xi.parity": "make xi-parity",
-    "ml.xi.evaluate": "make xi-evaluate",
+    "ml.xi.evaluate": "make evaluate",
 }
 
 ENTRYPOINTS = MODULE_ENTRYPOINTS + tuple(SCRIPT_ENTRYPOINTS)

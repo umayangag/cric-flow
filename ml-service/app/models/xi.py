@@ -112,6 +112,24 @@ class XiWinResponse(BaseModel):
     )
 
 
+class RatingsFreshness(BaseModel):
+    """H-11's verdict, not just the date.
+
+    ``/xi/status`` used to report ``ratings_through`` and leave the reader to work out
+    whether that was recent enough. The rule is a number in config, so the service is the
+    one that should apply it -- and the same verdict is what a prediction request is
+    refused on, so there is one answer rather than two that can disagree."""
+
+    fresh: bool
+    age_days: Optional[int] = None
+    max_age_days: int
+    ratings_through: Optional[str] = None
+    code: Optional[str] = Field(
+        default=None,
+        description="RATINGS_STALE when a live prediction would be refused; absent when it would not",
+    )
+
+
 class XiStatusResponse(BaseModel):
     loaded: bool
     formats: List[str]
@@ -119,6 +137,15 @@ class XiStatusResponse(BaseModel):
     players: int
     ratings_through: Optional[str]
     report: Optional[dict] = None
+    # Which run these artifacts came from and what it recorded about itself (H-16).
+    # None when nothing is loaded, or when what is on disk was refused.
+    run_id: Optional[str] = None
+    manifest: Optional[dict] = None
+    # Why nothing is loaded, when something is on disk but could not be served (D-6).
+    # An empty panel and a refused artifact set look the same otherwise, and only one of
+    # them is something an operator has to act on.
+    error: Optional[str] = None
+    ratings: Optional[RatingsFreshness] = None
 
 
 class PerformancePredictRequest(XiWinRequest):

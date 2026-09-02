@@ -1,8 +1,9 @@
-"""Train the XI-responsive win models and report held-out discrimination.
+"""Fit the XI-responsive win models and the performance models, and report held-out
+discrimination.
 
-Usage (from ml-service/):
-  python -m ml.xi.train --cricsheet-dir data/cricsheet --cutoff 2025-09-01
-  python -m ml.xi.train --postgres --cutoff 2025-09-01
+This is the model-fitting half of the ``retrain`` step; ``ml.xi.retrain`` is the command,
+and it is what decides where the artifacts go (one run directory) and what the run is
+called. Nothing here knows about runs.
 
 Per format two models are fitted on rows before the cutoff and scored on rows at or after it:
 
@@ -24,13 +25,10 @@ the career-mean baselines -- never pooled (H-12). Its artifact is ``xi_perf_<FOR
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
-import sys
-from datetime import date
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -42,7 +40,7 @@ from sklearn.preprocessing import StandardScaler
 
 from ml.xi import contract as C
 from ml.xi import perf_baselines, perf_harness, quality
-from ml.xi.builder import BuildResult, build
+from ml.xi.builder import BuildResult
 from ml.xi.performance import default_spec, fit_performance
 from ml.xi.store import FormatModels, save_models, save_performance, save_ratings
 
@@ -55,16 +53,80 @@ def make_objective_model() -> object:
     return make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=3000))
 
 
-def make_display_model(columns: List[str], seed: int) -> object:
+# The whole hyperparameter search this pipeline has (§9.3): three points for the display
+# model, chosen inside the training rows and recorded in the run manifest.
+#
+# It replaces the Optuna / PyCaret / AutoGluon stack, which was removed because the model
+# class was measured twice not to be the constraint. The first entry is what the display
+# model has always been fitted with, and it is first on purpose -- see ``choose_display_params``.
+DISPLAY_GRID: Tuple[Dict[str, float], ...] = (
+    {"max_depth": 3, "learning_rate": 0.04, "max_iter": 300},
+    {"max_depth": 3, "learning_rate": 0.08, "max_iter": 200},
+    {"max_depth": 4, "learning_rate": 0.04, "max_iter": 300},
+)
+
+# A candidate has to beat the incumbent by more than this on the inner validation split
+# before it displaces it. H-14's rule, applied to a choice rather than a report:
+# differences under the noise floor are not evidence, and a grid that reshuffles the
+# model on 0.001 of AUC every release is a source of drift, not of quality.
+DISPLAY_GRID_MARGIN = 0.002
+
+# The last fraction of the training rows, by date, that the grid is scored on. It is
+# inside the training window and strictly before the holdout, so choosing a
+# hyperparameter cannot see the rows the run is scored on (H-19: the locked window is
+# never used for a choice).
+GRID_VALIDATION_FRACTION = 0.2
+
+
+def make_display_model(columns: List[str], seed: int, params: Optional[Dict[str, float]] = None) -> object:
+    settings = dict(DISPLAY_GRID[0] if params is None else params)
     return HistGradientBoostingClassifier(
-        max_depth=3,
-        learning_rate=0.04,
-        max_iter=300,
+        max_depth=int(settings["max_depth"]),
+        learning_rate=float(settings["learning_rate"]),
+        max_iter=int(settings["max_iter"]),
         l2_regularization=1.0,
         min_samples_leaf=40,
         random_state=seed,
         monotonic_cst=C.monotone_directions(columns),
     )
+
+
+def choose_display_params(train: pd.DataFrame, seed: int = 0) -> Dict:
+    """Pick the display model's hyperparameters from ``DISPLAY_GRID``, inside the
+    training rows.
+
+    The split is temporal, not random: the rows a model is chosen on have to come after
+    the rows it was fitted on, or the choice is made under a leak the serving path never
+    enjoys. The incumbent (grid point 0) keeps its place unless a candidate beats it by
+    more than ``DISPLAY_GRID_MARGIN``, so an unresolvable difference leaves the model
+    where it is instead of moving it.
+
+    Returns the chosen params and the scores, which go into the run manifest -- "which
+    hyperparameters, and on what evidence" is exactly what the deleted tuning stack
+    recorded in a database table nobody could join back to an artifact.
+    """
+    ordered = train.sort_values("match_date")
+    split = int(len(ordered) * (1.0 - GRID_VALIDATION_FRACTION))
+    inner_train, inner_valid = ordered.iloc[:split], ordered.iloc[split:]
+    incumbent = dict(DISPLAY_GRID[0])
+    if len(inner_train) < 50 or len(inner_valid) < 20 or inner_valid[C.TARGET_COL].nunique() < 2:
+        return {"params": incumbent, "reason": "too few rows to choose on", "scores": []}
+
+    x_tr, y_tr = _xy(inner_train, C.DISPLAY_FEATURE_COLS)
+    x_va, y_va = _xy(inner_valid, C.DISPLAY_FEATURE_COLS)
+    scores = []
+    for candidate in DISPLAY_GRID:
+        model = make_display_model(C.DISPLAY_FEATURE_COLS, seed, candidate).fit(x_tr, y_tr)
+        scores.append({"params": dict(candidate), "auc": float(roc_auc_score(y_va, model.predict_proba(x_va)[:, 1]))})
+    baseline = scores[0]["auc"]
+    best = max(scores[1:], key=lambda s: s["auc"], default=None)
+    if best is not None and best["auc"] > baseline + DISPLAY_GRID_MARGIN:
+        return {"params": best["params"], "reason": "beat the incumbent on the inner split", "scores": scores}
+    return {
+        "params": incumbent,
+        "reason": f"no candidate beat the incumbent by more than {DISPLAY_GRID_MARGIN}",
+        "scores": scores,
+    }
 
 
 def _xy(frame: pd.DataFrame, cols: List[str]):
@@ -157,7 +219,9 @@ def train_format(
     x_obj_tr, y_tr = _xy(tr, C.XI_FEATURE_COLS)
     x_dis_tr, _ = _xy(tr, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model().fit(x_obj_tr, y_tr)
-    display_models = [make_display_model(C.DISPLAY_FEATURE_COLS, s).fit(x_dis_tr, y_tr) for s in seeds]
+    grid = choose_display_params(tr)
+    report["hyperparameters"] = grid
+    display_models = [make_display_model(C.DISPLAY_FEATURE_COLS, s, grid["params"]).fit(x_dis_tr, y_tr) for s in seeds]
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)
@@ -192,6 +256,7 @@ def train_format(
             "k_player_elo": C.K_PLAYER_ELO,
         },
         "gender_split_context": gender_split_context,
+        "hyperparameters": report.get("hyperparameters", {}),
         "report": report,
     }
     models = FormatModels(
@@ -235,7 +300,15 @@ def train_all(
     artifacts_dir: str,
     cutoff: pd.Timestamp,
     formats: Sequence[str] = C.FORMAT_CODES,
+    baseline_dir: Optional[str] = None,
 ) -> Dict:
+    """Fit and write every model for one run into ``artifacts_dir``, and return the report.
+
+    ``baseline_dir`` is where the data-quality baseline lives (H-15). It is separate from
+    the artifacts directory because the baseline is *across* runs -- the last accepted
+    counts -- while the artifacts belong to one; reading it from the run directory would
+    compare every run against nothing.
+    """
     os.makedirs(artifacts_dir, exist_ok=True)
     reports = []
     gender_split_context = result.state.gender_split_context
@@ -258,7 +331,7 @@ def train_all(
         _log_performance(fmt, report["performance"])
     save_ratings(result.state, artifacts_dir)
     # Read before anything is written: the baseline is the last accepted run's counts.
-    gate = quality.check(result.quality, quality.load_baseline(artifacts_dir))
+    gate = quality.check(result.quality, quality.load_baseline(baseline_dir or artifacts_dir))
     summary = {
         "cutoff": cutoff.date().isoformat(),
         "n_rows": int(len(result.frame)),
@@ -311,93 +384,3 @@ def _international_teams_from_config() -> List[str]:
                 return list(json.load(fh).get("formats", {}).get("international_teams", []))
     logger.warning("go-app config.json not found; T20 between international sides will not be classed as T20I")
     return []
-
-
-def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    src = p.add_mutually_exclusive_group(required=True)
-    src.add_argument("--cricsheet-dir", help="directory of Cricsheet JSON files")
-    src.add_argument("--postgres", action="store_true", help="read the go-app database (POSTGRES_* env vars)")
-    p.add_argument("--cutoff", required=True, help="YYYY-MM-DD; rows before it train, rows at/after it are the holdout")
-    p.add_argument("--out", default=None, help="artifacts directory (default: ml.config.default_artifacts_dir())")
-    p.add_argument("--formats", nargs="+", default=list(C.FORMAT_CODES))
-    p.add_argument("--frame-out", default=None, help="optional path to also write the training frame as CSV")
-    p.add_argument(
-        "--player-frame-out", default=None, help="optional path to also write the player-match frame as CSV (L1)"
-    )
-    p.add_argument(
-        "--gender-split-context",
-        action="store_true",
-        help="E7 (H-7): split the context baselines (runs/wickets per format x over) by gender",
-    )
-    p.add_argument(
-        "--accept-data-quality",
-        action="store_true",
-        help="record this run's data-quality counts as the baseline even if the gate failed (H-15)",
-    )
-    return p.parse_args(argv)
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    args = _parse_args(argv)
-    cutoff = pd.Timestamp(date.fromisoformat(args.cutoff))
-    if args.cricsheet_dir:
-        from ml.xi.sources import CricsheetJsonSource
-
-        source = CricsheetJsonSource(args.cricsheet_dir, _international_teams_from_config(), args.formats)
-    else:
-        from ml.db import get_db_connection
-        from ml.xi.sources import PostgresSource
-
-        source = PostgresSource(get_db_connection(), args.formats)
-    out_dir = args.out
-    if out_dir is None:
-        from ml.config import default_artifacts_dir
-
-        out_dir = default_artifacts_dir()
-    result = build(
-        source,
-        progress=lambda i: logger.info("rating pass: %d matches", i),
-        gender_split_context=args.gender_split_context,
-    )
-    if args.frame_out:
-        result.frame.to_csv(args.frame_out, index=False)
-    if args.player_frame_out:
-        result.player_frame.to_csv(args.player_frame_out, index=False)
-    summary = train_all(result, out_dir, cutoff, args.formats)
-    for r in summary["formats"]:
-        if "objective" in r:
-            logger.info(
-                "%-5s n_tr=%5d n_te=%4d | objective AUC %.3f (serving, toss unknown: %.3f) | display AUC %.3f±%.3f "
-                "(serving: %.3f) Brier %.3f | base Brier %.3f | best column %s %.3f",
-                r["format_code"], r["n_train"], r["n_holdout"], r["objective"]["auc"], r["objective_marginalised"]["auc"],
-                r["display"]["auc_mean"], r["display"]["auc_sd"], r["display_marginalised"]["auc"],
-                r["display_marginalised"]["brier"], r["base_rate_brier"],
-                r["best_single_column"]["column"], r["best_single_column"]["auc"],
-            )  # fmt: skip
-    failures = summary["data_quality_failures"]
-    if failures and not args.accept_data_quality:
-        # The artifacts and the report are written either way: an operator has to see what
-        # the run produced in order to judge whether the new counts are right. What a
-        # failure withholds is the baseline, so re-running cannot clear the gate on its own.
-        for failure in failures:
-            logger.error("data-quality gate: %s", failure)
-        logger.error(
-            "data-quality gate failed (%d %s). Artifacts and %s are written but the baseline is "
-            "unchanged, so a re-run will fail the same way. Review the counts; if they are right, "
-            "re-run with --accept-data-quality.",
-            len(failures),
-            "check" if len(failures) == 1 else "checks",
-            REPORT_NAME,
-        )
-        return 1
-    if failures:
-        logger.warning("data-quality gate failed but --accept-data-quality was given; recording the new baseline")
-    path = quality.save_baseline(out_dir, result.quality)
-    logger.info("data-quality gate passed; baseline at %s", path)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
