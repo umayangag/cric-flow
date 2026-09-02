@@ -28,42 +28,6 @@
       ]
     },
     {
-      "id": "train_batting",
-      "command": "train-batting",
-      "label": "Train Batting",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
-      "id": "train_bowling",
-      "command": "train-bowling",
-      "label": "Train Bowling",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
-      "id": "train_fielding",
-      "command": "train-fielding",
-      "label": "Train Fielding",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
-      "id": "train_extras",
-      "command": "train-extras",
-      "label": "Train Extras",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
       "id": "train_win",
       "command": "train-win",
       "label": "Train Win",
@@ -71,25 +35,6 @@
       "requires": [
         "export"
       ]
-    },
-    {
-      "id": "train_innings",
-      "command": "train-innings",
-      "label": "Train Innings",
-      "optional": false,
-      "requires": [
-        "export"
-      ]
-    },
-    {
-      "id": "train_combination_meta",
-      "command": "train-combination-meta",
-      "label": "Train Combination Meta",
-      "optional": true,
-      "requires": [
-        "train_win"
-      ],
-      "prerequisite": "Needs backtest_contributions.csv. Produce it with POST /api/backtest/export-contributions (Evaluate tab) before running this step, or it fails with CONTRIBUTIONS_CSV_MISSING."
     },
     {
       "id": "auto_tune",
@@ -129,6 +74,9 @@
     "use_latest_model"
   ],
   "rejected_body_params": [
-    "weather"
+    "weather",
+    "simulate",
+    "use_reconciled_scorecard",
+    "include_both_scorecards"
   ]
 }

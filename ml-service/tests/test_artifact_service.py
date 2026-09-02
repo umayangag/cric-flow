@@ -6,7 +6,6 @@ from app.artifact_service import (
     ARTIFACT_KIND_NAMES,
     build_artifacts_status,
     build_health_response,
-    find_artifact,
     find_per_format_artifact,
 )
 
@@ -14,7 +13,7 @@ from app.artifact_service import (
 def test_find_per_format_artifact_listdir_oserror_returns_none():
     """When listdir raises OSError, find_per_format_artifact returns None."""
     with patch("os.listdir", side_effect=OSError(2, "No such file")):
-        assert find_per_format_artifact("/nonexistent", "ODI", "batting") is None
+        assert find_per_format_artifact("/nonexistent", "ODI", "win") is None
         assert find_per_format_artifact("/nonexistent", "T20", "win") is None
 
 
@@ -23,61 +22,32 @@ def test_find_per_format_artifact_unknown_kind_returns_none(tmp_path):
     assert find_per_format_artifact(str(tmp_path), "ODI", "unknown") is None
 
 
-def test_find_per_format_artifact_missing_scaler_returns_none(tmp_path):
-    """When scaler file is missing, returns None (batting requires both scaler and model)."""
-    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"")
-    assert find_per_format_artifact(str(tmp_path), "ODI", "batting") is None
-
-
 def test_find_per_format_artifact_missing_model_returns_none(tmp_path):
     """When model file is missing, returns None."""
-    (tmp_path / "batting_scaler_ODI.joblib").write_bytes(b"")
-    assert find_per_format_artifact(str(tmp_path), "ODI", "batting") is None
+    assert find_per_format_artifact(str(tmp_path), "ODI", "win") is None
 
 
 def test_find_per_format_artifact_path_not_file_returns_none(tmp_path):
     """When path is a directory (not a file), returns None."""
-    (tmp_path / "batting_scaler_ODI.joblib").write_bytes(b"")
-    (tmp_path / "batting_model_ODI.joblib").mkdir()
-    assert find_per_format_artifact(str(tmp_path), "ODI", "batting") is None
+    (tmp_path / "win_model_ODI.joblib").mkdir()
+    assert find_per_format_artifact(str(tmp_path), "ODI", "win") is None
 
 
 def test_find_per_format_artifact_stat_raises_returns_none(tmp_path):
     """When os.stat raises, returns None."""
-    (tmp_path / "batting_scaler_ODI.joblib").write_bytes(b"")
-    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"")
+    (tmp_path / "win_model_ODI.joblib").write_bytes(b"")
     with patch("os.stat", side_effect=OSError(13, "Permission denied")):
-        assert find_per_format_artifact(str(tmp_path), "ODI", "batting") is None
+        assert find_per_format_artifact(str(tmp_path), "ODI", "win") is None
 
 
 def test_find_per_format_artifact_success_returns_path_and_mtime(tmp_path):
-    """When both scaler and model exist, returns (path, mtime)."""
-    (tmp_path / "batting_scaler_ODI.joblib").write_bytes(b"x")
-    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"y")
-    result = find_per_format_artifact(str(tmp_path), "ODI", "batting")
+    """When the model exists, returns (path, mtime). The win kind carries no scaler."""
+    (tmp_path / "win_model_ODI.joblib").write_bytes(b"y")
+    result = find_per_format_artifact(str(tmp_path), "ODI", "win")
     assert result is not None
     path, mtime = result
-    assert path.endswith("batting_model_ODI.joblib")
+    assert path.endswith("win_model_ODI.joblib")
     assert isinstance(mtime, (int, float))
-
-
-def test_find_per_format_artifact_extras_and_win_no_scaler(tmp_path):
-    """Extras and win kinds do not require scaler; model only."""
-    (tmp_path / "extras_model_ODI.joblib").write_bytes(b"")
-    result = find_per_format_artifact(str(tmp_path), "ODI", "extras")
-    assert result is not None
-    (tmp_path / "win_model_T20.joblib").write_bytes(b"")
-    result2 = find_per_format_artifact(str(tmp_path), "T20", "win")
-    assert result2 is not None
-
-
-def test_find_artifact_delegates_to_find_per_format():
-    """find_artifact(batting=True/False) delegates to find_per_format_artifact."""
-    with patch("app.artifact_service.find_per_format_artifact", return_value=("/p", 123.0)) as m:
-        assert find_artifact("/d", "ODI", batting=True) == ("/p", 123.0)
-        m.assert_called_once_with("/d", "ODI", "batting")
-    with patch("app.artifact_service.find_per_format_artifact", return_value=None):
-        assert find_artifact("/d", "T20", batting=False) is None
 
 
 def test_build_artifacts_status_structure(tmp_path):
@@ -87,7 +57,7 @@ def test_build_artifacts_status_structure(tmp_path):
     assert status["root"] == str(tmp_path)
     assert "formats" in status
     assert "ODI" in status["formats"]
-    assert status["formats"]["ODI"]["batting"]["exists"] is False
+    assert status["formats"]["ODI"]["win"]["exists"] is False
     assert "legacy" not in status
 
 
@@ -96,19 +66,19 @@ def test_build_health_response_artifacts_info_listdir_oserror():
     with patch("os.listdir", side_effect=OSError(2, "No such file")):
         resp = build_health_response("/nonexistent")
     assert resp["status"] == "ok"
-    assert resp["artifacts"]["batting"] == []
-    assert resp["metadata"]["batting"] == []
+    assert resp["artifacts"]["win"] == []
+    assert resp["metadata"]["win"] == []
 
 
 def test_build_health_response_artifacts_info_stat_oserror(tmp_path):
     """When stat fails for one file, that file still appears with file key only."""
-    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"")
+    (tmp_path / "win_model_ODI.joblib").write_bytes(b"")
     with patch("os.stat", side_effect=OSError(13, "Permission denied")):
         resp = build_health_response(str(tmp_path))
     assert resp["status"] == "ok"
-    batting_artifacts = resp["artifacts"]["batting"]
+    batting_artifacts = resp["artifacts"]["win"]
     assert len(batting_artifacts) == 1
-    assert batting_artifacts[0]["file"] == "batting_model_ODI.joblib"
+    assert batting_artifacts[0]["file"] == "win_model_ODI.joblib"
     # size_bytes/modified may be missing when stat failed
     assert "file" in batting_artifacts[0]
 
@@ -117,40 +87,21 @@ def test_build_health_response_metadata_info_listdir_oserror():
     """When listdir fails in _metadata_info, metadata list is empty."""
     with patch("os.listdir", side_effect=OSError(2, "No such file")):
         resp = build_health_response("/nonexistent")
-    assert resp["metadata"]["batting"] == []
-    assert resp["metadata"]["bowling"] == []
+    assert resp["metadata"]["win"] == []
 
 
 def test_build_artifacts_status_covers_every_artifact_kind(tmp_path):
-    """Every kind the loader knows about has a cell in the matrix — innings included."""
+    """Every kind the loader knows about has a cell in the matrix, and no kind it does not."""
     status = build_artifacts_status(str(tmp_path))
-    assert "innings" in ARTIFACT_KIND_NAMES
+    assert ARTIFACT_KIND_NAMES == ["win"], "P-5 left one legacy artifact family; P-6 removes it"
     for fmt, row in status["formats"].items():
         assert sorted(row) == sorted(ARTIFACT_KIND_NAMES), f"missing kinds for {fmt}"
 
 
 def test_build_health_response_covers_every_artifact_kind(tmp_path):
-    """Health reports loaded formats, files and counters for every kind, innings included."""
+    """Health reports loaded formats, files and counters for every kind."""
     resp = build_health_response(str(tmp_path))
     for name in ARTIFACT_KIND_NAMES:
         assert f"loaded_{name}_formats" in resp
         assert name in resp["artifacts"]
         assert f"{name}_formats" in resp["counters"]
-
-
-def test_build_artifacts_status_reports_innings_files_on_disk(tmp_path):
-    """An innings scaler+model pair on disk is reported as existing."""
-    (tmp_path / "innings_scaler_T20.joblib").write_bytes(b"x")
-    (tmp_path / "innings_model_T20.joblib").write_bytes(b"y")
-    cell = build_artifacts_status(str(tmp_path))["formats"]["T20"]["innings"]
-    assert cell["exists"] is True
-    assert cell["path"].endswith("innings_model_T20.joblib")
-
-
-def test_build_health_response_keeps_share_artifacts_out_of_batting(tmp_path):
-    """batting_share_* belongs to its own kind, not to the batting group."""
-    (tmp_path / "batting_model_ODI.joblib").write_bytes(b"x")
-    (tmp_path / "batting_share_model_ODI.joblib").write_bytes(b"y")
-    resp = build_health_response(str(tmp_path))
-    assert [a["file"] for a in resp["artifacts"]["batting"]] == ["batting_model_ODI.joblib"]
-    assert [a["file"] for a in resp["artifacts"]["batting_share"]] == ["batting_share_model_ODI.joblib"]

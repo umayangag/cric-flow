@@ -31,38 +31,9 @@ const (
 	DefaultTeamSize       = 11
 )
 
-// Score weights for combining batting/bowling/fielding signals in team selection.
-// Used when selection.score_weights is not configured.
-const (
-	DefaultScoreWeightBat         = 0.45
-	DefaultScoreWeightBowl        = 0.40
-	DefaultScoreWeightField       = 0.10
-	DefaultScoreWeightKeeperBonus = 0.02
-)
-
-// Default score normalization divisors when selection.score_normalization is not set.
-// Format-agnostic fallbacks (T20/ODI typical).
-const (
-	DefaultScoreNormBatDivisor    = 80
-	DefaultScoreNormWicketDivisor = 5
-	DefaultScoreNormEconBase      = 12
-	DefaultScoreNormFieldDivisor  = 5
-)
-
 // Backtest / export-contributions defaults.
 const (
 	DefaultExportMaxMatchIDs = 200
-)
-
-// Monte Carlo simulation defaults (predictor.max_total_samples, top_k, samples_per_matchup, and simulation CVs).
-// DefaultMaxTotalSamples must allow default TopKPerTeam^2 * NumSamplesPerMatchup (50*50*500 = 1.25e6).
-const (
-	DefaultMaxTotalSamples                = 2000000
-	DefaultSimulationTopKPerTeam          = 50
-	DefaultSimulationNumSamplesPerMatchup = 500
-	DefaultSimulationRunsCV               = 0.35
-	DefaultSimulationWicketsCV            = 0.4
-	DefaultSimulationEconomyCV            = 0.15
 )
 
 // Server/API defaults (timeouts, body limits, pagination). Used when server config is missing or zero.
@@ -129,13 +100,9 @@ const (
 	DefaultPrecomputeConcurrencyWhenNoLimit = 0
 )
 
-// Selection: max pool size for full enumeration; above this use greedy + hill-climb.
-const DefaultSelectionMaxPoolSizeForFullEnum = 18
-
-// Win-probability hill-climb: outer-loop iteration cap and total ML evaluation budget per team.
+// Win-probability selection: how hard ml-service may search, and for how many rounds.
 const (
-	DefaultSelectionMaxWinProbSwapIterations = 50
-	DefaultSelectionMaxWinProbEvalBudget     = 500
+	DefaultSelectionMaxWinProbEvalBudget = 500
 	// DefaultSelectionBestResponseRounds caps the alternating best-response rounds in
 	// win-probability selection. Best response can cycle rather than converge, so the
 	// loop is bounded; three rounds is enough for the fixed point when there is one.

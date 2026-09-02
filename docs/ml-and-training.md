@@ -1,54 +1,40 @@
 # ML models and training
 
-ML models, data normalization, per-format pipeline training, auto-tune, walk-forward, calibration, and the combination meta-model. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+The XI layer — the rating pass, the win models, the player performance model, the match
+simulator and the L4 harness — plus what is left of the windowed-form win model, which P-6
+removes. **Model inputs/outputs and hyperparameters:** [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
-## Combined models for prediction
+## What predicts what
 
-| Model        | Level  | Outputs / role |
-|-------------|--------|----------------|
-| Batting     | Player | runs, balls, fours, sixes, batting_position, strike_rate → backtest, team score |
-| Bowling     | Player | runs_conceded, deliveries, wickets, economy → backtest, team score |
-| Fielding    | Player | catches, run_outs, stumpings → backtest, team score |
-| Extras      | Match  | total_extras → match aggregates (or historical average) |
-| Win         | Match  | team1_win_probability → match outcome |
-| Combination | —      | Learned weights for bat/bowl/field scores; not a separate model. Team selection uses constraints (≥1 keeper, ≥5 bowlers). |
+| Layer | Level | Role |
+|-------|-------|------|
+| L1 rating pass (`ml/xi/builder.py`) | — | One chronological, as-of pass over the event store; emits the win frame, the player-match frame and the serving state |
+| L2-A win models (`ml/xi/train.py`) | Match | Objective (additive, the value the optimiser maximises) and display (monotone GBM, the probability shown) |
+| L2-B performance model (`ml/xi/performance.py`) | Player | Quantile runs / balls / runs conceded, a two-part Poisson of wickets, a catch rate, and P(bats) / P(bowls) |
+| L2-C simulator (`ml/xi/simulator.py`) | Match | Draws whole matches from L2-B for two elevens; no training of its own |
+| L3 selection (`ml/xi/optimizer.py`) | Match | The XI that maximises the objective, its marginal values, and — where the objective does not rank — the rating-ordered pick |
+| Win, windowed form (`ml/train_win.py`) | Match | The original match-level classifier. Superseded; P-6 removes it |
 
-Input dimensions, estimators, and aggregation (e.g. sum runs, win prob) are in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+Every serving call into the XI layer takes **player ids and a format**, never a feature map.
+The rating state lives in ml-service, which is what makes the training and serving paths
+compute the same function of the same eleven names (H-8).
 
-**Training data (go-app):** `GET /api/backtest/training-data?cutoff=...&format=all` returns batting, bowling, fielding, extras, win (headers + rows). Fielding/extras/win use cutoff and format.
+**Training data (go-app):** `GET /api/backtest/training-data?cutoff=...&format=all` still serves
+the win section to `ml.train_win` and the auto-tune stack. The XI layer does not use it: it
+reads `match`, `match_player` and `ball_event` directly.
 
-**Pipeline order:** Precompute → export-dataset → train models → run (or restart) ML service. Batting/bowling use exported CSVs; fielding/extras/win can use API with cutoff.
+**Training commands:** `make train-xi CUTOFF=<YYYY-MM-DD>` builds the rating state and every XI
+model; `make xi-evaluate` scores them; `make train-win CUTOFF=<RFC3339>` builds the windowed-form
+win model.
 
-**Training commands (from repo root or ml-service):** `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=<RFC3339>`, `make train-extras`, `make train-win`, or `make train-all` to run all train steps in sequence. Each step uses params from config and, when `GO_APP_URL` is set, from the go-app tuned-params DB. Fielding/extras/win need `GO_APP_URL` (and optionally `CUTOFF` or CSV path).
+> **`CUTOFF` bounds the training data.** Rows with `match_date` on or after it are dropped,
+> leaving everything from the cutoff onward as a holdout. To produce a model you can honestly
+> evaluate, train with a cutoff that leaves a window behind it.
 
-> **`CUTOFF` bounds the training data, on the CSV path as well as the API one.** Rows
-> with `match_date` on or after it are dropped, matching the export's own
-> `match_date < cutoff` and leaving everything from the cutoff onward as a holdout.
->
-> It did not always. The trainers prefer the export CSV over the API and used to read it
-> whole, so `CUTOFF` governed only the fallback nobody takes: a run asked to train to a
-> cutoff trained on every exported match. Artifacts built before this fix were trained on
-> all available data — check `n_samples` in `win_model_<FMT>_metadata.json` against the
-> row count for that format in the export; if they match, there is no holdout and any
-> evaluation of that artifact is in-sample.
->
-> **To produce a model you can honestly evaluate**, train with a cutoff that leaves a
-> window behind it, then pass the same value to `make win-discrimination TRAIN_CUTOFF=`.
-> The two are complementary by construction: training keeps rows strictly before, the
-> report keeps rows on or after.
-
-**Artifacts:** Always per-format: `batting_scaler_<FMT>.joblib`, `batting_model_<FMT>.joblib` (same for bowling, fielding, extras, win).
-
-**Combined prediction flow:** (1) Player predictions from batting/bowling/fielding models; (2) match aggregates = sum of player preds + extras model if loaded (else historical average); (3) winner from win model or from team totals; (4) team selection = greedy selection with batting/bowling/fielding scores and constraints. When fielding artifacts are not loaded, go-app falls back to **enrichFieldingFromHistory** (EWM of historical fielding).
-
-**Unified features for extras and win:** Extras and win models use the same feature families as batting, bowling, and fielding so that player quality and context influence match-level predictions. Training data from go-app includes:
-
-- **Extras:** `format_id`, `venue_id`, `season_id`, match-level **weather** (temp, wind, rain, humidity, cloud, pressure, viscosity), and **match-level aggregates** of player features: `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum` (sums of `batting_std_w10`/`bowling_std_w10` for consistency and `batting_mean_w5`/`bowling_mean_w5` for form from `feature_raw_stats_snapshots` as of match date).
-- **Win:** Same weather columns plus **team-level aggregates**: team1 = batting in inning 1, team2 = bowling in inning 1; `team1_bat_consistency_sum`, `team1_bowl_consistency_sum`, `team2_bat_consistency_sum`, `team2_bowl_consistency_sum`, and the corresponding `*_form_sum` columns. Original IDs (format_id, venue_id, team1_opposition_id, team2_opposition_id) remain. **The toss winner is not a feature**: a side is selected before the toss, so the value is unknowable at decision time and the serving path could only ever send zero (S-2).
-
-At prediction time, to use the trained extras or win model, callers must supply the same feature vector (e.g. format, venue, season/teams, weather, and the relevant consistency/form aggregates for the selected XI or match). The training scripts accept both the extended columns and the legacy subset (only IDs); missing columns are omitted from X.
+**Artifacts:** `xi_ratings.joblib`, `xi_win_<FMT>.joblib` and `xi_perf_<FMT>.joblib` for the XI
+layer (loaded by `ml.xi.store`); `win_model_<FMT>.joblib` for the windowed-form model.
 
 ---
 
@@ -61,19 +47,17 @@ At prediction time, to use the trained extras or win model, callers must supply 
 - **Targets (Y):** Kept in raw units (no scaling) for interpretability and to avoid inverse transform.
 - **Missing values:** Training drops or fills (e.g. 0) per script; prediction uses `ml.feature_defaults` in config for missing keys.
 
----
+## Pipeline
 
-## Pipeline: per-format training
+You can run the pipeline from the **frontend** (Ops Status → Pipeline) or from the command line.
 
-You can run the full pipeline from the **frontend** (Ops Status → Pipeline) or from the **command line**. Each train step produces per-format models.
+**Steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form / consistency /
+sequence per format. (3) Export — writes the cross-format and per-format CSVs. (4) Train Win.
+(5) Optional: Auto-tune. Steps 2, 3 and 5 exist for the windowed-form model and the export
+consumers, and P-6 removes them; the XI layer needs only the import.
 
-**Pipeline steps:** (1) Import — migrate and import Cricsheet. (2) Precompute — form/consistency/sequence per format. (3) Export — writes the cross-format `*_encoded_all.csv` and per-format CSVs. (4) Train Batting — per-format. (5) Train Bowling — same. (6) Train Fielding — API data. (7) Train Extras, (8) Train Win — same pattern. (9) Optional: Auto-tune (from UI or API).
-
-**Auto-tune is placed last on the graph but depends only on Export.** It reads the exported CSVs (batting, bowling) and the training-data API (fielding, extras, win) — the same inputs the train steps read, and no trained artifact. So it can be run before the train steps, and in Mode B below it must be. The graph shows it last because that is where it is offered, not because it is gated behind training.
-
-**Prerequisites:** Stack running (`make dev-up`). Exports are always per-format (the `export.split_by_format` flag was removed in C5-3 — it no longer changed anything). For fielding/extras/win: `GO_APP_URL` set for ML service. Cutoff for those steps: default UTC now, or API param `?cutoff=...`.
-
-**CLI:** `make precompute-all-all-formats`, `make export-dataset`, `make train-batting`, `make train-bowling`, `make train-fielding CUTOFF=...`, `make train-extras`, `make train-win`. Same outcome: per-format artifacts. ML resolves the model by the request's `format`, which is required — there is no fallback tier.
+**Auto-tune depends only on Export**, not on any trained artifact, so it can run before Train
+Win — and in Mode B below it must.
 
 ---
 
@@ -94,12 +78,11 @@ If a train step now fails with `header names N columns but the first data row ha
 - **Coverage configuration:**
   - `pyproject.toml` configures coverage to track `app` and `ml` packages, with `branch = true`.
   - Training/tuning entrypoints that are exercised via separate flows are excluded via `omit`:
-    - `ml/train_*.py` (per‑model training CLIs, including `train_batting`, `train_bowling`, `train_extras`, `train_win`, `train_innings`, `train_fielding`, `train_combination_meta`, etc.),
-    - `ml/training_pipeline.py` (shared training helpers),
+    - `ml/train_win.py` (the windowed-form training CLI),
     - `ml/tuning/*.py` (auto‑tune orchestration),
-    - `ml/walk_forward.py`,
     - `ml/validate_exports.py`.
-  - This keeps the coverage number focused on `app.main`, `app/prediction_service.py`, reconciliation (`ml/reconciliation_*`), consistency checking, config, and other request‑time paths.
+  - This keeps the coverage number focused on `app.main`, `app/xi_service.py`, the `ml/xi`
+    package, config, and other request‑time paths.
 
 - **Thresholds and CI integration:**
   - `ml-service/Makefile` defines `COV_MIN`, the minimum allowed coverage percentage for local `make coverage-check`.
@@ -119,59 +102,21 @@ The same pattern applies to other components:
 
 ## Pipeline modes: params known vs unknown
 
-**Single-train principle:** Train each model **once** with the params you intend to use. Params come from `ml-service/config.json` (`ml.training.<model>`) and, when `GO_APP_URL` is set, are **overlaid** by tuned params stored in the go-app DB (from a previous auto-tune). So you either train with known params (config + DB) or run auto-tune to discover params, then train once with those.
+**Single-train principle:** train the win model **once** with the params you intend to use.
+They come from `ml-service/config.json` (`ml.training.win`) and, when `GO_APP_URL` is set, are
+overlaid by tuned params in the go-app DB from a previous auto-tune.
 
-### Mode A — Params known (fast path)
+- **Mode A — params known.** Import → Precompute → Export → Train Win. Do not run auto-tune.
+- **Mode B — params unknown or being refreshed.** Import → Precompute → Export → Auto-tune →
+  Train Win, which is the `tune` run plan. **The search comes first** because hyperparameters
+  are a function of the feature space: when the feature space has changed, training before the
+  search produces artifacts the search invalidates an hour later.
 
-When you already have good hyperparameters (in config or from a previous auto-tune saved to DB):
+The XI layer has no equivalent choice. Its hyperparameters are a small grid tuned inside the
+L4 folds and recorded with the run, so `make train-xi` is the whole loop.
 
-1. **Import** → **Precompute** → **Export** → **Train all** (batting, bowling, fielding, extras, win, innings).
-2. Do **not** run auto-tune. Each train step reads params from config and, when available, from the go-app tuned-params API; one pass produces all artifacts.
-
-Use this for routine retrains (e.g. after new data or a fixed cutoff) when you are not re-optimizing hyperparameters.
-
-### Mode B — Params unknown or re-optimizing (tuning path)
-
-When you need to discover or refresh best algorithm and hyperparameters:
-
-1. **Import** → **Precompute** → **Export** → **Auto-tune** (per model/format or all).
-2. Auto-tune finds best algorithm + hyperparameters, saves params to the go-app DB (and writes artifacts). Optionally run **Train all** afterward so every artifact is produced by the same train scripts using the new DB params (single code path for artifacts).
-
-Use this when setting up a new format, after major data changes, or when you want to re-run algorithm screening or Optuna fine-tuning.
-
-**Run it as the `tune` plan.** `POST /ops/pipeline/run-plan {"plan":"tune"}`, or the Plan dropdown in Ops Status, runs auto-tune followed by every train step in one sequence, with per-step live state, Stop and resume. It assumes the export is current; run `data-refresh` (or `full`) first when it is not.
-
-**Why the search comes first.** Hyperparameters are a function of the feature space. When the feature space has changed — the feature contract, a `features.*` precompute parameter, a new format — the saved params no longer describe an optimum, so training before the search produces artifacts the search invalidates an hour later. Training first is only right in Mode A, where the params are already the ones you mean to use.
-
-**Summary:** Train = produce artifacts from current params (config + DB). Auto-tune = discover and persist params (and optionally artifacts). Avoid running train with defaults and then auto-tune for the same models; choose one of the two modes above.
-
-### How a single-train run is scored
-
-Mode A is the path you run most often, so it has to be falsifiable on its own: without a
-score, a model trained from a broken export is indistinguishable in the UI from a good one.
-
-Before fitting the model it ships, `TrainingPipeline.train_and_save` holds back the last
-`ml.pipeline_common.holdout_fraction` of the rows (default `0.2`), fits the same recipe on
-the rest, and scores the holdout. The split is positional, which is a **time** split
-because go-app exports every training CSV `ORDER BY match_date ASC` — the same assumption
-the tuning search's `walk_forward` CV already rests on. The scaler and the target clipping
-are fitted on the training slice only, and the holdout is scored against its **unclipped**
-targets, so the clipping under test cannot flatter the result.
-
-The scores land in the artifact's `<kind>_metadata_<FMT>.json` sidecar alongside
-`trained_at`, `duration_seconds` and the algorithm, and the ML Model Stats tab reads them
-when no tuning report exists. They are labelled `score_source: holdout` and shown with a
-`holdout` chip.
-
-**A holdout score and a tuned score are not comparable.** The tuned figure is
-cross-validated over the whole dataset; the holdout is one slice of recent rows. Compare
-holdout to holdout across retrains — never a holdout MAE against a tuned MAE. A `holdout`
-row is also not audited: the MLQA checks measure a search's fold behaviour, so the Audit
-column stays empty until the model is auto-tuned.
-
-**Cost:** one extra fit on ~80% of the rows, so roughly 1.8× the training time. Set
-`ml.pipeline_common.holdout_fraction` to `0` to skip it. Runs below 250 rows skip it
-automatically — a score from a handful of rows describes the split, not the model.
+**Precompute parameters are a separate, slower loop:** change `features.*` → re-precompute →
+re-export → re-train.
 
 ---
 
@@ -179,20 +124,10 @@ automatically — a score from a handful of rows describes the split, not the mo
 
 **Contract version:** `configs/feature_vectors.json` and go-app use version **"2"**. Batting and bowling include **18 raw windowed stats** per type (e.g. `batting_mean_w3`, `batting_std_w10`, `batting_last_1`, …) alongside the existing formula features (form, form_short, form_long, momentum, consistency). These are computed in Go (`features.WindowedStats`) and stored in `feature_raw_stats_snapshots`; export and prediction emit them so the ML model can learn optimal combinations instead of fixed EWM/CV formulas.
 
-**Comparing feature sets:** To evaluate (a) old-only, (b) new-only, (c) combined:
-
-1. **Export** with v2 (current export already includes both formula and raw stats).
-2. **Old-only:** Temporarily restrict `FEATURE_COLS` in `ml/train_batting.py` / `ml/train_bowling.py` to the 5 formula + env/context columns (no raw stat names), then train and record metrics.
-3. **New-only:** Restrict to raw stat names + env/context (no form/consistency/momentum), train and record metrics.
-4. **Combined:** Use current `FEATURE_COLS` (formula + raw + env), train and record metrics.
-
-Use **walk-forward** and **feature importance** (e.g. from `TrainingPipeline.extract_feature_importance` or auto-tune report) to compare and to identify low-signal raw stats.
-
-**After evaluation:** If new (or combined) features improve accuracy:
-
-- **Deprecate** old form/consistency/momentum from the feature contract and from export/prediction (remove from `feature_vectors.json` and Go contract).
-- **Prune** raw stats with very low importance if needed to reduce dimensionality (especially for the win model).
-- **Clean up** Go precompute: stop computing and storing the old form/consistency snapshots once no consumer uses them; optionally simplify `WindowedStats` to only the windows/stats that matter.
+**The comparison this section described is moot.** It weighed formula features against raw
+windowed stats for the per-player models, which P-5 deleted. The contract survives because
+go-app's export queries still emit it, and P-6 removes those with the export step. The XI layer
+computes its own as-of features from the event store and reads none of this.
 
 Until then, both formula and raw stats remain in the contract and in precompute for phased rollout.
 
@@ -495,8 +430,8 @@ each bowls with P(bowls), topped up until the side can deliver the innings under
 balls in proportion to expected balls; runs conceded a multinomial split of the total by
 balls × as-of rate; the bowler-credited share of the wickets by balls × wicket rate. So the
 bowlers' figures sum to the innings by construction and their own L2-B medians are not
-reproduced — that would be the second estimate the hybrid reconciliation used to rescale
-toward. Toss unknown: half the draws each way, each with the matching forecasts (H-3).
+reproduced — that would be a second estimate of the innings, and the whole point of taking the
+batting side as authoritative is that there is only one. Toss unknown: half the draws each way, each with the matching forecasts (H-3).
 
 **Runs and balls are coupled, not identical.** The first build drew a batter's runs and balls
 from one uniform; with every strike rate fixed and the balls budget enforced, the side total's
@@ -587,18 +522,6 @@ make xi-evaluate                                        # the database
 make xi-evaluate CRICSHEET_DIR=data/go-app/cricsheet    # the raw archive
 ```
 
----
-
-## Walk-forward
-
-**Purpose:** Evaluate temporal performance: train on data before cutoff → predict next X matches (holdout) → score (e.g. MAE) → record in registry → advance cutoff and repeat. Builds a registry (e.g. `walk_forward_registry.json`) of model type, format, cutoff, window_x, params, metrics.
-
-**Use:** Compare accuracy for different X; find underperforming windows and re-run auto_tune or retrain. Run as a **separate step** from auto_tune. Requires go-app and endpoints: `GET /api/backtest/matches?after=...`, `GET /api/backtest/training-data?cutoff=...`, `GET /api/backtest/holdout-data?cutoff=...&limit=...`.
-
-**Run:** `make walk-forward INITIAL_CUTOFF=... WINDOW_X=50 WALK_FORMAT=T20 WALK_MODEL=batting` (or from ml-service with `GO_APP_URL`).
-
----
-
 ## Docker images: serve vs train
 
 `ml-service/Dockerfile` has two targets.
@@ -613,7 +536,7 @@ docker build -f ml-service/Dockerfile --target serve -t cric-app-ml:serve .
 docker build -f ml-service/Dockerfile --target train -t cric-app-ml:train .
 ```
 
-**The serve image is not limited to serving.** `/admin/train/*` shells out to `python -m ml.train_*`, which needs only scikit-learn; `/admin/train/auto-tune` runs `ml.auto_tune`, which needs Optuna. Both are in the serving set. AutoGluon and SHAP each sit behind a guarded import with a graceful fallback, so auto-tune degrades to Optuna-only instead of failing. Build `train` when you want AutoGluon's model ranking.
+**The serve image is not limited to serving.** `/admin/train/win` shells out to `python -m ml.train_win`, which needs only scikit-learn; `/admin/train/auto-tune` runs `ml.auto_tune`, which needs Optuna. Both are in the serving set. AutoGluon and SHAP each sit behind a guarded import with a graceful fallback, so auto-tune degrades to Optuna-only instead of failing. Build `train` when you want AutoGluon's model ranking. The XI layer needs neither.
 
 `requirements-serve.txt` is also what CI installs, so the test suite runs against the same dependency set the serving image ships.
 
@@ -629,62 +552,17 @@ For classifiers (e.g. the win model), predicted probabilities can be **calibrate
 
 ---
 
-## Combination meta-model
+## Model sidecars
 
-**Purpose:** Learn weights for combining batting, bowling, and fielding scores in team selection (instead of fixed weights). Ridge meta-model: inputs (bat_score, bowl_score, field_score, is_keeper, format), target = actual contribution from backtest/evaluate-db.
+`ml.artifact_sidecar` writes `win_model_<FMT>_metadata.json` beside each windowed-form win
+artifact. It pins `feature_names` — the exact column order the model was fitted on — so that
+per-format low-variance dropping cannot cause a shape mismatch at inference.
 
-**Run:** `python -m ml.train_combination_meta --csv path/to/backtest_contributions.csv --out ../output/ml-service/combination_meta.json` (optional `--per-format`, `--alpha`). CSV columns: bat_score, bowl_score, field_score, is_keeper, format, target. go-app loads the JSON when `selection.meta_model_path` is set in config and uses it instead of `score_weights` / `score_weights_by_format`. When `selection.use_optimizer` is true, team selection maximizes total score over valid XIs (same weights from meta-model or config); when false, greedy selection with constraint swaps is used.
+The XI models carry their own metadata inside their artifacts (`ml.xi.store`) and do not use
+sidecars.
 
----
-
-## Combination meta-model automation
-
-**Goal:** Produce learned weights for team selection from backtest outcomes and optionally run them in the pipeline.
-
-1. **Generate contributions CSV** — Call `POST /api/backtest/export-contributions` with body `{ "format", "team1", "team2", "match_ids": [ ... ] }`. The server starts a background job and returns `202 Accepted` with `job_id`. Poll `GET /api/backtest/export-contributions-status?job_id=<id>` until `status` is `done` or `error`. When done, the response includes `path` and `rows`; the CSV is written to the configured export dir (e.g. `output/go-app/backtest_contributions.csv`).
-2. **Train meta-model** — From repo root: `make train-combination-meta CSV=<path-to-csv> OUT=<path-to-json>`, or use the pipeline step “Train Combination Meta” (API returns the exact command with paths). Default paths: CSV = `output/go-app/backtest_contributions.csv`, OUT = `output/go-app/combination_meta.json`.
-3. **Use learned weights** — Set `selection.meta_model_path` in go-app config to the output JSON path. Restart or reload config so team selection uses the meta-model weights instead of fixed `score_weights`.
-4. **Full pipeline** — `make full-pipeline` runs precompute → export → train all models; if `backtest_contributions.csv` exists in the default location, it also runs train-combination-meta. Override paths with `FULL_PIPELINE_CSV` and `FULL_PIPELINE_OUT`.
-
----
-
-## Monte Carlo simulation (win probability and outcome distributions)
-
-**Purpose:** Instead of a single predicted scorecard, get **win probability** and **outcome distributions** by sampling over many possible team combinations and match outcomes. Feasible on a domestic PC by limiting the space: top-k XIs per team (not all combinations) and a fixed number of samples per matchup.
-
-**How it works:** (1) Use the same optimizer to get the **top-k** valid XIs per team (when pool size ≤ 18, all valid XIs are enumerated and sorted by score). (2) For each (XI₁, XI₂) pair (up to a cap), sample **N** match outcomes: for each player, sample runs (and optionally wickets/economy) from a distribution around the point prediction (e.g. Normal(mean, mean×CV)). (3) Sum runs + extras per innings, compare to get winner; aggregate over all samples to get win probability and innings total percentiles (P10, P50, P90).
-
-**API:** `POST /api/predict/team-selection` (or GET) with `simulate=true` (or `?simulate=true`). Optional: `simulation_top_k` (default 50), `simulation_samples` (default 500 per matchup), `simulation_max_pairs` (0 = no cap). Response includes `team1`, `team2`, `scorecard_summary` as usual, plus `simulation`: `win_probability_team1`, `win_probability_team2`, `draw_probability`, `innings1_total_mean`, `innings1_total_std`, `innings1_total_p10/p50/p90`, and the same for innings 2, plus `num_matchups` and `num_samples`.
-
-**Resource use:** Example: 50×50 = 2,500 matchups × 500 samples = 1.25M samples; typically completes in under a minute on a modern PC. Reduce `simulation_top_k` or `simulation_max_pairs` for faster responses.
-
----
-
-## Match-level derived features and model sidecars
-
-**Reconciliation layers** (hybrid rescale vs constraint solver): see [ml-service/docs/reconciliation.md](../ml-service/docs/reconciliation.md).
-
-**Derived features** (`ml.match_level_derived_features`) are computed in one place and reused by `train_innings`, `train_extras`, and the inference path in `app.reconciliation`:
-
-- `form_differential = bat_form_sum - bowl_form_sum`
-- `consistency_differential = bat_consistency_sum - bowl_consistency_sum`
-
-There was a third, `weather_composite`, a configurable blend of `rain`, `humidity` and `cloud`. C2-2b removed those three inputs from every export because nothing has ever populated `weather_data`, which left the composite computing a constant zero from columns that were no longer there; the low-variance filter then discarded it on every fit, so no trained artifact ever named it. It is gone, along with the `ml.match_level_derived` config block that only it used.
-
-**Artifact sidecars (`ml.artifact_sidecar`)**:
-
-| File | Written by | Read by |
-|------|------------|---------|
-| `innings_meta_<FMT>.json` | `ml.train_innings.train_and_save` | `app.artifacts.reload` → `app.reconciliation.predict_innings` |
-| `extras_meta_<FMT>.json` | `ml.train_extras.train_and_save` | `app.artifacts.reload` (available to prediction code as `EXTRAS_META`) |
-
-The sidecar pins two things:
-
-- `feature_names`: exact column order the scaler/model were fitted on, so per-format `drop_low_variance_columns` and format one-hot exclusion cannot cause a shape mismatch at inference.
-
-A sidecar written before this change may still name `weather_composite`. Feature selection is by name with a `0.0` default, so such an artifact degrades to a zero column rather than raising — which is exactly what the constant-zero feature contributed anyway.
-
-**Operational note:** old artifacts without sidecars still load; `build_innings_feature_vector` falls back to `LEGACY_INNINGS_FEATURE_COLS` + the current config. Retrain any per-format model whose training data included format-only columns that were dropped during low-variance filtering so its sidecar is written and inference stops relying on the fallback.
+The match-level derived features (`form_differential`, `consistency_differential`) and the
+`weather_composite` that preceded them went with the models that read them.
 
 ---
 
@@ -706,14 +584,16 @@ Historical rows remain at `inning_number = 1` until operators run a full re-impo
 
 ## Artifact kinds, reload, and staleness
 
-`app.artifacts.ARTIFACT_KINDS` is the single source of truth for which model families exist
-and how they are named on disk (`<kind>_model_<FMT>.joblib`, plus `<kind>_scaler_<FMT>.joblib`
-where the kind has one). The loader, `/health` and `/artifacts/status` all derive from it, and
-go-app (`opsstatus.artifactKinds`) and the frontend (`utils/artifactKinds.ts`) mirror the list
-for the models `make train-models` produces. **Adding a model kind means adding one entry per
-layer** — not editing every reader. Innings artifacts were trained, written and loadable while
-all three readers still carried a five-kind list that omitted them, so a completed run looked
-like a missing model.
+`app.artifacts.ARTIFACT_KINDS` is the single source of truth for which legacy model families
+exist and how they are named on disk (`<kind>_model_<FMT>.joblib`, plus
+`<kind>_scaler_<FMT>.joblib` where the kind has one). The loader, `/health` and
+`/artifacts/status` all derive from it, and go-app (`opsstatus.artifactKinds`) and the frontend
+(`utils/artifactKinds.ts`) mirror the list. **Adding a model kind means adding one entry per
+layer** — not editing every reader; a kind the service can load but health never mentions makes
+a completed run look like a missing model.
+
+One kind is left, `win`, and P-6 removes it. The XI artifacts are loaded by `ml.xi.store`, which
+keeps its own state and is reported through `GET /xi/status` rather than this registry.
 
 **A finished `/admin/train/*` run reloads the artifacts before it returns.** Training runs in a
 subprocess and writes to `MODELS_DIR`; the serving process holds its registries in memory. Without
@@ -732,24 +612,20 @@ to the ops console, where a stale kind shows an amber loaded dot.
 
 ## Loader contract: `LoaderResult`
 
-All tuning data loaders in `ml.tuning.data_loaders` return a typed envelope:
-
-- Single-pack loaders (batting, bowling): `LoaderResult(X, Y, feature_names, sample_weight=None)`.
-- Per-format loaders (extras, win, fielding, innings): `Dict[str, LoaderResult]`, keyed by uppercase format code (e.g. `T20`, `ODI`, `TEST`, `OTHER`). The `_LEGACY_` pooling key these once emitted is gone with the unified models it fed, so the name no longer collides with the removed artifact registry.
-
-Call sites in `ml.tuning.cli` consume `result.X / result.Y / result.feature_names / result.sample_weight` directly; the previous `unpack_xy_with_feature_names` / `_extras_feature_names_if_consistent` helpers have been removed. To add a new loader, return a `LoaderResult` (or `Dict[str, LoaderResult]`) from the outset — it keeps optional fields explicit and prevents shape drift between training and tuning.
+`ml.tuning.data_loaders` has one loader left, for the win model, and it returns
+`Dict[str, LoaderResult]` keyed by uppercase format code (`T20`, `ODI`, `TEST`, …). The envelope
+makes the optional fields (`feature_names`, `sample_weight`) explicit and prevents shape drift
+between training and tuning; `ml.tuning.cli` consumes them directly.
 
 ---
 
 ## Pending validation work
 
-The following is **not** yet verified in this branch and is deliberately left as an operator follow-up because it requires a populated training DB and non-trivial auto-tune time:
+Not verified in this branch, and left as an operator follow-up because it needs a populated
+training DB and non-trivial auto-tune time:
 
-- **Feature transforms A/B (`config.json` → `feature_transforms`)**: `add_log1p` for `*_career_count`, `*_days_since_last`, `*_innings_in_last_90d` and three hand-picked interactions per side are enabled for batting/bowling. Before accepting them as defaults, run `make auto-tune` per format with and without transforms (toggle `feature_transforms.batting.add_interactions` / `add_log1p` and the matching bowling block) on the same cutoff and compare:
-  - `best_cv_score` (lower MAE is better).
-  - `mlqa_audit.checks.overfitting.relative_delta` and `mlqa_audit.checks.stability.relative_cv_std`.
-  - Per-fold CV score spread.
-
-  If transforms help, migrate the block from `config.json` (environment-local override) to `config.default.json` so it ships with defaults. If they don't, remove them to avoid the redundant feature-name plumbing cost at inference.
-
-- **Derived-feature ablation**: the `form_differential` and `consistency_differential` columns are pure subtractions of features the model also sees, and tree-based models can (and usually do) recover them from the raw columns on their own. Run the same auto-tune sweep with and without each and keep only the ones that improve hold-out MAE or MLQA stability; drop the rest from `MATCH_LEVEL_DERIVED_FEATURE_COLS`. (`weather_composite` was the third such column and is already gone — it was constant zero.)
+- **Feature transforms A/B for the win model.** Run `make auto-tune` per format with and without
+  the transform block on the same cutoff and compare `best_cv_score`,
+  `mlqa_audit.checks.overfitting.relative_delta`, `mlqa_audit.checks.stability.relative_cv_std`
+  and the per-fold CV spread. If the transforms help, move the block from `config.json` into
+  `config.default.json`; if not, remove it. P-6 may settle this by deleting the model.

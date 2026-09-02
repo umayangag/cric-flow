@@ -144,7 +144,6 @@ func TestNoDuplicateHeaders(t *testing.T) {
 		{name: "extras_training", headers: eq.ExtrasTrainingHeaders()},
 		{name: "innings_training", headers: eq.InningsTrainingHeaders()},
 		{name: "fielding_training", headers: eq.FieldingTrainingHeaders()},
-		{name: "fielding_holdout", headers: eq.FieldingHoldoutHeaders()},
 	}
 
 	for i := range testCases {
@@ -197,7 +196,7 @@ func TestTrainingExportsAgreeWithEachOther(t *testing.T) {
 			name:      "bowling",
 			perFormat: eq.BowlingFormatHeaders(),
 			crossFmt:  eq.BowlingTrainingHeaders(),
-			// the bowling cross-format export carries both innings totals for reconciliation
+			// the bowling cross-format export carries both innings totals
 			extraOnly: []string{
 				"innings_runs",
 				"innings_wickets",
@@ -276,7 +275,6 @@ func TestHeaderCountsAreStable(t *testing.T) {
 		"extras_training":   9,
 		"innings_training":  12,
 		"fielding_training": 16,
-		"fielding_holdout":  16,
 	}
 	got := map[string]int{
 		"batting_inference": len(eq.BattingInferenceHeaders()),
@@ -288,7 +286,6 @@ func TestHeaderCountsAreStable(t *testing.T) {
 		"extras_training":   len(eq.ExtrasTrainingHeaders()),
 		"innings_training":  len(eq.InningsTrainingHeaders()),
 		"fielding_training": len(eq.FieldingTrainingHeaders()),
-		"fielding_holdout":  len(eq.FieldingHoldoutHeaders()),
 	}
 
 	for name, w := range want {

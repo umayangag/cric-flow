@@ -1,7 +1,7 @@
-"""Pydantic models for the ML service HTTP API and reconciliation.
+"""Pydantic models for the ML service HTTP API.
 
-Import from the domain modules directly: ``app.models.predict``,
-``app.models.backtest``, ``app.models.features``, ``app.models.reconciliation``,
-``app.models.constants``. The transitional re-exports that lived here were
-removed in C6-2, completing P0-2.
+``app.models.predict`` carries the windowed-form win model's request and response shapes;
+``app.models.xi`` carries the XI layer's -- selection, win probability, the performance model
+and the simulator. Import the submodules directly; the transitional re-exports that lived here
+were removed in C6-2.
 """

@@ -3,10 +3,7 @@ import type {
   HealthResponse,
   ModelMetadataApiResponse,
   ModelStatsResponse,
-  BacktestSelectResponse,
-  BacktestEvaluateResponse,
-  EvaluateStatusResponse,
-  MatchScorecardResponse,
+  EvaluationReport,
   Migration,
   Suggestion,
   PaginatedResponse,
@@ -20,29 +17,11 @@ import type {
   OpsDataStartResponse,
   RunPlanState,
   RunPlanStartResponse,
-  AccuracyTrendResponse,
-  AccuracyTrendFilters,
   AutoTuneRunDetailsResponse,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
 const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8080';
-
-/** Build URL for backtest evaluate endpoints (evaluate-stream, evaluate-start). */
-function buildBacktestEvaluateUrl(
-  path: string,
-  format: string,
-  team1: string,
-  team2: string,
-  matchId: number | string,
-): string {
-  const u = new URL(path, BASE_API_URL);
-  u.searchParams.set('format', format);
-  u.searchParams.set('team1', team1);
-  u.searchParams.set('team2', team2);
-  u.searchParams.set('match_id', String(matchId));
-  return u.toString();
-}
 
 /** Build headers for go-app API requests. Optionally omit Content-Type for GET/stream requests. */
 function apiHeaders(includeJsonContentType = true): Record<string, string> {
@@ -158,53 +137,6 @@ async function postDataJob(
   return { status: res.status, data };
 }
 
-type SSECallbacks = {
-  onProgress: (step: string, message: string) => void;
-  onResult: (result: BacktestEvaluateResponse) => void;
-  onError: (err: Error) => void;
-};
-
-/** Process one SSE event part; returns 'result' or 'error' when the stream is done, 'continue' otherwise. */
-function processBacktestSSEPart(
-  part: string,
-  callbacks: SSECallbacks,
-): 'continue' | 'result' | 'error' {
-  let eventType = '';
-  let data = '';
-  for (const line of part.split('\n')) {
-    if (/^event:\s?/.test(line)) eventType = line.replace(/^event:\s?/, '').trim();
-    else if (/^data:\s?/.test(line)) data = line.replace(/^data:\s?/, '');
-  }
-  if (eventType === 'progress' && data) {
-    try {
-      const { step, message } = JSON.parse(data) as { step: string; message: string };
-      callbacks.onProgress(step ?? '', message ?? '');
-    } catch {
-      /* ignore */
-    }
-    return 'continue';
-  }
-  if (eventType === 'result' && data) {
-    try {
-      const result = JSON.parse(data) as BacktestEvaluateResponse;
-      callbacks.onResult(result);
-    } catch (e) {
-      callbacks.onError(e instanceof Error ? e : new Error(String(e)));
-    }
-    return 'result';
-  }
-  if (eventType === 'error' && data) {
-    try {
-      const { message } = JSON.parse(data) as { message?: string };
-      callbacks.onError(new Error(message ?? 'Unknown error'));
-    } catch {
-      callbacks.onError(new Error(data));
-    }
-    return 'error';
-  }
-  return 'continue';
-}
-
 export const api = {
   apiHealth(): Promise<{ status: string }> {
     return httpApi('/health');
@@ -220,29 +152,6 @@ export const api = {
   /** Model stats (name, format, params, accuracy, size) from ml-service for ML Model Stats tab. */
   getModelStats(): Promise<ModelStatsResponse> {
     return httpApi('/api/ml/model-stats');
-  },
-  // --- Backtest API (select and evaluate) ---
-  backtestSelect(format: string, team1: string, team2: string): Promise<BacktestSelectResponse> {
-    const u = new URL('/api/backtest/match', BASE_API_URL);
-    u.searchParams.set('format', format);
-    u.searchParams.set('team1', team1);
-    u.searchParams.set('team2', team2);
-    // mode defaults to select when match_id absent
-    return httpApi(u.toString());
-  },
-  backtestEvaluate(
-    format: string,
-    team1: string,
-    team2: string,
-    matchId: number | string,
-  ): Promise<BacktestEvaluateResponse> {
-    const u = new URL('/api/backtest/match', BASE_API_URL);
-    u.searchParams.set('format', format);
-    u.searchParams.set('team1', team1);
-    u.searchParams.set('team2', team2);
-    u.searchParams.set('mode', 'evaluate');
-    u.searchParams.set('match_id', String(matchId));
-    return httpApi(u.toString());
   },
   // --- Ops Status (go-app API) ---
   opsStatus(): Promise<OpsStatusDTO> {
@@ -476,136 +385,15 @@ export const api = {
     u.searchParams.set('q', trimmed);
     return httpApi(u.toString());
   },
-  /** Match scorecard (innings, batting and bowling card) for evaluate DB tab. */
-  getMatchScorecard(matchId: number): Promise<MatchScorecardResponse> {
-    const u = new URL('/api/backtest/scorecard', BASE_API_URL);
-    u.searchParams.set('match_id', String(matchId));
-    return httpApi(u.toString());
-  },
-
-  /** Accuracy trend (backtest metrics over matches) for Workbench tab. */
-  accuracyTrend(filters: AccuracyTrendFilters = {}): Promise<AccuracyTrendResponse> {
-    const u = new URL('/api/backtest/accuracy-trend', BASE_API_URL);
-    if (filters.format) u.searchParams.set('format', filters.format);
-    if (filters.start_date) u.searchParams.set('start_date', filters.start_date);
-    if (filters.end_date) u.searchParams.set('end_date', filters.end_date);
-    if (filters.team1) u.searchParams.set('team1', filters.team1);
-    if (filters.team2) u.searchParams.set('team2', filters.team2);
-    if (filters.order) u.searchParams.set('order', filters.order);
-    if (filters.limit != null && filters.limit > 0)
-      u.searchParams.set('limit', String(filters.limit));
-    if (filters.cache) u.searchParams.set('cache', filters.cache);
-    if (filters.metrics) u.searchParams.set('metrics', filters.metrics);
-    return httpApi(u.toString());
+  /** L4's evaluation report, as `make xi-evaluate` last wrote it. */
+  evaluationReport(): Promise<EvaluationReport> {
+    return httpApi('/api/backtest/report');
   },
 
   /**
-   * Evaluate with Server-Sent Events progress. Calls onProgress(step, message) for each step,
-   * onResult(result) with the final response, or onError(err) on failure.
-   */
-  async backtestEvaluateStream(
-    format: string,
-    team1: string,
-    team2: string,
-    matchId: number | string,
-    callbacks: {
-      onProgress: (step: string, message: string) => void;
-      onResult: (result: BacktestEvaluateResponse) => void;
-      onError: (err: Error) => void;
-    },
-  ): Promise<void> {
-    const url = buildBacktestEvaluateUrl(
-      '/api/backtest/evaluate-stream',
-      format,
-      team1,
-      team2,
-      matchId,
-    );
-    const res = await fetch(url, { headers: apiHeaders(false) });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      callbacks.onError(new Error(`HTTP ${res.status}: ${text}`));
-      return;
-    }
-    const reader = res.body?.getReader();
-    if (!reader) {
-      callbacks.onError(new Error('No response body'));
-      return;
-    }
-    const decoder = new TextDecoder();
-    let buffer = '';
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
-        for (const part of parts) {
-          if (!part.trim()) continue;
-          const action = processBacktestSSEPart(part, callbacks);
-          if (action === 'result' || action === 'error') return;
-        }
-      }
-      if (buffer.trim()) {
-        const action = processBacktestSSEPart(buffer, callbacks);
-        if (action === 'result' || action === 'error') return;
-      }
-    } catch (e) {
-      callbacks.onError(e instanceof Error ? e : new Error(String(e)));
-      return;
-    }
-    callbacks.onError(new Error('Stream ended without result'));
-  },
-
-  /**
-   * Start evaluation in the background. Returns job_id; poll getEvaluateStatus(job_id) for progress and result.
-   * Survives page refresh: store job_id and poll on load to restore state.
-   */
-  evaluateStart(
-    format: string,
-    team1: string,
-    team2: string,
-    matchId: number | string,
-  ): Promise<{ job_id: string }> {
-    const url = buildBacktestEvaluateUrl(
-      '/api/backtest/evaluate-start',
-      format,
-      team1,
-      team2,
-      matchId,
-    );
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-    return fetch(url, {
-      method: 'POST',
-      headers: apiHeaders(false),
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          throw new Error(`HTTP ${res.status}: ${text}`);
-        }
-        return res.json() as Promise<{ job_id: string }>;
-      })
-      .finally(() => {
-        clearTimeout(timeoutId);
-      });
-  },
-
-  /** Get current status of an evaluation job (running / done / error). Poll until status is done or error. */
-  getEvaluateStatus(jobId: string): Promise<EvaluateStatusResponse> {
-    const u = new URL('/api/backtest/evaluate-status', BASE_API_URL);
-    u.searchParams.set('job_id', jobId);
-    return httpApi(u.toString());
-  },
-
-  /**
-   * Predict best 11 for each team for an upcoming match.
-   * When simulate=true, runs Monte Carlo over top-k XIs and returns win probs and innings distributions.
+   * Predict both XIs for an upcoming match: the selection, the displayed win probability
+   * with its source, and -- where the format has an innings length -- the drawn scorecard
+   * the per-player points and ranges come from.
    */
   predictTeamSelection(params: {
     format: string;
@@ -617,10 +405,6 @@ export const api = {
     extra_team2?: number[];
     min_bowlers?: number;
     require_keeper?: boolean;
-    simulate?: boolean;
-    simulation_top_k?: number;
-    simulation_samples?: number;
-    simulation_max_pairs?: number;
   }): Promise<PredictTeamSelectionResponse> {
     return httpApi('/api/predict/team-selection', {
       method: 'POST',

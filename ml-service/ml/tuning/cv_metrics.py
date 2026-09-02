@@ -20,7 +20,6 @@ from sklearn.model_selection import (
     TimeSeriesSplit,
     cross_val_predict,
     cross_val_score,
-    learning_curve,
 )
 from sklearn.pipeline import Pipeline
 
@@ -31,15 +30,7 @@ from ml.config import (
     get_mlqa_config,
     get_tuning_config,
 )
-from ml.metrics import compute_regression_metrics
-from ml.tuning.types import (
-    BATTING_FEATURE_COLS,
-    BOWLING_FEATURE_COLS,
-    _train_extras,
-    _train_fielding,
-    _train_innings,
-    _train_win,
-)
+from ml.tuning.types import _train_win
 from ml.utils import extract_feature_importance_from_estimator
 
 logger = logging.getLogger(__name__)
@@ -184,83 +175,6 @@ def _get_cv_object(
     return KFold(n_splits=kfold_splits, shuffle=True, random_state=random_state)
 
 
-def _compute_metrics_regression(
-    pipe: Pipeline,
-    X: np.ndarray,
-    y: np.ndarray,
-    cv: Any,
-    target_names: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Compute regression metrics from cross-validated predictions.
-
-    The scoring itself lives in ml.metrics so the training pipeline's holdout
-    evaluation reports the identical shape; this adds the cross-validated
-    predictions and the learning-curve summary, which only a CV run can produce.
-    """
-    try:
-        y_pred = cross_val_predict(pipe, X, y, cv=cv)
-    except (ValueError, TypeError) as e:
-        logger.warning("auto_tune.compute_metrics_regression_failed error=%s", e)
-        return {}
-
-    out = compute_regression_metrics(y, y_pred, target_names=target_names)
-    if not out:
-        return {}
-
-    # Learning curve: does validation still improve with more data? overfitting?
-    lc = _compute_learning_curve_regression(pipe, X, y, cv, "neg_mean_absolute_error")
-    if lc:
-        out["learning_curve"] = lc
-        # Top-level for UI
-        out["overfitting_gap"] = lc.get("overfitting_gap")
-        out["val_still_improving"] = lc.get("val_still_improving")
-
-    return out
-
-
-def _compute_learning_curve_regression(
-    pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any, scoring: str = "neg_mean_absolute_error"
-) -> Optional[Dict[str, Any]]:
-    """Compute learning curve summary for regression models.
-
-    Shows whether validation is still improving with more data (needing more data) or
-    if train-val gap is large (overfitting, needing higher regularization).
-
-    Returns dict with:
-    - val_still_improving: True if val score at 100% train size > val at ~50%
-    - overfitting_gap: train_score - val_score at max size (large = overfitting)
-    - train_sizes: fractions of data used
-    - train_scores_mean, val_scores_mean: mean scores per train size
-    """
-    try:
-        n_samples = X.shape[0]
-        if n_samples < 20:
-            return None
-        # Use 5 fractions: 0.2, 0.4, 0.6, 0.8, 1.0
-        train_sizes_frac = np.linspace(0.2, 1.0, 5)
-        train_sizes_abs, train_scores, val_scores = learning_curve(
-            pipe, X, y, cv=cv, scoring=scoring, train_sizes=train_sizes_frac, n_jobs=1
-        )
-        train_mean = np.mean(train_scores, axis=1)
-        val_mean = np.mean(val_scores, axis=1)
-        n_pts = len(train_sizes_frac)
-        mid_idx = max(0, n_pts // 2 - 1)
-        val_at_mid = val_mean[mid_idx]
-        val_at_full = val_mean[-1]
-        val_still_improving = val_at_full > val_at_mid
-        overfitting_gap = float(train_mean[-1] - val_mean[-1])
-        return {
-            "val_still_improving": bool(val_still_improving),
-            "overfitting_gap": round(overfitting_gap, 4),
-            "train_sizes_frac": [round(float(x), 2) for x in train_sizes_frac],
-            "train_scores_mean": [round(float(x), 4) for x in train_mean],
-            "val_scores_mean": [round(float(x), 4) for x in val_mean],
-        }
-    except Exception as e:
-        logger.warning("auto_tune.learning_curve_failed error=%s", e)
-        return None
-
-
 def _compute_metrics_classification(pipe: Pipeline, X: np.ndarray, y: np.ndarray, cv: Any) -> Dict[str, Any]:
     """Compute classification metrics from cross-validated predictions. Returns dict with accuracy, accuracy_pct, etc."""
     try:
@@ -332,19 +246,13 @@ def _permutation_importances_mean(
 
 
 def _mlqa_feature_names(model_kind: str) -> Optional[List[str]]:
-    """Return feature names for MLQA sensitivity analysis and feature importance when available."""
-    if model_kind == "batting":
-        return BATTING_FEATURE_COLS
-    if model_kind == "bowling":
-        return BOWLING_FEATURE_COLS
-    if model_kind == "fielding" and _train_fielding is not None:
-        return _train_fielding.FIELDING_FEATURE_COLS
-    if model_kind == "extras" and _train_extras is not None:
-        return _train_extras.EXTRAS_FEATURE_COLS
+    """Return feature names for MLQA sensitivity analysis and feature importance when available.
+
+    One kind is left: the regression models whose columns the other branches named went in
+    P-5, and with them the raveled multi-output scoring H-12 retired.
+    """
     if model_kind == "win" and _train_win is not None:
         return _train_win.WIN_FEATURE_COLS
-    if model_kind == "innings" and _train_innings is not None:
-        return _train_innings.INNINGS_FEATURE_COLS
     return None
 
 

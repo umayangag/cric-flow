@@ -79,6 +79,30 @@ var retired = []Retired{
 			"for what building it would take.",
 		Body: true,
 	},
+	{
+		Name:    "simulate",
+		Code:    "MONTE_CARLO_REMOVED",
+		Message: "simulate has been removed; the match simulator runs on every limited-overs prediction",
+		Hint: "Drop the field. Totals, per-player ranges and the median-band scorecard come from " +
+			"ml-service /simulate and are in the response's scorecard block whenever the format has " +
+			"an innings length.",
+		Body: true,
+	},
+	{
+		Name:    "use_reconciled_scorecard",
+		Code:    "RECONCILIATION_REMOVED",
+		Message: "use_reconciled_scorecard has been removed; there is one scorecard and nothing is rescaled",
+		Hint: "Drop the field. The scorecard and the win probability come from one simulator, so there " +
+			"is no second estimate to reconcile toward.",
+		Body: true,
+	},
+	{
+		Name:    "include_both_scorecards",
+		Code:    "RECONCILIATION_REMOVED",
+		Message: "include_both_scorecards has been removed; there is only one scorecard",
+		Hint:    "Drop the field. See use_reconciled_scorecard.",
+		Body:    true,
+	},
 }
 
 // Query returns the parameters refused by query-string middleware.

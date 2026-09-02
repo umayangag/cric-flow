@@ -15,12 +15,8 @@ func TestTrainingStepToModel(t *testing.T) {
 		stepID string
 		want   string
 	}{
-		{name: "batting", stepID: "train_batting", want: "batting"},
-		{name: "bowling", stepID: "train_bowling", want: "bowling"},
-		{name: "fielding", stepID: "train_fielding", want: "fielding"},
-		{name: "extras", stepID: "train_extras", want: "extras"},
-		{name: "innings", stepID: "train_innings", want: "innings"},
 		{name: "win", stepID: "train_win", want: "win"},
+		{name: "retired_step_returns_empty", stepID: "train_batting", want: ""},
 		{name: "unknown_returns_empty", stepID: "auto_tune", want: ""},
 		{name: "empty_returns_empty", stepID: "", want: ""},
 	}

@@ -138,7 +138,6 @@ Each PR targets one package group. Keep PRs small and reviewable.
 - [ ] `internal/services/predictteam/predict_team_helpers_test.go`
 - [ ] `internal/services/predictteam/rescale_test.go`
 - [ ] `internal/services/predictteam/scorecard_summary_test.go`
-- [ ] `internal/services/predictteam/simulation_test.go`
 - [ ] `internal/services/teampredictor/flags_test.go`
 - [ ] `internal/services/teampredictor/options_test.go`
 - [ ] `internal/services/teamselect/pool_more_test.go`

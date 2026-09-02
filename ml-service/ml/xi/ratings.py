@@ -59,7 +59,14 @@ class PlayerIndex:
         return s
 
     def slots(self, keys: Sequence[str]) -> np.ndarray:
+        """Slots for ``keys``, assigning one to any key not seen before. The rating pass owns
+        this: reading a player must not invent him (see ``read_slots``)."""
         return np.fromiter((self.slot(k) for k in keys), dtype=np.int64, count=len(keys))
+
+    def read_slots(self, keys: Sequence[str], unrated: int) -> np.ndarray:
+        """Slots for ``keys`` without assigning any: a key this index has never seen maps to
+        ``unrated``, the reserved column that no update ever writes."""
+        return np.fromiter((self.key_to_slot.get(k, unrated) for k in keys), dtype=np.int64, count=len(keys))
 
     def __len__(self) -> int:
         return len(self.keys)
@@ -144,9 +151,24 @@ class RatingState:
         self.pelo = _grow(self.pelo, n, C.ELO_INITIAL)
 
     def _slots(self, keys: Sequence[str]) -> np.ndarray:
+        """Slots for the rating pass, which may bring a player into the state."""
         s = self.players.slots(keys)
         self._ensure(len(self.players))
         return s
+
+    def _read_slots(self, keys: Sequence[str]) -> np.ndarray:
+        """Slots for a read, which may not.
+
+        A serving request naming someone the state has never seen -- a debutant, or a caller
+        with the wrong kind of id -- used to *append* him, so the loaded state drifted with
+        traffic and ``known_players`` stopped reporting him unknown on the second identical
+        request. Unknown keys map instead to one reserved column past the last player, which
+        `_ensure` initialises exactly as a fresh slot and no update ever writes, so the
+        numbers a debutant gets are unchanged and the state is not.
+        """
+        unrated = len(self.players)
+        self._ensure(unrated + 1)
+        return self.players.read_slots(keys, unrated)
 
     # -- reads ---------------------------------------------------------------------------
     def side_vectors(self, format_code: str, player_keys: Sequence[str]) -> Dict[str, np.ndarray]:
@@ -155,7 +177,7 @@ class RatingState:
         and the player-match rows, so training and serving cannot compute different
         functions of the same eleven names."""
         f = C.FORMAT_INDEX[format_code]
-        s = self._slots(player_keys)
+        s = self._read_slots(player_keys)
         bat_m = self.bat_matches[f, s]
         bowl_m = self.bowl_matches[f, s]
         out = {

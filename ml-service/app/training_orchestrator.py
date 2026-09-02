@@ -106,119 +106,6 @@ def export_csvs_available(prefix: str) -> bool:
     return False
 
 
-def run_batting_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run per-format batting training. Raises ValueError on failure."""
-    csv_available = export_csvs_available("batting_encoded_")
-    use_api = bool(cutoff) and not csv_available
-    if use_api:
-        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        if logger:
-            logger.info("admin.train.start", step="batting", per_format=True, from_api=True, go_app_url=go_app_url)
-    else:
-        extra = ["--all-formats"]
-        if logger:
-            logger.info(
-                "admin.train.start",
-                step="batting",
-                per_format=True,
-                from_api=False,
-                from_csv=bool(cutoff and csv_available),
-            )
-    run_training_subprocess("ml.train_batting", extra, {"ML_N_JOBS": "-1"}, logger=logger)
-    if logger:
-        logger.info("admin.train.success", step="batting")
-
-
-def run_bowling_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run per-format bowling training. Raises ValueError on failure."""
-    csv_available = export_csvs_available("bowling_encoded_")
-    use_api = bool(cutoff) and not csv_available
-    if use_api:
-        extra = ["--from-api", "--cutoff", cutoff, "--all-formats", "--go-app-url", go_app_url]
-        if logger:
-            logger.info("admin.train.start", step="bowling", per_format=True, from_api=True, go_app_url=go_app_url)
-    else:
-        extra = ["--all-formats"]
-        if logger:
-            logger.info(
-                "admin.train.start",
-                step="bowling",
-                per_format=True,
-                from_api=False,
-                from_csv=bool(cutoff and csv_available),
-            )
-    run_training_subprocess("ml.train_bowling", extra, {"ML_N_JOBS": "-1"}, logger=logger)
-    if logger:
-        logger.info("admin.train.success", step="bowling")
-
-
-def combination_meta_csv_path() -> str:
-    """Path to the backtest contributions CSV the meta-model trains from."""
-    export_dir = (os.environ.get("GO_APP_OUTPUT_DIR") or "").strip()
-    if not export_dir:
-        from ml.config import default_go_app_export_dir
-
-        export_dir = default_go_app_export_dir()
-    return os.path.join(export_dir, "backtest_contributions.csv")
-
-
-def run_combination_meta_training(logger: Optional[Logger] = None) -> None:
-    """Train the score-combination meta-model from the backtest contributions CSV.
-
-    Inputs and outputs live on the shared output volume: the CSV is produced by
-    POST /api/backtest/export-contributions on go-app, and the JSON is read by go-app's
-    team selection (config `selection.meta_model_path`). Raises ValueError if the CSV is
-    absent, so the caller can tell "not run yet" from "failed".
-    """
-    csv_path = combination_meta_csv_path()
-    out_path = os.path.join(os.path.dirname(csv_path), "combination_meta.json")
-
-    if not os.path.isfile(csv_path):
-        raise ValueError(
-            f"combination-meta training needs {csv_path}, which does not exist. "
-            "Run POST /api/backtest/export-contributions on go-app first."
-        )
-
-    if logger:
-        logger.info("admin.train.start", step="combination_meta", csv=csv_path, out=out_path)
-    run_training_subprocess(
-        "ml.train_combination_meta",
-        ["--csv", csv_path, "--out", out_path],
-        logger=logger,
-    )
-    if logger:
-        logger.info("admin.train.success", step="combination_meta", out=out_path)
-
-
-def run_fielding_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run fielding training. If cutoff: from API; else CSV. Raises ValueError on failure."""
-    if cutoff:
-        args = ["--cutoff", cutoff, "--go-app-url", go_app_url]
-        if logger:
-            logger.info("admin.train.start", step="fielding", cutoff=cutoff, go_app_url=go_app_url)
-    else:
-        args = []
-        if logger:
-            logger.info("admin.train.start", step="fielding", source="csv")
-    run_training_subprocess("ml.train_fielding", args, {"ML_N_JOBS": "-1"}, logger=logger)
-    if logger:
-        logger.info("admin.train.success", step="fielding")
-
-
-def run_extras_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run extras training (requires cutoff, uses go-app API). Raises ValueError on failure."""
-    if logger:
-        logger.info("admin.train.start", step="extras", cutoff=cutoff, go_app_url=go_app_url)
-    run_training_subprocess(
-        "ml.train_extras",
-        ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        {"ML_N_JOBS": "-1"},
-        logger=logger,
-    )
-    if logger:
-        logger.info("admin.train.success", step="extras")
-
-
 def run_win_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
     """Run win model training (requires cutoff). Raises ValueError on failure."""
     if logger:
@@ -231,20 +118,6 @@ def run_win_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = No
     )
     if logger:
         logger.info("admin.train.success", step="win")
-
-
-def run_innings_training(cutoff: str, go_app_url: str, logger: Optional[Logger] = None) -> None:
-    """Run innings model training (requires cutoff). Raises ValueError on failure."""
-    if logger:
-        logger.info("admin.train.start", step="innings", cutoff=cutoff, go_app_url=go_app_url)
-    run_training_subprocess(
-        "ml.train_innings",
-        ["--cutoff", cutoff, "--go-app-url", go_app_url],
-        {"ML_N_JOBS": "-1"},
-        logger=logger,
-    )
-    if logger:
-        logger.info("admin.train.success", step="innings")
 
 
 def get_auto_tune_progress_path() -> Optional[str]:
@@ -338,7 +211,8 @@ def get_auto_tune_progress() -> Dict[str, Any]:
     return get_step_progress(auto_tune_progress.STEP)
 
 
-VALID_AUTO_TUNE_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings", "all")
+# One model is left to tune; the regression trainers went in P-5.
+VALID_AUTO_TUNE_MODELS = ("win",)
 VALID_AUTO_TUNE_FORMATS = tuple(get_format_codes())
 
 

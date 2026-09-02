@@ -58,23 +58,7 @@ init: install
 run:
 	$(UVICORN) app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Per-model training (artifacts go to ML_SERVICE_OUTPUT_DIR or outputs.artifacts_dir).
-# Batting/bowling: if CUTOFF is set (e.g. make train-batting CUTOFF=2025-01-01T00:00:00Z), use API; else read from CSVs.
-# Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
-train-batting:
-	$(if $(CUTOFF),$(PY) -m ml.train_batting --from-api --cutoff "$(CUTOFF)" --all-formats,$(PY) -m ml.train_batting --all-formats)
-
-train-bowling:
-	$(if $(CUTOFF),$(PY) -m ml.train_bowling --from-api --cutoff "$(CUTOFF)" --all-formats,$(PY) -m ml.train_bowling --all-formats)
-
-# Fielding: set GO_APP_URL and CUTOFF for API, or pass FIELDING_CSV=path when invoking from root.
-train-fielding:
-	$(PY) -m ml.train_fielding
-
-# Extras and win: same as fielding (GO_APP_URL + CUTOFF or --csv from root).
-train-extras:
-	$(PY) -m ml.train_extras
-
+# Windowed-form win model (P-6 removes it). Set GO_APP_URL and CUTOFF, or pass --csv.
 train-win:
 	$(PY) -m ml.train_win
 
@@ -95,15 +79,9 @@ xi-parity: venv
 	@test -n "$(CRICSHEET_DIR)" || (echo "CRICSHEET_DIR is required, e.g. make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet" && exit 1)
 	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)"
 
-train-innings:
-	$(PY) -m ml.train_innings
-
-train-models: train-batting train-bowling train-fielding train-extras train-win train-innings
-
-# Auto-tune model(s): find best algorithm and hyperparameters (see docs/ml-and-training.md).
-# Usage: make auto-tune MODEL=batting FORMAT=T20; or make auto-tune MODEL=all ALL_FORMATS=1
-# When MODEL=all and ALL_FORMATS=1, uses --from-api and CUTOFF so all five models (incl. extras, win) are tuned and params saved to DB when GO_APP_URL is set.
-MODEL ?= batting
+# Auto-tune the win model: find best algorithm and hyperparameters (see docs/ml-and-training.md).
+# Usage: make auto-tune FORMAT=T20; or make auto-tune ALL_FORMATS=1
+MODEL ?= win
 FORMAT ?=
 ALL_FORMATS ?=
 CUTOFF ?= 2024-01-01T00:00:00Z
@@ -118,9 +96,6 @@ AUTO_TUNE_ARGS += --format $(FORMAT)
 endif
 ifeq ($(ALL_FORMATS),1)
 AUTO_TUNE_ARGS += --all-formats
-ifeq ($(MODEL),all)
-AUTO_TUNE_ARGS += --from-api --cutoff "$(CUTOFF)"
-endif
 endif
 ifneq ($(ALGORITHMS),)
 AUTO_TUNE_ARGS += --algorithms "$(ALGORITHMS)"
@@ -146,17 +121,6 @@ endif
 auto-tune: venv
 	$(PY) -m ml.auto_tune $(AUTO_TUNE_ARGS)
 
-# Walk-forward training and evaluation (sequential data). Requires GO_APP_URL and go-app running.
-# Usage: make walk-forward INITIAL_CUTOFF=2020-01-01 WINDOW_X=50 WALK_FORMAT=T20 WALK_MODEL=batting
-INITIAL_CUTOFF ?= 2020-01-01T00:00:00Z
-WINDOW_X ?= 50
-WALK_FORMAT ?= T20
-WALK_MODEL ?= batting
-MAX_WINDOWS ?=
-EXPORT_METRICS ?=
-walk-forward: venv
-	$(PY) -m ml.walk_forward --initial-cutoff "$(INITIAL_CUTOFF)" --window-x $(WINDOW_X) --format $(WALK_FORMAT) --model $(WALK_MODEL) $(if $(MAX_WINDOWS),--max-windows $(MAX_WINDOWS),) $(if $(EXPORT_METRICS),--export-metrics $(EXPORT_METRICS),)
-
 # Held-out discrimination report for the win model (AUC, Brier, reliability).
 # Usage: make win-discrimination TRAIN_CUTOFF=2024-01-01T00:00:00Z [EVAL_CUTOFF=...]
 TRAIN_CUTOFF ?=
@@ -164,14 +128,6 @@ EVAL_CUTOFF ?=
 win-discrimination: venv
 	@test -n "$(TRAIN_CUTOFF)" || (echo "TRAIN_CUTOFF is required (the cutoff the win model was trained to)" && exit 1)
 	$(PY) -m ml.win_discrimination --train-cutoff "$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),--eval-cutoff "$(EVAL_CUTOFF)",)
-
-# Train combination meta-model (Ridge) from backtest CSV. See docs/ml-and-training.md.
-# Usage: make train-combination-meta CSV=path/to/backtest.csv OUT=output/ml-service/combination_meta.json
-CSV ?=
-OUT ?=
-train-combination-meta: venv
-	@if [ -z "$(CSV)" ] || [ -z "$(OUT)" ]; then echo "Usage: make train-combination-meta CSV=<path> OUT=<path>"; exit 1; fi
-	$(PY) -m ml.train_combination_meta --csv "$(CSV)" --out "$(OUT)"
 
 validate-exports:
 	(cd ml && ../$(PY) validate_exports.py --all-formats --schema training --use-golden)

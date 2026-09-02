@@ -28,31 +28,30 @@ def app_module(tmp_path):
     artifacts.reload(str(tmp_path))
 
 
-def test_completed_innings_training_loads_the_new_artifacts(app_module, tmp_path, monkeypatch):
+def test_completed_win_training_loads_the_new_artifacts(app_module, tmp_path, monkeypatch):
     """The artifacts a training run writes are serving by the time the request returns."""
 
-    def write_innings_artifacts(cutoff, go_app_url, logger=None):
-        joblib.dump({}, tmp_path / "innings_scaler_T20.joblib")
-        joblib.dump({}, tmp_path / "innings_model_T20.joblib")
+    def write_win_artifacts(cutoff, go_app_url, logger=None):
+        joblib.dump({}, tmp_path / "win_model_T20.joblib")
 
-    monkeypatch.setattr(app_module.training_orchestrator, "run_innings_training", write_innings_artifacts)
-    artifacts.INNINGS_MODELS.clear()
+    monkeypatch.setattr(app_module.training_orchestrator, "run_win_training", write_win_artifacts)
+    artifacts.WIN_MODELS.clear()
 
-    resp = TestClient(app_module.app).post(f"/admin/train/innings?cutoff={CUTOFF}")
+    resp = TestClient(app_module.app).post(f"/admin/train/win?cutoff={CUTOFF}")
 
     assert resp.status_code == 200
-    assert "T20" in artifacts.INNINGS_MODELS
+    assert "T20" in artifacts.WIN_MODELS
 
 
 def test_reload_failure_does_not_fail_the_training_run(app_module, monkeypatch):
     """The artifacts are on disk either way, so a reload error is logged, not raised."""
-    monkeypatch.setattr(app_module.training_orchestrator, "run_innings_training", lambda *a, **k: None)
+    monkeypatch.setattr(app_module.training_orchestrator, "run_win_training", lambda *a, **k: None)
     monkeypatch.setattr(app_module, "reload_artifacts", _raise_reload_error)
 
-    resp = TestClient(app_module.app).post(f"/admin/train/innings?cutoff={CUTOFF}")
+    resp = TestClient(app_module.app).post(f"/admin/train/win?cutoff={CUTOFF}")
 
     assert resp.status_code == 200
-    assert resp.json()["step"] == "innings"
+    assert resp.json()["step"] == "win"
 
 
 def _raise_reload_error(models_dir: str):
@@ -66,10 +65,10 @@ def test_failed_training_does_not_reload(app_module, monkeypatch):
         raise ValueError("training blew up")
 
     reload_calls = []
-    monkeypatch.setattr(app_module.training_orchestrator, "run_innings_training", fail)
+    monkeypatch.setattr(app_module.training_orchestrator, "run_win_training", fail)
     monkeypatch.setattr(app_module, "reload_artifacts", lambda models_dir: reload_calls.append(models_dir))
 
-    resp = TestClient(app_module.app).post(f"/admin/train/innings?cutoff={CUTOFF}")
+    resp = TestClient(app_module.app).post(f"/admin/train/win?cutoff={CUTOFF}")
 
     assert resp.status_code == 500
     assert reload_calls == []

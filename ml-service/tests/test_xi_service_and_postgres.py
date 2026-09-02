@@ -10,6 +10,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from app import xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
@@ -22,11 +23,17 @@ from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.xi_perf_fixtures import fast_fits
 
 
-def _numeric_history(n: int = 160):
-    """The synthetic history with integer-looking player keys, as the Postgres source yields."""
+def _registry_keyed_history(n: int = 160):
+    """The synthetic history with registry-style player keys, as both sources yield.
+
+    The keys are hex-looking strings on purpose. They were renamed to integers here while the
+    ``/xi/*`` contract declared ``List[int]`` -- a test-only workaround that made the suite
+    agree with a wire format no real player id could satisfy, which is why P-5 shipped the
+    mismatch: every test passed against keys the store would never hold.
+    """
     matches, squad_a, squad_b = _synthetic_history(n)
-    rename = {k: str(1000 + i) for i, k in enumerate(squad_a)}
-    rename.update({k: str(2000 + i) for i, k in enumerate(squad_b)})
+    rename = {k: f"{1000 + i:08x}" for i, k in enumerate(squad_a)}
+    rename.update({k: f"{2000 + i:08x}" for i, k in enumerate(squad_b)})
 
     def remap(keys: List[str]) -> List[str]:
         return [rename[k] for k in keys]
@@ -54,12 +61,12 @@ def _numeric_history(n: int = 160):
                 d2,
             )
         )
-    return out, [int(rename[k]) for k in squad_a], [int(rename[k]) for k in squad_b]
+    return out, [rename[k] for k in squad_a], [rename[k] for k in squad_b]
 
 
 @pytest.fixture(scope="module")
 def artifacts_dir(tmp_path_factory) -> tuple:
-    matches, squad_a, squad_b = _numeric_history()
+    matches, squad_a, squad_b = _registry_keyed_history()
     out = tmp_path_factory.mktemp("xi_service_artifacts")
     with fast_fits():
         summary = train_all(build(_ListSource(matches)), str(out), pd.Timestamp("2023-05-01"), formats=["T20"])
@@ -81,14 +88,14 @@ def test_status_lists_the_performance_formats(registry) -> None:
 def test_predict_performance_returns_distributions_for_both_elevens(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
     req = PerformancePredictRequest(
-        format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + [99999]
+        format="t20", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + ["nosuchplayer"]
     )
 
     res = xi_service.predict_performance(req, registry)
 
     assert len(res.players) == 23 and res.innings_marginalised is True
     assert [p.side for p in res.players] == [1] * 11 + [2] * 12
-    assert res.unknown_player_ids == [99999]
+    assert res.unknown_player_ids == ["nosuchplayer"]
     first = res.players[0]
     assert first.player_id == squad_a[0]
     assert 0.0 <= first.p_bats <= 1.0 and first.runs.q10 <= first.runs.median <= first.runs.q90
@@ -114,7 +121,7 @@ def test_predict_performance_without_an_artifact_is_unavailable(registry) -> Non
 
     with pytest.raises(xi_service.XiUnavailable, match="no performance model"):
         xi_service.predict_performance(
-            PerformancePredictRequest(format="T20", team1_player_ids=[1], team2_player_ids=[2]), registry
+            PerformancePredictRequest(format="T20", team1_player_ids=["a"], team2_player_ids=["b"]), registry
         )
 
 
@@ -143,27 +150,97 @@ def test_registry_status_after_load(registry, artifacts_dir) -> None:
         registry.store("ODI")
 
 
+def test_evaluate_report_is_read_from_the_loaded_artifacts_directory(registry, tmp_path) -> None:
+    """The report and the models it describes must come from one directory.
+
+    Resolving it through ``ml.config.default_artifacts_dir()`` instead looked equivalent and
+    was not: that is the last fallback in the chain, so in any deployment that sets
+    ``ML_SERVICE_OUTPUT_DIR`` -- the container does -- the service loaded artifacts from one
+    place and looked for the report in another, and answered 503 with a report on disk.
+    """
+    models_dir = tmp_path / "artifacts"
+    models_dir.mkdir()
+    (models_dir / "xi_evaluate_report.json").write_text(json.dumps({"formats": {"T20": {}}}))
+    registry.reload(str(models_dir))
+
+    assert xi_service.evaluate_report(registry)["formats"] == {"T20": {}}
+
+
+def test_evaluate_report_reports_a_missing_report_with_the_path_it_looked_in(registry, tmp_path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    registry.reload(str(empty))
+
+    with pytest.raises(xi_service.XiUnavailable, match="no evaluation report at"):
+        xi_service.evaluate_report(registry)
+
+
+def test_evaluate_report_refuses_before_any_reload() -> None:
+    """A registry that has never been reloaded has nowhere to read from, and says so rather
+    than falling back to a directory nobody configured."""
+    with pytest.raises(xi_service.XiUnavailable, match="never been loaded"):
+        xi_service.evaluate_report(xi_service.XiRegistry())
+
+
 def test_optimize_returns_ids_marginals_and_unknowns(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, matches = artifacts_dir
-    opponent = [int(k) for k in matches[-1].team2_players]
+    opponent = list(matches[-1].team2_players)
     req = XiOptimizeRequest(
         format="t20",
-        pool_player_ids=squad_a + [99999],
+        pool_player_ids=squad_a + ["nosuchplayer"],
         opponent_player_ids=opponent,
         constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False, must_exclude=[squad_a[0]]),
     )
     res = xi_service.optimize(req, registry)
     assert len(res.selected_player_ids) == 11
     assert squad_a[0] not in res.selected_player_ids
-    assert res.unknown_player_ids == [99999]
+    assert res.unknown_player_ids == ["nosuchplayer"]
     assert set(res.marginal_values) == set(res.selected_player_ids)
+    assert res.objective == "win"
+    assert res.optimised is True
     assert 0.0 <= res.win_probability <= 1.0
+
+
+def test_optimize_rating_ordered_needs_no_opponent_and_is_marked_not_optimised(registry, artifacts_dir) -> None:
+    _, squad_a, _, _ = artifacts_dir
+    req = XiOptimizeRequest(
+        format="t20",
+        pool_player_ids=squad_a,
+        objective="ratings",
+        constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
+    )
+    res = xi_service.optimize(req, registry)
+    assert len(res.selected_player_ids) == 11
+    assert res.objective == "ratings"
+    assert res.optimised is False
+    assert res.win_probability is None
+    assert res.evaluations == 0
+    assert res.marginal_values == {}
+
+
+def test_optimize_refuses_the_win_objective_where_it_does_not_rank(registry, artifacts_dir) -> None:
+    """H-17: TEST has no objective that ranks, so the win objective is not offered there."""
+    _, squad_a, _, matches = artifacts_dir
+    req = XiOptimizeRequest(
+        format="TEST",
+        pool_player_ids=squad_a,
+        opponent_player_ids=list(matches[-1].team2_players),
+    )
+    with pytest.raises(xi_service.XiUnavailable, match="H-17"):
+        xi_service.optimize(req, registry)
+
+
+def test_optimize_win_objective_requires_an_opponent_xi(registry, artifacts_dir) -> None:
+    _, squad_a, _, _ = artifacts_dir
+    req = XiOptimizeRequest(format="T20", pool_player_ids=squad_a)
+    with pytest.raises(xi_service.XiUnavailable, match="opponent_player_ids"):
+        xi_service.optimize(req, registry)
 
 
 def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_dir) -> None:
     _, squad_a, _, matches = artifacts_dir
     req = XiOptimizeRequest(
-        format="T20", pool_player_ids=squad_a[:5], opponent_player_ids=[int(k) for k in matches[-1].team2_players]
+        format="T20", pool_player_ids=squad_a[:5], opponent_player_ids=list(matches[-1].team2_players)
     )
     with pytest.raises(ValueError):
         xi_service.optimize(req, registry)
@@ -172,7 +249,7 @@ def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_d
 def test_predict_win_with_and_without_context(registry, artifacts_dir) -> None:
     _, _, _, matches = artifacts_dir
     last = matches[-1]
-    t1, t2 = [int(k) for k in last.team1_players], [int(k) for k in last.team2_players]
+    t1, t2 = list(last.team1_players), list(last.team2_players)
     plain = xi_service.predict_win(XiWinRequest(format="T20", team1_player_ids=t1, team2_player_ids=t2), registry)
     ctx = xi_service.predict_win(
         XiWinRequest(format="T20", team1_player_ids=t1, team2_player_ids=t2, team1_id=7, team2_id=8, venue_id=3),
@@ -481,4 +558,12 @@ def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry,
 
 def test_simulate_refuses_a_format_without_an_innings_length(registry) -> None:
     with pytest.raises(SimulationUnavailable):
-        xi_service.simulate(SimulateRequest(format="TEST", team1_player_ids=[1], team2_player_ids=[2]), registry)
+        xi_service.simulate(SimulateRequest(format="TEST", team1_player_ids=["a"], team2_player_ids=["b"]), registry)
+
+
+def test_a_numeric_player_id_is_refused_rather_than_silently_unrated() -> None:
+    """D-7a: the wire carries the Cricsheet registry id. A caller sending go-app's numeric
+    `player_id` used to be accepted and match nobody, so every player came back unrated and
+    the XI was eleven debutants. The contract now rejects it at the boundary."""
+    with pytest.raises(ValidationError):
+        XiOptimizeRequest(format="T20", pool_player_ids=[1, 2, 3], opponent_player_ids=["2911de16"])

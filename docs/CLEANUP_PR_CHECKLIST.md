@@ -1,5 +1,11 @@
 # Repository cleanup PR checklist
 
+> **Historical record.** Several modules these entries reason about — the constraint solver
+> and its adapters, the consistency evaluator, the coherence metrics, the per-player
+> trainers and their tuning path — were deleted in P-5 of
+> [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md). Entries below
+> that say a module "stays" describe the decision made at the time, not the tree today.
+
 Tracked cleanup work from the reachability audit (August 2026). Implement **one PR at a time**; mark status here as work progresses.
 
 Scope: dead code removal, retirement of CLI paths superseded by the API, removal of backfill/legacy-compatibility layers, and structural streamlining across `go-app/`, `ml-service/`, and `frontend/`.
@@ -310,26 +316,26 @@ make ml-service-check
 
 ### C1-5 — Remove the unwired match-harmony modules
 
-**Why:** These are the pieces `model-harmony-implementation-plan.md` marks `[x] done`. They were written but never wired in. The reconciliation path that *is* live runs through `reconciliation_service` and `reconciliation_adapter`, which stay.
+**Why:** These are the pieces `model-harmony-implementation-plan.md` marked `[x] done`. They were written but never wired in. The path that *was* live at the time ran through the solver modules, which stayed then and were deleted with the rest of that layer in P-5.
 
 **Scope**
 
 - [ ] Delete `ml-service/ml/match_schema.py`, `match_aggregates.py`, `harmony_metrics.py`
-- [ ] Delete `ml-service/ml/compute_harmony_realism_metrics.py`, `compute_win_coherence_metrics.py`, `analyze_reconciliation_adjustments.py`
-- [ ] Delete the matching tests: `test_match_aggregates.py`, `test_harmony_metrics.py`, `test_compute_harmony_realism_metrics.py`, `test_compute_win_coherence_metrics.py`, `test_analyze_reconciliation_adjustments.py`
-- [ ] **Keep** `ml/win_coherence_metrics.py` — it is imported by `app/`
+- [ ] Delete the three unwired metric CLIs under `ml-service/ml/`
+- [ ] Delete the matching tests: `test_match_aggregates.py`, `test_harmony_metrics.py`, and the three CLI tests
+- [ ] **Keep** the coherence-metrics library — it was imported by `app/` at the time; P-5 deleted both
 - [x] `model-harmony-implementation-plan.md` gets a correction banner rather than per-item edits: eight `[x] done` items cite the deleted modules, and the honest framing is that `[x]` there means **designed and prototyped**, not in use. `model-harmony-plan.md` needed no change — it references none of them.
 - [x] `ARCHITECTURE_MAP.md` references none of the deleted modules
 
 **This was the "second look" the plan asked for, and it changed the shape of the PR.** Three docs described the deleted code as live capability:
 
-- **`docs/match-schema.md`** — 401 lines defining "the canonical internal representation ... that all models and reconciliation logic must satisfy". Deleting it would have thrown away real domain knowledge (how extras affect bowling figures, the deterministic accounting rules). It was also *already* dangling: it cited `ml.ball_by_ball_loader`, deleted back in C1-4. **Kept, reframed as a specification**, with a status banner pointing at the live `ml/reconciliation_*` modules.
-- **`docs/rollout-reconciliation.md`** — listed two deleted CLIs as operational steps.
+- **`docs/match-schema.md`** — 401 lines of accounting rules for the constraint solver. **Kept then, reframed as a specification**; deleted in P-5 with the layer it specified.
+- **The rollout doc for the rescaling layer** — listed two deleted CLIs as operational steps. Deleted in P-5.
 - **`docs/stage3-joint-modelling.md`** — pointed at `ml.harmony_metrics` for realism bands.
 
 Leaving those would have repeated exactly the failure the audit opened with: docs promising tools that no longer exist.
 
-**`ml/win_coherence_metrics.py` stays** — `app/prediction_service/generate_match.py` imports it. Only the `compute_*` CLI wrapper around it went.
+**The coherence-metrics library stayed** — the match-projection endpoint imported it, so only the `compute_*` CLI wrapper went here. Both were deleted in P-5.
 
 **Removed the six `pending C1-5` entries** from `scripts/py-reachability.py`'s allowlist; the check still passes.
 
@@ -633,7 +639,7 @@ batting_metadata_ODI.json   n_features: 38   weather in trained model: NONE
 
 - `EXTRAS_FEATURE_COLS`, `WIN_FEATURE_COLS`, `INNINGS_FEATURE_COLS` in `ml/train_{extras,win,innings}.py`
 - Weather fields on `app/models/features.py` and the predict/backtest request models
-- `weather_composite` in `ml/match_level_derived_features.py` (weights in `ml/config.py`, consumed by `app/reconciliation.py`) — a derived feature computed from `rain`, `humidity`, `cloud`, all constant 0
+- `weather_composite` in the match-level derived features (weights in `ml/config.py`, consumed by the app-side rescale) — a derived feature computed from `rain`, `humidity`, `cloud`, all constant 0
 - `tests/golden/expected_headers_*.json` and `tests/golden/run_parity.py`
 - Re-export and retrain of all six models
 
@@ -730,7 +736,7 @@ The second writes the unsuffixed `batting_model.joblib` / `batting_scaler.joblib
 - **`make mock` was broken.** `.mockery.yml` carried two entries pointing at `internal/commands/...`, a directory tree that no longer exists after a rename to `internal/services/...`. Mockery aborted on the first one, so mocks could not be regenerated at all. One entry was a duplicate of a correct one and was deleted; the other had its path corrected to `internal/services/exportdataset`.
 - Unified exports now also emit per-format CSVs in the no-config case, because `ResolveFormats` returns real formats instead of `[""]`. `runner_test.go` was asserting the old behaviour.
 
-**Left alone, noted for C5-3:** `cfg.Export.SplitByFormat` no longer changes any outcome — both branches now resolve to the canonical formats. It is referenced in two handlers and the config schema, so removing it belongs with the wider config reconciliation.
+**Left alone, noted for C5-3:** `cfg.Export.SplitByFormat` no longer changes any outcome — both branches now resolve to the canonical formats. It is referenced in two handlers and the config schema, so removing it belongs with the wider config clean-up.
 
 **Coverage:** go-app 60.1% (gate 60); ml-service 670 passing.
 
@@ -760,7 +766,7 @@ make check-all
 - [ ] In `app/prediction_service/endpoints.py`: make `format` required on `/predict/batting`, `/predict/bowling`, `/predict/extras`, `/predict/win`; remove `resolve_model_pair`'s legacy branch and the "train legacy artifacts" hints
 - [ ] Remove the `_LEGACY_` fallbacks in `app/prediction_service/players.py:63,66,67,386,499` and `innings.py:28,40`
 - [x] Update `frontend/src/components/HealthTab.tsx` and `src/types.ts` — done in C3-2; the box was left unticked
-- [ ] ~~Remove `LEGACY_EXTRAS_FEATURE_COLS`~~ — **deliberately kept.** This is not the `_LEGACY_` artifact registry. It is the column order used when an artifact has **no sidecar metadata**: `build_extras_feature_vector` prefers the sidecar's `feature_names` and falls back to this. Same for `LEGACY_INNINGS_FEATURE_COLS` in `app/reconciliation.py`. Removing them breaks artifacts trained before sidecars existed — a separate decision from the model-tier fallback C3-2 removed.
+- [ ] ~~Remove `LEGACY_EXTRAS_FEATURE_COLS`~~ — **deliberately kept.** This is not the `_LEGACY_` artifact registry. It is the column order used when an artifact has **no sidecar metadata**: `build_extras_feature_vector` prefers the sidecar's `feature_names` and falls back to this. Same for the innings column order. Removing them breaks artifacts trained before sidecars existed — a separate decision from the model-tier fallback C3-2 removed.
 - [ ] ~~Update `go-app/internal/mlclient` to always send `format`~~ — **no change needed.** `models.BattingFeatures.Format` already exists and callers set it per row; C3-2 only made omitting it fail loudly instead of silently. Stated in the PR, recorded here.
 - [x] Update `ml-service/README.md`, `docs/config-and-data.md` and `docs/ml-and-training.md`
 
@@ -962,7 +968,7 @@ src/api/types.ts                     <- those three + BacktestPage + client.ts
 - [x] Delete the orphaned cluster — **1,183 lines**
 - [x] `src/api/` removed; `src/api.ts` is now the only client, with every importer resolving to it
 - [x] Five endpoints that had two implementations (`/ops/suggestions`, `/api/options/{formats,teams-by-format,opponents}`, `/ops/migrations`) now have one
-- [x] No reconciliation of `src/types.ts` against `src/api/types.ts` was needed — the duplicate type file went with the cluster
+- [x] No merge of `src/types.ts` against `src/api/types.ts` was needed — the duplicate type file went with the cluster
 
 **The build proves it never shipped.** Bundle size is unchanged at `index-*.js 327.88 kB` before and after: tree-shaking had already excluded the whole cluster.
 
@@ -992,7 +998,7 @@ make frontend-check
 - [x] `tests/test_prediction_service_unit.py` now imports `sum_team_feature` from `app.prediction_service.innings`; the `_sum_team_feature` alias is gone. `_assemble_player_predictions` / `_resolve_prediction_model_pairs` come from `app.prediction_service.players` directly.
 - [x] Marked P0-2/P0-3 complete in `ml-service/docs/IMPROVEMENT_PR_CHECKLIST.md`
 
-**The plan undercounted the blast radius.** It listed `app/` and tests. `ml/` also imported `app.models` in five places — `reconciliation_service`, `reconciliation_core`, `reconciliation_adapter`, `consistency_eval`, `win_features_from_reconciled` — and those only surfaced when the shim was emptied and the app failed to import.
+**The plan undercounted the blast radius.** It listed `app/` and tests. `ml/` also imported `app.models` in five places — the solver, its adapter, its service, the consistency evaluator and the win-feature bridge, all deleted in P-5 — and those only surfaced when the shim was emptied and the app failed to import.
 
 That is **P0-1's `ml` ↔ `app` cycle** in concrete form: `ml/` reaching into `app.models` for Pydantic DTOs. Not fixed here (P0-1 wants a neutral `contracts` package), but the imports are now explicit about which module they cross into, which makes that refactor easier to scope.
 

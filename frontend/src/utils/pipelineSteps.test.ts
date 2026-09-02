@@ -33,11 +33,11 @@ describe('pipelineSteps', () => {
   describe('derivePipelineSteps', () => {
     it('returns default steps when data is null', () => {
       const steps = derivePipelineSteps(null);
-      expect(steps).toHaveLength(11);
+      expect(steps).toHaveLength(5);
       expect(steps.map((s) => s.id)).toContain('import');
       expect(steps.map((s) => s.id)).toContain('precompute');
       expect(steps.map((s) => s.id)).toContain('auto_tune');
-      expect(steps.map((s) => s.id)).toContain('train_combination_meta');
+      expect(steps.map((s) => s.id)).toContain('train_win');
       steps.forEach((s) => {
         expect(s.label).toBeTruthy();
         expect(s.command).toBeTruthy();
@@ -50,7 +50,7 @@ describe('pipelineSteps', () => {
 
     it('returns default steps when data is empty object', () => {
       const steps = derivePipelineSteps({ timestamp: '' });
-      expect(steps).toHaveLength(11);
+      expect(steps).toHaveLength(5);
       expect(steps[0].status).toBe('pending');
     });
 
@@ -112,22 +112,18 @@ describe('pipelineSteps', () => {
       expect(exportStep?.status).toBe('success');
     });
 
-    it('sets batting/bowling/fielding to success when artifact loaded or exists', () => {
+    it('sets the win step to success when its artifact is loaded or exists', () => {
       const steps = derivePipelineSteps({
         timestamp: '2026-01-01T00:00:00Z',
         artifacts: {
           formats: {
             T20: {
-              batting: { loaded: true },
-              bowling: { exists: true },
-              fielding: { loaded: true },
+              win: { loaded: true },
             },
           },
         },
       } as Parameters<typeof derivePipelineSteps>[0]);
-      expect(steps.find((s) => s.id === 'train_batting')?.status).toBe('success');
-      expect(steps.find((s) => s.id === 'train_bowling')?.status).toBe('success');
-      expect(steps.find((s) => s.id === 'train_fielding')?.status).toBe('success');
+      expect(steps.find((s) => s.id === 'train_win')?.status).toBe('success');
     });
 
     it('overrides step status from pipeline.steps (running, completed, runnable)', () => {
@@ -139,19 +135,19 @@ describe('pipelineSteps', () => {
           steps: {
             import: { completed: true, runnable: true },
             precompute: { running: true, runnable: false },
-            train_batting: { completed: true, runnable: false },
+            train_win: { completed: true, runnable: false },
           },
         },
       } as Parameters<typeof derivePipelineSteps>[0]);
       const importStep = steps.find((s) => s.id === 'import');
       const precomputeStep = steps.find((s) => s.id === 'precompute');
-      const battingStep = steps.find((s) => s.id === 'train_batting');
+      const winStep = steps.find((s) => s.id === 'train_win');
       expect(importStep?.status).toBe('success');
       expect(importStep?.runnable).toBe(true); // import always runnable
       expect(precomputeStep?.status).toBe('running');
       expect(precomputeStep?.runnable).toBe(false);
-      expect(battingStep?.status).toBe('success');
-      expect(battingStep?.runnable).toBe(false);
+      expect(winStep?.status).toBe('success');
+      expect(winStep?.runnable).toBe(false);
     });
 
     /**
@@ -167,18 +163,18 @@ describe('pipelineSteps', () => {
         db: { counts: { matches: 1 } },
         precompute: { formats: { T20: { status: 'ok' } } },
         exports: { formats: { T20: { files: [{ exists: true }] } } },
-        artifacts: { formats: { T20: { batting: { loaded: true } } } },
+        artifacts: { formats: { T20: { win: { loaded: true } } } },
         pipeline: {
           steps: {
             precompute: { completed: false, runnable: true },
             export: { completed: false, runnable: false },
-            train_batting: { completed: false, runnable: false },
+            train_win: { completed: false, runnable: false },
           },
         },
       } as Parameters<typeof derivePipelineSteps>[0]);
       expect(steps.find((s) => s.id === 'precompute')?.status).toBe('stale');
       expect(steps.find((s) => s.id === 'export')?.status).toBe('stale');
-      expect(steps.find((s) => s.id === 'train_batting')?.status).toBe('stale');
+      expect(steps.find((s) => s.id === 'train_win')?.status).toBe('stale');
     });
 
     it('leaves a step pending when the backend says not completed and nothing is on disk', () => {

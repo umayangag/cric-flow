@@ -18,7 +18,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	formatsPkg "github.com/umayangag/cric-flow/go-app/internal/formats"
-	"github.com/umayangag/cric-flow/go-app/internal/models"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/precompute"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
@@ -514,48 +513,6 @@ func getMatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, resp)
-}
-
-// predictBattingHandler sends features to mlCleint service for batting predictions.
-func (a *App) predictBattingHandler(w http.ResponseWriter, r *http.Request) {
-	var feats []models.BattingFeatures
-	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
-		slog.Info("predictBatting: decode body failed", slog.Any("err", err))
-		respondBadRequest(w, err)
-		return
-	}
-	preds, err := a.mlClient.PredictBatting(r.Context(), feats)
-	if err != nil {
-		slog.Error(
-			"predictBatting: ML client PredictBatting failed",
-			slog.Int("features_count", len(feats)),
-			slog.Any("err", err),
-		)
-		respondErr(w, err)
-		return
-	}
-	respondJSON(w, http.StatusOK, preds)
-}
-
-// predictBowlingHandler sends features to mlCleint service for bowling predictions.
-func (a *App) predictBowlingHandler(w http.ResponseWriter, r *http.Request) {
-	var feats []models.BowlingFeatures
-	if err := json.NewDecoder(r.Body).Decode(&feats); err != nil {
-		slog.Info("predictBowling: decode body failed", slog.Any("err", err))
-		respondBadRequest(w, err)
-		return
-	}
-	preds, err := a.mlClient.PredictBowling(r.Context(), feats)
-	if err != nil {
-		slog.Error(
-			"predictBowling: ML client PredictBowling failed",
-			slog.Int("features_count", len(feats)),
-			slog.Any("err", err),
-		)
-		respondErr(w, err)
-		return
-	}
-	respondJSON(w, http.StatusOK, preds)
 }
 
 // attachLiveDataset records which dataset is currently on the box, and marks each

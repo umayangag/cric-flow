@@ -47,15 +47,15 @@ func TestSnapshotReportsEveryRunningStep(t *testing.T) {
 	// Two steps in flight at once — the case the old single-slot payload could not
 	// express, and the one the data lane and the run-plan executor both produce.
 	payload := testReporter().snapshot(context.Background(), []tracking.Migration{
-		runningFor("train-batting", 90*time.Second),
+		runningFor("train-win", 90*time.Second),
 		runningFor("cricsheet-import", 5*time.Minute),
 	})
 
 	require.True(t, payload.Running)
 	require.Len(t, payload.Steps, 2)
 
-	assert.Equal(t, "train_batting", payload.Steps[0].StepID)
-	assert.Equal(t, "Train Batting", payload.Steps[0].StepLabel)
+	assert.Equal(t, "train_win", payload.Steps[0].StepID)
+	assert.Equal(t, "Train Win", payload.Steps[0].StepLabel)
 	assert.Equal(t, "compute", payload.Steps[0].Lane)
 	assert.Equal(t, int64(90), payload.Steps[0].ElapsedSec)
 
@@ -244,17 +244,17 @@ func TestTrainingProgressReachesTheStream(t *testing.T) {
 	r.stepProgress = func(_ context.Context, stepID string) (map[string]interface{}, error) {
 		askedFor = stepID
 		return map[string]interface{}{
-			"v": float64(1), "step": "train_batting", "phase": "cv",
+			"v": float64(1), "step": "train_win", "phase": "cv",
 			"current": float64(3), "total": float64(5),
 			"metrics": map[string]interface{}{"rmse": 24.1},
 		}, nil
 	}
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-batting", time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	step := payload.Steps[0]
 
-	assert.Equal(t, "train_batting", askedFor, "the step id is what ml-service keys progress by")
+	assert.Equal(t, "train_win", askedFor, "the step id is what ml-service keys progress by")
 	require.NotNil(t, step.Training)
 	assert.Equal(t, "cv", step.Training["phase"])
 	assert.False(t, step.ProgressUnavailable)
@@ -270,14 +270,14 @@ func TestUnreachableProgressIsUnknownNotFailure(t *testing.T) {
 		return nil, pipelinesvc.ErrProgressUnavailable
 	}
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-batting", time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	step := payload.Steps[0]
 
 	assert.True(t, step.ProgressUnavailable, "the operator can act on a broken link")
 	assert.Nil(t, step.Training)
 	assert.True(t, payload.Running, "the step is still running; only its progress is unknown")
-	assert.Equal(t, "Train Batting", step.StepLabel)
+	assert.Equal(t, "Train Win", step.StepLabel)
 }
 
 // TestNothingPublishedYetIsNotUnavailable distinguishes the two empty panels: a run
@@ -286,7 +286,7 @@ func TestNothingPublishedYetIsNotUnavailable(t *testing.T) {
 	t.Parallel()
 	r := testReporter()
 
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-batting", time.Second)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Second)})
 	require.Len(t, payload.Steps, 1)
 
 	assert.Nil(t, payload.Steps[0].Training)
@@ -319,7 +319,7 @@ func TestTrainingETAUsesTheRunStartNotTheLastEvent(t *testing.T) {
 	}
 
 	// Two of six units done after four minutes: two minutes per unit, four remaining.
-	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-batting", 4*time.Minute)})
+	payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", 4*time.Minute)})
 	require.Len(t, payload.Steps, 1)
 	require.NotNil(t, payload.Steps[0].EstimatedSec)
 	assert.Equal(t, int64(480), *payload.Steps[0].EstimatedSec)
@@ -342,7 +342,7 @@ func TestTrainingETAIsAbsentUntilSomethingFinishes(t *testing.T) {
 			r.stepProgress = func(context.Context, string) (map[string]interface{}, error) {
 				return progress, nil
 			}
-			payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-batting", time.Minute)})
+			payload := r.snapshot(context.Background(), []tracking.Migration{runningFor("train-win", time.Minute)})
 			require.Len(t, payload.Steps, 1)
 			assert.Nil(t, payload.Steps[0].EstimatedSec)
 		})

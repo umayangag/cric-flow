@@ -15,7 +15,7 @@ import (
 
 func battingStep(t *testing.T) pipelinesvc.Step {
 	t.Helper()
-	step, ok := pipelinesvc.Steps().ByID("train_batting")
+	step, ok := pipelinesvc.Steps().ByID("train_win")
 	require.True(t, ok)
 	return step
 }
@@ -49,7 +49,7 @@ func TestTrainRunMetadata_ClosesTheProvenanceLoop(t *testing.T) {
 		Summary: map[string]interface{}{"formats_completed": float64(4)},
 	})
 
-	assert.Equal(t, "train_batting", meta["step"])
+	assert.Equal(t, "train_win", meta["step"])
 	assert.Equal(t, "2026-01-01T00:00:00Z", meta["cutoff"])
 
 	summary, ok := meta["summary"].(map[string]interface{})
@@ -73,7 +73,7 @@ func TestTrainRunMetadata_OmitsProvenanceItCannotEstablish(t *testing.T) {
 
 	meta := trainRunMetadata(battingStep(t), "2026-01-01T00:00:00Z", nil)
 
-	assert.Equal(t, "train_batting", meta["step"])
+	assert.Equal(t, "train_win", meta["step"])
 	assert.NotContains(t, meta, "provenance")
 	assert.NotContains(t, meta, "summary")
 }
@@ -100,7 +100,7 @@ func TestTrainRunMetadata_SurvivesAnUninstrumentedStep(t *testing.T) {
 
 	meta := trainRunMetadata(battingStep(t), "cutoff", &pipelinesvc.TrainResult{Status: "ok", Step: "batting"})
 
-	assert.Equal(t, "train_batting", meta["step"])
+	assert.Equal(t, "train_win", meta["step"])
 	assert.NotContains(t, meta, "summary", "an empty summary is not recorded as an empty object")
 }
 

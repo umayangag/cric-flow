@@ -89,13 +89,11 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
-				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "train-bowling", Status: tracking.StatusCompleted, StartedAt: hourAgo},
+				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 			},
 			seqPopulated: true,
 			expectedTitles: []string{
-				"Train Batting Model",
-				"Train Bowling Model",
+				"Train Win Model",
 			},
 		},
 		{
@@ -118,7 +116,7 @@ func TestGenerateSuggestions(t *testing.T) {
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
-				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
+				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 			},
 			seqPopulated: true,
 			// Current logic would suggest Export AND Train.
@@ -130,8 +128,8 @@ func TestGenerateSuggestions(t *testing.T) {
 		{
 			name: "Everything up to date",
 			migrations: []tracking.Migration{
-				{Command: "train-bowling", Status: tracking.StatusCompleted, StartedAt: now},
-				{Command: "train-batting", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "ml-auto-tune", Status: tracking.StatusCompleted, StartedAt: now},
+				{Command: "train-win", Status: tracking.StatusCompleted, StartedAt: now},
 				{Command: "export-dataset", Status: tracking.StatusCompleted, StartedAt: hourAgo},
 				{Command: "precompute-features", Status: tracking.StatusCompleted, StartedAt: twoHoursAgo},
 				{Command: "cricsheet-import", Status: tracking.StatusCompleted, StartedAt: threeHoursAgo},

@@ -14,7 +14,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
 const EXPECTED_FORMATS = ['TEST', 'ODI', 'T20', 'T20I'];
-const EXPECTED_MODEL_KEYS = ['batting', 'bowling', 'fielding', 'extras', 'win', 'combination_meta'];
+// The model-metadata card the Workbench renders. One family is left: the windowed-form win
+// classifier, which P-6 removes. The XI models describe themselves through GET /xi/status and
+// L4's report, not through this endpoint.
+const EXPECTED_MODEL_KEYS = ['win'];
 
 function run(cwd, cmd, args, env = {}) {
   const r = spawnSync(cmd, args, {
@@ -58,9 +61,7 @@ function main() {
   const mlCode = `
 import json
 from app.model_metadata import get_model_metadata
-d = get_model_metadata()
-out = {k: d[k] for k in ("batting", "bowling", "fielding", "extras", "win", "combination_meta") if k in d}
-print(json.dumps(out))
+print(json.dumps(get_model_metadata()))
 `;
   const mlResult = run(path.join(ROOT, 'ml-service'), 'python', ['-c', mlCode], { PYTHONPATH: '.' });
   if (mlResult.status !== 0) {
@@ -79,6 +80,11 @@ print(json.dumps(out))
       console.error('[check-frontend-backend-sync] ml-service model_metadata missing or invalid key:', key);
       process.exit(1);
     }
+  }
+  const extra = Object.keys(mlOut).filter((k) => !EXPECTED_MODEL_KEYS.includes(k));
+  if (extra.length) {
+    console.error('[check-frontend-backend-sync] ml-service model_metadata has unexpected keys:', extra);
+    process.exit(1);
   }
 
   console.log('[check-frontend-backend-sync] Backend canonical formats and model metadata OK.');

@@ -53,16 +53,23 @@ Config file: `go-app/config.json`
 
 **Environment:** `GO_APP_CONFIG`, `GO_APP_INPUT_DIR`, `GO_APP_OUTPUT_DIR`, `PRECOMPUTE_CONCURRENCY`, `IMPORT_CONCURRENCY`, `SEQCALC_CONCURRENCY`, `EXPORT_CONCURRENCY`, `FIELDING_CONCURRENCY`.
 
-**Team selection** (under `team`): `min_bowlers`, `default_batters`, `default_bowlers`. Under `selection`: `default_pool_csv`, `max_pool_size_for_full_enum` (18 — above this use greedy + hill-climb instead of full enumeration), `score_weights` (bat, bowl, field, keeper_bonus), `score_normalization` (per-format divisors), `score_weights_by_format`, `meta_model_path` (optional JSON from combination-meta training), `use_optimizer` (bool, default false). When `use_optimizer` is true, team selection uses constrained optimization to maximize total score over valid XIs (size 11, ≥1 keeper, ≥5 bowlers); when false, uses greedy selection with constraint swaps. See **ml-and-training.md** for meta-model.
+**Team selection** (under `team`): `min_bowlers`, `default_batters`, `default_bowlers`. Under
+`selection`: `max_win_prob_eval_budget` (500 — how many XIs ml-service may score per side per
+round) and `best_response_rounds` (3 — how many times the two sides answer each other).
 
-**Future-match prediction features:** The feature map for team-selection prediction includes form, venue, opposition, season, optional weather override (`WeatherOverride`), and sequence features (bat_*, bowl_* from `configs/feature_vectors.json`). Sequence features are set to 0 until precompute/seqcalc export them per player. Opposition strength (`opposition_batting_strength`, `opposition_bowling_strength`) is computed from the opposition team’s pool when available and added to the map (training does not yet include these; when extended, accuracy can improve). **Weather is no longer a model input.** C2-2b removed the weather features from `configs/feature_vectors.json` and every export query, so no model consumes them — see [weather-not-implemented.md](weather-not-implemented.md).
+There is nothing else left to configure about selection. The objective, the search and the
+constraints all live in ml-service, and the settings that used to weigh a batting score against
+a bowling one were retired in P-5: a `config.json` that still carries one of them fails
+`ValidateForServer` with a message naming what replaced it (`internal/config/retired_keys.go`),
+because encoding/json drops an unknown key and nothing else would ever notice.
 
-Two remnants are deliberate and coupled, so do not remove one without the other:
+**Future-match prediction:** go-app sends player ids, a format, the two team ids, the venue id
+and the date. It sends no features at all — the rating state lives in ml-service, which is what
+makes the training and serving paths compute the same function of the same eleven names (H-8).
+**Weather is not a model input**; see [weather-not-implemented.md](weather-not-implemented.md).
 
-- go-app still writes `batting_temp`, `bowling_temp` and the rest into the prediction feature map (`training_snapshot.go`), defaulting to 0 or to the `Weather` API override.
-- `backtest_service.build_batting_features_from_map` still reads them with `_get_required_int`, which **raises** when a key is absent.
-
-So the keys are inert as far as the models are concerned — not in the contract, dropped before fitting — but the backtest path still requires them to be present. The `Weather` API parameter is accepted and plumbed through, and currently changes no prediction.
+`configs/feature_vectors.json` is still read by go-app's export queries, which P-6 removes with
+the export step.
 
 ---
 

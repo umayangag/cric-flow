@@ -305,18 +305,15 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - **Polling**:
     - Uses `usePolling` to auto-refresh at a fixed interval while mounted.
 
-- **`EvaluateDbTab` (Backtest UI)**
+- **`EvaluationReportTab`**
   - **Endpoints**:
-    - `GET /api/backtest/select` (candidate matches).
-    - `POST /api/backtest/evaluate` (long-running evaluate job).
-    - `GET /api/backtest/evaluate/status` (job status, steps, result).
-    - `GET /api/backtest/match-scorecard` (scorecard for selected match).
+    - `GET /api/backtest/report` (L4's evaluation report; 503 when the harness has not run).
   - **Displays**:
-    - Candidate match list (by format/team1/team2).
-    - Evaluation progress (step log) and MAE / accuracy metrics.
-    - Match scorecard for selected candidate.
-  - **Polling**:
-    - Uses `usePolling` to track evaluate job status while a job is running.
+    - Walk-forward folds per format, with the locked window labelled beside them.
+    - The two selection metrics, and a labelled slot for E5.
+    - Per-target performance with interval width beside coverage; the simulator's E2 section.
+    - The train/serve parity verdict, as a success or error alert.
+  - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
 - **`DataTab`**
   - **Endpoints**:
@@ -367,14 +364,10 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
 
 - **`WorkbenchTab`**
   - **Endpoints**:
-    - `GET /api/formats` (available formats).
     - `GET /api/ml/model-metadata` (model metadata for features/outputs/artifacts).
-    - `GET /api/backtest/accuracy-trend` (accuracy trend data).
+    - `GET /api/ml/model-stats` (artifact provenance and whether its dataset is still live).
   - **Displays**:
-    - **Internal process explanation**: import → precompute → export → train → prediction.
-    - **Accuracy trend** (via `WorkbenchAccuracyTrendSection`):
-      - Per-match metrics (e.g. `player_runs_mae`, `team_runs_mae`, `team_winner_accuracy`).
-      - Filters for format/date/limit, and model mode (format vs unified).
+    - **What each loaded model is.** How well it predicts is the Evaluation report tab.
     - **Walk-forward registry**: uploaded JSON describing rolling-window evaluations.
     - **Model metadata**:
       - Features, outputs, and artifact patterns per model type.
@@ -420,9 +413,9 @@ When debugging or validating a deployment:
 3. **Investigate model quality and versions**
    - `frontend → MLModelStatsTab` (per-model stats and tuning).
    - `GET /model-stats` and `GET /health` (ML).
-4. **Validate backtest behavior**
-   - `frontend → WorkbenchTab` (Accuracy trend, walk-forward).
-   - `frontend → EvaluateDbTab` (per-match eval).
+4. **Validate model behaviour**
+   - `frontend → EvaluationReportTab` (L4's folds, locked window, parity check).
+   - `frontend → WorkbenchTab` (what each artifact is, walk-forward registry).
 5. **Correlate logs**
    - Filter Go and ML logs by `pipeline_id`, `run_id`, `format`, and `artifact_type` when present.
 

@@ -1,4 +1,9 @@
-"""Public auto-tune runner functions and classification search."""
+"""The auto-tune runner: search the win model's hyperparameters, two-phase.
+
+The regression runners -- batting, bowling, fielding, extras, innings -- went with their
+trainers in P-5, and with them the shared multi-output scoring. What is left
+tunes one classifier, and P-6 removes the stack entirely.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +30,6 @@ from ml.config import (
     get_training_params,
     get_tuning_config,
 )
-from ml.data_quality import clip_target_outliers
 
 try:
     from ml import auto_tune_progress as _progress
@@ -51,7 +55,6 @@ try:
 except ImportError:
     _HAS_OPTUNA = False
 
-from ml.tuning.consistency_tuning import augment_tuning_report_with_consistency
 from ml.tuning.cv_metrics import (
     _add_final_report_details,
     _compute_metrics_classification,
@@ -61,15 +64,12 @@ from ml.tuning.cv_metrics import (
 from ml.tuning.optuna_search import (
     _count_combinations,
     _run_search_classification,
-    _run_search_two_phase,
-    _run_search_two_phase_single_regression,
-    _save_artifacts,
     _save_artifacts_model_only,
 )
 from ml.tuning.search_space import (
     _get_prior_tuned_algorithm,
     _phase1_candidates_classification,
-    _prior_params_to_optuna_regression,
+    _prior_params_to_optuna_params,
 )
 from ml.tuning.types import (
     PHASE1_TRIALS_PER_ALGORITHM,
@@ -203,195 +203,6 @@ def _maybe_run_autogluon_and_compare(
 
     wrapper = AutogluonPredictorWrapper(ag_dir, is_regression=(task_type == "regression"))
     return True, wrapper, {"autogluon_tried": True, "autogluon_score": ag_score, "autogluon_wins": True}
-
-
-def run_auto_tune(
-    model_kind: str,
-    X: np.ndarray,
-    Y: np.ndarray,
-    format_suffix: Optional[str],
-    out_dir: str,
-    algorithms: Optional[List[str]] = None,
-    validation_method: Optional[str] = None,
-    n_jobs_override: Optional[int] = None,
-    task_index: int = 0,
-    task_total: int = 1,
-    use_pycaret: Optional[bool] = None,
-    fast_mode: bool = False,
-    rescreen: bool = False,
-    algorithms_explicitly_passed: bool = False,
-    feature_names: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Run two-phase search, save artifacts and report. Returns report dict."""
-    tuning = _get_tuning_config()
-    cv_splits = tuning["cv_splits"]
-    n_iter = int(tuning["n_iter"])
-    if fast_mode:
-        n_iter = min(n_iter, 15)
-    scoring = tuning["scoring"]
-    random_state = tuning.get("random_state") or get_training_params(model_kind).get("random_state", 42)
-    params = get_training_params(model_kind)
-    joblib_compress = params["joblib_compress"]
-    algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    algorithms_requested = (
-        list(algorithms) if isinstance(algorithms, (list, tuple)) else ([str(algorithms)] if algorithms else [])
-    )
-    prior_params: Optional[Dict[str, Any]] = None
-    prior = None if rescreen else _get_prior_tuned_algorithm(model_kind, format_suffix, out_dir)
-    if prior is not None:
-        prior_algo, prior_cfg = prior
-        algorithms = [prior_algo]
-        if prior_cfg:
-            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
-        logger.info(
-            "auto_tune.using_prior_algorithm model=%s format=%s algorithm=%s (skipping screening, fine-tune only)",
-            model_kind,
-            format_suffix,
-            prior_algo,
-        )
-    if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
-        pycaret_algos = _maybe_run_pycaret_ranking(
-            X, Y, "regression", use_pycaret, model_kind, format_suffix, task_index, task_total
-        )
-        if pycaret_algos is not None:
-            algorithms = pycaret_algos
-    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
-
-    # Apply percentile-based outlier clipping on targets (aligned with train_batting/train_bowling)
-    clip_percentile = params.get("target_clip_percentile", 99.0)
-    target_names = {
-        "batting": ["runs", "balls", "fours", "sixes", "batting_position"],
-        "bowling": ["runs", "balls", "wickets"],
-        "fielding": ["catches", "run_outs", "stumpings"],
-        "innings": ["innings_runs", "innings_wickets"],
-    }.get(model_kind, [f"target_{i}" for i in range(Y.shape[1] if Y.ndim > 1 else 1)])
-    Y, clip_info = clip_target_outliers(
-        Y, percentile=clip_percentile, target_names=target_names[: (Y.shape[1] if Y.ndim > 1 else 1)]
-    )
-    if clip_info:
-        logger.info(
-            "auto_tune.clip_target_outliers model=%s percentile=%.1f info=%s", model_kind, clip_percentile, clip_info
-        )
-
-    best_pipe, best_params, report = _run_search_two_phase(
-        X,
-        Y,
-        model_kind,
-        format_suffix,
-        cv_splits,
-        n_iter,
-        scoring,
-        random_state,
-        algorithms,
-        validation_method,
-        n_jobs_override,
-        task_index,
-        task_total,
-        prior_params=prior_params,
-        algorithms_requested=algorithms_requested,
-        feature_names_for_report=feature_names,
-    )
-    if clip_info:
-        report["target_clip_info"] = clip_info
-    augment_tuning_report_with_consistency(report, model_kind, format_suffix)
-    _save_artifacts(best_pipe, out_dir, model_kind, format_suffix, joblib_compress, report)
-    return report
-
-
-def run_auto_tune_extras(
-    X: np.ndarray,
-    Y: np.ndarray,
-    format_suffix: Optional[str],
-    out_dir: str,
-    algorithms: Optional[List[str]] = None,
-    validation_method: Optional[str] = None,
-    n_jobs_override: Optional[int] = None,
-    task_index: int = 0,
-    task_total: int = 1,
-    use_pycaret: Optional[bool] = None,
-    fast_mode: bool = False,
-    use_autogluon: Optional[bool] = None,
-    rescreen: bool = False,
-    algorithms_explicitly_passed: bool = False,
-    feature_names: Optional[List[str]] = None,
-) -> Dict[str, Any]:
-    """Run two-phase single-output regression search for extras; save model only + report."""
-    tuning = _get_tuning_config()
-    cv_splits = tuning["cv_splits"]
-    n_iter = int(tuning["n_iter"])
-    if fast_mode:
-        n_iter = min(n_iter, 15)
-    scoring = tuning.get("scoring", "neg_mean_absolute_error")
-    params = get_training_params("extras")
-    random_state = tuning.get("random_state") or params.get("random_state", 42)
-    joblib_compress = params["joblib_compress"]
-    algorithms = algorithms if algorithms is not None else tuning.get("algorithms")
-    prior_params = None
-    prior = None if rescreen else _get_prior_tuned_algorithm("extras", format_suffix, out_dir)
-    if prior is not None:
-        prior_algo, prior_cfg = prior
-        algorithms = [prior_algo]
-        if prior_cfg:
-            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
-        logger.info(
-            "auto_tune.using_prior_algorithm model=extras format=%s algorithm=%s (fine-tune only)",
-            format_suffix,
-            prior_algo,
-        )
-    if use_pycaret is not False and prior is None and not algorithms_explicitly_passed:
-        pycaret_algos = _maybe_run_pycaret_ranking(
-            X, Y, "regression", use_pycaret, "extras", format_suffix, task_index, task_total
-        )
-        if pycaret_algos is not None:
-            algorithms = pycaret_algos
-    validation_method = validation_method or tuning.get("validation_method", "walk_forward")
-    y = Y.ravel() if Y.ndim > 1 else Y
-    # Apply outlier clipping on targets (aligned with train_extras)
-    clip_percentile = params.get("target_clip_percentile", 99.0)
-    y, clip_info = clip_target_outliers(y.reshape(-1, 1), percentile=clip_percentile, target_names=["extras"])
-    y = y.ravel()
-    if clip_info:
-        logger.info("auto_tune.clip_target_outliers model=extras percentile=%.1f info=%s", clip_percentile, clip_info)
-
-    best_pipe, _, report = _run_search_two_phase_single_regression(
-        X,
-        y,
-        "extras",
-        format_suffix,
-        cv_splits,
-        n_iter,
-        scoring,
-        random_state,
-        algorithms,
-        validation_method,
-        n_jobs_override,
-        task_index,
-        task_total,
-        prior_params=prior_params,
-        feature_names_for_report=feature_names,
-    )
-    optuna_score = report.get("best_cv_score")
-    if optuna_score is not None:
-        ag_wins, ag_wrapper, ag_updates = _maybe_run_autogluon_and_compare(
-            X, y, "regression", use_autogluon, "extras", format_suffix, out_dir, float(optuna_score)
-        )
-        report.update(ag_updates)
-        if ag_wins and ag_wrapper is not None:
-            os.makedirs(out_dir, exist_ok=True)
-            model_path = os.path.join(
-                out_dir,
-                f"extras_model_{format_suffix.replace(' ', '_')}.joblib",
-            )
-            joblib.dump(ag_wrapper, model_path, compress=joblib_compress)
-            report_path = os.path.join(out_dir, f"tuning_report_extras_{format_suffix}.json")
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2)
-            return report
-    if clip_info:
-        report["target_clip_info"] = clip_info
-    augment_tuning_report_with_consistency(report, "extras", format_suffix)
-    _save_artifacts_model_only(best_pipe, out_dir, "extras", format_suffix, joblib_compress, report)
-    return report
 
 
 def _run_search_two_phase_classification(
@@ -724,7 +535,7 @@ def run_auto_tune_win(
         prior_algo, prior_cfg = prior
         algorithms = [prior_algo]
         if prior_cfg:
-            prior_params = _prior_params_to_optuna_regression(prior_algo, prior_cfg)
+            prior_params = _prior_params_to_optuna_params(prior_algo, prior_cfg)
         logger.info(
             "auto_tune.using_prior_algorithm model=win format=%s algorithm=%s (fine-tune only)",
             format_suffix,
@@ -771,6 +582,5 @@ def run_auto_tune_win(
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2)
             return report
-    augment_tuning_report_with_consistency(report, "win", format_suffix)
     _save_artifacts_model_only(best_pipe, out_dir, "win", format_suffix, joblib_compress, report)
     return report

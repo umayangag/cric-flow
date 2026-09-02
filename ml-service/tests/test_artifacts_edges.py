@@ -1,4 +1,9 @@
-"""Unit tests for app.artifacts edge cases (listdir failure, missing model file, load exception)."""
+"""app.artifacts edge cases: an unreadable directory, a missing model file, a bad load.
+
+One artifact family is left -- the windowed-form win classifier -- so these exercise the
+kind-generic loader through it. The batting, bowling, fielding, extras, innings and share
+registries went with their models in P-5.
+"""
 
 from unittest.mock import MagicMock, patch
 
@@ -8,154 +13,61 @@ import app.artifacts as artifacts_mod
 def test_load_per_format_listdir_failure(tmp_path):
     """When listdir raises OSError, _load_per_format returns without crashing."""
     with patch("os.listdir", side_effect=OSError(2, "No such file")):
-        artifacts_mod.BAT_MODELS.clear()
-        artifacts_mod.BOWL_MODELS.clear()
+        artifacts_mod.WIN_MODELS.clear()
         artifacts_mod._load_per_format(str(tmp_path))
-    assert artifacts_mod.BAT_MODELS == {}
-    assert artifacts_mod.BOWL_MODELS == {}
-
-
-def test_load_per_format_scaler_without_model_file(tmp_path):
-    """When batting_scaler_X.joblib exists but batting_model_X.joblib does not, warning and skip."""
-    (tmp_path / "batting_scaler_T20.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        artifacts_mod.BAT_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "T20" not in artifacts_mod.BAT_MODELS
+    assert artifacts_mod.WIN_MODELS == {}
 
 
 def test_load_per_format_load_failure_logs_error(tmp_path):
-    """When joblib.load raises for a file, error is logged and loop continues."""
-    with patch("os.listdir", return_value=["batting_scaler_T20.joblib"]):
-        with patch("app.artifacts.joblib.load", side_effect=ValueError("bad format")):
-            with patch.object(artifacts_mod.logger, "error") as mock_err:
-                artifacts_mod.BAT_MODELS.clear()
-                artifacts_mod._load_per_format(str(tmp_path))
-                mock_err.assert_called()
-    assert "T20" not in artifacts_mod.BAT_MODELS
+    """When joblib.load raises for a file, the error is logged and the loop continues."""
+    (tmp_path / "win_model_T20.joblib").write_bytes(b"x")
+    with patch("app.artifacts.joblib.load", side_effect=ValueError("bad format")):
+        with patch.object(artifacts_mod.logger, "error") as mock_err:
+            artifacts_mod.WIN_MODELS.clear()
+            artifacts_mod._load_per_format(str(tmp_path))
+            mock_err.assert_called()
+    assert "T20" not in artifacts_mod.WIN_MODELS
+
+
+def test_load_per_format_skips_a_kind_whose_model_file_is_missing(tmp_path):
+    """A listing that names a model file which is not there is a warning and a skip, not a
+    crash: a half-written training run must not take the service down."""
+    with patch("os.listdir", return_value=["win_model_T20.joblib"]):
+        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
+            artifacts_mod.WIN_MODELS.clear()
+            artifacts_mod._load_per_format(str(tmp_path))
+            mock_warn.assert_called()
+    assert "T20" not in artifacts_mod.WIN_MODELS
+
+
+def test_load_per_format_win_success(tmp_path):
+    """A per-format win model loads when its file exists, and records its mtime."""
+    (tmp_path / "win_model_ODI.joblib").write_bytes(b"x")
+    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
+        artifacts_mod.WIN_MODELS.clear()
+        artifacts_mod._load_per_format(str(tmp_path))
+    assert "ODI" in artifacts_mod.WIN_MODELS
+    assert artifacts_mod.loaded_model_mtime("win", "ODI") is not None
 
 
 def test_reload_returns_summary(tmp_path):
-    """reload() returns summary with loaded_batting_formats etc."""
+    """reload() reports the formats each kind loaded, and nothing it no longer has."""
     with patch("app.artifacts.joblib.load", side_effect=Exception("no files")):
         out = artifacts_mod.reload(str(tmp_path))
-    assert "loaded_batting_formats" in out
-    assert "loaded_bowling_formats" in out
-    assert "legacy_batting" not in out
-    assert "legacy_bowling" not in out
+    assert "loaded_win_formats" in out
+    assert "loaded_batting_formats" not in out
 
 
 def test_summary_after_clear():
     """summary() returns sorted per-format lists."""
-    artifacts_mod.BAT_MODELS.clear()
-    artifacts_mod.BOWL_MODELS.clear()
-    artifacts_mod.FIELD_MODELS.clear()
-    artifacts_mod.EXTRAS_MODELS.clear()
     artifacts_mod.WIN_MODELS.clear()
     s = artifacts_mod.summary()
-    assert s["loaded_batting_formats"] == []
-    assert s["loaded_bowling_formats"] == []
-    assert "legacy_batting" not in s
-    assert "legacy_bowling" not in s
+    assert s["loaded_win_formats"] == []
 
 
-def test_load_per_format_bowling_scaler_without_model(tmp_path):
-    """When bowling_scaler_X exists but bowling_model_X does not, warning and skip."""
-    (tmp_path / "bowling_scaler_ODI.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        artifacts_mod.BOWL_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "ODI" not in artifacts_mod.BOWL_MODELS
+def test_discover_format_codes_reads_the_prefix_off_the_listing():
+    """Discovery is by filename prefix, upper-cased, and ignores everything else."""
+    kind = artifacts_mod.ARTIFACT_KINDS_BY_NAME["win"]
+    entries = ["win_model_t20.joblib", "win_model_ODI.joblib", "notes.txt", "xi_ratings.joblib"]
 
-
-def test_load_per_format_fielding_scaler_without_model(tmp_path):
-    """When fielding_scaler_X exists but fielding_model_X does not, warning and skip."""
-    (tmp_path / "fielding_scaler_T20.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        artifacts_mod.FIELD_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "T20" not in artifacts_mod.FIELD_MODELS
-
-
-def test_load_per_format_extras_and_win_success(tmp_path):
-    """Per-format extras_model and win_model load successfully when files exist."""
-    (tmp_path / "extras_model_ODI.joblib").write_bytes(b"x")
-    (tmp_path / "win_model_ODI.joblib").write_bytes(b"x")
-    mock_model = MagicMock()
-    with patch("app.artifacts.joblib.load", return_value=mock_model):
-        artifacts_mod.EXTRAS_MODELS.clear()
-        artifacts_mod.WIN_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "ODI" in artifacts_mod.EXTRAS_MODELS
-    assert "ODI" in artifacts_mod.WIN_MODELS
-
-
-def test_use_share_models_returns_false_on_import_error():
-    """_use_share_models returns False when get_config raises."""
-    with patch("ml.config.get_config", side_effect=ImportError("no config")):
-        result = artifacts_mod._use_share_models()
-    assert result is False
-
-
-def test_load_per_format_batting_share_scaler_with_model(tmp_path):
-    """When batting_share_scaler_X and batting_share_model_X exist, BAT_SHARE_MODELS is populated."""
-    (tmp_path / "batting_share_scaler_ODI.joblib").write_bytes(b"x")
-    (tmp_path / "batting_share_model_ODI.joblib").write_bytes(b"y")
-    mock_obj = MagicMock()
-    with patch("app.artifacts.joblib.load", return_value=mock_obj):
-        artifacts_mod.BAT_SHARE_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "ODI" in artifacts_mod.BAT_SHARE_MODELS
-
-
-def test_load_per_format_batting_share_scaler_without_model_warns(tmp_path):
-    """When batting_share_scaler_X exists but model does not, warning is logged."""
-    (tmp_path / "batting_share_scaler_ODI.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
-            artifacts_mod.BAT_SHARE_MODELS.clear()
-            artifacts_mod._load_per_format(str(tmp_path))
-            mock_warn.assert_called()
-            assert "batting_share_model_missing" in str(mock_warn.call_args)
-
-
-def test_load_per_format_bowling_share_scaler_with_model(tmp_path):
-    """When bowling_share_scaler_X and bowling_share_model_X exist, BOWL_SHARE_MODELS is populated."""
-    (tmp_path / "bowling_share_scaler_T20.joblib").write_bytes(b"x")
-    (tmp_path / "bowling_share_model_T20.joblib").write_bytes(b"y")
-    mock_obj = MagicMock()
-    with patch("app.artifacts.joblib.load", return_value=mock_obj):
-        artifacts_mod.BOWL_SHARE_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "T20" in artifacts_mod.BOWL_SHARE_MODELS
-
-
-def test_load_per_format_bowling_share_scaler_without_model_warns(tmp_path):
-    """When bowling_share_scaler_X exists but model does not, warning is logged."""
-    (tmp_path / "bowling_share_scaler_ODI.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
-            artifacts_mod.BOWL_SHARE_MODELS.clear()
-            artifacts_mod._load_per_format(str(tmp_path))
-            assert any("bowling_share_model_missing" in str(c) for c in mock_warn.call_args_list)
-
-
-def test_load_per_format_innings_scaler_with_model(tmp_path):
-    """When innings_scaler_X and innings_model_X exist, INNINGS_MODELS is populated."""
-    (tmp_path / "innings_scaler_ODI.joblib").write_bytes(b"x")
-    (tmp_path / "innings_model_ODI.joblib").write_bytes(b"y")
-    mock_obj = MagicMock()
-    with patch("app.artifacts.joblib.load", return_value=mock_obj):
-        artifacts_mod.INNINGS_MODELS.clear()
-        artifacts_mod._load_per_format(str(tmp_path))
-    assert "ODI" in artifacts_mod.INNINGS_MODELS
-
-
-def test_load_per_format_innings_scaler_without_model_warns(tmp_path):
-    """When innings_scaler_X exists but innings_model_X does not, warning is logged."""
-    (tmp_path / "innings_scaler_T20.joblib").write_bytes(b"x")
-    with patch("app.artifacts.joblib.load", return_value=MagicMock()):
-        with patch.object(artifacts_mod.logger, "warning") as mock_warn:
-            artifacts_mod.INNINGS_MODELS.clear()
-            artifacts_mod._load_per_format(str(tmp_path))
-            assert any("innings_model_missing" in str(c) for c in mock_warn.call_args_list)
+    assert sorted(artifacts_mod._discover_format_codes(entries, kind)) == ["ODI", "T20"]

@@ -114,12 +114,7 @@ type Config struct {
 		} `json:"mocks"`
 	} `json:"weather"`
 	Predictor struct {
-		TeamSize                       int               `json:"team_size"`
-		DefaultExtras                  float64           `json:"default_extras"`
-		MaxTotalSamples                int               `json:"max_total_samples"`                  // cap on Monte Carlo samples (0 = use default)
-		SimulationTopKPerTeam          int               `json:"simulation_top_k_per_team"`          // top XIs per team (0 = use default)
-		SimulationNumSamplesPerMatchup int               `json:"simulation_num_samples_per_matchup"` // samples per matchup (0 = use default)
-		Simulation                     *SimulationParams `json:"simulation"`                         // CVs for runs/wickets/economy sampling
+		TeamSize int `json:"team_size"`
 	} `json:"predictor"`
 	Backtest struct {
 		ExportMaxMatchIDs              int                `json:"export_max_match_ids"`             // max match_ids per export-contributions request (0 = use default)
@@ -133,20 +128,12 @@ type Config struct {
 	} `json:"backtest"`
 	Ops       OpsConfig        `json:"ops"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants
+	// Selection is what go-app still decides about an XI. The objective, the search and the
+	// weights all moved into ml-service with the XI model (P-5); what is left is the caller's
+	// knowledge -- who may play, and how hard the search may work.
 	Selection struct {
-		DefaultPoolCSV             string                     `json:"default_pool_csv"`
-		MaxPoolSizeForFullEnum     int                        `json:"max_pool_size_for_full_enum"` // above this use greedy+hill-climb (0 = 18)
-		RequireKeeper              bool                       `json:"require_keeper"`
-		ScoreWeights               *ScoreWeights              `json:"score_weights"`
-		ScoreNormalization         map[string]ScoreNormParams `json:"score_normalization"`
-		ScoreWeightsByFormat       map[string]ScoreWeights    `json:"score_weights_by_format"`
-		MetaModelPath              string                     `json:"meta_model_path"`               // JSON from ml.train_combination_meta
-		UseOptimizer               bool                       `json:"use_optimizer"`                 // when true, select XI by maximizing total score over valid combinations
-		UseWinProbabilitySelection bool                       `json:"use_win_probability_selection"` // when true, select XI by maximizing win probability via hill-climb
-		MaxWinProbSwapIterations   int                        `json:"max_win_prob_swap_iterations"`  // hill-climb outer-loop cap for win-prob selection (0 = 50)
-		MaxWinProbEvalBudget       int                        `json:"max_win_prob_eval_budget"`      // total ML eval calls allowed per team in win-prob hill-climb (0 = 500)
-		BestResponseRounds         int                        `json:"best_response_rounds"`          // alternating best-response rounds in win-prob selection (0 = 3)
-		WinModel                   string                     `json:"win_model"`                     // "xi" = XI-responsive rating model (ml.xi, S-10); anything else = windowed-form model
+		MaxWinProbEvalBudget int `json:"max_win_prob_eval_budget"` // XIs ml-service may score per side per round (0 = 500)
+		BestResponseRounds   int `json:"best_response_rounds"`     // alternating best-response rounds (0 = 3)
 	} `json:"selection"`
 	// Pipeline optional concurrency overrides (0 = auto from resources package: memory/CPU aware).
 	Pipeline struct {
@@ -158,40 +145,4 @@ type Config struct {
 		PrecomputeETASecondsPerFmt int `json:"precompute_eta_seconds_per_fmt"` // 0 = use default 180; only used before any format completes; after that ETA uses observed time per format (e.g. set ~2700 for ~45 min per format on slower machines)
 		ReplayMatchPageSize        int `json:"replay_match_page_size"`         // matches per chunk in precompute replay (0 = 500)
 	} `json:"pipeline"`
-}
-
-// SimulationParams holds coefficient-of-variation parameters for Monte Carlo outcome sampling.
-type SimulationParams struct {
-	RunsCV    float64 `json:"runs_cv"`    // sigma = mean * RunsCV for runs sampling
-	WicketsCV float64 `json:"wickets_cv"` // same for wickets
-	EconomyCV float64 `json:"economy_cv"` // same for economy
-}
-
-// ScoreNormParams holds format-specific divisors for normalizing raw predictions to [0,1].
-// BatDivisor: typical max runs per player; runs/divisor caps at 1.
-// WicketDivisor: typical max wickets per player.
-// EconBase: economy above which contribution is 0; lower economy = higher score.
-// FieldDivisor: typical max (catches + run_outs*1.5).
-type ScoreNormParams struct {
-	BatDivisor    float64 `json:"bat_divisor"`
-	WicketDivisor float64 `json:"wicket_divisor"`
-	EconBase      float64 `json:"econ_base"`
-	FieldDivisor  float64 `json:"field_divisor"`
-}
-
-// ScoreWeights defines relative weights for combining batting/bowling/fielding signals in team selection.
-type ScoreWeights struct {
-	Bat         float64 `json:"bat"`          // default 0.45
-	Bowl        float64 `json:"bowl"`         // default 0.40
-	Field       float64 `json:"field"`        // default 0.10
-	KeeperBonus float64 `json:"keeper_bonus"` // default 0.02
-}
-
-// metaModelWeights holds parsed coefficients from train_combination_meta JSON.
-type metaModelWeights struct {
-	Bat         float64                     `json:"bat"`
-	Bowl        float64                     `json:"bowl"`
-	Field       float64                     `json:"field"`
-	KeeperBonus float64                     `json:"keeper_bonus"`
-	PerFormat   map[string]metaModelWeights `json:"per_format"`
 }

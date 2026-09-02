@@ -46,35 +46,14 @@ def recorded_calls(app_module, monkeypatch) -> Dict[str, List[Any]]:
 
         return run
 
-    for step in ("batting", "bowling", "fielding", "extras", "win", "innings"):
-        monkeypatch.setattr(app_module.training_orchestrator, f"run_{step}_training", record(step))
-    monkeypatch.setattr(app_module.training_orchestrator, "run_combination_meta_training", record("combination_meta"))
+    monkeypatch.setattr(app_module.training_orchestrator, "run_win_training", record("win"))
     monkeypatch.setattr(app_module.training_orchestrator, "run_auto_tune", record("auto_tune"))
     return calls
 
 
-@pytest.mark.parametrize("step", ["batting", "bowling", "fielding"])
-def test_cutoff_free_training_steps_run_and_report_their_step(client, recorded_calls, step):
-    """batting, bowling and fielding train with whatever cutoff they are given, including none."""
-    resp = client.post(f"/admin/train/{step}?cutoff={CUTOFF}")
-
-    assert resp.status_code == 200
-    assert resp.json()["step"] == step
-    assert recorded_calls[step][0] == CUTOFF
-
-
-@pytest.mark.parametrize("step", ["batting", "bowling", "fielding"])
-def test_cutoff_free_training_steps_accept_an_omitted_cutoff(client, recorded_calls, step):
-    """These three train on everything available, so an absent cutoff is not an error."""
-    resp = client.post(f"/admin/train/{step}")
-
-    assert resp.status_code == 200
-    assert recorded_calls[step][0] == ""
-
-
-@pytest.mark.parametrize("step", ["extras", "win", "innings"])
+@pytest.mark.parametrize("step", ["win"])
 def test_cutoff_bound_training_steps_run_with_the_trimmed_cutoff(client, recorded_calls, step):
-    """extras, win and innings are temporal, and forward the cutoff they were given."""
+    """Training is temporal, and forwards the cutoff it was given."""
     resp = client.post(f"/admin/train/{step}?cutoff=  {CUTOFF}  ")
 
     assert resp.status_code == 200
@@ -82,7 +61,7 @@ def test_cutoff_bound_training_steps_run_with_the_trimmed_cutoff(client, recorde
     assert recorded_calls[step][0] == CUTOFF
 
 
-@pytest.mark.parametrize("step", ["extras", "win", "innings", "auto-tune"])
+@pytest.mark.parametrize("step", ["win", "auto-tune"])
 def test_cutoff_bound_training_steps_reject_a_missing_cutoff(client, recorded_calls, step):
     """Training without a cutoff would leak post-cutoff data, so it is refused up front."""
     resp = client.post(f"/admin/train/{step}?cutoff=   ")
@@ -95,7 +74,7 @@ def test_cutoff_bound_training_steps_reject_a_missing_cutoff(client, recorded_ca
 def test_auto_tune_forwards_its_search_options(client, recorded_calls, app_module):
     """The query flags select the search: model, format(s), rescreen, algorithms."""
     resp = client.post(
-        f"/admin/train/auto-tune?cutoff={CUTOFF}&model=batting&format=  t20  "
+        f"/admin/train/auto-tune?cutoff={CUTOFF}&model=win&format=  t20  "
         "&all_formats=true&rescreen=1&algorithms=  rf,gbr  "
     )
 
@@ -104,7 +83,7 @@ def test_auto_tune_forwards_its_search_options(client, recorded_calls, app_modul
     cutoff, go_app_url, model, use_all_formats, fmt, do_rescreen, algorithms = recorded_calls["auto_tune"][:7]
     assert cutoff == CUTOFF
     assert go_app_url == app_module._settings.go_app_url
-    assert (model, fmt, algorithms) == ("batting", "t20", "rf,gbr")
+    assert (model, fmt, algorithms) == ("win", "t20", "rf,gbr")
     assert use_all_formats is True
     assert do_rescreen is True
 
@@ -120,35 +99,6 @@ def test_auto_tune_treats_unset_flags_as_off(client, recorded_calls, flag_value)
     assert do_rescreen is False
 
 
-def test_combination_meta_reports_a_missing_contributions_csv_as_a_precondition(
-    client, recorded_calls, app_module, monkeypatch, tmp_path
-):
-    """A missing export is the operator's next step, not a server error: 400 with the command."""
-    missing_csv = str(tmp_path / "backtest_contributions.csv")
-    monkeypatch.setattr(app_module.training_orchestrator, "combination_meta_csv_path", lambda: missing_csv)
-
-    resp = client.post("/admin/train/combination-meta")
-
-    assert resp.status_code == 400
-    assert resp.json()["detail"]["code"] == "CONTRIBUTIONS_CSV_MISSING"
-    assert "combination_meta" not in recorded_calls
-
-
-def test_combination_meta_trains_when_the_contributions_csv_exists(
-    client, recorded_calls, app_module, monkeypatch, tmp_path
-):
-    """With the CSV on disk the meta-model trains and the route reports its step."""
-    csv_path = tmp_path / "backtest_contributions.csv"
-    csv_path.write_text("player_id,contribution\n1,0.5\n", encoding="utf-8")
-    monkeypatch.setattr(app_module.training_orchestrator, "combination_meta_csv_path", lambda: str(csv_path))
-
-    resp = client.post("/admin/train/combination-meta")
-
-    assert resp.status_code == 200
-    assert resp.json()["step"] == "combination_meta"
-    assert "combination_meta" in recorded_calls
-
-
 def test_training_is_refused_when_hot_reload_is_disabled(tmp_path, monkeypatch):
     """A serving-only deployment must not be able to start a training run."""
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
@@ -158,9 +108,9 @@ def test_training_is_refused_when_hot_reload_is_disabled(tmp_path, monkeypatch):
     def fail(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("training must not start while hot reload is disabled")
 
-    monkeypatch.setattr(module.training_orchestrator, "run_batting_training", fail)
+    monkeypatch.setattr(module.training_orchestrator, "run_win_training", fail)
 
-    resp = TestClient(module.app).post("/admin/train/batting")
+    resp = TestClient(module.app).post("/admin/train/win")
 
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "TRAIN_DISABLED"
@@ -176,11 +126,11 @@ def test_step_progress_reports_the_live_run(client, app_module, monkeypatch):
 
     monkeypatch.setattr(app_module.training_orchestrator, "get_step_progress", fake_progress)
 
-    resp = client.get("/admin/train/progress?step=train_batting&run_id=r-1")
+    resp = client.get("/admin/train/progress?step=train_win&run_id=r-1")
 
     assert resp.status_code == 200
     assert resp.json()["percent"] == 42
-    assert asked == {"step": "train_batting", "run_id": "r-1"}
+    assert asked == {"step": "train_win", "run_id": "r-1"}
 
 
 def test_auto_tune_progress_delegates_to_the_orchestrator(client, app_module, monkeypatch):

@@ -1,7 +1,6 @@
-"""Prediction orchestration, split by domain.
+"""Prediction orchestration for the windowed-form win model.
 
-Import from the domain modules directly: ``app.prediction_service.endpoints``,
-``.players``, ``.innings``, ``.generate_match``. Settings live in
-``app.prediction_settings``. The transitional re-exports that lived here were
-removed in C6-2, completing P0-3.
+``app.prediction_service.endpoints`` is what is left of it: the batting, bowling, extras
+and innings handlers, the reconciled generate-match projection and the server-side team
+optimiser all went with their models in P-5. Prediction proper lives in ``app.xi_service``.
 """

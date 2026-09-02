@@ -44,7 +44,6 @@ export function useUpcomingMatch() {
   const [team2, setTeam2] = useState('');
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState('');
-  const [runSimulation, setRunSimulation] = useState(false);
 
   const formats = useAsync(api.getFormats, {
     runOnMount: [],
@@ -123,9 +122,8 @@ export function useUpcomingMatch() {
       team2: team2.trim(),
       venue: venue.trim() || undefined,
       match_date: matchDate,
-      simulate: runSimulation,
     });
-  }, [canPredict, predict, format, team1, team2, venue, matchDate, runSimulation]);
+  }, [canPredict, predict, format, team1, team2, venue, matchDate]);
 
   // One error at a time, newest first: a failed prediction is what the user just did,
   // and an option list that failed to load is visible as an empty picker anyway.
@@ -143,8 +141,6 @@ export function useUpcomingMatch() {
     setVenue,
     matchDate,
     setMatchDate,
-    runSimulation,
-    setRunSimulation,
     availableFormats: formats.data ?? [],
     availableTeam1s: teams.data ?? [],
     availableTeam2s: opponents.data ?? [],

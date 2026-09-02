@@ -11,10 +11,8 @@ from ml.config import (
     _deep_merge,
     default_artifacts_dir,
     default_go_app_export_dir,
-    get_feature_defaults,
     get_mlqa_config,
     get_pipeline_common_config,
-    get_prediction_defaults,
     get_training_data_fetch_timeout_sec,
     get_training_params,
     get_training_subprocess_timeout_sec,
@@ -49,24 +47,16 @@ def test_deep_merge_override_replaces_non_dict():
     assert out == {"a": "string"}
 
 
-def test_get_training_params_batting_from_default_config():
-    """get_training_params('batting') with default config returns valid params."""
+def test_get_training_params_win_from_default_config():
+    """get_training_params('win') with the default config returns valid params."""
     config_mod._cached = None
-    params = get_training_params("batting")
+    params = get_training_params("win")
     assert params["n_estimators"] >= 1
     assert params["max_depth"] >= 1
     assert params["random_state"] is not None
     assert params["joblib_compress"] in range(10)
     assert params["estimator"] in ("rf", "gb", "stacked", "quantile")
     assert "n_jobs" in params
-
-
-def test_get_training_params_bowling_from_default_config():
-    """get_training_params('bowling') with default config."""
-    config_mod._cached = None
-    params = get_training_params("bowling")
-    assert params["n_estimators"] >= 1
-    assert params["estimator"] in ("rf", "gb", "stacked", "quantile")
 
 
 def test_get_training_params_unknown_model_raises():
@@ -80,7 +70,7 @@ def test_get_training_params_missing_ml_block_raises(monkeypatch):
     config_mod._cached = {"inputs": {}}
     try:
         with pytest.raises(ValueError, match="ml.training"):
-            get_training_params("batting")
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
@@ -90,27 +80,27 @@ def test_get_training_params_missing_training_block_raises(monkeypatch):
     config_mod._cached = {"ml": {}}
     try:
         with pytest.raises(ValueError, match="ml.training"):
-            get_training_params("batting")
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
 
 def test_get_training_params_missing_model_block_raises(monkeypatch):
-    """Config with ml.training but no batting block raises ValueError."""
-    config_mod._cached = {"ml": {"training": {"bowling": {}}}}
+    """Config with ml.training but no win block raises ValueError."""
+    config_mod._cached = {"ml": {"training": {"other": {}}}}
     try:
-        with pytest.raises(ValueError, match="ml.training.batting"):
-            get_training_params("batting")
+        with pytest.raises(ValueError, match="ml.training.win"):
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
 
 def test_get_training_params_missing_keys_raises(monkeypatch):
-    """ml.training.batting missing required key raises ValueError."""
+    """ml.training.win missing a required key raises ValueError."""
     config_mod._cached = {
         "ml": {
             "training": {
-                "batting": {
+                "win": {
                     "n_estimators": 100,
                     "max_depth": 8,
                     # missing random_state, joblib_compress
@@ -120,7 +110,7 @@ def test_get_training_params_missing_keys_raises(monkeypatch):
     }
     try:
         with pytest.raises(ValueError, match="missing required keys"):
-            get_training_params("batting")
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
@@ -130,7 +120,7 @@ def test_get_training_params_invalid_types_raises(monkeypatch):
     config_mod._cached = {
         "ml": {
             "training": {
-                "batting": {
+                "win": {
                     "n_estimators": "many",
                     "max_depth": 8,
                     "random_state": 42,
@@ -141,7 +131,7 @@ def test_get_training_params_invalid_types_raises(monkeypatch):
     }
     try:
         with pytest.raises(ValueError, match="must be integers"):
-            get_training_params("batting")
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
@@ -151,7 +141,7 @@ def test_get_training_params_invalid_joblib_compress_raises(monkeypatch):
     config_mod._cached = {
         "ml": {
             "training": {
-                "batting": {
+                "win": {
                     "n_estimators": 100,
                     "max_depth": 8,
                     "random_state": 42,
@@ -162,7 +152,7 @@ def test_get_training_params_invalid_joblib_compress_raises(monkeypatch):
     }
     try:
         with pytest.raises(ValueError, match="0 and 9"):
-            get_training_params("batting")
+            get_training_params("win")
     finally:
         config_mod._cached = None
 
@@ -187,9 +177,9 @@ def test_get_training_params_estimator_aliases(monkeypatch):
         ("rf", "rf"),
         ("random_forest", "random_forest"),  # config keeps as-is (no normalize to "rf")
     ]:
-        config_mod._cached = {"ml": {"training": {"batting": {**base, "estimator": est_val}}}}
+        config_mod._cached = {"ml": {"training": {"win": {**base, "estimator": est_val}}}}
         try:
-            params = get_training_params("batting")
+            params = get_training_params("win")
             assert params["estimator"] == expected
         finally:
             config_mod._cached = None
@@ -200,7 +190,7 @@ def test_get_training_params_learning_rate_float_parsing(monkeypatch):
     config_mod._cached = {
         "ml": {
             "training": {
-                "batting": {
+                "win": {
                     "n_estimators": 50,
                     "max_depth": 5,
                     "random_state": 42,
@@ -213,7 +203,7 @@ def test_get_training_params_learning_rate_float_parsing(monkeypatch):
         }
     }
     try:
-        params = get_training_params("batting")
+        params = get_training_params("win")
         assert params["learning_rate"] == 0.05
         assert params["quantile_level"] == 0.9
     finally:
@@ -225,7 +215,7 @@ def test_get_training_params_invalid_learning_rate_quantile_defaults(monkeypatch
     config_mod._cached = {
         "ml": {
             "training": {
-                "batting": {
+                "win": {
                     "n_estimators": 50,
                     "max_depth": 5,
                     "random_state": 42,
@@ -238,7 +228,7 @@ def test_get_training_params_invalid_learning_rate_quantile_defaults(monkeypatch
         }
     }
     try:
-        params = get_training_params("batting")
+        params = get_training_params("win")
         assert params["learning_rate"] == 0.1
         assert params["quantile_level"] == 0.5
     finally:
@@ -401,24 +391,6 @@ def test_get_tuning_search_space_missing_returns_none(monkeypatch):
         config_mod._cached = None
 
 
-def test_get_feature_defaults(monkeypatch):
-    """get_feature_defaults returns common and fielding defaults."""
-    config_mod._cached = None
-    fd = get_feature_defaults()
-    assert "common" in fd
-    assert "fielding" in fd
-    assert "temp" in fd["common"]
-    assert "consistency" in fd["fielding"] or "venue" in fd["fielding"]
-
-
-def test_get_prediction_defaults(monkeypatch):
-    """get_prediction_defaults returns economy default."""
-    config_mod._cached = None
-    pd_def = get_prediction_defaults()
-    assert "economy" in pd_def
-    assert isinstance(pd_def["economy"], float)
-
-
 def test_get_pipeline_common_config():
     """get_pipeline_common_config returns pipeline_common defaults."""
     config_mod._cached = None
@@ -436,8 +408,7 @@ def test_get_pipeline_common_config():
 def test_training_required_keys_constant():
     """TRAINING_REQUIRED_KEYS and TRAINING_MODELS are defined."""
     assert "n_estimators" in TRAINING_REQUIRED_KEYS
-    assert "batting" in TRAINING_MODELS
-    assert "bowling" in TRAINING_MODELS
+    assert TRAINING_MODELS == ("win",), "P-5 left one model with a training block"
 
 
 def test_config_load_default_missing_returns_empty():

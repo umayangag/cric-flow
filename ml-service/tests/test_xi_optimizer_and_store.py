@@ -12,7 +12,7 @@ import pytest
 
 from ml.xi import contract as C
 from ml.xi.builder import build
-from ml.xi.optimizer import Constraints, marginal_values, select_xi
+from ml.xi.optimizer import Constraints, marginal_values, select_xi, select_xi_by_ratings
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
 from ml.xi.store import XiStore, load_ratings, save_ratings
 from ml.xi.train import train_all
@@ -166,6 +166,66 @@ def test_optimised_xi_scores_at_least_the_fielded_xi(trained_store) -> None:
         store, "T20", squad_a, last.team2_players, Constraints(team_size=11, min_bowlers=0, require_keeper=False)
     )
     assert res.win_probability >= fielded - 1e-9
+
+
+def test_reading_an_unknown_player_does_not_add_him_to_the_state(trained_store) -> None:
+    """A serving read must not invent a player.
+
+    ``side_vectors`` used to assign a slot to any key it had not seen, so a request naming
+    someone unknown -- a debutant, or a caller sending the wrong kind of id -- grew the
+    loaded state permanently, and ``known_players`` reported him *known* on the second
+    identical request. The state must be the same before and after a read.
+    """
+    store, squad_a, _, _ = trained_store
+    before = len(store.state.players)
+
+    assert store.known_players(["nobody-has-this-key"]) == [False]
+    store.side_vectors("T20", squad_a[:3] + ["nobody-has-this-key"])
+
+    assert len(store.state.players) == before
+    assert store.known_players(["nobody-has-this-key"]) == [False]
+
+
+def test_an_unknown_player_reads_as_a_debutant_not_as_a_neighbour(trained_store) -> None:
+    """The reserved column no update writes, so two different unknown keys read alike and
+    neither picks up the values of whoever happens to sit at the next slot."""
+    store, _, _, _ = trained_store
+
+    first = store.side_vectors("T20", ["unknown-one"])
+    second = store.side_vectors("T20", ["unknown-two"])
+
+    for key, values in first.items():
+        assert values[0] == pytest.approx(second[key][0]), key
+    assert first["pelo"][0] == pytest.approx(C.ELO_INITIAL)
+    assert first["bat_rate"][0] == pytest.approx(0.0)
+
+
+def test_select_xi_by_ratings_meets_the_constraints_without_an_opponent(trained_store) -> None:
+    store, squad_a, _, _ = trained_store
+    selected = select_xi_by_ratings(
+        store, "T20", squad_a, Constraints(team_size=11, min_bowlers=3, require_keeper=False)
+    )
+    assert len(set(selected)) == 11
+    assert set(selected) <= set(squad_a)
+    v = store.side_vectors("T20", selected)
+    assert C.is_bowling_option(v["exp_balls_bowled"], "T20").sum() >= 3
+
+
+def test_select_xi_by_ratings_is_the_search_seed_and_evaluates_no_model(trained_store) -> None:
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=3, require_keeper=False)
+    rating_ordered = select_xi_by_ratings(store, "T20", squad_a, c)
+    searched = select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+    assert searched.improved_over_seed >= 0.0
+    # The rating-ordered pick is where the search starts, so it can only be the searched XI
+    # when the search found nothing better -- and it is reached without an opponent XI.
+    assert (set(rating_ordered) == set(searched.selected)) == (searched.improved_over_seed == 0.0)
+
+
+def test_select_xi_by_ratings_raises_when_constraints_cannot_be_met(trained_store) -> None:
+    store, squad_a, _, _ = trained_store
+    with pytest.raises(ValueError, match="constraints"):
+        select_xi_by_ratings(store, "T20", squad_a[:8], Constraints(team_size=11))
 
 
 def test_marginal_values_cover_every_player_and_rank_the_strongest_highest(trained_store) -> None:

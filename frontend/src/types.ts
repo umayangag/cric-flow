@@ -1,57 +1,81 @@
 import type { ArtifactKind, ArtifactUnit } from './utils/artifactKinds';
 
 // --- Upcoming match prediction ---
+
+/** A 10-90 interval shown beside a point. */
+export type PredictValueRange = {
+  p10: number;
+  p90: number;
+};
+
+/**
+ * One player of a selected XI.
+ *
+ * Every point has a range beside it, because the models are distributional: a median with
+ * no interval reads as a promise the model never made. `marginal_value` is what the XI
+ * loses without this player, absent when nothing was maximised; `spread_share` is his share
+ * of the innings total's variance, present only where the simulator ran.
+ */
 export type PredictTeamSelectedPlayer = {
   player_id: number;
   player_name: string;
   runs: number;
+  runs_range?: PredictValueRange;
   balls?: number;
-  fours?: number;
-  sixes?: number;
+  balls_range?: PredictValueRange;
   wickets: number;
-  economy: number;
-  catches: number;
-  run_outs: number;
+  wickets_range?: PredictValueRange;
+  runs_conceded: number;
+  runs_conceded_range?: PredictValueRange;
+  economy?: number;
+  marginal_value?: number;
+  spread_share?: number;
 };
 
-/** Scorecard summary: innings totals and winner; when win model is used, totals are reconciled to win probability. */
-export type PredictScorecardSummary = {
-  innings1_total: number;
-  innings2_total: number;
+/**
+ * How the XIs were chosen. `optimised` is false where the win objective does not rank
+ * (H-17: TEST), and every surface showing such an XI has to say so.
+ */
+export type PredictSelectionSummary = {
+  objective: 'win' | 'ratings';
+  optimised: boolean;
+  note?: string;
+};
+
+/**
+ * The headline win probability and which model produced it. The other model's answer is
+ * reported beside it, never blended with it.
+ */
+export type PredictWinProbability = {
+  team1: number;
+  source: 'display' | 'simulator';
+  simulated?: number;
   predicted_winner: string;
-  team1_win_probability?: number;
-  extras_innings1?: number;
-  extras_innings2?: number;
 };
 
-/** Monte Carlo simulation result (when simulate=true on team-selection). */
-export type PredictSimulationResult = {
-  win_probability_team1: number;
-  win_probability_team2: number;
-  draw_probability: number;
-  innings1_total_mean: number;
-  innings1_total_std: number;
-  innings1_total_p10: number;
-  innings1_total_p50: number;
-  innings1_total_p90: number;
-  innings2_total_mean: number;
-  innings2_total_std: number;
-  innings2_total_p10: number;
-  innings2_total_p50: number;
-  innings2_total_p90: number;
-  num_matchups: number;
-  num_samples: number;
+/** One simulated innings: the median-band total the scorecard sums to, and its 10-90 range. */
+export type PredictInningsTotal = {
+  total: number;
+  extras: number;
+  p10: number;
+  median: number;
+  p90: number;
+};
+
+/** The simulated match. Absent for a format with no innings length. */
+export type PredictScorecard = {
+  samples: number;
+  toss_marginalised: boolean;
+  innings1: PredictInningsTotal;
+  innings2: PredictInningsTotal;
 };
 
 export type PredictTeamSelectionResponse = {
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
-  /** Baseline scorecard summary from per-innings models. */
-  scorecard_summary?: PredictScorecardSummary;
-  /** Reconciled scorecard summary aligned with win-model probabilities (when available). */
-  scorecard_summary_reconciled?: PredictScorecardSummary;
-  /** Present when simulate=true; win probs and innings distributions from Monte Carlo. */
-  simulation?: PredictSimulationResult;
+  selection: PredictSelectionSummary;
+  win_probability: PredictWinProbability;
+  scorecard?: PredictScorecard;
 };
 
 export type HealthResponse = {
@@ -186,115 +210,140 @@ export type ModelStatsResponse = {
   live_dataset?: DatasetProvenance;
 };
 
-// --- Backtest API DTOs ---
-export type BacktestCandidate = {
-  match_id: number;
-  stable_id: string;
-  match_date: string; // RFC3339
-  venue: string;
-  season: string;
-  format: string;
-  team1: string;
-  team2: string;
-  winner_team_code: string;
+// --- L4 evaluation report (GET /api/backtest/report) ---
+//
+// The harness (`make xi-evaluate`) writes one JSON file and every backtest surface reads
+// it. Numeric leaves are summarised over folds as {mean, sd, n_folds}; the locked window
+// is a single fold, scored once per release and never used for a choice (H-19).
+
+/** Mean and spread of one number over the walk-forward folds. */
+export type FoldStat = {
+  mean: number;
+  sd: number;
+  n_folds: number;
 };
 
-export type BacktestSelectResponse = {
-  filters: Record<string, unknown> & {
-    format: string;
-    team1: string;
-    team2: string;
+/** One walk-forward fold, or the locked window in the same shape. */
+export type EvaluationFold = {
+  cutoff: string;
+  end: string;
+  n_train: number;
+  n_eval: number;
+  skipped_reason?: string;
+  objective_auc?: number;
+  objective_brier?: number;
+  display_auc_mean?: number;
+  display_brier_mean?: number;
+  base_rate_brier?: number;
+  swap_monotonicity?: { upgrades: number; violations: number; violation_share: number };
+  specific_vs_typical?: {
+    n: number;
+    auc_specific_xi: number;
+    auc_typical_xi: number;
+    delta: number;
   };
-  candidates: BacktestCandidate[];
+  performance?: EvaluationPerformance;
+  simulation?: EvaluationSimulation;
+  note?: string;
+  recalibrated_targets?: string[];
 };
 
-export type BacktestEvaluatePlayerRow = {
-  player_id: number;
-  // Notes: backend may include optional bowling and fielding keys when available:
-  // - Bowling: wickets, economy
-  // - Fielding: catches, run_outs
-  // Keys are additive and backward compatible.
-  predicted: Record<string, number>; // e.g., { runs: 25, wickets: 1, economy: 7.5, catches: 2, run_outs: 1 }
-  actual: Record<string, number>; // e.g., { runs: 30, wickets: 2, economy: 7.2, catches: 1, run_outs: 0 }
-  errors: Record<string, number>; // e.g., { runs_mae: 5, wickets_mae: 1, economy_mae: 0.3, catches_mae: 1, run_outs_mae: 1 }
+/** One forecast scored on one target and one population. Never pooled across targets (H-12). */
+export type EvaluationTargetScore = {
+  n?: number | FoldStat;
+  mae?: number | FoldStat | null;
+  within_match_spearman?: number | FoldStat | null;
+  top3_hit_rate?: number | FoldStat | null;
+  pinball?: number | FoldStat | null;
+  /** Coverage and width of the 10-90 interval: width is the progress metric (H-22). */
+  interval?: {
+    coverage_80?: number | FoldStat;
+    width_80?: number | FoldStat;
+  } | null;
 };
 
-export type BacktestEvaluateResponse = {
-  filters: Record<string, unknown> & {
-    format: string;
-    team1: string;
-    team2: string;
-    match_id: number;
+export type EvaluationPerformance = {
+  targets?: Record<
+    string,
+    {
+      headline?: boolean;
+      model: EvaluationTargetScore;
+      career_mean?: EvaluationTargetScore;
+      career_quantiles?: EvaluationTargetScore;
+    }
+  >;
+  skipped_reason?: string;
+};
+
+/** E2: the simulated match against the display model and against what actually happened. */
+export type EvaluationSimulation = {
+  n_matches?: number | FoldStat;
+  skipped_reason?: string;
+  win?: {
+    brier?: {
+      display: number | FoldStat;
+      simulated: number | FoldStat;
+      base_rate?: number | FoldStat;
+    };
+    delta_brier_simulated_minus_display?: number | FoldStat;
   };
-  match: { match_id: number; match_date: string };
-  players: BacktestEvaluatePlayerRow[];
-  metrics: Record<string, number>; // e.g., { player_runs_mae: 3.66 }
-  match_aggregates?: {
-    predicted: Record<string, number | string>;
-    actual: Record<string, number | string>;
-    errors: Record<string, number>;
+  totals?: Record<string, EvaluationTotals>;
+};
+
+export type EvaluationTotals = {
+  n?: number | FoldStat;
+  coverage_80?: number | FoldStat;
+  width_80?: number | FoldStat;
+  dispersion_ratio?: number | FoldStat;
+  median_mae?: number | FoldStat;
+};
+
+export type EvaluationFormatReport = {
+  n_matches: number;
+  walk_forward: {
+    folds: EvaluationFold[];
+    summary: {
+      objective_auc?: FoldStat | null;
+      objective_brier?: FoldStat | null;
+      display_auc?: FoldStat | null;
+      base_rate_brier?: FoldStat | null;
+      swap_violation_share?: FoldStat | null;
+      specific_vs_typical_delta?: FoldStat | null;
+      performance?: EvaluationPerformance | null;
+      simulation?: EvaluationSimulation | null;
+    };
   };
-  /** Predicted scorecard from ML (data strictly before match date). Same shape as match scorecard. */
-  predicted_scorecard?: MatchScorecardResponse | null;
+  locked: EvaluationFold;
+  simulation_decision: {
+    simulated_win_probability_within_tolerance: boolean;
+    reason?: string;
+    delta_brier_mean?: number;
+    tolerance?: number;
+    shared_factor?: boolean;
+    chase_orientation?: string;
+    served?: boolean;
+  };
 };
 
-// --- Evaluate job (persisted across refresh) ---
-export type EvaluateJobStep = { step: string; message: string };
-
-export type EvaluateStatusResponse = {
-  job_id: string;
-  match_id: string;
-  format: string;
-  team1: string;
-  team2: string;
-  status: 'running' | 'done' | 'error';
-  steps?: EvaluateJobStep[];
-  result?: BacktestEvaluateResponse | null;
-  error?: string;
-  created_at: string;
-  updated_at: string;
-};
-
-// --- Match scorecard (for Evaluate DB tab) ---
-export type ScorecardBatting = {
-  player_name: string;
-  runs: number | null;
-  balls: number | null;
-  fours: number | null;
-  sixes: number | null;
-  strike_rate: number | null;
-  how_out: string | null;
-};
-
-export type ScorecardBowling = {
-  player_name: string;
-  overs: number | null;
-  maidens: number | null;
-  runs: number | null;
-  wickets: number | null;
-  economy: number | null;
-  wides: number | null;
-  no_balls: number | null;
-  balls: number | null;
-};
-
-export type ScorecardInning = {
-  inning_number: number;
-  batting_team_name: string;
-  bowling_team_name: string;
-  runs_scored: number;
-  wickets_lost: number;
-  extras: number;
-  target_runs?: number | null;
-  batting: ScorecardBatting[];
-  bowling: ScorecardBowling[];
-};
-
-export type MatchScorecardResponse = {
-  match_id: number;
-  match_date: string;
-  venue: string;
-  innings: ScorecardInning[];
+export type EvaluationReport = {
+  generated_at: string;
+  source: string;
+  cutoffs: string[];
+  locked_start: string;
+  seeds: number[];
+  n_rows: number;
+  n_player_rows: number;
+  data_quality?: Record<string, unknown>;
+  leak_canary?: {
+    best_single_column?: Record<string, { column: string; auc: number }>;
+    test_control_suspects?: unknown[];
+  };
+  formats: Record<string, EvaluationFormatReport>;
+  serving_parity: {
+    passed: boolean;
+    mismatches?: unknown[];
+    [key: string]: unknown;
+  };
 };
 
 // --- Ops Status (go-app API) DTO ---
@@ -751,34 +800,6 @@ export interface PaginatedResponse<T> {
 }
 
 // --- Workbench: accuracy trend (go-app /api/backtest/accuracy-trend) ---
-export type AccuracyTrendItem = {
-  match_id: number;
-  match_date: string;
-  format: string;
-  team1: string;
-  team2: string;
-  metrics: Record<string, number>;
-};
-
-export type AccuracyTrendResponse = {
-  filters: Record<string, unknown>;
-  count: number;
-  results: AccuracyTrendItem[];
-  summary: Record<string, number>;
-  progressive: Array<Record<string, number>>;
-};
-
-export type AccuracyTrendFilters = {
-  format?: string;
-  start_date?: string;
-  end_date?: string;
-  team1?: string;
-  team2?: string;
-  order?: 'asc' | 'desc';
-  limit?: number;
-  cache?: 'off' | 'read' | 'readwrite';
-  metrics?: string;
-};
 
 // --- Workbench: walk-forward registry (from walk_forward_registry.json) ---
 export type WalkForwardWindowEntry = {

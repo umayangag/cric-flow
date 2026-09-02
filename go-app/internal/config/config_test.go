@@ -1,7 +1,6 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,7 +24,6 @@ func TestValidateTeamSettings(t *testing.T) {
 				c.Team.DefaultBatters = 6
 				c.Team.DefaultBowlers = 5
 				c.Predictor.TeamSize = 11
-				c.Predictor.DefaultExtras = 4
 				return c
 			}(),
 			err: "",
@@ -49,17 +47,6 @@ func TestValidateTeamSettings(t *testing.T) {
 				return c
 			}(),
 			err: "team size",
-		},
-		{
-			name: "negative extras",
-			cfg: func() *Config {
-				c := &Config{}
-				c.Team.MinBowlers = 5
-				c.Predictor.TeamSize = 11
-				c.Predictor.DefaultExtras = -1
-				return c
-			}(),
-			err: "extras",
 		},
 		{
 			name: "default bowlers < min bowlers",
@@ -132,89 +119,6 @@ func TestDefaultExportDir_EnvOverridesConfig(t *testing.T) {
 	require.Equal(t, "/output/go-app", DefaultExportDir())
 }
 
-func TestEffectiveScoreNormParams(t *testing.T) {
-	// nil config -> defaults (returns float64)
-	bat, wkt, econ, fld := EffectiveScoreNormParams(nil, "T20")
-	require.Equal(t, float64(DefaultScoreNormBatDivisor), bat)
-	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
-	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
-	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
-
-	// format not in config -> defaults
-	cfg := &Config{}
-	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "T20")
-	require.Equal(t, float64(DefaultScoreNormBatDivisor), bat)
-	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
-	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
-	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
-
-	// format in config -> overrides
-	cfg.Selection.ScoreNormalization = map[string]ScoreNormParams{
-		"T20": {BatDivisor: 100, WicketDivisor: 6, EconBase: 10, FieldDivisor: 4},
-	}
-	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "T20")
-	require.Equal(t, 100.0, bat)
-	require.Equal(t, 6.0, wkt)
-	require.Equal(t, 10.0, econ)
-	require.Equal(t, 4.0, fld)
-
-	// partial override: only bat/wicket set, econ/field stay default
-	cfg.Selection.ScoreNormalization = map[string]ScoreNormParams{
-		"ODI": {BatDivisor: 50},
-	}
-	bat, wkt, econ, fld = EffectiveScoreNormParams(cfg, "ODI")
-	require.Equal(t, 50.0, bat)
-	require.Equal(t, float64(DefaultScoreNormWicketDivisor), wkt)
-	require.Equal(t, float64(DefaultScoreNormEconBase), econ)
-	require.Equal(t, float64(DefaultScoreNormFieldDivisor), fld)
-}
-
-func TestEffectiveScoreWeights(t *testing.T) {
-	// nil config -> defaults
-	bat, bowl, field, keeper := EffectiveScoreWeights(nil)
-	require.Equal(t, DefaultScoreWeightBat, bat)
-	require.Equal(t, DefaultScoreWeightBowl, bowl)
-	require.Equal(t, DefaultScoreWeightField, field)
-	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
-
-	// config with custom weights
-	cfg := &Config{}
-	cfg.Selection.ScoreWeights = &ScoreWeights{Bat: 0.5, Bowl: 0.35, Field: 0.12, KeeperBonus: 0.03}
-	bat, bowl, field, keeper = EffectiveScoreWeights(cfg)
-	require.Equal(t, 0.5, bat)
-	require.Equal(t, 0.35, bowl)
-	require.Equal(t, 0.12, field)
-	require.Equal(t, 0.03, keeper)
-
-	// partial config: zero values filled with defaults
-	cfg.Selection.ScoreWeights = &ScoreWeights{Bat: 0.6}
-	bat, bowl, field, keeper = EffectiveScoreWeights(cfg)
-	require.Equal(t, 0.6, bat)
-	require.Equal(t, DefaultScoreWeightBowl, bowl)
-	require.Equal(t, DefaultScoreWeightField, field)
-	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
-}
-
-func TestEffectiveScoreWeightsForFormat(t *testing.T) {
-	// nil config -> falls through to EffectiveScoreWeights defaults
-	bat, bowl, field, keeper := EffectiveScoreWeightsForFormat(nil, "T20")
-	require.Equal(t, DefaultScoreWeightBat, bat)
-	require.Equal(t, DefaultScoreWeightBowl, bowl)
-	require.Equal(t, DefaultScoreWeightField, field)
-	require.Equal(t, DefaultScoreWeightKeeperBonus, keeper)
-
-	// score_weights_by_format override
-	cfg := &Config{}
-	cfg.Selection.ScoreWeightsByFormat = map[string]ScoreWeights{
-		"T20": {Bat: 0.5, Bowl: 0.38, Field: 0.09, KeeperBonus: 0.03},
-	}
-	bat, bowl, field, keeper = EffectiveScoreWeightsForFormat(cfg, "T20")
-	require.Equal(t, 0.5, bat)
-	require.Equal(t, 0.38, bowl)
-	require.Equal(t, 0.09, field)
-	require.Equal(t, 0.03, keeper)
-}
-
 func TestPipelineTimeout(t *testing.T) {
 	cached = nil
 	cached = &Config{}
@@ -258,53 +162,6 @@ func TestEffectiveExportMaxMatchIDs(t *testing.T) {
 	require.Equal(t, 500, EffectiveExportMaxMatchIDs(cfg))
 	cfg.Backtest.ExportMaxMatchIDs = 0
 	require.Equal(t, DefaultExportMaxMatchIDs, EffectiveExportMaxMatchIDs(cfg))
-}
-
-func TestEffectiveMaxTotalSamples(t *testing.T) {
-	require.Equal(t, DefaultMaxTotalSamples, EffectiveMaxTotalSamples(nil))
-	cfg := &Config{}
-	cfg.Predictor.MaxTotalSamples = 50000
-	require.Equal(t, 50000, EffectiveMaxTotalSamples(cfg))
-	cfg.Predictor.MaxTotalSamples = 0
-	require.Equal(t, DefaultMaxTotalSamples, EffectiveMaxTotalSamples(cfg))
-}
-
-func TestEffectiveSimulationTopKPerTeam(t *testing.T) {
-	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(nil))
-	cfg := &Config{}
-	cfg.Predictor.SimulationTopKPerTeam = 30
-	require.Equal(t, 30, EffectiveSimulationTopKPerTeam(cfg))
-	cfg.Predictor.SimulationTopKPerTeam = 0
-	require.Equal(t, DefaultSimulationTopKPerTeam, EffectiveSimulationTopKPerTeam(cfg))
-}
-
-func TestEffectiveSimulationNumSamplesPerMatchup(t *testing.T) {
-	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(nil))
-	cfg := &Config{}
-	cfg.Predictor.SimulationNumSamplesPerMatchup = 200
-	require.Equal(t, 200, EffectiveSimulationNumSamplesPerMatchup(cfg))
-	cfg.Predictor.SimulationNumSamplesPerMatchup = 0
-	require.Equal(t, DefaultSimulationNumSamplesPerMatchup, EffectiveSimulationNumSamplesPerMatchup(cfg))
-}
-
-func TestEffectiveSimulationCVs(t *testing.T) {
-	r, w, e := EffectiveSimulationCVs(nil)
-	require.Equal(t, DefaultSimulationRunsCV, r)
-	require.Equal(t, DefaultSimulationWicketsCV, w)
-	require.Equal(t, DefaultSimulationEconomyCV, e)
-
-	cfg := &Config{}
-	cfg.Predictor.Simulation = &SimulationParams{RunsCV: 0.4, WicketsCV: 0.5, EconomyCV: 0.2}
-	r, w, e = EffectiveSimulationCVs(cfg)
-	require.Equal(t, 0.4, r)
-	require.Equal(t, 0.5, w)
-	require.Equal(t, 0.2, e)
-
-	cfg.Predictor.Simulation = &SimulationParams{RunsCV: 0.3} // partial: others stay default
-	r, w, e = EffectiveSimulationCVs(cfg)
-	require.Equal(t, 0.3, r)
-	require.Equal(t, DefaultSimulationWicketsCV, w)
-	require.Equal(t, DefaultSimulationEconomyCV, e)
 }
 
 func TestConfigServerHelpers(t *testing.T) {
@@ -352,12 +209,6 @@ func TestConfigServerAndResourcesHelpers(t *testing.T) {
 	cfg.Resources = &ResourcesConfig{PrecomputeMBPerWorker: 600}
 	require.Equal(t, 600, ResourcesPrecomputeMBPerWorker(cfg))
 
-	cfg.Selection.MaxPoolSizeForFullEnum = 20
-	require.Equal(t, 20, SelectionMaxPoolSizeForFullEnum(cfg))
-
-	cfg.Selection.MaxWinProbSwapIterations = 30
-	require.Equal(t, 30, SelectionMaxWinProbSwapIterations(cfg))
-
 	cfg.Selection.MaxWinProbEvalBudget = 200
 	require.Equal(t, 200, SelectionMaxWinProbEvalBudget(cfg))
 
@@ -394,48 +245,6 @@ func TestConfigServerGetters_AllDefaults(t *testing.T) {
 	require.Equal(t, 60, ServerTrainStepTimeoutMin(cfg))
 	require.Equal(t, 5, ServerPipelineProgressSec(cfg))
 	require.Equal(t, 3, ServerDBProbeTimeoutSec(cfg))
-}
-
-func TestEffectiveScoreWeightsForFormat_WithMetaModel(t *testing.T) {
-	cached = nil
-	tmp := t.TempDir()
-	metaPath := filepath.Join(tmp, "meta.json")
-	metaContent := `{"bat":0.4,"bowl":0.35,"field":0.2,"keeper_bonus":0.05}`
-	require.NoError(t, os.WriteFile(metaPath, []byte(metaContent), 0o600))
-	cfgPath := filepath.Join(tmp, "config.json")
-	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
-	require.NoError(t, os.WriteFile(cfgPath, []byte(cfgContent), 0o600))
-	t.Setenv("GO_APP_CONFIG", cfgPath)
-	cfg := Load()
-
-	bat, bowl, field, keeper := EffectiveScoreWeightsForFormat(cfg, "T20")
-	require.Equal(t, 0.4, bat)
-	require.Equal(t, 0.35, bowl)
-	require.Equal(t, 0.2, field)
-	require.Equal(t, 0.05, keeper)
-}
-
-func TestEffectiveScoreWeightsForFormat_WithMetaModelPerFormat(t *testing.T) {
-	cached = nil
-	tmp := t.TempDir()
-	metaPath := filepath.Join(tmp, "meta_per_fmt.json")
-	metaContent := `{"bat":0.5,"bowl":0.3,"field":0.15,"keeper_bonus":0.05,"per_format":{"ODI":{"bat":0.45,"bowl":0.35,"field":0.15,"keeper_bonus":0.05}}}`
-	require.NoError(t, os.WriteFile(metaPath, []byte(metaContent), 0o600))
-	cfgPath := filepath.Join(tmp, "config.json")
-	cfgContent := `{"selection":{"meta_model_path":"` + metaPath + `"}}`
-	require.NoError(t, os.WriteFile(cfgPath, []byte(cfgContent), 0o600))
-	t.Setenv("GO_APP_CONFIG", cfgPath)
-	cfg := Load()
-
-	// ODI has per-format override
-	bat, bowl, _, _ := EffectiveScoreWeightsForFormat(cfg, "ODI")
-	require.Equal(t, 0.45, bat)
-	require.Equal(t, 0.35, bowl)
-
-	// T20 uses global meta-model (no per-format)
-	bat2, bowl2, _, _ := EffectiveScoreWeightsForFormat(cfg, "T20")
-	require.Equal(t, 0.5, bat2)
-	require.Equal(t, 0.3, bowl2)
 }
 
 func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
@@ -691,18 +500,6 @@ func TestConfigMoreServerAndBacktestHelpers(t *testing.T) {
 		},
 		{"ServerReadinessTimeoutSec nil", nil, ServerReadinessTimeoutSec, DefaultServerReadinessTimeoutSec},
 		{"ResourcesPrecomputeMBPerWorker nil", nil, ResourcesPrecomputeMBPerWorker, DefaultPrecomputeMBPerWorker},
-		{
-			"SelectionMaxPoolSizeForFullEnum nil",
-			nil,
-			SelectionMaxPoolSizeForFullEnum,
-			DefaultSelectionMaxPoolSizeForFullEnum,
-		},
-		{
-			"SelectionMaxWinProbSwapIterations nil",
-			nil,
-			SelectionMaxWinProbSwapIterations,
-			DefaultSelectionMaxWinProbSwapIterations,
-		},
 		{"SelectionMaxWinProbEvalBudget nil", nil, SelectionMaxWinProbEvalBudget, DefaultSelectionMaxWinProbEvalBudget},
 		{"PipelineReplayMatchPageSize nil", nil, PipelineReplayMatchPageSize, DefaultPipelineReplayMatchPageSize},
 	}
@@ -739,4 +536,53 @@ func TestCricsheetSourceURL(t *testing.T) {
 		cached.Inputs.CricsheetSourceURL = "   "
 		require.Equal(t, DefaultCricsheetSourceURL, CricsheetSourceURL())
 	})
+}
+
+// TestRetiredKeys covers the P-5 rule that a setting whose behaviour was deleted must fail
+// validation naming the PR, not be silently ignored (the retired-parameter rule, applied to
+// config: encoding/json drops a key with no field, so nothing else would ever notice).
+func TestRetiredKeys(t *testing.T) {
+	testCases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "no config bytes", raw: "", want: ""},
+		{name: "unparseable config is the loader's problem", raw: "{not json", want: ""},
+		{name: "a config with nothing retired", raw: `{"selection":{"best_response_rounds":3}}`, want: ""},
+		{
+			name: "the stale win_model key names the PR that removed it",
+			raw:  `{"selection":{"win_model":"xi"}}`,
+			want: "selection.win_model (removed in P-5",
+		},
+		{
+			name: "a retired key set to null is still an intention",
+			raw:  `{"selection":{"score_weights":null}}`,
+			want: "selection.score_weights (removed in P-5",
+		},
+		{
+			name: "a retired key under a different parent is not matched",
+			raw:  `{"backtest":{"win_model":"xi"}}`,
+			want: "",
+		},
+		{
+			name: "every retired key present is reported at once",
+			raw:  `{"selection":{"win_model":"xi","use_optimizer":true},"predictor":{"simulation":{}}}`,
+			want: "3 retired setting(s)",
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := RetiredKeys([]byte(tc.raw))
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
 }

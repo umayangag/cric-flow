@@ -13,7 +13,7 @@ export POSTGRES_SSLMODE?=disable
 # Resource-aware pipelines: limit process memory so concurrency is capped (see docs/config-and-data.md). Override with GOMEMLIMIT=... if needed.
 export GOMEMLIMIT?=2GiB
 
-.PHONY: deadcode all build clean run-api team-select team-predictor docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
+.PHONY: deadcode all build clean run-api docker-build docker-run fmt fmt-check vet test lint migrate build-migrate init mocks cricsheet-import
 
 all: build
 
@@ -36,27 +36,6 @@ run-api:
 MATCH ?= 262039498036
 FORMAT ?= T20
 SEASON ?= 2025
-SIZE ?= 11
-MIN_BOWLERS ?= 5
-REQUIRE_KEEPER ?= 0
-BAT ?= 0
-BOWL ?= 0
-
-# Run team selection pipeline
-# Example:
-#  make team-select MATCH=1193505 SEASON=2019 FORMAT=T20
-team-select:
-	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ]; then echo "Please set MATCH=<id> and SEASON=<name> (e.g., 2019)"; exit 2; fi
-	REQ_FLAG=""; if [ "$(REQUIRE_KEEPER)" = "1" ]; then REQ_FLAG="-require-keeper"; fi; \
-	go run ./cmd/team-select -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -size=$(SIZE) -min-bowlers=$(MIN_BOWLERS) $$REQ_FLAG
-
-# Run team predictor (requires ml-service running for predict)
-# Examples:
-#  make team-predictor MATCH=1193505 SEASON=2019 FORMAT=T20 BAT=6 BOWL=5
-team-predictor:
-	@if [ "$(MATCH)" = "0" ] || [ -z "$(SEASON)" ] || [ -z "$(FORMAT)" ]; then echo "Please set MATCH, SEASON, and FORMAT (TEST|ODI|T20I|T20)"; exit 2; fi
-	go run ./cmd/team-predictor -match=$(MATCH) -format=$(FORMAT) -season=$(SEASON) -bat=$(BAT) -bowl=$(BOWL)
-
 # Import Cricsheet JSON into DB (populates match, match_inning, batting_data, bowling_data).
 # Usage: make cricsheet-import [DIR=path/to/json] [PLACEHOLDERS=1] [FAIL_FAST=0]
 # PLACEHOLDERS=1 inserts zeroed fielding rows for every player seen.
@@ -152,8 +131,8 @@ deadcode:
 # Coverage targets
 .PHONY: coverage coverage-html coverage-func coverage-check
 
-# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=66 make coverage-check`
-COV_MIN ?= 66
+# Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=70 make coverage-check`
+COV_MIN ?= 68
 
 # Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data structs),
 # internal/db, internal/db/exportqueries (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
@@ -179,7 +158,7 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below COV_MIN (default 66)
+# Fail if total coverage is below COV_MIN (default 68)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
@@ -215,7 +194,7 @@ help:
 	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
-	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 66%%)"
+	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 68%%)"
 	@echo "  coverage-html      Render HTML coverage report"
 	@echo "  coverage-ci        Run coverage + enforce threshold (like CI)"
 	@echo
@@ -225,8 +204,6 @@ help:
 	@echo "  migrate            Build + run DB migrator against POSTGRES_* envs"
 	@echo
 	@echo "[Data & CLIs]"
-	@echo "  team-select        Run team selection (uses MATCH, SEASON, FORMAT, SIZE, MIN_BOWLERS, etc.)"
-	@echo "  team-predictor     Run team predictor CLI (requires ml-service)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning; GO_APP_INPUT_DIR=..., PLACEHOLDERS=1)"
 	@echo "  export-dataset     Export unified cross-format datasets to $(GO_APP_OUTPUT_DIR) (writes *_encoded_all.csv)"
 	@echo

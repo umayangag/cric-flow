@@ -174,8 +174,7 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	lastImport := lastRuns["cricsheet-import"]
 	lastPrecompute := lastRuns["precompute-features"]
 	lastExport := lastRuns["export-dataset"]
-	lastTrainBatting := lastRuns["train-batting"]
-	lastTrainBowling := lastRuns["train-bowling"]
+	lastTrainWin := lastRuns["train-win"]
 
 	// Rule 0: Initialize if no successful import found
 	if lastImport == nil {
@@ -219,28 +218,14 @@ func GenerateSuggestions(migrations []tracking.Migration, seqPopulated bool) []S
 	}
 
 	// Rule 3: Export -> Train
-	var trainSuggestions []Suggestion
-	// Batting
-	if lastTrainBatting == nil || lastTrainBatting.StartedAt.Before(lastExport.StartedAt) {
-		trainSuggestions = append(trainSuggestions, Suggestion{
-			Title:       "Train Batting Model",
-			Description: "New dataset exported. Run from project root. Produces one model per format. Run make ml-install first if venv deps are missing.",
-			Command:     "make train-batting",
-			Priority:    "MEDIUM",
-		})
-	}
-	// Bowling
-	if lastTrainBowling == nil || lastTrainBowling.StartedAt.Before(lastExport.StartedAt) {
-		trainSuggestions = append(trainSuggestions, Suggestion{
-			Title:       "Train Bowling Model",
-			Description: "New dataset exported. Run from project root. Produces one model per format. Run make ml-install first if venv deps are missing.",
-			Command:     "make train-bowling",
-			Priority:    "MEDIUM",
-		})
-	}
-
-	if len(trainSuggestions) > 0 {
-		return trainSuggestions
+	if lastTrainWin == nil || lastTrainWin.StartedAt.Before(lastExport.StartedAt) {
+		return []Suggestion{{
+			Title: "Train Win Model",
+			Description: "New dataset exported. Run from project root. Produces one model per format. " +
+				"Run make ml-install first if venv deps are missing.",
+			Command:  "make train-win",
+			Priority: "MEDIUM",
+		}}
 	}
 
 	return []Suggestion{}

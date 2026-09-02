@@ -24,7 +24,7 @@
 //
 //   - Created: pipeline.RunJob (via Tracker from tracking.Start), CLI export/train steps.
 //   - Updated: Tracker.Complete / Fail / Cancel; CaptureExit (defer); CancelInProgressMigration;
-//     ReconcileStaleRuns (on API startup).
+//     CancelStaleRuns (on API startup).
 //   - Surfaced: GetInProgressMigrations, GetRecentMigrations, GetMigrationsPaginated;
 //     HasInProgressForCommand, LastRunSucceededForCommand — used by ops_status and
 //     pipeline step gating.

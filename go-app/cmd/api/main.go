@@ -16,7 +16,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/logger"
-	"github.com/umayangag/cric-flow/go-app/internal/mlclient"
 	apipkg "github.com/umayangag/cric-flow/go-app/internal/server"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
@@ -74,10 +73,10 @@ func run() int {
 	}
 
 	// Cancel only stale IN_PROGRESS runs when enabled (started longer ago than threshold).
-	// Disable with RUN_TRACKING_RECONCILIATION_AT_STARTUP=0 if reconciliation is done elsewhere.
-	if runTrackingReconciliationAtStartup() {
+	// Disable with RUN_TRACKING_CANCEL_STALE_AT_STARTUP=0 when something else does the sweep.
+	if runTrackingCancelStaleAtStartup() {
 		staleCancelAge := trackingStaleCancelAge()
-		if _, err := tracking.ReconcileStaleRuns(ctx, "interrupted (server restart or crash)", staleCancelAge); err != nil {
+		if _, err := tracking.CancelStaleRuns(ctx, "interrupted (server restart or crash)", staleCancelAge); err != nil {
 			slog.Warn("failed to cancel stale in-progress migrations", slog.Any("err", err))
 		}
 	}
@@ -87,8 +86,7 @@ func run() int {
 	defer cancelJob()
 
 	// Initialize long-lived dependencies
-	client := mlclient.New()
-	server := apipkg.NewApp(jobCtx, client)
+	server := apipkg.NewApp(jobCtx, apipkg.NewMLClient())
 
 	// Build router with dependencies
 	r := apipkg.NewRouter(server)
@@ -170,9 +168,9 @@ func runMigrationsAtStartup() bool {
 	return s != "0" && s != "false" && s != "no"
 }
 
-// runTrackingReconciliationAtStartup returns false when RUN_TRACKING_RECONCILIATION_AT_STARTUP=0 or false.
-func runTrackingReconciliationAtStartup() bool {
-	s := os.Getenv("RUN_TRACKING_RECONCILIATION_AT_STARTUP")
+// runTrackingCancelStaleAtStartup returns false when RUN_TRACKING_CANCEL_STALE_AT_STARTUP=0 or false.
+func runTrackingCancelStaleAtStartup() bool {
+	s := os.Getenv("RUN_TRACKING_CANCEL_STALE_AT_STARTUP")
 	return s != "0" && s != "false" && s != "no"
 }
 

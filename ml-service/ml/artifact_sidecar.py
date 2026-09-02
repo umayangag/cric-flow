@@ -12,7 +12,7 @@ otherwise drift between training and inference:
 - ``feature_names``: the exact column order the scaler/model were fitted on.
   After introducing per-format ``drop_low_variance_columns`` and optional
   one-hot exclusion, different formats can end up with different feature lists
-  than the canonical ``*_FEATURE_COLS`` tuple, and reconciliation cannot assume
+  than the canonical ``*_FEATURE_COLS`` tuple, and inference cannot assume
   a fixed shape.
 
 Files are named ``{kind}_meta_{FMT}.json``. Readers must tolerate missing files

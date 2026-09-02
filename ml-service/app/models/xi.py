@@ -5,12 +5,19 @@ player-performance endpoint (``/performance/predict``) and the match simulator
 Players are identified by id only. The ML service holds the as-of rating state, so callers
 send who is playing, not what their features are -- which is also what makes the training
 and serving paths compute the same function of the same eleven names (S-3c).
+
+**The id is the Cricsheet registry identifier** (``player.external_id`` in the go-app
+database, ``info.registry.people`` in the archive) -- the key the rating state is built on
+since P-1, and the one thing that means the same player on both sources. It is a string:
+these ids are hex (``2911de16``). They were typed as ``int`` until P-5, which no id the
+store holds could satisfy, so every request named eleven players the state had never seen
+and every prediction was computed for debutants.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,14 +30,23 @@ class XiConstraints(BaseModel):
     team_size: int = Field(default=11, ge=1, le=15)
     min_bowlers: int = Field(default=5, ge=0, le=11)
     require_keeper: bool = True
-    must_include: List[int] = Field(default_factory=list)
-    must_exclude: List[int] = Field(default_factory=list)
+    must_include: List[str] = Field(default_factory=list)
+    must_exclude: List[str] = Field(default_factory=list)
 
 
 class XiOptimizeRequest(BaseModel):
     format: str
-    pool_player_ids: List[int] = Field(..., min_length=1)
-    opponent_player_ids: List[int] = Field(..., min_length=1)
+    pool_player_ids: List[str] = Field(..., min_length=1)
+    opponent_player_ids: List[str] = Field(
+        default_factory=list,
+        description="The opposing XI the selection is made against; not read by objective='ratings'",
+    )
+    objective: Literal["win", "ratings"] = Field(
+        default="win",
+        description="'win' searches for the XI that maximises the objective model's P(win); "
+        "'ratings' returns the rating-ordered pick and evaluates no model, which is the only "
+        "mode offered where the objective does not rank (H-17, TEST)",
+    )
     team_is_team1: bool = Field(default=True, description="Whether the pool's side bats first")
     constraints: XiConstraints = Field(default_factory=XiConstraints)
     max_evaluations: int = Field(default=20000, ge=100, le=200000)
@@ -46,22 +62,30 @@ class XiOptimizeRequest(BaseModel):
 
 
 class XiOptimizeResponse(BaseModel):
-    selected_player_ids: List[int]
-    win_probability: float = Field(..., ge=0, le=1)
+    selected_player_ids: List[str]
+    objective: Literal["win", "ratings"]
+    optimised: bool = Field(
+        ...,
+        description="False for the rating-ordered pick: a selection, but not one that maximises "
+        "anything. Callers must say so (H-17)",
+    )
+    win_probability: Optional[float] = Field(
+        default=None, ge=0, le=1, description="None when nothing was maximised (objective='ratings')"
+    )
     evaluations: int
     improved_over_seed: float
-    unknown_player_ids: List[int] = Field(
+    unknown_player_ids: List[str] = Field(
         default_factory=list, description="Pool ids with no rating history; treated as debutants"
     )
-    marginal_values: Dict[int, float] = Field(
+    marginal_values: Dict[str, float] = Field(
         default_factory=dict, description="P(win) lost if the player were replaced by an average one"
     )
 
 
 class XiWinRequest(BaseModel):
     format: str
-    team1_player_ids: List[int] = Field(..., min_length=1)
-    team2_player_ids: List[int] = Field(..., min_length=1)
+    team1_player_ids: List[str] = Field(..., min_length=1)
+    team2_player_ids: List[str] = Field(..., min_length=1)
     team1_id: Optional[int] = Field(
         default=None, description="opposition id of the side batting first (for team-level context)"
     )
@@ -116,7 +140,7 @@ class WicketDistribution(BaseModel):
 
 
 class PlayerPerformance(BaseModel):
-    player_id: int
+    player_id: str
     side: int = Field(..., description="1 = team1, 2 = team2")
     p_bats: float = Field(..., ge=0, le=1)
     p_bowls: float = Field(..., ge=0, le=1)
@@ -132,7 +156,7 @@ class PerformancePredictResponse(BaseModel):
     innings_marginalised: bool = Field(
         ..., description="True when the toss was unknown and both batting orders were averaged"
     )
-    unknown_player_ids: List[int] = Field(
+    unknown_player_ids: List[str] = Field(
         default_factory=list, description="Ids with no rating history; predicted as debutants"
     )
 
@@ -158,7 +182,7 @@ class SimulatedScorecardLine(BaseModel):
 
 
 class SimulatedPlayer(BaseModel):
-    player_id: int
+    player_id: str
     side: int = Field(..., description="1 = team1, 2 = team2")
     p_bats: float = Field(..., ge=0, le=1, description="Share of draws in which the player batted")
     p_bowls: float = Field(..., ge=0, le=1)
@@ -215,4 +239,4 @@ class SimulateResponse(BaseModel):
     team2: SimulatedSide
     win_probability: SimulatedWinProbability
     margin: SimulatedMargin
-    unknown_player_ids: List[int] = Field(default_factory=list)
+    unknown_player_ids: List[str] = Field(default_factory=list)

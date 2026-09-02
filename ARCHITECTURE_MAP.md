@@ -11,35 +11,36 @@ Concise reference for data flow, ML models, and aggregation. Use `@ARCHITECTURE_
 ## 1. Data Flow: Simulator → Models
 
 ### Sources
-- **go-app** computes features at cutoff (rolling form windows, venue, opposition, cyclical match date, sequential features).
-- **Feature vectors** are defined in `configs/feature_vectors.json` (single source of truth). Match date is encoded cyclically (`match_month_sin/cos`, `match_day_of_week_sin/cos`); the older `match_date_unix` was replaced in v3.
-- Training data: `GET /api/backtest/training-data?format=all&cutoff=...` or exported CSVs (`go-app/export-dataset` → `batting_encoded_*.csv`, etc.). Sections now cover **batting**, **bowling**, **fielding**, **extras**, **win**, and **innings**.
+- **The event store** — `match`, `match_player`, `ball_event` — is the only input the XI layer reads. One chronological, as-of pass (`ml.xi.builder`) produces the win frame, the player-match frame and the serving rating state.
+- **go-app** knows who is available (the pool) and which fixture this is; it sends **registry ids** (`player.external_id`, the key the rating state is built under), a format, team ids, a venue id and a date. It sends no features.
+- `configs/feature_vectors.json` and `GET /api/backtest/training-data` still feed the windowed-form win model and the auto-tune stack, both of which P-6 removes.
 
-### Flow (backtest / team prediction)
-
-```
-DB (match/squad/cutoff) → go-app features (ComputeFeaturesAtCutoffForMatch / ComputeFeaturesAtCutoffForFutureMatch)
-    → ml-service:
-        - /predict/batting, /predict/bowling (player-level; fielding has no direct endpoint)
-        - /predict/extras, /predict/win (match-level)
-        - innings model (no direct endpoint; used via /ml/backtest and team prediction for hybrid reconciliation)
-    → per-player predictions (runs, balls, wickets, catches, etc.)
-    → aggregator (sum runs, winner from team totals; extras from model or historical avg)
-```
-
-### Flow (Monte Carlo simulation)
+### Flow (prediction)
 
 ```
-Same as above: player predictions from batting/bowling/fielding
-    → SelectTopK XIs per team (optimizer with score weights)
-    → For each (XI₁, XI₂): sample N outcomes
-        - Per player: sampleRuns(mean, CV) from Normal(mean, mean×CV)
-        - Innings total = sum(sampled runs) + extras
-    → Win probability = count(tot1>tot2)/N, count(tot2>tot1)/N, draw/N
-    → Innings percentiles: P10, P50, P90
+DB (pools for the two sides) → go-app resolves format / teams / venue / date
+    → ml-service, by registry id (`player.external_id`, not `player_id` — see D-7a):
+        - POST /xi/optimize        objective="win"     → the XI that maximises P(win), + marginal values
+                                   objective="ratings" → the rating-ordered XI (H-17: TEST), optimised=false
+        - POST /xi/predict-win                          → the displayed P(team1 wins)
+        - POST /simulate           (T20, T20I, ODI)     → totals with 10-90 ranges, per-player ranges,
+                                                          the median-band scorecard, P(win), spread shares
+        - POST /performance/predict (no innings length) → per-player medians and 10-90 intervals
+    → one response: two XIs, how they were chosen, P(win) with its source, and — where the
+      format has an innings length — a scorecard whose lines and extras sum to the total
 ```
 
-**Simulation defaults** (config): `RunsCV=0.35`, `WicketsCV=0.4`, `EconomyCV=0.15`; `TopKPerTeam=50`, `NumSamplesPerMatchup=500`.
+Both sides are chosen by **alternating best response**: each side is optimised against the
+other side's currently selected XI, never against the other side's whole pool, because every
+feature the objective reads is an aggregate over one eleven. The loop is capped
+(`selection.best_response_rounds`) and stops early at a fixed point.
+
+### Flow (evaluation)
+
+```
+make xi-evaluate → rolling origins + the locked window → xi_evaluate_report.json
+    → GET /xi/evaluate-report (ml-service) → GET /api/backtest/report (go-app) → the Evaluation report tab
+```
 
 ---
 
@@ -54,21 +55,18 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 
 | Model | Level | Inputs | Outputs | Input source |
 |-------|-------|--------|---------|--------------|
-| **Batting** | Player | 35 | 5 — `runs`, `balls`, `fours`, `sixes`, `batting_position` | `configs/feature_vectors.json` → `batting` |
-| **Bowling** | Player | 35 | 3 — `runs`, `balls`, `wickets` | `configs/feature_vectors.json` → `bowling` |
-| **Fielding** | Player | 10 | 3 — `catches`, `run_outs`, `stumpings` | `configs/feature_vectors.json` → `fielding` |
-| **Extras** | Match | 12 | 1 — `total_extras` | `ml.train_extras.EXTRAS_FEATURE_COLS` |
-| **Win** | Match | 68 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` |
-| **Innings** | Innings | 14 | 2 — `innings_runs`, `innings_wickets` | `ml.train_innings.INNINGS_FEATURE_COLS` |
+| **XI win — objective** | Match | 42 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
+| **XI win — display** | Match | 49 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context |
+| **Performance (L2-B)** | Player | 42 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
+| **Win — windowed form** | Match | 68 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` — superseded, removed in P-6 |
+
+One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (L2-C) trains nothing — it draws from the performance model.
 
 Input feature names, in order:
 
-- **Batting** (35): `batting_mean_w3`, `batting_mean_w5`, `batting_mean_w10`, `batting_mean_w20`, `batting_std_w5`, `batting_std_w10`, `batting_max_w10`, `batting_min_w10`, `batting_median_w10`, `batting_last_1`, `batting_last_2`, `batting_last_3`, `batting_career_mean`, `batting_career_count`, `batting_pct_zero_w10`, `batting_trend_w5`, `batting_days_since_last`, `batting_innings_in_last_90d`, `batting_inning`, `batting_session`, `toss`, `venue`, `opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bat_prev_sr`, `bat_prev_out_rate`, `bat_window_sr_12_pp`, `bat_window_boundary_rate_12_pp`, `bat_entry_sr_1_6`, `bat_set_sr_13_30`, `bat_react_after_dot_sr`, `bat_after_k_dots_boundary_p_k2`
-- **Bowling** (35): `bowling_mean_w3`, `bowling_mean_w5`, `bowling_mean_w10`, `bowling_mean_w20`, `bowling_std_w5`, `bowling_std_w10`, `bowling_max_w10`, `bowling_min_w10`, `bowling_median_w10`, `bowling_last_1`, `bowling_last_2`, `bowling_last_3`, `bowling_career_mean`, `bowling_career_count`, `bowling_pct_zero_w10`, `bowling_trend_w5`, `bowling_days_since_last`, `bowling_innings_in_last_90d`, `batting_inning`, `bowling_session`, `toss`, `bowling_venue`, `bowling_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`, `bowl_prev_wkt_rate`, `bowl_window_econ_24_death`, `bowl_window_wkt_rate_24_death`, `bowl_extras_wide_rate_pp`, `bowl_react_after_boundary_wkt_rate_next`, `bowl_spell_first_over_wkt_rate`, `bowl_over_ball1_wkt_rate`, `bowl_over_ball6_wkt_rate`
-- **Fielding** (10): `fielding_consistency`, `fielding_form`, `inning`, `toss`, `fielding_venue`, `fielding_opposition`, `match_month_sin`, `match_month_cos`, `match_day_of_week_sin`, `match_day_of_week_cos`
-- **Extras** (12): `venue_id`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential`, `consistency_differential`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`
-- **Win** (68): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std`, `team1_bat_consistency_max` … (+56 more, see `ml.win_features`)
-- **Innings** (14): `venue_id`, `inning_number`, `opposition_id`, `bat_consistency_sum`, `bowl_consistency_sum`, `bat_form_sum`, `bowl_form_sum`, `form_differential`, `consistency_differential`, `format_is_TEST`, `format_is_ODI`, `format_is_T20` … (+2 more, see `ml.train_innings`)
+- **XI win — objective** (42): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+30 more, see `ml.xi.contract.XI_FEATURE_COLS`)
+- **XI win — display** (49): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+37 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
+- **Win — windowed form** (68): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std`, `team1_bat_consistency_max` … (+56 more, see `ml.win_features`)
 
 <!-- END GENERATED: models -->
 
@@ -80,7 +78,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (30 routes, from `app/main.py`):
+**ml-service** (17 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
@@ -88,34 +86,21 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/artifacts/status` |
 | GET | `/model-metadata` |
 | GET | `/model-stats` |
-| POST | `/ml/backtest/predict` |
-| POST | `/ml/backtest/predict-batch` |
-| POST | `/api/ml/generate-match` |
-| POST | `/ml/backtest/match` |
-| POST | `/predict/batting` |
-| POST | `/predict/bowling` |
-| POST | `/predict/extras` |
 | POST | `/predict/win` |
 | POST | `/predict/win-enhanced` |
-| POST | `/optimize/team-selection` |
 | POST | `/admin/reload` |
-| POST | `/admin/train/batting` |
-| POST | `/admin/train/bowling` |
-| POST | `/admin/train/fielding` |
-| POST | `/admin/train/extras` |
 | POST | `/admin/train/win` |
-| POST | `/admin/train/innings` |
-| POST | `/admin/train/combination-meta` |
 | POST | `/admin/train/auto-tune` |
 | GET | `/admin/train/progress` |
 | GET | `/admin/train/auto-tune/progress` |
 | GET | `/xi/status` |
+| GET | `/xi/evaluate-report` |
 | POST | `/xi/predict-win` |
 | POST | `/performance/predict` |
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (45 routes, from `internal/server/router.go`):
+**go-app** (32 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
@@ -146,21 +131,8 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/api/options/venues` |
 | GET | `/players/{id}` |
 | GET | `/matches/{id}` |
-| POST | `/predict/batting` |
-| POST | `/predict/bowling` |
 | GET, POST | `/api/predict/team-selection` |
-| GET | `/api/backtest/match` |
-| GET | `/api/backtest/evaluate-stream` |
-| GET, POST | `/api/backtest/evaluate-start` |
-| GET | `/api/backtest/evaluate-status` |
-| GET | `/api/backtest/scorecard` |
 | GET | `/api/backtest/training-data` |
-| GET | `/api/backtest/matches` |
-| GET | `/api/backtest/holdout-data` |
-| GET | `/api/backtest/accuracy-trend` |
-| POST | `/api/backtest/export-contributions` |
-| GET | `/api/backtest/export-contributions-status` |
-| POST | `/api/backtest/selection-comparison` |
 | GET | `/api/ml/tuned-params/list` |
 | GET | `/api/ml/tuned-params` |
 | POST | `/api/ml/tuned-params` |
@@ -169,58 +141,51 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 ---
 
-## 3. Aggregator: How Results Are Combined
+## 3. How the numbers are combined
 
-### Match aggregates (backtest)
+### One picture, no rescaling
 
-- **predRuns** = sum of player `runs` predictions.
-- **predWickets** = sum of player `wickets` predictions.
-- **predWinner** = team with higher sum of player runs (team totals from `playerTeams`).
-- **predExtras** = extras model output if available; else historical average for format+venue.
+The totals, the per-player lines and the spread shares all come from **one set of draws**
+(`ml.xi.simulator`). The batting side is authoritative: its innings is drawn sequentially by
+expected slot under an as-of innings length, extras are Poisson at the as-of rate, and the
+bowlers' figures are *attributions* of that innings — balls in proportion to expected balls
+bowled, runs conceded a multinomial split of the total. So the scorecard lines plus extras sum
+to the total shown by construction, and nothing is rescaled toward a second estimate. The
+rescaling layers that used to do that were deleted in P-5.
 
-**Hybrid reconciliation (innings model)**:
+### What the scorecard shows
 
-- When the **innings model** is loaded and match context is provided (team assignments, format, venue), ml-service predicts `innings_runs` and `innings_wickets` per innings.
-- Player-level `runs`, `wickets`, and bowling economy are then **rescaled** so that:
-  - sum(batsman runs) = innings_runs
-  - sum(bowler wickets) = innings_wickets
-  - runs conceded by bowlers match innings totals
+- **Per player:** the median-band line — the mean over the draws whose side total lies in the
+  central tenth of the total's distribution — with the 10-90 range of runs, balls, wickets and
+  runs conceded beside it, and the player's share of the total's variance.
+- **Per innings:** the median-band total, its extras, and the 10-90 range of the draws.
+- **Per match:** P(win) with its source. E2 decided per format whether the simulated P(win) is
+  a probability (within Brier tolerance of the display model on the folds) or a description of
+  the draws; the display model is the headline unless the constant
+  `simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED` says otherwise, and the other model's answer
+  is reported beside it, never blended with it.
 
-### Player combinator (team prediction)
+Where the format has no innings length there is no total at all: the per-player numbers are
+L2-B's own medians and intervals, and the response carries no scorecard block rather than
+summing eleven medians and calling it an innings.
 
-- **total_score** = `sum(runs_scored) × (team_size / len(pool)) + extras`.
-- **target** = `sum(runs_conceded) × magic_number`.
-- **batting_contribution** = runs_scored / total_score.
-- **bowling_contribution** = runs_conceded / target.
+### Selection
 
-**Scorecard summary and win model (team prediction)**:
-
-- For a selected XI per team, `innings1_total` and `innings2_total` are built from summed `runs` plus **extras per innings** (currently from DB average via `GetAverageExtrasForFormat`, split across innings; extras model is used in backtest and other flows when explicitly requested).
-- Baseline winner = team with higher innings total.
-- When the **win model** is loaded, go-app builds match-level `WinFeatures` from the selected XIs and feature map, calls `/predict/win`, and:
-  - sets `team1_win_probability` from the model output.
-  - rescales player `Runs` so that innings totals are consistent with the win probability (feedback from match-level to player level).
-
-### Monte Carlo simulation
-
-- Per matchup: for each XI, `innings_total = sum(sampleRuns(p.Runs, RunsCV)) + extras`.
-- **win_probability_team1** = count(tot1 > tot2) / N.
-- **win_probability_team2** = count(tot2 > tot1) / N.
-- **draw_probability** = count(tot1 == tot2) / N.
-- **innings_total_mean/std** and **p10/p50/p90** from sampled innings totals.
-
-### Team selection (optimizer vs greedy)
-
-- **Optimizer** (SelectOptimized): maximize total score = bat_score×w_bat + bowl_score×w_bowl + field_score×w_field + keeper_bonus; constraints: min bowlers, require keeper.
-- **Greedy** (SelectTopK / PredictWin): rank by `WinningProbability`, pick top XI; swap to satisfy bowler constraint.
-- Score weights from config or combination meta-model (`selection.meta_model_path`).
-
----
+- **The objective** is the XI win model: additive in the XI features, so upgrading a player
+  cannot lower the score (H-4, measured at 0.3 % violations).
+- **Marginal value** per selected player is P(win) with the XI minus P(win) with that player
+  replaced by a neutral, average one — the L3 explanation of why he is in it.
+- **Where the objective does not rank** (H-17: TEST, holdout AUC under 0.65),
+  `/xi/optimize` refuses the win objective and serves `objective: "ratings"` — the search's own
+  seed order under the same constraints, evaluating no model — and every surface says the XI is
+  not optimised.
 
 ## 4. Pipeline Order
 
-1. Precompute (form, consistency, sequences).
-2. Export dataset (CSVs or API).
-3. Train models (batting, bowling, fielding, extras, win, innings).
-4. Run ml-service (load artifacts).
-5. Optional: auto-tune, walk-forward, combination meta-model.
+**The XI layer:** import → `make train-xi CUTOFF=` → `POST /admin/reload`. It reads the event
+store, so there is no precompute and no export in front of it. `make xi-evaluate` scores what
+that produced and writes the report every backtest surface reads.
+
+**The windowed-form win model** (P-6 removes it, and these steps with it): precompute → export
+→ `make train-win CUTOFF=`, optionally with `make ml-auto-tune` before it when the feature space
+has changed.

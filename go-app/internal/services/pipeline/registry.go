@@ -245,38 +245,6 @@ var defaultRegistry = NewRegistry(
 		Requires: []string{"precompute"},
 	},
 	Step{
-		ID:         "train_batting",
-		Command:    "train-batting",
-		Label:      "Train Batting",
-		Model:      "batting",
-		MLEndpoint: "batting",
-		Requires:   []string{"export"},
-	},
-	Step{
-		ID:         "train_bowling",
-		Command:    "train-bowling",
-		Label:      "Train Bowling",
-		Model:      "bowling",
-		MLEndpoint: "bowling",
-		Requires:   []string{"export"},
-	},
-	Step{
-		ID:         "train_fielding",
-		Command:    "train-fielding",
-		Label:      "Train Fielding",
-		Model:      "fielding",
-		MLEndpoint: "fielding",
-		Requires:   []string{"export"},
-	},
-	Step{
-		ID:         "train_extras",
-		Command:    "train-extras",
-		Label:      "Train Extras",
-		Model:      "extras",
-		MLEndpoint: "extras",
-		Requires:   []string{"export"},
-	},
-	Step{
 		ID:         "train_win",
 		Command:    "train-win",
 		Label:      "Train Win",
@@ -284,28 +252,8 @@ var defaultRegistry = NewRegistry(
 		MLEndpoint: "win",
 		Requires:   []string{"export"},
 	},
-	Step{
-		ID:         "train_innings",
-		Command:    "train-innings",
-		Label:      "Train Innings",
-		Model:      "innings",
-		MLEndpoint: "innings",
-		Requires:   []string{"export"},
-	},
-	Step{
-		ID:         "train_combination_meta",
-		Command:    "train-combination-meta",
-		Label:      "Train Combination Meta",
-		MLEndpoint: "combination-meta",
-		Requires:   []string{"train_win"},
-		Optional:   true,
-		Prerequisite: "Needs backtest_contributions.csv. Produce it with " +
-			"POST /api/backtest/export-contributions (Evaluate tab) before running this step, " +
-			"or it fails with CONTRIBUTIONS_CSV_MISSING.",
-	},
 	// Auto-tune requires the export and nothing after it. It consumes the same inputs
-	// the train steps do — the exported CSVs for batting and bowling, the training-data
-	// API for the rest — and not one trained artifact.
+	// the train step does — the training-data API — and not one trained artifact.
 	//
 	// It used to require the train steps, which forced the one order the pipeline is
 	// meant to avoid: train on stale params, then search for better ones and throw the

@@ -10,7 +10,6 @@ Cricket match and player performance prediction: Cricsheet import, feature preco
 ## Key workflows
 
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
-- **Predict team:** `make team-predictor MATCH=<id> FORMAT=T20 SEASON=2019` (or `make team-select ...`). Requires ML + precomputed data.
 - **Team selection API:** `POST /api/predict/team-selection` — `format`, `team1`, `team2`, `match_date`; see **docs/apis-backtest-and-ops.md**.
 - **Frontend:** six tabs — Health, Ops Status, ML model stats, Workbench, Evaluate (DB), Upcoming match prediction. `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
 
@@ -100,9 +99,9 @@ Notes:
 - `pgxmock` is included as a test dependency in `go-app/go.mod` and has no runtime impact.
 - We avoid `go:generate` for mocks; prefer the centralized `make mock`.
 
-## Backtest and frontend
+## Evaluation and frontend
 
-Evaluate DB tab: list played matches by filters, select a match, run evaluation (strict cutoff). See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
+Evaluation report tab: L4's walk-forward folds, the locked window, per-target performance with interval width beside coverage, the simulator's E2 section and the train/serve parity check. It reads one file (`make xi-evaluate` writes it) — there is no form, because the folds and the locked window are the harness's. See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
 
 ## CI
 
@@ -111,7 +110,7 @@ Three workflows: **go-app** (Postgres, migrate, fmt, build, tests), **ml-service
 ## Troubleshooting
 
 - If API cannot connect to DB, ensure Postgres is up: `make dev-up` and check `docker compose ps`.
-- If ML `/health` shows models=false, (re)run `make train-all` after exporting datasets.
+- If ML `/xi/status` shows `loaded: false`, (re)run `make train-xi CUTOFF=...` and `POST /admin/reload`.
 - If the importer reports 0 files processed, ensure you have Cricsheet `.json` files under `data/` (or pass `-dir` to `cricsheet-import`).
 - If the imported count is less than the number of `.json` files in the directory, the run likely **failed on one file** (default is fail-fast). See **docs/config-and-data.md** (Cricsheet import) for why and how to run with `-fail-fast=false` to skip bad files and list them.
 
@@ -125,29 +124,19 @@ Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|wa
 
 ## Feature vectors
 
-Ordered feature names for batting and bowling are in **configs/feature_vectors.json** (shared by go-app and ml-service). Override: `FEATURE_CONFIG_PATH`. See **docs/config-and-data.md**.
+Ordered feature names for batting and bowling are in **configs/feature_vectors.json**, read by go-app's export queries. The XI layer computes its own as-of features from the event store and reads none of it. See **docs/config-and-data.md**.
 
 ## Sequence features (optional)
 
 Exporter can append sequence columns: `-enable-seq=1` or `ENABLE_SEQ_FEATURES=1`. Make: `make precompute-seq`, `make export-off FORMAT=T20`, `make export-on FORMAT=T20`. See **docs/config-and-data.md**.
 
-## ML readers and baselines
-
-Tolerant Python readers for exporter CSVs (with or without optional sequence columns). `make ml-test` — scoped reader/baseline tests; `make train-batting-baseline`, `make train-bowling-baseline` — tiny T20 baselines from fixtures.
-
 ## XI-responsive win model (team selection)
 
-`make train-xi CUTOFF=2025-09-01` builds player impact ratings by one as-of pass over ball-by-ball history and trains the win model that team selection maximises (`ml-service/ml/xi/`); add `CRICSHEET_DIR=data/go-app/cricsheet` to read the raw JSON instead of the database. The same pass emits one row per (match, player) — the training frame for the performance model (`ml-service/ml/xi/performance.py`), which the same command fits: per player, quantiles of runs, balls faced and runs conceded, wicket probabilities, P(bats) / P(bowls). The match simulator (`ml-service/ml/xi/simulator.py`) draws whole matches from those forecasts — totals with ranges, a scorecard that sums to them, margins, P(win) by simulation — and trains nothing. Serve via `POST /xi/optimize`, `POST /xi/predict-win`, `POST /performance/predict` and `POST /simulate` (player ids in; optional `as_of` date for backtests, which are answered from ratings as they stood before that date; `team1_bats_first` once the toss is known, otherwise both batting orders are averaged), enabled in go-app with `selection.win_model: "xi"`. `make xi-evaluate` runs the walk-forward evaluation harness — selection and performance metrics per target, calibration and interval width, leak canaries, and the train/serve parity check — into one JSON report. See **docs/ml-and-training.md** § XI-responsive win model / Performance model and **docs/ML_PIPELINE_REARCHITECTURE_PLAN.md** (P-2, P-3, §8).
+`make train-xi CUTOFF=2025-09-01` builds player impact ratings by one as-of pass over ball-by-ball history and trains the win model that team selection maximises (`ml-service/ml/xi/`); add `CRICSHEET_DIR=data/go-app/cricsheet` to read the raw JSON instead of the database. The same pass emits one row per (match, player) — the training frame for the performance model (`ml-service/ml/xi/performance.py`), which the same command fits: per player, quantiles of runs, balls faced and runs conceded, wicket probabilities, P(bats) / P(bowls). The match simulator (`ml-service/ml/xi/simulator.py`) draws whole matches from those forecasts — totals with ranges, a scorecard that sums to them, margins, P(win) by simulation — and trains nothing. Serve via `POST /xi/optimize`, `POST /xi/predict-win`, `POST /performance/predict` and `POST /simulate` (player ids in; optional `as_of` date for backtests, which are answered from ratings as they stood before that date; `team1_bats_first` once the toss is known, otherwise both batting orders are averaged). **This is the only selection path** — there is no flag. `objective: "ratings"` on `/xi/optimize` is the rating-ordered pick for a format whose objective does not rank (TEST), and the response says `optimised: false` all the way to the UI. `make xi-evaluate` runs the walk-forward evaluation harness — selection and performance metrics per target, calibration and interval width, leak canaries, and the train/serve parity check — into one JSON report. See **docs/ml-and-training.md** § XI-responsive win model / Performance model and **docs/ML_PIPELINE_REARCHITECTURE_PLAN.md** (P-2, P-3, §8).
 
-## Backtesting on played matches
+## Evaluation report and Ops Status
 
-A new backtesting flow lets you evaluate predictions on already‑played matches with a strict training cutoff at the match date. It provides a select mode to list candidates and an evaluate mode that returns player‑level and match‑level metrics.
-
-See **docs/apis-backtest-and-ops.md** for usage details, example requests, and environment variables.
-
-## Accuracy Trend and Ops Status
-
-- **Accuracy Trend:** `GET /api/backtest/accuracy-trend` — query params: `format`, `team1`, `team2`, `start_date`, `end_date`, `limit`, `cache` (off|read|readwrite). Frontend: Workbench tab (`WorkbenchAccuracyTrendSection`). Full contract: **docs/apis-backtest-and-ops.md**.
+- **Evaluation report:** `GET /api/backtest/report` — proxies ml-service's `GET /xi/evaluate-report`, which serves `xi_evaluate_report.json` as `make xi-evaluate` last wrote it. 503 with a hint when the harness has not run. Frontend: Evaluation report tab. Full contract: **docs/apis-backtest-and-ops.md**.
 - **Ops Status:** `GET /ops/status` — services, DB, precompute freshness, exports, artifacts, suggestions. `make dev-up && curl -s http://localhost:8080/ops/status | jq`. See **docs/apis-backtest-and-ops.md**.
 
 ## Frontend

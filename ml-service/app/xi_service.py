@@ -37,7 +37,14 @@ from app.models.xi import (
 )
 from ml.xi import simulator
 from ml.xi.asof import AsOfServer
-from ml.xi.optimizer import Constraints, marginal_values, select_xi
+from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
+from ml.xi.optimizer import (
+    OPTIMISED_SELECTION_FORMATS,
+    Constraints,
+    marginal_values,
+    select_xi,
+    select_xi_by_ratings,
+)
 from ml.xi.rows import player_feature_rows, serving_match
 from ml.xi.store import RATINGS_ARTIFACT, XiStore
 from ml.xi.train import REPORT_NAME
@@ -56,11 +63,9 @@ def _postgres_as_of_source():
 class XiUnavailable(Exception):
     """Raised when no XI artifacts are loaded; routes map it to 503."""
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, hint: str = "run `make train-xi` and POST /admin/reload"):
         super().__init__(message)
-        self.payload = error_payload(
-            code="XI_MODEL_UNAVAILABLE", message=message, hint="run `make train-xi` and POST /admin/reload"
-        )
+        self.payload = error_payload(code="XI_MODEL_UNAVAILABLE", message=message, hint=hint)
 
 
 class XiRegistry:
@@ -69,6 +74,7 @@ class XiRegistry:
     def __init__(self) -> None:
         self._store: Optional[XiStore] = None
         self._report: Optional[dict] = None
+        self._models_dir: Optional[str] = None
         self._lock = threading.Lock()
         self._as_of_server: Optional[AsOfServer] = None
         # A seam, so tests can serve the as-of pass from an in-memory source.
@@ -78,6 +84,9 @@ class XiRegistry:
         with self._lock:
             self._store, self._report = None, None
             self._as_of_server = None
+            # Remembered even when there are no artifacts to load: L4's report lives in the
+            # same directory, and reading it from anywhere else is how the two drift.
+            self._models_dir = models_dir
             if not os.path.exists(os.path.join(models_dir, RATINGS_ARTIFACT)):
                 logger.info("xi.artifacts.absent", models_dir=models_dir)
                 return self.status().model_dump()
@@ -128,6 +137,11 @@ class XiRegistry:
             logger.info("xi.as_of.served", as_of=str(as_of), players=len(state.players))
             return store.with_state(state)
 
+    @property
+    def models_dir(self) -> Optional[str]:
+        """The directory the artifacts were last loaded from. ``None`` before the first reload."""
+        return self._models_dir
+
     def status(self) -> XiStatusResponse:
         s = self._store
         if s is None:
@@ -145,8 +159,11 @@ class XiRegistry:
 REGISTRY = XiRegistry()
 
 
-def _keys(ids: List[int]) -> List[str]:
-    return [str(i) for i in ids]
+def _keys(ids: List[str]) -> List[str]:
+    """The wire's player ids *are* the rating state's keys (registry ids), so this is
+    identity -- kept as a named seam because it was a conversion until P-5, and the
+    conversion was the bug: ``str(int)`` can never spell a hex registry id."""
+    return list(ids)
 
 
 def _constraints(c: XiConstraints) -> Constraints:
@@ -160,11 +177,22 @@ def _constraints(c: XiConstraints) -> Constraints:
 
 
 def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptimizeResponse:
+    # The two policy checks come before the artifacts: whether a format is offered an
+    # optimised selection is a rule (H-17), not a property of what happens to be loaded.
+    if req.objective == "win" and req.format not in OPTIMISED_SELECTION_FORMATS:
+        raise XiUnavailable(
+            f"format {req.format!r} has no objective that ranks (H-17); "
+            f"ask for objective='ratings'. Optimised formats: {sorted(OPTIMISED_SELECTION_FORMATS)}"
+        )
+    if req.objective == "win" and not req.opponent_player_ids:
+        raise XiUnavailable("objective='win' needs the opposing XI: opponent_player_ids is empty")
     store = registry.store_as_of(req.format, req.as_of)
     pool, opponent = _keys(req.pool_player_ids), _keys(req.opponent_player_ids)
     unknown = [pid for pid, known in zip(req.pool_player_ids, store.known_players(pool)) if not known]
     if unknown:
         logger.warning("xi.optimize.unknown_players", format=req.format, count=len(unknown), ids=unknown[:10])
+    if req.objective == "ratings":
+        return _rating_ordered(req, store, pool, unknown)
     result = select_xi(
         store,
         req.format,
@@ -183,12 +211,32 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
         evaluations=result.evaluations,
     )
     return XiOptimizeResponse(
-        selected_player_ids=[int(k) for k in result.selected],
+        selected_player_ids=list(result.selected),
+        objective="win",
+        optimised=True,
         win_probability=result.win_probability,
         evaluations=result.evaluations,
         improved_over_seed=result.improved_over_seed,
         unknown_player_ids=unknown,
-        marginal_values={int(k): v for k, v in mv.items()},
+        marginal_values=dict(mv),
+    )
+
+
+def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unknown: List[int]) -> XiOptimizeResponse:
+    """The pick for a format whose objective does not rank (H-17): rating order under the
+    same constraints, no model evaluated, and marked as not optimised so the API and the
+    UI can say so."""
+    selected = select_xi_by_ratings(store, req.format, pool, constraints=_constraints(req.constraints))
+    logger.info("xi.optimize.rating_ordered", format=req.format, pool=len(pool), selected=len(selected))
+    return XiOptimizeResponse(
+        selected_player_ids=list(selected),
+        objective="ratings",
+        optimised=False,
+        win_probability=None,
+        evaluations=0,
+        improved_over_seed=0.0,
+        unknown_player_ids=unknown,
+        marginal_values={},
     )
 
 
@@ -211,6 +259,7 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
 
 
 def _optional_str(value: Optional[int]) -> Optional[str]:
+    """Team and venue ids stay integers: they key team-level context, not the player state."""
     return None if value is None else str(value)
 
 
@@ -265,7 +314,7 @@ def _player_performance(rows: pd.DataFrame, prediction: Dict, i: int) -> PlayerP
 
     wickets = prediction["wickets"]
     return PlayerPerformance(
-        player_id=int(rows.player_key.iloc[i]),
+        player_id=str(rows.player_key.iloc[i]),
         side=int(rows.team_side.iloc[i]),
         p_bats=float(prediction["p_bats"][i]),
         p_bowls=float(prediction["p_bowls"][i]),
@@ -351,7 +400,7 @@ def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
         wickets_lost=PerformanceRange(**side["wickets_lost"]),
         players=[
             SimulatedPlayer(
-                player_id=int(p["player_key"]),
+                player_id=str(p["player_key"]),
                 side=team_side,
                 p_bats=p["p_bats"],
                 p_bowls=p["p_bowls"],
@@ -371,6 +420,37 @@ def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
 
 def status(registry: XiRegistry = REGISTRY) -> XiStatusResponse:
     return registry.status()
+
+
+def evaluate_report(registry: XiRegistry = REGISTRY) -> dict:
+    """L4's report (``xi_evaluate_report.json``), as `make xi-evaluate` last wrote it.
+
+    Read from the directory the artifacts were loaded from -- which is
+    ``ML_SERVICE_OUTPUT_DIR`` before it is anything else -- so the report and the models it
+    describes can never come from two different places. Resolving it independently through
+    ``ml.config.default_artifacts_dir()`` looked equivalent and was not: that is the last
+    fallback in the chain, a relative path that is wrong inside the container.
+
+    Read from disk on every request rather than cached at reload: the harness is run on
+    demand, and a report that is one release stale because nobody restarted the service
+    would be exactly the kind of number nobody can trace.
+    """
+    directory = registry.models_dir
+    if directory is None:
+        raise XiUnavailable(
+            "artifacts have never been loaded, so there is nowhere to read the report from",
+            hint="POST /admin/reload, then run `make xi-evaluate` if the report is missing",
+        )
+    path = os.path.join(directory, EVALUATE_REPORT_NAME)
+    if not os.path.exists(path):
+        raise XiUnavailable(
+            f"no evaluation report at {path}",
+            hint="run `make xi-evaluate` -- the harness writes the report the backtest surfaces read",
+        )
+    with open(path) as fh:
+        report = json.load(fh)
+    logger.info("xi.evaluate_report.served", path=path, formats=sorted(report.get("formats", {})))
+    return report
 
 
 def loaded_formats(registry: XiRegistry = REGISTRY) -> Dict[str, List[str]]:

@@ -41,9 +41,8 @@ func TestFullExcludesOptionalSteps(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotContains(t, ids(full), "auto_tune")
-	assert.NotContains(t, ids(full), "train_combination_meta")
 	assert.Contains(t, ids(full), "import")
-	assert.Contains(t, ids(full), "train_batting")
+	assert.Contains(t, ids(full), "train_win")
 }
 
 func TestRetrainOnlySkipsTheDataSteps(t *testing.T) {
@@ -54,7 +53,7 @@ func TestRetrainOnlySkipsTheDataSteps(t *testing.T) {
 	assert.NotContains(t, ids(plan), "import")
 	assert.NotContains(t, ids(plan), "precompute")
 	assert.NotContains(t, ids(plan), "export")
-	assert.Contains(t, ids(plan), "train_batting")
+	assert.Contains(t, ids(plan), "train_win")
 }
 
 // TestTuneSearchesBeforeItTrains is the whole reason the plan exists: hyperparameters
@@ -68,7 +67,6 @@ func TestTuneSearchesBeforeItTrains(t *testing.T) {
 	stepIDs := ids(plan)
 	require.NotEmpty(t, stepIDs)
 	assert.Equal(t, "auto_tune", stepIDs[0])
-	assert.Contains(t, stepIDs, "train_batting")
 	assert.Contains(t, stepIDs, "train_win")
 }
 

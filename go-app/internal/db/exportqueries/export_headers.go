@@ -303,25 +303,3 @@ func FieldingTrainingHeaders() []string {
 		"match_date",
 	}
 }
-
-// FieldingHoldoutHeaders is the column order of the fielding holdout export.
-func FieldingHoldoutHeaders() []string {
-	return []string{
-		"catches",
-		"run_outs",
-		"stumpings",
-		"fielding_consistency",
-		"fielding_form",
-		"inning",
-		"toss",
-		"fielding_venue",
-		"fielding_opposition",
-		"match_month_sin",
-		"match_month_cos",
-		"match_day_of_week_sin",
-		"match_day_of_week_cos",
-		"player_name",
-		"format_code",
-		"match_date",
-	}
-}

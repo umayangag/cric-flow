@@ -84,50 +84,23 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet, http.MethodOptions)
 
-	// ML predictions
-	admin.HandleFunc("/predict/batting", a.predictBattingHandler).Methods(http.MethodPost, http.MethodOptions)
-	admin.HandleFunc("/predict/bowling", a.predictBowlingHandler).Methods(http.MethodPost, http.MethodOptions)
-	// Future match team selection: best 11 for each team
+	// Future match prediction: both XIs, the win probability and the simulated scorecard.
 	admin.HandleFunc("/api/predict/team-selection", a.predictTeamSelectionHandler).
 		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
 
-	// Backtesting endpoints
-	admin.HandleFunc("/api/backtest/match", a.backtestMatchHandler).Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/backtest/evaluate-stream", a.backtestEvaluateStreamHandler).
+	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
+	// flow scored the batting / bowling / fielding models and went with them (P-5).
+	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy", nil)).
 		Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/backtest/evaluate-start", a.backtestEvaluateStartHandler).
-		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/backtest/evaluate-status", a.backtestEvaluateStatusHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	admin.HandleFunc("/api/backtest/scorecard", a.backtestScorecardHandler).Methods(http.MethodGet, http.MethodOptions)
+	// Training rows for the win model and the auto-tune stack, both of which P-6 owns.
 	admin.HandleFunc("/api/backtest/training-data", a.backtestTrainingDataHandler).
 		Methods(http.MethodGet, http.MethodOptions)
-	// Walk-forward: list matches after a cutoff (for chunking)
-	admin.HandleFunc("/api/backtest/matches", a.backtestMatchesHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	// Walk-forward: holdout data (features at cutoff for matches after cutoff)
-	admin.HandleFunc("/api/backtest/holdout-data", a.backtestHoldoutDataHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	// Accuracy trend endpoint for dashboards
-	admin.HandleFunc("/api/backtest/accuracy-trend", a.backtestAccuracyTrendHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	// Export backtest contributions CSV for combination meta-model training (background job)
-	admin.HandleFunc("/api/backtest/export-contributions", a.backtestExportContributionsHandler).
-		Methods(http.MethodPost, http.MethodOptions)
-	admin.HandleFunc("/api/backtest/export-contributions-status", a.backtestExportContributionsStatusHandler).
-		Methods(http.MethodGet, http.MethodOptions)
-	// Compare selection strategies over already-played matches (S-3b)
-	admin.HandleFunc("/api/backtest/selection-comparison", a.backtestSelectionComparisonHandler).
-		Methods(http.MethodPost, http.MethodOptions)
 
 	// ML tuned params: save/retrieve auto-tuned training params per model and format (for retraining)
 	admin.HandleFunc("/api/ml/tuned-params/list", a.mlTunedParamsListHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsGetHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/ml/tuned-params", a.mlTunedParamsPostHandler).Methods(http.MethodPost, http.MethodOptions)
-
-	// Legacy evaluatedb routes removed: /seasons/next, /matches, /match/{id}/squads
-	// The new backtesting flow is exposed via /api/backtest/match (select and evaluate modes).
 
 	// Wrap with CORS middleware for frontend access
 	return corsMiddleware(r)

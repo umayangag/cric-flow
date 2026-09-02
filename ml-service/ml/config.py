@@ -231,8 +231,9 @@ def get_training_data_fetch_timeout_sec() -> int:
 # Required keys per model under ml.training.<model>; all training scripts use these strictly (no magic defaults).
 TRAINING_REQUIRED_KEYS = ("n_estimators", "max_depth", "random_state", "joblib_compress")
 
-# Models that have their own training block in config (ml.training.batting, ml.training.bowling, etc.).
-TRAINING_MODELS = ("batting", "bowling", "fielding", "extras", "win", "innings")
+# Models that have their own training block in config (ml.training.<model>).
+# One is left; the rest went with their trainers in P-5.
+TRAINING_MODELS = ("win",)
 
 
 def _go_app_request_timeout_sec() -> int:
@@ -324,13 +325,13 @@ def get_training_params(model: str, format_code: Optional[str] = None) -> Dict[s
     if not isinstance(ml, dict):
         logger.error("config.get_training_params.missing_ml_block model=%s", model)
         raise ValueError(
-            "config.json must define 'ml'. Add ml.training.batting and ml.training.bowling with "
+            "config.json must define 'ml'. Add ml.training.win with "
             "n_estimators, max_depth, random_state, joblib_compress."
         )
     training = ml.get("training")
     if not isinstance(training, dict):
         logger.error("config.get_training_params.missing_training_block model=%s", model)
-        raise ValueError("config.json must define 'ml.training' with per-model blocks (batting, bowling).")
+        raise ValueError("config.json must define 'ml.training' with a per-model block (win).")
     block = dict(training.get(model) or {})
     if not isinstance(training.get(model), dict):
         logger.error("config.get_training_params.missing_model_block model=%s", model)
@@ -491,48 +492,6 @@ def get_tuning_config() -> Dict[str, Any]:
     }
 
 
-def get_consistency_regularization_config(model_kind: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Load consistency regularization settings from ml.consistency_regularization.
-
-    Used by tuning to optionally combine base error with a consistency penalty
-    for model selection (Stage 2.2). When model_kind is set, per-model overrides
-    under ml.consistency_regularization.models.<model_kind> are merged over defaults.
-
-    Returns:
-        Dict with: enabled (bool), lambda_runs (float), lambda_wickets (float).
-        enabled is False by default so consistency-aware selection is off until opted in.
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    cr = (ml.get("consistency_regularization") if isinstance(ml, dict) else None) or {}
-    defaults = {
-        "enabled": bool(cr.get("enabled", False)),
-        "lambda_runs": float(cr.get("lambda_runs", 0.01)),
-        "lambda_wickets": float(cr.get("lambda_wickets", 0.01)),
-    }
-    if not model_kind:
-        return defaults
-    models_block = cr.get("models") if isinstance(cr.get("models"), dict) else {}
-    overrides = models_block.get(model_kind) if isinstance(models_block.get(model_kind), dict) else {}
-    if not overrides:
-        return defaults
-    out = dict(defaults)
-    if "enabled" in overrides:
-        out["enabled"] = bool(overrides["enabled"])
-    if "lambda_runs" in overrides:
-        try:
-            out["lambda_runs"] = float(overrides["lambda_runs"])
-        except (TypeError, ValueError):
-            pass
-    if "lambda_wickets" in overrides:
-        try:
-            out["lambda_wickets"] = float(overrides["lambda_wickets"])
-        except (TypeError, ValueError):
-            pass
-    return out
-
-
 def get_mlqa_config() -> Dict[str, Any]:
     """
     Load MLQA audit thresholds from ml.mlqa. Used by auto_tune._compute_mlqa_audit.
@@ -577,36 +536,6 @@ def get_tuning_search_space(estimator_key: str) -> Optional[Dict[str, Any]]:
     if not isinstance(space, dict):
         return None
     return space.get(estimator_key) if isinstance(space.get(estimator_key), dict) else None
-
-
-def get_feature_defaults() -> Dict[str, Any]:
-    """
-    Load feature_defaults from ml.feature_defaults. Used when building
-    batting/bowling/fielding feature vectors from a sparse map; missing keys get these defaults.
-    All values come from config (config.default.json or user config.json).
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    fd = (ml.get("feature_defaults") if isinstance(ml, dict) else None) or {}
-    common = fd.get("common") if isinstance(fd.get("common"), dict) else {}
-    fielding = fd.get("fielding") if isinstance(fd.get("fielding"), dict) else {}
-    defaults_common = {
-        "temp": 25,
-        "humidity": 50,
-        "wind": 0,
-        "rain": 0,
-        "cloud": 0,
-        "pressure": 0,
-        "viscosity": 0,
-        "inning": 1,
-        "session": 1,
-        "toss": 0,
-    }
-    defaults_fielding = {"consistency": 0.5, "form": 0.0, "venue": 0.5, "opposition": 0.5}
-    return {
-        "common": {k: common.get(k, v) for k, v in defaults_common.items()},
-        "fielding": {k: fielding.get(k, v) for k, v in defaults_fielding.items()},
-    }
 
 
 def get_pipeline_common_config() -> Dict[str, Any]:
@@ -658,90 +587,3 @@ def get_format_codes() -> List[str]:
     fmts = (ml.get("formats") if isinstance(ml, dict) else None) or []
     out = [str(x).strip().upper() for x in fmts if isinstance(x, (str, int)) and str(x).strip()]
     return out or list(CANONICAL_FORMAT_CODES)
-
-
-def get_prediction_defaults() -> Dict[str, Any]:
-    """Load prediction defaults (e.g. economy when missing) from ml.prediction_defaults."""
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    pd_def = (ml.get("prediction_defaults") if isinstance(ml, dict) else None) or {}
-
-    bowling_cfg = pd_def.get("bowling_deliveries_by_format") or {}
-    bowling_by_format: Dict[str, float] = {}
-    if isinstance(bowling_cfg, dict):
-        for fmt, val in bowling_cfg.items():
-            try:
-                bowling_by_format[str(fmt).upper()] = float(val)
-            except (TypeError, ValueError):
-                # Skip invalid entries but keep others.
-                continue
-
-    default_bowling_deliveries = pd_def.get("default_bowling_deliveries", 24.0)
-    try:
-        default_bowling_deliveries = float(default_bowling_deliveries)
-    except (TypeError, ValueError):
-        default_bowling_deliveries = 24.0
-
-    return {
-        "economy": float(pd_def.get("economy", 6.0)),
-        "bowling_deliveries_by_format": bowling_by_format,
-        "default_bowling_deliveries": default_bowling_deliveries,
-    }
-
-
-def get_reconciliation_config() -> Dict[str, Any]:
-    """
-    Load reconciliation weights from ml.reconciliation.
-
-    Returns:
-        Dict with: runs_weight, wickets_weight, soft_favor_top_order_balls.
-        All values are floats with sensible defaults when not configured.
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    recon = (ml.get("reconciliation") if isinstance(ml, dict) else None) or {}
-    runs_weight = recon.get("runs_weight", 1.0)
-    wickets_weight = recon.get("wickets_weight", 1.0)
-    soft_favor_top_order_balls = recon.get("soft_favor_top_order_balls", 0.0)
-    max_margin_fraction = recon.get("max_margin_fraction", 0.4)
-    try:
-        runs_weight = float(runs_weight)
-    except (TypeError, ValueError):
-        runs_weight = 1.0
-    try:
-        wickets_weight = float(wickets_weight)
-    except (TypeError, ValueError):
-        wickets_weight = 1.0
-    try:
-        soft_favor_top_order_balls = float(soft_favor_top_order_balls)
-    except (TypeError, ValueError):
-        soft_favor_top_order_balls = 0.0
-    try:
-        max_margin_fraction = float(max_margin_fraction)
-    except (TypeError, ValueError):
-        max_margin_fraction = 0.4
-    return {
-        "runs_weight": runs_weight,
-        "wickets_weight": wickets_weight,
-        "soft_favor_top_order_balls": soft_favor_top_order_balls,
-        "max_margin_fraction": max_margin_fraction,
-    }
-
-
-def get_win_coherence_config() -> Dict[str, Any]:
-    """
-    Load win coherence configuration from ml.win_coherence.
-
-    Returns:
-        Dict with: scale (float), controlling logistic steepness used by
-        win_probability_coherence_from_margin.
-    """
-    cfg = _load()
-    ml = cfg.get("ml") if isinstance(cfg, dict) else None
-    wc = (ml.get("win_coherence") if isinstance(ml, dict) else None) or {}
-    scale = wc.get("scale", 25.0)
-    try:
-        scale = float(scale)
-    except (TypeError, ValueError):
-        scale = 25.0
-    return {"scale": scale}

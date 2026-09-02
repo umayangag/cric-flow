@@ -10,7 +10,6 @@
     "artifacts_dir": "../output/ml-service"
   },
   "ml": {
-    "use_share_models": false,
     "formats": [
       "TEST",
       "ODI",
@@ -19,46 +18,10 @@
     ],
     "artifact_template": "{kind}_{name}_{format}.joblib",
     "data_quality": {
-      "low_variance_threshold": 1e-6
+      "low_variance_threshold": 1e-06
     },
     "training": {
-      "batting": {
-        "n_estimators": 200,
-        "max_depth": 12,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": -1
-      },
-      "bowling": {
-        "n_estimators": 200,
-        "max_depth": 12,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": -1,
-        "target_clip_percentile": 97
-      },
-      "fielding": {
-        "n_estimators": 150,
-        "max_depth": 10,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": -1
-      },
-      "extras": {
-        "n_estimators": 100,
-        "max_depth": 8,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": -1
-      },
       "win": {
-        "n_estimators": 100,
-        "max_depth": 8,
-        "random_state": 42,
-        "joblib_compress": 3,
-        "n_jobs": -1
-      },
-      "innings": {
         "n_estimators": 100,
         "max_depth": 8,
         "random_state": 42,
@@ -121,7 +84,21 @@
         "mlp_lr_init_max": 0.1,
         "mlp_max_iter_min": 500,
         "mlp_max_iter_max": 2000,
-        "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64]]
+        "mlp_hidden_layer_sizes": [
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            128,
+            128,
+            64
+          ]
+        ]
       },
       "default_bounds": {
         "min_samples_leaf_min": 4,
@@ -147,7 +124,26 @@
         "mlp_lr_init_max": 0.1,
         "mlp_max_iter_min": 500,
         "mlp_max_iter_max": 2000,
-        "mlp_hidden_layer_sizes": [[64, 64], [128, 64], [128, 128, 64], [256, 128, 64]]
+        "mlp_hidden_layer_sizes": [
+          [
+            64,
+            64
+          ],
+          [
+            128,
+            64
+          ],
+          [
+            128,
+            128,
+            64
+          ],
+          [
+            256,
+            128,
+            64
+          ]
+        ]
       },
       "quantile_fallback": {
         "n_estimators": 200,
@@ -155,12 +151,42 @@
         "alpha": 0.5
       },
       "stability_seed_params": {
-        "rf": { "n_estimators": 200, "max_depth": 10, "min_samples_leaf": 12 },
-        "gb": { "n_estimators": 300, "max_depth": 4, "learning_rate": 0.02, "min_samples_leaf": 12 },
-        "quantile": { "n_estimators": 300, "max_depth": 4, "learning_rate": 0.01, "min_samples_leaf": 11 },
-        "et": { "n_estimators": 200, "max_depth": 10, "min_samples_leaf": 12 },
-        "hgb": { "max_iter": 200, "max_depth": 6, "learning_rate": 0.03, "min_samples_leaf": 12 },
-        "mlp": { "hidden_layer_sizes": [128, 64], "alpha": 0.05, "learning_rate_init": 0.04 }
+        "rf": {
+          "n_estimators": 200,
+          "max_depth": 10,
+          "min_samples_leaf": 12
+        },
+        "gb": {
+          "n_estimators": 300,
+          "max_depth": 4,
+          "learning_rate": 0.02,
+          "min_samples_leaf": 12
+        },
+        "quantile": {
+          "n_estimators": 300,
+          "max_depth": 4,
+          "learning_rate": 0.01,
+          "min_samples_leaf": 11
+        },
+        "et": {
+          "n_estimators": 200,
+          "max_depth": 10,
+          "min_samples_leaf": 12
+        },
+        "hgb": {
+          "max_iter": 200,
+          "max_depth": 6,
+          "learning_rate": 0.03,
+          "min_samples_leaf": 12
+        },
+        "mlp": {
+          "hidden_layer_sizes": [
+            128,
+            64
+          ],
+          "alpha": 0.05,
+          "learning_rate_init": 0.04
+        }
       },
       "search_space": {
         "rf": {
@@ -279,12 +305,6 @@
         }
       }
     },
-    "consistency_regularization": {
-      "enabled": false,
-      "lambda_runs": 0.01,
-      "lambda_wickets": 0.01,
-      "models": {}
-    },
     "mlqa": {
       "overfitting_delta_threshold": 0.08,
       "stability_fold_std_threshold": 0.05,
@@ -292,50 +312,6 @@
       "bias_dip_high": 1.25,
       "sensitivity_top_weight_threshold": 0.7,
       "sensitivity_top_n_features": 3
-    },
-    "feature_defaults": {
-      "common": {
-        "temp": 25,
-        "humidity": 50,
-        "wind": 0,
-        "rain": 0,
-        "cloud": 0,
-        "pressure": 0,
-        "viscosity": 0,
-        "inning": 1,
-        "session": 1,
-        "toss": 0
-      },
-      "fielding": {
-        "consistency": 0.5,
-        "form": 0,
-        "venue": 0.5,
-        "opposition": 0.5
-      }
-    },
-    "prediction_defaults": {
-      "economy": 6,
-      "default_bowling_deliveries": 24,
-      "bowling_deliveries_by_format": {
-        "T20": 24,
-        "T20I": 24,
-        "ODI": 60,
-        "TEST": 60
-      }
-    },
-    "reconciliation": {
-      "runs_weight": 1.0,
-      "wickets_weight": 1.0,
-      "soft_favor_top_order_balls": 0.0,
-      "max_margin_fraction": 0.4
-    },
-    "win_coherence": {
-      "scale": 25.0
     }
-  },
-  "team_prediction": {
-    "team_size": 11,
-    "max_wickets_per_innings": 10
   }
 }
-

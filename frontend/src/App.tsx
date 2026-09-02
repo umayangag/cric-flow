@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 
 const HealthTab = lazy(() => import('./components/HealthTab'));
-const EvaluateDbTab = lazy(() => import('./components/EvaluateDbTab'));
+const EvaluationReportTab = lazy(() => import('./components/EvaluationReportTab'));
 const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
 const MLModelStatsTab = lazy(() => import('./components/MLModelStatsTab'));
 const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
@@ -173,7 +173,7 @@ const AppContent: React.FC = () => {
             <Tab value="ops" label="Ops Status" />
             <Tab value="mlModelStats" label="ML model stats" />
             <Tab value="workbench" label="Workbench" />
-            <Tab value="evaluateDb" label="Evaluate (DB)" />
+            <Tab value="evaluateDb" label="Evaluation report" />
             <Tab value="upcoming" label="Upcoming match prediction" />
           </Tabs>
         )}
@@ -219,7 +219,7 @@ const AppContent: React.FC = () => {
                   path="/evaluate"
                   element={
                     <ProtectedRoute>
-                      <EvaluateDbTab />
+                      <EvaluationReportTab />
                     </ProtectedRoute>
                   }
                 />

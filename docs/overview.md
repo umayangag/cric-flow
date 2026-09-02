@@ -15,13 +15,12 @@ Architecture, data flow, and how to run the pipeline. For a concise data-flow an
   - `cmd/precompute-sequence-features` — sequence (recent-innings) features
   - `cmd/export-dataset` — export model-ready CSVs to output dir
   - `cmd/api` — HTTP API and pipeline orchestration
-  - `cmd/team-predictor` — CLI: features → ML → team selection
-  - `cmd/team-select` — CLI: select an XI from an explicit player pool
   - `cmd/print_canonical` — print the canonical format codes
 - **Postgres** — system of record
 - **ml-service (Python):**
-  - `ml/train_*.py` — train from exported CSVs or go-app API
-  - `app/main.py` — FastAPI; loads artifacts, prediction endpoints
+  - `ml/xi/` — the rating pass, the win models, the performance model, the simulator, the L4 harness
+  - `ml/train_win.py` — the windowed-form win trainer (P-6 removes it)
+  - `app/main.py` — FastAPI; loads artifacts, selection and prediction endpoints
   - Artifacts in `output/ml-service/`
 
 Config precedence: CLI → env → `config.json` → defaults. See [config-and-data.md](config-and-data.md).
@@ -43,14 +42,14 @@ flowchart LR
     PRE[precompute-*]
     EXP[export-dataset]
     API[api]
-    TP[team-predictor]
   end
 
   subgraph DB[(Postgres)]
   end
 
   subgraph ML[ml-service]
-    TRAIN[train_*.py]
+    XI[ml.xi rating pass + models]
+    TRAIN[train_win]
     SVC[FastAPI]
   end
 
@@ -58,26 +57,33 @@ flowchart LR
   DB --> PRE --> DB
   DB --> EXP --> GOEXP
   GOEXP --> TRAIN --> ART
+  DB --> XI --> ART
   ART --> SVC
-  TP -- features from DB + context --> SVC
-  SVC -- predictions --> TP
-  SVC --> TP
+  API -- player ids + fixture --> SVC
+  SVC -- XI, P win, scorecard --> API
   API -. orchestration .-> CI
   API -. orchestration .-> PRE
   API -. orchestration .-> EXP
 ```
 
-Detailed flow (backtest, team prediction, Monte Carlo) is in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
+Detailed flow (selection, prediction, evaluation) is in [ARCHITECTURE_MAP.md](../ARCHITECTURE_MAP.md).
 
 ---
 
 ## Pipeline and team prediction
 
-**Pipeline order:** Precompute → export-dataset → train models → run/restart ML service. Batting/bowling use CSVs; fielding/extras/win can use API with cutoff. See [ml-and-training.md](ml-and-training.md).
+**Pipeline order:** import → `make train-xi CUTOFF=` → `/admin/reload`. The XI layer reads the
+event store, so precompute and export are not in front of it; they feed the windowed-form win
+model, which P-6 removes. See [ml-and-training.md](ml-and-training.md).
 
-**Team prediction (per match):** go-app gets players and context from DB, builds feature vectors, and calls the ML service's combined `POST /ml/backtest/predict`, which returns batting, bowling and fielding for every player in one request. When no fielding model is loaded for the format, go-app fills catches and run-outs from historical fielding form instead. It then selects the best XI (e.g. ≥5 bowlers, ≥1 keeper).
+**Team prediction (per match):** go-app resolves the fixture and both pools, then sends **player
+ids and a format** — never features. ml-service picks each XI (`/xi/optimize`, by alternating
+best response), gives the displayed P(win) (`/xi/predict-win`), and either draws the match
+(`/simulate`, limited-overs) or returns per-player distributions (`/performance/predict`). The
+constraints go-app supplies are the ones it alone knows: team size, minimum bowlers, keeper.
 
-**Formats:** Features, export, and models are all per-format (`TEST`, `ODI`, `T20`, `T20I`). `export-dataset` can still merge every format into one CSV with `-unified`, but no trainer consumes it — the unified batting/bowling trainers were removed.
+**Formats:** models are per format (`TEST`, `ODI`, `T20`, `T20I`). Selection is *optimised* only
+where the objective ranks (H-17): TEST is served a rating-ordered XI, marked not optimised.
 
 ---
 
@@ -97,8 +103,7 @@ make up-all
 2. `make cricsheet-import`
 3. `make precompute-all FORMAT=T20` (or `make precompute-all-all-formats` for every format; `make precompute` triggers the same work through a running API)
 4. `make export-dataset`
-5. `make train-all` (see [ml-and-training.md](ml-and-training.md))
+5. `make train-xi CUTOFF=<YYYY-MM-DD>` (see [ml-and-training.md](ml-and-training.md))
 6. `make ml-serve` if not using Docker
-7. `make team-predictor MATCH=<id> BAT=6 BOWL=5`
 
 Dev: `make init`, `make dev-up`, `make dev-down`, `make logs`. E2E: `make e2e FORMAT=ODI SEASON=2019`. Copy `.env.example` to `.env`; see [config-and-data.md](config-and-data.md) for env vars.
