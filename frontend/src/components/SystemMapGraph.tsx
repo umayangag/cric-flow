@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, IconButton, Stack, Tooltip, Typography, useTheme } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
@@ -103,6 +103,33 @@ const SystemMapGraph: React.FC<SystemMapGraphProps> = ({
       Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((current + delta).toFixed(2)))),
     );
 
+  /**
+   * The whole width, or nothing useful.
+   *
+   * At 100 % the map is wider than the column it sits in, so the rightmost lane — the
+   * simulator and the ops console — opened off-screen and a reader had to know to drag
+   * before they knew there was anything to drag to. Fitting on mount shows the shape of
+   * the pipeline first and leaves zooming in as the deliberate act. Guarded on a real
+   * width: jsdom reports zero, and a zoom of zero renders nothing.
+   */
+  const fitToWidth = useCallback(() => {
+    const container = scrollRef.current;
+    const available = container?.clientWidth ?? 0;
+    if (available > 0) {
+      setZoom(Math.min(1, Math.max(MIN_ZOOM, Number((available / placement.width).toFixed(2)))));
+    }
+    // jsdom implements no scrolling at all, so this is a real guard, not defensiveness.
+    container?.scrollTo?.({ left: 0, top: 0 });
+  }, [placement.width]);
+
+  // Mount-only: a later fit would fight the reader's own zoom on every expand.
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (fitted.current) return;
+    fitted.current = true;
+    fitToWidth();
+  }, [fitToWidth]);
+
   const edgeColor = theme.palette.divider;
   const edgeLabelColor = theme.palette.text.secondary;
   const paper = theme.palette.background.paper;
@@ -138,15 +165,8 @@ const SystemMapGraph: React.FC<SystemMapGraphProps> = ({
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title="Reset the view">
-          <IconButton
-            size="small"
-            aria-label="Reset the view"
-            onClick={() => {
-              setZoom(1);
-              if (scrollRef.current) scrollRef.current.scrollTo({ left: 0, top: 0 });
-            }}
-          >
+        <Tooltip title="Fit the whole map">
+          <IconButton size="small" aria-label="Fit the whole map" onClick={fitToWidth}>
             <CenterFocusStrongIcon fontSize="small" />
           </IconButton>
         </Tooltip>

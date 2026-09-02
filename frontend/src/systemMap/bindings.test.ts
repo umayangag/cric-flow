@@ -193,8 +193,9 @@ describe('the gates, read from the report', () => {
     const gates = resolveGates(['H-17', 'H-8'], report);
     expect(gates[0].name).toBe('Objective ranks (format scope)');
     expect(gates[0].values).toEqual([{ format: 'T20I', text: '0.702' }]);
-    // A report-scoped gate is one value for the whole run, not one per format.
-    expect(gates[1].values).toEqual([{ format: 'all formats', text: 'true' }]);
+    // A report-scoped gate is one value for the whole run, not one per format, and a
+    // gate whose number is a verdict reads as a word rather than as `true`.
+    expect(gates[1].values).toEqual([{ format: 'all formats', text: 'yes' }]);
   });
 
   it('names a gate the report has never heard of rather than dropping it', () => {

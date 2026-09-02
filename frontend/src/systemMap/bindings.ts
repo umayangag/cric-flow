@@ -105,11 +105,33 @@ export function formatValue(value: unknown, kind: ValueKind): string {
     case 'date':
       return String(resolved).slice(0, 10);
     case 'timestamp':
-      return String(resolved).replace('T', ' ').replace(/\.\d+/, '').replace('Z', ' UTC');
+      // The harness writes an offset (`+00:00`), the ops probes write `Z`. Both are UTC.
+      return String(resolved)
+        .replace('T', ' ')
+        .replace(/\.\d+/, '')
+        .replace(/(Z|\+00:00)$/, ' UTC');
     case 'text':
     default:
       return String(resolved);
   }
+}
+
+/**
+ * Render a value whose kind nobody declared.
+ *
+ * A gate's number is read at the path the gate itself gives, so the map never says what
+ * kind of thing it is — it can be an AUC, a pass/fail, or a list of recalibrated targets.
+ * Printing `String(value)` gave `0.6701086664911028`, which is a true number and an
+ * unreadable one, so the shape decides: a number gets three decimals, a flag gets a word,
+ * a list gets its members.
+ */
+export function formatUnknown(value: unknown): string {
+  const resolved = unwrapFoldStat(value);
+  if (resolved === null || resolved === undefined || resolved === '') return MISSING;
+  if (typeof resolved === 'number') return formatValue(resolved, 'ratio3');
+  if (typeof resolved === 'boolean') return formatValue(resolved, 'yes_no');
+  if (Array.isArray(resolved)) return resolved.length ? resolved.join(', ') : 'none';
+  return String(resolved);
 }
 
 /** One rendered live value: what to call it, what it says, and whether it is really there. */
@@ -211,11 +233,11 @@ export function resolveGates(ids: readonly string[], report: unknown): ResolvedG
     let values: Array<{ format: string; text: string }> = [];
     if (reportPath && reportPath.startsWith('report:')) {
       const raw = resolvePath(report, reportPath.slice('report:'.length));
-      values = [{ format: 'all formats', text: formatValue(raw, 'text') }];
+      values = [{ format: 'all formats', text: formatUnknown(raw) }];
     } else if (reportPath) {
       values = formats.map((format) => ({
         format,
-        text: formatValue(resolvePath(report, `formats.${format}.${reportPath}`), 'text'),
+        text: formatUnknown(resolvePath(report, `formats.${format}.${reportPath}`)),
       }));
     }
 
