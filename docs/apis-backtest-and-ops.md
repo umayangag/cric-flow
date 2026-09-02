@@ -54,7 +54,10 @@ backtest asks for a date and gets it.
 - **POST /import/cricsheet** — Body: `{ "dir", "placeholders_fielding" }`; 202 started
 - **GET /api/ml/xi-status** — proxies ml-service `GET /xi/status`: which run is loaded, what its
   manifest records, and whether its ratings are fresh enough to answer with
-- **GET /players/{id}?season=...&format=...** — Player details (id, player_name, is_wicket_keeper, batting_consistency, bowling_consistency, etc.)
+- **GET /players/{id}** — one player's row: `id`, `player_name`, `is_wicket_keeper`, `is_retired`.
+  The consistency numbers it used to carry came from `feature_raw_stats_snapshots`, which P-6
+  dropped with the precompute pass that filled it; a player's form is in the rating state, read
+  through the XI endpoints.
 
 Backtest and ops endpoints are described in the sections below. Keep contracts in sync with `ml-service/app/main.py` Pydantic models and Go `internal/contracts`.
 

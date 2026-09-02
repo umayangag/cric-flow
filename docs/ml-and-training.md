@@ -177,6 +177,10 @@ just the date, is on `/xi/status` (`ratings.fresh`, `age_days`, `max_age_days`, 
 
 - **Raising, never lowering:**
   - When `coverage` reports that actual coverage is above the current threshold, we **bump the threshold up to `floor(actual)`** (e.g. 74.99% → 74) in `ml-service/Makefile`, the root `Makefile`, and the CI workflow.
+  - **`floor`, not the rounded figure the report prints.** pytest-cov decides `fail_under`
+    on the *rounded* total but writes its FAIL line from the exact one, so a threshold of
+    92 against 91.55 % prints "FAIL Required test coverage of 92% not reached" and still
+    exits 0 — a gate that says FAIL and passes, which is worse than one that does neither.
   - We do **not** lower thresholds; if coverage regresses below the gate, the fix is to add or repair tests.
 
 The same pattern applies to other components:

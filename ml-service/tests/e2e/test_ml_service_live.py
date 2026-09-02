@@ -30,65 +30,14 @@ def test_health_live():
 
 @pytest.mark.e2e
 @pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_health_artifacts_live():
-    """GET /health on live ML service returns 200 and artifact keys."""
+def test_health_reports_the_loaded_run_live():
+    """GET /health names the run being served and the ratings' freshness verdict."""
     resp = httpx.get(f"{_base_url()}/health", timeout=5.0)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert "loaded_batting_formats" in body
-    assert "loaded_bowling_formats" in body
-
-
-@pytest.mark.e2e
-@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_backtest_predict_players_live():
-    """POST /ml/backtest/predict with players + format + features returns 200 (or 503 if no models)."""
-    payload = {
-        "cutoff_date": "2024-10-30T14:00:00Z",
-        "player_ids": [1, 2],
-        "format": "T20",
-        "features": {
-            "1": {
-                "batting_consistency": 0.5,
-                "batting_form": 0.5,
-                "venue": 0.5,
-                "opposition": 0.5,
-                "season": 2024,
-            },
-            "2": {
-                "batting_consistency": 0.4,
-                "batting_form": 0.4,
-                "venue": 0.5,
-                "opposition": 0.5,
-                "season": 2024,
-            },
-        },
-    }
-    resp = httpx.post(
-        f"{_base_url()}/ml/backtest/predict",
-        json=payload,
-        timeout=30.0,
-    )
-    # 200 with predictions, or 503/422 if service has no models or validation fails
-    assert resp.status_code in (200, 422, 503), (resp.status_code, resp.text)
-
-
-@pytest.mark.e2e
-@pytest.mark.skipif(not _e2e_enabled(), reason="Set RUN_E2E=1 to run e2e tests")
-def test_backtest_predict_match_baseline_live():
-    """POST /ml/backtest/predict with teams only returns match baseline (no ML)."""
-    payload = {
-        "cutoff_date": "2024-10-30T14:00:00Z",
-        "teams": ["IND", "AUS"],
-    }
-    resp = httpx.post(
-        f"{_base_url()}/ml/backtest/predict",
-        json=payload,
-        timeout=10.0,
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert "runs" in body or "winner_team_code" in body or "match" in body
+    assert "loaded" in body
+    assert "run_id" in body
+    assert "ratings" in body
 
 
 @pytest.mark.e2e
