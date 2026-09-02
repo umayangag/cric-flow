@@ -14,34 +14,10 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/features"
 )
 
-// sequenceFeatureKeys lists bat_*/bowl_* sequence features that are always 0
-// at future-match prediction time because no in-match sequence data exists yet.
-// The ML service defaults missing keys to 0.0, so omitting them saves payload.
-var sequenceFeatureKeys = map[string]struct{}{
-	"bat_prev_sr": {}, "bat_prev_out_rate": {}, "bat_window_sr_12_pp": {}, "bat_window_boundary_rate_12_pp": {},
-	"bat_entry_sr_1_6": {}, "bat_set_sr_13_30": {}, "bat_react_after_dot_sr": {}, "bat_after_k_dots_boundary_p_k2": {},
-	"bowl_prev_wkt_rate": {}, "bowl_window_econ_24_death": {}, "bowl_window_wkt_rate_24_death": {}, "bowl_extras_wide_rate_pp": {},
-	"bowl_react_after_boundary_wkt_rate_next": {}, "bowl_spell_first_over_wkt_rate": {}, "bowl_over_ball1_wkt_rate": {}, "bowl_over_ball6_wkt_rate": {},
-}
-
 // ensureContractKeys fills all canonical contract keys (configs/feature_vectors.json) with 0 when absent.
 func ensureContractKeys(feats map[string]float64) {
 	allFeatureNames := append(features.BattingFeatureNames(), features.BowlingFeatureNames()...)
 	for _, k := range allFeatureNames {
-		if _, ok := feats[k]; !ok {
-			feats[k] = 0
-		}
-	}
-}
-
-// ensureContractKeysSkipSequence fills all canonical contract keys except
-// sequence features (bat_*/bowl_*) which are always 0 for future matches.
-func ensureContractKeysSkipSequence(feats map[string]float64) {
-	allFeatureNames := append(features.BattingFeatureNames(), features.BowlingFeatureNames()...)
-	for _, k := range allFeatureNames {
-		if _, skip := sequenceFeatureKeys[k]; skip {
-			continue
-		}
 		if _, ok := feats[k]; !ok {
 			feats[k] = 0
 		}
@@ -400,140 +376,6 @@ const rawStatsSnapshotQuery = `
 
 // requiredPrecomputedKeysBase is empty; raw stats replace form/consistency and are optional for new/debut players (filled with 0).
 var requiredPrecomputedKeysBase = []string{}
-
-// computeOppositionStrength returns average batting form and bowling form (as of cutoff) across the
-// given opposition player IDs for the format. Used to add opposition_batting_strength and
-// opposition_bowling_strength at prediction when the opposition pool is known. On error or empty
-// precomp returns 0, 0.
-func computeOppositionStrength(
-	ctx context.Context,
-	cutoff time.Time,
-	formatID int64,
-	oppositionPlayerIDs []int64,
-) (battingStrength, bowlingStrength float64, _ error) {
-	if len(oppositionPlayerIDs) == 0 {
-		return 0, 0, nil
-	}
-	emptyOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
-	for _, pid := range oppositionPlayerIDs {
-		emptyOpps[pid] = struct{ BattingOpp, BowlingOpp *int64 }{nil, nil}
-	}
-	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, formatID, nil, emptyOpps, oppositionPlayerIDs)
-	if err != nil || precomp == nil {
-		return 0, 0, err
-	}
-	var sumBat, sumBowl float64
-	var nBat, nBowl int
-	for _, pc := range precomp {
-		if b, ok := pc["batting_mean_w5"]; ok {
-			sumBat += b
-			nBat++
-		}
-		if b, ok := pc["bowling_mean_w5"]; ok {
-			sumBowl += b
-			nBowl++
-		}
-	}
-	if nBat > 0 {
-		battingStrength = sumBat / float64(nBat)
-	}
-	if nBowl > 0 {
-		bowlingStrength = sumBowl / float64(nBowl)
-	}
-	return battingStrength, bowlingStrength, nil
-}
-
-// ComputeFeaturesAtCutoffForFutureMatch returns a feature map per player for a hypothetical future match.
-// Used when predicting team selection: same venue and opposition for all players (the opposition team).
-// Missing precomputed values are filled with 0 to support new/auction players with no prior history.
-// When weather is non-nil, its values override the default 0 for batting_* and bowling_* weather features.
-// Sequence features (bat_*, bowl_*) are omitted because they are always 0 for future matches (no
-// in-match data exists yet); the ML service defaults missing keys to 0.0. Optional
-// oppositionPlayerIDs (e.g. the opposition team's pool) are used to compute opposition_batting_strength
-// and opposition_bowling_strength; when not provided or empty, those keys are 0 (training does not yet
-// include them; when a weather source is added, use the same feature names in training and prediction).
-func ComputeFeaturesAtCutoffForFutureMatch(
-	ctx context.Context,
-	cutoff time.Time,
-	format string,
-	venueID *int64,
-	oppositionID int64,
-	playerIDs []int64,
-	oppositionPlayerIDs []int64,
-) (map[int64]map[string]float64, error) {
-	if len(playerIDs) == 0 {
-		return map[int64]map[string]float64{}, nil
-	}
-	formatID, err := db.GetGlobalCache().GetFormatID(ctx, strings.TrimSpace(strings.ToUpper(format)))
-	if err != nil {
-		return nil, fmt.Errorf("resolve format for features: %w", err)
-	}
-	playerOpps := make(map[int64]struct{ BattingOpp, BowlingOpp *int64 })
-	var oppPtr *int64
-	if oppositionID != 0 {
-		oppPtr = &oppositionID
-	}
-	for _, pid := range playerIDs {
-		playerOpps[pid] = struct{ BattingOpp, BowlingOpp *int64 }{
-			BattingOpp: oppPtr,
-			BowlingOpp: oppPtr,
-		}
-	}
-	precomp, err := getPrecomputedFeaturesForMatch(ctx, cutoff, formatID, venueID, playerOpps, playerIDs)
-	if err != nil {
-		return nil, err
-	}
-	if precomp == nil {
-		precomp = make(map[int64]map[string]float64)
-	}
-
-	oppBatStr, oppBowlStr := 0.0, 0.0
-	if len(oppositionPlayerIDs) > 0 {
-		oppBatStr, oppBowlStr, _ = computeOppositionStrength(ctx, cutoff, formatID, oppositionPlayerIDs)
-	}
-
-	out := make(map[int64]map[string]float64)
-	for _, pid := range playerIDs {
-		pc := precomp[pid]
-		if pc == nil {
-			pc = make(map[string]float64)
-		}
-		get := func(k string) float64 {
-			if v, ok := pc[k]; ok {
-				return v
-			}
-			return 0
-		}
-		feats := map[string]float64{
-			"batting_venue":      get("batting_venue"),
-			"batting_opposition": get("batting_opposition"),
-			"bowling_venue":      get("bowling_venue"),
-			"bowling_opposition": get("bowling_opposition"),
-			"venue":              get("venue"),
-			"opposition":         get("opposition"),
-			// Weather is zero here for the same reason it is zero in every training row:
-			// nothing populates weather_data (docs/weather-not-implemented.md). The
-			// override that let a caller supply real values was removed in consumer plan
-			// W0-3 — it fed a dimension the models have only ever seen as zero.
-			"batting_temp": 0, "batting_wind": 0, "batting_rain": 0, "batting_humidity": 0, "batting_cloud": 0, "batting_pressure": 0, "batting_viscosity": 0,
-			"bowling_temp": 0, "bowling_wind": 0, "bowling_rain": 0, "bowling_humidity": 0, "bowling_cloud": 0, "bowling_pressure": 0, "bowling_viscosity": 0,
-			"batting_inning": 0, "batting_session": 0, "toss": 0,
-			"bowling_session":             0,
-			"opposition_batting_strength": oppBatStr,
-			"opposition_bowling_strength": oppBowlStr,
-			"match_month_sin":             math.Sin(2 * math.Pi * float64(cutoff.Month()) / 12.0),
-			"match_month_cos":             math.Cos(2 * math.Pi * float64(cutoff.Month()) / 12.0),
-			"match_day_of_week_sin":       math.Sin(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
-			"match_day_of_week_cos":       math.Cos(2 * math.Pi * float64(cutoff.Weekday()) / 7.0),
-		}
-		for _, k := range features.RawStatsFeatureNames() {
-			feats[k] = get(k)
-		}
-		ensureContractKeysSkipSequence(feats)
-		out[pid] = feats
-	}
-	return out, nil
-}
 
 func missingPrecomputedKeys(precomp map[int64]map[string]float64, playerIDs []int64, keys []string) []string {
 	var missing []string

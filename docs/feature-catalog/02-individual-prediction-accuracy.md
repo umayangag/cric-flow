@@ -2,6 +2,13 @@
 
 **Goal:** Predict individual player performance with maximum accuracy for an upcoming match. Inputs: match date, venue, opposition (player pool), and optionally weather forecast. **Note:** Weather data is not available yet; the plan documents where it will plug in later.
 
+> **Superseded in part (P-5).** Every file-level instruction below that names
+> `ComputeFeaturesAtCutoffForFutureMatch` describes a prediction-time feature build that no
+> longer exists: it and its opposition-strength helper were deleted with the rest of go-app's
+> windowed-form path. Prediction-time features are built by the XI layer in ml-service; go-app
+> supplies the pool and the fixture. The objective and the feature-contract reasoning still
+> hold — the Go call sites do not.
+
 ---
 
 ## 1. Objective
