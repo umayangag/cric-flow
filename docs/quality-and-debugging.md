@@ -6,7 +6,7 @@ Go unit testing standards, mandatory quality steps (check-all, coverage, CI, hoo
 
 ## Go unit testing standards
 
-These standards define the gold-standard unit test style for the Go codebase (based on `go-app/internal/services/weatherimport/service_test.go`). All new and refactored tests must follow this guidance.
+These standards define the gold-standard unit test style for the Go codebase. All new and refactored tests must follow this guidance; [../go-app/docs/testing-guidelines.md](../go-app/docs/testing-guidelines.md) has the same rules with a worked example per rule, and CLAUDE.md § Testing is the short form.
 
 **Core principles:**
 
@@ -21,7 +21,7 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 
 **Mocks:** Use generated mocks under the package’s `internal/mocks` directory. Fresh mocks per subtest. Define `EXPECT()` in Arrange; assert call counts when relevant (`AssertNumberOfCalls`).
 
-**Canonical skeleton:** One test function with `t.Parallel()`, a table of cases with `name`, inputs, `arrange` (ctx, mocks), `assert` (t, got, err, mocks). Loop with `t.Run(tc.name, ...)`: Arrange → Act (sut.DoSomething) → Assert. Use `t.Helper()` for helpers. Reference: `go-app/internal/services/weatherimport/service_test.go`.
+**Canonical skeleton:** One test function with `t.Parallel()`, a table of cases named `testCases` with `name`, inputs, `arrange` (ctx, mocks), `assert` (t, got, err, mocks). Loop by index — `for i := range testCases` — and instantiate the SUT inside `t.Run(tc.name, ...)`: Arrange, Act, Assert. Use `t.Helper()` for helpers.
 
 **Naming & organization:** Test files `*_test.go` next to code. Single top-level test per primary behavior; clear case names. Helpers small and pure.
 
@@ -33,38 +33,41 @@ These standards define the gold-standard unit test style for the Go codebase (ba
 
 ---
 
-## Mandatory steps for system quality
+## Checks and coverage gates
 
-**Goal:** Local `make check-all` matches CI; consistent coverage gates; config changes trigger checks; pre-commit and branch protection in place.
+**The rule:** local `make check-all` matches CI. Run it in the documented order — frontend →
+go-app → ml-service → `frontend-backend-sync-check` — and within a component run the fast
+checks (lint, format, typecheck) before the tests. When one fails, fix it and re-run **only**
+that step, never the whole loop.
 
-**1. Local vs CI**
+**Per component**
 
-- Frontend: check-all runs lint, format:check, typecheck, build, test; CI should include lint + typecheck (done in repo).
-- go-app: check-all includes vet, fmt-check, lint, coverage-check; CI runs vet, fmt-check, tests, coverage-check (COV_MIN=60). go-app-check includes coverage-check (done).
-- ml-service: lint-check, fmt-check, coverage, coverage-check (80%); CI 80% (OK).
+| Component | `check-all` runs | CI runs |
+|---|---|---|
+| frontend | lint, `format:check`, typecheck, build, test (Vitest, with coverage thresholds) | lint, typecheck, build, test |
+| go-app | vet, fmt-check, lint, coverage, coverage-check | vet, fmt-check, tests, coverage-check, `deadcode` |
+| ml-service | fmt-check, lint-check, `check-reachability`, coverage, coverage-check | the same, via `make -C ml-service ci` |
 
-**2. Coverage thresholds**
+**`coverage-check` needs a prior `coverage` run.** It reads `go-app/coverage.out`; running it
+against a stale profile reports a number from a different run. `make go-app-check` and
+`make ci-go` run the two in order.
 
-- go-app: Makefile default COV_MIN_GO=60; CI workflow uses COV_MIN=60.
-- ml-service: 80% everywhere (OK).
+**Coverage thresholds live in three places per component and must move together, upward only.**
 
-**3. CI on config changes**
+| Component | Where | Current |
+|---|---|---|
+| go-app | `go-app/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_GO`), `.github/workflows/go-app-ci.yml` | 74 |
+| ml-service | `ml-service/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_ML`), `.github/workflows/ml-service-ci.yml` | 92 |
+| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 76, functions 74, statements 76, branches 77 |
 
-- The root `Makefile` is now a trigger path for the go-app and ml-service workflows (C7-2). `configs/` is still excluded — a change touching only `configs/feature_vectors.json` runs no checks, despite it being the shared feature contract. Worth adding.
+When a run passes, raise each threshold to the **floor** of the measured figure — not the
+rounded one the report prints. pytest-cov decides `fail_under` on the rounded total but writes
+its FAIL line from the exact one, so a threshold of 92 against 91.55 % prints "FAIL Required
+test coverage of 92% not reached" and still exits 0: a gate that says FAIL and passes. Never
+lower a threshold to make a run green — add tests.
 
-**4. Pre-commit hooks**
-
-- `.githooks/pre-commit` runs gofumpt/golines/golangci-lint (Go), ruff (Python), prettier/eslint (frontend) on staged files. Run `make install-hooks` after clone.
-
-**5. Branch protection**
-
-- Require status checks before merge: e.g. Go App Lint, Go App Tests, ML Service Tests, Frontend Tests. Optional: aggregated “check-all” workflow.
-
-**6. PR template**
-
-- `.github/PULL_REQUEST_TEMPLATE.md` includes Go unit test standards checklist and reminders to run go-app and ml-service tests. Optional: add “Ran `make check-all` (or component checks) and all passed.”
-
-**Checklist:** go-app-check includes coverage-check (done); frontend CI runs lint and typecheck (done); go-app CI COV_MIN set and documented (pending); root `Makefile` path filter (done, C7-2), `configs/` still pending; branch protection (pending); PR template “make check-all” checkbox (optional).
+**Pre-commit hooks.** `.githooks/pre-commit` runs gofumpt / golines / golangci-lint (Go), ruff
+(Python) and prettier / eslint (frontend) on staged files. Run `make install-hooks` after clone.
 
 ---
 
@@ -77,7 +80,7 @@ Two checks stop unreachable code accumulating. Both run in CI and are available 
 | Go, whole-program    | `make -C go-app deadcode`               | `go-app-ci.yml`                                  |
 | Python, import graph | `make -C ml-service check-reachability` | `ml-service-ci.yml`, and `make -C ml-service ci` |
 
-**Why the existing linters do not cover this.** `golangci-lint`'s `unused` only reports _unexported_ identifiers within a package, so an exported repository method that nothing calls passes it. On the Python side, `ruff` and `pytest` both stay quiet about a module nothing imports, because the module's own tests keep it "used". That combination is how the repo accumulated roughly 8,000 lines of unreachable code before the cleanup tracked in [CLEANUP_PR_CHECKLIST.md](CLEANUP_PR_CHECKLIST.md).
+**Why the existing linters do not cover this.** `golangci-lint`'s `unused` only reports _unexported_ identifiers within a package, so an exported repository method that nothing calls passes it. On the Python side, `ruff` and `pytest` both stay quiet about a module nothing imports, because the module's own tests keep it "used". That combination is how the repo accumulated roughly 8,000 lines of unreachable code before the repo-wide cleanup removed it, and these two checks are what stop it coming back.
 
 ### Go — `deadcode`
 
@@ -131,7 +134,7 @@ The stack includes a **watcher** service that monitors **cric-go-api**, **cric-m
 
 - **Which service crashed** — clear header, e.g. `CRASH DETECTED: cric-go-api`
 - **Diagnostics** — `exit_code`, `OOMKilled`, `image`, `memory_limit_bytes`, `started_at`, `finished_at`, `state_error`
-- **Service-specific hints** — e.g. for ml-service: increase `mem_limit`, set `n_jobs=1` for fielding/extras/win training
+- **Service-specific hints** — e.g. for ml-service: increase `mem_limit`, or fit fewer formats at once
 - **Last N log lines** — tail of container logs (default 50) for immediate context
 
 Start: `docker compose up -d`. View: `docker logs -f cric-watcher`. Set `WATCH_LOG=/logs/watcher.log` to persist. Use `WATCH_CONTAINERS=cric-go-api,cric-ml-service,cricket-postgres` (default) or `WATCH_CONTAINER=cric-go-api` (legacy). Use `WATCH_TAIL_LOGS=100` to capture more log lines.
@@ -145,8 +148,8 @@ Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATC
 - OOMKilled: `docker inspect cric-go-api --format '{{.State.OOMKilled}}'` (valid for current exited instance; watcher captures at die time).
 - Last logs: `docker logs cric-go-api 2>&1 | tail -100` or `docker logs cric-ml-service 2>&1 | tail -100`
 - Memory limit: If compose sets `mem_limit`, kernel can kill when usage exceeds it; increase limit or reduce workload.
-- **go-api (Precompute):** Set **GOMEMLIMIT**, **PRECOMPUTE_CONCURRENCY**, **SEQCALC_CONCURRENCY**. See **config-and-data.md**.
-- **ml-service (Training):** Fielding/extras/win training fetches large datasets. Increase `mem_limit` (e.g. 4g) or set `n_jobs=1` in `ml.training.fielding` in `ml-service/config.json`.
+- **go-api (Import):** import is the only pipeline go-app runs workers for — precompute, export and seqcalc went with their pipelines in P-6. Set **GOMEMLIMIT** or **IMPORT_CONCURRENCY**; with a memory limit detected, workers are sized so total usage stays at about 85 % of it, at 150 MB each. See **config-and-data.md**.
+- **ml-service (Retrain):** the rating pass scans the whole event store and the four formats fit concurrently. Increase `mem_limit` (e.g. 4g) or lower **ML_TRAIN_FORMAT_WORKERS**. There are no per-model `n_jobs` settings — `ml-service/config.json` has four keys and no hyperparameters.
 
 **Summary:** Exit code 137, OOMKilled=true, and the watcher's "CRASH DETECTED" output (including which service and last logs) support OOM diagnosis. Use MEM_STATS_INTERVAL for go-api and the watcher for visibility.
 

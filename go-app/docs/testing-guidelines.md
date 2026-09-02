@@ -117,9 +117,9 @@ for the actual test expectations.
 
 - Place mocks in the `internal/mocks` **sibling directory** of the package
   under test.
-- Generate mocks from `contract.go` via `go generate`.
-- Use [mockery](https://github.com/vektra/mockery) (or the project's
-  configured generator).
+- Generate mocks from `contract.go` with [mockery](https://github.com/vektra/mockery),
+  driven by `go-app/.mockery.yml`. Run `make mock` from the repo root — the repo
+  deliberately avoids `go:generate` for mocks in favour of that one target.
 
 ```
 internal/
@@ -182,6 +182,6 @@ t.Run(tc.name, func(t *testing.T) {
 | 4 | No `for _, tc := range` in parallel subtests | ☐ |
 | 5 | SUT inside `t.Run` | ☐ |
 | 6 | Testify only (no `t.Fatal`/`t.Error`) | ☐ |
-| 7 | Mocks from `internal/mocks` via `go generate` | ☐ |
+| 7 | Mocks from `internal/mocks` via `make mock` | ☐ |
 | 8 | No exported privates for testing | ☐ |
 | 9 | AAA pattern | ☐ |

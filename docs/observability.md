@@ -141,8 +141,10 @@ longer raise a step to green that run history says is not done.
   - **Typical fields**:
     - `status` (`ok` / `warn`).
     - `models_dir` (resolved artifacts root), `loaded`, `run_id`.
-    - `loaded_batting_formats`, `loaded_bowling_formats`, `loaded_fielding_formats`, `loaded_extras_formats`, `loaded_win_formats`.
-    - `loaded_xi_formats`, `loaded_performance_formats`, `ratings` (H-11's verdict), `error`.
+    - `loaded_xi_formats`, `loaded_performance_formats` — the two model families that are
+      left. The per-model lists (`loaded_batting_formats` and its four siblings) went with the
+      models in P-6.
+    - `ratings` (H-11's verdict), `error` (the loader's refusal, D-6).
     - `metadata`, `counters`.
 
     `status: "ok"` is about the process. A service with no run loaded is alive, and
@@ -155,9 +157,16 @@ longer raise a step to green that run history says is not done.
 - **`GET /artifacts/status`**
   - **Purpose**: Every run on disk, which one `current` names, and which one is loaded.
   - **Fields**:
-    - `timestamp`, `root`, and `formats[<format>][<kind>]` carrying `exists`, `path`,
-      `has_manifest`, `current` and `loaded`, plus the ratings verdict and the loader's refusal.
-  - **Consumers**: debugging model deployment / reload issues.
+    - `timestamp`, `root`, `reachable`, `current_run`, `loaded_run`, `ratings_through`,
+      `ratings` (H-11's verdict), `error` (the loader's refusal), and `runs[]` — each run
+      newest first with `run_id`, `created_at`, `cutoff`, `git_sha`, `dataset_sha`, `formats`,
+      `has_manifest`, `current` and `loaded`.
+    - It reports **runs, not a formats-by-model-kind matrix** (H-16): a run is what an artifact
+      belongs to now, so "is the model current?" is answered by which run `current` points at
+      and whether that is the run the process loaded. A directory with no manifest is listed as
+      `has_manifest: false` rather than hidden — it is exactly what an operator is looking for
+      when nothing loads.
+  - **Consumers**: go-app `/ops/status`; debugging run deployment / reload issues.
 
 ### 2.2. Run identity
 
@@ -240,8 +249,9 @@ endpoint's response, which is the only moment it is still available.
 
 The summary carries per-format rows and features, per-format metrics, the low-variance
 columns dropped, and the artifacts written with their sizes. go-app stamps the dataset
-digest onto it from the manifest in the dataset directory — ml-service does not know
-which dataset produced the CSVs it trained on, and go-app does. That join is what makes
+digest onto it from the manifest in the dataset directory — ml-service reads the event store,
+not the dataset directory, so it does not know which archive produced the matches it trained
+on, and go-app does. That join is what makes
 *"which data produced this model?"* a lookup:
 
 ```
@@ -254,7 +264,8 @@ Provenance that cannot be established is omitted rather than blanked: a dataset
 directory populated by hand has no manifest, and a hand-placed archive has a digest but
 no feed or URL. Absent means genuinely unknown.
 
-**What the six trainers emit** (`ml/training_progress.py`), by phase:
+**What `retrain` emits** (`ml/training_progress.py`), by phase. There is one training step
+now; the six per-model trainers that shared this channel went in P-5 and P-6:
 
 | Phase | Carries |
 |---|---|
@@ -281,7 +292,9 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
   - Logs include:
     - `model_name`, `match_format` — every model is per-format, so the format is the mode.
     - `pipeline_id` / `run_id` equivalents where available.
-    - Tuning CV scores, baseline comparison metrics.
+    - The display grid's candidate scores and the incumbent-vs-candidate decision, and the
+      baseline comparison metrics. There are no tuning CV scores: the Optuna / PyCaret /
+      AutoGluon stack went in P-6 and what searches now is a three-point grid inside `retrain`.
   - **Where**: ML service process logs (stdout/stderr) for training and backtest workloads.
 
 ---
@@ -320,7 +333,7 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
     - The train/serve parity verdict, as a success or error alert.
   - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
-- **`DataTab`**
+- **Data acquisition** (`OpsDatasetSection` + `DatasetRegistrySection`, inside `OpsStatusTab`)
   - **Endpoints**:
     - `GET /ops/data/feeds` (named feeds, host allowlist, staging directory).
     - `GET /ops/data/staged` (archives available to extract, plus the live manifest).
@@ -392,6 +405,10 @@ Where practical:
 ## 5. How to Use This Map
 
 When debugging or validating a deployment:
+
+The console has five tabs: Health, Ops Status, Workbench, Evaluation report and Upcoming
+match prediction. The ML-model-stats tab went with the endpoint behind it (P-6), and data
+acquisition is a section of Ops Status rather than a tab of its own.
 
 1. **Check basic health**
    - `frontend → HealthTab` (Go + ML status, latency, the loaded run and its freshness).

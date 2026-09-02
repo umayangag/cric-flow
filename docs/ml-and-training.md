@@ -195,7 +195,8 @@ The same pattern applies to other components:
 **Purpose:** a win model whose every input is a function of the two elevens, so it can rank
 candidate XIs — the objective for team selection. It replaces the windowed-form aggregates
 of `ml.win_features` for that job (held-out AUC 0.73 T20 / 0.69 ODI / 0.75 T20I against
-0.63 / 0.56 / 0.59; see `docs/WIN_PROB_SELECTION_PR_CHECKLIST.md`, S-9 results and S-10).
+0.63 / 0.56 / 0.59, on the Cricsheet-JSON source; the current figures, trained on Postgres and
+measured walk-forward, are in `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md` §8.4).
 
 **How it works.** One chronological pass over match history (`ml/xi/ratings.py`): for each
 match in date order, features are read from state built over earlier matches only, then the
@@ -226,9 +227,11 @@ shows what is loaded.
 **Serving:** `POST /xi/predict-win` and `POST /xi/optimize` take player ids, not feature maps.
 The optimiser (`ml/xi/optimizer.py`) seeds greedily, then steepest-ascent single swaps, then
 pair swaps, under constraints expressed through the same vectors the model reads (a bowling
-option is a player whose expected balls bowled clears the format threshold). go-app uses
-these endpoints when `selection.win_model` is `"xi"` and falls back to the windowed-form
-model otherwise or on error.
+option is a player whose expected balls bowled clears the format threshold). **This is the
+only selection path** — there is no flag, and `selection.win_model` is a retired config key
+(P-5) that `ValidateForServer` refuses by name. A format that is not offered an optimised
+selection is served the rating-ordered pick with its reason on the wire, never a silent
+fallback to another optimiser (§8.7).
 
 **Identity.** Both sources key ratings by the Cricsheet registry identifier: `player.external_id`
 from Postgres, `info.registry.people` from JSON, with the same `name:<name>` fallback for a
@@ -311,12 +314,14 @@ and opponent-side aggregates, and venue context — joined with what the player 
 runs conceded). Rows cover **all XI players**, never only those who batted: who got to bat
 is decided by the result, and a population selected by the outcome is a leak (H-20).
 `ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
-two cannot spell a column differently. `python -m ml.xi.train --player-frame-out <path>`
-writes the frame as CSV when wanted; the harness consumes it in memory. Since P-3 the rows
-also carry `catches` (each fielder named on a caught dismissal) and the sequence families
-(`contract.SEQUENCE_FAMILIES`: dot streaks, reactions, spells — the `seqcalc` calculators
-as as-of accumulators, per-ball flags from `ml/xi/sequence.py`), which are in the frame
-whether or not the performance model consumes them (E1 decides that).
+two cannot spell a column differently; the frame is never written to disk as a contract —
+`retrain` and the harness both consume it in memory. Since P-3 the rows also carry `catches`
+(each fielder named on a caught dismissal) and the sequence families
+(`contract.SEQUENCE_FAMILIES`: dot streaks, reactions, spells — the ball-by-ball patterns the
+deleted `seqcalc` tables precomputed, re-expressed as as-of accumulators with per-ball flags
+from `ml/xi/sequence.py`). The columns are always in the frame so the question can be re-asked
+without a new pass, but **E1 kept none of them**: `contract.SEQUENCE_FAMILIES_KEPT` is empty
+and the performance model reads no sequence column.
 
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
 
@@ -336,8 +341,9 @@ same rows, times the distribution given involvement fitted on the rows where it 
 with the involvement *predicted* and the served quantiles those of the mixture, so both
 structures are scored on one population with one loss.
 
-**Inputs.** The row's as-of vectors and expected role, the sequence families E1 kept, both
-sides' aggregates, venue context, the Elo edge, and the innings (bat first / chase). The
+**Inputs.** The row's as-of vectors and expected role, the sequence families E1 kept (none —
+`SEQUENCE_FAMILIES_KEPT` is empty), both sides' aggregates, venue context, the Elo edge, and
+the innings (bat first / chase). The
 innings is the toss, not the result: at prediction it is **marginalised** — predicted under
 both and averaged — unless the caller passes `team1_bats_first`, the same knob
 `/xi/predict-win` has. Nothing the model reads is a function of the match's own result
@@ -471,14 +477,15 @@ the H-8 parity check is 0.0 on both, simulator draws included.
 **Serve.** `POST /simulate` takes what `/performance/predict` takes plus `n_samples` and
 `seed`, and returns per side the total (median, 10–90, mean, sd, scorecard total), per player
 the ranges and the scorecard line, the win probabilities (simulated, display, headline and its
-source), and the margin. Limited-overs formats only (422 otherwise; TEST stays on the greedy
-path, H-17). Behind `selection.win_model: "xi"` the go-app scorecard reads it
+source), and the margin. Limited-overs formats only (422 otherwise; TEST has no innings length
+and is served the rating-ordered XI, H-17). The go-app scorecard reads it unconditionally
 (`predictteam/xi_simulation.go`): innings totals, per-player points and their `runs_range` /
 `wickets_range` come from the draws, P(win) from the display model, and the response carries
 `xi_simulation` (innings ranges, simulated P(win), which model is the headline) and
 `explanation` — each selected player's marginal value from `/xi/optimize` and share of the
 total's spread from the simulator (L3). The extras and innings models and the win-probability
-rescale are unused on that path; P-5 re-points the rest and P-6 deletes them.
+rescale that used to sit on that path went with P-5 and P-6; nothing rescales a simulated
+total toward anything, on any path.
 
 ### As-of serving (`ratings_as_of`, P-2)
 
@@ -586,13 +593,5 @@ quantile coverage for the performance model; an isotonic recalibration
 coverage is off nominal. It ships in place and, so far, unused — no target has tripped the
 check — and the harness re-decides it every run. The standalone `ml.calibrate` module that
 predated all this was never wired into anything and went in C1-4/C1-6.
-
----
-
-## Fielding per-inning migration
-
-Migration `0095_fielding_data_inning_number.sql` adds `inning_number` to `fielding_data` (default 1) and replaces the unique constraint with `(match_id, inning_number, player_id)`.
-
-Historical rows remain at `inning_number = 1` until operators run a full re-import/recompute flow from source event data. `RecomputeFieldingAggregates` (see `go-app/internal/db/repo_fielding_event.go`) can split aggregates per inning when `fielding_event` is available for the target matches.
 
 ---

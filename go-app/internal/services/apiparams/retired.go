@@ -75,8 +75,8 @@ var retired = []Retired{
 		Name:    "weather",
 		Code:    "WEATHER_NOT_IMPLEMENTED",
 		Message: "weather has been removed from prediction; no weather feature reaches a model",
-		Hint: "Drop the field. Weather is planned, not implemented — see docs/weather-not-implemented.md " +
-			"for what building it would take.",
+		Hint: "Drop the field. Weather is wanted but not implemented: no venue has coordinates " +
+			"and nothing fetches observations, so no weather feature reaches a model.",
 		Body: true,
 	},
 	{

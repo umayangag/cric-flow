@@ -23,7 +23,7 @@ Two modes:
 | Component | Location | Mechanism |
 |-----------|----------|-----------|
 | go-app | `go-app/` | Go modules |
-| ml-service | `ml-service/` | pip-tools (`requirements*.in` → `requirements*.txt`) |
+| ml-service | `ml-service/` | pip-tools (`requirements.in` → `requirements.txt`) |
 | frontend | `frontend/` | npm |
 
 ---
@@ -167,5 +167,5 @@ After all slices, print a table: component → PR URL (or "skipped, no diff").
 
 - [ ] Up to three PRs off `main`, skipping components with no diff
 - [ ] Each slice passed its own component checks before push
-- [ ] Both ml-service pin files regenerated, not just `requirements.txt`
+- [ ] `ml-service/requirements.txt` regenerated from `requirements.in`, never hand-edited
 - [ ] User has the PR URLs

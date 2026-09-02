@@ -1,4 +1,4 @@
-# Go Application (Importer / API / Export)
+# Go Application (Importer / API)
 
 Go services: Cricsheet import and the HTTP API. Integrates with Postgres and the Python ML
 service. go-app owns availability, the fixture and the constraints on an XI; ml-service owns
@@ -109,7 +109,7 @@ Notes:
   make -C go-app coverage-ci
   ```
 
-Cricsheet tests use seams (`SetCricsheetDB`, `SetWeatherClient`). See **docs/quality-and-debugging.md**.
+Cricsheet tests use the `SetCricsheetDB` seam. See **docs/quality-and-debugging.md**.
 
 
 

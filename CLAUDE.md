@@ -4,8 +4,8 @@
 
 | Path | Contents |
 |------|----------|
-| `go-app/` | All Go code (API, importers, exporters) |
-| `ml-service/` | All Python code (FastAPI service, training, tuning) |
+| `go-app/` | All Go code (API, importer, migrations) |
+| `ml-service/` | All Python code (FastAPI service, the rating pass, the models, the L4 harness) |
 | `frontend/` | React + TypeScript + Vite |
 | `configs/` | Runtime config files |
 | `docs/` | Documentation; `ARCHITECTURE_MAP.md` (generated) is the entry point for structure |
@@ -27,10 +27,14 @@ Act as a **senior software architect** and **machine learning / data analysis ex
 
 - Consider data quality, feature engineering, leakage risks, and reproducibility.
 - Discuss appropriate model families, evaluation metrics, validation schemes, and monitoring.
-- **Pipeline:** prefer single-train (params from config + DB). Use Train when params are known;
-  use Auto-tune only when discovering or re-optimizing, then train once with the saved params.
-  Precompute params (`features.*`) are a separate loop: change → re-precompute → re-export →
-  re-train. See `docs/ml-and-training.md` § Pipeline modes.
+- **Pipeline:** three steps — `import` → `retrain` → `reload` — with `evaluate` beside them.
+  `retrain` is the whole model build (rating pass → win models → performance models → report →
+  manifest) and publishes nothing; `reload` points `current` at a run and loads it. There is no
+  precompute step, no export step and no auto-tune: hyperparameters are a three-point grid
+  inside `retrain`, recorded per run in `manifest.json`. `evaluate` is the L4 harness, optional
+  and ~54 minutes, and is where a choice-facing number comes from. See `docs/ml-and-training.md`
+  § The pipeline, and `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md` for the evidence behind any
+  number the system claims.
 - For data analysis, think about distributions, outliers, confounders, and experiment design;
   call out the assumptions and limitations behind any conclusion.
 

@@ -106,7 +106,7 @@ lint:
 
 # Whole-program reachability. golangci-lint's `unused` only reports unexported
 # identifiers within a package, so it never sees an exported repo method that
-# nothing calls -- which is most of what docs/CLEANUP_PR_CHECKLIST.md removed.
+# nothing calls -- which is most of what the repo-wide cleanup removed.
 # Any output here is a failure.
 DEADCODE_MODULE ?= golang.org/x/tools/cmd/deadcode
 DEADCODE_VERSION ?= v0.38.0

@@ -68,8 +68,12 @@ else would ever notice.
 **Future-match prediction:** go-app sends player ids, a format, the two team ids, the venue id
 and the date. It sends no features at all — the rating state lives in ml-service, which is what
 makes the training and serving paths compute the same function of the same eleven names (H-8).
-**Weather is not a model input**; see [weather-not-implemented.md](weather-not-implemented.md).
-P-6 dropped `weather_data` and `weather_job` with the probes that read them.
+**Weather is not a model input.** It is wanted and was never implemented: no venue has
+coordinates (Cricsheet gives names, not positions) and nothing fetches observations for a
+(venue, date), so no weather feature has ever reached a model. P-6 dropped `weather_data` and
+`weather_job` with the probes that read them; the `venue.latitude` / `longitude` / `city` /
+`country` / `timezone` columns remain, ready for a geocoding pass. A request still carrying a
+`weather` field is refused with `WEATHER_NOT_IMPLEMENTED` rather than ignored.
 
 ---
 
@@ -119,6 +123,14 @@ pg_dump --schema-only --no-owner --no-privileges --no-comments \
 against a database bootstrapped through the full chain, then hand-edited to drop psql meta-commands and session `SET` noise, and to restore the `match_format` seed rows that `--schema-only` omits. Those ids are a contract: `go-app/internal/formats` hardcodes `TEST=1, ODI=2, T20=3, T20I=4`.
 
 **Adding a change:** write a new numbered migration (`0002_...sql`). Do not edit the baseline.
+
+**Four tables are write-only.** `batting_data`, `bowling_data`, `fielding_data` and
+`fielding_event` are scorecard aggregates the importer derives from `ball_event`. Their last
+*reader* died in P-6 with the feature-history and backtest-feature repos, but the importer
+still writes them, and a table goes only when its last reader and its last writer die in the
+same PR — dropping them means changing the importer. The PR that stops the importer writing
+them is the one that drops them. Nothing in the ML pipeline reads them; the rating pass reads
+`ball_event` directly. See `ML_PIPELINE_REARCHITECTURE_PLAN.md` §9.1.
 
 **Existing databases:** a database created by the old chain has all 41 old versions in `schema_migrations` and will never match a fresh one. Recreate it:
 
