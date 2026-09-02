@@ -306,7 +306,7 @@ to two model families and one derived simulator, all fed by one pass over one ta
 | E2 | Is the simulator consistent with the display model? | Simulated P(win) vs display P(win) on holdout matches; calibration of each | If simulated P(win) is worse-calibrated by > 0.01 Brier, keep it as a display-only distribution and never as a probability — **run in P-4, §8.3: simulated − display Brier +0.0028 ± 0.0057 T20, +0.0034 ± 0.0131 ODI on the folds — within tolerance, a probability, served beside the display model's, which stays the headline** |
 | E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain |
 | E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
-| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way — **run for T20 in §8.6: the as-played form is confounded (Δresult is an identity on `won_k`, which the as-of update already anticipates) and its 0.570 is not about selection; the lineup-only form gives 0.509 ± 0.007 on 5,504 pairs, CI [0.496, 0.522], so the threshold is excluded rather than missed. Not supported in T20; ODI and T20I unrun** |
+| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | If agreement > 55% on ≥ 300 pairs the objective is selecting on real signal; record either way — **run for all three limited-overs formats in §8.6. The as-played form is confounded (Δresult is an identity on `won_k`, which the as-of update already anticipates), so read the lineup-only form: T20I 0.589 ± 0.016, CI [0.556, 0.621] — **passes**; ODI 0.521 ± 0.010, CI [0.502, 0.541] — above chance, threshold outside; T20 0.509 ± 0.007, CI [0.496, 0.522] — excluded** |
 | E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's — **run in P-2, §5.2: no effect; the split ships off** |
 | E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) — **run in P-3, §5.3: joint moves Spearman by at most 0.003; separate stays** |
 
@@ -492,7 +492,7 @@ checklist.
 | P-4 | L2-C simulator; scorecard and totals from it; E2 | **done** (`arch/p-4-simulator`). Design written first (§3, "The innings sample"); `ml/xi/simulator.py` draws whole matches from L2-B's forecasts — sequential by expected slot under the as-of innings length, chase ended at the target, bowlers attributed, toss marginalised — with one shared as-of match factor (deconvolved residuals of the calibration fold) that the folds showed was needed (§8.3: dispersion ratio 1.42 → 1.02 T20, 1.36 → 1.02 ODI; coverage 0.64 → 0.76, 0.58 → 0.74; before/after recorded). Locked window (§8.3): first-innings 10–90 coverage **0.786 T20 / 0.790 ODI** (acceptance ±0.03 met), dispersion ratio 0.98 / 1.02, width 90.6 / 154.1 runs; 9.4–9.9 ms per fixture at 2,000 draws. E2 within tolerance (+0.003 / +0.003 Brier on the folds), so the simulated P(win) is served as a probability beside the display model, which stays the headline. `POST /simulate`; the go-app xi scorecard reads it (totals, points and ranges from the draws; extras / innings models and the rescale unused on that path); L3 explanation = marginal values + spread shares. H-8 parity extended to the draws at a fixed seed: max abs difference 0.0 over 39 simulated matches on both sources, and the two sources agree on every locked-window figure (T20 coverage 0.786 / 0.786, ODI 0.790 / 0.787, Brier to 0.0004) |
 | P-5 | Re-point team prediction and backtest surfaces to L2/L3; delete the greedy weights, the meta-model, the rescaling layers, the Normal Monte Carlo and the per-call optimiser | **done** (`arch/p-5-repoint-surfaces`). A limited-overs `/api/predict/*` response now carries the display model's P(win) with `source` on the wire, the simulated totals with their 10-90 ranges, per-player ranges and marginal values, and a `scorecard` block whose lines and extras sum to the total by construction; nothing rescales a simulated total toward anything, on any path. **S-6 ships here**: the XI path is the only selection path for T20 / T20I / ODI, on L4's replacement gates rather than P-0's mis-specified winner accuracy. **Re-measured on the database for this PR (§8.4), and one of the two gates is weaker than §8.1 recorded**: swap monotonicity passes comfortably (0.0–0.8 % violations against a 2 % line), but the specific-XI-beyond-typical-XI delta is **+0.012 ± 0.010 in T20** over seven folds — positive, about 1.2 sd from zero — and inside its own noise in ODI (+0.024 ± 0.069) and T20I (+0.021 ± 0.068), not the +0.045 ± 0.021 this document carried. The switch ships on that reading, recorded rather than rounded up. **TEST** gets `objective: "ratings"` on `/xi/optimize` — the search's own seed order under the same constraints, evaluating no model — labelled `optimised: false` in the API and shown as a *Not optimised* notice in the UI (H-17); its per-player numbers come from `/performance/predict`, and it has no innings total because it has no innings length. The backtest surface is L4's report, served by the new `GET /xi/evaluate-report` and proxied at `/api/backtest/report`: walk-forward folds with the locked window labelled beside them, the two selection metrics with a labelled slot for E5, per-target performance with width beside coverage, the E2 section and the serving-parity verdict. `ml/metrics.py` and both its callers are gone (H-12). Migration `0007` drops `match_prediction_aggregates`, the one table whose last reader and last writer both died here; nothing else was orphaned by P-5 that P-6 does not already own. Coverage ratcheted: Go 68, ml-service 86, frontend 74/69/74/77. **Also fixes two defects found while smoke-testing this PR (D-7a, D-7b, §10.6)**: the id contract now carries the registry id end to end, and a read of the rating state no longer mutates it |
 | P-6 | Delete precompute, snapshots, exports, auto-tune stack, old win model; three-step ops pipeline; run-id artifacts | full pipeline from raw JSON to loaded artifacts in one command, < 15 min. **Carries one defect found while smoke-testing P-5 (D-6, §10.4).** A rating artifact written before P-2 loads without complaint and then raises `IndexError` on the first request that touches a player past slot 1024, because `_state_from_payload` assigns only the arrays the payload happens to carry and leaves the nine P-2/P-3 added (`bat_pos_sum`, `bat_pos_n`, `xi_n`, the four phase splits, `seq_num`, `seq_den`) at the constructor's initial width — while `/xi/status` reports `loaded: true`. The guard belongs here rather than in P-5: it is the same question H-16 asks (an artifact must name what produced it), and a run manifest is what lets the loader say *which* run the artifact is from instead of guessing from the arrays it holds |
-| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report. **E5 has been run for T20 ahead of this PR (§8.6)**: the metric P-7 should implement is the *lineup-only* one — both elevens scored in the same fixture at the same as-of — because §5's as-played definition is confounded by an identity between Δresult and `won_k` that the as-of rating update already anticipates. T20's answer is 0.509 ± 0.007, the 0.55 threshold excluded; ODI and T20I are unrun |
+| P-7 | E3 batting-order suggestion; E5 natural-experiment metric in L4 | recorded in the harness report. **E5 has been run for all three limited-overs formats ahead of this PR (§8.6)**: the metric P-7 should implement is the *lineup-only* one, per format — both elevens scored in the same fixture at the same as-of — because §5's as-played definition is confounded by an identity between Δresult and `won_k` that the as-of rating update already anticipates. The answers are T20I 0.589 ± 0.016 (passes), ODI 0.521 ± 0.010, T20 0.509 ± 0.007 |
 
 Each of P-2 … P-6 removes more than it adds. The end state is smaller than the current tree.
 
@@ -849,10 +849,12 @@ under H-17's 0.65 line, which is why it is served a rating-ordered XI and told s
 
 **What was meant to settle it** was E5, the natural experiment (P-7): consecutive matches of
 one side with 1–3 lineup changes, asking whether Δobjective agrees with Δoutcome more often
-than chance. It has since been run for T20 (§8.6) and it does not settle it in selection's
-favour: the form that isolates the lineup gives 0.509 ± 0.007, with the 0.55 threshold outside
-the interval. It remains the labelled empty slot in the Evaluation report tab, and P-7 should
-fill it with the lineup-only metric rather than §5's as-played definition.
+than chance. It has since been run for all three limited-overs formats (§8.6),
+on the lineup-only reading that §5's as-played definition turns out to confound: it settles
+selection **in favour in T20I** (0.589 ± 0.016, and 0.622 on the confound-free same-opponent
+arm), leaves ODI above chance but short of the line (0.521 ± 0.010), and excludes it in T20
+(0.509 ± 0.007). It remains the labelled empty slot in the Evaluation report tab, and P-7
+should fill it with the lineup-only metric, per format.
 
 ### 8.5 P-0's selection gate, re-run with the id contract fixed (2026-09-02)
 
@@ -909,59 +911,72 @@ for it: the same pool and the same constraints, differing from `winprob` in noth
 the objective is consulted — a cleaner contrast than the original, which varied the features
 and the objective at once.
 
-### 8.6 E5 for T20 — run, and what it can and cannot conclude (2026-09-02)
+### 8.6 E5 for all three limited-overs formats (2026-09-02)
 
-`scripts/experiments/xi/e5_natural_experiment.py --format T20`. 14,333 consecutive-match
-pairs of one club with 1–3 lineup changes (12,413 development, 1,920 locked window), 41× E5's
-≥ 300 bar. Every call carries `as_of` = the match date. The decision runs on the development
-pairs; the locked window is scored beside them and labelled (H-19).
+`scripts/experiments/xi/e5_natural_experiment.py`. Consecutive-match pairs of one club with
+1–3 lineup changes, every call carrying `as_of` = the match date. The decision runs on the
+development pairs; the locked window is scored beside them and labelled (H-19). Zero call
+failures in all three runs.
 
-| reading | development | locked window |
-|---|---|---|
-| as-played (the §5 spec) | 0.570 ± 0.007 (n=5,510) | 0.641 ± 0.017 (n=785) |
-| lineup-only (opponent and as-of fixed) | **0.509 ± 0.007** (n=5,504) | 0.520 ± 0.018 (n=784) |
-| same opponent, as-played | 0.349 ± 0.023 (n=430) | 0.430 ± 0.056 (n=79) |
-| same opponent, lineup-only | **0.491 ± 0.024** (n=430) | 0.564 ± 0.056 (n=78) |
+**The metric as §5 specified it is confounded, so it is not the one to read.** Among the pairs
+E5 scores there is an identity: a nonzero Δresult forces Δresult = −1 **iff** the club won
+match k. So "sign agreement between Δobjective and Δresult" asks whether Δobjective
+anti-correlates with having won the previous match — and match k+1's as-of state contains
+match k's result, so the rating update pushes Δobjective the other way. The same-opponent
+as-played column below is that artifact with the opponent variation stripped out: 0.349 in
+T20 and 0.353 in ODI, both far *below* chance. Across all pairs the artifact is diluted by
+genuine opponent-strength variation — which the objective does price, and which is the AUC we
+already have — and the two opposing biases net out near 0.57–0.59 in every format.
 
-**As specified, E5 passes — and the pass is not about selection.** Among the pairs E5 scores
-there is an identity: Δresult ≠ 0 forces Δresult = −1 **iff** the club won match k. So "sign
-agreement between Δobjective and Δresult" is asking whether Δobjective anti-correlates with
-having won the previous match. Match k+1's as-of state contains match k's result, so winning
-it raises the club's ratings and lowers the opponent's and pushes Δobjective the other way.
-The same-opponent arm shows that bare: agreement 0.349 means Δobjective shares its sign with
-`won_k` in 65 % of scored pairs. Across all pairs the artifact is diluted by genuine
-opponent-strength variation — which the objective does price, and which is the AUC we already
-have — and the two opposing biases net out to 0.570. It is a pass assembled from a real signal
-that is not selection and an artifact that is not signal.
+**Read the lineup-only columns.** They score both elevens in the same fixture at the same
+as-of, so nothing varies but the eleven — the thing selection actually does.
 
-**The reading that isolates the lineup fails, and bounds the effect.** Score both elevens in
-the same fixture at the same as-of, so nothing varies but the eleven: **0.509 ± 0.007** on
-5,504 pairs, 95 % CI [0.496, 0.522]. The 0.55 line is not merely missed, it is excluded. The
-same-opponent subset agrees at 0.491 ± 0.024, CI [0.443, 0.538], with less power. Recorded
-either way, per the rule: **E5 does not support "the objective is selecting on real signal"
-in T20.**
+| format | development pairs | lineup-only | 95 % CI | same opponent, lineup-only | as-played (confounded) | same opponent, as-played |
+|---|---|---|---|---|---|---|
+| T20 | 12,413 | 0.509 ± 0.007 (n=5,504) | [0.496, 0.522] | 0.491 ± 0.024 (n=430) | 0.570 ± 0.007 | 0.349 ± 0.023 |
+| ODI | 5,882 | 0.521 ± 0.010 (n=2,568) | [0.502, 0.541] | 0.517 ± 0.019 (n=712) | 0.561 ± 0.010 | 0.353 ± 0.018 |
+| **T20I** | 2,185 | **0.589 ± 0.016 (n=890)** | **[0.556, 0.621]** | **0.622 ± 0.025 (n=381)** | 0.585 ± 0.017 | 0.446 ± 0.025 |
 
-**Why it was never likely to.** The objective claims a median |Δ| of **0.022** win probability
-for a 1–3 player change (p90 0.065). That is the size of the thing E5 must detect against a
-Bernoulli outcome, and it is the same order as §8.4's specific-XI delta of +0.012 ± 0.010. The
-0.55 threshold in §5 was written with no effect-size estimate in hand; the useful output of
-this run is the bound, not the pass/fail.
+Locked window (labelled, never used for the choice), lineup-only: T20 0.520 ± 0.018 (n=784),
+ODI 0.572 ± 0.031 (n=250), T20I 0.514 ± 0.048 (n=109); same-opponent lineup-only 0.564, 0.547,
+0.585.
 
-**Where that leaves S-6.** All three replacement gates now point one way. Swap monotonicity
-passes, but it is an internal consistency check on the objective's shape, not evidence about
-outcomes. The specific-XI delta is +0.012 ± 0.010 — positive, about 1.2 sd. E5 bounds
-lineup-only agreement below 0.522. P-5 shipped the XI path as the only selection path for
-T20 / T20I / ODI on the first two, before this run; nothing here is a reason to add a flag
-back (the alternative it would switch to no longer exists, and the display model is not in
-question), but the honest summary is now that **the objective is a good win model and an
-unproven selector**, and the plan should stop describing selection as settled by its gates.
+**The answer is format-specific, and it is not the one the plan expected.**
 
-ODI and T20I are unrun. The confound this exposes is not format-specific, so the as-played
-form should not be reported for them either: only the lineup-only reading is worth the run.
+- **T20I passes.** 0.589 with 0.55 below the interval's floor, and the confound-free
+  same-opponent arm is *stronger* at 0.622 [0.573, 0.671] rather than weaker — which is what a
+  real effect should do when you remove a bias that was pulling against it, and what a fluke of
+  one slice should not. Its same-opponent as-played figure, 0.446, is also the least depressed
+  of the three, i.e. the format where genuine signal most nearly offsets the artifact. E5 is
+  met in T20I: **the objective is selecting on real signal there.**
+- **ODI fails, narrowly and consistently.** 0.521 [0.502, 0.541] is above chance by two
+  standard errors but the 0.55 line sits outside the interval; the same-opponent arm agrees at
+  0.517. There is *something* there, and it is smaller than E5 asked for.
+- **T20 fails.** 0.509 [0.496, 0.522] — 0.55 excluded rather than missed, and the
+  same-opponent arm is 0.491. This is the format with by far the most pairs, so it is the
+  best-powered null of the three.
 
-**Not wired into L4.** This is an experiment script; the E5 slot in the harness report is
-still the labelled empty one, and P-7 owns filling it. What P-7 should put there is the
-lineup-only metric, not §5's as-played definition.
+**The effect size is the same everywhere, so the difference is accuracy, not ambition.** The
+objective claims a median |Δ| of 0.020–0.022 win probability for a 1–3 player change in all
+three formats (p90 0.065–0.073). T20I does not pass because the objective claims more there;
+it passes because what it claims is more often right. That ordering — T20I best, ODI
+middling, T20 worst — only partly tracks the objective's holdout AUC on Postgres (T20I 0.74,
+T20 0.72, ODI 0.68, P-0): T20I is top in both, but T20 and ODI swap. It is a better match for
+how much of a "1–3 player change" is a change in strength at all — in domestic T20, much of it
+is squad rotation.
+
+**Where that leaves S-6.** P-5 shipped the XI path as the only selection path for
+T20 / T20I / ODI on swap monotonicity and the specific-XI delta, before this run. E5 now says
+that decision is **earned in T20I, thin in ODI and unsupported in T20**. Nothing here argues
+for restoring a flag — the greedy arm it would switch back to was deleted in P-5, and the
+display model is not in question — but the plan should stop describing selection as settled
+across limited-overs formats. The accurate statement is: the objective is a good win model
+everywhere it is served, a demonstrated selector in T20I, and an unproven one in T20 and ODI.
+
+**What P-7 should implement** is the lineup-only metric, per format, not §5's as-played
+definition. The E5 slot in L4's report is still the labelled empty one; this is an experiment
+script, and wiring it in is P-7's.
+
 
 ## 9. Database schema and pipeline steps: what changes, what does not
 

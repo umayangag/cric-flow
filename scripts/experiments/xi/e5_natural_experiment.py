@@ -25,6 +25,12 @@ window is scored separately and labelled, never used for the choice (H-19).
 Decision rule: agreement > 55 % on ≥ 300 pairs means the objective is selecting on real
 signal. Record either way.
 
+**Run one of these at a time.** ml-service serves as-of ratings from a single advancing pass,
+so a second client asking for an earlier date makes it rebuild the whole state from scratch.
+Two concurrent runs do not corrupt each other's answers -- every rebuild yields the right state
+for its date -- but they thrash: a run that takes forty minutes alone made no measurable
+progress in ninety with two other clients pulling the pass backwards.
+
 Usage: python scripts/experiments/xi/e5_natural_experiment.py --format T20
 """
 
@@ -243,6 +249,8 @@ def evaluate(model: ObjectiveModel, pairs: Sequence[Pair]) -> None:
     tasks.sort(key=lambda t: t[0])
 
     for index, (as_of, pair, kind) in enumerate(tasks, 1):
+        if index % 200 == 0:
+            print(f"  {index}/{len(tasks)} calls (as_of {as_of})", flush=True)
         if kind == "lineup":
             # The previous eleven, in this fixture, at this as-of: what the club gave up.
             previous = model.probability(
@@ -265,8 +273,6 @@ def evaluate(model: ObjectiveModel, pairs: Sequence[Pair]) -> None:
             after_p = as_played[key]
             if before_p is not None and after_p is not None:
                 pair.d_objective = after_p - before_p
-        if index % 500 == 0:
-            print(f"  {index}/{len(tasks)} calls", flush=True)
 
 
 def main() -> int:
