@@ -333,7 +333,23 @@ two cannot spell a column differently; the frame is never written to disk as a c
 deleted `seqcalc` tables precomputed, re-expressed as as-of accumulators with per-ball flags
 from `ml/xi/sequence.py`). The columns are always in the frame so the question can be re-asked
 without a new pass, but **E1 kept none of them**: `contract.SEQUENCE_FAMILIES_KEPT` is empty
-and the performance model reads no sequence column.
+and the performance model reads no sequence column. Since A-1 every row also carries the
+**fixture context** (`contract.FIXTURE_CONTEXT_COLS`): the ground's and the competition's
+as-of scoring level — runs and dismissals per delivery over every ball played there (or in
+it) before the match, shrunk toward the format's rate over
+`contract.FIXTURE_CONTEXT_PRIOR_BALLS` deliveries and expressed relative to it, so 1.0 is
+an average ground and a ground or competition with no history reads exactly 1.0. Venue is
+keyed as `venue_bf_rate` keys it; competition is Cricsheet's event name (`match.event_name`
+in the database), and an unnamed key is no key. `RatingState.fixture_context` reads them
+before `update` folds the match in, at day close (H-18), and the H-8 parity check compares
+them on the win row and on every player row. The same rule as the sequence families
+applies: the columns are always in the frame, and the performance model reads a family
+only if gate A-1 kept it — and **A-1 kept none** (`contract.FIXTURE_CONTEXT_FAMILIES_KEPT`
+is empty; plan §8.9): on the walk-forward folds neither the ground nor the competition
+moved the simulator's per-quarter bias in T20, and in ODI by 0.2–0.4 runs on a mean of 14,
+inside the fold noise. The quarters with the large biases turned out to be population-mix
+quarters (associate men's and women's ODIs against one baseline), not venue or competition
+effects.
 
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
 
@@ -356,7 +372,9 @@ with the involvement *predicted* and the served quantiles those of the mixture, 
 structures are scored on one population with one loss.
 
 **Inputs.** The row's as-of vectors and expected role, the sequence families E1 kept (none —
-`SEQUENCE_FAMILIES_KEPT` is empty), both sides' aggregates, venue context, the Elo edge, and
+`SEQUENCE_FAMILIES_KEPT` is empty), both sides' aggregates, venue context, the Elo edge, the
+fixture-context families gate A-1 kept (none — `FIXTURE_CONTEXT_FAMILIES_KEPT` is empty; the
+ground's and the competition's as-of scoring level, above), and
 the innings (bat first / chase). The
 innings is the toss, not the result: at prediction it is **marginalised** — predicted under
 both and averaged — unless the caller passes `team1_bats_first`, the same knob
@@ -612,7 +630,7 @@ window is now the last four walk-forward folds (2025-09, 2025-12, 2026-03, 2026-
 
 **Gate registry (H-23, `ml/xi/gates.py`).** Every gate the report prints — H-17's AUC line,
 swap monotonicity, specific-vs-typical, E5, E2, the quantile coverage, width beside coverage,
-the leak canary, parity, and E3 for the script that runs it — declares what it *varies*, what
+the leak canary, parity, and E3 and A-1 for the scripts that run them — declares what it *varies*, what
 it holds *fixed* and what *decides*, with the path at which the report carries its number. The
 report embeds the registry, `gates.check_report` fails the run if a gate is printed without an
 entry or an entry has nowhere to be read from, and the Evaluation tab renders the triple beside

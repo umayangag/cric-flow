@@ -30,7 +30,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "ml-service"))
+sys.path.insert(
+    0,
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "ml-service"
+    ),
+)
 
 from sim_frame_cache import load_frames  # noqa: E402
 
@@ -61,7 +66,10 @@ HEADLINE_TARGETS = tuple(t.name for t in P.TARGETS if t.headline)
 
 def _display_models(train_matches: pd.DataFrame) -> List[Any]:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y) for seed in DISPLAY_SEEDS]
+    return [
+        make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y)
+        for seed in DISPLAY_SEEDS
+    ]
 
 
 def _simulation_summary(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -77,24 +85,33 @@ def _simulation_summary(report: Dict[str, Any]) -> Dict[str, Any]:
         "chase_coverage_80": chase.get("coverage_80"),
         "chase_width_80": chase.get("width_80"),
         "delta_brier": report["win"]["delta_brier_simulated_minus_display"],
-        "shared_factor_sd": (report["calibration"] or {}).get("shared_factor", {}) or {},
+        "shared_factor_sd": (report["calibration"] or {}).get("shared_factor", {})
+        or {},
     }
 
 
 def _performance_summary(targets: Dict[str, Dict]) -> Dict[str, Any]:
     """Pinball per headline target (pre-toss, the served prediction) and the runs
     interval's coverage and width."""
-    out: Dict[str, Any] = {"pinball": {name: targets[name]["model"]["pinball"] for name in HEADLINE_TARGETS}}
+    out: Dict[str, Any] = {
+        "pinball": {
+            name: targets[name]["model"]["pinball"] for name in HEADLINE_TARGETS
+        }
+    }
     runs_interval = targets["runs"]["model"].get("interval") or {}
     out["runs_coverage_80"] = runs_interval.get("coverage_80")
     out["runs_width_80"] = runs_interval.get("width_80")
     return out
 
 
-def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cutoff, end) -> Dict[str, Any]:
+def run_fold(
+    player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cutoff, end
+) -> Dict[str, Any]:
     train, joint = perf_harness.training_rows(player_frame, fmt, cutoff)
     evaluation = player_frame[
-        (player_frame.format_code == fmt) & (player_frame.match_date >= cutoff) & (player_frame.match_date < end)
+        (player_frame.format_code == fmt)
+        & (player_frame.match_date >= cutoff)
+        & (player_frame.match_date < end)
     ]
     matches = match_frame[match_frame.format_code == fmt]
     train_matches = matches[matches.match_date < cutoff]
@@ -106,7 +123,10 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
         "n_eval": int(len(evaluation)),
         "n_eval_matches": int(len(eval_matches)),
     }
-    if len(train) < perf_harness.MIN_TRAIN_ROWS or len(evaluation) < perf_harness.MIN_EVAL_ROWS:
+    if (
+        len(train) < perf_harness.MIN_TRAIN_ROWS
+        or len(evaluation) < perf_harness.MIN_EVAL_ROWS
+    ):
         fold["skipped"] = True
         return fold
     simulated = fmt in simulator.SIMULATED_FORMATS
@@ -114,17 +134,33 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
     displays = _display_models(train_matches) if simulated else []
     base_rate = float(train_matches[C.TARGET_COL].mean())
     for arm, families in ARMS.items():
-        spec = P.default_spec(joint_format=joint, shared_factor=simulated, fixture_context_families=families)
-        model = P.fit_performance(train, fmt, spec, train_matches if simulated else None)
+        spec = P.default_spec(
+            joint_format=joint,
+            shared_factor=simulated,
+            fixture_context_families=families,
+        )
+        model = P.fit_performance(
+            train, fmt, spec, train_matches if simulated else None
+        )
         entry: Dict[str, Any] = {
             "families": list(families),
             "n_features": len(spec.feature_cols),
-            "performance": _performance_summary(perf_harness.score_targets(model, train, evaluation)),
+            "performance": _performance_summary(
+                perf_harness.score_targets(model, train, evaluation)
+            ),
             "fit_seconds": model.metadata["fit_seconds"],
         }
         if simulated:
             entry["simulation"] = _simulation_summary(
-                sim_harness.evaluate_window(model, displays, eval_matches, evaluation, fmt, base_rate, SIM_SAMPLES)
+                sim_harness.evaluate_window(
+                    model,
+                    displays,
+                    eval_matches,
+                    evaluation,
+                    fmt,
+                    base_rate,
+                    SIM_SAMPLES,
+                )
             )
         fold[arm] = entry
         logger.info(
@@ -160,7 +196,10 @@ def arm_means(folds: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
         perfs = [f[arm]["performance"] for f in scored if arm in f]
         summary: Dict[str, Any] = {
             "n_folds": len(perfs),
-            "pinball": {name: _mean([p["pinball"][name] for p in perfs]) for name in HEADLINE_TARGETS},
+            "pinball": {
+                name: _mean([p["pinball"][name] for p in perfs])
+                for name in HEADLINE_TARGETS
+            },
             "runs_coverage_80": _mean([p["runs_coverage_80"] for p in perfs]),
             "runs_width_80": _mean([p["runs_width_80"] for p in perfs]),
         }
@@ -172,7 +211,9 @@ def arm_means(folds: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
                     "first_bias_by_fold": [s["first_bias"] for s in sims],
                     "first_coverage_80": _mean([s["first_coverage_80"] for s in sims]),
                     "first_width_80": _mean([s["first_width_80"] for s in sims]),
-                    "first_dispersion_ratio": _mean([s["first_dispersion_ratio"] for s in sims]),
+                    "first_dispersion_ratio": _mean(
+                        [s["first_dispersion_ratio"] for s in sims]
+                    ),
                     "mean_abs_chase_bias": _mean([abs(s["chase_bias"]) for s in sims]),
                     "chase_bias": _mean([s["chase_bias"] for s in sims]),
                     "chase_coverage_80": _mean([s["chase_coverage_80"] for s in sims]),
@@ -191,15 +232,25 @@ def verdict(means: Dict[str, Dict[str, Any]], arm: str) -> Dict[str, Any]:
     control, candidate = means["none"], means[arm]
     if "mean_abs_first_bias" not in candidate:
         pinball_ok = all(
-            candidate["pinball"][t] <= control["pinball"][t] * (1.0 + PINBALL_TOLERANCE) for t in HEADLINE_TARGETS
+            candidate["pinball"][t] <= control["pinball"][t] * (1.0 + PINBALL_TOLERANCE)
+            for t in HEADLINE_TARGETS
         )
-        return {"decided": False, "pinball_no_worse": pinball_ok, "reason": "no simulator for this format"}
+        return {
+            "decided": False,
+            "pinball_no_worse": pinball_ok,
+            "reason": "no simulator for this format",
+        }
     checks = {
-        "abs_bias_shrinks": candidate["mean_abs_first_bias"] < control["mean_abs_first_bias"],
-        "coverage_holds": abs(candidate["first_coverage_80"] - control["first_coverage_80"]) <= COVERAGE_TOLERANCE,
+        "abs_bias_shrinks": candidate["mean_abs_first_bias"]
+        < control["mean_abs_first_bias"],
+        "coverage_holds": abs(
+            candidate["first_coverage_80"] - control["first_coverage_80"]
+        )
+        <= COVERAGE_TOLERANCE,
         "width_does_not_grow": candidate["first_width_80"] <= control["first_width_80"],
         "pinball_no_worse": all(
-            candidate["pinball"][t] <= control["pinball"][t] * (1.0 + PINBALL_TOLERANCE) for t in HEADLINE_TARGETS
+            candidate["pinball"][t] <= control["pinball"][t] * (1.0 + PINBALL_TOLERANCE)
+            for t in HEADLINE_TARGETS
         ),
     }
     return {
@@ -209,13 +260,18 @@ def verdict(means: Dict[str, Dict[str, Any]], arm: str) -> Dict[str, Any]:
         "abs_bias": [control["mean_abs_first_bias"], candidate["mean_abs_first_bias"]],
         "coverage": [control["first_coverage_80"], candidate["first_coverage_80"]],
         "width": [control["first_width_80"], candidate["first_width_80"]],
-        "pinball_worst_ratio": max(candidate["pinball"][t] / control["pinball"][t] for t in HEADLINE_TARGETS),
+        "pinball_worst_ratio": max(
+            candidate["pinball"][t] / control["pinball"][t] for t in HEADLINE_TARGETS
+        ),
     }
 
 
 def run_format(frames_path: str, fmt: str, out: str) -> Dict[str, Any]:
     player_frame, match_frame = load_frames(None, frames_path)
-    folds = [run_fold(player_frame, match_frame, fmt, cutoff, end) for cutoff, end in fold_windows()]
+    folds = [
+        run_fold(player_frame, match_frame, fmt, cutoff, end)
+        for cutoff, end in fold_windows()
+    ]
     means = arm_means(folds)
     result = {
         "gate": gates.describe(GATE_ID),
@@ -244,8 +300,14 @@ def decide(paths: Sequence[str]) -> Dict[str, Any]:
         results[result["format"]] = result
     kept = {}
     for arm in (a for a in ARMS if a != "none"):
-        per_format = {fmt: results[fmt]["verdicts"][arm] for fmt in DECIDED_FORMATS if fmt in results}
-        kept[arm] = bool(per_format) and all(v.get("passes", False) for v in per_format.values())
+        per_format = {
+            fmt: results[fmt]["verdicts"][arm]
+            for fmt in DECIDED_FORMATS
+            if fmt in results
+        }
+        kept[arm] = bool(per_format) and all(
+            v.get("passes", False) for v in per_format.values()
+        )
     print(gates.describe(GATE_ID))
     print()
     header = "| format | arm | folds | mean |bias| | mean bias | coverage | width | chase bias | chase coverage | runs pinball | wickets pinball | balls pinball | conceded pinball | Δ Brier | verdict |"
@@ -257,11 +319,18 @@ def decide(paths: Sequence[str]) -> Dict[str, Any]:
             if arm == "none":
                 cell = "control"
             elif not v.get("decided"):
-                cell = "reported (pinball %s)" % ("ok" if v.get("pinball_no_worse") else "worse")
+                cell = "reported (pinball %s)" % (
+                    "ok" if v.get("pinball_no_worse") else "worse"
+                )
             else:
                 failed = [
                     k
-                    for k in ("abs_bias_shrinks", "coverage_holds", "width_does_not_grow", "pinball_no_worse")
+                    for k in (
+                        "abs_bias_shrinks",
+                        "coverage_holds",
+                        "width_does_not_grow",
+                        "pinball_no_worse",
+                    )
                     if not v[k]
                 ]
                 cell = "passes" if v["passes"] else "fails: " + ", ".join(failed)
@@ -276,18 +345,45 @@ def decide(paths: Sequence[str]) -> Dict[str, Any]:
                 f"{pin['balls_faced']:.3f} | {pin['runs_conceded']:.3f} | {_fmt(m.get('delta_brier'), '%+.4f')} | {cell} |"
             )
     print()
+    # The effect size against its own fold-to-fold noise: the paired difference in |bias|
+    # per fold, its mean and standard error. Reported beside the verdict, not part of it.
+    for fmt, result in results.items():
+        control = result["means"]["none"].get("first_bias_by_fold")
+        if not control:
+            continue
+        for arm in (a for a in ARMS if a != "none"):
+            paired = np.abs(result["means"][arm]["first_bias_by_fold"]) - np.abs(
+                control
+            )
+            se = (
+                float(np.std(paired, ddof=1) / np.sqrt(len(paired)))
+                if len(paired) > 1
+                else float("nan")
+            )
+            print(
+                f"{fmt} {arm}: paired Δ|bias| {paired.mean():+.2f} ± {se:.2f} runs (se over {len(paired)} folds)"
+            )
+    print()
     for arm, is_kept in kept.items():
         print(f"{arm}: {'KEPT' if is_kept else 'not kept'}")
     return {"kept": [arm for arm, is_kept in kept.items() if is_kept], "verdicts": kept}
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--frames", help="pickle from sim_frame_cache.py")
     p.add_argument("--format", choices=list(C.FORMAT_CODES))
     p.add_argument("--out")
-    p.add_argument("--decide", nargs="+", help="per-format result files; prints the table and the verdict")
+    p.add_argument(
+        "--decide",
+        nargs="+",
+        help="per-format result files; prints the table and the verdict",
+    )
     args = p.parse_args()
     if args.decide:
         decide(args.decide)

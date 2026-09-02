@@ -1390,6 +1390,105 @@ seeds; the locked-window line is reported as empty in both. The evaluate run's o
 is H-8: the parity check rebuilds the last 50 matches through the as-of path with the four
 new columns in both the win row and every player row, on both sources.
 
+**Results** (`scripts/experiments/xi/a1_fixture_context.py`, run 2026-09-02/03 on the
+archive; eleven folds 2024-01 … 2026-06, three seeds, 1,000 draws per fixture, the display
+models and the simulator's random numbers shared by the arms). The gate's table, one row
+per arm and format, means over folds; "verdict" is the registered rule applied per format:
+
+| format | arm | folds | mean \|bias\| | mean bias | coverage | width | chase bias | chase coverage | runs pinball | wickets pinball | balls pinball | conceded pinball | Δ Brier | verdict |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| T20 | none | 11 | 3.1 | +0.5 | 0.770 | 84.7 | −6.6 | 0.713 | 2.920 | 0.1413 | 2.320 | 1.935 | +0.0018 | control |
+| T20 | venue | 11 | 3.2 | +0.5 | 0.770 | 84.6 | −6.5 | 0.713 | 2.920 | 0.1412 | 2.320 | 1.933 | +0.0016 | fails: \|bias\| does not shrink |
+| T20 | competition | 11 | 3.1 | +0.5 | 0.767 | 84.4 | −6.6 | 0.709 | 2.920 | 0.1411 | 2.320 | 1.933 | +0.0014 | fails: \|bias\| does not shrink |
+| T20 | both | 11 | 3.1 | +0.5 | 0.772 | 84.5 | −6.5 | 0.717 | 2.919 | 0.1412 | 2.320 | 1.931 | +0.0014 | fails: \|bias\| does not shrink |
+| ODI | none | 11 | 14.1 | +0.5 | 0.753 | 149.4 | −8.9 | 0.700 | 4.715 | 0.1591 | 5.294 | 2.886 | +0.0078 | control |
+| ODI | venue | 11 | 13.9 | +0.5 | 0.750 | 148.9 | −9.0 | 0.701 | 4.713 | 0.1589 | 5.294 | 2.883 | +0.0093 | passes (by the letter; see below) |
+| ODI | competition | 11 | 14.1 | +0.3 | 0.753 | 149.9 | −9.0 | 0.706 | 4.714 | 0.1591 | 5.294 | 2.885 | +0.0087 | fails: width grows |
+| ODI | both | 11 | 13.7 | +0.3 | 0.757 | 149.1 | −9.2 | 0.701 | 4.713 | 0.1589 | 5.295 | 2.883 | +0.0084 | passes (by the letter; see below) |
+| T20I | none | 10 | 7.6 | +2.9 | 0.783 | 80.9 | −2.5 | 0.688 | 3.222 | 0.1326 | 2.288 | 1.902 | −0.0017 | control |
+| T20I | venue | 10 | 7.2 | +2.3 | 0.776 | 80.6 | −3.0 | 0.694 | 3.221 | 0.1324 | 2.289 | 1.902 | +0.0000 | reported: passes |
+| T20I | competition | 10 | 7.0 | +2.6 | 0.771 | 79.9 | −2.6 | 0.684 | 3.220 | 0.1324 | 2.288 | 1.898 | +0.0003 | reported: passes |
+| T20I | both | 10 | 6.7 | +2.5 | 0.790 | 79.9 | −2.9 | 0.691 | 3.221 | 0.1326 | 2.289 | 1.897 | +0.0002 | reported: passes |
+| TEST | none | 11 | — | — | — | — | — | — | 8.335 | 0.3037 | 13.783 | 5.951 | — | control |
+| TEST | venue | 11 | — | — | — | — | — | — | 8.341 | 0.3032 | 13.780 | 5.957 | — | reported: pinball no worse |
+| TEST | competition | 11 | — | — | — | — | — | — | 8.334 | 0.3032 | 13.771 | 5.954 | — | reported: pinball no worse |
+| TEST | both | 11 | — | — | — | — | — | — | 8.330 | 0.3029 | 13.765 | 5.957 | — | reported: pinball no worse |
+
+The effect size against its own noise — the paired difference in |bias| per fold, arm minus
+control, mean ± standard error over folds:
+
+| arm | T20 | ODI | T20I |
+|---|---:|---:|---:|
+| venue | +0.18 ± 0.06 | −0.22 ± 0.27 | −0.43 ± 0.24 |
+| competition | +0.05 ± 0.11 | −0.02 ± 0.21 | −0.64 ± 0.21 |
+| both | +0.03 ± 0.11 | −0.41 ± 0.25 | −0.93 ± 0.30 |
+
+And the ODI per-fold bias of the simulated first-innings mean, the quantity §8.3 named,
+by arm (folds 2024-01 … 2026-06):
+
+| arm | 24-01 | 24-04 | 24-07 | 24-10 | 25-01 | 25-04 | 25-06 | 25-09 | 25-12 | 26-03 | 26-06 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| none | −47.0 | +5.6 | +2.9 | −7.6 | +1.0 | +34.9 | +11.3 | −17.1 | +13.6 | +11.2 | −3.1 |
+| venue | −48.4 | +4.6 | +2.4 | −7.0 | +1.0 | +34.1 | +12.5 | −17.0 | +13.8 | +10.9 | −1.5 |
+| competition | −47.8 | +6.4 | +2.3 | −7.4 | +0.8 | +36.1 | +10.5 | −17.6 | +12.8 | +10.7 | −3.0 |
+| both | −47.1 | +5.7 | +2.4 | −7.1 | +0.3 | +34.7 | +12.0 | −17.9 | +11.6 | +10.3 | −1.7 |
+
+**Decision: a recorded null.** No family passes in both formats, so nothing ships:
+`contract.FIXTURE_CONTEXT_FAMILIES_KEPT` stays empty and the performance model reads no
+fixture-context column. The four columns stay in the frame, as the sequence families did
+after E1, so the question can be re-asked without a new pass.
+
+**Reading it.**
+
+- *T20 is a clean fail.* The per-quarter |bias| is already small there (3.1 runs on totals
+  of ~160) and none of the arms moves it: +0.18 ± 0.06 (venue, worse), +0.05 and +0.03
+  (inside the noise). Coverage, width and every pinball are flat to the third decimal. A
+  ground's level is something the model already carries through the elevens that play
+  there, and 42 T20 columns do not need two more to say it.
+- *ODI passes by the letter and not by any honest reading.* `venue` and `both` satisfy all
+  four clauses — but the shrinkage is 0.22 and 0.41 runs on a mean |bias| of 14.1, each
+  within about one standard error of zero over the folds, and the quarter the evidence
+  named, 2024-01 at −47, reads −48.4, −47.8 and −47.1 under the three arms. The gate as
+  registered had **no effect-size floor** — a design omission of this section, found by
+  its own result — and shipping on it would be exactly the H-23 failure the registry exists
+  to prevent: a pass for a reason other than the thing the gate named. The judgment call,
+  recorded here and in the PR: the rule is applied as written, the arm's verdict is
+  reported as it came out, and the family is not shipped because a shrinkage the folds
+  cannot distinguish from zero is not the shrinkage §8.3 asked for. The next gate of this
+  kind states its floor before it runs (one fold-level standard error is the natural one).
+- *Why the ground and the competition cannot fix that quarter.* The 2024-01 ODI fold is 40
+  matches: 29 men's — Nepal, Canada, Scotland, Western Australia — and 11 women's
+  (Australia, Zimbabwe), with a mean first-innings total of 197 against the format's ~240.
+  Their fixture context reads almost neutral (competition 0.97, venue 1.01 on average,
+  12 % of the competitions in their first season): these grounds and competitions have
+  either no history or a history at the format's level. The level of that quarter is *who
+  is playing* — associate men's and women's ODIs scored against one unsplit baseline — not
+  where or in what. The same holds for 2025-04 (+35: 55 of 78 matches women's) and 2025-09
+  (−17: 53 of 97). §8.3's attribution, "largest where a quarter is forty matches of one
+  competition", was right about the quarter and wrong about the cause: the per-quarter
+  bias is a population-mix effect, and the place to look is the baseline the elevens are
+  measured against (H-7 measured the gender split as costing nothing on AUC; nobody has
+  measured it on totals), not the fixture.
+- *T20I improves on every arm* — |bias| 7.6 → 7.2 / 7.0 / 6.7, two to three standard errors,
+  with coverage held and width narrower — and is not decided on: ten folds of 23–57
+  matches, the format whose T20 counterpart shows nothing. It is the one place the
+  hypothesis has support, reported as such.
+- *TEST* moves pinball by less than 0.1 % either way.
+- *Cost:* the pass gains four columns and two keyed tables; the fit time is unchanged
+  (190–200 s per T20 fold either way).
+
+**The harness after the choice** (`make evaluate`, run once on each source with the decided
+configuration — no family kept — 2026-09-03; 71 min on the database, 67 on the archive).
+The locked window (≥ 2026-09-02) holds **0 matches** on both sources and says so; the
+walk-forward table on the database is A-4's baseline (`docs/FOLLOW_UP_PLAN.md` § 5) to every
+printed decimal — the same rows (21,093 / 465,336), the same columns read, a deterministic
+pass — so "before" and "after" are one table. The archive run agrees within source noise
+(T20 first-innings coverage / width / bias 0.770 / 84.7 / +0.5 against 0.772 / 84.8 / +0.5;
+ODI 0.753 / 149.4 / +0.5 against 0.758 / 149.6 / +0.4; runs pinball 2.920 / 4.715 on both).
+H-8: 50 matches, 1,100 player rows, 1,100 performance predictions, 50 simulations at max
+abs difference **0.0 on both sources**, with the four fixture-context columns now in the win
+row and every player row the check compares. Gates and glossary pass on both.
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not

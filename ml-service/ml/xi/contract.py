@@ -151,7 +151,10 @@ FIXTURE_CONTEXT_COLS: List[str] = [col for cols in FIXTURE_CONTEXT_FAMILIES.valu
 #: Shrinkage of a key's rate toward the format's: the weight, in deliveries, of the prior --
 #: five T20 innings, two ODI innings. One number, chosen by the size of an innings, not swept.
 FIXTURE_CONTEXT_PRIOR_BALLS = 600.0
-#: Gate A-1's verdict: the families the performance model reads (plan §8.9).
+#: Gate A-1's verdict (plan §8.9): a recorded null. On the walk-forward folds no family
+#: shrank the per-quarter |bias| of the simulated first-innings mean in both T20 and ODI --
+#: T20 flat on every arm, ODI by 0.2-0.4 runs on a mean of 14 (within one fold-level
+#: standard error), the -47-run quarter untouched -- so the performance model reads none.
 FIXTURE_CONTEXT_FAMILIES_KEPT: Tuple[str, ...] = ()
 
 
