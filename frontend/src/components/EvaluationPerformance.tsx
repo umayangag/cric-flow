@@ -10,6 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import type { EvaluationPerformance as PerformanceReport, EvaluationTargetScore } from '../types';
+import { MetricLabel } from './common/MetricInfo';
 import { formatShare, formatStat } from '../utils/evaluationReport';
 
 /**
@@ -65,24 +66,30 @@ const EvaluationPerformanceTable: React.FC<{
           <TableHead>
             <TableRow>
               <TableCell>Target</TableCell>
-              <TableCell align="right" title="Within-match rank correlation with what happened">
-                Spearman
+              <TableCell align="right">
+                <MetricLabel metricKey="within_match_spearman" label="Spearman" />
               </TableCell>
-              <TableCell align="right">Top-3 hit</TableCell>
-              <TableCell align="right" title="Absolute error of the median">
-                MAE
+              <TableCell align="right">
+                <MetricLabel metricKey="top3_hit_rate" label="Top-3 hit" />
               </TableCell>
-              <TableCell align="right" title="The proper score for a quantile forecast">
-                Pinball
+              <TableCell align="right">
+                <MetricLabel metricKey="mae" label="MAE" />
               </TableCell>
-              <TableCell align="right">10–90 coverage</TableCell>
-              <TableCell align="right" title="Narrower is progress only while coverage holds">
-                10–90 width
+              <TableCell align="right">
+                <MetricLabel metricKey="pinball" label="Pinball" />
               </TableCell>
-              <TableCell align="right" title="The unconditional career mean on the same rows">
-                Career mean Spearman
+              <TableCell align="right">
+                <MetricLabel metricKey="coverage_80" label="10–90 coverage" />
               </TableCell>
-              <TableCell align="right">Career mean pinball</TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="width_80" label="10–90 width" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="within_match_spearman" label="Career mean Spearman" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="pinball" label="Career mean pinball" />
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

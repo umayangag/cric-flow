@@ -94,6 +94,8 @@ different run.
 
 ## Hyperparameters
 
+**Glossary keys** (L-1, `ml/xi/glossary.py`): none — the chosen values are inputs, and `hyperparameters` is declared a non-metric so the completeness gate does not ask anyone to explain a learning rate.
+
 There is one search, it is three points wide, and it runs inside `retrain`.
 
 `ml.xi.train.DISPLAY_GRID` holds three settings for the display model (depth, learning rate,
@@ -116,6 +118,8 @@ game (§1 of the re-architecture plan), and no amount of search moves it.
 ---
 
 ## Runs, manifests and staleness
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): the manifest's headline metrics are `objective_auc` and `display_auc_mean`; `n_train` and `n_holdout` beside them are declared counts, not metrics.
 
 **A run is a directory, and `current` is a pointer to one** (H-16):
 
@@ -192,6 +196,8 @@ The same pattern applies to other components:
 
 ## XI-responsive win model (`ml.xi`)
 
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `objective_auc`, `display_auc`, `display_auc_mean`, `display_auc_seed_sd`, `objective_brier`, `display_brier_mean`, `base_rate_brier`, `marginal_value`, `win_probability`.
+
 **Purpose:** a win model whose every input is a function of the two elevens, so it can rank
 candidate XIs — the objective for team selection. It replaces the windowed-form aggregates
 of `ml.win_features` for that job (held-out AUC 0.73 T20 / 0.69 ODI / 0.75 T20I against
@@ -250,6 +256,8 @@ a gate: 20% of the dataset is women's cricket, and the men's subset dominates an
 
 ### Data-quality gate (H-15)
 
+**Glossary keys** (L-1, `ml/xi/glossary.py`): none — `data_quality` is declared a non-metric subtree: these are counts of what the pass read and skipped, not measurements of a model.
+
 Every rating pass counts what it dropped and what it found odd, and `retrain` fails on the
 counts before the artifacts are worth anything. `ml/xi/quality.py` holds two rules:
 
@@ -275,6 +283,8 @@ undecided, 0 namesake sides, 1,358 sides of more than eleven (concussion and inj
 replacements, which Cricsheet lists in full), 0 unresolved player keys, 13,569 players.
 
 ### Source parity (`make xi-parity`)
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `max_abs_difference`.
 
 The two rating sources are supposed to describe the same cricket, and three times they did
 not — a hashed match id that lost 309 matches, an unnamed substitute fielder folded into a
@@ -305,6 +315,8 @@ plan's §10.4 has the account.
 
 ### Player-match rows (L1, P-2)
 
+**Glossary keys** (L-1, `ml/xi/glossary.py`): none of its own: the rows are the population every performance metric is measured on.
+
 The same day-close pass also emits one row per (match, player) — the training frame for the
 performance model (L2-B). Each row carries the player's as-of vectors, the expected role
 (`exp_bat_position`: decayed mean batting slot shrunk toward 7; `bat_innings_share`; batting
@@ -324,6 +336,8 @@ without a new pass, but **E1 kept none of them**: `contract.SEQUENCE_FAMILIES_KE
 and the performance model reads no sequence column.
 
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `within_match_spearman`, `within_match_spearman_involved`, `top3_hit_rate`, `mae`, `pinball`, `pinball_by_level`, `coverage_80`, `coverage_80_strict`, `width_80`, `q10`, `q90`, `probabilities`, `reliability`, `vs_career_mean`, `vs_career_quantiles`.
 
 **What it answers.** For two elevens, per player, *distributions* — never points — of runs,
 balls faced and runs conceded (quantiles 0.1 / 0.5 / 0.9), wickets and catches (a Poisson
@@ -397,6 +411,8 @@ parity check in the harness compares the served prediction with the prediction o
 training frame's row for the last 50 matches, output by output.
 
 ### Match simulator (L2-C, `ml/xi/simulator.py`, P-4)
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `dispersion_ratio`, `bias`, `median_mae`, `actual_sd_around_simulated_mean`, `simulated_sd_mean`, `below_q10`, `above_q90`, `pit_deciles`, `delta_brier_simulated_minus_display`, `p_bat_first_wins`, `spread_share`, `spread_runs`, `range_10_90`.
 
 **What it answers.** For two elevens, drawn N times (default 2,000, seeded, vectorised): each
 side's total (median, 10–90), each player's median and 10–90 of runs, balls, wickets and runs
@@ -489,6 +505,8 @@ total toward anything, on any path.
 
 ### As-of serving (`ratings_as_of`, P-2)
 
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `max_abs_difference`, `fielded_eleven_max_abs_difference`.
+
 The serving artifact holds ratings **through today** — right for a live prediction, wrong
 for a backtest, whose team Elo would carry the results of the matches being scored (P-0 had
 to freeze the artifact by hand; `freeze_ratings.py` is retired). `ml/xi/asof.py` advances a
@@ -501,6 +519,8 @@ carries per-match rows so the arms can be compared pairwise and filtered by date
 predictions omit `as_of` and are served from the loaded state unchanged.
 
 ### Evaluation harness (`make evaluate`, L4 / H-19)
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc` and `max_abs_difference` among them.
 
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
 quarterly cutoffs 2024-01 … 2025-06 for every choice-facing number, and the **locked
@@ -556,6 +576,16 @@ report embeds the registry, `gates.check_report` fails the run if a gate is prin
 entry or an entry has nowhere to be read from, and the Evaluation tab renders the triple beside
 each number. An experiment script prints its gate's triple before it runs.
 
+**Metric glossary (L-1, `ml/xi/glossary.py`).** The same pattern for what the numbers *mean*:
+one entry per reported metric key — a plain-language name, an explanation, the reference band
+this system measured, and which direction is better. The report embeds the glossary,
+`glossary.check_report` walks every metric key the report emits and names any that has neither
+an entry nor a declared reason for not being a metric, and a harness test fails on one — so a
+new metric cannot reach a surface unexplained. `GET /xi/metric-glossary` serves the same
+entries from the code, with no artifacts needed, and every metric label in the frontend opens
+the entry for its key, which is why no component holds metric prose of its own. The copy is
+the table in `docs/FOLLOW_UP_PLAN.md` § 3.
+
 ```bash
 make evaluate                                        # the database
 make evaluate CRICSHEET_DIR=data/go-app/cricsheet    # the raw archive
@@ -583,6 +613,8 @@ and there is one dependency set for the image, for CI and for a local venv.
 ---
 
 ## Probability calibration (classifiers)
+
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `brier`, `reliability`.
 
 For classifiers (e.g. the win model), predicted probabilities can be **calibrated** (Platt scaling or isotonic regression) so they reflect true frequencies, and evaluated with a reliability diagram, Brier score, or ECE.
 

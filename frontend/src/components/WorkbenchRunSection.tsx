@@ -1,8 +1,20 @@
 import React from 'react';
-import { Alert, Chip, Stack, Typography } from '@mui/material';
+import {
+  Alert,
+  Chip,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
 import SectionCard from './common/SectionCard';
 import KeyValueList from './common/KeyValueList';
 import JsonCollapse from './common/JsonCollapse';
+import { MetricLabel } from './common/MetricInfo';
+import { formatMetricValue } from '../utils/format';
 import type { ApiError } from '../lib/apiError';
 import type { XiStatusResponse } from '../types';
 
@@ -10,6 +22,50 @@ type Props = {
   status: XiStatusResponse | null;
   loading: boolean;
   error: ApiError | null;
+};
+
+/**
+ * The run's own headline metrics, one row per format, each explained by its key.
+ *
+ * They used to be a JSON dump, which is honest and unreadable: `objective_auc` means
+ * nothing to a reader who has not lived inside the plan. The keys are the service's
+ * (`ml/xi/glossary.py`), so every one of them opens the same explainer the evaluation
+ * tab uses.
+ */
+const HeadlineMetrics: React.FC<{ metrics: Record<string, Record<string, number>> }> = ({
+  metrics,
+}) => {
+  const keys = Array.from(
+    new Set(Object.values(metrics).flatMap((byMetric) => Object.keys(byMetric ?? {}))),
+  );
+  if (!keys.length) return null;
+
+  return (
+    <Table size="small" aria-label="run headline metrics">
+      <TableHead>
+        <TableRow>
+          <TableCell>Format</TableCell>
+          {keys.map((key) => (
+            <TableCell key={key} align="right">
+              <MetricLabel metricKey={key} label={key} />
+            </TableCell>
+          ))}
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {Object.entries(metrics).map(([format, byMetric]) => (
+          <TableRow key={format} hover>
+            <TableCell>{format}</TableCell>
+            {keys.map((key) => (
+              <TableCell key={key} align="right">
+                {byMetric?.[key] == null ? '—' : formatMetricValue(byMetric[key])}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 };
 
 /**
@@ -59,9 +115,7 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, loading, error }) => (
             summary="Show the hyperparameters the grid chose, and why"
           />
         )}
-        {status.manifest?.metrics && (
-          <JsonCollapse data={status.manifest.metrics} summary="Show the run's headline metrics" />
-        )}
+        {status.manifest?.metrics && <HeadlineMetrics metrics={status.manifest.metrics} />}
       </Stack>
     )}
   </SectionCard>

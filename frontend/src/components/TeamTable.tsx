@@ -9,6 +9,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import { MetricLabel } from './common/MetricInfo';
 import type { PredictTeamSelectedPlayer, PredictValueRange } from '../types';
 
 export interface TeamTableProps {
@@ -50,16 +51,24 @@ const TeamTable: React.FC<TeamTableProps> = ({ teamName, players, optimised }) =
           <TableHead>
             <TableRow>
               <TableCell>Player</TableCell>
-              <TableCell align="right" title="Median and 10–90 range">
-                Runs (10–90)
+              <TableCell align="right">
+                <MetricLabel metricKey="range_10_90" label="Runs (10–90)" />
               </TableCell>
-              <TableCell align="right">Balls (10–90)</TableCell>
-              <TableCell align="right">Wkts (10–90)</TableCell>
-              <TableCell align="right">Conceded (10–90)</TableCell>
-              <TableCell align="right">Econ</TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="range_10_90" label="Balls (10–90)" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="range_10_90" label="Wkts (10–90)" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="range_10_90" label="Conceded (10–90)" />
+              </TableCell>
+              <TableCell align="right">
+                <MetricLabel metricKey="economy" label="Econ" />
+              </TableCell>
               {optimised && (
-                <TableCell align="right" title="P(win) lost if replaced by an average player">
-                  Marginal
+                <TableCell align="right">
+                  <MetricLabel metricKey="marginal_value" label="Marginal" />
                 </TableCell>
               )}
             </TableRow>

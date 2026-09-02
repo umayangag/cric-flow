@@ -153,7 +153,11 @@ export type RunManifestSummary = {
   git_sha?: string;
   formats?: string[];
   hyperparameters?: Record<string, unknown>;
-  metrics?: Record<string, unknown>;
+  /**
+   * The run's headline metrics per format, keyed by the metric key the service reports
+   * them under — the same keys the glossary explains (L-1).
+   */
+  metrics?: Record<string, Record<string, number>>;
 };
 
 /** Model metadata from ml-service GET /model-metadata (via go-app proxy). One source of truth for Workbench UI. */
@@ -298,6 +302,33 @@ export type EvaluationSelectionDecision = {
   reason: string;
 };
 
+/**
+ * L-1: one reported metric key, explained by the service that computes it.
+ *
+ * The frontend holds no metric prose of its own: `name`, `explanation`, `band` and
+ * `better` are rendered as they arrive, so rewording an explanation is a change to
+ * `ml/xi/glossary.py` and never to a component.
+ */
+export type MetricGlossaryEntry = {
+  key: string;
+  /** Plain-language name, for a reader who has not lived inside the plan. */
+  name: string;
+  explanation: string;
+  /** The reference this system measured, never a textbook value. */
+  band: string;
+  /** Which direction is progress, in words: "higher is better", and so on. */
+  better: string;
+  /**
+   * The same judgement in one word, for a surface that colours a change rather than
+   * printing a sentence. `nominal`, `exact` and `none` carry no better/worse verdict.
+   */
+  direction: 'higher' | 'lower' | 'nominal' | 'exact' | 'none';
+};
+
+export type MetricGlossary = {
+  entries: Record<string, MetricGlossaryEntry>;
+};
+
 /** H-23: what a gate varies, what it holds fixed and what decides, beside its number. */
 export type EvaluationGate = {
   id: string;
@@ -359,6 +390,11 @@ export type EvaluationReport = {
   /** The gate registry the harness checked the report against (H-23). */
   gates?: {
     registry: Record<string, EvaluationGate>;
+    passed?: boolean;
+    problems?: string[];
+  };
+  /** The metric glossary the harness embedded, and whether it explained every metric (L-1). */
+  glossary?: MetricGlossary & {
     passed?: boolean;
     problems?: string[];
   };

@@ -33,7 +33,7 @@ from typing import Dict, List, Optional, Sequence
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import runs
+from ml.xi import glossary, runs
 from ml.xi.builder import BuildResult, build
 from ml.xi.store import state_shape
 from ml.xi.train import REPORT_NAME, train_all
@@ -48,6 +48,10 @@ def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
     H-17 scopes selection by, and the display model's, which is what a user is shown. The
     rest of the report stays in the report -- a manifest that copies everything is a
     second copy to fall out of step with the first.
+
+    The names are glossary keys (``ml.xi.glossary``), because the Workbench renders these
+    metrics by key and looks their explanation up: a headline metric named anything else
+    would reach a surface with nothing to say about itself.
     """
     out: Dict[str, Dict[str, float]] = {}
     for report in summary.get("formats", []):
@@ -85,6 +89,14 @@ def retrain(
     logger.info("retrain: run %s -> %s", run_id, directory)
 
     summary = train_all(result, directory, cutoff, formats, baseline_dir=artifacts_dir)
+    metrics = headline_metrics(summary)
+    # L-1: the Workbench renders these by key and looks each one up, so a headline metric
+    # the glossary does not carry would reach a surface with nothing to say about itself.
+    unexplained = glossary.check_metric_names(
+        sorted({key for per_format in metrics.values() for key in per_format}), "the run manifest"
+    )
+    if unexplained:
+        logger.error("retrain: %s", "; ".join(unexplained))
 
     manifest = runs.RunManifest(
         run_id=run_id,
@@ -100,9 +112,9 @@ def retrain(
             "gender_split_context": result.state.gender_split_context,
         },
         hyperparameters=chosen_hyperparameters(summary),
-        metrics=headline_metrics(summary),
+        metrics=metrics,
         state_shape=state_shape(result.state),
-        formats=sorted(headline_metrics(summary)),
+        formats=sorted(metrics),
         report=REPORT_NAME,
     )
     runs.write_manifest(directory, manifest)

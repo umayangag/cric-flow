@@ -92,6 +92,13 @@ const EvaluationReportTab: React.FC = () => {
           what it holds fixed — {report.gates.problems?.join('; ')}.
         </Alert>
       )}
+      {report.glossary && report.glossary.passed === false && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Metric glossary incomplete (L-1): this report prints a metric no entry explains, so it
+          reaches these tables with nothing to say about itself —{' '}
+          {report.glossary.problems?.join('; ')}.
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
         <FormControl size="small" sx={{ minWidth: 140 }}>
