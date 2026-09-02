@@ -3,12 +3,15 @@ package pipeline
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
 // readContract loads the generated contract as the far side reads it — off disk, not
@@ -111,5 +114,41 @@ func TestContractDeclaresTheSameBoundaryAsTheCode(t *testing.T) {
 		assert.Equal(t, call.Path, contract.MLCalls[i].Path)
 		assert.Equal(t, call.Method, contract.MLCalls[i].Method)
 		assert.Equal(t, call.Query, contract.MLCalls[i].Query)
+	}
+}
+
+// TestStopResponseFieldMatchesTheContract is go-app's half of H-24 for the one field it
+// reads out of an ml-service response body.
+//
+// The assertion is on the struct tag rather than on the constant, because the tag is what
+// actually decodes the body: a constant that agreed with the contract while the tag said
+// something else would be a green test over a Stop that always read zero steps (D-11).
+func TestStopResponseFieldMatchesTheContract(t *testing.T) {
+	t.Parallel()
+	contract := readContract(t)
+
+	field, ok := reflect.TypeOf(stopTrainingResponse{}).FieldByName("Stopped")
+	require.True(t, ok)
+
+	assert.Equal(t, StopResponseField, contract.StopResponseField, "the contract is stale; regenerate it")
+	assert.Equal(t, contract.StopResponseField, field.Tag.Get("json"),
+		"go-app decodes a field ml-service does not send")
+}
+
+// TestTeamGendersMatchTheContract is go-app's half of H-24 for the gender vocabulary.
+//
+// D-10's fix puts gender on the request wire, and ml-service already matched on the literal
+// (`RatingState._ctx_group` reads `gender == "female"` to pick E7's baseline group). Two
+// services matching on one word with a private copy each is the shape D-9 had; this is the
+// near side asserting against the contract rather than against itself.
+func TestTeamGendersMatchTheContract(t *testing.T) {
+	t.Parallel()
+	contract := readContract(t)
+
+	assert.Equal(t, TeamGenders(), contract.TeamGenders, "the contract is stale; regenerate it")
+	assert.NotEmpty(t, contract.TeamGenders, "a vocabulary nobody declares is not a contract")
+	for _, gender := range contract.TeamGenders {
+		assert.True(t, teams.IsKnownGender(gender),
+			"%q is published on the wire but this service would refuse it", gender)
 	}
 }

@@ -3,7 +3,7 @@ import { api } from '../api';
 import { useAsync } from './useAsync';
 import { useVenueSearch } from './useVenueSearch';
 import type { ApiError } from '../lib/apiError';
-import type { PredictTeamSelectionResponse } from '../types';
+import type { PredictTeamSelectionResponse, TeamSideOption } from '../types';
 
 const MAX_FUTURE_DAYS = 14;
 
@@ -26,6 +26,20 @@ function dateBounds(): { minDate: string; maxDate: string; min: Date; max: Date 
 }
 
 /**
+ * Keep a chosen side only while the list it came from still offers it.
+ *
+ * The comparison is by `club_id`, not by name: two sides share a name, so matching on the
+ * name would leave the women's side selected under a list that only holds the men's.
+ */
+function keepIfStillOffered(
+  chosen: TeamSideOption | null,
+  offered: TeamSideOption[],
+): TeamSideOption | null {
+  if (!chosen) return null;
+  return offered.some((side) => side.club_id === chosen.club_id) ? chosen : null;
+}
+
+/**
  * The Upcoming Match tab's state.
  *
  * It held 16 `useState` calls, five of which were three near-identical
@@ -40,8 +54,10 @@ function dateBounds(): { minDate: string; maxDate: string; min: Date; max: Date 
  */
 export function useUpcomingMatch() {
   const [format, setFormat] = useState('');
-  const [team1, setTeam1] = useState('');
-  const [team2, setTeam2] = useState('');
+  // Both sides are the chosen option, not the typed text: the request carries a club id,
+  // because a name names two teams for a third of the dataset (D-10).
+  const [team1, setTeam1] = useState<TeamSideOption | null>(null);
+  const [team2, setTeam2] = useState<TeamSideOption | null>(null);
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState('');
 
@@ -49,10 +65,10 @@ export function useUpcomingMatch() {
     runOnMount: [],
     errorMessage: 'Failed to load formats',
   });
-  const teams = useAsync((fmt: string) => api.getTeamsByFormat(fmt), {
+  const teams = useAsync((fmt: string) => api.getTeamSidesByFormat(fmt), {
     errorMessage: 'Failed to load teams',
   });
-  const opponents = useAsync((fmt: string, side: string) => api.getOpponents(fmt, side), {
+  const opponents = useAsync((fmt: string, clubId: number) => api.getOpponentSides(fmt, clubId), {
     errorMessage: 'Failed to load opponents',
   });
   const prediction = useAsync(api.predictTeamSelection, {
@@ -71,22 +87,22 @@ export function useUpcomingMatch() {
   useEffect(() => {
     if (!format) {
       resetTeams();
-      setTeam1('');
+      setTeam1(null);
       return;
     }
     void loadTeams(format).then((list) => {
-      if (list) setTeam1((prev) => (prev && !list.includes(prev) ? '' : prev));
+      if (list) setTeam1((prev) => keepIfStillOffered(prev, list));
     });
   }, [format, loadTeams, resetTeams]);
 
   useEffect(() => {
     if (!format || !team1) {
       resetOpponents();
-      setTeam2('');
+      setTeam2(null);
       return;
     }
-    void loadOpponents(format, team1).then((list) => {
-      if (list) setTeam2((prev) => (prev && !list.includes(prev) ? '' : prev));
+    void loadOpponents(format, team1.club_id).then((list) => {
+      if (list) setTeam2((prev) => keepIfStillOffered(prev, list));
     });
   }, [format, team1, loadOpponents, resetOpponents]);
 
@@ -115,11 +131,11 @@ export function useUpcomingMatch() {
 
   const { run: predict } = prediction;
   const handlePredict = useCallback(async () => {
-    if (!canPredict) return;
+    if (!canPredict || !team1 || !team2) return;
     await predict({
       format: format.trim(),
-      team1: team1.trim(),
-      team2: team2.trim(),
+      team1_id: team1.club_id,
+      team2_id: team2.club_id,
       venue: venue.trim() || undefined,
       match_date: matchDate,
     });

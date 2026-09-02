@@ -8,16 +8,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
+	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
 // predictTeamRequest holds the parsed request body for team-selection prediction.
+//
+// A side is named by `team1_id` -- the `club_id` the options endpoint returned -- or by
+// `team1` plus `team1_gender`. A bare `team1` is honoured only where the format holds one
+// side of that name; it used to be honoured always, and the resolver picked the more
+// recently active side with nothing but a server log to say so (D-10).
 type predictTeamRequest struct {
-	Format    string `json:"format"`
-	Team1     string `json:"team1"`
-	Team2     string `json:"team2"`
-	Venue     string `json:"venue"`
-	MatchDate string `json:"match_date"`
+	Format      string `json:"format"`
+	Team1ID     int64  `json:"team1_id"`
+	Team2ID     int64  `json:"team2_id"`
+	Team1       string `json:"team1"`
+	Team2       string `json:"team2"`
+	Team1Gender string `json:"team1_gender"`
+	Team2Gender string `json:"team2_gender"`
+	Venue       string `json:"venue"`
+	MatchDate   string `json:"match_date"`
 	// Weather is decoded only to refuse it. It is retired (consumer plan W0-3), and an
 	// unknown field is silently dropped by encoding/json — so a caller still sending a
 	// forecast would get a prediction computed without it and no indication why.
@@ -68,6 +79,10 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	body.Format = strings.TrimSpace(q.Get("format"))
 	body.Team1 = strings.TrimSpace(q.Get("team1"))
 	body.Team2 = strings.TrimSpace(q.Get("team2"))
+	body.Team1ID = parseClubID(q.Get("team1_id"))
+	body.Team2ID = parseClubID(q.Get("team2_id"))
+	body.Team1Gender = strings.TrimSpace(q.Get("team1_gender"))
+	body.Team2Gender = strings.TrimSpace(q.Get("team2_gender"))
 	body.Venue = strings.TrimSpace(q.Get("venue"))
 	body.MatchDate = strings.TrimSpace(q.Get("match_date"))
 	if s := q.Get("min_bowlers"); s != "" {
@@ -82,12 +97,23 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	return body, nil
 }
 
+// parseClubID reads a club id from a query parameter. A value that is not a positive
+// integer is no reference at all, and is left zero so the name path -- or the "name a side"
+// refusal -- handles it.
+func parseClubID(raw string) int64 {
+	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
 // buildPredictInput converts a parsed request into a predictteam.Input.
 func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam.Input {
 	input := predictteam.Input{
 		Format:        body.Format,
-		Team1:         body.Team1,
-		Team2:         body.Team2,
+		Team1:         db.TeamRef{ClubID: body.Team1ID, Name: body.Team1, Gender: body.Team1Gender},
+		Team2:         db.TeamRef{ClubID: body.Team2ID, Name: body.Team2, Gender: body.Team2Gender},
 		Venue:         body.Venue,
 		MatchDate:     matchDate,
 		ExtraTeam1:    body.ExtraTeam1,
@@ -121,12 +147,8 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_JSON", Message: err.Error()})
 		return
 	}
-	if body.Format == "" || body.Team1 == "" || body.Team2 == "" {
-		writeJSON(
-			w,
-			http.StatusBadRequest,
-			apiError{Code: "INVALID_PARAM", Message: "format, team1, team2 are required"},
-		)
+	if invalid := validateSideReferences(body); invalid != nil {
+		writeJSON(w, http.StatusBadRequest, *invalid)
 		return
 	}
 	if body.MatchDate == "" {
@@ -148,10 +170,75 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 	}
 	result, err := predictteam.PredictTeams(r.Context(), buildPredictInput(body, matchDate), a.mlClient)
 	if err != nil {
-		respondErr(w, err)
+		respondPredictErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// validateSideReferences checks that the request names two sides at all, and that any gender
+// it carries is one this system stores. It does not resolve them -- that needs the database
+// -- it only refuses a request that names no side however it is read.
+func validateSideReferences(body predictTeamRequest) *apiError {
+	if body.Format == "" || (body.Team1ID == 0 && body.Team1 == "") || (body.Team2ID == 0 && body.Team2 == "") {
+		return &apiError{
+			Code:    "INVALID_PARAM",
+			Message: "format is required, and each side must be named by an id or a name",
+			Hint: "send team1_id/team2_id (the club_id from /api/options/teams-by-format), " +
+				"or team1/team2 with team1_gender/team2_gender",
+		}
+	}
+	genders := []struct{ field, value string }{
+		{"team1_gender", body.Team1Gender},
+		{"team2_gender", body.Team2Gender},
+	}
+	for _, side := range genders {
+		if side.value != "" && !teams.IsKnownGender(side.value) {
+			return &apiError{
+				Code:      "INVALID_PARAM",
+				Message:   side.field + " is not a gender this system stores",
+				Available: teams.Genders(),
+			}
+		}
+	}
+	return nil
+}
+
+// respondPredictErr turns the two refusals D-10 introduced into 400s that say what to do
+// next, and leaves everything else to respondErr.
+//
+// Both are the caller's request being unanswerable rather than this service failing: a name
+// that means two sides has no single answer, and a fixture whose sides are different genders
+// is not a match anyone plays. Answering either with a prediction is the defect.
+func respondPredictErr(w http.ResponseWriter, err error) {
+	var ambiguous *db.AmbiguousTeamNameError
+	if errors.As(err, &ambiguous) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:      "TEAM_AMBIGUOUS",
+			Message:   ambiguous.Error(),
+			Hint:      "send the club_id from /api/options/teams-by-format, or add team1_gender/team2_gender",
+			Available: ambiguous.CandidateLabels(),
+		})
+		return
+	}
+	var crossGender *predictteam.CrossGenderFixtureError
+	if errors.As(err, &crossGender) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "FIXTURE_CROSS_GENDER",
+			Message: crossGender.Error(),
+			Hint:    "both sides of a fixture are the same gender; pick two sides from one list",
+		})
+		return
+	}
+	if errors.Is(err, db.ErrOppositionNotFound) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "TEAM_NOT_FOUND",
+			Message: err.Error(),
+			Hint:    "the side must have played this format; pick one from /api/options/teams-by-format",
+		})
+		return
+	}
+	respondErr(w, err)
 }
 
 func parseMatchDate(s string) (time.Time, error) {

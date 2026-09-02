@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from app import training_orchestrator
 from ml.xi import contract as C
 from ml.xi import retrain
+from ml.xi.ratings import RatingState
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "ops-console.contract.json"
 
@@ -132,6 +133,26 @@ def test_both_services_match_on_the_same_format_codes(contract) -> None:
     it reads them back. A code added on one side only is a format silently trained on
     nothing."""
     assert set(contract["format_codes"]) == set(C.FORMAT_CODES)
+
+
+# --- the gender vocabulary ----------------------------------------------------------
+
+
+def test_both_services_match_on_the_same_team_genders(contract) -> None:
+    """go-app writes ``match.gender`` and now accepts a gender on the prediction request;
+    this service matches on the literal to group E7's context baselines. A value spelled
+    differently on one side is a match quietly read into the wrong baseline group (D-10)."""
+    assert set(contract["team_genders"]) == set(C.TEAM_GENDERS)
+
+
+def test_the_context_group_split_keys_on_a_gender_the_contract_publishes() -> None:
+    """The E7 split is the one place this service compares a gender to a literal, so the
+    literal it compares against has to be one go-app can actually send."""
+    state = RatingState(gender_split_context=True)
+
+    assert C.GENDER_FEMALE in C.TEAM_GENDERS
+    assert state._ctx_group(C.GENDER_FEMALE) == 1
+    assert state._ctx_group(C.GENDER_MALE) == 0
 
 
 # --- the regression seam D-9 needed -------------------------------------------------

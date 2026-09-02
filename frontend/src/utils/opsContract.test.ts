@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
+import { TEAM_GENDERS } from '../types';
 
 /**
  * The backend/frontend contract test.
@@ -36,6 +37,8 @@ type Contract = {
   rejected_body_params: string[];
   /** The training cutoff's wire format: what go-app sends and ml-service parses (H-24). */
   cutoff: { pattern: string; hint: string; example: string };
+  /** The gender half of a team's identity, as all three components spell it (H-24, D-10). */
+  team_genders: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -139,6 +142,36 @@ describe('ops console contract', () => {
   it('never constructs a body field the backend rejects', () => {
     const apiModule = readFileSync(join(frontendSrc, 'api.ts'), 'utf8');
     const offenders = contract.rejected_body_params.filter((param) => apiModule.includes(param));
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The UI's gender vocabulary is the contract's, not a copy of it.
+   *
+   * D-10 put gender on the request wire; ml-service already matched on the literal to group
+   * E7's context baselines. Three components agreeing on one word by hand-typing it three
+   * times is the shape D-9 had, so this is the third side's assertion.
+   */
+  it('spells the team genders the way the backend does', () => {
+    expect([...TEAM_GENDERS].sort()).toEqual([...contract.team_genders].sort());
+  });
+
+  /**
+   * A side's label ("India (men)") comes from the backend as `display_name`, so the UI never
+   * builds one from a gender literal. If it did, the picker and the response's echo of what
+   * was scored could disagree about the same team.
+   */
+  it('never builds a side label out of a gender literal', () => {
+    const offenders: string[] = [];
+    for (const file of productionSources(frontendSrc)) {
+      if (file.endsWith(join('src', 'types.ts'))) continue; // where the vocabulary is declared
+      const text = readFileSync(file, 'utf8');
+      for (const gender of contract.team_genders) {
+        if (text.includes(`'${gender}'`) || text.includes(`"${gender}"`)) {
+          offenders.push(`${file.slice(repoRoot.length + 1)} spells out "${gender}"`);
+        }
+      }
+    }
     expect(offenders).toEqual([]);
   });
 });

@@ -79,7 +79,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (13 routes, from `app/main.py`):
+**ml-service** (14 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
@@ -88,6 +88,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/admin/reload` |
 | POST | `/admin/train/retrain` |
 | POST | `/admin/train/evaluate` |
+| POST | `/admin/train/stop` |
 | GET | `/admin/train/progress` |
 | GET | `/xi/status` |
 | GET | `/xi/evaluate-report` |
@@ -97,7 +98,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (29 routes, from `internal/server/router.go`):
+**go-app** (28 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
@@ -119,7 +120,6 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/ops/data/staged` |
 | POST | `/ops/data/extract` |
 | GET | `/ops/data/datasets` |
-| GET | `/api/options/teams` |
 | GET | `/api/options/teams-by-format` |
 | GET | `/api/options/opponents` |
 | GET | `/api/options/formats` |

@@ -972,7 +972,8 @@
           "POST /ops/pipeline/run-plan",
           "GET /ops/pipeline/plan",
           "GET /ops/pipeline/stream",
-          "GET /admin/train/progress"
+          "GET /admin/train/progress",
+          "POST /admin/train/stop"
         ],
         "tables": [
           "data_migrations"
@@ -1104,7 +1105,6 @@
           "frontend/src/components/SystemMapTab.tsx"
         ],
         "endpoints": [
-          "GET /api/options/teams",
           "GET /api/options/teams-by-format",
           "GET /api/options/opponents",
           "GET /api/options/formats",

@@ -99,7 +99,106 @@ codes (it renders `{code, message, hint}` opaquely, so there is no literal to dr
 does not parse run ids (it forwards them as opaque strings). Both become H-24 items the moment
 either side starts matching on them.
 
-### 1.3 D-10 — "Stop pipeline" cancels go-app's job, not ml-service's training — **open**
+### 1.3 D-10 — a prediction for "India" silently chose one of the two Indias — **fixed**
+
+*This defect and D-11 were briefly numbered the other way round. F-1 recorded the
+stop-that-does-not-stop as D-10 (commit `4615883`); this one was then found and written up as
+D-11, on a branch already named `fix/d-10-gendered-team-resolution`. The two numbers were
+swapped so each matches the branch that fixed it — `fix/d-10-gendered-team-resolution` here,
+`fix/d-11-stop-that-stops` for D-11. The only stale reference left is the F-1 commit message,
+which calls D-11 "D-10"; every file says what this table says.*
+
+**Root cause: the identity migration split teams by gender and the serving path never
+followed.** `opposition` has been keyed `(opposition_name, gender)` since migration `0004`,
+because 130 of the 394 team names in the dataset are used by both a men's and a women's side.
+The prediction request kept taking a bare name, so `FindOppositionIDForFormat` had to turn a
+name into one id with no gender to go on — and it did, by **picking the side that played the
+format most recently** and writing a `slog.Warn` nobody reads. Its own doc comment said so:
+"the real fix is for the caller to carry the gender".
+
+Measured against the live database on 2026-09-02, the query that resolver ran for
+`("India", "T20I")`:
+
+| club_id | gender | last_played | innings |
+|---|---|---|---|
+| 43 | male | 2026-07-26 | 531 |
+| 132 | female | 2026-06-28 | 323 |
+
+Every request naming India in T20I was answered with the men's side, whichever the user
+meant, and the response said only `"India"` — so the answer could not be told apart from the
+one that was asked for. The picker could not help: `/api/options/teams-by-format` returned
+`SELECT DISTINCT opposition_name`, one entry for two teams. The ambiguity is not marginal —
+names with both sides active in one format: **T20 130, T20I 31, ODI 25, TEST 4**.
+
+Worse than the guess, `predictteam` resolved the two sides independently, so nothing stopped
+a fixture from resolving to India (men) versus Australia (women). The XIs, the Elo, the
+head-to-head and the context baselines would come from two different games, and the model has
+never been shown such a match, so the probability it returned would be arithmetic with no
+referent.
+
+**Why the gates missed it.** It is not a seam defect like D-9; it is the *absence* of a field.
+Every component behaved as specified — the resolver was tested for "unknown team is an error",
+the handler for "team1 is required", the picker for "cascades formats to teams" — and no test
+could fail, because no layer ever held two candidate sides at once except the one that
+discarded one of them. §8.7's rule is what names it: *a substitution that changes which model
+answered must say so in the response.* Substituting the men's side for the women's is a
+substitution, and it was announced only in a server log.
+
+**Fixed here** (branch `fix/d-10-gendered-team-resolution`), ends-in:
+
+1. **The API stops guessing.** `db.ResolveTeamSide` takes a `TeamRef` — a club id, or a name
+   with a gender, or a bare name — and refuses what it cannot resolve: a bare name that names
+   two sides in the format returns `*db.AmbiguousTeamNameError` carrying **both** candidates,
+   which the handler answers as `400 TEAM_AMBIGUOUS` with them in `available`. A bare name
+   that names one side still resolves; the fix refuses doubt, not names.
+2. **The response echoes what was scored.** `team1_side` / `team2_side` carry `club_id`,
+   `name`, `gender` and `display_name` on **every** prediction, ambiguous or not — naming the
+   side only when the request was unclear would make silence mean agreement, which is what
+   this defect was. `predicted_winner` names the resolved side too ("India (women)", not
+   "India").
+3. **A cross-gender fixture is `400 FIXTURE_CROSS_GENDER`**, not a prediction.
+4. **The options endpoint returns sides, not names**: `{club_id, name, gender, display_name}`,
+   folded onto the club (`COALESCE(canonical_id, id)`) so a renamed club is listed once under
+   its current name. `/api/options/opponents` takes `team_id`, since "the opponents of India"
+   is the same unanswerable question one level along. The frontend picker shows "India (men)"
+   and "India (women)" as distinct options and sends the id; it keeps or drops a chosen side by
+   `club_id`, never by name. Venue and format flows are untouched. `/api/options/teams` (bare
+   names, no format, no reader in the UI) is deleted with `db.GetUniqueTeams`,
+   `GetTeamsByFormat` and `GetOpponentsByFormatAndTeam`.
+5. **Every other caller.** `FindOppositionIDForFormat` had exactly two call sites, both in
+   `predictteam.resolveFixture`; it is gone. The other paths were audited and have no
+   ambiguity to fix, for reasons worth recording: the **importer** resolves through
+   `matchIdentity.OppositionID`, which carries the match's own `info.gender`, so it has never
+   guessed; **backtest** is now `GET /api/backtest/report`, a proxy to L4's report, and
+   resolves no team name; the **L4 harness** reads club ids straight out of Postgres
+   (`sources._MATCH_SQL` selects `COALESCE(bat.canonical_id, bat.id)`) and keys teams
+   `club|gender`, so it never sees a name; and `ListPlayerPoolByOpposition` already took an id.
+6. **The data check.** No team-lineage link may join two genders — one would merge two teams'
+   Elo, form and head-to-head invisibly. `ApplyTeamLineage` already requires
+   `predecessor.gender = successor.gender = $3`, so the importer cannot write one, but the
+   column carries no such constraint. Run against the live database on 2026-09-02:
+
+   ```sql
+   SELECT p.id, p.opposition_name, p.gender, s.id, s.opposition_name, s.gender
+   FROM opposition p JOIN opposition s ON s.id = p.canonical_id
+   WHERE p.gender IS DISTINCT FROM s.gender;
+   -- (0 rows), against 10 lineage links in total; opposition holds 370 male and 160 female rows
+   ```
+
+   **Zero bridging links, so no migration was needed.** The check is now a test against the
+   migrated schema —
+   `go-app/internal/db/repo_team_side_integration_test.go::TestTeamLineageNeverBridgesTwoGenders_Integration`
+   — so a future mapping that bridges genders fails a run rather than silently merging.
+7. **H-24.** The literal that carries gender on the wire is `team_genders` in
+   `contracts/ops-console.contract.json`, generated from `go-app/internal/teams`. All three
+   components assert against it: go-app in
+   `pipeline.TestTeamGendersMatchTheContract`, ml-service in
+   `test_both_services_match_on_the_same_team_genders` plus a test that the E7 context-group
+   split keys on a value the contract publishes, and the frontend in "spells the team genders
+   the way the backend does" plus a source sweep refusing any gender literal outside the one
+   declaration. ml-service's `RatingState._ctx_group` now reads `C.GENDER_FEMALE` instead of
+   its own `"female"` — that comparison was the third private copy of the word.
+### 1.4 D-11 — "Stop pipeline" cancels go-app's job, not ml-service's training — **fixed**
 
 Found while verifying F-1's acceptance against the containers. `POST /ops/pipeline/stop`
 answered `{"cancelled": 1}` and the console stopped showing the run, but
@@ -116,6 +215,59 @@ handle per step, terminate it when the request is cancelled, and let the trainin
 semaphore be released only when the process is gone), with go-app's stop waiting for that
 answer instead of assuming it. Its own H-24 seam: "cancelled" is a claim one service makes
 about another's process.
+
+**Fixed in F-3** (branch `fix/d-11-stop-that-stops`), along the line that entry drew.
+
+**On ml-service.** `run_training_subprocess` used `subprocess.run`, which keeps its handle
+on its own stack — so while a retrain ran there was no object in the process that could
+address it. It now uses `Popen`, registers the handle in `_TrainingProcesses` keyed by
+module, and unregisters in a `finally`. `start_new_session=True` puts the child at the head
+of its own process group, so a stop signals the *group*: the model-fitting workers a retrain
+spawns went down with it rather than being orphaned, which was the other half of what kept
+burning CPU. `stop_training` sends SIGTERM, waits `TERMINATE_GRACE_SEC` (10 s), escalates to
+SIGKILL, and **waits for the process to be gone before returning** — returning on the signal
+would move the same lie one layer along.
+
+`POST /admin/train/stop` (optional `?step=`) exposes it, answering `{"stopped": [...]}` with
+the steps whose process it watched exit. Nothing running is `200` with an empty list: a Stop
+pressed twice is not an error. A run that ends this way raises `TrainingStopped` and is
+answered `409 TRAIN_STOPPED` and logged at info — it used to come back `500 TRAIN_FAILED`
+with a stack trace, which is the same species of untruth wearing a different hat.
+
+**The compute slot, which was the subtler half.** `asyncio.to_thread` hands the event loop a
+future it can cancel, but cancelling it neither stops the thread nor touches the subprocess
+the thread is waiting on. When go-app dropped its request the `async with` exited, the
+training semaphore was released, and the lane read as free while the retrain was still
+writing — so a second retrain started then would have run beside the first.
+`_run_training_step` now shields the thread's future, and on cancellation stops the process
+and waits for the thread before letting the semaphore go.
+
+**On go-app.** `StopRun` takes a `StopTrainingFunc` and returns a `StopOutcome` carrying what
+it *achieved* rather than what it attempted. The remote stop goes first and on purpose:
+cancelling the local job closes the request the step is waiting on, and after that the run
+looks finished from here whatever is still happening over there. A stop it could not confirm
+is answered `502` with `status: "partially_cancelled"` and a message saying the run was
+cancelled here but the training process could not be confirmed stopped — never a plain
+success. Training is compute-lane work, so a data-lane stop leaves it alone.
+
+Note a case worse than the one recorded above, found while fixing it: with the tracking row
+already gone, `cancelled` was `0`, so the old handler answered **`409 "no pipeline step is
+running"`** while `ml.xi.retrain` was running. The stop now counts a confirmed training kill
+as something having been stopped.
+
+**H-24.** `/admin/train/stop` joins `ml_service_calls`, and the `stopped` field joins the
+contract as `stop_response_field` — the audit under D-9 recorded that go-app parsed nothing
+out of ml-service's bodies "and both become H-24 items the moment either side starts matching
+on them". This is that moment. go-app asserts the *struct tag* against the contract (a
+constant that agreed while the tag did not would be a green test over a stop that always read
+zero steps); ml-service asserts the route exists and that its answer carries the field.
+
+**Verified against a real retrain**, the D-6 way: `POST /ops/pipeline/run/retrain` started
+`ml.xi.retrain` (pid 1984, 43 % CPU); `POST /ops/pipeline/stop` answered
+`{"status": "cancelled", "training_stopped": ["retrain"]}` in 8.8 ms; the process was gone
+(`returncode -15`) and `pgrep` found nothing. A second retrain started immediately afterwards,
+so the lane was genuinely free. Stop with nothing running still answers `409`.
+
 
 ---
 
@@ -156,7 +308,7 @@ ml-service coverage gate ratcheted 92 → 93 and the frontend's branch gate 77 �
 measured figure rounded down); go-app's stayed at 74. The seam test is
 `ml-service/tests/test_ops_console_contract.py::test_retrain_endpoint_accepts_the_cutoff_go_app_sends`
 — unskipped, in CI, running `ml.xi.retrain`'s real parser over the arguments the orchestrator
-actually builds. One new defect was found on the way and recorded as D-10 above.
+actually builds. One new defect was found on the way and recorded as D-11 above.
 
 ---
 
@@ -356,7 +508,9 @@ recorded null — which the plan treats as a result, not a failure.
 
 | id | status |
 |---|---|
-| F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-10 (a stop that does not stop), left open. |
+| F-1 | **done** — `fix/f-1-ops-defects`. D-9 fixed at both ends and D-8's widget deleted; H-24 written down and enforced by a contract now covering the cutoff format, the ml-service call surface and the format codes, with an unskipped seam test. Found D-11 (a stop that does not stop), left open. |
+| F-2 | **done** — `fix/d-10-gendered-team-resolution`. D-10 fixed ends-in: the prediction request names a side (club id, or name plus gender) and an ambiguous name is a 400 listing both candidates; every response echoes the sides it scored; a cross-gender fixture is a 400; the options endpoints and the picker deal in sides. `team_genders` joins the H-24 contract, asserted from all three components. The lineage data check found 0 cross-gender links in 10, so no migration. |
+| F-3 | **done** — `fix/d-11-stop-that-stops`. D-11 fixed at both ends: ml-service holds the `Popen`, stops the process group and waits for it to be gone; the compute slot is held until the thread finishes, so a cancelled request no longer frees a lane a retrain is still writing in; go-app asks rather than assumes, and a stop it could not confirm is a 502 `partially_cancelled`, never a plain success. `/admin/train/stop` and `stop_response_field` join the H-24 contract. Verified against a real retrain. |
 | L-1 | **done** — `feat/l-1-metric-glossary`. `ml/xi/glossary.py` carries the table in § 3 verbatim, one entry per reported metric key; the harness embeds it in `xi_evaluate_report.json` and `GET /xi/metric-glossary` serves it from the code; `glossary.check_report` walks every metric key the report emits and a harness test fails on one with no entry (keys that are not metrics are declared with a reason). One shared popover component explains every metric label in the frontend — the evaluation tables and tiles, the Workbench's manifest metrics, the run summary and the prediction surfaces' ranges and marginal values — and the metric prose the components carried was deleted. |
 | M-1 | **done** — `feat/system-map-tab`, stacked on L-1 (its explainers are L-1's `MetricInfo`, and the glossary keys the map names are checked against L-1's registry). The System map tab, `contracts/system-map.json` and the two-way `make check-system-map`, wired into the Docs consistency workflow. Two things were found on the way and fixed here: `gen-architecture-map.py`'s route regex missed three go-app proxy routes (the endpoint table said 25, it is 28), and `frontend/vitest.config.ts` shadowed `vite.config.ts`, so the frontend coverage gate had never run — verified by renaming it, which turned three of the four thresholds red. The duplicate config is deleted and the gate ratcheted to the measured figures. |
 | A-1 | open |

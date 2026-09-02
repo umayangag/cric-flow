@@ -17,6 +17,8 @@ import type {
   OpsDataStartResponse,
   RunPlanState,
   RunPlanStartResponse,
+  TeamSideOption,
+  PipelineStopResult,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -280,18 +282,21 @@ export const api = {
    * lane stops only that one — the lanes overlap by design, so cancelling a download
    * should not have to abandon a training run that is eight minutes in.
    *
-   * Returns 200 with { status: 'cancelled', cancelled: n } or 409 if nothing is running.
+   * Returns 200 with { status: 'cancelled', cancelled: n, training_stopped: [...] }, 409
+   * if nothing is running, or 502 with `status: 'partially_cancelled'` when this run was
+   * cancelled here but ml-service could not confirm its training process stopped — the
+   * case that used to be reported as a plain success while a retrain kept running (D-11).
    */
   async opsPipelineStop(
     lane?: PipelineLane,
-  ): Promise<{ status: number; data: { status?: string; cancelled?: number; error?: string } }> {
+  ): Promise<{ status: number; data: PipelineStopResult }> {
     const query = lane ? `?lane=${encodeURIComponent(lane)}` : '';
     const url = `${BASE_API_URL}/ops/pipeline/stop${query}`;
     const res = await fetch(url, { method: 'POST', headers: apiHeaders() });
-    let data: { status?: string; cancelled?: number; error?: string } = {};
+    let data: PipelineStopResult = {};
     try {
       const text = await res.text();
-      if (text) data = JSON.parse(text) as { status?: string; cancelled?: number; error?: string };
+      if (text) data = JSON.parse(text) as PipelineStopResult;
     } catch {
       data = { error: res.statusText || 'Invalid response' };
     }
@@ -343,18 +348,20 @@ export const api = {
     }
   },
   // --- Options ---
-  getTeams(): Promise<string[]> {
-    return httpApi('/api/options/teams');
-  },
-  getTeamsByFormat(format: string): Promise<string[]> {
+  /**
+   * The sides that have played a format, each with the `club_id` a prediction is requested
+   * with. Not names: a name is not a team (D-10).
+   */
+  getTeamSidesByFormat(format: string): Promise<TeamSideOption[]> {
     const u = new URL('/api/options/teams-by-format', BASE_API_URL);
     u.searchParams.set('format', format);
     return httpApi(u.toString());
   },
-  getOpponents(format: string, team: string): Promise<string[]> {
+  /** The sides this club has played in the format, addressed by its club id. */
+  getOpponentSides(format: string, teamId: number): Promise<TeamSideOption[]> {
     const u = new URL('/api/options/opponents', BASE_API_URL);
     u.searchParams.set('format', format);
-    u.searchParams.set('team', team);
+    u.searchParams.set('team_id', String(teamId));
     return httpApi(u.toString());
   },
   getFormats(): Promise<string[]> {
@@ -395,8 +402,10 @@ export const api = {
    */
   predictTeamSelection(params: {
     format: string;
-    team1: string;
-    team2: string;
+    /** The `club_id` of each side, from {@link getTeamSidesByFormat}. A name would not say
+     * which of two teams it meant, and the API refuses an ambiguous one (D-10). */
+    team1_id: number;
+    team2_id: number;
     venue?: string;
     match_date: string; // YYYY-MM-DD or RFC3339
     extra_team1?: number[];

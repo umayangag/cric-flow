@@ -17,6 +17,16 @@ from typing import Dict, List, Optional, Tuple
 FORMAT_CODES: List[str] = ["T20", "T20I", "ODI", "TEST"]
 FORMAT_INDEX: Dict[str, int] = {code: i for i, code in enumerate(FORMAT_CODES)}
 
+# The gender half of a team's identity, as go-app writes it into ``match.gender`` and
+# ``opposition.gender`` from Cricsheet's ``info.gender``. This service *matches on the
+# literal*: ``RatingState._ctx_group`` reads ``GENDER_FEMALE`` to pick E7's context-baseline
+# group, and ``team_key`` folds it into the key a team is rated under. It is declared in
+# contracts/ops-console.contract.json and asserted from both sides (H-24, D-10) -- a private
+# copy of a word two services agree on is exactly what D-9 was.
+GENDER_MALE = "male"
+GENDER_FEMALE = "female"
+TEAM_GENDERS: List[str] = [GENDER_MALE, GENDER_FEMALE]
+
 # Rating-pass hyperparameters. Changing any of these changes the feature definitions and
 # requires a re-run of the pass; they are recorded in the artifact metadata.
 DECAY_PER_MATCH = 0.90  # exponential forgetting applied to a player's accumulators per match played

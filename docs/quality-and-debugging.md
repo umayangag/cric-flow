@@ -50,6 +50,17 @@ tested — against their own assumption — and the seam between them was tested
 test that says "our default is valid RFC3339" proves nothing about a service that never
 accepted RFC3339.
 
+The rule also covers a literal *nobody had declared yet*: D-10 found go-app, ml-service and
+the frontend each holding a private copy of `"male"` / `"female"` — ml-service compared
+against its own string to pick E7's context-baseline group — and the vocabulary joined the
+contract as `team_genders` in the same commit that put gender on the request wire.
+
+And it covers the audit's own deferred item. The D-9 write-up recorded that go-app parsed
+nothing out of ml-service's response bodies, so there was no literal to drift, and that this
+"becomes an H-24 item the moment either side starts matching on them". D-11's fix is that
+moment: go-app now reads `stopped` out of the stop answer to learn what really stopped, so
+the field name is declared as `stop_response_field` and asserted from both sides.
+
 **Where it lives.** `contracts/ops-console.contract.json` is generated from go-app's pipeline
 registry (`go test ./internal/services/pipeline -run TestPipelineContract -update`) and is the
 one file all three components assert against:
@@ -61,6 +72,8 @@ one file all three components assert against:
 | `cutoff` (pattern, hint, example) | `DefaultCutoff()` matches the pattern | the CLI parses the example, and go-app's default | the dialog's field asks for `cutoff.hint` |
 | `ml_service_calls` (method, path, query) | its call sites use these constants | every path is a route accepting those query parameters | — |
 | `format_codes` | generated from `internal/formats` | the same set as `ml.xi.contract.FORMAT_CODES` | — |
+| `team_genders` | generated from `internal/teams`; every published value is one the API accepts | the same set as `ml.xi.contract.TEAM_GENDERS`, and E7's context-group split keys on one of them | its `TEAM_GENDERS` union matches, and no other source file spells a gender literal |
+| `stop_response_field` | the JSON tag it decodes the stop answer with matches the contract | `/admin/train/stop` answers with that field | — |
 
 **How to add one.** Declare it in Go beside the code that uses it
 (`internal/services/pipeline/boundary.go` for the ml-service boundary), add it to
@@ -102,7 +115,7 @@ against a stale profile reports a number from a different run. `make go-app-chec
 |---|---|---|
 | go-app | `go-app/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_GO`), `.github/workflows/go-app-ci.yml` | 74 |
 | ml-service | `ml-service/Makefile` (`COV_MIN`), root `Makefile` (`COV_MIN_ML`), `.github/workflows/ml-service-ci.yml` | 92 |
-| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 80, functions 75, statements 80, branches 79 |
+| frontend | `frontend/vite.config.ts` (`test.coverage.thresholds`) | lines 80, functions 76, statements 80, branches 79 |
 
 The frontend gate has now been silently off twice, for the same reason in two shapes: first the
 threshold keys were set at the top level of `coverage`, where Vitest 2 ignores them, and then a

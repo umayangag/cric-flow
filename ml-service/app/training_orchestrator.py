@@ -12,12 +12,38 @@ stay clear.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
+import threading
 from typing import Any, Dict, List, Optional
 
 # Logger type: any object with info, warning, error, debug
 Logger = Any
+
+# The module each pipeline step runs. Declared once because two things need the mapping:
+# starting a step, and stopping the one that is running.
+TRAINING_MODULES: Dict[str, str] = {
+    "retrain": "ml.xi.retrain",
+    "evaluate": "ml.xi.evaluate",
+}
+
+
+class TrainingStopped(ValueError):
+    """A training run ended because someone asked it to.
+
+    It subclasses ValueError so every existing caller still handles it, and exists so the
+    ones that care can tell an operator's Stop from a run that broke. Reporting a stop as
+    `admin.train.failed` with a stack trace sends whoever reads the log looking for a bug
+    that is not there -- which is the same species of untruth as D-11 itself.
+    """
+
+
+# How long a stopped process is given to exit on SIGTERM before SIGKILL. A retrain's
+# work is one ordered scan and some model fits, none of which need unwinding, so this is
+# a courtesy rather than a requirement -- but it is long enough for joblib workers to go
+# down with their parent instead of being orphaned.
+TERMINATE_GRACE_SEC = 10.0
 
 
 def ml_service_root() -> str:
@@ -25,6 +51,110 @@ def ml_service_root() -> str:
     import ml as _ml  # noqa: PLC0415
 
     return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
+
+
+class _TrainingProcesses:
+    """The training subprocesses this service currently has running, by module.
+
+    It exists because of D-11: go-app's Stop cancelled its own HTTP request and reported
+    `{"cancelled": 1}`, while `ml.xi.retrain` carried on inside this container burning CPU
+    with nothing holding a handle to it. A process nobody can address is a process nobody
+    can stop, and "cancelled" was a claim about it that was not true.
+
+    Every method is safe to call from the worker threads that run the steps and from the
+    event loop thread that serves the stop request.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._live: Dict[str, subprocess.Popen] = {}
+        self._stopped: set[str] = set()
+
+    def register(self, module: str, process: subprocess.Popen) -> None:
+        with self._lock:
+            self._live[module] = process
+            self._stopped.discard(module)
+
+    def unregister(self, module: str) -> None:
+        with self._lock:
+            self._live.pop(module, None)
+
+    def was_stopped(self, module: str) -> bool:
+        """Whether this module's last run ended because someone asked it to."""
+        with self._lock:
+            return module in self._stopped
+
+    def running_modules(self) -> List[str]:
+        with self._lock:
+            return list(self._live)
+
+    def stop(self, module: str, logger: Optional[Logger] = None) -> bool:
+        """Terminate one module's process and *wait for it to be gone*.
+
+        The wait is the point. Returning as soon as the signal is sent would move the
+        lie one layer along -- this service would then be the one claiming a stop it had
+        not confirmed. Returns False when there was nothing to stop.
+        """
+        with self._lock:
+            process = self._live.get(module)
+            if process is None:
+                return False
+            self._stopped.add(module)
+
+        # The child runs in its own session (start_new_session below), so signalling the
+        # group reaches the model-fitting workers it spawned. Orphaned workers were half
+        # of what D-11 left burning CPU.
+        _signal_group(process, signal.SIGTERM)
+        try:
+            process.wait(timeout=TERMINATE_GRACE_SEC)
+        except subprocess.TimeoutExpired:
+            if logger:
+                logger.warning(
+                    "pipeline: training subprocess ignored SIGTERM; killing",
+                    module=module,
+                    grace_sec=TERMINATE_GRACE_SEC,
+                )
+            _signal_group(process, signal.SIGKILL)
+            process.wait()
+        if logger:
+            logger.info("pipeline: training subprocess stopped", module=module, returncode=process.returncode)
+        return True
+
+
+def _signal_group(process: subprocess.Popen, sig: int) -> None:
+    """Signal a process and the group it leads, tolerating one that has already exited.
+
+    A process that exits between the check and the signal is the normal race, not an
+    error: the caller wanted it gone and it is gone.
+    """
+    try:
+        os.killpg(os.getpgid(process.pid), sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            process.send_signal(sig)
+        except (ProcessLookupError, OSError):
+            pass
+
+
+_processes = _TrainingProcesses()
+
+
+def stop_training(step: str = "", logger: Optional[Logger] = None) -> List[str]:
+    """Stop the training subprocess of one step, or of every step when none is named.
+
+    Returns the steps actually stopped -- an empty list when nothing was running, which
+    is a true answer and not an error. Each name in it is a process this call watched
+    exit, so a caller may report it as stopped without qualifying the claim.
+    """
+    step = (step or "").strip()
+    if step and step not in TRAINING_MODULES:
+        raise ValueError(f"unknown training step {step!r}; expected one of {sorted(TRAINING_MODULES)}")
+    wanted = [step] if step else list(TRAINING_MODULES)
+    stopped: List[str] = []
+    for name in wanted:
+        if _processes.stop(TRAINING_MODULES[name], logger):
+            stopped.append(name)
+    return stopped
 
 
 def run_training_subprocess(
@@ -59,15 +189,22 @@ def run_training_subprocess(
     if extra_env:
         env.update(extra_env)
     timeout_sec = get_training_subprocess_timeout_sec()
+    # Popen rather than subprocess.run, so the process is addressable while it runs: run()
+    # keeps its handle on its own stack, which is why a stop had nothing to stop (D-11).
+    # start_new_session puts the child at the head of its own process group, so stopping it
+    # reaches the workers it spawns.
+    proc = subprocess.Popen(
+        cmd,
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    _processes.register(module, proc)
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=root,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
+        stdout, stderr = proc.communicate(timeout=timeout_sec)
     except subprocess.TimeoutExpired as e:
         if logger:
             logger.error(
@@ -75,10 +212,20 @@ def run_training_subprocess(
                 module=module,
                 timeout_sec=timeout_sec,
             )
+        _processes.stop(module, logger)
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
+    finally:
+        _processes.unregister(module)
+    # A run that ended because someone asked it to is not a failure, and reporting
+    # "Training failed (exit -15)" would send whoever reads the log looking for a bug that
+    # is not there.
+    if _processes.was_stopped(module):
+        if logger:
+            logger.info("pipeline: training subprocess stopped on request", module=module)
+        raise TrainingStopped("Training stopped on request")
     if proc.returncode != 0:
-        stdout_lines = (proc.stdout or "").strip().splitlines() if proc.stdout else []
-        stderr_lines = (proc.stderr or "").strip().splitlines() if proc.stderr else []
+        stdout_lines = (stdout or "").strip().splitlines() if stdout else []
+        stderr_lines = (stderr or "").strip().splitlines() if stderr else []
         max_lines = 100
         stdout_tail = "\n".join(stdout_lines[-max_lines:]) if stdout_lines else "(empty)"
         stderr_tail = "\n".join(stderr_lines[-max_lines:]) if stderr_lines else "(empty)"
@@ -102,7 +249,7 @@ def run_retrain(cutoff: str, artifacts_dir: str, logger: Optional[Logger] = None
     if logger:
         logger.info("admin.train.start", step="retrain", cutoff=cutoff, artifacts_dir=artifacts_dir)
     run_training_subprocess(
-        "ml.xi.retrain",
+        TRAINING_MODULES["retrain"],
         ["--postgres", "--cutoff", cutoff, "--out", artifacts_dir],
         logger=logger,
     )
@@ -120,7 +267,7 @@ def run_evaluate(cutoff: str, artifacts_dir: str, logger: Optional[Logger] = Non
     """
     if logger:
         logger.info("admin.train.start", step="evaluate", cutoff=cutoff, artifacts_dir=artifacts_dir)
-    run_training_subprocess("ml.xi.evaluate", ["--postgres", "--out", artifacts_dir], logger=logger)
+    run_training_subprocess(TRAINING_MODULES["evaluate"], ["--postgres", "--out", artifacts_dir], logger=logger)
     if logger:
         logger.info("admin.train.success", step="evaluate")
 

@@ -7,6 +7,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
 type fakeSimulator struct {
@@ -105,7 +108,7 @@ func TestApplyXISimulation_WritesRangesTotalsAndSpreadFromOneSetOfDraws(t *testi
 	assert.Equal(t, winProbabilitySourceDisplay, result.WinProbability.Source)
 	require.NotNil(t, result.WinProbability.Simulated)
 	assert.Equal(t, 0.58, *result.WinProbability.Simulated, "the other model is reported, never blended")
-	assert.Equal(t, "IND", result.WinProbability.PredictedWinner)
+	assert.Equal(t, "India (men)", result.WinProbability.PredictedWinner)
 }
 
 func TestApplyXISimulation_RefusesAWinProbabilityWithNoHonestSource(t *testing.T) {
@@ -239,8 +242,17 @@ func TestEconomy_IsZeroForAPlayerWhoDidNotBowl(t *testing.T) {
 
 func TestWinnerFrom_NamesTeam2OnAnExactTie(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "IND", winnerFrom(0.5, "IND", "AUS"))
-	assert.Equal(t, "AUS", winnerFrom(0.4999, "IND", "AUS"))
+	assert.Equal(t, "India (men)", winnerFrom(0.5, indiaMen, australiaMen))
+	assert.Equal(t, "Australia (men)", winnerFrom(0.4999, indiaMen, australiaMen))
+}
+
+// The winner is named as the side that was scored, not as the caller spelled it: two teams
+// answer to "India", and a result that says only "India" does not say which one won (D-10).
+func TestWinnerFrom_NamesTheResolvedSideNotTheTypedName(t *testing.T) {
+	t.Parallel()
+	indiaWomen := db.TeamSide{ClubID: 132, Name: "India", Gender: teams.GenderFemale}
+
+	assert.Equal(t, "India (women)", winnerFrom(0.7, indiaWomen, australiaMen))
 }
 
 func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) {

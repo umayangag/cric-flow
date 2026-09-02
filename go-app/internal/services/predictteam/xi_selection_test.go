@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
 // fakeOptimizer records every /xi/optimize call and answers from a scripted plan.
@@ -53,11 +54,18 @@ func pool(ids ...int64) []db.PlayerPoolRow {
 	return rows
 }
 
+// indiaMen and australiaMen are two resolved sides, which is the only thing a fixture holds
+// now: a name alone could name either of two teams (D-10).
+var (
+	indiaMen     = db.TeamSide{ClubID: 43, Name: "India", Gender: teams.GenderMale}
+	australiaMen = db.TeamSide{ClubID: 7, Name: "Australia", Gender: teams.GenderMale}
+)
+
 func twoSidedFixture(format string) fixture {
 	return fixture{
 		format:      format,
-		team1Code:   "IND",
-		team2Code:   "AUS",
+		team1:       indiaMen,
+		team2:       australiaMen,
 		pool1:       pool(1, 2, 3),
 		pool2:       pool(4, 5, 6),
 		constraints: Constraints{Size: 2, MinBowlers: 1, RequireKeeper: false},

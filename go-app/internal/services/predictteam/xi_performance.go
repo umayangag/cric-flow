@@ -59,8 +59,8 @@ func applyPerformanceForecast(
 		Format:          fix.format,
 		Team1PlayerKeys: xi1,
 		Team2PlayerKeys: xi2,
-		Team1ID:         fix.team1ID,
-		Team2ID:         fix.team2ID,
+		Team1ID:         fix.team1.ClubID,
+		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
 		AsOf:            fix.asOf,
 	})

@@ -99,6 +99,13 @@
     },
     {
       "method": "POST",
+      "path": "/admin/train/stop",
+      "query": [
+        "step"
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/admin/reload",
       "query": [
         "run"
@@ -110,5 +117,10 @@
     "ODI",
     "T20",
     "T20I"
+  ],
+  "stop_response_field": "stopped",
+  "team_genders": [
+    "male",
+    "female"
   ]
 }

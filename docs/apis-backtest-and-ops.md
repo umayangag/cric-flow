@@ -68,13 +68,30 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 
 **`POST /api/predict/team-selection`** (also GET with query params).
 
-**Body:** `format`, `team1`, `team2`, `match_date` (RFC3339 or `YYYY-MM-DD`), optional `venue`,
-`extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`, `require_keeper`.
+**Body:** `format`, `match_date` (RFC3339 or `YYYY-MM-DD`), the two sides, and optionally
+`venue`, `extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`,
+`require_keeper`.
+
+**Naming a side.** A team is `(name, gender)` — 130 of the 394 names in the dataset are used
+by both a men's and a women's side — so a side is named by `team1_id` / `team2_id`, the
+`club_id` from `GET /api/options/teams-by-format`, or by `team1` / `team2` with
+`team1_gender` / `team2_gender`. A bare name is accepted only where the format holds one side
+of that name; where it holds two the request is **`400 TEAM_AMBIGUOUS`** with both candidates
+in `available`, never a silent pick (D-10). A side that has not played the format is
+`400 TEAM_NOT_FOUND`, and a fixture whose two sides are different genders is
+**`400 FIXTURE_CROSS_GENDER`** — no such match is played, so a probability for one would have
+no referent.
+
+**Options.** `GET /api/options/teams-by-format?format=` returns sides, not names:
+`{club_id, name, gender, display_name}`, one row per side, folded onto the club so a renamed
+club appears once under its current name. `GET /api/options/opponents?format=&team_id=`
+returns the sides that club has played, in the same shape.
 
 **Response:**
 
 | Field | Meaning |
 |-------|---------|
+| `team1_side`, `team2_side` | The sides that were actually scored — `club_id`, `name`, `gender`, `display_name` — echoed on every prediction, not only an ambiguous one |
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
 | `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects) |
 | `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
@@ -84,9 +101,11 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 The scorecard lines and extras sum to the innings total by construction — they come from the
 same draws — so nothing is rescaled toward the win probability.
 
-**Every substitution is named on the wire (§8.7).** Three fields say which model answered:
-`selection` says whether the XIs were optimised or rating-ordered, `forecast` says whether the
-per-player numbers came from the simulator's draws or from L2-B's own quantiles, and
+**Every substitution is named on the wire (§8.7).** Four fields say what answered: `team1_side`
+and `team2_side` say which sides were scored — substituting the men's side for the women's is
+a substitution, and it used to be announced only in a server log (D-10) — `selection` says
+whether the XIs were optimised or rating-ordered, `forecast` says whether the per-player
+numbers came from the simulator's draws or from L2-B's own quantiles, and
 `win_probability.source` says which model produced the headline. The rule exists because
 go-app silently falling back from a refused `/xi/optimize` to another optimiser is what let a
 broken arm report a number for months (§8.5). Where a substitution *cannot* be labelled — a

@@ -15,7 +15,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/config"
@@ -23,16 +22,21 @@ import (
 )
 
 // Input defines the request for future-match team selection.
+//
+// Team1 and Team2 are *references to a side*, not names: a club id, or a name with the
+// gender that makes it one. A bare name is accepted only where the format holds exactly one
+// side of that name; where it holds two, the request is refused rather than resolved by
+// guess (D-10).
 type Input struct {
-	Format        string    `json:"format"`
-	Team1         string    `json:"team1"`
-	Team2         string    `json:"team2"`
-	Venue         string    `json:"venue,omitempty"` // venue name; empty = unknown venue
-	MatchDate     time.Time `json:"match_date"`
-	ExtraTeam1    []int64   `json:"extra_team1,omitempty"` // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2    []int64   `json:"extra_team2,omitempty"` // extra player IDs for team2
-	MinBowlers    int       `json:"min_bowlers,omitempty"` // default from config
-	RequireKeeper bool      `json:"require_keeper,omitempty"`
+	Format        string     `json:"format"`
+	Team1         db.TeamRef `json:"team1"`
+	Team2         db.TeamRef `json:"team2"`
+	Venue         string     `json:"venue,omitempty"` // venue name; empty = unknown venue
+	MatchDate     time.Time  `json:"match_date"`
+	ExtraTeam1    []int64    `json:"extra_team1,omitempty"` // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2    []int64    `json:"extra_team2,omitempty"` // extra player IDs for team2
+	MinBowlers    int        `json:"min_bowlers,omitempty"` // default from config
+	RequireKeeper bool       `json:"require_keeper,omitempty"`
 	// AsOf, when set, asks for ratings as they stood strictly before this date instead of
 	// "through today". Backtests over played matches set it to the match date, so a
 	// prediction provably cannot see the match's own result or any later one; live
@@ -139,21 +143,60 @@ type Scorecard struct {
 	Innings2         InningsTotal `json:"innings2"`
 }
 
+// ResolvedSide is the side a prediction actually scored.
+//
+// It is on the wire for unambiguous names as well as ambiguous ones, because §8.7's rule is
+// about the *answer*, not about the doubt: naming the side only when the request was unclear
+// would make silence mean "we agreed", and silence is exactly what D-10 was.
+type ResolvedSide struct {
+	ClubID      int64  `json:"club_id"`
+	Name        string `json:"name"`
+	Gender      string `json:"gender"`
+	DisplayName string `json:"display_name"`
+}
+
+func newResolvedSide(side db.TeamSide) ResolvedSide {
+	return ResolvedSide{
+		ClubID:      side.ClubID,
+		Name:        side.Name,
+		Gender:      side.Gender,
+		DisplayName: side.Label(),
+	}
+}
+
 // Result is one prediction: two XIs, how they were chosen, the headline probability, and —
 // where the format has an innings length — the simulated scorecard the player points and
 // ranges come from.
 //
-// Every substitution it makes is named on the wire: `selection`
-// says whether the XIs were optimised or rating-ordered (H-17), `forecast` says which model
-// produced the per-player numbers, and `win_probability.source` says which produced the
-// headline probability. Nothing here falls back silently (§8.7).
+// Every substitution it makes is named on the wire: `team1_side` and `team2_side` say which
+// sides were scored (D-10), `selection` says whether the XIs were optimised or rating-ordered
+// (H-17), `forecast` says which model produced the per-player numbers, and
+// `win_probability.source` says which produced the headline probability. Nothing here falls
+// back silently (§8.7).
 type Result struct {
+	Team1Side      ResolvedSide          `json:"team1_side"`
+	Team2Side      ResolvedSide          `json:"team2_side"`
 	Team1          []SelectedPlayer      `json:"team1"`
 	Team2          []SelectedPlayer      `json:"team2"`
 	Selection      SelectionSummary      `json:"selection"`
 	Forecast       ForecastSummary       `json:"forecast"`
 	WinProbability WinProbabilitySummary `json:"win_probability"`
 	Scorecard      *Scorecard            `json:"scorecard,omitempty"`
+}
+
+// CrossGenderFixtureError reports a fixture whose two sides are not the same gender.
+//
+// It is refused rather than predicted. The two sides would be scored against rating state
+// and context baselines that describe different games, and the model has never seen such a
+// match, so the number it returned would be arithmetic without a referent.
+type CrossGenderFixtureError struct {
+	Team1 db.TeamSide
+	Team2 db.TeamSide
+}
+
+func (e *CrossGenderFixtureError) Error() string {
+	return fmt.Sprintf("%s and %s are not the same gender; no such fixture is played",
+		e.Team1.Label(), e.Team2.Label())
 }
 
 // XIService is everything the prediction path needs from ml-service.
@@ -168,15 +211,15 @@ type XIService interface {
 	PredictPerformance(ctx context.Context, req XIPerformanceRequest) (*XIPerformanceResult, error)
 }
 
-// fixture is the resolved match: ids for everything the ML service is told about.
+// fixture is the resolved match: the two sides, and ids for everything the ML service is
+// told about.
 type fixture struct {
-	format               string
-	team1Code, team2Code string
-	team1ID, team2ID     int64
-	venueID              int64
-	pool1, pool2         []db.PlayerPoolRow
-	constraints          Constraints
-	asOf                 time.Time
+	format       string
+	team1, team2 db.TeamSide
+	venueID      int64
+	pool1, pool2 []db.PlayerPoolRow
+	constraints  Constraints
+	asOf         time.Time
 }
 
 // PredictTeams picks both XIs and predicts the match.
@@ -192,6 +235,8 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	}
 
 	result := &Result{
+		Team1Side: newResolvedSide(fix.team1),
+		Team2Side: newResolvedSide(fix.team2),
 		Team1:     newSelectedPlayers(xi1, fix.pool1, marginals),
 		Team2:     newSelectedPlayers(xi2, fix.pool2, marginals),
 		Selection: selection,
@@ -201,8 +246,8 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Format:          fix.format,
 		Team1PlayerKeys: xi1,
 		Team2PlayerKeys: xi2,
-		Team1ID:         fix.team1ID,
-		Team2ID:         fix.team2ID,
+		Team1ID:         fix.team1.ClubID,
+		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
 		AsOf:            fix.asOf,
 	})
@@ -212,7 +257,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	result.WinProbability = WinProbabilitySummary{
 		Team1:           display,
 		Source:          winProbabilitySourceDisplay,
-		PredictedWinner: winnerFrom(display, fix.team1Code, fix.team2Code),
+		PredictedWinner: winnerFrom(display, fix.team1, fix.team2),
 	}
 
 	if err := applyMatchForecast(ctx, service, fix, xi1, xi2, result); err != nil {
@@ -238,30 +283,31 @@ func applyMatchForecast(
 	return applyPerformanceForecast(ctx, service, fix, xi1, xi2, result)
 }
 
-// resolveFixture turns names into the ids ml-service is addressed with, and loads both
-// player pools. Availability is the caller's knowledge, not the model's (plan §9.4).
+// resolveFixture turns the two side references into the sides ml-service is addressed with,
+// and loads both player pools. Availability is the caller's knowledge, not the model's
+// (plan §9.4).
 func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	format := normalizeFormat(input.Format)
-	team1 := strings.TrimSpace(input.Team1)
-	team2 := strings.TrimSpace(input.Team2)
-	if format == "" || team1 == "" || team2 == "" {
+	if format == "" || input.Team1.IsEmpty() || input.Team2.IsEmpty() {
 		err := fmt.Errorf("format, team1, team2 are required")
 		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))
 		return fixture{}, err
 	}
 	cutoff := input.MatchDate.Truncate(24 * time.Hour)
 
-	// A team name alone can name two sides -- a men's and a women's -- and this request
-	// carries no gender, so the resolver picks the side that has played the format.
-	team1ID, err := db.FindOppositionIDForFormat(ctx, team1, format)
+	team1, err := resolveSide(ctx, input.Team1, format, "team1")
 	if err != nil {
-		slog.Error("predictteam.PredictTeams resolve team1 failed", slog.String("team1", team1), slog.Any("err", err))
-		return fixture{}, fmt.Errorf("resolve team1 %q: %w", team1, err)
+		return fixture{}, err
 	}
-	team2ID, err := db.FindOppositionIDForFormat(ctx, team2, format)
+	team2, err := resolveSide(ctx, input.Team2, format, "team2")
 	if err != nil {
-		slog.Error("predictteam.PredictTeams resolve team2 failed", slog.String("team2", team2), slog.Any("err", err))
-		return fixture{}, fmt.Errorf("resolve team2 %q: %w", team2, err)
+		return fixture{}, err
+	}
+	if team1.Gender != team2.Gender {
+		err := &CrossGenderFixtureError{Team1: team1, Team2: team2}
+		slog.Warn("predictteam.PredictTeams refused a cross-gender fixture",
+			slog.String("team1", team1.Label()), slog.String("team2", team2.Label()))
+		return fixture{}, err
 	}
 
 	var venueID int64
@@ -272,27 +318,41 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	}
 
 	constraints := resolveConstraints(input)
-	pool1, err := loadPool(ctx, format, team1, team1ID, cutoff, input.ExtraTeam1, constraints.Size)
+	pool1, err := loadPool(ctx, format, team1, cutoff, input.ExtraTeam1, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
-	pool2, err := loadPool(ctx, format, team2, team2ID, cutoff, input.ExtraTeam2, constraints.Size)
+	pool2, err := loadPool(ctx, format, team2, cutoff, input.ExtraTeam2, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
 
 	return fixture{
 		format:      format,
-		team1Code:   team1,
-		team2Code:   team2,
-		team1ID:     team1ID,
-		team2ID:     team2ID,
+		team1:       team1,
+		team2:       team2,
 		venueID:     venueID,
 		pool1:       pool1,
 		pool2:       pool2,
 		constraints: constraints,
 		asOf:        input.AsOf,
 	}, nil
+}
+
+// resolveSide resolves one side reference, keeping the resolver's own error intact so the
+// handler can turn an ambiguous name into a 400 that names both candidates.
+func resolveSide(ctx context.Context, ref db.TeamRef, format, field string) (db.TeamSide, error) {
+	side, err := db.ResolveTeamSide(ctx, ref, format)
+	if err != nil {
+		slog.Error("predictteam.PredictTeams resolve side failed",
+			slog.String("field", field),
+			slog.Int64("club_id", ref.ClubID),
+			slog.String("name", ref.Name),
+			slog.String("gender", ref.Gender),
+			slog.Any("err", err))
+		return db.TeamSide{}, fmt.Errorf("resolve %s: %w", field, err)
+	}
+	return side, nil
 }
 
 func resolveConstraints(input Input) Constraints {
@@ -313,20 +373,21 @@ func resolveConstraints(input Input) Constraints {
 
 func loadPool(
 	ctx context.Context,
-	format, teamCode string,
-	teamID int64,
+	format string,
+	team db.TeamSide,
 	cutoff time.Time,
 	extra []int64,
 	teamSize int,
 ) ([]db.PlayerPoolRow, error) {
-	pool, err := db.ListPlayerPoolByOpposition(ctx, format, teamID, cutoff, extra)
+	label := team.Label()
+	pool, err := db.ListPlayerPoolByOpposition(ctx, format, team.ClubID, cutoff, extra)
 	if err != nil {
-		slog.Error("predictteam.PredictTeams pool failed", slog.String("team", teamCode), slog.Any("err", err))
-		return nil, fmt.Errorf("%s pool: %w", teamCode, err)
+		slog.Error("predictteam.PredictTeams pool failed", slog.String("team", label), slog.Any("err", err))
+		return nil, fmt.Errorf("%s pool: %w", label, err)
 	}
 	if len(pool) < teamSize {
-		err := fmt.Errorf("%s has only %d players, need at least %d", teamCode, len(pool), teamSize)
-		slog.Error("predictteam.PredictTeams pool size", slog.String("team", teamCode), slog.Any("err", err))
+		err := fmt.Errorf("%s has only %d players, need at least %d", label, len(pool), teamSize)
+		slog.Error("predictteam.PredictTeams pool size", slog.String("team", label), slog.Any("err", err))
 		return nil, err
 	}
 	return pool, nil
@@ -361,11 +422,14 @@ func newSelectedPlayers(keys []string, pool []db.PlayerPoolRow, marginals map[st
 
 // winnerFrom names the side the headline probability favours. Exactly 0.5 is team2's, as
 // it has always been; the probability is displayed beside it, so nothing is hidden.
-func winnerFrom(team1Probability float64, team1Code, team2Code string) string {
+//
+// It names the *resolved* side -- "India (women)", not the "India" a caller typed -- for the
+// same reason the response echoes both sides: the answer says what was scored.
+func winnerFrom(team1Probability float64, team1, team2 db.TeamSide) string {
 	if team1Probability >= 0.5 {
-		return team1Code
+		return team1.Label()
 	}
-	return team2Code
+	return team2.Label()
 }
 
 // poolPlayerKeys is the pool as ml-service addresses it: registry ids, skipping anyone the

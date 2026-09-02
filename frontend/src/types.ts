@@ -68,7 +68,52 @@ export type PredictScorecard = {
   innings2: PredictInningsTotal;
 };
 
+/**
+ * What a Stop achieved, which is not the same as what it attempted.
+ *
+ * `training_stopped` names the steps ml-service confirmed it killed — a Stop that ended a
+ * twelve-minute retrain and a Stop that found nothing running are different events, and the
+ * console could not previously tell them apart. `status: 'partially_cancelled'` (with 502)
+ * means the run was cancelled here but the training process could not be confirmed stopped,
+ * which used to be reported as a plain success while `ml.xi.retrain` kept going (D-11).
+ */
+export type PipelineStopResult = {
+  status?: 'cancelled' | 'partially_cancelled';
+  cancelled?: number;
+  plan_stopped?: boolean;
+  training_stopped?: string[];
+  error?: string;
+};
+
+/**
+ * The gender half of a team's identity, exactly as the wire spells it.
+ *
+ * Declared in contracts/ops-console.contract.json and asserted against it by
+ * `opsContract.test.ts` (H-24): go-app writes these values, ml-service matches on them, and
+ * this is the third component that has to agree. Never hand-type one of these strings
+ * elsewhere in the UI — a side's label comes from the backend as `display_name`.
+ */
+export const TEAM_GENDERS = ['male', 'female'] as const;
+export type TeamGender = (typeof TEAM_GENDERS)[number];
+
+/**
+ * One side of a fixture: the club id a prediction request is made with, plus the name and
+ * gender that make it one team.
+ *
+ * A name alone is not a team — 130 of the 394 names in the dataset are used by both a men's
+ * and a women's side — so the picker offers sides and sends `club_id` (D-10).
+ */
+export type TeamSideOption = {
+  club_id: number;
+  name: string;
+  gender: TeamGender;
+  display_name: string;
+};
+
 export type PredictTeamSelectionResponse = {
+  /** The sides that were actually scored, echoed back whether or not the request was clear. */
+  team1_side: TeamSideOption;
+  team2_side: TeamSideOption;
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
   selection: PredictSelectionSummary;

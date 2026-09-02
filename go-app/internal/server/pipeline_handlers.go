@@ -39,19 +39,39 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 	// lane cancel below is belt and braces for a step started on its own.
 	planStopped := a.StopRunPlan()
 
-	cancelled, err := pipelinesvc.StopRun(
+	outcome, err := pipelinesvc.StopRun(
 		r.Context(),
 		"cancelled by user",
 		lanes,
 		a.CancelJobsInLanes,
 		tracking.CancelInProgressMigrations,
+		pipelinesvc.StopMLTraining,
 	)
 	if err != nil {
 		slog.Warn("pipeline stop: cancel migration failed", slog.Any("err", err))
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	if cancelled == 0 && !planStopped {
+
+	// A training process we could not confirm is stopped is the defect this endpoint had
+	// (D-11): it answered `{"cancelled": 1}` while `ml.xi.retrain` kept running and the
+	// compute lane read as free. The local run *is* cancelled by here, so this is a
+	// partial stop, and the operator is told exactly that rather than "cancelled".
+	if outcome.TrainingErr != nil {
+		slog.Error("pipeline stop: ml-service training could not be confirmed stopped",
+			slog.String("lanes", laneLabel(lanes)),
+			slog.Any("err", outcome.TrainingErr))
+		respondJSON(w, http.StatusBadGateway, map[string]any{
+			"status":       "partially_cancelled",
+			"cancelled":    outcome.Cancelled,
+			"plan_stopped": planStopped,
+			"error": "cancelled this run, but ml-service could not confirm its training process stopped: " +
+				outcome.TrainingErr.Error(),
+		})
+		return
+	}
+
+	if outcome.Cancelled == 0 && !planStopped && len(outcome.TrainingStopped) == 0 {
 		slog.Info("pipeline stop: nothing running", slog.String("lanes", laneLabel(lanes)))
 		respondJSON(w, http.StatusConflict, map[string]string{"error": "no pipeline step is running"})
 		return
@@ -61,12 +81,17 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 	// from a bug that cancelled the run on its own.
 	slog.Info("pipeline stop: cancelled by user",
 		slog.String("lanes", laneLabel(lanes)),
-		slog.Int("cancelled", cancelled),
+		slog.Int("cancelled", outcome.Cancelled),
+		slog.Any("training_stopped", outcome.TrainingStopped),
 		slog.Bool("plan_stopped", planStopped))
 	respondJSON(w, http.StatusOK, map[string]any{
 		"status":       "cancelled",
-		"cancelled":    cancelled,
+		"cancelled":    outcome.Cancelled,
 		"plan_stopped": planStopped,
+		// The steps whose process ml-service watched exit. Reported because a Stop that
+		// killed a twelve-minute retrain and a Stop that found nothing running are
+		// different events, and the console could not previously tell them apart.
+		"training_stopped": outcome.TrainingStopped,
 	})
 }
 

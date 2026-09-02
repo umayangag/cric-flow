@@ -68,7 +68,7 @@ export default defineConfig({
       // Set to the measured figures rounded down; raise them, never lower them.
       thresholds: {
         lines: 80,
-        functions: 75,
+        functions: 76,
         statements: 80,
         branches: 79,
       },

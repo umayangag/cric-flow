@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
-	"time"
 )
 
 // GetOrCreateVenue returns venue.id for a given venue_name, creating it if necessary.
@@ -91,71 +89,6 @@ func ApplyTeamLineage(ctx context.Context, renames []TeamRename) (int, error) {
 		linked += int(tag.RowsAffected())
 	}
 	return linked, nil
-}
-
-// ErrOppositionNotFound reports that no team with the given name has played the format.
-var ErrOppositionNotFound = errors.New("no opposition found for team name")
-
-// FindOppositionIDForFormat resolves a team *name* to one opposition id for a request
-// that does not carry a gender.
-//
-// The serving surfaces take a team name and a format and nothing else, so after the
-// gender split a name alone can mean two teams. Rather than invent a gender or return
-// both, this picks the side that has actually played the format, most recently -- which
-// is the side a prediction request for that format is asking about -- and logs when the
-// name was ambiguous, because that log is the record of a request that could not say
-// what it meant. The real fix is for the caller to carry the gender; that arrives with
-// the L2 serving path (P-5), which takes ids rather than names.
-func FindOppositionIDForFormat(ctx context.Context, name, formatCode string) (int64, error) {
-	if Pool == nil {
-		return 0, errors.New("db pool not initialized")
-	}
-	// COALESCE(canonical_id, id) is the club: a request naming a club by the name it used
-	// to play under is asking about the club, not about the years before it renamed.
-	rows, err := Pool.Query(ctx, `
-		SELECT COALESCE(o.canonical_id, o.id) AS club_id, o.gender, max(m.match_date) AS last_played
-		FROM opposition o
-		JOIN match_inning mi ON mi.batting_team_opposition_id = o.id OR mi.bowling_team_opposition_id = o.id
-		JOIN match m ON m.match_id = mi.match_id
-		JOIN match_format mf ON mf.id = m.format_id
-		WHERE o.opposition_name = $1 AND mf.code = $2
-		GROUP BY club_id, o.gender
-		ORDER BY last_played DESC, club_id`, name, formatCode)
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-	type candidate struct {
-		id     int64
-		gender string
-	}
-	var candidates []candidate
-	for rows.Next() {
-		var c candidate
-		var lastPlayed time.Time
-		if err := rows.Scan(&c.id, &c.gender, &lastPlayed); err != nil {
-			return 0, err
-		}
-		candidates = append(candidates, c)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	if len(candidates) == 0 {
-		return 0, fmt.Errorf("%w: %q in %s", ErrOppositionNotFound, name, formatCode)
-	}
-	if len(candidates) > 1 {
-		genders := make([]string, 0, len(candidates))
-		for _, c := range candidates {
-			genders = append(genders, c.gender)
-		}
-		slog.Warn("team name matches more than one side; using the most recently active",
-			slog.String("team", name),
-			slog.String("format", formatCode),
-			slog.String("genders", strings.Join(genders, ", ")),
-			slog.String("chosen_gender", candidates[0].gender))
-	}
-	return candidates[0].id, nil
 }
 
 // GetOrCreateSeason returns season.id for a given season_name, creating it if necessary.
