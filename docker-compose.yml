@@ -44,7 +44,8 @@ services:
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
-      # Export dir for pipeline export-dataset (must be writable in container; mount ./output below).
+      # go-app's own output dir (resource observations); must be writable in the
+      # container, so ./output is mounted below.
       GO_APP_OUTPUT_DIR: /output/go-app
       # Dataset dir Import reads and the acquire step downloads into (must be writable
       # in container; mount ./data below). Absolute so it does not depend on the cwd.
@@ -56,13 +57,9 @@ services:
       # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
-      # Pipeline concurrency (workers). If unset, concurrency is derived automatically from GOMEMLIMIT / cgroup memory and CPU.
-      # Set these in .env only when you want to override auto-detection.
-      PRECOMPUTE_CONCURRENCY: ${PRECOMPUTE_CONCURRENCY:-}
+      # Import concurrency (workers). If unset, it is derived automatically from
+      # GOMEMLIMIT / cgroup memory and CPU. Set in .env only to override auto-detection.
       IMPORT_CONCURRENCY: ${IMPORT_CONCURRENCY:-}
-      EXPORT_CONCURRENCY: ${EXPORT_CONCURRENCY:-}
-      FIELDING_CONCURRENCY: ${FIELDING_CONCURRENCY:-}
-      SEQCALC_CONCURRENCY: ${SEQCALC_CONCURRENCY:-}
       # Optional: log memory stats to diagnose OOM. Set e.g. MEM_STATS_INTERVAL=30s or 1m to see heap growth (see docs/quality-and-debugging.md)
       MEM_STATS_INTERVAL: ${MEM_STATS_INTERVAL:-}
       # Error (red) and warn (yellow) in docker logs for visibility
@@ -79,9 +76,6 @@ services:
     build:
       context: .
       dockerfile: ml-service/Dockerfile
-      # Serving image: no pycaret/autogluon/shap. /admin/train/* still works;
-      # auto-tune runs Optuna-only. Build --target train for PyCaret/AutoGluon ranking.
-      target: serve
     image: umayangag/cric-app-ml:latest
     container_name: cric-ml-service
     depends_on:
@@ -96,22 +90,16 @@ services:
       POSTGRES_SSLMODE: disable
       PORT: 8000
       MODELS_DIR: /app/output/ml-service
-      # Where training subprocess writes artifacts (must match MODELS_DIR so /admin/train/* persists to volume)
+      # Where retrain writes runs/<id>/ (must match MODELS_DIR so a run persists to the volume)
       ML_SERVICE_OUTPUT_DIR: /app/output/ml-service
-      # Where to read exported CSVs for /admin/train/* (batting, bowling)
-      GO_APP_OUTPUT_DIR: /app/output/go-app
-      # Required for train-on-the-fly and fielding training from go-app API
-      GO_APP_URL: ${GO_APP_URL:-http://go-api:8080}
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
       # Max concurrent training jobs (default 4 for ~12 CPUs; adjust for your machine)
       MAX_CONCURRENT_TRAINING_JOBS: ${MAX_CONCURRENT_TRAINING_JOBS:-4}
       # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
       ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
-      GO_APP_API_KEY: ${API_KEY:-dev-local-key}
-      # Resource limit for n_jobs; when unset, ML uses detected cgroup memory (80% fraction) to choose n_jobs automatically.
-      # Set ML_MEMORY_LIMIT_MB in .env only when you want to cap ML memory explicitly.
-      ML_MEMORY_LIMIT_MB: ${ML_MEMORY_LIMIT_MB:-}
+      # H-11: a live prediction against ratings older than this is refused with RATINGS_STALE.
+      XI_RATINGS_MAX_AGE_DAYS: ${XI_RATINGS_MAX_AGE_DAYS:-14}
       # Error (red) and warn (yellow) in docker logs for visibility
       LOG_COLOR: "1"
     ports:

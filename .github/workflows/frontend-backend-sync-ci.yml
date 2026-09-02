@@ -13,10 +13,7 @@ on:
       - 'frontend/src/hooks/useCanonicalFormats.ts'
       - 'go-app/internal/formats/**'
       - 'go-app/cmd/print_canonical/**'
-      - 'ml-service/app/model_metadata.py'
-      - 'ml-service/app/feature_config.py'
-      - 'ml-service/ml/train_extras.py'
-      - 'ml-service/ml/win_features.py'
+      - 'ml-service/ml/config.py'
       - 'scripts/check-frontend-backend-sync.mjs'
       - '.github/workflows/frontend-backend-sync-ci.yml'
   pull_request:
@@ -26,10 +23,7 @@ on:
       - 'frontend/src/hooks/useCanonicalFormats.ts'
       - 'go-app/internal/formats/**'
       - 'go-app/cmd/print_canonical/**'
-      - 'ml-service/app/model_metadata.py'
-      - 'ml-service/app/feature_config.py'
-      - 'ml-service/ml/train_extras.py'
-      - 'ml-service/ml/win_features.py'
+      - 'ml-service/ml/config.py'
       - 'scripts/check-frontend-backend-sync.mjs'
       - '.github/workflows/frontend-backend-sync-ci.yml'
 

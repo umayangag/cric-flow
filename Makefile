@@ -11,12 +11,11 @@ FRONTEND_PORT ?= 5173
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
-.PHONY: logs api migrate output-dirs export-dataset export-off export-on
-.PHONY: precompute precompute-seq precompute-asof precompute-all precompute-all-all-formats
+.PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: train-win ml-auto-tune win-discrimination train-xi xi-evaluate xi-parity full-pipeline
+.PHONY: retrain evaluate reload xi-parity full-pipeline
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
-.PHONY: up-all build-apps build-apps-nocache recreate-apps e2e e2e-multi help help-all list
+.PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
 .PHONY: check-all frontend-check go-app-check ml-service-check frontend-backend-sync-check e2e-pytest ml-test
 
@@ -76,27 +75,6 @@ migrate:
 output-dirs:
 	@mkdir -p output/go-app output/ml-service
 
-# Export datasets (unified exports only)
-export-dataset: output-dirs
-	# Unified, cross-format CSVs with as-of per-format features
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -unified=1
-
-# Convenience targets for sequence feature workflows (FORMAT defaults to T20)
-precompute-seq:
-	cd go-app; \
- 	for F in TEST ODI T20I T20; do \
- 	  echo "precompute-sequence-features for [$$F]"; \
- 	  go run ./cmd/precompute-sequence-features -format=$$F -targets=all || exit 1; \
- 	done
-
-export-off: output-dirs
-	# Baseline export without optional sequence columns
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
-
-export-on: output-dirs
-	# Export with sequence columns appended (flag and env gate)
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app ENABLE_SEQ_FEATURES=1 go run ./cmd/export-dataset -format=$(FORMAT) -enable-seq=1
-
 # Run API locally (assumes Postgres is reachable as configured in env)
 api:
 	cd go-app && PORT=8080 MIGRATIONS_DIR=./migrations make run-api
@@ -119,82 +97,39 @@ MATCH ?= 0
 BAT ?= 6
 BOWL ?= 5
 
-# Run preprocessing computations against a running stack (make dev-up first).
-# Uses API_KEY/API_URL; override when the stack was started with a different key.
-precompute:
-	curl -fsS -X POST -H "X-API-Key: $(API_KEY)" $(API_URL)/precompute
+# --- The pipeline: import -> retrain -> reload ---
+#
+# Three steps. It was import, precompute, export and six training commands, in an order
+# that could be got wrong; P-6 deleted the producers and folded the rest into one
+# retrain. The ops console runs the same three through /ops/pipeline/run/{step}.
 
-# Precompute time-indexed (as-of) features for ALL formats with one command
-# ASOF is optional (defaults to today's date in UTC). You can override:
-#   ASOF=YYYY-MM-DD
-# Optional env overrides:
-#   ALPHA=0.3   LASTN=10
-# Examples:
-#   make precompute-asof
-#   make precompute-asof ASOF=2020-12-31 ALPHA=0.35 LASTN=12
-precompute-asof:
-	cd go-app; \
-	ASOF_VAL=$${ASOF:-$$(date -u +%F)}; \
-	ALPHA_FLAG=""; LASTN_FLAG=""; \
-	if [ -n "$(ALPHA)" ]; then ALPHA_FLAG="-ewm-alpha=$(ALPHA)"; fi; \
-	if [ -n "$(LASTN)" ]; then LASTN_FLAG="-lastN=$(LASTN)"; fi; \
-	for F in TEST ODI T20I T20; do \
-		echo "[as-of] Precomputing (replay) for $$F as-of $$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG"; \
-		go run ./cmd/precompute-features -format=$$F -replay=1 -as-of=$$ASOF_VAL $$ALPHA_FLAG $$LASTN_FLAG || exit 1; \
-	done
-
-# Unified command: run both as-of/replay precompute and sequential features in one shot
-# For T20/T20I, the system automatically combines domestic T20 and international T20I data.
-precompute-all:
-	cd go-app && go run ./cmd/precompute-all -format=$(FORMAT) $(ARGS) || exit 1
-
-# Run unified command for all formats in parallel (TEST, ODI, T20I, T20). Single process, same as pipeline API.
-# Note: T20 and T20I are treated as a single bucket for many aggregate and sequence features.
-precompute-all-all-formats:
-	cd go-app && go run ./cmd/precompute-all -all-formats -replay $(ARGS) || exit 1
-
-
-# Train the windowed-form win model. Prerequisites: precompute + export (see export-dataset).
-# P-6 removes it; the XI layer is trained by `make train-xi` and needs only the import.
 GO_APP_URL ?= http://localhost:8080
+ML_URL ?= http://localhost:8000
 CUTOFF ?=
+
 ml-install:
 	$(MAKE) -C ml-service install
 
-train-win:
-	@if [ -z "$(CUTOFF)" ] && [ -z "$(WIN_CSV)" ]; then \
-	  echo "Set CUTOFF=<RFC3339> and optionally GO_APP_URL=, or set WIN_CSV=<path>. Example: make train-win CUTOFF=2025-01-01T00:00:00Z"; \
-	  exit 1; \
-	fi
-	@if [ -n "$(WIN_CSV)" ]; then \
-	  cd ml-service && $(ML_VENV_BIN)/python -m ml.train_win --csv "$(WIN_CSV)"; \
-	else \
-	  cd ml-service && GO_APP_URL="$(GO_APP_URL)" $(ML_VENV_BIN)/python -m ml.train_win --go-app-url "$(GO_APP_URL)" --cutoff "$(CUTOFF)"; \
-	fi
-
-# Auto-tune the win model: find best algorithm and hyperparameters.
-# From repo root: make ml-auto-tune FORMAT=T20, or ALL_FORMATS=1.
-# Options: ALGORITHMS=rf,gb VALIDATION_METHOD=walk_forward
-MODEL ?= win
-# FORMAT is already defined above (default T20); a second `FORMAT ?=` here was a no-op.
-ALL_FORMATS ?=
-ALGORITHMS ?=
-VALIDATION_METHOD ?=
-RESCREEN ?=
-ml-auto-tune:
-	$(MAKE) -C ml-service auto-tune MODEL="$(MODEL)" FORMAT="$(FORMAT)" ALL_FORMATS="$(ALL_FORMATS)" $(if $(CUTOFF),CUTOFF="$(CUTOFF)",) $(if $(ALGORITHMS),ALGORITHMS="$(ALGORITHMS)",) $(if $(VALIDATION_METHOD),VALIDATION_METHOD="$(VALIDATION_METHOD)",) $(if $(PARALLEL),PARALLEL="$(PARALLEL)",) $(if $(FAST),FAST="$(FAST)",) $(if $(NO_PYCARET),NO_PYCARET="$(NO_PYCARET)",) $(if $(RESCREEN),RESCREEN="$(RESCREEN)",)
-
-# Train the XI-responsive win model + ratings (see docs/ml-and-training.md, S-10). Reads the DB
-# (POSTGRES_* from the environment or .env) or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory.
-train-xi:
+# The whole model build: rating pass -> XI win models (with the grid) -> performance
+# models -> report -> run manifest, into output/ml-service/runs/<run_id>/. Reads the DB
+# (POSTGRES_* from the environment or .env) or, with CRICSHEET_DIR=, the Cricsheet JSON.
+# It publishes nothing; `make reload` moves `current`.
+retrain:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service train-xi CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
+	$(MAKE) -C ml-service retrain CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
+
+# Point `current` at a run and load it into the running ML service. RUN=<id> names one;
+# with none, the run `current` already names, or the newest one.
+RUN ?=
+reload:
+	$(MAKE) -C ml-service reload API_KEY="$(API_KEY)" ML_URL="$(ML_URL)" RUN="$(RUN)"
 
 # L4 evaluation harness (H-19): walk-forward + locked window, one JSON report. Reads the DB
-# or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory. See ml-service/Makefile.
-xi-evaluate:
+# or, with CRICSHEET_DIR=, the raw Cricsheet JSON directory. Touches no artifact `current`
+# points at, which is why it is a step beside the pipeline rather than in it.
+evaluate:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service xi-evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,)
+	$(MAKE) -C ml-service evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,)
 
 # Compare the database against the Cricsheet archive (H-15). See ml-service/Makefile.
 XI_PARITY_DIR ?= data/go-app/cricsheet
@@ -202,13 +137,8 @@ xi-parity:
 	set -a; [ -f .env ] && . ./.env; set +a; \
 	$(MAKE) -C ml-service xi-parity CRICSHEET_DIR="$(abspath $(XI_PARITY_DIR))"
 
-# Held-out discrimination report for the win model (see docs/ml-and-training.md)
-win-discrimination:
-	GO_APP_URL=$${GO_APP_URL:-http://localhost:8080} $(MAKE) -C ml-service win-discrimination TRAIN_CUTOFF="$(TRAIN_CUTOFF)" $(if $(EVAL_CUTOFF),EVAL_CUTOFF="$(EVAL_CUTOFF)",)
-
-# Full retrain pipeline: precompute → export → train the win model. Does not run import.
-# Set CUTOFF= and GO_APP_URL=. The XI layer is a separate command: `make train-xi CUTOFF=`.
-full-pipeline: output-dirs precompute-all-all-formats export-dataset train-win
+# The pipeline against data already imported: build a run and serve it.
+full-pipeline: retrain reload
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -280,14 +210,14 @@ e2e-backtest-smoke: seed-fixtures
 	@echo "[SMOKE] Checking backtest/report"; \
 	STATUS=$$(curl -sS -o /dev/null -w "%{http_code}" -H "X-API-Key: test-api-key" "http://localhost:8080/api/backtest/report"); \
 	if [ "$$STATUS" = "200" ]; then echo "  report OK (200)"; \
-	elif [ "$$STATUS" = "503" ]; then echo "  [WARN] no evaluation report yet (run make xi-evaluate)"; \
+	elif [ "$$STATUS" = "503" ]; then echo "  [WARN] no evaluation report yet (run make evaluate)"; \
 	else echo "report HTTP $$STATUS"; exit 2; fi
 	# Options endpoints
 	@echo "[SMOKE] Checking options/formats"; \
 	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/options/formats" | jq -e 'type == "array"' >/dev/null
-	# Model stats (proxy to ML service)
-	@echo "[SMOKE] Checking ml/model-stats"; \
-	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/ml/model-stats" | jq -e '.models_dir and (.models | type) == "array"' >/dev/null
+	# Which run is loaded, and whether its ratings are fresh enough to answer with.
+	@echo "[SMOKE] Checking ml/xi-status"; \
+	curl -sS -H "X-API-Key: test-api-key" "http://localhost:8080/api/ml/xi-status" | jq -e 'has("loaded") and has("ratings")' >/dev/null
 	echo "[SMOKE] OK"
 
 # Run ML-service E2E pytest tests (requires ML service and optionally go-api to be up; set RUN_E2E=1)
@@ -298,63 +228,21 @@ e2e-pytest:
 ml-test:
 	cd ml-service && $(ML_VENV_BIN)/pytest -q tests/test_xi_ratings.py tests/test_xi_optimizer_and_store.py
 
-# --- End-to-end automation (format-aware) ---
-# Usage:
-#  make e2e FORMAT=ODI SEASON=2019
-#  make e2e-multi FORMATS=ODI,T20I SEASON=2019
+# --- End-to-end automation ---
+# One chain from an empty database to a loaded, manifest-named run:
+#   make up-all CUTOFF=2025-09-01
 
-e2e:
-	@if [ -z "$(FORMAT)" ]; then echo "Please set FORMAT=<CODE> (e.g., ODI)"; exit 2; fi
-	@echo "[1/5] Applying DB migrations..."
-	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
-	@echo "[2/5] Importing Cricsheet JSON..."
-	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[3/5] Precomputing features..."
-	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
-	@echo "[4/5] Exporting datasets for format $(FORMAT)..."
-	@$(MAKE) output-dirs --no-print-directory
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -format=$(FORMAT)
-	@echo "[5/5] Training ML artifacts for format $(FORMAT)..."
-	$(MAKE) ml-install
-	cd ml-service && .venv/bin/python -m ml.train_batting --format $(FORMAT) && .venv/bin/python -m ml.train_bowling --format $(FORMAT)
-	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
-
-e2e-multi:
-	@if [ -z "$(FORMATS)" ]; then echo "Please set FORMATS=CSV (e.g., ODI,T20I)"; exit 2; fi
-	@echo "[1/5] Applying DB migrations..."
-	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
-	@echo "[2/5] Importing Cricsheet JSON..."
-	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[3/5] Precomputing features..."
-	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
-	@echo "[4/5] Exporting datasets for formats $(FORMATS)..."
-	@$(MAKE) output-dirs --no-print-directory
-	cd go-app && GO_APP_OUTPUT_DIR=../output/go-app go run ./cmd/export-dataset -formats=$(FORMATS)
-	@echo "[5/5] Training ML artifacts for formats $(FORMATS)..."
-	$(MAKE) ml-install
-	@for f in $$(echo "$(FORMATS)" | tr ',' ' '); do \
-		echo "  Training for format $$f..."; \
-		cd ml-service && $(ML_VENV_BIN)/python -m ml.train_batting --format $$f && $(ML_VENV_BIN)/python -m ml.train_bowling --format $$f; \
-	done
-	@echo "Done. Artifacts in output/ml-service, CSVs in output/go-app."
-
-# One-shot bootstrap: bring up stack, migrate, import Cricsheet, precompute, export, train, and restart ML service
 up-all:
-	@echo "[1/7] Bringing up Docker stack (Postgres, API, ML)..."
+	@echo "[1/5] Bringing up Docker stack (Postgres, API, ML)..."
 	$(MAKE) dev-up
-	@echo "[2/7] Applying DB migrations..."
+	@echo "[2/5] Applying DB migrations..."
 	$(MAKE) migrate || (echo "Migrations failed" && exit 1)
-	@echo "[3/7] Importing Cricsheet JSON (idempotent)..."
+	@echo "[3/5] Importing Cricsheet JSON (idempotent)..."
 	$(MAKE) cricsheet-import || (echo "Cricsheet import failed" && exit 1)
-	@echo "[4/7] Precomputing metrics..."
-	$(MAKE) precompute || (echo "Precompute failed" && exit 1)
-	@echo "[5/7] Exporting datasets..."
-	@$(MAKE) output-dirs --no-print-directory
-	cd go-app && make export-dataset || (echo "Export failed" && exit 1)
-	@echo "[6/7] Training ML artifacts..."
-	$(MAKE) train-win CUTOFF=$$(date -u +%Y-%m-%dT%H:%M:%SZ) || (echo "Training failed" && exit 1)
-	@echo "[7/7] Restarting ML service to load artifacts..."
-	$(DC) restart ml-service
+	@echo "[4/5] Retraining (rating pass, models, report, manifest)..."
+	$(MAKE) retrain CUTOFF="$${CUTOFF:-$$(date -u +%Y-%m-%d)}" || (echo "Retrain failed" && exit 1)
+	@echo "[5/5] Reloading: pointing current at the new run..."
+	$(MAKE) reload || (echo "Reload failed" && exit 1)
 	@echo "Done. API at http://localhost:8080 (health/readiness), ML at http://localhost:8000 (health), Frontend at http://localhost:$(FRONTEND_PORT)."
 
 # --- Frontend (React control panel) ---
@@ -412,8 +300,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 68)..."
-	COV_MIN=$${COV_MIN_GO:-68} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 74)..."
+	COV_MIN=$${COV_MIN_GO:-74} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -523,7 +411,7 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 68
+COV_MIN_GO ?= 74
 COV_MIN_ML ?= 86
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
@@ -553,10 +441,8 @@ help:
 	@echo "targets marked [API] just call it."
 	@echo ""
 	@echo "[Orchestration]"
-	@echo "  up-all             One-shot: docker up → migrate → import → precompute → export → train → restart ML"
-	@echo "  full-pipeline      precompute → export → train the win model"
-	@echo "  e2e                Run pipeline for a single FORMAT (requires FORMAT)"
-	@echo "  e2e-multi          Run pipeline for multiple FORMATS (FORMATS=ODI,T20I)"
+	@echo "  up-all             One-shot: docker up → migrate → import → retrain → reload"
+	@echo "  full-pipeline      retrain → reload, against data already imported"
 	@echo
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"
@@ -572,24 +458,14 @@ help:
 	@echo "[Data & Pipeline]"
 	@echo "  migrate            Run DB migrations (match + match_inning schema)"
 	@echo "  cricsheet-import   Import Cricsheet JSON into DB (match, match_inning)"
-	@echo "  precompute         [API] POST /precompute on a running stack (API_KEY?=dev-local-key)"
-	@echo "  precompute-asof    Precompute as of a date locally (ASOF=, ALPHA=, LASTN=)"
 	@echo "  migrate-local      Apply migrations from the host rather than in-container"
 	@echo "  seed-fixtures      Load test fixtures into the compose Postgres"
-	@echo "  precompute-all        Run unified precompute (as-of/replay + sequential) for FORMAT (default T20)"
-	@echo "  precompute-all-all-formats  Run unified precompute for all formats"
-	@echo "  precompute-seq     Precompute sequence features: go-app/cmd/precompute-sequence-features (FORMAT?=$(FORMAT))"
-	@echo "  export-dataset     Export training datasets (unified)"
-	@echo "  export-off         Export without seq columns for FORMAT (default T20)"
-	@echo "  export-on          Export with seq columns appended for FORMAT (uses -enable-seq and ENABLE_SEQ_FEATURES=1)"
 	@echo
-	@echo "[ML training — the XI layer needs only the import; the win model needs precompute → export]"
-	@echo "  train-xi           Train the rating pass, the XI win models and the performance models (CUTOFF=YYYY-MM-DD; DB, or CRICSHEET_DIR=)"
-	@echo "  xi-evaluate        L4 harness: walk-forward + locked window, one JSON report"
+	@echo "[ML — three steps, and the harness beside them. Everything reads the import.]"
+	@echo "  retrain            Build one run: rating pass, models, report, manifest (CUTOFF=YYYY-MM-DD)"
+	@echo "  reload             Point current at a run and load it (RUN=<id> optional)"
+	@echo "  evaluate           L4 harness: walk-forward + locked window, one JSON report"
 	@echo "  xi-parity          Check the database against the Cricsheet archive (H-15; XI_PARITY_DIR=)"
-	@echo "  train-win          Train the windowed-form win model (CUTOFF= + GO_APP_URL= or WIN_CSV=); P-6 removes it"
-	@echo "  win-discrimination Held-out AUC / Brier for the windowed-form win model (TRAIN_CUTOFF=)"
-	@echo "  ml-auto-tune       Auto-tune the win model: best algorithm + hyperparams (FORMAT=, ALL_FORMATS=1)"
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"

@@ -43,19 +43,15 @@ dependencies to the latest compatible versions in the module graph.
 
 ### ml-service
 
-Direct dependencies live in `requirements.in` and `requirements-serve.in`. The `.txt` files are
-**generated** — never edit them by hand.
-
-There are **two** pin sets and both must be regenerated:
+Direct dependencies live in `requirements.in`. `requirements.txt` is
+**generated** — never edit it by hand.
 
 | File | Contents | Regenerate with |
 |------|----------|-----------------|
-| `requirements.txt` | Full runtime set, incl. PyCaret / AutoGluon / SHAP | `make -C ml-service compile-requirements` |
-| `requirements-serve.txt` | Serving + CI set (no auto-tune extras) — what the serve image ships **and what CI installs** | `make -C ml-service compile-requirements-serve-docker` |
+| `requirements.txt` | The runtime set the image ships **and CI installs** | `make -C ml-service compile-requirements-docker` |
 
 ```bash
 make -C ml-service compile-requirements
-make -C ml-service compile-requirements-serve-docker
 make -C ml-service install   # sync the local venv to the new pins
 ```
 
@@ -64,12 +60,9 @@ Notes:
 - `compile-requirements` uses the **local venv**, whose Python may not match CI. If a Docker build
   later fails on a resolution conflict (e.g. click/typer), regenerate with
   `make -C ml-service compile-requirements-docker` instead, which pins under Python 3.12.
-- The serve set is regenerated with the **`-docker`** variant on purpose: CI runs Python 3.12 and
-  installs `requirements-serve.txt` directly, so the pins must be resolved under that interpreter.
-  `compile-requirements-serve` (venv) exists but will produce pins for whatever Python the venv has.
-- Forgetting `requirements-serve.txt` is the common mistake: the runtime pins move, CI and the
-  serve image stay stale, and nothing fails until a build does.
-- To **add** a direct dependency, add it to the appropriate `.in` file first, then recompile.
+- Prefer the **`-docker`** variant: CI runs Python 3.12 and installs `requirements.txt`
+  directly, so the pins should be resolved under that interpreter.
+- To **add** a direct dependency, add it to `requirements.in` first, then recompile.
 
 ### frontend
 
@@ -126,7 +119,7 @@ committed, pushed, and opened as an independent PR.
 | # | Component | Branch | Files to commit |
 |---|-----------|--------|-----------------|
 | 1 | go-app | `chore/update-go-app-deps` | `go-app/go.mod`, `go-app/go.sum` |
-| 2 | ml-service | `chore/update-ml-service-deps` | `ml-service/requirements.txt`, `ml-service/requirements-serve.txt` (plus the `.in` files if direct deps changed) |
+| 2 | ml-service | `chore/update-ml-service-deps` | `ml-service/requirements.txt` (plus `requirements.in` if direct deps changed) |
 | 3 | frontend | `chore/update-frontend-deps` | `frontend/package.json`, `frontend/package-lock.json` (often lockfile only) |
 
 The user may ask for a single slice ("ml-service only") — still branch from `main` and open one PR.

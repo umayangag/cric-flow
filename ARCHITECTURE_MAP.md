@@ -58,7 +58,6 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 | **XI win — objective** | Match | 42 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
 | **XI win — display** | Match | 49 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context |
 | **Performance (L2-B)** | Player | 42 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
-| **Win — windowed form** | Match | 68 | 1 — `team1_wins` | `ml.win_features.WIN_ENHANCED_FEATURE_COLS` — superseded, removed in P-6 |
 
 One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (L2-C) trains nothing — it draws from the performance model.
 
@@ -66,7 +65,6 @@ Input feature names, in order:
 
 - **XI win — objective** (42): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+30 more, see `ml.xi.contract.XI_FEATURE_COLS`)
 - **XI win — display** (49): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+37 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
-- **Win — windowed form** (68): `venue_id`, `team1_opposition_id`, `team2_opposition_id`, `format_is_TEST`, `format_is_ODI`, `format_is_T20`, `format_is_T20I`, `format_is_OTHER`, `team1_bat_consistency_sum`, `team1_bat_consistency_mean`, `team1_bat_consistency_std`, `team1_bat_consistency_max` … (+56 more, see `ml.win_features`)
 
 <!-- END GENERATED: models -->
 
@@ -78,21 +76,16 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (17 routes, from `app/main.py`):
+**ml-service** (12 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
 | GET | `/health` |
 | GET | `/artifacts/status` |
-| GET | `/model-metadata` |
-| GET | `/model-stats` |
-| POST | `/predict/win` |
-| POST | `/predict/win-enhanced` |
 | POST | `/admin/reload` |
-| POST | `/admin/train/win` |
-| POST | `/admin/train/auto-tune` |
+| POST | `/admin/train/retrain` |
+| POST | `/admin/train/evaluate` |
 | GET | `/admin/train/progress` |
-| GET | `/admin/train/auto-tune/progress` |
 | GET | `/xi/status` |
 | GET | `/xi/evaluate-report` |
 | POST | `/xi/predict-win` |
@@ -100,18 +93,15 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (32 routes, from `internal/server/router.go`):
+**go-app** (25 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
 | GET | `/health` |
 | GET | `/readiness` |
-| POST | `/precompute` |
-| GET | `/precompute/status` |
 | POST | `/import/cricsheet` |
 | GET | `/ops/status` |
 | GET | `/ops/migrations` |
-| GET | `/ops/migrations/{id:[0-9]+}/auto-tune` |
 | GET | `/ops/suggestions` |
 | POST | `/ops/pipeline/run/{step}` |
 | POST | `/ops/pipeline/stop` |
@@ -132,10 +122,6 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/players/{id}` |
 | GET | `/matches/{id}` |
 | GET, POST | `/api/predict/team-selection` |
-| GET | `/api/backtest/training-data` |
-| GET | `/api/ml/tuned-params/list` |
-| GET | `/api/ml/tuned-params` |
-| POST | `/api/ml/tuned-params` |
 
 <!-- END GENERATED: endpoints -->
 
