@@ -14,6 +14,10 @@ step for step; in short:
 * a player's three quantiles become a quantile function (piecewise linear, exponential
   tail above 0.9) that reproduces the fitted quantiles exactly and invents nothing else;
 * the chase ends at the target; the toss is marginalised unless known (H-3);
+* the chasing side's runs may respond to the target's difficulty -- the target over the
+  side's expected total on the day's pitch -- through a log-linear response whose two
+  coefficients are fitted by censored maximum likelihood on the calibration fold (plan
+  §8.10, gate A-2), never set by hand; ``CHASE_RESPONSE`` records which arm ships;
 * every input is an L2-B output for the fixture or an as-of rate from the rating pass
   (``contract.SIMULATION_CONTEXT_COLS``) -- the only constants are the laws of the game
   (H-21: nothing the simulator consumes is in-sample for the fixture);
@@ -29,7 +33,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
-from scipy.special import ndtr
+from scipy.optimize import minimize
+from scipy.special import log_ndtr, ndtr
 
 from ml.xi import contract as C
 
@@ -55,6 +60,15 @@ CHASE_ORIENTATION = "chasing"
 #: 1.42 T20 / 1.36 ODI; with the deconvolved as-of factor the ratio is 1.02 / 1.02 and 10-90
 #: coverage moves 0.64 -> 0.76 (T20) and 0.58 -> 0.74 (ODI). On.
 SHARED_FACTOR = True
+#: The arms of gate A-2 (plan §8.10): what the chase response fits. ``none`` is today's
+#: simulator (the target enters only through the truncation); ``level`` is the control
+#: (the slope held at zero); ``slope`` and ``both`` are the candidates.
+CHASE_RESPONSE_ARMS = ("none", "level", "slope", "both")
+#: Which chase response the simulator applies to the chasing side's runs draws:
+#: exp(level + slope * ln(target / expected)), with the coefficients fitted on the shared
+#: factor's calibration fold. Decided on the walk-forward folds by gate A-2
+#: (``scripts/experiments/xi/a2_chase_tails.py``); the before/after is plan §8.10.
+CHASE_RESPONSE = "none"
 #: E2's rule (plan §5): the simulator's P(win) may be displayed only if it is within 0.01
 #: Brier of the display model on the walk-forward folds; otherwise it is a description of
 #: the draws. Measured (P-4, walk-forward folds): within tolerance in T20 (+0.0028 ± 0.0057)
@@ -173,11 +187,15 @@ class SimulatorCalibration:
 
     runs_balls_rho: float
     shared_factor: Optional["SharedFactor"] = None
+    #: The chase response (plan §8.10), present only under a ``CHASE_RESPONSE`` arm that
+    #: fits one; it needs the shared factor's per-match factors, so never without one.
+    chase_response: Optional["ChaseResponse"] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "runs_balls_rho": self.runs_balls_rho,
             "shared_factor": None if self.shared_factor is None else self.shared_factor.as_dict(),
+            "chase_response": None if self.chase_response is None else self.chase_response.as_dict(),
         }
 
 
@@ -193,10 +211,16 @@ def runs_balls_copula_rho(runs: np.ndarray, balls: np.ndarray) -> float:
     return float(np.clip(2.0 * np.sin(np.pi * spearman / 6.0), 0.0, 0.999))
 
 
-def calibrate(rows: pd.DataFrame, shared_factor: Optional["SharedFactor"] = None) -> SimulatorCalibration:
-    """The calibration from the fit's training rows."""
+def calibrate(
+    rows: pd.DataFrame,
+    shared_factor: Optional["SharedFactor"] = None,
+    chase_response: Optional["ChaseResponse"] = None,
+) -> SimulatorCalibration:
+    """The calibration from the fit's training rows and the calibration fold's fits."""
     return SimulatorCalibration(
-        runs_balls_copula_rho(rows.runs.to_numpy(dtype=float), rows.balls_faced.to_numpy(dtype=float)), shared_factor
+        runs_balls_copula_rho(rows.runs.to_numpy(dtype=float), rows.balls_faced.to_numpy(dtype=float)),
+        shared_factor,
+        chase_response,
     )
 
 
@@ -242,6 +266,111 @@ def fit_shared_factor(actual: np.ndarray, simulated_mean: np.ndarray, simulated_
     shrink = float(np.sqrt(excess / residual_variance)) if residual_variance > 0 else 0.0
     factors = 1.0 + (ratio - 1.0) * shrink
     return SharedFactor(np.maximum(factors, 0.0), int(len(actual)), residual_variance, within_variance, shrink)
+
+
+# --- the chase response ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ChaseCalibrationSample:
+    """The calibration fold's chases as the response's fit reads them (plan §8.10): per
+    match the log difficulty x = ln(target / (factor * expected)), the log response
+    y = ln(actual chase / (factor * expected)) and whether the chaser won -- in which case
+    the untruncated innings would have reached the target and y is censored at x. The
+    factor is the shared factor's own value for the match, so the pitch is taken out of
+    the difficulty at fit time as the sampled factor takes it out at draw time."""
+
+    difficulty: np.ndarray
+    response: np.ndarray
+    censored: np.ndarray
+
+    def __len__(self) -> int:
+        return int(len(self.difficulty))
+
+
+@dataclass(frozen=True)
+class ChaseResponse:
+    """How the chasing side's runs respond to the target's difficulty: every runs draw is
+    multiplied by exp(level + slope * ln(difficulty)), the coefficients fitted by censored
+    (Tobit) maximum likelihood on the calibration fold -- never set by hand. ``sigma`` is
+    the fit's residual scale on the log scale, a nuisance parameter reported beside the
+    simulated chase's own spread. The sample the fit read is kept, as the shared factor
+    keeps its factors, so the other arms can be refitted from the same evidence."""
+
+    arm: str
+    level: float
+    slope: float
+    sigma: float
+    sample: ChaseCalibrationSample
+
+    def factor(self, difficulty: np.ndarray) -> np.ndarray:
+        return np.exp(self.level + self.slope * np.log(np.maximum(difficulty, 1e-6)))
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "arm": self.arm,
+            "level": self.level,
+            "slope": self.slope,
+            "sigma": self.sigma,
+            "n_matches": int(len(self.sample)),
+            "n_won": int(self.sample.censored.sum()),
+            "difficulty_sd": float(np.std(self.sample.difficulty)),
+        }
+
+
+def chase_calibration_sample(
+    actual_first: np.ndarray,
+    actual_chase: np.ndarray,
+    chaser_won: np.ndarray,
+    chase_expected: np.ndarray,
+    factors: np.ndarray,
+) -> ChaseCalibrationSample:
+    """The fit's inputs for the calibration matches: actual first-innings and chase totals,
+    the result, the chasing side's expected untruncated total from the no-factor
+    simulation, and the shared factor's per-match factors in the same order."""
+    expected = np.maximum(np.asarray(factors, dtype=float) * np.asarray(chase_expected, dtype=float), 1.0)
+    target = np.asarray(actual_first, dtype=float) + 1.0
+    chase = np.maximum(np.asarray(actual_chase, dtype=float), 1.0)
+    return ChaseCalibrationSample(
+        np.log(target / expected), np.log(chase / expected), np.asarray(chaser_won, dtype=bool)
+    )
+
+
+def fit_chase_response(sample: ChaseCalibrationSample, arm: str) -> Optional[ChaseResponse]:
+    """Censored maximum likelihood of y = level + slope * x + N(0, sigma^2), with y >= x
+    where the chaser won: a lost chase contributes its density, a won chase the probability
+    the untruncated innings reached the target. ``arm`` says which coefficients are free;
+    ``none`` fits nothing. Deterministic."""
+    if arm not in CHASE_RESPONSE_ARMS:
+        raise ValueError(f"unknown chase response arm {arm!r}; one of {CHASE_RESPONSE_ARMS}")
+    if arm == "none":
+        return None
+    if len(sample) < MIN_SHARED_FACTOR_MATCHES:
+        raise ValueError(f"{len(sample)} calibration chases; need {MIN_SHARED_FACTOR_MATCHES} for a chase response")
+    lost = ~sample.censored
+    if lost.sum() < 2:
+        raise ValueError(f"{int(lost.sum())} lost chases in the calibration fold; the residual scale is undefined")
+    fit_level, fit_slope = arm in ("level", "both"), arm in ("slope", "both")
+    x, y = sample.difficulty, sample.response
+
+    def unpack(theta: np.ndarray) -> tuple[float, float, float]:
+        level = float(theta[0]) if fit_level else 0.0
+        slope = float(theta[1]) if fit_slope else 0.0
+        return level, slope, float(np.exp(theta[2]))
+
+    def negative_log_likelihood(theta: np.ndarray) -> float:
+        level, slope, sigma = unpack(theta)
+        mean = level + slope * x
+        z_lost = (y[lost] - mean[lost]) / sigma
+        density = 0.5 * z_lost**2 + np.log(sigma)
+        # P(y >= x) = Phi((mean - x) / sigma), through log_ndtr for the far tail.
+        survival = log_ndtr((mean[~lost] - x[~lost]) / sigma)
+        return float(density.sum() - survival.sum())
+
+    start = np.array([0.0, 0.0, np.log(max(float(np.std(y[lost])), 1e-3))])
+    result = minimize(negative_log_likelihood, start, method="Nelder-Mead", options={"xatol": 1e-6, "fatol": 1e-8})
+    level, slope, sigma = unpack(result.x)
+    return ChaseResponse(arm, level, slope, sigma, sample)
 
 
 # --- distributions --------------------------------------------------------------------
@@ -294,6 +423,9 @@ class InningsDraws:
     wickets: np.ndarray
     deliveries: np.ndarray
     reached_target: np.ndarray  # False for a first innings
+    #: The total before the target truncation (the total itself for a first innings): what
+    #: the chase response's fit reads as the side's expected chase.
+    untruncated_total: np.ndarray
 
 
 def _distribute_remainder(runs: np.ndarray, balls: np.ndarray, remainder: np.ndarray, rate: np.ndarray) -> None:
@@ -384,8 +516,10 @@ def batting_innings(
     rho: float,
     target: Optional[np.ndarray] = None,
     factor: Optional[np.ndarray] = None,
+    chase_response: Optional[ChaseResponse] = None,
 ) -> InningsDraws:
-    """Sample one side's innings ``n`` times (plan §3, steps 1-7 and the chase)."""
+    """Sample one side's innings ``n`` times (plan §3, steps 1-7 and the chase; §8.10 for
+    the chase response, applied to a chase's runs draws before the truncation)."""
     order = side.batting_order
     k = len(order)
     p_bats = side.p_bats[order]
@@ -405,14 +539,31 @@ def batting_innings(
     reached = np.zeros(n, dtype=bool)
     if target is None:
         total = runs.sum(axis=1) + extras
+        untruncated = total
     else:
+        if chase_response is not None:
+            _respond_to_difficulty(runs, extras, target, factor, chase_response)
+        untruncated = runs.sum(axis=1) + extras
         extras, total, reached = _chase(runs, balls, extras, target)
         used = balls.sum(axis=1)
         depth_after = (balls > 0).sum(axis=1)
         wickets = np.where(reached, np.clip(depth_after - 2, 0, C.MAX_WICKETS), wickets).astype(float)
     inverse = np.empty(k, dtype=int)
     inverse[order] = np.arange(k)
-    return InningsDraws(runs[:, inverse], balls[:, inverse], extras, total, wickets, used, reached)
+    return InningsDraws(runs[:, inverse], balls[:, inverse], extras, total, wickets, used, reached, untruncated)
+
+
+def _respond_to_difficulty(
+    runs: np.ndarray, extras: np.ndarray, target: np.ndarray, factor: Optional[np.ndarray], response: ChaseResponse
+) -> None:
+    """Scale each draw's runs by the response to its difficulty, in place: the target over
+    the side's expected total on the draw's pitch, where the expected total is the mean
+    over the draws of the batters' runs divided by their shared factor, plus the extras."""
+    pitch = np.ones(len(target)) if factor is None else factor
+    batted = runs.sum(axis=1)
+    expected = max(float(np.mean(batted / np.maximum(pitch, 1e-6))) + float(np.mean(extras)), 1.0)
+    difficulty = target / (np.maximum(pitch, 1e-6) * expected)
+    runs[:] = np.rint(runs * response.factor(difficulty)[:, None])
 
 
 # --- bowling attribution --------------------------------------------------------------
@@ -500,6 +651,7 @@ class TeamDraws:
     extras: np.ndarray
     wickets_lost: np.ndarray
     deliveries: np.ndarray
+    untruncated_total: np.ndarray
 
 
 @dataclass
@@ -516,13 +668,14 @@ class MatchDraws:
 
 def _empty_team(keys: np.ndarray, n: int) -> TeamDraws:
     k = len(keys)
-    return TeamDraws(keys, *(np.zeros((n, k)) for _ in range(5)), np.zeros(n), np.zeros(n), np.zeros(n), np.zeros(n))
+    return TeamDraws(keys, *(np.zeros((n, k)) for _ in range(5)), *(np.zeros(n) for _ in range(5)))
 
 
 def _fill(team: TeamDraws, rows: np.ndarray, batting: InningsDraws, bowling: BowlingDraws) -> None:
     team.runs[rows], team.balls[rows] = batting.runs, batting.balls
     team.total[rows], team.extras[rows] = batting.total, batting.extras
     team.wickets_lost[rows], team.deliveries[rows] = batting.wickets, batting.deliveries
+    team.untruncated_total[rows] = batting.untruncated_total
     team.bowled_balls[rows], team.conceded[rows], team.wickets[rows] = bowling.balls, bowling.conceded, bowling.wickets
 
 
@@ -557,7 +710,14 @@ def simulate_match(
         innings1 = batting_innings(rng, first.bat_first, context, len(rows), rho, factor=factor)
         bowling1 = bowling_attribution(rng, second.when_chasing, context, innings1)
         innings2 = batting_innings(
-            rng, second.when_chasing, context, len(rows), rho, target=innings1.total + 1.0, factor=factor
+            rng,
+            second.when_chasing,
+            context,
+            len(rows),
+            rho,
+            target=innings1.total + 1.0,
+            factor=factor,
+            chase_response=calibration.chase_response,
         )
         bowling2 = bowling_attribution(rng, first.bat_first, context, innings2)
         _fill(first_out, rows, innings1, bowling2)
@@ -718,23 +878,27 @@ def fixtures_from_rows(player_rows: pd.DataFrame, win_rows: pd.DataFrame, predic
     return fixtures
 
 
-def fit_shared_factor_on_fixtures(
-    fixtures: Sequence[Fixture], actual_first_innings: np.ndarray, rho: float, n: int, seed: int
-) -> SharedFactor:
-    """The as-of residual distribution from calibration fixtures the members did not train
-    on: simulate each toss-known without a factor and deconvolve actual / simulated."""
-    means, sds = [], []
-    without_factor = SimulatorCalibration(rho)
+@dataclass(frozen=True)
+class CalibrationDraws:
+    """Per calibration fixture, simulated toss-known without a factor or a response: the
+    first innings' simulated mean and sd (the shared factor's inputs) and the chasing
+    side's expected untruncated total (the chase response's)."""
+
+    first_mean: np.ndarray
+    first_sd: np.ndarray
+    chase_expected: np.ndarray
+
+
+def simulate_calibration_fixtures(fixtures: Sequence[Fixture], rho: float, n: int, seed: int) -> CalibrationDraws:
+    """Simulate each calibration fixture as it was played (toss known) under the members'
+    forecasts alone, so what the fold-fitted parts learn is the residual after them."""
+    without = SimulatorCalibration(rho)
+    first_mean, first_sd, chase_expected = [], [], []
     for i, fixture in enumerate(fixtures):
         draws = simulate_match(
-            fixture.team1,
-            fixture.team2,
-            fixture.context,
-            n,
-            seed + i,
-            team1_bats_first=True,
-            calibration=without_factor,
+            fixture.team1, fixture.team2, fixture.context, n, seed + i, team1_bats_first=True, calibration=without
         )
-        means.append(draws.team1.total.mean())
-        sds.append(draws.team1.total.std())
-    return fit_shared_factor(np.asarray(actual_first_innings, dtype=float), np.asarray(means), np.asarray(sds))
+        first_mean.append(draws.team1.total.mean())
+        first_sd.append(draws.team1.total.std())
+        chase_expected.append(draws.team2.untruncated_total.mean())
+    return CalibrationDraws(np.asarray(first_mean), np.asarray(first_sd), np.asarray(chase_expected))
