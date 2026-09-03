@@ -79,5 +79,7 @@ def test_describe_refuses_an_unregistered_gate() -> None:
         gates.describe("P-0 winner accuracy")
 
 
-def test_script_reported_gates_have_no_report_path() -> None:
-    assert gates.REGISTRY["E3"].report_path is None
+@pytest.mark.parametrize("gate_id", ["E3", "A-1", "A-2", "A-3"])
+def test_script_reported_gates_have_no_report_path(gate_id: str) -> None:
+    """A gate an experiment script runs is registered for its triple, not for a report path."""
+    assert gates.REGISTRY[gate_id].report_path is None

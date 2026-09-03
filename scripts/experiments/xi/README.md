@@ -64,3 +64,17 @@ standard errors and which arm `simulator.CHASE_RESPONSE` should name:
 
     python scripts/experiments/xi/a2_chase_tails.py --frames output/ml-service/a1/frames.pkl --format T20 --out output/ml-service/a2/a2_T20.json
     python scripts/experiments/xi/a2_chase_tails.py --decide output/ml-service/a2/a2_T20.json output/ml-service/a2/a2_ODI.json output/ml-service/a2/a2_T20I.json
+
+`a3_t20_lineup_signal.py` is gate A-3 (plan §8.11): can a feature family make the T20 selection
+objective select? Three arms of the objective -- `none`, `phase_matchup` (a) and `role_balance`
+(b) -- refitted per fold on `XI_FEATURE_COLS` plus the family's columns, with E5's pairs, the
+previous elevens (one as-of pass, cached) and the bar's derivation fixed; per arm and format
+the fold objective AUC and swap-violation share (the guard) and E5 per fold and pooled with the
+bar re-derived from the arm's own claimed effect under three seeds. Family (c) -- E5 reweighted
+by the claimed |Δ| -- is a measurement diagnostic computed on every arm and never the verdict.
+Every eleven is rebuilt from per-player as-of vectors (parity against the frame 0.0), so the
+script runs in minutes on `sim_frame_cache.py`'s frames; `--decide` prints the tables and the
+verdict:
+
+    python scripts/experiments/xi/a3_t20_lineup_signal.py --frames output/ml-service/a1/frames.pkl --cricsheet-dir data/go-app/cricsheet --pairs-cache output/ml-service/a3/pairs.pkl --out output/ml-service/a3/a3.json
+    python scripts/experiments/xi/a3_t20_lineup_signal.py --decide output/ml-service/a3/a3.json
