@@ -69,7 +69,7 @@ cancelled, and the make targets do the same work without any of that.
 |------|---------|--------------|
 | **import** | `make cricsheet-import` | Fetch the configured archive, extract it, load the matches. Fetch and extract are skipped, and say so, when the dataset directory already holds that archive. |
 | **retrain** | `make retrain CUTOFF=2025-09-01` | The whole model build: rating pass → XI win models (with the grid) → performance models → the run's report → `manifest.json`. Writes `runs/<run_id>/` and **publishes nothing**. |
-| **reload** | `make reload [RUN=<id>]` | Point `current` at a run and load it into the running service. With no run id: the run `current` already names, or the newest one. |
+| **reload** | `make reload [RUN=<id>]` | Point `current` at a run and load it into the running service. With no run id: the newest run on disk, which is the one the retrain before it built. Naming a run is how you roll back to an earlier one. |
 | *evaluate* | `make evaluate` | L4 over the database: walk-forward folds, the locked window, the selection and performance metrics, the leak canary, the parity check. Touches no artifact `current` points at. Optional, and slow — see below. |
 
 `make up-all CUTOFF=<date>` is the whole chain from an empty database; `make full-pipeline` is

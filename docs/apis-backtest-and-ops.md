@@ -34,8 +34,9 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   the ratings verdict and the loader's refusal. A run directory with no manifest is listed as
   `has_manifest: false` rather than hidden: it is exactly what an operator is looking for when
   nothing loads.
-- **POST /admin/reload?run=<id>** — Point `current` at a run and load it. Without `run`: the run
-  `current` already names, or the newest one. **409 `RUN_ARTIFACTS_INVALID`** when the run is
+- **POST /admin/reload?run=<id>** — Point `current` at a run and load it. Without `run`: the
+  newest run on disk, which is the one the retrain before it built; naming a run is how you roll
+  back to an earlier one. **409 `RUN_ARTIFACTS_INVALID`** when the run is
   not one, or when its arrays are not the arrays this code reads (D-6); **403 `RELOAD_DISABLED`**
   when `ENABLE_HOT_RELOAD` is off.
 - **POST /admin/train/retrain?cutoff=...** — Build one run. **400 `CUTOFF_REQUIRED`** without a

@@ -309,13 +309,35 @@ async def artifacts_status():
     }
 
 
+def _run_to_publish(run: str) -> Optional[str]:
+    """Which run POST /admin/reload loads: the one named, else the newest one.
+
+    "Else the newest" rather than "else the one `current` already names", which is what
+    this endpoint used to do and is the reason the pipeline could not publish. `current`
+    is set by every reload, so on any box that had ever reloaded, a retrain followed by a
+    reload re-loaded the run that was already serving and the new run was never reached.
+    It fails silently in both directions: the step succeeds, the plan completes, and
+    `/xi/status` goes on reporting the older run's `ratings_through` as if that were the
+    freshest the data allows -- which is what a scheduled cadence (A-5) would do every
+    week for ever.
+
+    Startup does not come through here. It calls ``XiRegistry.reload`` directly, where
+    `current` still wins, because "serve what was published" is what a restart means --
+    including after an operator has deliberately rolled back to an earlier run. Rolling
+    back is `?run=<id>`, and it survives a restart; what it does not survive is an
+    explicit reload with no run named, which asks for the newest run by definition.
+    """
+    named = (run or "").strip()
+    return named or runs.newest_run_id(MODELS_DIR)
+
+
 @app.post("/admin/reload")
 async def admin_reload(request: Request, run: str = ""):
     """Point `current` at a run and load it -- the `reload` pipeline step.
 
     ``?run=<id>`` names the run, which is how an operator swaps between two runs. With
-    no ``run`` it loads whichever run `current` names, and if nothing does, the newest
-    one -- so `retrain` followed by `reload` serves the run just built.
+    no ``run`` it loads the newest run on disk, so `retrain` followed by `reload` serves
+    the run just built without either step having to pass an id to the other.
     """
     if not ENABLE_HOT_RELOAD:
         logger.info("admin.reload.rejected", reason="disabled")
@@ -328,7 +350,7 @@ async def admin_reload(request: Request, run: str = ""):
             ),
         )
     _verify_admin_api_key(request)
-    run_id = (run or "").strip() or None
+    run_id = _run_to_publish(run)
     logger.info("admin.reload.start", models_dir=MODELS_DIR, run_id=run_id)
     try:
         summary = _reload_run(run_id)

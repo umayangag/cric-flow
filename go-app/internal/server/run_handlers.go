@@ -21,8 +21,8 @@ const runReloadBodyLimit = 1 << 20
 // run and load it.
 //
 // It is go-app-native rather than an /admin/train/* call because reload trains nothing.
-// The run is named by ?run_id=; with none, ml-service reloads whatever `current` already
-// points at, which is what "the artifacts changed under a running process" needs.
+// The run is named by ?run_id=; with none, ml-service loads the newest run on disk,
+// which is what the step after a retrain means by "reload".
 func (a *App) reloadRunHandler(w http.ResponseWriter, r *http.Request) {
 	runID := strings.TrimSpace(r.URL.Query().Get("run_id"))
 	args := map[string]any{"step": "reload"}
