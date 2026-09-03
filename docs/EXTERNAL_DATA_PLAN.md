@@ -14,7 +14,8 @@ H-24 (boundary literals in the generated contract), never commit to main.
 Run each item's prompt in a fresh chat with the model noted; each ends by handing over
 the push and PR commands. Order: **X-4 → X-1a → X-1b → X-3 → X-2.** X-4 goes first
 because it prices the whole hunt: if the display model already sits at market accuracy,
-the remaining items are curiosities and can be taken slowly or not at all.
+the remaining items are curiosities and can be taken slowly or not at all. D-12 (a defect fix, not an experiment) is runnable at any time
+and does not wait for X-1a.
 
 **Explicit non-goals**, so effort is not re-spent: official rankings (redundant with the
 system's own Elo), pitch reports (no structured source exists), injury/fitness data (not
@@ -71,7 +72,8 @@ PR commands.
 
 ## X-1a — player biographies acquired from Wikidata (model: Opus)
 
-**What.** Date of birth, batting handedness and bowling style for the player registry,
+**What.** Date of birth, batting handedness, bowling style and — where Wikidata carries
+it — the career end date or a retirement statement, for the player registry,
 joined via the ESPNcricinfo id that Cricsheet's people registry and Wikidata both carry
 (CC0-licensed). Acquisition and coverage only — no features. **Gate:** coverage worth
 building on — matched biography with DOB for players covering ≥ 80 % of match
@@ -89,13 +91,15 @@ Do X-1a:
    id (Wikidata carries it as a property; batch SPARQL or the entity API, cached
    locally, resumable, polite rate limits). Fields: date of birth, batting handedness,
    bowling style (mapped to a small controlled vocabulary — pace/medium/off-spin/
-   leg-spin/left-arm-orthodox/left-arm-wrist, plus unknown). License: CC0 — note it.
+   leg-spin/left-arm-orthodox/left-arm-wrist, plus unknown), and the career end date /
+   retirement statement where present (work-period-end and equivalent properties;
+   coverage will be spotty — record it, never infer it). License: CC0 — note it.
 2. Storage: a player_biography table (forward migration, next number) keyed by the
    registry id, written by the backfill; the importer does not change. The backfill
    becomes a documented optional step beside the cadence (it changes rarely; weekly
    with the cadence or on demand).
 3. The coverage report, per format and gender, weighted by match appearances: matched /
-   DOB present / style present; unmatched players listed by appearance count so the
+   DOB present / style present / career-end present; unmatched players listed by appearance count so the
    top gaps are hand-fixable via a small curated overrides file (the venue-geocoding
    pattern). Fix the top gaps if a handful of overrides moves coverage materially.
 4. One data-quality check in the ops surface: biography coverage shown beside the
@@ -231,6 +235,79 @@ move down; docs/EXTERNAL_DATA_PLAN.md updated. Then stop and hand over the push 
 PR commands.
 ```
 
+## D-12 — stale pools, manual pool picking, and the retirement ledger (model: Opus)
+
+**What.** The Upcoming-match default pool selects retired and long-inactive players. Two
+causes: the pool is all-time ("has ever appeared for the club in the format") with an
+`is_retired` filter nothing populates, and ratings decay per match played, not per
+elapsed time, so a player inactive since 2015 keeps the strong rating they stopped with.
+The fix is at the product boundary (availability is the caller's knowledge), in three
+reinforcing parts: a recency-bounded default, an optional manual pool picker, and a
+**retirement ledger** — a user can flag a player retired, and the flag is promoted to a
+stored fact only when corroborated by an independent criterion. Runs fine before X-1a;
+when X-1a lands, its age and career-end facts join the corroboration criteria with no
+schema change.
+
+```
+Read docs/EXTERNAL_DATA_PLAN.md (the D-12 row) and docs/FOLLOW_UP_PLAN.md §1 (the
+defect-record style — record D-12 there with both causes named). Read
+go-app/internal/db/repo_selection.go (ListPlayerPoolByOpposition and its dead
+is_retired filter). Do NOT change the rating pass — time-decaying ratings is model
+work needing its own gated experiment. Branch off main as fix/d-12-pool-and-retirement.
+Rules: never commit to main; anchored edits; conventional commits with scope; H-24 for
+any new wire literal; §8.7 — every substitution or filter visible on the wire.
+
+Do the fix:
+1. RECENCY DEFAULT. The default pool becomes recency-bounded: players who appeared for
+   the club in that format within a window ending at the request's cutoff. Choose the
+   window from evidence: over the last year of real matches per format, the window
+   covering >= 95% of players who actually took the field while cutting the all-time
+   pool hardest (per-format default in config, overridable per request). Record the
+   measurement table in the D-12 entry.
+2. MANUAL POOL PICKING (optional, off by default). When the user selects a team, they
+   may open the candidate list — the recency pool by default, widenable to all-time —
+   with each player's last-played date and, once X-1a lands, age; they tick a subset
+   and that subset is the pool sent. No selection means the default pool, unchanged
+   flow. must_include / extra ids still bypass every filter.
+3. THE RETIREMENT LEDGER. A player_status store (forward migration): a user can flag a
+   player retired from the candidate list. The flag alone excludes the player from
+   that user's future default pools and is recorded as user_flagged. It is promoted to
+   a stored is_retired fact only when corroborated by at least one independent
+   criterion, evaluated at promotion time: (a) no match in any format for >= N years
+   (config; default from step 1's evidence), (b) once X-1a lands, a Wikidata career
+   end date before the cutoff, or (c) age above a per-format bound with >= M years
+   inactive. The criteria are a pluggable list so X-1a extends them without schema
+   change. Every promotion records which criterion corroborated it and when; an
+   un-flag demotes the fact and records that too. The dead is_retired filter in the
+   pool query now reads the ledger and is real.
+4. HONEST SURFACE. The response states the window used, the pool size, and how many
+   players the ledger excluded; the UI shows "pool: played for <team> in the last <N>
+   months (<M> players, <K> excluded as retired)" with all-time one click away; a
+   ledger-excluded player is visible (struck through with the reason), never silently
+   gone — a user must be able to see and undo an exclusion.
+5. BLAST RADIUS. The L4 harness and E5 build sides from fielded XIs, not this pool —
+   verify nothing in the harness path reads ListPlayerPoolByOpposition or the ledger;
+   diff the evaluation report before/after on the same run to prove the measured
+   record is untouched. Backtest scripts that use pools get the window relative to
+   their as-of date; the ledger applies only to future-dated (upcoming) requests, so
+   a backtest at a 2019 cutoff still sees 2019 players.
+6. VERIFY the D-6 way: rebuild containers, predict an upcoming match for two clubs
+   with famously retired ex-players, confirm by looking that the pool is current-era;
+   flag a player, corroborate, see the exclusion and its reason; un-flag and see the
+   return. Unit tests pin the window arithmetic at the cutoff boundary and the
+   promotion/demotion rules. While in the docs: add one line to
+   docs/PRODUCT_ROADMAP.md Phase 1 Team Lab spec — a toss toggle (bat first / bowl
+   first / unknown) on the Lab and Upcoming-match surfaces, wired to the
+   team1_bats_first parameter the API already supports end to end.
+
+Acceptance: the default upcoming-match pool contains no player inactive beyond the
+window; manual picking works and is optional; a flag alone never becomes a global
+fact — promotion requires corroboration and records its reason; exclusions are
+visible and reversible; harness numbers untouched (report diff attached to the PR);
+make check-all green; coverage gates never move down; docs/FOLLOW_UP_PLAN.md §1 and
+this plan's record updated. Then stop and hand over the push and PR commands.
+```
+
 ---
 
 ## Record of outcomes
@@ -242,3 +319,4 @@ PR commands.
 | X-1b | open — gated on X-1a's coverage |
 | X-3 | open |
 | X-2 | open — run last |
+| D-12 | open — runnable now; X-1a widens its corroboration criteria |
