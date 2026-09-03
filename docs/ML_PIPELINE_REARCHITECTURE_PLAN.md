@@ -1956,12 +1956,15 @@ exactly-right / bar (three seeds), and the terciles of |Δ| as agreement vs exac
 
 **Neither family ships; the null is recorded per family and T20 stays rating-ordered.**
 
-- *The control reproduces the harness.* 0.503 over 2,169 pairs against 0.505–0.506
-  (the database run: 0.503 over 2,168 against 0.506 — the archive holds 81 files the
-  database does not yet, one of which makes a pair), the same per-fold rates to every
-  printed decimal, the same AUCs and swap shares in every format. The reconstruction from
-  per-player vectors reads what the pass wrote (parity 0.0 twice over), so what the arms
-  measure is the objective and not the plumbing.
+- *The control reproduces the harness.* 0.503 over 2,169 pairs against 0.505–0.506, with
+  1,091 agreed — the harness's 1,091 agreed over 2,168 against 0.506, on either source. The
+  one pair apart is in the 2025-06 fold: the harness reads the objective as indifferent on
+  it (Δ exactly 0, the swapped players unrated) and excludes it, the reconstruction's
+  summation order leaves a rounding-level Δ and scores it as a miss (0.469 against the
+  harness's 0.470 on that fold). Every other fold agrees to the fourth decimal, as do the
+  AUCs and swap shares in every format. The reconstruction from per-player vectors reads
+  what the pass wrote (parity 0.0 twice over), so what the arms measure is the objective and
+  not the plumbing.
 - *Phase matchup clears T20's bar and is not shippable.* 0.510 ± 0.011 against 0.505–0.506:
   over the bar by 0.004, **under half a standard error**, and +0.007 over the control — the
   same pairs, better in seven folds of eleven and worse in four — which is inside the noise
@@ -2023,6 +2026,22 @@ element, because the objective is a deterministic fit. The guard is in every for
 `XI_FEATURE_COLS` is one list. The reason on the wire (`NOT_OPTIMISED_REASONS` and go-app's
 mirror) now quotes A-4's rotated-fold figure (0.503 against 0.506 over 2,168 pairs) beside
 P-7's, and says A-3 did not change it.
+
+**The harness after the choice** (`make evaluate`, run once on each source with the decided
+configuration — no family — 2026-09-03, the two sources in parallel, 3 h 33 min on the
+archive and 3 h 36 min on the database). The locked window (≥ 2026-09-02) holds **0
+matches** on both sources and says so. Compared node for node with A-2's post-choice
+reports on the same sources (A-4's baseline, `docs/FOLLOW_UP_PLAN.md` § 5), the only fields
+that differ are fit and latency timings: every objective and display AUC, swap share, E5
+rate, bar and verdict (T20 **0.503 over 2,168 against 0.506, fails, not served**; T20I 0.564
+against 0.472 and ODI 0.566 against 0.503, pass, served; TEST 0.549 against 0.478, passes,
+off under H-17), every pinball, coverage, width, bias and margin is the baseline's to the
+last digit, on 21,093 / 465,336 rows — which is what a recorded null that ships no code on
+the pipeline should produce, and is now shown rather than assumed. H-8: 50 matches, 1,100
+player rows, 1,100 performance predictions, 50 simulations at max abs difference **0.0 on
+both sources**. Gates (A-3 now in the embedded registry) and glossary pass on both. The
+`selection_decision` node restates the policy beside the verdict per format, and the two
+agree everywhere.
 
 
 ---
