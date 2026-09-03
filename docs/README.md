@@ -39,6 +39,7 @@ It is a record, not a to-do list: the plan has no further PRs.
 | Doc | Purpose |
 |-----|--------|
 | [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) | **The to-do list.** Post-migration follow-ups: two ops defects (D-8 orphaned walk-forward upload, D-9 the console retrain cutoff mismatch) with the H-24 boundary-contract rule, the metric-glossary/legibility PR, the System map tab, and the accuracy roadmap (venue & competition context, chase tails, the T20 lineup signal, locked-window rotation, data cadence) |
+| [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) | **The business proposal.** Objective assessment of what the system can and cannot honestly sell, the wedge strategy (Team Lab, valuation-framed auction module, underserved-segment B2B), and evidence-gated phases P0–P4 |
 
 ---
 
