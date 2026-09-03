@@ -9,9 +9,10 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import type { EvaluationPerformance as PerformanceReport, EvaluationTargetScore } from '../types';
+import type { EvaluationPerformance as PerformanceReport } from '../types';
 import { MetricLabel } from './common/MetricInfo';
-import { formatShare, formatStat } from '../utils/evaluationReport';
+import MetricValue from './common/MetricValue';
+import { formatStat } from '../utils/evaluationReport';
 
 /**
  * The performance model per target, never pooled (H-12), with the width of the 10–90
@@ -28,14 +29,6 @@ const targetLabels: Record<string, string> = {
   runs_conceded: 'Runs conceded',
   catches: 'Catches',
 };
-
-function coverage(score: EvaluationTargetScore | undefined): string {
-  return formatShare(score?.interval?.coverage_80);
-}
-
-function width(score: EvaluationTargetScore | undefined): string {
-  return formatStat(score?.interval?.width_80, 1);
-}
 
 const EvaluationPerformanceTable: React.FC<{
   performance: PerformanceReport | null | undefined;
@@ -97,15 +90,49 @@ const EvaluationPerformanceTable: React.FC<{
               <TableRow key={name} hover>
                 <TableCell>{targetLabels[name] ?? name}</TableCell>
                 <TableCell align="right">
-                  {formatStat(entry.model?.within_match_spearman)}
+                  <MetricValue
+                    metricKey="within_match_spearman"
+                    value={entry.model?.within_match_spearman}
+                  />
                 </TableCell>
-                <TableCell align="right">{formatShare(entry.model?.top3_hit_rate)}</TableCell>
-                <TableCell align="right">{formatStat(entry.model?.mae, 2)}</TableCell>
-                <TableCell align="right">{formatStat(entry.model?.pinball, 3)}</TableCell>
-                <TableCell align="right">{coverage(entry.model)}</TableCell>
-                <TableCell align="right">{width(entry.model)}</TableCell>
                 <TableCell align="right">
-                  {formatStat(entry.career_mean?.within_match_spearman)}
+                  <MetricValue
+                    metricKey="top3_hit_rate"
+                    value={entry.model?.top3_hit_rate}
+                    baseline={entry.career_mean?.top3_hit_rate}
+                    as="share"
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="mae"
+                    value={entry.model?.mae}
+                    baseline={entry.career_mean?.mae}
+                    digits={2}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="pinball"
+                    value={entry.model?.pinball}
+                    baseline={entry.career_mean?.pinball}
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="coverage_80"
+                    value={entry.model?.interval?.coverage_80}
+                    as="share"
+                  />
+                </TableCell>
+                <TableCell align="right">
+                  {formatStat(entry.model?.interval?.width_80, 1)}
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="within_match_spearman"
+                    value={entry.career_mean?.within_match_spearman}
+                  />
                 </TableCell>
                 <TableCell align="right">{formatStat(entry.career_mean?.pinball, 3)}</TableCell>
               </TableRow>

@@ -4,7 +4,9 @@
 nothing to a reader who has not lived inside the plan. This module is the glossary that
 makes them legible -- one entry per reported metric key, carrying a plain-language name,
 an explanation a non-statistician can read, the reference band **this system measured**
-(not textbook folklore), and which direction is better.
+(not textbook folklore), which direction is better, and -- where a defensible anchor
+exists -- that same band as two numbers, so a surface can paint the value instead of
+printing the sentence.
 
 It lives here, next to the metrics, for the reason `gates.py` lives here: the harness
 embeds it in ``xi_evaluate_report.json`` and the service serves it, so every surface
@@ -36,12 +38,32 @@ DIRECTIONS = {HIGHER: "higher", LOWER: "lower", NOMINAL: "nominal", PAIRED: "non
 
 
 @dataclass(frozen=True)
+class Scale:
+    """The two anchors a surface paints a value between, read with ``direction``.
+
+    ``good`` is where the colour is fully green and ``bad`` where it is fully red, so one
+    pair covers ``higher`` (``bad`` below ``good``) and ``lower`` (``bad`` above it). For
+    ``nominal`` the value is read by its distance from ``good``, and ``bad`` is the
+    distance at which it is fully wrong; for ``exact``, only ``good`` is right.
+
+    The anchors are this system's measured range or a gate's threshold -- the same
+    judgement ``band`` states in prose -- so a colour cannot disagree with the sentence
+    beside it. A metric that means nothing without its pair carries no scale and is
+    painted no colour, which is the honest answer rather than a shade of grey.
+    """
+
+    bad: float
+    good: float
+
+
+@dataclass(frozen=True)
 class Metric:
     """One reported metric key, explained.
 
     ``band`` is the reference the value is read against: this system's measured range,
     the gate's threshold, or the baseline it must beat. ``better`` says which way is
-    progress, in words, because a surface that shows a delta has to colour it.
+    progress, in words, because a surface that shows a delta has to colour it, and
+    ``scale`` says the same in numbers for the surface that actually does.
     """
 
     key: str
@@ -49,6 +71,9 @@ class Metric:
     explanation: str
     band: str
     better: str
+    #: The anchors ``band`` states in prose, for a surface that paints the value rather
+    #: than printing the sentence. ``None`` where no defensible anchor exists.
+    scale: "Scale | None" = None
 
     @property
     def direction(self) -> str:
@@ -107,6 +132,22 @@ E5_BAND = (
 )
 PARITY_BAND = "Exactly 0.0. Anything else is a bug, not a shade of grey."
 
+#: The anchors behind the shared bands above. Each is the sentence as two numbers: an
+#: AUC is painted from chance to the measured ceiling, a Brier from the base rate it
+#: must beat to what this system reaches, and so on. Where the band gives a gate
+#: threshold rather than a range, the threshold is the red end.
+AUC_SCALE = Scale(bad=0.50, good=0.75)
+BRIER_SCALE = Scale(bad=0.25, good=0.18)
+SPEARMAN_SCALE = Scale(bad=0.0, good=0.35)
+PIT_TAIL_SCALE = Scale(bad=0.20, good=0.10)
+E5_SCALE = Scale(bad=0.50, good=0.52)
+PARITY_SCALE = Scale(bad=0.0, good=0.0)
+SEED_SD_SCALE = Scale(bad=0.010, good=0.0)
+VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
+SPECIFIC_XI_SCALE = Scale(bad=0.0, good=0.02)
+COVERAGE_SCALE = Scale(bad=0.65, good=0.80)
+E2_TOLERANCE_SCALE = Scale(bad=0.01, good=0.0)
+
 
 METRICS: Tuple[Metric, ...] = (
     # --- The win models: how well a probability ranks and how well it is stated ---
@@ -116,6 +157,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The value the optimiser maximises when it picks an eleven. " + AUC_EXPLANATION,
         band=AUC_BAND,
         better=HIGHER,
+        scale=AUC_SCALE,
     ),
     Metric(
         key="display_auc",
@@ -123,6 +165,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The same measure for the probability a user is actually shown. " + AUC_EXPLANATION,
         band=AUC_BAND,
         better=HIGHER,
+        scale=AUC_SCALE,
     ),
     Metric(
         key="display_auc_mean",
@@ -133,6 +176,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band=AUC_BAND,
         better=HIGHER,
+        scale=AUC_SCALE,
     ),
     Metric(
         key="display_auc_seed_sd",
@@ -143,6 +187,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="A few thousandths here. Any claimed improvement must be larger than it.",
         better=LOWER,
+        scale=SEED_SD_SCALE,
     ),
     Metric(
         key="display_auc_seed_sd_mean",
@@ -153,6 +198,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="A few thousandths here. Any claimed improvement must be larger than it.",
         better=LOWER,
+        scale=SEED_SD_SCALE,
     ),
     Metric(
         key="objective_brier",
@@ -160,6 +206,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The objective's probability, scored rather than ranked. " + BRIER_EXPLANATION,
         band=BRIER_BAND,
         better=LOWER,
+        scale=BRIER_SCALE,
     ),
     Metric(
         key="display_brier_mean",
@@ -167,6 +214,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The displayed probability, scored rather than ranked, averaged over seeds. " + BRIER_EXPLANATION,
         band=BRIER_BAND,
         better=LOWER,
+        scale=BRIER_SCALE,
     ),
     Metric(
         key="brier",
@@ -174,6 +222,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation=BRIER_EXPLANATION,
         band=BRIER_BAND,
         better=LOWER,
+        scale=BRIER_SCALE,
     ),
     Metric(
         key="base_rate_brier",
@@ -195,6 +244,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Positive means the eleven carries signal; measured +0.012 +/- 0.010 (T20) -- real but small.",
         better=HIGHER,
+        scale=SPECIFIC_XI_SCALE,
     ),
     Metric(
         key="delta",
@@ -205,6 +255,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Positive means the eleven carries signal; measured +0.012 +/- 0.010 (T20) -- real but small.",
         better=HIGHER,
+        scale=SPECIFIC_XI_SCALE,
     ),
     Metric(
         key="auc_specific_xi",
@@ -212,6 +263,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The objective scored on the actual elevens. " + AUC_EXPLANATION,
         band=AUC_BAND,
         better=HIGHER,
+        scale=AUC_SCALE,
     ),
     Metric(
         key="auc_typical_xi",
@@ -233,6 +285,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Under 2 % passes (H-4); this system measures under 1 %.",
         better=LOWER,
+        scale=VIOLATION_SCALE,
     ),
     Metric(
         key="violation_share",
@@ -243,6 +296,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Under 2 % passes (H-4); this system measures under 1 %.",
         better=LOWER,
+        scale=VIOLATION_SCALE,
     ),
     Metric(
         key="agreement",
@@ -250,6 +304,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation=E5_EXPLANATION,
         band=E5_BAND,
         better=HIGHER,
+        scale=E5_SCALE,
     ),
     Metric(
         key="bar",
@@ -328,6 +383,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation=SPEARMAN_EXPLANATION,
         band=SPEARMAN_BAND,
         better=HIGHER,
+        scale=SPEARMAN_SCALE,
     ),
     Metric(
         key="within_match_spearman_involved",
@@ -339,6 +395,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band=SPEARMAN_BAND,
         better=HIGHER,
+        scale=SPEARMAN_SCALE,
     ),
     Metric(
         key="top3_hit_rate",
@@ -388,6 +445,7 @@ METRICS: Tuple[Metric, ...] = (
             "Nominal 0.80; within +/- 0.03 is calibrated (H-5). Far below means overconfident, far above means vague."
         ),
         better=NOMINAL,
+        scale=COVERAGE_SCALE,
     ),
     Metric(
         key="coverage_80_strict",
@@ -399,6 +457,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Read as a bracket with the inclusive coverage: calibration means 0.80 lies between them.",
         better=NOMINAL,
+        scale=COVERAGE_SCALE,
     ),
     Metric(
         key="width_80",
@@ -422,6 +481,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="0.10 when calibrated; H-5 recalibrates a target whose rate sits outside +/- 0.03 of it.",
         better=NOMINAL,
+        scale=PIT_TAIL_SCALE,
     ),
     Metric(
         key="q90",
@@ -432,6 +492,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="0.90 when calibrated; H-5 recalibrates a target whose rate sits outside +/- 0.03 of it.",
         better=NOMINAL,
+        scale=Scale(bad=0.80, good=0.90),
     ),
     Metric(
         key="probabilities",
@@ -485,6 +546,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="1.0 calibrated; above 1 overconfident (it was 1.42 before the shared match factor); below 1 vague.",
         better=NOMINAL,
+        scale=Scale(bad=1.40, good=1.0),
     ),
     Metric(
         key="bias",
@@ -523,6 +585,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation=PIT_TAIL_EXPLANATION,
         band=PIT_TAIL_BAND,
         better=NOMINAL,
+        scale=PIT_TAIL_SCALE,
     ),
     Metric(
         key="above_q90",
@@ -530,6 +593,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation=PIT_TAIL_EXPLANATION,
         band=PIT_TAIL_BAND,
         better=NOMINAL,
+        scale=PIT_TAIL_SCALE,
     ),
     Metric(
         key="pit_deciles",
@@ -540,6 +604,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="0.10 in every decile when calibrated.",
         better=NOMINAL,
+        scale=PIT_TAIL_SCALE,
     ),
     Metric(
         key="delta_brier_simulated_minus_display",
@@ -550,6 +615,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band="Within 0.01 of the display model to be served as a probability; beyond it the simulation is a description only.",
         better=LOWER,
+        scale=E2_TOLERANCE_SCALE,
     ),
     Metric(
         key="delta_brier_mean",
@@ -557,6 +623,7 @@ METRICS: Tuple[Metric, ...] = (
         explanation="The E2 difference averaged over the walk-forward folds -- the number the decision is actually made on.",
         band="Within the 0.01 tolerance to serve the simulated probability (E2).",
         better=LOWER,
+        scale=E2_TOLERANCE_SCALE,
     ),
     Metric(
         key="delta_brier_sd",
@@ -586,6 +653,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band=PARITY_BAND,
         better=EXACT,
+        scale=PARITY_SCALE,
     ),
     Metric(
         key="fielded_eleven_max_abs_difference",
@@ -597,6 +665,7 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band=PARITY_BAND,
         better=EXACT,
+        scale=PARITY_SCALE,
     ),
     Metric(
         key="auc",

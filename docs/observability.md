@@ -333,11 +333,19 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
 - **`EvaluationReportTab`**
   - **Endpoints**:
     - `GET /api/backtest/report` (L4's evaluation report; 503 when the harness has not run).
+    - `GET /api/backtest/metric-glossary`, through the shared `MetricGlossaryProvider`, for
+      each metric's explainer and for the band its value is painted against (L-1).
   - **Displays**:
     - Walk-forward folds per format, with the locked window labelled beside them.
     - The two selection metrics, and a labelled slot for E5.
     - Per-target performance with interval width beside coverage; the simulator's E2 section.
     - The train/serve parity verdict, as a success or error alert.
+    - Every measured number painted red-to-green against its own reference band, from the
+      glossary's `scale` — never against a page-wide guess. A metric the glossary anchors
+      (AUC, Brier, coverage, the violation share) is read against those anchors; one in the
+      target's own units (pinball, MAE, the hit rate) is read against the baseline printed
+      beside it in the same row; one with no good direction alone — an interval width — is
+      left uncoloured on purpose, and the legend above the tables says so.
   - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
 - **`SystemMapTab`**

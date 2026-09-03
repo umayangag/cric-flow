@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import type { EvaluationFold, EvaluationFormatReport } from '../types';
 import { MetricLabel } from './common/MetricInfo';
+import MetricValue from './common/MetricValue';
 import { foldWindow, formatShare, formatStat } from '../utils/evaluationReport';
 
 /**
@@ -100,14 +101,30 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
                 </TableCell>
                 <TableCell align="right">{fold.n_train.toLocaleString()}</TableCell>
                 <TableCell align="right">{fold.n_eval.toLocaleString()}</TableCell>
-                <TableCell align="right">{formatStat(fold.objective_auc)}</TableCell>
-                <TableCell align="right">{formatStat(fold.display_auc_mean)}</TableCell>
-                <TableCell align="right">{formatStat(fold.display_brier_mean)}</TableCell>
+                <TableCell align="right">
+                  <MetricValue metricKey="objective_auc" value={fold.objective_auc} />
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue metricKey="display_auc_mean" value={fold.display_auc_mean} />
+                </TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="display_brier_mean"
+                    value={fold.display_brier_mean}
+                    baseline={fold.base_rate_brier}
+                  />
+                </TableCell>
                 <TableCell align="right">{formatStat(fold.base_rate_brier)}</TableCell>
                 <TableCell align="right">
-                  {formatShare(fold.swap_monotonicity?.violation_share)}
+                  <MetricValue
+                    metricKey="violation_share"
+                    value={fold.swap_monotonicity?.violation_share}
+                    as="share"
+                  />
                 </TableCell>
-                <TableCell align="right">{formatStat(fold.specific_vs_typical?.delta)}</TableCell>
+                <TableCell align="right">
+                  <MetricValue metricKey="delta" value={fold.specific_vs_typical?.delta} />
+                </TableCell>
               </TableRow>
             ))}
             <TableRow>
@@ -116,12 +133,27 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
                   Mean over folds
                 </Typography>
               </TableCell>
-              <TableCell align="right">{formatStat(summary.objective_auc)}</TableCell>
-              <TableCell align="right">{formatStat(summary.display_auc)}</TableCell>
+              <TableCell align="right">
+                <MetricValue metricKey="objective_auc" value={summary.objective_auc} />
+              </TableCell>
+              <TableCell align="right">
+                <MetricValue metricKey="display_auc" value={summary.display_auc} />
+              </TableCell>
               <TableCell align="right">—</TableCell>
               <TableCell align="right">{formatStat(summary.base_rate_brier)}</TableCell>
-              <TableCell align="right">{formatShare(summary.swap_violation_share)}</TableCell>
-              <TableCell align="right">{formatStat(summary.specific_vs_typical_delta)}</TableCell>
+              <TableCell align="right">
+                <MetricValue
+                  metricKey="swap_violation_share"
+                  value={summary.swap_violation_share}
+                  as="share"
+                />
+              </TableCell>
+              <TableCell align="right">
+                <MetricValue
+                  metricKey="specific_vs_typical_delta"
+                  value={summary.specific_vs_typical_delta}
+                />
+              </TableCell>
             </TableRow>
           </TableBody>
         </Table>

@@ -13,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import ErrorNotice from './common/ErrorNotice';
+import MetricSpectrumLegend from './common/MetricSpectrumLegend';
 import EvaluationWalkForward from './EvaluationWalkForward';
 import EvaluationSelectionMetrics from './EvaluationSelectionMetrics';
 import EvaluationPerformanceTable from './EvaluationPerformance';
@@ -125,6 +126,7 @@ const EvaluationReportTab: React.FC = () => {
 
       {formatReport && (
         <>
+          <MetricSpectrumLegend />
           <EvaluationWalkForward report={formatReport} />
           <EvaluationSelectionMetrics report={formatReport} gates={report.gates?.registry} />
           <EvaluationPerformanceTable

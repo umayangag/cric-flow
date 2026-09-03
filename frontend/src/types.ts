@@ -319,6 +319,12 @@ export type EvaluationSelectionDecision = {
   reason: string;
 };
 
+/** The two anchors a metric's value is painted between, from the glossary's band. */
+export type MetricScale = {
+  bad: number;
+  good: number;
+};
+
 /**
  * L-1: one reported metric key, explained by the service that computes it.
  *
@@ -340,6 +346,13 @@ export type MetricGlossaryEntry = {
    * printing a sentence. `nominal`, `exact` and `none` carry no better/worse verdict.
    */
   direction: 'higher' | 'lower' | 'nominal' | 'exact' | 'none';
+  /**
+   * The same reference `band` states in prose, as the two numbers a surface paints
+   * between: fully red at `bad`, fully green at `good`, read through `direction`. Absent
+   * where the metric has no defensible anchor of its own — those are shown uncoloured
+   * rather than given a shade the harness never measured.
+   */
+  scale?: MetricScale | null;
 };
 
 export type MetricGlossary = {

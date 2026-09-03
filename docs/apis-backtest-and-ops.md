@@ -29,7 +29,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   the hyperparameters the grid chose, the run's headline metrics), `ratings` (H-11: `fresh`,
   `age_days`, `max_age_days`, `code`) and `error` (D-6: why a run on disk was refused).
 - **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make evaluate` when the harness has not run.
-- **GET /xi/metric-glossary** — What every reported metric means (L-1): `{"entries": {<metric key>: {key, name, explanation, band, better, direction}}}`, from `ml/xi/glossary.py`. Always 200 — it is served from the code, so a surface can explain its numbers before any run exists.
+- **GET /xi/metric-glossary** — What every reported metric means (L-1): `{"entries": {<metric key>: {key, name, explanation, band, better, direction, scale}}}`, from `ml/xi/glossary.py`. `scale` is the band as two numbers — `{bad, good}`, read through `direction` — for a surface that paints a value red-to-green instead of printing the sentence; it is `null` for a metric with no defensible anchor, which is why an interval width shows uncoloured. Always 200 — it is served from the code, so a surface can explain its numbers before any run exists.
 - **GET /artifacts/status** — Every run on disk, newest first, with `current_run`, `loaded_run`,
   the ratings verdict and the loader's refusal. A run directory with no manifest is listed as
   `has_manifest: false` rather than hidden: it is exactly what an operator is looking for when
@@ -143,7 +143,9 @@ and `locked_window` with the date the line was last moved, the window it replace
 entries, served from the code rather than from a report on disk. It is what every metric label in
 the frontend opens — the evaluation tables, the Workbench's manifest metrics, the run summary's
 metrics and the prediction surfaces' ranges and marginal values — so no component carries prose
-about a metric, and a rewording is a change to `ml/xi/glossary.py` alone.
+about a metric, and a rewording is a change to `ml/xi/glossary.py` alone. The evaluation tab also
+paints every number it shows from these entries' `scale`, so a colour cannot disagree with the
+band in the popover beside it, and moving an anchor is the same one-file change.
 
 **There is no per-match evaluate flow.** It scored the batting, bowling and fielding models
 against actuals and went with them in P-5; what replaced it is the harness, which scores every

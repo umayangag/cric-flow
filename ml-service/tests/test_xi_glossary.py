@@ -132,3 +132,34 @@ def test_describe_states_the_band_and_the_direction() -> None:
     assert line.startswith("swap_violation_share (Swap violations)")
     assert "Under 2 % passes (H-4)" in line
     assert line.endswith("(lower is better)")
+
+
+def test_a_scale_never_points_the_opposite_way_from_the_direction_it_is_read_with() -> None:
+    """The colour and the sentence come from one entry, so an anchor pair that ran the
+    wrong way would paint a bad number green while the popover said the opposite."""
+    monotone = {"higher": lambda scale: scale.good > scale.bad, "lower": lambda scale: scale.good < scale.bad}
+
+    wrong = [
+        metric.key
+        for metric in glossary.METRICS
+        if metric.scale is not None and metric.direction in monotone and not monotone[metric.direction](metric.scale)
+    ]
+
+    assert wrong == []
+
+
+def test_a_metric_with_no_good_direction_carries_no_scale() -> None:
+    """`width_80` is the case the rule exists for: narrower is progress only when
+    coverage holds, so painting it any colour on its own states something untrue."""
+    unreadable = [metric.key for metric in glossary.METRICS if metric.direction == "none" and metric.scale is not None]
+
+    assert unreadable == []
+
+
+def test_the_served_scale_is_two_plain_numbers_a_surface_can_interpolate() -> None:
+    served = glossary.as_dict()
+
+    assert served["objective_auc"]["scale"] == {"bad": 0.50, "good": 0.75}
+    assert served["coverage_80"]["scale"] == {"bad": 0.65, "good": 0.80}
+    assert served["max_abs_difference"]["scale"] == {"bad": 0.0, "good": 0.0}
+    assert served["width_80"]["scale"] is None

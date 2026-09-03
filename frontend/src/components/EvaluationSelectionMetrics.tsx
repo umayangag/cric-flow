@@ -2,7 +2,8 @@ import React from 'react';
 import { Alert, Grid, Paper, Stack, Typography } from '@mui/material';
 import type { EvaluationFormatReport, EvaluationGate } from '../types';
 import { MetricInfo } from './common/MetricInfo';
-import { formatShare, formatStat, statMean } from '../utils/evaluationReport';
+import MetricValue from './common/MetricValue';
+import { formatShare, formatStat, statMean, type ReportNumber } from '../utils/evaluationReport';
 
 /**
  * H-23: every gate says, beside its number, what it varies, what it holds fixed and what
@@ -22,12 +23,15 @@ const Metric: React.FC<{
   label: string;
   /** The glossary key this tile's number is reported under (L-1). */
   metricKey: string;
+  /** The number as this tile writes it, for the popover and for the reader. */
   value: string;
+  /** The same number unformatted, so the tile can be painted against its band. */
+  measured: ReportNumber;
   caption: string;
   gate?: EvaluationGate;
   dashed?: boolean;
   muted?: boolean;
-}> = ({ label, metricKey, value, caption, gate, dashed, muted }) => (
+}> = ({ label, metricKey, value, measured, caption, gate, dashed, muted }) => (
   <Grid item xs={12} md={4}>
     <Paper
       variant="outlined"
@@ -38,7 +42,7 @@ const Metric: React.FC<{
         <MetricInfo metricKey={metricKey} label={label} value={value} />
       </Typography>
       <Typography variant="h5" sx={{ my: 0.5 }} color={muted ? 'text.disabled' : 'text.primary'}>
-        {value}
+        <MetricValue metricKey={metricKey} value={measured} text={value} variant="text" />
       </Typography>
       <Typography variant="caption" color="text.secondary" component="div">
         {caption}
@@ -100,6 +104,7 @@ const EvaluationSelectionMetrics: React.FC<{
           label="Specific XI beyond typical XI"
           metricKey="specific_vs_typical_delta"
           value={formatStat(summary.specific_vs_typical_delta)}
+          measured={summary.specific_vs_typical_delta}
           caption="Measured on the folds, against the side’s own typical eleven on the same fixtures."
           gate={gates?.['specific-vs-typical']}
         />
@@ -107,6 +112,7 @@ const EvaluationSelectionMetrics: React.FC<{
           label="Swap monotonicity"
           metricKey="swap_violation_share"
           value={formatShare(summary.swap_violation_share)}
+          measured={summary.swap_violation_share}
           caption="One player upgraded at a time, the other ten and the opponent held fixed (H-4)."
           gate={gates?.['H-4']}
         />
@@ -118,6 +124,7 @@ const EvaluationSelectionMetrics: React.FC<{
             decision?.standard_error,
             decision?.pairs_scored,
           )}
+          measured={decision?.agreement}
           caption={e5Caption}
           gate={gates?.['E5']}
           dashed={decision?.agreement == null}
