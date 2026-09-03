@@ -80,7 +80,7 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
       },
     },
     locked: {
-      cutoff: '2025-09-01',
+      cutoff: '2026-09-02',
       end: '9999-12-31',
       n_train: 5000,
       n_eval: 332,
@@ -175,7 +175,14 @@ function report(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
     generated_at: '2026-08-30T12:00:00+00:00',
     source: 'PostgresSource',
     cutoffs: ['2024-01-01'],
-    locked_start: '2025-09-01',
+    locked_start: '2026-09-02',
+    locked_window: {
+      start: '2026-09-02',
+      rotated_on: '2026-09-02',
+      previous_start: '2025-09-01',
+      reason: 'the migration read the previous window',
+      retired_into_folds: ['2025-09-01', '2025-12-01'],
+    },
     seeds: [0, 1, 2],
     n_rows: 22734,
     n_player_rows: 463818,
@@ -197,8 +204,16 @@ describe('EvaluationReportTab', () => {
 
     await waitFor(() => expect(screen.getByText('Walk-forward')).toBeInTheDocument());
     expect(screen.getByText('2024-01-01 → 2024-04-01')).toBeInTheDocument();
-    expect(screen.getByText('2025-09-01 → today')).toBeInTheDocument();
+    expect(screen.getByText('2026-09-02 → today')).toBeInTheDocument();
     expect(screen.getByText('locked')).toBeInTheDocument();
+  });
+
+  it('says which window a number came from and when the line last moved', async () => {
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    await waitFor(() => expect(screen.getByText('locked from 2026-09-02')).toBeInTheDocument());
+    expect(screen.getByText('window rotated 2026-09-02, from 2025-09-01')).toBeInTheDocument();
   });
 
   it('says when the report prints a metric the glossary does not explain', async () => {

@@ -18,7 +18,28 @@ def test_fold_windows_end_where_the_locked_window_starts() -> None:
 
     assert len(windows) == len(ev.WALK_FORWARD_CUTOFFS)
     assert windows[0][0] == pd.Timestamp("2024-01-01")
-    assert windows[-1] == (pd.Timestamp("2025-06-01"), pd.Timestamp(ev.LOCKED_START))
+    assert windows[-1] == (pd.Timestamp(ev.WALK_FORWARD_CUTOFFS[-1]), pd.Timestamp(ev.LOCKED_START))
+
+
+def test_the_retired_locked_window_is_covered_by_the_folds() -> None:
+    """A-4: rotation retires the spent window into the walk-forward folds, with no gap."""
+    windows = ev.fold_windows()
+    retired = [(start, end) for start, end in windows if start >= pd.Timestamp(ev.LOCKED_PREVIOUS_START)]
+
+    assert retired, "the previous locked window is not covered by any fold"
+    assert retired[0][0] == pd.Timestamp(ev.LOCKED_PREVIOUS_START)
+    assert retired[-1][1] == pd.Timestamp(ev.LOCKED_START)
+    assert [end for _, end in retired[:-1]] == [start for start, _ in retired[1:]]
+
+
+def test_locked_window_states_where_the_line_is_and_when_it_moved() -> None:
+    window = ev.locked_window()
+
+    assert window["start"] == ev.LOCKED_START
+    assert window["rotated_on"] == ev.LOCKED_ROTATED_ON
+    assert window["previous_start"] == ev.LOCKED_PREVIOUS_START
+    assert window["retired_into_folds"][0] == ev.LOCKED_PREVIOUS_START
+    assert ev.LOCKED_START in ev.locked_note() and ev.LOCKED_PREVIOUS_START in ev.locked_note()
 
 
 def test_stats_ignores_missing_folds() -> None:
@@ -60,6 +81,37 @@ def harness_report(tmp_path_factory) -> dict:
     return report
 
 
+@pytest.fixture(scope="module")
+def freshly_rotated_report(tmp_path_factory) -> dict:
+    """A harness run whose locked window was just rotated and holds no matches yet (A-4)."""
+    matches, _, _ = _synthetic_history(160)
+
+    original = (ev.WALK_FORWARD_CUTOFFS, ev.LOCKED_START)
+    ev.WALK_FORWARD_CUTOFFS = ["2023-03-01", "2023-04-01", "2023-05-01"]
+    ev.LOCKED_START = "2030-01-01"
+    try:
+        with fast_fits():
+            return ev.evaluate(_ListSource(matches), lambda: _ListSource(matches))
+    finally:
+        ev.WALK_FORWARD_CUTOFFS, ev.LOCKED_START = original
+
+
+def test_an_empty_locked_window_says_so_rather_than_scoring_noise(freshly_rotated_report) -> None:
+    locked = freshly_rotated_report["formats"]["T20"]["locked"]
+
+    assert locked["n_eval"] == 0
+    assert locked["skipped_reason"] == "evaluation window too small or single-class"
+
+
+def test_parity_falls_back_to_the_last_fold_model_when_the_window_is_empty(freshly_rotated_report) -> None:
+    """H-8 keeps a model to serve while a rotated window fills (A-4)."""
+    parity = freshly_rotated_report["serving_parity"]
+
+    assert freshly_rotated_report["formats"]["T20"]["parity_model_window"] == "2023-05-01"
+    assert parity["passed"], parity["mismatches"]
+    assert parity["performance_predictions_compared"] == ev.PARITY_LAST_N * 22
+
+
 def test_harness_reports_walk_forward_with_spread(harness_report) -> None:
     summary = harness_report["formats"]["T20"]["walk_forward"]["summary"]
 
@@ -74,6 +126,15 @@ def test_harness_scores_the_locked_window_once_and_labels_it(harness_report) -> 
 
     assert "locked window" in locked["note"]
     assert "objective_auc" in locked
+
+
+def test_harness_report_carries_the_window_and_its_rotation(harness_report) -> None:
+    """A reader of any number can tell which window it came from (A-4)."""
+    window = harness_report["locked_window"]
+
+    assert harness_report["locked_start"] == window["start"]
+    assert window["rotated_on"] and window["previous_start"]
+    assert window["reason"].strip()
 
 
 def test_harness_serving_parity_passes_for_rows_and_performance_predictions(harness_report) -> None:

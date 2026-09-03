@@ -80,8 +80,8 @@ retrain → reload against data already imported.
 before it. Naming a run is how you swap back.
 
 **Why evaluate is separate from both.** The harness refits every model per fold per format:
-measured on the full database it takes ~54 minutes, against a whole pipeline that runs in a
-fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
+measured on the full database it takes ~67 minutes over the eleven folds the rotation left
+(A-4; it was ~54 over seven), against a whole pipeline that runs in a fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
 sensible cadence. What a retrain records is its *own* holdout report — the numbers the models
 it just fitted produced — and the manifest names it, so nothing quotes a measurement of a
 different run.
@@ -477,11 +477,13 @@ the displayed probability — `simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED` pe
 `/simulate` returns both with `headline_source`. The H-8 parity check compares the simulator's
 draws at a fixed seed from the as-of path and from the training frame's rows.
 
-**First numbers** (plan §8.3). Walk-forward, 7 folds: without the shared factor the
+**First numbers** (plan §8.3), measured against the windows as they stood at P-4 — the locked
+window has since rotated (A-4), so these are not comparable line-for-line with a run made
+today. Walk-forward, 7 folds: without the shared factor the
 first-innings totals' 10–90 coverage is 0.64 (T20) / 0.58 (ODI) with a dispersion ratio of
 1.42 / 1.36 and a U-shaped PIT; with it 0.76 / 0.74 at ratio 1.02 / 1.02, the interval
 widening from 61 to 83 runs (T20) and 107 to 151 (ODI) — the narrower one was the wrong one.
-Locked window (≥ 2025-09-01, scored once): coverage **0.786** (T20, 1,521 first innings) and
+Locked window as it then stood (≥ 2025-09-01, scored once): coverage **0.786** (T20, 1,521 first innings) and
 **0.790** (ODI, 347), the acceptance's ±0.03 met; simulated P(win) Brier 0.2024 vs the
 display model's 0.2032 (T20) and 0.2201 vs 0.2110 (ODI), within E2's tolerance, so the
 display model stays the headline and the simulated probability is served beside it. The
@@ -523,8 +525,11 @@ predictions omit `as_of` and are served from the loaded state unchanged.
 **Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc` and `max_abs_difference` among them.
 
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
-quarterly cutoffs 2024-01 … 2025-06 for every choice-facing number, and the **locked
-window** (matches ≥ 2025-09-01) scored once per release, labeled, never used for a choice.
+quarterly cutoffs 2024-01 … 2026-06 for every choice-facing number, and the **locked
+window** (matches ≥ 2026-09-02) scored once per release, labeled, never used for a choice.
+The window's start date and the date it was last rotated travel in the report
+(`locked_start`, `locked_window`) and on every locked figure's label, so a reader can tell
+which window a number came from — see *Rotating the locked window* below.
 Per format it reports, with mean ± spread over cutoffs (and seeds where a model has one):
 objective/display AUC and Brier against the base rate; the specific-XI-beyond-typical-XI
 delta and swap monotonicity (the selection gates that replace P-0's winner accuracy); the
@@ -567,6 +572,43 @@ because E5 said X against bar Y` — with the serving policy read from
 so. The policy itself is set by hand from the report, as E2's is. As of P-7 (plan §8.8): T20I
 and ODI pass their derived bars and are searched on the win objective; **T20 fails its bar and
 is served the rating-ordered eleven**, labelled with that reason, beside TEST's H-17 reason.
+
+**Rotating the locked window (H-19, A-4).** A locked window is only a holdout while no
+decision has read it. The moment its numbers have guided a release choice — a feature family
+kept, a model class picked, a format scoped in or out — it is a window the system has already
+fitted itself to, and scoring the next release on it measures optimism, not accuracy. So the
+window rotates, on the following rule.
+
+- **When.** A window rotates once its data has guided *any* release decision, and at the
+  latest at the release that consumed it. In practice: whenever a batch of modelling work
+  lands that read the locked figures, its merge closes the window.
+- **Where the line is drawn.** At the date of the decision that spent the old window — the
+  merge date of the work that read it. Everything before that line is data some choice has
+  seen; everything at or after it is data no choice has read past, which is exactly the
+  property H-19 needs. Rotating to a *later* date would discard clean matches, and to an
+  earlier one would keep read data in the holdout.
+- **What happens to the old window.** It retires into the walk-forward folds: the harness's
+  `WALK_FORWARD_CUTOFFS` is extended on the same quarterly cadence up to the new line, so the
+  retired window is scored as ordinary folds rather than thrown away. Folds are where reuse is
+  allowed — they are the development surface — so the data keeps working, in the only place it
+  still can.
+- **Where it is written.** One place: `ml/xi/evaluate.py` (`LOCKED_START`, `LOCKED_ROTATED_ON`,
+  `LOCKED_PREVIOUS_START`, `LOCKED_ROTATION_REASON`). The report carries all four in its
+  `locked_window` block and repeats the start and rotation dates in the note on every
+  locked-window figure, so the rotation is a record every run reprints rather than something a
+  reader has to remember. The Evaluation tab and the System map render both dates from that
+  block.
+- **A freshly rotated window is empty, and says so.** Immediately after a rotation the window
+  holds no matches: its per-format node carries `n_eval: 0` and a `skipped_reason` instead of
+  numbers, which is the correct answer and not a failure. It fills as `make import` runs on
+  cadence. Read nothing from it until it has enough matches to be worth a sentence — the folds
+  are where the numbers are meanwhile. While it is too small to fit a model, the train/serve
+  parity check (H-8) serves the most recent fold's performance model instead, and each format's
+  `parity_model_window` names which window fitted the model it compared.
+
+The current window was declared on **2026-09-02**, at the P-7 merge date, because every model
+choice of the P-0…P-7 migration consulted the previous window (matches ≥ 2025-09-01). That
+window is now the last four walk-forward folds (2025-09, 2025-12, 2026-03, 2026-06).
 
 **Gate registry (H-23, `ml/xi/gates.py`).** Every gate the report prints — H-17's AUC line,
 swap monotonicity, specific-vs-typical, E5, E2, the quantile coverage, width beside coverage,
