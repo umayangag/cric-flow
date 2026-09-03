@@ -117,6 +117,8 @@ def test_store_round_trip_preserves_state(tmp_path) -> None:
     assert loaded.team_elo[("T20", "A")] == pytest.approx(state.team_elo[("T20", "A")])
     assert loaded.last_date == state.last_date
     assert loaded.simulation_context("T20", "male") == state.simulation_context("T20", "male")
+    assert dict(loaded.venue_scoring) == dict(state.venue_scoring) and len(state.venue_scoring) > 0
+    assert dict(loaded.competition_scoring) == dict(state.competition_scoring)
 
 
 def test_store_round_trip_preserves_the_gender_split_flag(tmp_path) -> None:
@@ -263,6 +265,7 @@ def _cricsheet_doc(match_type: str, teams, players, winner, day: int) -> dict:
             "teams": teams,
             "gender": "male",
             "venue": "Ground",
+            "event": {"name": "Cup"},
             "registry": {"people": {n: f"id_{n}" for t in players.values() for n in t}},
             "players": players,
             "outcome": {"winner": winner} if winner else {"result": "no result"},
@@ -345,6 +348,7 @@ def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
     # women's side, and one key for both gave them one Elo.
     assert rec.team1 == "India|male" and rec.team2 == "Australia|male"
     assert rec.outcome == 0.0, "the winner is keyed the same way, or it matches neither side"
+    assert rec.competition == "Cup", "the event name is the competition key (A-1)"
     assert rec.team1_players[0] == "id_I0" and len(rec.team2_players) == 11
     d = rec.deliveries
     assert len(d) == 3

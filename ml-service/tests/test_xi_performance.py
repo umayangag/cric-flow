@@ -62,6 +62,22 @@ def test_performance_feature_cols_never_include_an_outcome_column() -> None:
     assert all(key in cols for key in C.PLAYER_SEQUENCE_KEYS)
 
 
+def test_performance_feature_cols_read_only_the_kept_fixture_context_families() -> None:
+    """The frame always carries the four fixture-context columns; the model reads a
+    family's two only when gate A-1 kept it, and the spec records which."""
+    none = C.performance_feature_cols(fixture_context_families=())
+    venue = C.performance_feature_cols(fixture_context_families=("venue",))
+    both = C.performance_feature_cols(fixture_context_families=("venue", "competition"))
+
+    assert not set(none) & set(C.FIXTURE_CONTEXT_COLS)
+    assert set(venue) - set(none) == set(C.FIXTURE_CONTEXT_FAMILIES["venue"])
+    assert set(both) - set(none) == set(C.FIXTURE_CONTEXT_COLS)
+    assert set(C.FIXTURE_CONTEXT_COLS) <= set(C.PLAYER_MATCH_FEATURE_COLS)
+    assert P.default_spec(fixture_context_families=("competition",)).as_dict()["fixture_context_families"] == [
+        "competition"
+    ]
+
+
 def test_involvement_parts_follow_the_targets_fitted() -> None:
     full = P.default_spec()
     subset = P.default_spec(targets=("runs",))

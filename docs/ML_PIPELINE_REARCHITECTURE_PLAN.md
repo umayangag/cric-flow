@@ -1229,6 +1229,268 @@ reordering can do. The distribution and every eleven's best order are in
 
 ---
 
+### 8.9 A-1: fixture-conditional level in the performance model (2026-09-02)
+
+The row in `docs/FOLLOW_UP_PLAN.md` § 4. This section was written **before the run**: the
+design, the leakage surface and the gate's H-23 triple first, the tables after. The tables
+are appended below the design under *Results*; nothing above that heading was edited once
+a number existed. (The design was first written against the pre-rotation window and
+revised, still before any run, once A-4 had rotated it: eleven folds rather than seven,
+and a locked window that is empty by construction — see the last paragraph before
+*Results*.)
+
+**The evidence it chases (§8.3).** The shared factor took the simulated totals' dispersion
+ratio to 1.0 and the PIT flat; what it cannot fix is a level shift between the calibration
+quarter and the scored one. The ODI folds carry a per-quarter bias of the simulated
+first-innings mean of −47 … +35 runs, largest where a quarter is forty matches of one
+competition; on the locked window the chase total runs 10–16 runs high. The simulated mean
+is the mean of L2-B's forecasts for the quarter's fixtures, so the level error is the
+performance model's, and the route §8.3 named is a fixture-conditional level: something on
+the row that says *this ground scores under par* or *this competition is a second-tier
+one-day cup*.
+
+**What L2-B can see today, and what it cannot.** A player's rates are relative to the
+(format, over) context baseline, so they are venue- and era-neutral in the mean by
+construction (`ratings.py`, module docstring). The only fixture-level inputs are
+`venue_bf_rate` and `venue_n` (how often the side batting first wins at the ground, and on
+how many matches), `elo_edge`, and the two sides' aggregates. Nothing on the row carries
+the *scoring level* of the ground or of the competition; a side of average players at a
+ground where 140 is par is forecast the same total as at one where 190 is.
+
+**Design: two families, two columns each, all as-of.**
+
+| family | column | definition |
+|---|---|---|
+| venue | `venue_run_rate_rel` | shrunk runs per delivery at (format, venue), over the format's as-of runs per delivery |
+| venue | `venue_wicket_rate_rel` | the same for dismissals per delivery |
+| competition | `competition_run_rate_rel` | shrunk runs per delivery in (format, competition), over the format's as-of runs per delivery |
+| competition | `competition_wicket_rate_rel` | the same for dismissals per delivery |
+
+For a key *k* (a venue or a competition, within a format) with as-of sums *R_k*, *W_k*,
+*B_k* — runs, dismissals and deliveries over every ball of every match under that key
+folded in before the match's date — the run-rate column is
+
+    ((R_k + P · r̄) / (B_k + P)) / r̄  =  1 + (R_k − B_k · r̄) / ((B_k + P) · r̄)
+
+where *r̄* is the format's as-of runs per delivery (the context baseline the impact ratings
+are measured against, summed over overs: `ctx_runs / ctx_balls`, the unsplit group), and
+*P* = `contract.FIXTURE_CONTEXT_PRIOR_BALLS` = 600 deliveries — five T20 innings, two ODI
+innings. The wicket column is the same with *W_k* and the format's as-of dismissals per
+delivery. The code computes the right-hand form — the key's runs above the format's
+expectation, shrunk, over the expectation, the shape the impact ratings already have — so
+a key the state has never seen, or a fixture that names none, reads **exactly 1.0** in
+floating point: the shrinkage target at zero deliveries, which is also what a serving
+request reads when it names no venue or competition. The neutral value is a property of
+the formula, not a second code path; and the read uses `dict.get`, so a fixture naming an
+unseen ground does not write a key into the serving state (the D-7 class; B-1 in
+`docs/BUG_BACKLOG.md` records that `team_context` still does).
+
+*Why relative rather than absolute.* T20 scoring has risen across the archive. An absolute
+runs-per-ball at a ground whose history is 2012 would read as low against a 2025 side, and
+the model would learn era, not venue. Numerator and reference are both lifetime as-of sums,
+so the ratio drifts with neither; it is the stationary quantity, and it is the same shape
+the impact ratings already have (above expectation, not absolute).
+
+*Why the competition's scoring rate rather than a tier.* A tier is a hand-made mapping over
+the 1,386 distinct (match type, event name) pairs in the archive, maintained forever, and
+what the model needs from it is exactly the level — which the as-of rate carries without a
+table. A competition's identity enters as its own scoring history: a first season reads as
+neutral (no history yet), and a rebrand ("NatWest T20 Blast" → "Vitality Blast" →
+"Vitality Blast Men") starts a fresh accumulator. That is the limitation team identity had
+before I-4, and if the family is kept and the fold spread says the rebrands matter, the same
+fix (a lineage file under `configs/`) applies. Not built here.
+
+*Keys.* Venue is (format, venue) as `venue_bat_first` already keys it — the venue string in
+the archive, the venue id in Postgres. Competition is (format, event name): `info.event.name`
+in the archive and `match.event_name` in Postgres, the same string on both sources (the
+importer stores the name verbatim), which is what lets the two sources agree on the column
+value as they do on every other. An **unnamed key is no key**: a match without a venue or an
+event accumulates under neither and reads 1.0, on both sources — which needed one change to
+the Postgres source, whose match query used to spell a missing `venue_id` as `0` where the
+archive spells it as the empty string (the archive currently has no such match; the
+database is what a future import writes). Gender is not in either key: the team key
+carries it (I-3) and the eleven's aggregates carry the eleven's level, and H-7 measured the
+unsplit context baseline as costing nothing. Recorded as a limitation: a women's match at a
+men's ground reads the ground's blended rate.
+
+*No decay, no tuning.* Pitches are relaid, but slowly; `venue_bat_first` does not decay
+either, and a lifetime ratio against a lifetime reference is the stationary quantity. The
+prior is one number, chosen by the size of an innings and not swept (H-6's finding was that
+the pass's priors are not load-bearing; if A-1 is kept, the sweep can include it).
+
+**Where it is computed, and where it flows.** `RatingState.fixture_context(match)` reads
+the four columns from the state — before `update`, exactly as `team_context` is read — and
+`update` accumulates the match's deliveries under both keys once the rows are built, at day
+close (H-18). `ml.xi.rows.player_feature_rows` puts the columns on the win row and on every
+player row through the one assembly training and serving share (H-8); the serving request
+already names a venue, and names no competition, which reads neutral. The frame always
+carries the columns — as it carries the sequence families, measured and then kept or not —
+and `contract.FIXTURE_CONTEXT_FAMILIES_KEPT` records the decision that
+`performance_feature_cols` reads. The simulator is untouched: it consumes the forecasts,
+and a forecast that knows the ground is a different forecast. The shared factor is refitted
+per arm on the calibration fold, so its residual distribution is the residual *after* the
+arm's level.
+
+**H-21 audit — the leakage surface of the four columns.**
+
+1. *The match's own result.* Read before `update`, at day close: the match's deliveries and
+   every same-day match's are absent from the accumulators (H-18). The unit test that
+   guards H-1, `test_features_are_as_of_and_never_see_their_own_match`, is extended to the
+   four columns — identical with and without later matches, and the match's own deliveries
+   and result do not move its row.
+2. *Future matches.* None can enter: the pass is chronological and `AsOfRatings` folds by a
+   strict date threshold. The H-8 parity check compares both code paths on the new columns
+   (they sit in `PLAYER_MATCH_FEATURE_COLS`, which parity iterates, and the win-row list is
+   extended with `FIXTURE_CONTEXT_COLS`).
+3. *Outcome columns.* No target column enters; `performance_feature_cols` is what the model
+   reads and `test_performance_feature_cols_never_include_an_outcome_column` covers the new
+   columns without change. Both innings' deliveries feed the accumulators, the chase
+   included; neither the numerator nor the reference is a function of who won.
+4. *Scoreboard read-through.* A ground with one prior T20 reads that match's rate at weight
+   240 / 840 ≈ 0.29; a ground with a season's history reads its own. Never the fixture's own
+   scoreboard. The H-2 canary sweeps `DISPLAY_FEATURE_COLS`; the new columns are not win
+   features (both sides play at the same ground) and are not added to it.
+5. *In-sample stacking.* The columns are sums of raw deliveries, not a model's outputs;
+   nothing is fitted to produce them. The one fitted consumer of L2-B, the shared factor,
+   keeps its temporal fold.
+6. *Serving.* A live request reads the same function of the same state; a venue it names is
+   keyed as training keys it, and a competition it does not name reads 1.0 — the value a
+   fixture with no history reads in training, so serving never sees a value training could
+   not have produced.
+
+**H-23 triple — gate A-1** (`ml.xi.gates`, registered before the script ran; the script
+prints it first):
+
+- *varies:* which fixture-context families the performance model reads — none, venue,
+  competition, both — one fit per arm per fold.
+- *fixed:* the rows, the eleven quarterly cutoffs (A-4's rotated set, 2024-01 … 2026-06),
+  the three seeds, the hyperparameters, the shared factor's fitting rule (the 92-day
+  calibration fold the members do not train on), the display models (fitted once per fold,
+  shared by the arms), the simulator, its draw count and its seeds (common random numbers
+  across arms), the labels.
+- *decides:* a family is kept only if, against the no-context arm on the same folds, the
+  mean over folds of |bias| of the simulated first-innings mean shrinks, the first-innings
+  10–90 coverage stays within ± 0.03, the interval's width does not grow (H-22), and the
+  pinball loss of every headline target is no worse by more than 0.5 % (E1's noise band) —
+  in **both** T20 and ODI, the formats the evidence names and whose folds can resolve it.
+  The `both` arm is shipped only if it passes the same test; T20I is reported, not decided
+  on (ten folds of 23–57 matches); TEST has no simulator and is reported for pinball only.
+  A recorded null — no family shrinks the bias — ships no feature. The script is
+  `scripts/experiments/xi/a1_fixture_context.py`; it prints the triple first and writes
+  one JSON per format under `output/ml-service/a1/`.
+
+**The locked window, after the choice.** A-4 rotated the window to ≥ 2026-09-02 before this
+item started, and the database ends 2026-09-01, so the window holds **no matches**: `make
+evaluate` scores it once with the decided configuration and reports `n_eval: 0`, which is
+the correct answer (`ml-and-training.md` § Rotating the locked window), not a number. The
+before/after this section can honestly report is therefore the harness's walk-forward
+table — A-4's baseline in `docs/FOLLOW_UP_PLAN.md` § 5 against the same run with the decided
+configuration — on the same eleven folds, the same source (the database) and the same
+seeds; the locked-window line is reported as empty in both. The evaluate run's other job
+is H-8: the parity check rebuilds the last 50 matches through the as-of path with the four
+new columns in both the win row and every player row, on both sources.
+
+**Results** (`scripts/experiments/xi/a1_fixture_context.py`, run 2026-09-02/03 on the
+archive; eleven folds 2024-01 … 2026-06, three seeds, 1,000 draws per fixture, the display
+models and the simulator's random numbers shared by the arms). The gate's table, one row
+per arm and format, means over folds; "verdict" is the registered rule applied per format:
+
+| format | arm | folds | mean \|bias\| | mean bias | coverage | width | chase bias | chase coverage | runs pinball | wickets pinball | balls pinball | conceded pinball | Δ Brier | verdict |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| T20 | none | 11 | 3.1 | +0.5 | 0.770 | 84.7 | −6.6 | 0.713 | 2.920 | 0.1413 | 2.320 | 1.935 | +0.0018 | control |
+| T20 | venue | 11 | 3.2 | +0.5 | 0.770 | 84.6 | −6.5 | 0.713 | 2.920 | 0.1412 | 2.320 | 1.933 | +0.0016 | fails: \|bias\| does not shrink |
+| T20 | competition | 11 | 3.1 | +0.5 | 0.767 | 84.4 | −6.6 | 0.709 | 2.920 | 0.1411 | 2.320 | 1.933 | +0.0014 | fails: \|bias\| does not shrink |
+| T20 | both | 11 | 3.1 | +0.5 | 0.772 | 84.5 | −6.5 | 0.717 | 2.919 | 0.1412 | 2.320 | 1.931 | +0.0014 | fails: \|bias\| does not shrink |
+| ODI | none | 11 | 14.1 | +0.5 | 0.753 | 149.4 | −8.9 | 0.700 | 4.715 | 0.1591 | 5.294 | 2.886 | +0.0078 | control |
+| ODI | venue | 11 | 13.9 | +0.5 | 0.750 | 148.9 | −9.0 | 0.701 | 4.713 | 0.1589 | 5.294 | 2.883 | +0.0093 | passes (by the letter; see below) |
+| ODI | competition | 11 | 14.1 | +0.3 | 0.753 | 149.9 | −9.0 | 0.706 | 4.714 | 0.1591 | 5.294 | 2.885 | +0.0087 | fails: width grows |
+| ODI | both | 11 | 13.7 | +0.3 | 0.757 | 149.1 | −9.2 | 0.701 | 4.713 | 0.1589 | 5.295 | 2.883 | +0.0084 | passes (by the letter; see below) |
+| T20I | none | 10 | 7.6 | +2.9 | 0.783 | 80.9 | −2.5 | 0.688 | 3.222 | 0.1326 | 2.288 | 1.902 | −0.0017 | control |
+| T20I | venue | 10 | 7.2 | +2.3 | 0.776 | 80.6 | −3.0 | 0.694 | 3.221 | 0.1324 | 2.289 | 1.902 | +0.0000 | reported: passes |
+| T20I | competition | 10 | 7.0 | +2.6 | 0.771 | 79.9 | −2.6 | 0.684 | 3.220 | 0.1324 | 2.288 | 1.898 | +0.0003 | reported: passes |
+| T20I | both | 10 | 6.7 | +2.5 | 0.790 | 79.9 | −2.9 | 0.691 | 3.221 | 0.1326 | 2.289 | 1.897 | +0.0002 | reported: passes |
+| TEST | none | 11 | — | — | — | — | — | — | 8.335 | 0.3037 | 13.783 | 5.951 | — | control |
+| TEST | venue | 11 | — | — | — | — | — | — | 8.341 | 0.3032 | 13.780 | 5.957 | — | reported: pinball no worse |
+| TEST | competition | 11 | — | — | — | — | — | — | 8.334 | 0.3032 | 13.771 | 5.954 | — | reported: pinball no worse |
+| TEST | both | 11 | — | — | — | — | — | — | 8.330 | 0.3029 | 13.765 | 5.957 | — | reported: pinball no worse |
+
+The effect size against its own noise — the paired difference in |bias| per fold, arm minus
+control, mean ± standard error over folds:
+
+| arm | T20 | ODI | T20I |
+|---|---:|---:|---:|
+| venue | +0.18 ± 0.06 | −0.22 ± 0.27 | −0.43 ± 0.24 |
+| competition | +0.05 ± 0.11 | −0.02 ± 0.21 | −0.64 ± 0.21 |
+| both | +0.03 ± 0.11 | −0.41 ± 0.25 | −0.93 ± 0.30 |
+
+And the ODI per-fold bias of the simulated first-innings mean, the quantity §8.3 named,
+by arm (folds 2024-01 … 2026-06):
+
+| arm | 24-01 | 24-04 | 24-07 | 24-10 | 25-01 | 25-04 | 25-06 | 25-09 | 25-12 | 26-03 | 26-06 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| none | −47.0 | +5.6 | +2.9 | −7.6 | +1.0 | +34.9 | +11.3 | −17.1 | +13.6 | +11.2 | −3.1 |
+| venue | −48.4 | +4.6 | +2.4 | −7.0 | +1.0 | +34.1 | +12.5 | −17.0 | +13.8 | +10.9 | −1.5 |
+| competition | −47.8 | +6.4 | +2.3 | −7.4 | +0.8 | +36.1 | +10.5 | −17.6 | +12.8 | +10.7 | −3.0 |
+| both | −47.1 | +5.7 | +2.4 | −7.1 | +0.3 | +34.7 | +12.0 | −17.9 | +11.6 | +10.3 | −1.7 |
+
+**Decision: a recorded null.** No family passes in both formats, so nothing ships:
+`contract.FIXTURE_CONTEXT_FAMILIES_KEPT` stays empty and the performance model reads no
+fixture-context column. The four columns stay in the frame, as the sequence families did
+after E1, so the question can be re-asked without a new pass.
+
+**Reading it.**
+
+- *T20 is a clean fail.* The per-quarter |bias| is already small there (3.1 runs on totals
+  of ~160) and none of the arms moves it: +0.18 ± 0.06 (venue, worse), +0.05 and +0.03
+  (inside the noise). Coverage, width and every pinball are flat to the third decimal. A
+  ground's level is something the model already carries through the elevens that play
+  there, and 42 T20 columns do not need two more to say it.
+- *ODI passes by the letter and not by any honest reading.* `venue` and `both` satisfy all
+  four clauses — but the shrinkage is 0.22 and 0.41 runs on a mean |bias| of 14.1, each
+  within about one standard error of zero over the folds, and the quarter the evidence
+  named, 2024-01 at −47, reads −48.4, −47.8 and −47.1 under the three arms. The gate as
+  registered had **no effect-size floor** — a design omission of this section, found by
+  its own result — and shipping on it would be exactly the H-23 failure the registry exists
+  to prevent: a pass for a reason other than the thing the gate named. The judgment call,
+  recorded here and in the PR: the rule is applied as written, the arm's verdict is
+  reported as it came out, and the family is not shipped because a shrinkage the folds
+  cannot distinguish from zero is not the shrinkage §8.3 asked for. The next gate of this
+  kind states its floor before it runs (one fold-level standard error is the natural one).
+- *Why the ground and the competition cannot fix that quarter.* The 2024-01 ODI fold is 40
+  matches: 29 men's — Nepal, Canada, Scotland, Western Australia — and 11 women's
+  (Australia, Zimbabwe), with a mean first-innings total of 197 against the format's ~240.
+  Their fixture context reads almost neutral (competition 0.97, venue 1.01 on average,
+  12 % of the competitions in their first season): these grounds and competitions have
+  either no history or a history at the format's level. The level of that quarter is *who
+  is playing* — associate men's and women's ODIs scored against one unsplit baseline — not
+  where or in what. The same holds for 2025-04 (+35: 55 of 78 matches women's) and 2025-09
+  (−17: 53 of 97). §8.3's attribution, "largest where a quarter is forty matches of one
+  competition", was right about the quarter and wrong about the cause: the per-quarter
+  bias is a population-mix effect, and the place to look is the baseline the elevens are
+  measured against (H-7 measured the gender split as costing nothing on AUC; nobody has
+  measured it on totals), not the fixture.
+- *T20I improves on every arm* — |bias| 7.6 → 7.2 / 7.0 / 6.7, two to three standard errors,
+  with coverage held and width narrower — and is not decided on: ten folds of 23–57
+  matches, the format whose T20 counterpart shows nothing. It is the one place the
+  hypothesis has support, reported as such.
+- *TEST* moves pinball by less than 0.1 % either way.
+- *Cost:* the pass gains four columns and two keyed tables; the fit time is unchanged
+  (190–200 s per T20 fold either way).
+
+**The harness after the choice** (`make evaluate`, run once on each source with the decided
+configuration — no family kept — 2026-09-03; 71 min on the database, 67 on the archive).
+The locked window (≥ 2026-09-02) holds **0 matches** on both sources and says so; the
+walk-forward table on the database is A-4's baseline (`docs/FOLLOW_UP_PLAN.md` § 5) to every
+printed decimal — the same rows (21,093 / 465,336), the same columns read, a deterministic
+pass — so "before" and "after" are one table. The archive run agrees within source noise
+(T20 first-innings coverage / width / bias 0.770 / 84.7 / +0.5 against 0.772 / 84.8 / +0.5;
+ODI 0.753 / 149.4 / +0.5 against 0.758 / 149.6 / +0.4; runs pinball 2.920 / 4.715 on both).
+H-8: 50 matches, 1,100 player rows, 1,100 performance predictions, 50 simulations at max
+abs difference **0.0 on both sources**, with the four fixture-context columns now in the win
+row and every player row the check compares. Gates and glossary pass on both.
+
+---
+
 ## 9. Database schema and pipeline steps: what changes, what does not
 
 The short answer is that the schema is not torn apart; it is *pruned by consequence*. The

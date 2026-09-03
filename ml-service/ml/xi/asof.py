@@ -133,7 +133,13 @@ def serving_parity(
         for match_id, group in player_frame[player_frame.match_id.isin(wanted_set)].groupby("match_id", sort=False)
     }
 
-    win_cols = C.XI_FEATURE_COLS + C.TEAM_CONTEXT_COLS + C.SIMULATION_CONTEXT_COLS + C.INNINGS_OUTCOME_COLS
+    win_cols = (
+        C.XI_FEATURE_COLS
+        + C.TEAM_CONTEXT_COLS
+        + C.SIMULATION_CONTEXT_COLS
+        + C.FIXTURE_CONTEXT_COLS
+        + C.INNINGS_OUTCOME_COLS
+    )
     player_cols = C.PLAYER_MATCH_FEATURE_COLS + C.PLAYER_MATCH_TARGET_COLS
     matches_compared = 0
     win_rows_compared = 0

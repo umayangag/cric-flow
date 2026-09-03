@@ -125,13 +125,15 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     """Both sides' aggregates as the win-feature row, and one feature row per XI player
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
     match date. The win row also carries the simulator's as-of context
-    (``SIMULATION_CONTEXT_COLS``). The performance model's serving path reads rows from
-    here; the training pass adds what the player then did through ``build_match_rows``."""
+    (``SIMULATION_CONTEXT_COLS``) and the fixture context (``FIXTURE_CONTEXT_COLS``), which
+    every player row repeats. The performance model's serving path reads rows from here;
+    the training pass adds what the player then did through ``build_match_rows``."""
     vectors1 = state.side_vectors(match.format_code, match.team1_players)
     vectors2 = state.side_vectors(match.format_code, match.team2_players)
     side1 = aggregate_side(vectors1, match.format_code)
     side2 = aggregate_side(vectors2, match.format_code)
     context = team_context_or_neutral(state, match)
+    fixture_context = state.fixture_context(match)
 
     win_row = {
         "match_id": match.match_id,
@@ -146,6 +148,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     win_row.update(match_features(side1, side2))
     win_row.update(context)
     win_row.update(state.simulation_context(match.format_code, match.gender))
+    win_row.update(fixture_context)
 
     player_rows: List[Dict] = []
     sides = (
@@ -173,6 +176,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
             row["venue_bf_rate"] = context["venue_bf_rate"]
             row["venue_n"] = context["venue_n"]
             row["elo_edge"] = elo_sign * context["team_elo_diff"]
+            row.update(fixture_context)
             player_rows.append(row)
     return win_row, player_rows
 

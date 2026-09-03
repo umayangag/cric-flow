@@ -121,6 +121,20 @@ GATES: Tuple[Gate, ...] = (
         "above 30 % adds a batting-order suggestion to L3",
         report_path=None,
     ),
+    Gate(
+        id="A-1",
+        name="Fixture-conditional level",
+        varies="which fixture-context families the performance model reads: none, venue, competition, both -- "
+        "one fit per arm per fold",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three seeds, the hyperparameters, the shared factor's "
+        "fitting rule (the 92-day calibration fold), the display models, the simulator and its draw count, "
+        "the labels",
+        decides="a family is kept only if, against the no-context arm on the same folds, the mean per-quarter |bias| "
+        "of the simulated first-innings mean shrinks while 10-90 coverage stays within +/- 0.03, width does not "
+        "grow (H-22) and every headline target's pinball is no worse by more than 0.5 %, in both T20 and ODI; "
+        "a recorded null ships no feature",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}

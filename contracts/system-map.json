@@ -387,6 +387,16 @@
           }
         },
         {
+          "id": "frame-fixture-context",
+          "label": "Ground and competition level",
+          "summary": "How the ground and the competition score, relative to the format: runs and dismissals per delivery over everything played there before, shrunk toward average, so a first match at a new ground reads as an average ground. Computed on every pass and carried on every row; whether the performance model reads them was decided on the walk-forward folds (gate A-1), because the simulator's remaining error was the level of a quarter's totals, not their spread.",
+          "anchors": {
+            "feature_groups": [
+              "FIXTURE_CONTEXT_COLS"
+            ]
+          }
+        },
+        {
           "id": "frame-player-rows",
           "label": "Player-match rows",
           "summary": "One row per player per match: who he was, what his record said beforehand, what his own side and the opposition looked like, and then what he actually did — runs, balls, wickets, runs conceded, catches. Every player of the eleven gets a row, including the ones who never batted, because who got to bat is decided by how the match went.",
@@ -722,7 +732,8 @@
           "H-22",
           "H-2",
           "H-8",
-          "E3"
+          "E3",
+          "A-1"
         ]
       },
       "documented_in": [
