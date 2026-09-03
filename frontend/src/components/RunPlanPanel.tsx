@@ -34,6 +34,8 @@ const PLAN_DESCRIPTIONS: Record<string, string> = {
   import: 'Fetch the configured archive, extract it, and load the matches.',
   full: 'Import → retrain → reload: from raw data to a run this service is serving.',
   'retrain-only': 'Build a run against data already imported, and serve it.',
+  refresh:
+    'The scheduled cadence: fetch, extract, import, retrain, reload — new matches all the way through to the run being served.',
 };
 
 function planCaption(plan: string): string {

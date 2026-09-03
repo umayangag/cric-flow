@@ -126,6 +126,57 @@ func TestExecute_StopsAtTheFirstFailure(t *testing.T) {
 	assert.Equal(t, "retrain", next.StepID, "resume starts at the step that failed")
 }
 
+// TestExecute_RefreshPublishesNothingWhenTheRetrainFails is the cadence's own promise
+// (A-5). A scheduler runs this plan unattended, so "a bad retrain publishes nothing"
+// cannot rest on an operator noticing: reload is reached only by walking through
+// retrain, and a retrain that fails — the data-quality gate being the expected way,
+// since the automated path never accepts a regression on an operator's behalf — stops
+// the walk with `current` pointing exactly where it already pointed.
+func TestExecute_RefreshPublishesNothingWhenTheRetrainFails(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{}
+	var ran []string
+	exec := executorFor(store, func(_ context.Context, step pipelinesvc.Step) error {
+		ran = append(ran, step.ID)
+		if step.ID == "retrain" {
+			return errors.New("data-quality gate failed (1 check)")
+		}
+		return nil
+	})
+
+	plan, err := Describe(PlanRefresh)
+	require.NoError(t, err)
+	runErr := exec.Execute(context.Background(), PlanRefresh, plan)
+
+	require.Error(t, runErr)
+	assert.Equal(t, []string{"fetch", "extract", "import", "retrain"}, ran)
+	assert.NotContains(t, ran, "reload", "a failed retrain must not be published")
+	assert.Equal(t,
+		[]StepStatus{StatusCompleted, StatusCompleted, StatusCompleted, StatusFailed, StatusPending},
+		statuses(store.final))
+}
+
+// TestExecute_RefreshRunsTheWholeCadence: the acceptance shape of A-5 — one command
+// walks the archive to the run being served, and the run history records all five
+// steps rather than two plans an operator has to remember to chain.
+func TestExecute_RefreshRunsTheWholeCadence(t *testing.T) {
+	t.Parallel()
+	store := &fakeStore{}
+	var ran []string
+	exec := executorFor(store, func(_ context.Context, step pipelinesvc.Step) error {
+		ran = append(ran, step.ID)
+		return nil
+	})
+
+	plan, err := Describe(PlanRefresh)
+	require.NoError(t, err)
+	require.NoError(t, exec.Execute(context.Background(), PlanRefresh, plan))
+
+	assert.Equal(t, []string{"fetch", "extract", "import", "retrain", "reload"}, ran)
+	assert.True(t, store.final.Done())
+	assert.NoError(t, store.finalErr)
+}
+
 // TestExecute_CancellationStopsThePlanNotJustTheStep: cancelling only the current step
 // would stop it and then start the next one, which is not what Stop means.
 func TestExecute_CancellationStopsThePlanNotJustTheStep(t *testing.T) {

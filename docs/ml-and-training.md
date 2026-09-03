@@ -278,6 +278,14 @@ say so explicitly:
 make retrain CUTOFF=2025-09-01 ACCEPT_DATA_QUALITY=1
 ```
 
+**The scheduled cadence never says it.** `--accept-data-quality` is a judgement — "I have
+looked at the new counts and they are right" — and nobody is present to make it when
+`make cadence` runs at 06:00 on a Monday, so neither `/admin/train/retrain` nor the
+`refresh` run plan passes the flag. A gate failure there fails the retrain, the plan stops
+before `reload`, and the previous run goes on serving until a human looks. That is the
+whole non-interactive contract: the automated path can refuse to publish, and cannot
+approve.
+
 Current baseline on the full dataset: 22,734 matches offered and 22,734 read, 1,710
 undecided, 0 namesake sides, 1,358 sides of more than eleven (concussion and injury
 replacements, which Cricsheet lists in full), 0 unresolved player keys, 13,569 players.

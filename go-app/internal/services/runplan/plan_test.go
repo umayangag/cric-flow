@@ -55,6 +55,44 @@ func TestRetrainOnlySkipsTheImport(t *testing.T) {
 	assert.Equal(t, []string{"retrain", "reload"}, ids(plan))
 }
 
+// TestRefreshIsAcquisitionThenTraining: the scheduled cadence (A-5) is one walk from
+// the archive to the run being served. Acquisition and training being two plans is
+// what let them come apart — an import with no retrain after it left the served
+// ratings nine days old against a fourteen-day limit.
+func TestRefreshIsAcquisitionThenTraining(t *testing.T) {
+	t.Parallel()
+	plan, err := Describe(PlanRefresh)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"fetch", "extract", "import", "retrain", "reload"}, ids(plan))
+}
+
+// TestRefreshIsComposedOfTheTwoPlansItChains: written out, its step list would be the
+// copy that keeps the old shape after the registry changes.
+func TestRefreshIsComposedOfTheTwoPlansItChains(t *testing.T) {
+	t.Parallel()
+	acquire, err := Describe(PlanImport)
+	require.NoError(t, err)
+	train, err := Describe(PlanRetrainOnly)
+	require.NoError(t, err)
+	refresh, err := Describe(PlanRefresh)
+	require.NoError(t, err)
+
+	assert.Equal(t, append(ids(acquire), ids(train)...), ids(refresh))
+}
+
+// TestRefreshEndsInReloadAndExcludesEvaluate: publishing is the last step, so a
+// failure anywhere before it leaves `current` where it was; and the 54-minute harness
+// is never implied by a cadence nobody asked to measure.
+func TestRefreshEndsInReloadAndExcludesEvaluate(t *testing.T) {
+	t.Parallel()
+	plan, err := Describe(PlanRefresh)
+	require.NoError(t, err)
+
+	assert.Equal(t, "reload", ids(plan)[len(plan)-1])
+	assert.NotContains(t, ids(plan), "evaluate")
+}
+
 func TestUnknownPlanNamesTheOnesThatExist(t *testing.T) {
 	t.Parallel()
 	_, err := Describe("everything")

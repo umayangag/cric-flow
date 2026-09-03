@@ -124,6 +124,12 @@ chose (H-16), and publishes nothing; reload points `current` at a run and loads 
 also how you swap back to an earlier one. `make evaluate` runs L4's harness beside them and
 touches no artifact `current` points at. See **docs/ml-and-training.md**.
 
+On a schedule it is one command: `make cadence` runs fetch → extract → import → retrain →
+reload against a running stack, reloading only if every step before it succeeded, and exits
+non-zero if the ratings it ends up serving are outside H-11's staleness limit. Weekly is the
+default rhythm; `make cadence-dry-run` starts nothing. See **docs/overview.md** § Cadence and
+`deploy/cadence/` for scheduler examples.
+
 ## Logging (Go)
 
 Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|warn|error). Example: `cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api`.

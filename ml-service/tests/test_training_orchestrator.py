@@ -158,6 +158,33 @@ def test_run_retrain_forwards_the_cutoff_and_the_artifacts_root(monkeypatch) -> 
     assert isinstance(calls["logger"], DummyLogger)
 
 
+def test_run_retrain_never_accepts_a_data_quality_regression_on_its_own(monkeypatch) -> None:
+    """The one step of the chain that assumes a human is the data-quality gate, and the
+    unattended path must fail closed rather than wave it through.
+
+    ``--accept-data-quality`` says "I have looked at the new counts and they are right",
+    which is a judgement nobody is present to make when a scheduler runs the cadence
+    (A-5) at 06:00 on a Monday. Without it the retrain exits non-zero, the run plan stops
+    there, and reload -- the step after it -- never runs, so `current` goes on pointing at
+    the run it already pointed at. An orchestrator that passed the flag to keep its own
+    chain green would publish exactly the run the gate exists to hold back."""
+    calls: Dict[str, Any] = {}
+
+    def fake_run_training_subprocess(
+        module: str,
+        extra_args: Optional[List[str]] = None,
+        extra_env: Optional[Dict[str, str]] = None,
+        logger: Optional[Any] = None,
+    ) -> None:
+        calls.update(extra_args=extra_args or [])
+
+    monkeypatch.setattr(training_orchestrator, "run_training_subprocess", fake_run_training_subprocess)
+
+    training_orchestrator.run_retrain("2025-09-01", "/models", logger=DummyLogger())
+
+    assert "--accept-data-quality" not in calls["extra_args"]
+
+
 def test_run_evaluate_does_not_pass_the_cutoff_to_the_harness(monkeypatch) -> None:
     """L4's rolling origins and its locked window are its definition (H-19). Letting a
     caller move them would make two evaluate runs incomparable, which is the failure H-23

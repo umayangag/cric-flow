@@ -1,0 +1,39 @@
+# Example unit for the data cadence (A-5). NOT installed or enabled by anything in
+# this repository — copy it to /etc/systemd/system/ and edit the paths and the key.
+#
+#   sudo cp deploy/cadence/cric-flow-cadence.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cric-flow-cadence.timer
+#   systemctl list-timers cric-flow-cadence.timer
+#   journalctl -u cric-flow-cadence -n 100
+#
+# It runs one command: fetch -> extract -> import -> retrain, then reload only if every
+# step before it succeeded. The exit code says which of those happened (see
+# scripts/cadence.sh), so `systemctl status` and any alerting on unit failure are
+# reporting the pipeline's own verdict rather than a log line someone has to read.
+
+[Unit]
+Description=cric-flow data cadence (fetch, import, retrain, reload)
+Documentation=file:///opt/cric-flow/docs/overview.md
+# The plan is driven through go-app's API, so the stack has to be up. On a box where
+# docker-compose runs under systemd, name that unit here instead.
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cric-flow
+# Must match the key the stack was started with. Keep it in a file readable only by
+# root rather than inline here: this unit is world-readable.
+EnvironmentFile=/etc/cric-flow/cadence.env
+ExecStart=/usr/bin/make cadence
+# The chain is ~12 minutes idle (fetch and extract ~1 min, import ~2, retrain ~10).
+# The script's own TIMEOUT_MINUTES (default 90) should trip first; this is the backstop.
+TimeoutStartSec=7200
+# A cadence that fails should stay failed and be visible, not retry until it succeeds
+# against data that is not there yet.
+Restart=no
+User=cric-flow
+Group=cric-flow
+StandardOutput=journal
+StandardError=journal
