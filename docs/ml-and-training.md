@@ -502,7 +502,12 @@ shared factor fits no response either. `simulator.CHASE_RESPONSE` names the arm 
 (`none`, `level`, `slope` or `both`; gate A-2 decided it on the folds with a level-only control
 arm and one fold-level standard error as the effect-size floor); `FitSpec.chase_response`
 carries it into the run manifest and the artifact carries the fitted response beside the
-shared factor. Not modelled by it, and said so: the wickets a collapse loses (the runs fall,
+shared factor. **A-2's verdict was a recorded null and the arm is `none`** (plan §8.10): the
+slope is negative in every T20 and ODI fold and fixes the chase's level (bias −6.6 / −9.3 →
+within ±3) and thins the low tail (below-q10 0.19 → 0.15), but the mass moves above the 90th
+percentile — hard chases that were nevertheless won — so 10–90 coverage does not move and E2
+degrades; the fitted residual scale is nearly twice the simulated chase's spread, which names
+the miss as the chase's *dispersion* (collapse or get there), the next candidate's target. Not modelled by it, and said so: the wickets a collapse loses (the runs fall,
 the depth does not), the overshoot of a won chase, DLS, per-ball required-rate dynamics.
 
 **Measured by (E2, `ml/xi/sim_harness.py`, in `make evaluate`).** Per format and window,

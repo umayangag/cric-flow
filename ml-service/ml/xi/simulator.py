@@ -67,7 +67,16 @@ CHASE_RESPONSE_ARMS = ("none", "level", "slope", "both")
 #: Which chase response the simulator applies to the chasing side's runs draws:
 #: exp(level + slope * ln(target / expected)), with the coefficients fitted on the shared
 #: factor's calibration fold. Decided on the walk-forward folds by gate A-2
-#: (``scripts/experiments/xi/a2_chase_tails.py``); the before/after is plan §8.10.
+#: (``scripts/experiments/xi/a2_chase_tails.py``, plan §8.10): **a recorded null**. The
+#: slope is negative in every fold (T20 -0.8 to -2.0, ODI -0.3 to -2.4) and the response
+#: takes the chase bias from -6.6 / -9.3 runs (T20 / ODI) to within +-3 and the share of
+#: real chases below the simulated 10th percentile from 0.19 to 0.15 -- but the mass moves
+#: to the other tail (above the 90th: 0.10 -> 0.13-0.16), so the 10-90 coverage does not
+#: move (0.713 -> 0.702-0.719), and the simulated P(win) worsens by 0.001-0.004 Brier, two
+#: to four standard errors. The fitted residual scale (0.38-0.46 on the log scale) is
+#: nearly twice the simulated chase's own spread (0.23-0.25): what the data has that the
+#: draws lack is a chase's *dispersion* -- collapse or get there -- not a level by
+#: difficulty. Off; the fit stays so the question can be re-asked as a mixture.
 CHASE_RESPONSE = "none"
 #: E2's rule (plan §5): the simulator's P(win) may be displayed only if it is within 0.01
 #: Brier of the display model on the walk-forward folds; otherwise it is a description of

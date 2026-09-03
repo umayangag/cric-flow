@@ -1643,6 +1643,122 @@ before/after this section can honestly show is the harness's walk-forward table 
 baseline against the same run with the decided configuration, same folds, same source,
 same seeds — with H-8's parity on the last 50 matches, simulator draws included.
 
+**Results** (`scripts/experiments/xi/a2_chase_tails.py`, run 2026-09-03 on the archive
+frames; eleven folds 2024-01 … 2026-06, three seeds, 1,000 draws per fixture, one L2-B fit
+per fold shared by the four arms, the display models, the shared factor and the simulator's
+random numbers common to them). The calibration fold held 252–543 complete first innings per
+T20 fold (mean 358), 41–178 per ODI fold (92) and 34–57 per T20I fold (44); ODI's 2026-03
+fold and T20I's 2025-06 fold were too thin for a shared factor and so for a response, and
+T20I's 2025-04 fold too small to score — those folds are absent from every arm alike. The
+gate's table, means over folds; "σ vs sim" is the fitted residual scale on the log scale
+against the simulated untruncated chase's own log-sd on the same folds:
+
+| format | arm | folds | chase coverage | below q10 | above q90 | chase width | chase bias | mean \|bias\| | first coverage / width | Δ Brier | P(bat-first wins) sim / actual | margin runs cov / width | margin balls cov / width | level | slope | σ vs sim | verdict |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---|---|---|---:|---:|---|---|
+| T20 | none | 11 | 0.713 | 0.192 | 0.095 | 70.0 | −6.6 | 6.7 | 0.770 / 84.7 | +0.0018 | 0.518 / 0.482 | 0.661 / 60.4 | 0.602 / 41.3 | — | — | — vs 0.230 | control |
+| T20 | level | 11 | 0.714 | 0.203 | 0.083 | 71.4 | −8.5 | 8.5 | 0.770 / 84.7 | +0.0018 | 0.474 / 0.482 | 0.657 / 59.2 | 0.600 / 42.2 | +0.033 | 0 | 0.432 vs 0.230 | control: fails 1, 2 |
+| T20 | slope | 11 | 0.702 | 0.141 | 0.158 | 68.6 | +1.1 | 3.5 | 0.770 / 84.7 | +0.0027 | 0.531 / 0.482 | 0.714 / 78.9 | 0.630 / 55.2 | 0 | −0.897 | 0.383 vs 0.230 | fails 1, 4 |
+| T20 | both | 11 | 0.719 | 0.152 | 0.128 | 70.9 | −2.4 | 3.8 | 0.770 / 84.7 | +0.0028 | 0.454 / 0.482 | 0.734 / 79.8 | 0.596 / 59.1 | +0.098 | −1.114 | 0.406 vs 0.230 | fails 4 (1 inside one s.e.) |
+| ODI | none | 10 | 0.713 | 0.180 | 0.107 | 133.4 | −9.3 | 17.8 | 0.770 / 153.7 | +0.0068 | 0.478 / 0.429 | 0.658 / 100.6 | 0.546 / 111.7 | — | — | — vs 0.248 | control |
+| ODI | level | 10 | 0.712 | 0.195 | 0.093 | 136.9 | −13.2 | 19.9 | 0.770 / 153.7 | +0.0066 | 0.417 / 0.429 | 0.653 / 98.1 | 0.533 / 113.4 | +0.047 | 0 | 0.456 vs 0.248 | control: fails 1, 2 |
+| ODI | slope | 10 | 0.685 | 0.145 | 0.169 | 129.5 | +3.7 | 14.5 | 0.770 / 153.7 | +0.0100 | 0.491 / 0.429 | 0.725 / 132.5 | 0.606 / 159.2 | 0 | −1.050 | 0.432 vs 0.248 | fails 1, 2, 4 |
+| ODI | both | 10 | 0.701 | 0.149 | 0.150 | 133.3 | −0.2 | 14.3 | 0.770 / 153.7 | +0.0106 | 0.440 / 0.429 | 0.725 / 133.8 | 0.578 / 163.3 | +0.077 | −1.236 | 0.455 vs 0.248 | fails 1, 4 |
+| T20I | none | 9 | 0.692 | 0.193 | 0.115 | 68.1 | −3.8 | 5.5 | 0.792 / 82.7 | −0.0005 | 0.519 / 0.499 | 0.691 / 63.3 | 0.640 / 40.6 | — | — | — vs 0.206 | control |
+| T20I | level | 9 | 0.701 | 0.194 | 0.105 | 68.8 | −4.9 | 5.2 | 0.792 / 82.7 | −0.0003 | 0.491 / 0.499 | 0.690 / 62.6 | 0.640 / 41.3 | +0.019 | 0 | 0.260 vs 0.206 | reported: fails 1, 2 |
+| T20I | slope | 9 | 0.700 | 0.155 | 0.145 | 67.5 | −0.2 | 3.9 | 0.792 / 82.7 | +0.0006 | 0.523 / 0.499 | 0.752 / 72.6 | 0.697 / 47.1 | 0 | −0.394 | 0.243 vs 0.206 | reported: fails 1 |
+| T20I | both | 9 | 0.712 | 0.154 | 0.135 | 69.0 | −1.9 | 3.9 | 0.792 / 82.7 | +0.0001 | 0.462 / 0.499 | 0.768 / 75.1 | 0.647 / 51.2 | +0.060 | −0.617 | 0.255 vs 0.206 | reported: fails 1 |
+
+The effect sizes against their own noise — the paired difference per fold, arm minus
+`none`, mean ± standard error over folds, for the three quantities the gate reads (a
+negative coverage distance is *toward* nominal):
+
+| arm | T20: coverage distance | \|bias\| (runs) | simulated Brier | ODI: coverage distance | \|bias\| | Brier | T20I: coverage distance | \|bias\| | Brier |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| level | −0.001 ± 0.002 | +1.81 ± 0.53 | +0.00000 ± 0.00022 | +0.006 ± 0.007 | +2.08 ± 1.71 | −0.00019 ± 0.00047 | −0.002 ± 0.008 | −0.28 ± 0.88 | +0.00019 ± 0.00091 |
+| slope | +0.011 ± 0.006 | −3.16 ± 1.51 | +0.00090 ± 0.00045 | +0.025 ± 0.023 | −3.31 ± 3.89 | +0.00320 ± 0.00089 | −0.002 ± 0.011 | −1.64 ± 1.40 | +0.00114 ± 0.00132 |
+| both | −0.007 ± 0.007 | −2.91 ± 0.69 | +0.00108 ± 0.00054 | +0.020 ± 0.018 | −3.53 ± 3.03 | +0.00382 ± 0.00101 | +0.002 ± 0.013 | −1.65 ± 1.54 | +0.00059 ± 0.00107 |
+
+Against the `level` control on the coverage distance: T20 slope +0.012 ± 0.007, both
+−0.006 ± 0.007; ODI +0.019 ± 0.022, +0.015 ± 0.018; T20I −0.000 ± 0.011, +0.004 ± 0.011 —
+no candidate beats it by one standard error anywhere.
+
+The fitted slope per fold (`both` arm), the quantity the hypothesis stands on:
+
+| format | 24-01 | 24-04 | 24-07 | 24-10 | 25-01 | 25-04 | 25-06 | 25-09 | 25-12 | 26-03 | 26-06 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| T20 | −2.02 | −1.22 | −1.43 | −0.87 | −1.30 | −0.82 | −0.76 | −0.95 | −0.79 | −0.83 | −1.26 |
+| ODI | −2.38 | −1.91 | −0.66 | −0.84 | −1.54 | −0.84 | −0.26 | −1.15 | −1.72 | — | −1.07 |
+| T20I | +0.36 | −0.63 | −0.08 | −0.06 | −0.42 | — | — | −0.94 | −1.34 | −0.56 | −1.89 |
+
+And what the response did to the two tails, fold by fold in T20 (`none` → `both`: share of
+real chases below the simulated 10th percentile / above the 90th): 24-01 0.145 / 0.077 →
+0.077 / 0.123; 24-04 0.217 / 0.105 → 0.162 / 0.146; 24-07 0.247 / 0.076 → 0.179 / 0.098;
+24-10 0.148 / 0.078 → 0.117 / 0.086; 25-01 0.157 / 0.096 → 0.129 / 0.154; 25-04 0.250 /
+0.209 → 0.231 / 0.220; 25-06 0.187 / 0.078 → 0.163 / 0.094; 25-09 0.222 / 0.065 → 0.165 /
+0.100; 25-12 0.156 / 0.046 → 0.124 / 0.100; 26-03 0.214 / 0.121 → 0.175 / 0.170; 26-06
+0.173 / 0.093 → 0.154 / 0.117. In every fold the low tail thins and the high tail thickens
+by about as much.
+
+**Decision: a recorded null.** No candidate passes clause 1 in either decided format, none
+beats the level control, and both candidates fail E2's clause in both; nothing ships.
+`simulator.CHASE_RESPONSE` stays `"none"`, the harness and the retrain fit no response, and
+the fit stays in the code — as the sequence and fixture-context families stayed in the
+frame — so the next candidate can be measured on the same calibration sample.
+
+**Reading it.**
+
+- *The hypothesis is right about the direction and consistent about it.* The slope is
+  negative in every T20 and ODI fold and in eight of nine T20I folds, at −0.8 to −2.4: a
+  chase ten per cent harder than the side's expected score is forecast eight to twenty per
+  cent fewer runs, which is the collapse the evidence described. It fixes the **level** —
+  chase bias −6.6 → −2.4 / +1.1 (T20), −9.3 → −0.2 / +3.7 (ODI), −3.8 → −1.9 / −0.2 (T20I)
+  — and it thins the **low tail** in every fold: below-q10 0.19 → 0.14–0.15 in all three
+  formats. The margins, reported not decided, move the way the evidence wanted: the run
+  margin when the side batting first wins covers 0.66 → 0.71–0.73 (T20), 0.66 → 0.73 (ODI),
+  0.69 → 0.75–0.77 (T20I) and the balls remaining when the chaser wins 0.60 → 0.63, 0.55 →
+  0.61, 0.64 → 0.70 (slope arm) — the simulated losses were too small, and a lost chase that
+  collapses is a bigger loss.
+- *And it does not move the coverage, because the miss is not a level by difficulty but a
+  shape.* In every fold the mass that leaves the low tail reappears above the 90th
+  percentile — 0.095 → 0.158 / 0.128 (T20), 0.107 → 0.169 / 0.150 (ODI) — so the 10–90
+  coverage stays where it was (0.713 → 0.702 / 0.719, 0.713 → 0.685 / 0.701). The mechanism
+  is visible in the table: once the response lowers a hard chase's draws, P(reach) falls
+  under 0.10 for many fixtures, the simulated 90th percentile drops below the target, and
+  every hard chase that was in fact *won* lands above it. A multiplicative shift moves the
+  whole draw with the difficulty; a real chase is two-lobed — the side collapses or gets
+  there — and the fitted residual scale says exactly that: σ = 0.38–0.46 on the log scale
+  (T20 / ODI) against the simulated untruncated chase's own log-sd of 0.23–0.25. The
+  residual *after* the response is nearly twice the spread the draws have. The shared factor
+  fixed the first innings' dispersion; the chase has dispersion of its own that a location
+  response cannot supply, and thinning one tail by fattening the other is what such a
+  response does to a bimodal target.
+- *E2 degrades, and says why.* The slope-only arm pushes the simulated P(bat-first wins)
+  *away* from the actual (0.518 → 0.531 vs 0.482 in T20, 0.478 → 0.491 vs 0.429 in ODI) and
+  `both` over-corrects the other way (0.454, 0.440); the Brier worsens by +0.0009–0.0011
+  (T20, two standard errors) and +0.0032–0.0038 (ODI, three to four), with the ODI arms
+  sitting on E2's 0.01 tolerance itself. A response fitted to chase *totals* moves P(win)
+  through the same draws, and the folds say it moves it the wrong way: the location fix
+  buys total accuracy at the cost of the probability, which is the headline the simulator
+  is served beside.
+- *The level control found the double-counting P-4 measured as harmless.* The fitted level
+  is +0.02 to +0.05 in every format: the chasing side's untruncated expected total sits
+  two to five per cent under the chases it actually makes. That is `CHASE_ORIENTATION`: the
+  chasing-orientation forecasts are fitted to chase rows whose runs the target already
+  truncated, and the simulator truncates again. §8.3 measured it on Brier and P(bat-first
+  wins) as no effect (0.0003 and 0.015) and it still is — the level arm moves coverage by
+  −0.001 / +0.006 and *worsens* |bias| — but it is a real, small, named level miss and is
+  recorded here as such.
+- *T20I* is the same picture with a shallower slope (−0.4 to −0.6 on average, one fold
+  positive on 34 calibration matches) and is not decided on.
+- *What this leaves for the chase.* The number to chase is the residual dispersion: a
+  chase-specific spread, or a two-component mixture (collapse or reach) fitted on the same
+  censored calibration sample, is the candidate the next item should state — the sample,
+  the censoring and the fold are built and the gate's table is the baseline to beat. A
+  response of the *level* alone is not it, and this section says so before anyone re-runs
+  it.
+- *Cost:* four arms per fold from one fit; a fold took 3–12 minutes with the three formats
+  sharing one machine, the fit itself 400–680 s at three seeds.
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not

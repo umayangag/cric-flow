@@ -119,6 +119,7 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
     }
     if len(train) < perf_harness.MIN_TRAIN_ROWS or len(evaluation) < perf_harness.MIN_EVAL_ROWS:
         fold["skipped"] = True
+        fold["skipped_reason"] = "too few training or evaluation rows"
         return fold
     started = time.perf_counter()
     displays = _display_models(train_matches)
