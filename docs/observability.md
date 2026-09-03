@@ -348,6 +348,26 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
       left uncoloured on purpose, and the legend above the tables says so.
   - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
+- **`UpcomingMatchTab`**
+  - **Endpoints**:
+    - `GET /api/options/formats`, `/api/options/teams-by-format`, `/api/options/opponents`,
+      `/api/options/venues` (the fixture pickers; sides, never bare names — D-10).
+    - `POST /api/predict/team-selection` (both XIs, the probability, the scorecard).
+    - `GET /api/options/candidates` and `POST` / `DELETE /api/players/{id}/retirement`
+      (the candidate pool and the retirement ledger — D-12).
+    - `GET /ops/status`, for the readiness notice that says what a prediction will be
+      missing before it is run rather than after it has answered on zeros.
+  - **Displays**:
+    - Both XIs with their ranges, the selection and forecast notes, the probability with
+      its source, and the simulated scorecard where the format has an innings length.
+    - **The pool each XI was chosen out of**: "played for `<team>` in the last `<N>`
+      months (`<M>` players)", with the all-time pool one click away, and every player the
+      retirement ledger removed shown struck through with his reason and an Undo. A filter
+      that is not shown is indistinguishable from no filter, which is what D-12 was.
+    - The candidate dialog: last-played beside every name, tick a subset to send it as the
+      pool, or close it and keep the default.
+  - **Polling**: none. Every call is a thing the user just asked for.
+
 - **`SystemMapTab`**
   - **Endpoints**:
     - `GET /ops/status`, `GET /api/ml/xi-status`, `GET /api/backtest/report` (Go API) — the
