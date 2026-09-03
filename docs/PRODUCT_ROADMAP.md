@@ -84,6 +84,10 @@ answer every call this needs; the work is product engineering):
 - **Play mode**: add/remove/swap players on either side; every change re-scores live
   (~10 ms) and shows the delta; constraint chips (keeper, bowlers, must-include).
 - **The "why this player" card** (§4) on every selected player.
+- **Toss toggle** (bat first / bowl first / unknown) on the Lab and the Upcoming-match
+  surfaces, wired to the `team1_bats_first` parameter the API already carries end to end;
+  "unknown" is today's behaviour — the simulator marginalises over the toss — so the
+  toggle exposes a choice the stack already makes, rather than adding one.
 - Honesty built into the UI, not the footnotes: ranges always shown, the not-optimised
   notice where selection is rating-ordered (T20, TEST), "ratings as of <date>", the
   metric explainers (L-1) reused throughout.

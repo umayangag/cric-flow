@@ -34,7 +34,9 @@ import argparse
 import json
 import random
 import sys
+from calendar import monthrange
 from collections import defaultdict
+from datetime import date
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -73,8 +75,15 @@ ORDER BY m.match_date, m.match_id
 
 # The pool go-app would have offered on that date, transcribed from
 # db.ListPlayerPoolByOpposition: everyone who has batted or bowled for the club in this
-# format strictly before the match, not retired. `club` follows canonical_id so a rename
-# does not halve the pool (I-4).
+# format strictly before the match, and — since D-12 — no earlier than the recency window
+# ending at that date. `club` follows canonical_id so a rename does not halve the pool (I-4).
+#
+# The window is relative to the fixture's own date, never to today, so a 2019 fixture sees
+# the players of 2019. The retirement ledger is *not* applied and `is_retired` is not read:
+# the ledger holds claims made now, and a claim made now is not evidence about who was
+# available then (H-19). That is also why this rerun's numbers move: the pre-D-12 rerun
+# offered every player who had ever appeared for the club, and comparing a windowed run
+# against that one compares two different questions.
 POOL_SQL = """
 WITH club AS (
     SELECT id FROM opposition WHERE COALESCE(canonical_id, id) = %(team_id)s
@@ -84,6 +93,7 @@ WITH club AS (
     JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
     JOIN match m ON m.match_id = bd.match_id
     WHERE m.format_id = %(format_id)s AND m.match_date < %(cutoff)s
+      AND (%(since)s::date IS NULL OR m.match_date >= %(since)s)
       AND mi.batting_team_opposition_id IN (SELECT id FROM club)
     UNION
     SELECT bw.player_id
@@ -91,13 +101,38 @@ WITH club AS (
     JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
     JOIN match m ON m.match_id = bw.match_id
     WHERE m.format_id = %(format_id)s AND m.match_date < %(cutoff)s
+      AND (%(since)s::date IS NULL OR m.match_date >= %(since)s)
       AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
 )
 SELECT p.id, COALESCE(p.external_id, ''), p.is_wicket_keeper
 FROM player p JOIN eligible e ON e.id = p.id
-WHERE p.is_retired = 0
 ORDER BY p.player_name, p.id
 """
+
+# The per-format recency window go-app defaults to, in months (D-12). Kept in step with
+# go-app/config.json `pool.recency_months` and internal/config's DefaultPoolRecencyMonths;
+# `--pool-window-months` overrides it and `--all-time-pool` restores the pre-D-12 pool for
+# a like-for-like comparison against the recorded run.
+POOL_RECENCY_MONTHS = {"TEST": 12, "ODI": 12, "T20": 12, "T20I": 9}
+
+
+def window_start(cutoff: str, months: int) -> Optional[str]:
+    """The first match date a recency-bounded pool accepts, as go-app computes it.
+
+    Month arithmetic is clamped, not normalised: 31 March less one month is 28 February,
+    because a window is a span of months and a user reading "the last 12 months" means the
+    same day of the month, or that month's last day where there is no such day.
+    """
+    if months <= 0:
+        return None
+    cut = date.fromisoformat(cutoff)
+    year, month = cut.year, cut.month - months
+    while month <= 0:
+        month += 12
+        year -= 1
+    day = min(cut.day, monthrange(year, month)[1])
+    return date(year, month, day).isoformat()
+
 
 FIELDED_SQL = """
 SELECT mp.opposition_id, COALESCE(p.external_id, '')
@@ -239,7 +274,14 @@ def divergence(a: ArmTally, b: ArmTally) -> Optional[float]:
     return total / len(shared)
 
 
-def load_fixtures(conn, limit: Optional[int], per_format: Optional[int], seed: int) -> List[Fixture]:
+def load_fixtures(
+    conn,
+    limit: Optional[int],
+    per_format: Optional[int],
+    seed: int,
+    pool_window_months: Optional[int],
+    all_time_pool: bool,
+) -> List[Fixture]:
     with conn.cursor() as cur:
         cur.execute(
             MATCHES_SQL,
@@ -283,9 +325,19 @@ def load_fixtures(conn, limit: Optional[int], per_format: Optional[int], seed: i
         for fx in fixtures:
             format_id = format_ids[fx.format_code]
             for side, team_id in ((1, fx.team1_id), (2, fx.team2_id)):
+                months = (
+                    0
+                    if all_time_pool
+                    else (pool_window_months or POOL_RECENCY_MONTHS.get(fx.format_code, 12))
+                )
                 cur.execute(
                     POOL_SQL,
-                    {"team_id": team_id, "format_id": format_id, "cutoff": fx.match_date},
+                    {
+                        "team_id": team_id,
+                        "format_id": format_id,
+                        "cutoff": fx.match_date,
+                        "since": window_start(fx.match_date, months),
+                    },
                 )
                 keys, numeric = [], []
                 for player_id, external_id, _ in cur.fetchall():
@@ -315,11 +367,29 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20260902)
     parser.add_argument("--out", default="output/selection_gate_rerun.json")
     parser.add_argument("--dsn", default="postgresql://postgres:postgres@localhost:5432/cricket_data")
+    parser.add_argument(
+        "--pool-window-months",
+        type=int,
+        default=0,
+        help="recency window for the pool, relative to each fixture's date (0 = the per-format default)",
+    )
+    parser.add_argument(
+        "--all-time-pool",
+        action="store_true",
+        help="the pre-D-12 unbounded pool, for a like-for-like comparison with the recorded run",
+    )
     args = parser.parse_args()
 
     conn = psycopg2.connect(args.dsn)
     try:
-        fixtures = load_fixtures(conn, args.limit or None, args.per_format or None, args.seed)
+        fixtures = load_fixtures(
+            conn,
+            args.limit or None,
+            args.per_format or None,
+            args.seed,
+            args.pool_window_months or None,
+            args.all_time_pool,
+        )
     finally:
         conn.close()
     print(f"{len(fixtures)} decided locked-window matches ({LOCKED_FROM} .. {LOCKED_TO})", flush=True)
@@ -371,7 +441,8 @@ def main() -> int:
             "winprob_vs_fielded": divergence(arms["winprob"], arms["fielded"]),
         },
         "per_format": {
-            fmt: {name: tally.report() for name, tally in by_arm.items()} for fmt, by_arm in sorted(per_format.items())
+            fmt: {name: tally.report() for name, tally in by_arm.items()}
+            for fmt, by_arm in sorted(per_format.items())
         },
     }
     with open(args.out, "w") as fh:

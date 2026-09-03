@@ -235,7 +235,11 @@ move down; docs/EXTERNAL_DATA_PLAN.md updated. Then stop and hand over the push 
 PR commands.
 ```
 
-## D-12 — stale pools, manual pool picking, and the retirement ledger (model: Opus)
+## D-12 — stale pools, manual pool picking, and the retirement ledger (model: Opus) — **fixed**
+
+*Fixed on `fix/d-12-pool-and-retirement`. The measurement tables and what shipped are in
+§ Record of outcomes below; the defect record with both causes named is in
+[FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) § 1.4.*
 
 **What.** The Upcoming-match default pool selects retired and long-inactive players. Two
 causes: the pool is all-time ("has ever appeared for the club in the format") with an
@@ -319,4 +323,80 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-1b | open — gated on X-1a's coverage |
 | X-3 | open |
 | X-2 | open — run last |
-| D-12 | open — runnable now; X-1a widens its corroboration criteria |
+| D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
+
+### D-12 — the measurement, and what shipped
+
+**The window, measured rather than chosen.** Over the last year of real matches per format
+(the fielded XIs in `match_player`, 56,039 player-sides), for every window *W* the question
+was: of the players who actually took the field *and whom the all-time pool would have
+offered at all*, what share had appeared for that club in that format within *W* months of
+the match? The rule from the plan is the smallest window clearing 95%.
+
+| window (months) | TEST | ODI | T20 | T20I |
+|---|---|---|---|---|
+| 6 | 86.24% | 87.22% | 90.00% | 93.53% |
+| 9 | 93.43% | 90.88% | 91.97% | **95.13%** |
+| 12 | **97.51%** | **95.33%** | **96.68%** | 97.45% |
+| 15 | 98.36% | 97.22% | 97.73% | 98.21% |
+| 18 | 98.66% | 98.04% | 98.17% | 98.81% |
+| 24 | 99.30% | 98.69% | 99.03% | 99.21% |
+| 36 | 99.70% | 99.47% | 99.60% | 99.64% |
+| 60 | 99.91% | 99.75% | 99.88% | 99.88% |
+
+**What each window cuts.** Mean pool size at the same club/date pairs, as a share of the
+all-time pool it replaces:
+
+| window (months) | TEST | ODI | T20 | T20I |
+|---|---|---|---|---|
+| 6 | 28.6% | 33.0% | 39.0% | 23.2% |
+| 9 | 32.5% | 37.5% | 41.7% | **25.0%** |
+| 12 | **44.7%** | **43.3%** | **52.3%** | 27.9% |
+| 18 | 49.2% | 49.5% | 57.9% | 32.6% |
+| 24 | 52.7% | 53.3% | 64.4% | 37.2% |
+| 60 | 67.0% | 68.5% | 84.6% | 52.4% |
+
+Mean all-time pool per club/date: TEST 66.2, ODI 58.3, T20 45.8, T20I 83.9 players.
+
+**Defaults, in `go-app/config.json` under `pool.recency_months`:** TEST 12, ODI 12, T20 12,
+**T20I 9**. T20I is the one format nine months already covers, and it clears the bar by
+0.13 points — recorded here because that is a thin margin, and the window is overridable
+per request precisely so a thin default is not a trap. Every format keeps a bound: an
+unknown format falls back to twelve months, never to all-time, because unbounded is the
+defect.
+
+**The inactivity bound, also measured.** Criterion (a) promotes a flag when a player has
+appeared in *no* format for N years. Of 54,835 fielded player-matches in the last year of
+data with any prior history, the share that were a return after an absence of at least:
+
+| absence | 1y | 2y | 3y | 4y | 5y | 6y |
+|---|---|---|---|---|---|---|
+| share of fielded player-matches | 1.807% | 0.554% | 0.228% | 0.117% | 0.060% | 0.047% |
+| distinct players | 884 | 266 | 116 | 60 | 30 | 25 |
+
+**N = 5 years** (`pool.retirement.inactive_years`): 30 players in a year, 0.060%, is where
+promoting a user's claim to a fact about the player stops being a bet. Criterion (c)'s
+inactivity half is 2 years, which corroborates only in combination with the age bound.
+
+**What shipped.** The default pool is `[cutoff − window, cutoff)` with clamped month
+arithmetic (31 March less one month is 28 February, not 3 March). Manual picking is a
+candidate list at `GET /api/options/candidates`, optional and off by default; ticking
+nothing is the unchanged flow, and `must_include` / extra ids bypass every filter as
+before. The ledger is migration `0009_player_status.sql`: `player_status` holds one
+claim per (player, user) and `player_status_event` the history, and a claim raises
+`player.is_retired` only when one of three pluggable criteria corroborates it
+(`internal/availability`) — inactivity today, career-end and age-with-inactivity
+registered and reporting themselves *unavailable* until X-1a supplies dates of birth and
+career end dates. The prediction response carries `team1_pool` / `team2_pool` (source,
+window, size, and every excluded player with his reason), and the tab renders it with the
+all-time pool one click away and an Undo beside each exclusion.
+
+**Blast radius: none measured.** The L4 harness and the E5 gate build sides from fielded
+XIs (`match_player`), not from this pool; nothing under `ml-service/` reads
+`ListPlayerPoolByOpposition`, `player.is_retired`, or the ledger tables, and the change is
+confined to Go, TypeScript and SQL. `make evaluate` was run on the same data before and
+after the change and the two reports were compared; the diff is recorded on the PR.
+`scripts/experiments/xi/selection_gate_rerun.py` gets the window relative to each
+fixture's own date and applies no ledger (a claim made in 2026 is not evidence about a
+2019 pool, H-19); `--all-time-pool` restores the pre-D-12 pool for a like-for-like
+comparison with the recorded run.

@@ -71,7 +71,43 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 
 **Body:** `format`, `match_date` (RFC3339 or `YYYY-MM-DD`), the two sides, and optionally
 `venue`, `extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`,
-`require_keeper`.
+`require_keeper`, `team1_pool` / `team2_pool`.
+
+**The candidate pool (D-12).** Each side's XI is chosen out of the players who appeared for
+that club in that format within a **recency window** ending at `match_date` — twelve months
+for TEST, ODI and T20, nine for T20I, measured as the smallest window covering ≥ 95% of the
+players who actually took the field (`pool.recency_months` in `go-app/config.json`;
+[EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § D-12 has the table). It used to be all-time,
+which is why an XI could contain a player who retired a decade ago.
+
+`team1_pool` / `team2_pool` change one side's pool: `{"window_months": 24}` for a different
+window, `{"all_time": true}` for everyone who has ever played for the club, or
+`{"players": [...]}` for a pool the user picked by hand — a manual pick *is* the pool, and
+neither the window nor the ledger is applied to it. `window_months` and `all_time` are also
+readable off the query string on the GET form, and apply to both sides there. Omitting the
+field is the default window; there is no way to ask for an unbounded pool by leaving
+something out. `extra_team1` / `extra_team2` bypass every filter, as before.
+
+A pool with fewer than eleven players is **`400 POOL_TOO_SMALL`**, whose message names the
+window and whose hint names the two ways out.
+
+**`GET /api/options/candidates?format=&club_id=`** (optionally `match_date`, `window_months`,
+`all_time`) is the list a manual pool is ticked out of: every candidate with `player_id`,
+`player_name`, `is_wicket_keeper`, `last_played`, and — for anyone the retirement ledger is
+keeping out — `excluded`, `reason` and `detail`. Excluded players are on the list, not missing
+from it, so the exclusion can be seen and undone.
+
+**`POST` / `DELETE /api/players/{id}/retirement`** is the retirement ledger. A POST records
+this user's claim that a player has retired; the claim hides him from that user's default
+pools immediately and becomes the stored `player.is_retired` fact **only** where an
+independent criterion corroborates it — no match in any format for five years today, plus a
+Wikidata career-end date and an age-with-inactivity rule that report themselves `unchecked`
+until X-1a supplies their evidence. The response says `promoted`, the `criterion` that
+corroborated it, its `detail`, and the `notes` each criterion left. A DELETE withdraws the
+claim and demotes the fact it had raised. `X-User-Id` names whose ledger is read and written;
+absent, it is the single default user. The ledger applies to upcoming-match requests only —
+a backtest names an `as_of` date, and a claim made today is not evidence about who was
+available then (H-19).
 
 **Naming a side.** A team is `(name, gender)` — 130 of the 394 names in the dataset are used
 by both a men's and a women's side — so a side is named by `team1_id` / `team2_id`, the
@@ -98,16 +134,20 @@ returns the sides that club has played, in the same shape.
 | `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
 | `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
 | `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and per innings the median-band `total`, its `extras` and the 10-90 range of the draws |
+| `team1_pool`, `team2_pool` | Which candidates each XI was chosen out of: `source` (`recency_window` / `all_time` / `manual`), the `window_months` and `since` it applied, the `size` it produced, and `retired_excluded` with the `excluded` players themselves — each with `reason` (`retired` / `user_flagged`) and `detail` |
 
 The scorecard lines and extras sum to the innings total by construction — they come from the
 same draws — so nothing is rescaled toward the win probability.
 
-**Every substitution is named on the wire (§8.7).** Four fields say what answered: `team1_side`
+**Every substitution is named on the wire (§8.7).** Five fields say what answered: `team1_side`
 and `team2_side` say which sides were scored — substituting the men's side for the women's is
 a substitution, and it used to be announced only in a server log (D-10) — `selection` says
 whether the XIs were optimised or rating-ordered, `forecast` says whether the per-player
 numbers came from the simulator's draws or from L2-B's own quantiles, and
-`win_probability.source` says which model produced the headline. The rule exists because
+`win_probability.source` says which model produced the headline, and `team1_pool` /
+`team2_pool` say which candidates the XIs were chosen out of and who the ledger removed — a
+filter is a substitution too, and a pool that silently dropped a player was D-12. The rule
+exists because
 go-app silently falling back from a refused `/xi/optimize` to another optimiser is what let a
 broken arm report a number for months (§8.5). Where a substitution *cannot* be labelled — a
 player the simulator or the performance model returned no line for — the request fails instead

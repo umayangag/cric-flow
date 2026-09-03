@@ -16,7 +16,10 @@ deliberately left on the table.
 
 ---
 
-## 1. Two investigations, answered first
+## 1. The defect records
+
+*It began as two investigations; the section is now where every defect found by using the
+system is written up, cause first.*
 
 ### 1.1 D-8 — the Workbench "walk-forward registry" upload is an orphan — **fixed**
 
@@ -267,6 +270,76 @@ zero steps); ml-service asserts the route exists and that its answer carries the
 `{"status": "cancelled", "training_stopped": ["retrain"]}` in 8.8 ms; the process was gone
 (`returncode -15`) and `pgrep` found nothing. A second retrain started immediately afterwards,
 so the lane was genuinely free. Stop with nothing running still answers `409`.
+
+### 1.5 D-12 — the Upcoming-match pool offers players who retired a decade ago — **fixed**
+
+**Two causes, and only one of them is fixed here.**
+
+*Cause 1 — the pool is all-time, and the filter that was supposed to bound it is dead.*
+`db.ListPlayerPoolByOpposition` selected everyone who had ever batted or bowled for the club
+in the format before the cutoff, and then filtered `WHERE p.is_retired = 0`. That column has
+existed since `0001_baseline.sql` and **nothing has ever written it**: a repo-wide grep found
+one writer-shaped mention, the fixture seed in `tests/fixtures/backtest/seed.sql`, and no
+production code path at all. So every row was 0, the predicate selected everybody, and the
+pool grew by one player per debut and shrank never. Measured on the live database, the
+all-time pool averages 66 players for a Test club, 84 for a T20I side. This is the cause D-12
+fixes.
+
+*Cause 2 — ratings decay per match played, not per year elapsed.* The rating pass ages a
+player's rating by the matches he appears in, so a player who stopped in 2015 still carries
+the rating he stopped with, and the optimiser therefore ranks him where he was, not where he
+would be. **Deliberately not fixed here.** Time-decaying ratings is model work: it changes
+every number the harness measures and needs its own gated experiment under H-23, and doing it
+inside a defect fix would have made the fix unmeasurable. The pool bound is the product-
+boundary fix, and it is sufficient for the observed defect because the players cause 2
+mis-ranks are exactly the ones cause 1 should never have offered.
+
+**Why every gate missed it.** The same species as D-8: a widget with no backend call to fail.
+Here it is a *filter with nothing to filter* — the predicate was syntactically present, so
+code review read it as a bound, and no test could distinguish a working filter from a filter
+over a column of zeros because there was no way to set the column. The evaluation harness
+could not have caught it either, and this is the load-bearing part: L4 and the E5 gate build
+both sides from the XIs that actually took the field (`match_player`), so **no measured number
+in this repository has ever been computed from this pool**. The pool is a serving-path
+artefact, and the serving path had no gate. That is the rule this defect adds: *a filter whose
+input nothing writes is not a filter, and a code path no gate measures needs a surface that
+states what it did* — which is the §8.7 clause the fix now satisfies, since the response names
+the window, the size and every excluded player.
+
+**Fixed on `fix/d-12-pool-and-retirement`,** in three reinforcing parts.
+
+- **A recency-bounded default.** The pool is now `[cutoff − window, cutoff)`, with the window
+  measured per format rather than picked: the smallest one covering ≥ 95% of the players who
+  actually took the field in the last year of real matches — TEST/ODI/T20 twelve months, T20I
+  nine — which cuts the all-time pool to 45%, 43%, 52% and 25% of its size. The tables are in
+  [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § Record of outcomes. The window is
+  configuration (`pool.recency_months`) and overridable per request; there is no way to reach
+  an unbounded pool by leaving a parameter out, because that is the defect.
+- **Manual pool picking**, optional and off by default: `GET /api/options/candidates` returns
+  the list with each player's last-played date, the user ticks a subset, and that subset is the
+  pool. Ticking nothing is the unchanged flow.
+- **The retirement ledger** (`0009_player_status.sql`). A user's flag is a *claim*, held per
+  user and hiding the player from that user's pools only. It becomes the stored `is_retired`
+  fact only when an independent criterion corroborates it, and the criterion is recorded beside
+  the promotion; withdrawing the flag demotes the fact and records that too. The criteria are a
+  pluggable list (`internal/availability`) so X-1a's age and career-end facts join them without
+  a schema change — they are registered already and report themselves *unavailable*, which is
+  not the same answer as "no". The default corroboration bound is five years' inactivity in any
+  format, measured: 0.060% of the player-matches actually fielded in a year were a return after
+  that long away.
+
+**H-24.** The pool's vocabulary — `pool_sources` (`recency_window`, `all_time`, `manual`) and
+`pool_exclusion_reasons` (`user_flagged`, `retired`) — is declared once in
+`go-app/internal/availability`, generated into `contracts/ops-console.contract.json`, and
+asserted from both sides. The UI renders both, and a source it did not recognise would show as
+nothing while looking fine on the wire, which is this defect's own silence one layer up.
+
+**Verified the D-6 way** against rebuilt containers, with the observations recorded on the PR:
+the default T20I pool for two sides with famously retired ex-players is current-era where the
+all-time pool was not; flagging a long-retired player promotes with the inactivity criterion
+named, and the exclusion appears struck through with its reason; un-flagging demotes the fact
+and the player returns. `make evaluate` was run before and after on the same data and the
+reports compared, to show the measured record is untouched.
 
 
 ---

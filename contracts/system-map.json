@@ -1092,7 +1092,8 @@
           "GET /api/ml/xi-status",
           "GET /players/{id}",
           "GET /matches/{id}",
-          "GET, POST /api/predict/team-selection"
+          "GET, POST /api/predict/team-selection",
+          "DELETE, POST /api/players/{id}/retirement"
         ],
         "make_targets": [
           "api"
@@ -1129,7 +1130,8 @@
           "GET /api/options/opponents",
           "GET /api/options/formats",
           "GET /api/canonical/formats",
-          "GET /api/options/venues"
+          "GET /api/options/venues",
+          "GET /api/options/candidates"
         ],
         "make_targets": [
           "frontend-dev"
