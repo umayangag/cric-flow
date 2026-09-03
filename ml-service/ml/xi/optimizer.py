@@ -48,9 +48,10 @@ logger = logging.getLogger(__name__)
 NOT_OPTIMISED_REASONS: Dict[str, str] = {
     "TEST": "no win objective that ranks (holdout AUC below 0.65, H-17)",
     "T20": (
-        "the objective ranks (holdout AUC 0.72) but has not shown it selects: E5 lineup-only agreement "
-        "0.490 over 1,358 walk-forward pairs against the derived bar 0.501, and 0.509 against 0.512 on all "
-        "12,413 development pairs (plan §8.8)"
+        "the objective ranks (walk-forward AUC 0.70) but has not shown it selects: E5 lineup-only agreement "
+        "0.503 over 2,168 walk-forward pairs against the derived bar 0.506 on the rotated folds (0.490 against "
+        "0.501 when P-7 decided it; 0.509 against 0.512 on all 12,413 development pairs), and neither of A-3's "
+        "feature families changed the verdict (plan §8.8, §8.11)"
     ),
 }
 OPTIMISED_SELECTION_FORMATS = frozenset(fmt for fmt in C.FORMAT_CODES if fmt not in NOT_OPTIMISED_REASONS)

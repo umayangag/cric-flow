@@ -151,6 +151,27 @@ GATES: Tuple[Gate, ...] = (
         "ships nothing",
         report_path=None,
     ),
+    Gate(
+        id="A-3",
+        name="The T20 lineup signal: feature families in the selection objective",
+        varies="the feature family the selection objective reads beyond XI_FEATURE_COLS -- none (today's "
+        "objective), phase matchup (a: each side's per-phase batting and bowling impact and the same-phase "
+        "product against the opposing attack), role balance (b: top-order, specialist-batter, sixth-bowler and "
+        "keeper-batting counts and the batting x bowling, all-rounder x tail and attack-size interactions) -- one "
+        "logistic fit per arm per fold; and, as a measurement diagnostic on every arm rather than an arm, E5's "
+        "evidence reweighted by the |delta objective| the arm itself claims (c)",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), E5's pairs (the same consecutive "
+        "1-3-change pairs, the previous eleven read once from the same as-of pass), the bar's derivation "
+        "(Bernoulli at the arm's own probabilities, 2,000 replicates, the 5th percentile), the objective's model "
+        "class and regularisation, the display models, the labels",
+        decides="in T20, an arm's pooled walk-forward lineup-only agreement at or above the bar re-derived from "
+        "that arm's own claimed effect size, under each of three bar seeds; an arm that clears it ships only if in "
+        "every format its fold objective AUC is not lower than today's by more than one fold-level standard error "
+        "(paired) and its swap-violation share stays under H-4's 2 %; the reweighted (c) reading is reported "
+        "beside the verdict and never decides on its own; a recorded null ships nothing and T20 stays "
+        "rating-ordered",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}
