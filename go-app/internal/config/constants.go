@@ -1,6 +1,10 @@
 package config
 
-import "time"
+import (
+	"time"
+
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
+)
 
 // DefaultTimeout is the default timeout for long-running CLI operations (imports).
 // Set to 1 year so runs effectively have no deadline; use -timeout to cap (e.g. -timeout=5h).
@@ -48,6 +52,44 @@ const (
 	// Set to 85 to provide more headroom for the Go runtime and database, especially in memory-constrained environments.
 	// A lower value may slightly reduce throughput but increases stability by reducing OOM risk.
 	DefaultMemoryUsageFractionPercent = 85
+)
+
+// DefaultPoolRecencyMonths is the measured default recency window per format, in months
+// (D-12). Over the last year of real matches, it is the smallest window covering >= 95%
+// of the players who actually took the field, of those the all-time pool would have
+// offered at all: TEST 97.5%, ODI 95.3%, T20 96.7% at twelve months; T20I 95.1% at nine.
+// Those windows cut the all-time pool to 45%, 43%, 52% and 25% of its size respectively.
+// The full table is in docs/EXTERNAL_DATA_PLAN.md § D-12.
+var DefaultPoolRecencyMonths = map[string]int{
+	formats.CodeTest: 12,
+	formats.CodeODI:  12,
+	formats.CodeT20:  12,
+	formats.CodeT20I: 9,
+}
+
+// Retirement ledger defaults (D-12).
+const (
+	// DefaultPoolRecencyMonthsFallback is the window for a format neither the config
+	// nor DefaultPoolRecencyMonths names. It is a bound, not all-time: an unbounded
+	// pool is the defect D-12 fixes, so an unknown format gets the widest measured
+	// window rather than none.
+	DefaultPoolRecencyMonthsFallback = 12
+
+	// DefaultRetirementInactiveYears is criterion (a)'s bound. Measured: over the last
+	// year of real matches, 0.060% of the player-matches actually fielded were a
+	// return after a five-year absence from every format, against 0.117% at four years
+	// and 0.228% at three.
+	DefaultRetirementInactiveYears = 5
+
+	// DefaultRetirementAgeBoundYears is criterion (c)'s age bound for a format the
+	// config does not name. Provisional: the criterion reports itself unavailable
+	// until X-1a supplies dates of birth, so this number has no effect yet.
+	DefaultRetirementAgeBoundYears = 40
+
+	// DefaultRetirementAgeInactiveYears is criterion (c)'s inactivity half. Two years
+	// is where a return becomes uncommon (0.554% of fielded player-matches); it
+	// corroborates only in combination with the age bound, never on its own.
+	DefaultRetirementAgeInactiveYears = 2
 )
 
 // Win-probability selection: how hard ml-service may search, and for how many rounds.

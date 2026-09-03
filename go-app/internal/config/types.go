@@ -35,6 +35,32 @@ type ResourcesConfig struct {
 	MemoryUsageFractionPercent int `json:"memory_usage_fraction_percent"` // percent of limit for workers (default 85)
 }
 
+// PoolConfig bounds the default candidate pool and holds the retirement ledger's
+// corroboration thresholds (D-12).
+//
+// It is configuration rather than a constant because both numbers are measurements of a
+// dataset: re-measure on a different one and they move. Both are overridable — the
+// window per request, the retirement bounds per deployment.
+type PoolConfig struct {
+	// RecencyMonths is the default window per format code, in months. A format the map
+	// does not name falls back to DefaultPoolRecencyMonths and then to
+	// DefaultPoolRecencyMonthsFallback — never to an unbounded pool, which is the defect.
+	RecencyMonths map[string]int   `json:"recency_months"`
+	Retirement    RetirementConfig `json:"retirement"`
+}
+
+// RetirementConfig holds the thresholds the corroboration criteria read.
+type RetirementConfig struct {
+	// InactiveYears is criterion (a): no match in any format for this many years.
+	InactiveYears int `json:"inactive_years"`
+	// AgeBoundYears is criterion (c)'s per-format age bound. It has no effect until
+	// X-1a supplies dates of birth, and its values are provisional until then.
+	AgeBoundYears map[string]int `json:"age_bound_years"`
+	// AgeInactiveYears is criterion (c)'s inactivity half: how long a player above the
+	// age bound must also have been inactive.
+	AgeInactiveYears int `json:"age_inactive_years"`
+}
+
 // Config holds directory defaults and the settings go-app still honours.
 type Config struct {
 	Server ServerConfig `json:"server"`
@@ -65,7 +91,10 @@ type Config struct {
 	Predictor struct {
 		TeamSize int `json:"team_size"`
 	} `json:"predictor"`
-	Ops       OpsConfig        `json:"ops"`
+	Ops OpsConfig `json:"ops"`
+	// Pool is who may play: the default candidate pool's recency window and the
+	// retirement ledger's corroboration thresholds (D-12).
+	Pool      PoolConfig       `json:"pool"`
 	Resources *ResourcesConfig `json:"resources"` // nil = use package constants
 	// Selection is what go-app still decides about an XI. The objective, the search and the
 	// weights all moved into ml-service with the XI model (P-5); what is left is the caller's
