@@ -1759,6 +1759,18 @@ frame — so the next candidate can be measured on the same calibration sample.
 - *Cost:* four arms per fold from one fit; a fold took 3–12 minutes with the three formats
   sharing one machine, the fit itself 400–680 s at three seeds.
 
+**The harness after the choice** (`make evaluate`, run once on each source with the decided
+configuration — no response — 2026-09-03, the two sources in parallel, 3 h 35 min each).
+The locked window (≥ 2026-09-02) holds **0 matches** on both sources and says so. The
+walk-forward table on the database is A-4's baseline (`docs/FOLLOW_UP_PLAN.md` § 5) to
+every value compared — objective and display AUC, E2's Δ Brier, first-innings and chase
+coverage / width / bias, the below-q10 share, both margins, every pinball, E5 — on the same
+21,093 / 465,336 rows, and the archive run equals A-1's archive run the same way: under
+`none` the simulator's draws are the draws it made before, and the report's calibration
+node now carries `chase_response: null` beside the shared factor. H-8: 50 matches, 1,100
+player rows, 1,100 performance predictions, 50 simulations at max abs difference **0.0 on
+both sources**. Gates (A-2 now in the embedded registry) and glossary pass on both.
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not
