@@ -1491,6 +1491,160 @@ row and every player row the check compares. Gates and glossary pass on both.
 
 ---
 
+### 8.10 A-2: the chase's tails — a target-conditional chasing innings (2026-09-03)
+
+The row in `docs/FOLLOW_UP_PLAN.md` § 4. Written **before the run**, as §8.9 was: the
+evidence, the design, the leakage surface and the gate's H-23 triple first, with the
+effect-size floor §8.9 asked the next gate of this kind to state; the tables are appended
+below under *Results* and nothing above that heading is edited once a number exists.
+
+**The evidence it chases (§8.3, A-4's baseline in `docs/FOLLOW_UP_PLAN.md` § 5).** The
+simulated chase total under-covers from the low side in every limited-overs format: 10–90
+coverage 0.711 / 0.689 / 0.699 (T20 / T20I / ODI, eleven folds) against nominal 0.80, with
+0.192 / 0.184 / 0.181 of real chases ending *below* the simulated 10th percentile against a
+nominal 0.10, and the simulated chase mean 6.5 / 2.7 / 9.0 runs high (10–16 on the retired
+locked window). The miss above the 90th percentile is 0.10–0.13 and is a different thing:
+a won chase finishes at the target *plus the winning hit*, and the design says the
+overshoot is not modelled — so a simulated chase's 90th percentile is the target exactly
+and any actual overshoot sits above it. That ceiling (about 0.88–0.90) is not this item's;
+the low tail is. The margins say the same: the run margin when the side batting first wins
+covers 0.66 / 0.74 / 0.65 and the balls remaining when the chaser wins 0.60 / 0.65 / 0.52,
+at nominal 0.80 — the simulated losses are too small and too alike.
+
+**What the chase path does today, and why that produces exactly this shape.** The chasing
+side's innings is drawn as a first innings is — its L2-B forecasts in the chasing
+orientation (`CHASE_ORIENTATION`), the balls budget, the shared factor — and then `_chase`
+truncates it at the target. The untruncated draw *X* does not know the target: P(chase
+reached) is P(X ≥ T), and a lost chase's total is a draw from the side's ordinary
+distribution that happened to fall short. In the data a lost chase is not that. A side
+chasing a target well above its expected score takes on risk it would not otherwise take,
+loses wickets doing so and is often bowled out for far less than its unconditional
+forecast; a side chasing well under its expected score gets there more surely than
+P(X ≥ T) says. Both effects push the same way as the numbers: real chases win more often
+than the draws (the simulator leans toward the side batting first by 0.04, §8.3) and lose
+by more when they lose (the low tail, the narrow margins). The difficulty of the target is
+the one thing the innings knows that the draw does not.
+
+**Design: a chase response, fitted on the calibration fold.** Per draw *i* of a match, the
+target *T_i* is the simulated first innings plus one, *φ_i* is the draw's shared factor
+(the pitch, common to both innings), and *m₀* is the chasing side's expected total under
+its own forecasts — the mean over the draws of its untruncated chase total divided by its
+factor, i.e. what the eleven would be forecast to score on an average day, at the as-of
+deliveries per innings. The **difficulty** of the chase is
+
+    r_i = T_i / (φ_i · m₀)
+
+— the required rate over the side's as-of scoring rate, on the day's pitch — and the
+chasing side's runs draws are multiplied by
+
+    g_i = exp(level + slope · ln r_i)
+
+before the target truncation (the same lever the shared factor uses, applied after the
+balls budget, which commutes with it). With slope < 0 a hard chase (*r* > 1) scores less
+than its unconditional forecast and an easy one (*r* < 1) more; at *r* = 1 the draw is
+the forecast times exp(level). Under level = slope = 0 the simulator is exactly today's.
+
+*Fitted, never set.* `level` and `slope` are fitted by censored maximum likelihood on the
+92-day calibration fold the members do not train on — the shared factor's fold, the same
+matches (complete first innings, so a rain-shortened target does not enter). For each
+calibration match *j* the fit reads the actual target *T_j* = actual first innings + 1,
+the actual chase total *C_j*, whether the chaser won, the chasing side's *m₀,j* from the
+same no-factor simulation the shared factor's fit already runs, and *φ̂_j*: the shared
+factor's own per-match value for that match (1 + (actual / simulated − 1) · shrink), so
+that the pitch is taken out of the difficulty at fit time exactly as the sampled factor
+takes it out at draw time — without this, a high target on a flat pitch would read as a
+hard chase that scored well, and the slope would learn the pitch. With
+*x_j* = ln(T_j / (φ̂_j m₀,j)) and *y_j* = ln(C_j / (φ̂_j m₀,j)):
+
+    y_j = level + slope · x_j + ε_j,   ε ~ N(0, σ²),   y_j ≥ x_j where the chaser won (censored)
+
+— a Tobit regression: a lost chase contributes its density, a won chase only the fact that
+the untruncated innings would have reached the target. σ is a nuisance parameter and is
+reported beside the simulated chase's own spread on the log scale, because if σ is the
+larger the chase is under-dispersed even with its level right — the shared factor was
+fitted on first innings, and a collapse may carry dispersion of its own. Nothing is
+hand-set: the two coefficients come from the fold, the functional form (log-linear in the
+log difficulty) is the design, and the only guard is the shared factor's — fewer than
+`MIN_SHARED_FACTOR_MATCHES` (30) calibration matches and the response is not fitted, the
+simulator runs as today and the report says so. `simulator.CHASE_RESPONSE` records the
+decision (which arm ships) the way `SHARED_FACTOR` does, and `FitSpec` carries it into the
+run manifest.
+
+*Why the runs and not the wickets.* A collapse is wickets falling; in this simulator the
+number of batters who bat is drawn from P(bats) and a deeper innings *adds* the tail's
+runs rather than removing anyone's, so depth is not a collapse lever here — the balls
+budget is what ends an innings, and a side that bats eleven deep for fewer balls each is
+the case the copula does not produce. The total is what the gate measures and the runs
+draw is the one place a multiplicative response is coherent with the shared factor, so
+that is where it goes; the wickets a real collapse loses are not modelled by this change
+and the margin's *wickets in hand* is reported, not expected to move. Recorded as a
+limitation, with the overshoot, DLS and per-ball required-rate dynamics.
+
+*What could confound it.* A level miss of the chasing-orientation forecasts would also
+show as chase bias, and a level correction alone would move coverage too. The gate
+therefore carries a `level` arm — the same fit with the slope held at zero — as a control:
+if it does as well as the slope arms, the effect is level, not difficulty, and the item's
+hypothesis is not supported whatever the coverage says (H-23: a gate must not pass for a
+reason other than the thing it names).
+
+**H-21 audit — what the response consumes.**
+
+1. *At draw time:* *T_i* is a simulated first innings (L2-B forecasts under the fixture's
+   as-of), *m₀* the mean of the chasing side's own L2-B draws, *φ_i* the as-of shared
+   factor, and (level, slope) the fold's fit. No outcome of the fixture enters.
+2. *At fit time:* the calibration matches' actual first-innings totals, chase totals and
+   results — matches before the cutoff, held out of the members' training
+   (`performance._temporal_calibration_split`; the harness's E2 rows are after the cutoff).
+   The response is therefore out-of-sample for every row it is applied to.
+3. *Serving:* the artifact carries the fitted response with the shared factor
+   (`PerformanceModels.simulation`); a live request applies the same function of the same
+   draws. H-8's parity check compares both sides' totals and every player's runs at a fixed
+   seed and draw count, which the response changes deterministically: it consumes no random
+   numbers of its own. *m₀* is a mean within one call, so the draw depends on the draw
+   count the way the quantiles already do; a fixed-*n* comparison is unaffected.
+4. *The toss.* Marginalised as before: each orientation's half of the draws computes its
+   own *m₀* from its own chasing side.
+
+**H-23 triple — gate A-2** (`ml.xi.gates`, registered before the script ran; the script
+prints it first):
+
+- *varies:* the chase response the simulator applies to the chasing side's runs draws —
+  `none` (today's simulator), `level` (the control: slope held at zero), `slope` (level
+  held at zero), `both` — all four from **one** L2-B fit per fold and one fitted sample.
+- *fixed:* the rows, the eleven quarterly cutoffs (A-4's rotated set, 2024-01 … 2026-06),
+  the three seeds, the hyperparameters, the performance model (fitted once per fold, shared
+  by the arms), the display models, the shared factor and its fitting rule, the simulator's
+  draw count and its seeds (common random numbers: the response consumes none), the labels.
+- *decides*, in **both** T20 and ODI, an arm against `none` on the same folds, paired per
+  fold, with **one fold-level standard error of the paired difference as the effect-size
+  floor** (§8.9's omission, stated here first):
+  1. the chase 10–90 coverage's distance from 0.80 shrinks by more than one standard error;
+  2. the mean over folds of |chase bias| shrinks by more than one standard error;
+  3. the first-innings 10–90 coverage stays within ± 0.03 and its width does not grow
+     (H-22; the first innings is untouched by construction, so this is a check that it is);
+  4. E2 does not degrade: the arm's mean Δ Brier (simulated − display) stays within E2's
+     0.01 tolerance and its paired difference from `none` is not worse by more than one
+     standard error.
+  A candidate arm (`slope` or `both`) ships only if it passes all four **and** beats the
+  `level` control on clause 1's quantity by more than one standard error — otherwise the
+  improvement is a level correction and is recorded as such, not shipped as a difficulty
+  effect. If both candidates pass, `both` ships only if it beats `slope` on clause 1 by
+  more than one standard error; else `slope`. Whether coverage lands inside 0.80 ± 0.03 is
+  reported beside the verdict, not part of it (the overshoot ceiling is above the item's
+  reach). The margins, the chase width, the below-q10 and above-q90 shares, σ against the
+  simulated chase spread and the per-fold coefficients are reported for every arm; T20I is
+  reported, not decided on; TEST has no simulator. A recorded null ships nothing. The script
+  is `scripts/experiments/xi/a2_chase_tails.py`; it writes one JSON per format under
+  `output/ml-service/a2/` and `--decide` prints the table and the verdict.
+
+**The locked window, after the choice.** As in §8.9: the window (≥ 2026-09-02) is empty
+until the data catches up, so `make evaluate` after the choice reports it as such, and the
+before/after this section can honestly show is the harness's walk-forward table — A-4's
+baseline against the same run with the decided configuration, same folds, same source,
+same seeds — with H-8's parity on the last 50 matches, simulator draws included.
+
+---
+
 ## 9. Database schema and pipeline steps: what changes, what does not
 
 The short answer is that the schema is not torn apart; it is *pruned by consequence*. The
