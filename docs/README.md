@@ -39,6 +39,7 @@ It is a record, not a to-do list: the plan has no further PRs.
 | Doc | Purpose |
 |-----|--------|
 | [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) | **The to-do list.** Post-migration follow-ups: two ops defects (D-8 orphaned walk-forward upload, D-9 the console retrain cutoff mismatch) with the H-24 boundary-contract rule, the metric-glossary/legibility PR, the System map tab, and the accuracy roadmap (venue & competition context, chase tails, the T20 lineup signal, locked-window rotation, data cadence) |
+| [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) | **The external-data experiments.** Gated items with their kickoff prompts: the market-odds benchmark (X-4, run first), Wikidata player biographies and the age/matchup features they unlock (X-1a/X-1b), match stakes derived from held data (X-3), and weather (X-2, run last) |
 
 ---
 
