@@ -484,6 +484,32 @@ first-innings totals on the last 92 days before the cutoff, the temporal calibra
 members do not train on (H-21), deconvolved of the simulator's own dispersion — never a
 hand-set CV. `simulator.SHARED_FACTOR` records the decision; §8.3 of the plan the before/after.
 
+**Chase response (A-2, plan §8.10).** The chase is drawn as a first innings is and truncated
+at the target, so the untruncated draw does not know the target — and the data's chases do:
+a side chasing well above its expected score collapses more often than its ordinary
+distribution says, and one chasing well under it gets there more surely. The candidate is a
+response of the chasing side's runs draws to the target's **difficulty** — the target over
+the side's expected total on the draw's pitch, `r = T / (φ · m₀)` with `φ` the draw's shared
+factor and `m₀` the mean of the side's own untruncated chase draws — multiplying every runs
+draw by `exp(level + slope · ln r)` before the truncation, the same lever the shared factor
+uses. The two coefficients are **fitted, never set**: censored (Tobit) maximum likelihood on
+the shared factor's calibration fold, reading each calibration match's actual target and
+chase, whether the chaser won (in which case the untruncated innings reached the target and
+the observation is censored), the chasing side's expected total from the same no-factor
+simulation, and the shared factor's own per-match value so the pitch is taken out of the
+difficulty at fit time as the sampled factor takes it out at draw time. A fold too thin for a
+shared factor fits no response either. `simulator.CHASE_RESPONSE` names the arm that ships
+(`none`, `level`, `slope` or `both`; gate A-2 decided it on the folds with a level-only control
+arm and one fold-level standard error as the effect-size floor); `FitSpec.chase_response`
+carries it into the run manifest and the artifact carries the fitted response beside the
+shared factor. **A-2's verdict was a recorded null and the arm is `none`** (plan §8.10): the
+slope is negative in every T20 and ODI fold and fixes the chase's level (bias −6.6 / −9.3 →
+within ±3) and thins the low tail (below-q10 0.19 → 0.15), but the mass moves above the 90th
+percentile — hard chases that were nevertheless won — so 10–90 coverage does not move and E2
+degrades; the fitted residual scale is nearly twice the simulated chase's spread, which names
+the miss as the chase's *dispersion* (collapse or get there), the next candidate's target. Not modelled by it, and said so: the wickets a collapse loses (the runs fall,
+the depth does not), the overshoot of a won chase, DLS, per-ball required-rate dynamics.
+
 **Measured by (E2, `ml/xi/sim_harness.py`, in `make evaluate`).** Per format and window,
 beside the display model on the same matches: Brier and reliability of the simulated P(win)
 (pre-toss, the comparable one; toss-known beside it) against the display model's and the base
@@ -630,7 +656,7 @@ window is now the last four walk-forward folds (2025-09, 2025-12, 2026-03, 2026-
 
 **Gate registry (H-23, `ml/xi/gates.py`).** Every gate the report prints — H-17's AUC line,
 swap monotonicity, specific-vs-typical, E5, E2, the quantile coverage, width beside coverage,
-the leak canary, parity, and E3 and A-1 for the scripts that run them — declares what it *varies*, what
+the leak canary, parity, and E3, A-1 and A-2 for the scripts that run them — declares what it *varies*, what
 it holds *fixed* and what *decides*, with the path at which the report carries its number. The
 report embeds the registry, `gates.check_report` fails the run if a gate is printed without an
 entry or an entry has nowhere to be read from, and the Evaluation tab renders the triple beside

@@ -52,3 +52,15 @@ per-family table and the cross-format verdict the plan records:
     python scripts/experiments/xi/sim_frame_cache.py --cricsheet-dir data/go-app/cricsheet --out output/ml-service/a1/frames.pkl
     python scripts/experiments/xi/a1_fixture_context.py --frames output/ml-service/a1/frames.pkl --format T20 --out output/ml-service/a1/a1_T20.json
     python scripts/experiments/xi/a1_fixture_context.py --decide output/ml-service/a1/a1_T20.json output/ml-service/a1/a1_ODI.json
+
+`a2_chase_tails.py` is gate A-2 (plan §8.10): on the same folds, four chase responses the
+simulator applies to the chasing side's runs draws -- `none`, the `level` control, `slope`
+and `both` -- from one L2-B fit per fold and one fitted calibration sample, with the
+display models, the shared factor and the simulator's random numbers shared by the arms.
+Per arm it records the chase 10-90 coverage, bias and width, the below-q10 / above-q90
+shares, the first-innings coverage and width, E2's Brier delta, the margins and the fitted
+coefficients; `--decide` prints the table, the paired effect sizes against their fold-level
+standard errors and which arm `simulator.CHASE_RESPONSE` should name:
+
+    python scripts/experiments/xi/a2_chase_tails.py --frames output/ml-service/a1/frames.pkl --format T20 --out output/ml-service/a2/a2_T20.json
+    python scripts/experiments/xi/a2_chase_tails.py --decide output/ml-service/a2/a2_T20.json output/ml-service/a2/a2_ODI.json output/ml-service/a2/a2_T20I.json

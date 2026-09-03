@@ -114,6 +114,10 @@ class FitSpec:
     # Which fixture-context families the feature columns include (A-1), recorded so a run's
     # manifest says what its performance model read.
     fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT
+    # Which chase response the simulator's calibration fits on the calibration fold (A-2,
+    # ``simulator.CHASE_RESPONSE_ARMS``); needs the shared factor, whose per-match factors
+    # take the pitch out of the difficulty.
+    chase_response: str = "none"
 
     def as_dict(self) -> Dict:
         return {
@@ -127,6 +131,7 @@ class FitSpec:
             "targets": list(self.targets),
             "shared_factor": self.shared_factor,
             "fixture_context_families": list(self.fixture_context_families),
+            "chase_response": self.chase_response,
         }
 
     @property
@@ -156,6 +161,7 @@ def default_spec(
     targets: Optional[Sequence[str]] = None,
     shared_factor: Optional[bool] = None,
     fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT,
+    chase_response: Optional[str] = None,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
     test can shrink the seeds without rebinding every caller."""
@@ -169,6 +175,7 @@ def default_spec(
         targets=tuple(targets) if targets is not None else tuple(t.name for t in TARGETS),
         shared_factor=simulator.SHARED_FACTOR if shared_factor is None else bool(shared_factor),
         fixture_context_families=tuple(fixture_context_families),
+        chase_response=simulator.CHASE_RESPONSE if chase_response is None else chase_response,
     )
 
 
@@ -410,29 +417,55 @@ def _temporal_calibration_split(rows: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
     return rows[rows.match_date < boundary], rows[rows.match_date >= boundary]
 
 
-def _fit_shared_factor(
-    model: PerformanceModels, calibration_rows: pd.DataFrame, match_frame: pd.DataFrame
-) -> Optional[simulator.SharedFactor]:
-    """The simulator's shared match factor from the calibration fold's complete first
-    innings (plan P-4): fixtures the members did not train on, simulated toss-known. A
-    format without an innings length has no simulator and so no factor; a fold too thin to
-    hold a residual distribution ships no factor, and says so."""
+def _fit_simulator_calibration(
+    model: PerformanceModels, calibration_rows: pd.DataFrame, match_frame: pd.DataFrame, chase_response: str
+) -> Tuple[Optional[simulator.SharedFactor], Optional[simulator.ChaseResponse]]:
+    """The simulator's fold-fitted parts from the calibration fold's complete first innings
+    (plan P-4 and §8.10): fixtures the members did not train on, simulated toss-known
+    without either part, so each learns the residual after the members. The shared factor
+    deconvolves the first-innings residuals; the chase response reads the same matches'
+    chases against the chasing side's expected total on the factor's own pitch. A format
+    without an innings length has no simulator and so neither; a fold too thin to hold a
+    residual distribution ships neither, and says so."""
     if model.format_code not in simulator.SIMULATED_FORMATS:
-        return None
+        return None, None
     matches = match_frame[match_frame.match_id.isin(set(calibration_rows.match_id))]
     matches = matches[simulator.complete_first_innings(matches)]
     if len(matches) < simulator.MIN_SHARED_FACTOR_MATCHES:
         logger.warning(
-            "%s: %d complete first innings in the calibration fold, need %d; the simulator ships without a shared factor",
+            "%s: %d complete first innings in the calibration fold, need %d; the simulator ships without a shared "
+            "factor or a chase response",
             model.format_code,
             len(matches),
             simulator.MIN_SHARED_FACTOR_MATCHES,
         )
-        return None
+        return None, None
     fixtures = simulator.fixtures_from_rows(calibration_rows, matches, model.predict_oriented)
-    actual = matches.set_index("match_id").innings1_runs.loc[[f.match_id for f in fixtures]].to_numpy(dtype=float)
+    outcomes = matches.set_index("match_id").loc[[f.match_id for f in fixtures]]
+    actual_first = outcomes.innings1_runs.to_numpy(dtype=float)
     rho = simulator.calibrate(calibration_rows).runs_balls_rho
-    return simulator.fit_shared_factor_on_fixtures(fixtures, actual, rho, SHARED_FACTOR_SAMPLES, seed=0)
+    draws = simulator.simulate_calibration_fixtures(fixtures, rho, SHARED_FACTOR_SAMPLES, seed=0)
+    shared_factor = simulator.fit_shared_factor(actual_first, draws.first_mean, draws.first_sd)
+    if chase_response == "none":
+        return shared_factor, None
+    sample = simulator.chase_calibration_sample(
+        actual_first,
+        outcomes.innings2_runs.to_numpy(dtype=float),
+        outcomes[C.TARGET_COL].to_numpy(dtype=float) == 0.0,
+        draws.chase_expected,
+        shared_factor.factors,
+    )
+    response = simulator.fit_chase_response(sample, chase_response)
+    logger.info(
+        "%s: chase response (%s) on %d calibration chases: level %+.3f slope %+.3f sigma %.3f",
+        model.format_code,
+        chase_response,
+        len(sample),
+        response.level,
+        response.slope,
+        response.sigma,
+    )
+    return shared_factor, response
 
 
 def fit_performance(
@@ -448,6 +481,8 @@ def fit_performance(
         raise ValueError(f"{format_code}: {len(rows)} training rows, need {MIN_FIT_ROWS}")
     if spec.shared_factor and match_frame is None:
         raise ValueError(f"{format_code}: the shared match factor needs the match frame")
+    if spec.chase_response != "none" and not spec.shared_factor:
+        raise ValueError(f"{format_code}: the chase response needs the shared match factor")
     started = time.perf_counter()
     hold_out = bool(spec.recalibrate) or spec.shared_factor
     fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else (rows, rows.iloc[0:0])
@@ -468,10 +503,12 @@ def fit_performance(
     for target in spec.recalibrate if hold_out else ():
         raw = model.predict_marginalised(calibration_rows)[target]["quantiles"]
         model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
-    shared_factor = (
-        _fit_shared_factor(model, calibration_rows, match_frame) if spec.shared_factor and hold_out else None
+    shared_factor, chase_response = (
+        _fit_simulator_calibration(model, calibration_rows, match_frame, spec.chase_response)
+        if spec.shared_factor and hold_out
+        else (None, None)
     )
-    model.simulation = simulator.calibrate(fit_rows, shared_factor)
+    model.simulation = simulator.calibrate(fit_rows, shared_factor, chase_response)
     model.metadata = {
         "format_code": format_code,
         "n_train": int(len(fit_rows)),

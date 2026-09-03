@@ -186,6 +186,7 @@ def test_bowling_attribution_drafts_enough_bowlers_for_the_innings() -> None:
         wickets=np.full(50, 6.0),
         deliveries=np.full(50, 124.0),
         reached_target=np.zeros(50, dtype=bool),
+        untruncated_total=np.full(50, 160.0),
     )
 
     bowling = S.bowling_attribution(rng, side, CONTEXT, innings)
@@ -261,3 +262,98 @@ def test_fixtures_from_rows_build_both_orientations_per_side() -> None:
     )
     assert fixture.team1.bat_first.runs[0, 1] == 15.0 and fixture.team1.chasing.runs[0, 1] == 10.0
     assert fixture.context == S.MatchContext("T20", 0.07, 123.0, 0.88)
+
+
+# --- the chase response (plan §8.10, gate A-2) -----------------------------------------
+
+
+def _chase_sample(n: int, level: float, slope: float, sigma: float, seed: int = 0) -> S.ChaseCalibrationSample:
+    """Calibration chases drawn from the response's own model: a log difficulty, a log
+    response around level + slope * x, and a win wherever the response reached it."""
+    rng = np.random.default_rng(seed)
+    difficulty = rng.normal(0.0, 0.2, n)
+    response = level + slope * difficulty + rng.normal(0.0, sigma, n)
+    return S.ChaseCalibrationSample(difficulty, response, response >= difficulty)
+
+
+def test_fit_chase_response_recovers_the_coefficients_under_censoring() -> None:
+    sample = _chase_sample(3000, level=0.02, slope=-0.4, sigma=0.15)
+    no_level = _chase_sample(3000, level=0.0, slope=-0.4, sigma=0.15, seed=1)
+
+    both = S.fit_chase_response(sample, "both")
+    slope_only = S.fit_chase_response(no_level, "slope")
+    level_only = S.fit_chase_response(sample, "level")
+
+    assert both is not None and both.slope == pytest.approx(-0.4, abs=0.04)
+    assert both.level == pytest.approx(0.02, abs=0.02) and both.sigma == pytest.approx(0.15, abs=0.02)
+    assert slope_only is not None and slope_only.level == 0.0 and slope_only.slope == pytest.approx(-0.4, abs=0.05)
+    assert level_only is not None and level_only.slope == 0.0
+    assert both.as_dict()["n_won"] == int(sample.censored.sum())
+
+
+def test_fit_chase_response_none_fits_nothing_and_guards_thin_folds() -> None:
+    sample = _chase_sample(40, level=0.0, slope=-0.3, sigma=0.1)
+
+    assert S.fit_chase_response(sample, "none") is None
+    with pytest.raises(ValueError, match="calibration chases"):
+        S.fit_chase_response(_chase_sample(10, 0.0, -0.3, 0.1), "both")
+    with pytest.raises(ValueError, match="lost chases"):
+        S.fit_chase_response(S.ChaseCalibrationSample(sample.difficulty, sample.response, np.ones(40, bool)), "both")
+    with pytest.raises(ValueError, match="unknown chase response arm"):
+        S.fit_chase_response(sample, "collapse")
+
+
+def test_chase_calibration_sample_takes_the_pitch_out_of_the_difficulty() -> None:
+    actual_first = np.array([180.0, 120.0])
+    actual_chase = np.array([181.0, 90.0])
+    factors = np.array([1.2, 0.8])
+    chase_expected = np.array([150.0, 150.0])
+
+    sample = S.chase_calibration_sample(actual_first, actual_chase, np.array([True, False]), chase_expected, factors)
+
+    np.testing.assert_allclose(sample.difficulty, np.log([181.0 / 180.0, 121.0 / 120.0]))
+    np.testing.assert_allclose(sample.response, np.log([181.0 / 180.0, 90.0 / 120.0]))
+    assert sample.censored.tolist() == [True, False]
+
+
+def test_a_negative_slope_lowers_hard_chases_and_raises_easy_ones() -> None:
+    team1, team2 = _teams()
+    sample = _chase_sample(200, level=0.0, slope=-0.5, sigma=0.1)
+    response = S.ChaseResponse("slope", 0.0, -0.5, 0.1, sample)
+    without = S.simulate_match(team1, team2, CONTEXT, 1500, 0, True, S.SimulatorCalibration(0.9))
+    with_response = S.simulate_match(team1, team2, CONTEXT, 1500, 0, True, S.SimulatorCalibration(0.9, None, response))
+
+    # Common random numbers: the first innings is untouched, so the targets are the same.
+    np.testing.assert_array_equal(without.team1.total, with_response.team1.total)
+    hard = without.team1.total > np.quantile(without.team1.total, 0.75)
+    easy = without.team1.total < np.quantile(without.team1.total, 0.25)
+    assert with_response.team2.untruncated_total[hard].mean() < without.team2.untruncated_total[hard].mean() - 5
+    assert with_response.team2.untruncated_total[easy].mean() > without.team2.untruncated_total[easy].mean() + 5
+    # The chase still ends at the target and never beyond.
+    chaser_won = with_response.team2.total > with_response.team1.total
+    np.testing.assert_array_equal(with_response.team2.total[chaser_won], with_response.team1.total[chaser_won] + 1)
+
+
+def test_a_zero_response_is_todays_simulator() -> None:
+    team1, team2 = _teams()
+    response = S.ChaseResponse("both", 0.0, 0.0, 0.1, _chase_sample(40, 0.0, 0.0, 0.1))
+
+    without = S.simulate_match(team1, team2, CONTEXT, 600, 0, True, S.SimulatorCalibration(0.9))
+    with_zero = S.simulate_match(team1, team2, CONTEXT, 600, 0, True, S.SimulatorCalibration(0.9, None, response))
+
+    np.testing.assert_array_equal(without.team2.total, with_zero.team2.total)
+    np.testing.assert_array_equal(without.team2.runs, with_zero.team2.runs)
+
+
+def test_calibration_draws_carry_the_chases_expected_untruncated_total() -> None:
+    team1, team2 = _teams()
+    fixture = S.Fixture("m1", team1, team2, CONTEXT)
+
+    draws = S.simulate_calibration_fixtures([fixture], 0.9, 300, seed=0)
+
+    assert draws.first_mean.shape == (1,) and draws.first_sd[0] > 0
+    # The chasing side's expected total is its innings before the truncation: above the
+    # truncated chase's mean, which the target caps.
+    reference = S.simulate_match(team1, team2, CONTEXT, 300, 0, True, S.SimulatorCalibration(0.9))
+    assert draws.chase_expected[0] == pytest.approx(reference.team2.untruncated_total.mean())
+    assert draws.chase_expected[0] > reference.team2.total.mean()

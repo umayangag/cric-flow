@@ -135,6 +135,22 @@ GATES: Tuple[Gate, ...] = (
         "a recorded null ships no feature",
         report_path=None,
     ),
+    Gate(
+        id="A-2",
+        name="Chase tails: a target-conditional chasing innings",
+        varies="the chase response the simulator applies to the chasing side's runs draws -- none, level (the "
+        "control: slope held at zero), slope, both -- from one L2-B fit per fold and one fitted sample",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three seeds, the hyperparameters, the "
+        "performance model (fitted once per fold, shared by the arms), the display models, the shared factor and "
+        "its fitting rule, the simulator's draw count and seeds (common random numbers), the labels",
+        decides="in both T20 and ODI, paired per fold against none with one fold-level standard error as the floor: "
+        "the chase 10-90 coverage's distance from 0.80 shrinks, mean |chase bias| shrinks, first-innings coverage "
+        "stays within +/- 0.03 with width not growing (H-22), and E2 does not degrade (mean delta Brier within "
+        "0.01, paired difference not worse by more than one standard error); a candidate arm ships only if it "
+        "also beats the level control on the coverage distance by more than one standard error; a recorded null "
+        "ships nothing",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}

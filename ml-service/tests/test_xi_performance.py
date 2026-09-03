@@ -249,3 +249,33 @@ def test_shared_factor_is_not_fitted_for_a_format_without_an_innings_length() ->
         model = P.fit_performance(train, "TEST", P.default_spec(shared_factor=True), matches)
 
     assert model.simulation.shared_factor is None
+
+
+def test_chase_response_is_fitted_on_the_calibration_folds_chases_beside_the_shared_factor() -> None:
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")]
+    matches = match_frame.copy()
+    matches["innings1_deliveries"] = 120.0
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True, chase_response="both"), matches)
+
+    response = model.simulation.chase_response
+    assert response is not None and response.arm == "both"
+    assert len(response.sample) == model.simulation.shared_factor.n_matches
+    assert np.isfinite([response.level, response.slope, response.sigma]).all() and response.sigma > 0
+    assert model.metadata["simulation"]["chase_response"]["n_matches"] == len(response.sample)
+    assert model.metadata["spec"]["chase_response"] == "both"
+
+
+def test_chase_response_none_fits_nothing_and_needs_the_shared_factor() -> None:
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")]
+    matches = match_frame.copy()
+    matches["innings1_deliveries"] = 120.0
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True, chase_response="none"), matches)
+    assert model.simulation.chase_response is None and model.metadata["simulation"]["chase_response"] is None
+    with pytest.raises(ValueError, match="chase response needs the shared"):
+        P.fit_performance(train, "T20", P.default_spec(shared_factor=False, chase_response="slope"))
