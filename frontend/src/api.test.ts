@@ -248,4 +248,63 @@ describe('frontend api client (DB-backed)', () => {
     expect(fetchMock.mock.calls[1][0]).toContain('/api/health/ml');
     vi.unstubAllGlobals();
   });
+  it('getCandidates asks for one side, and spells the pool scope on the query string', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const payload = {
+      side: {},
+      pool: { source: 'all_time', size: 3, retired_excluded: 0 },
+      candidates: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    const result = await api.getCandidates({
+      format: 'T20I',
+      club_id: 43,
+      match_date: '2026-09-10',
+      window_months: 24,
+      all_time: true,
+    });
+
+    expect(result).toEqual(payload);
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('/api/options/candidates');
+    expect(url).toContain('format=T20I');
+    expect(url).toContain('club_id=43');
+    expect(url).toContain('match_date=2026-09-10');
+    expect(url).toContain('window_months=24');
+    expect(url).toContain('all_time=true');
+    vi.unstubAllGlobals();
+  });
+
+  // The default pool is the per-format window, and asking for it is saying nothing: an
+  // absent window_months is what the backend reads as the default (D-12).
+  it('getCandidates leaves the pool scope out when nothing was asked for', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    await api.getCandidates({ format: 'T20I', club_id: 43 });
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('window_months');
+    expect(url).not.toContain('all_time');
+    expect(url).not.toContain('match_date');
+    vi.unstubAllGlobals();
+  });
+
+  it('flagRetirement posts the claim, and unflagRetirement withdraws it', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ player_id: 7 }) });
+    (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
+
+    await api.flagRetirement(7, 'T20I');
+    await api.unflagRetirement(7);
+
+    expect(fetchMock.mock.calls[0][0] as string).toContain('/api/players/7/retirement?format=T20I');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(fetchMock.mock.calls[1][0] as string).toContain('/api/players/7/retirement');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'DELETE' });
+    vi.unstubAllGlobals();
+  });
 });
