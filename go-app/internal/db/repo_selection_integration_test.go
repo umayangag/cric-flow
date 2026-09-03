@@ -57,20 +57,20 @@ func setUpPoolFixture(t *testing.T) poolFixture {
 		`INSERT INTO opposition (opposition_name, gender) VALUES ('Testland', 'male') RETURNING id`).
 		Scan(&fixture.clubID))
 
-	fixture.recent = insertPlayer(t, ctx, "rec-1", "Recent Player")
-	fixture.stale = insertPlayer(t, ctx, "sta-1", "Stale Player")
-	fixture.ancient = insertPlayer(t, ctx, "anc-1", "Ancient Player")
+	fixture.recent = insertPlayer(ctx, t, "rec-1", "Recent Player")
+	fixture.stale = insertPlayer(ctx, t, "sta-1", "Stale Player")
+	fixture.ancient = insertPlayer(ctx, t, "anc-1", "Ancient Player")
 
-	insertAppearance(t, ctx, fixture, fixture.recent, "2026-06-01")
-	insertAppearance(t, ctx, fixture, fixture.stale, "2023-09-10")
-	insertAppearance(t, ctx, fixture, fixture.ancient, "2016-01-01")
+	insertAppearance(ctx, t, fixture, fixture.recent, "2026-06-01")
+	insertAppearance(ctx, t, fixture, fixture.stale, "2023-09-10")
+	insertAppearance(ctx, t, fixture, fixture.ancient, "2016-01-01")
 	// Exactly on the twelve-month boundary: the window is half-open at the cutoff and
 	// closed at its start, so this player is in.
-	insertAppearance(t, ctx, fixture, fixture.stale, "2025-09-10")
+	insertAppearance(ctx, t, fixture, fixture.stale, "2025-09-10")
 	return fixture
 }
 
-func insertPlayer(t *testing.T, ctx context.Context, externalID, name string) int64 {
+func insertPlayer(ctx context.Context, t *testing.T, externalID, name string) int64 {
 	t.Helper()
 	var id int64
 	require.NoError(t, Pool.QueryRow(ctx,
@@ -80,7 +80,7 @@ func insertPlayer(t *testing.T, ctx context.Context, externalID, name string) in
 }
 
 // insertAppearance records one batting appearance for the club on that date.
-func insertAppearance(t *testing.T, ctx context.Context, fixture poolFixture, playerID int64, on string) {
+func insertAppearance(ctx context.Context, t *testing.T, fixture poolFixture, playerID int64, on string) {
 	t.Helper()
 	var matchID int64
 	require.NoError(t, Pool.QueryRow(ctx,
@@ -197,8 +197,8 @@ func TestPlayerStatusStore_PromotionAndDemotionAreOneStateChange_Integration(t *
 	assert.True(t, promoted.Flag.Promoted(), "a decade away is corroborated by inactivity")
 	assert.Equal(t, availability.CriterionInactivity, promoted.Flag.Criterion)
 	assert.False(t, claimOnly.Flag.Promoted(), "a player who played in June has not retired")
-	assert.Equal(t, 1, retiredFlagOf(t, fixture.ctx, fixture.ancient))
-	assert.Equal(t, 0, retiredFlagOf(t, fixture.ctx, fixture.recent),
+	assert.Equal(t, 1, retiredFlagOf(fixture.ctx, t, fixture.ancient))
+	assert.Equal(t, 0, retiredFlagOf(fixture.ctx, t, fixture.recent),
 		"a claim nobody corroborated is not a fact about the player")
 
 	pool, err := ListPlayerPoolByOpposition(fixture.ctx, PoolQuery{
@@ -206,7 +206,7 @@ func TestPlayerStatusStore_PromotionAndDemotionAreOneStateChange_Integration(t *
 		OppositionID: fixture.clubID,
 		Cutoff:       fixture.cutoff,
 		ApplyLedger:  true,
-		Flags:        mustFlags(t, ledger, fixture.ctx),
+		Flags:        mustFlags(fixture.ctx, t, ledger),
 	})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []int64{fixture.stale}, playerIDsOf(pool.Players))
@@ -215,9 +215,9 @@ func TestPlayerStatusStore_PromotionAndDemotionAreOneStateChange_Integration(t *
 	_, existed, err := ledger.Unflag(fixture.ctx, availability.DefaultActor, fixture.ancient)
 	require.NoError(t, err)
 	assert.True(t, existed)
-	assert.Equal(t, 0, retiredFlagOf(t, fixture.ctx, fixture.ancient), "un-flagging demotes the fact")
+	assert.Equal(t, 0, retiredFlagOf(fixture.ctx, t, fixture.ancient), "un-flagging demotes the fact")
 	assert.Equal(t, []string{"flagged", "promoted", "unflagged", "demoted"},
-		statusEventsOf(t, fixture.ctx, fixture.ancient),
+		statusEventsOf(fixture.ctx, t, fixture.ancient),
 		"every change to the claim and to the fact is recorded, in order")
 }
 
@@ -251,7 +251,7 @@ func playerIDsOf(rows []PlayerPoolRow) []int64 {
 	return ids
 }
 
-func retiredFlagOf(t *testing.T, ctx context.Context, playerID int64) int {
+func retiredFlagOf(ctx context.Context, t *testing.T, playerID int64) int {
 	t.Helper()
 	var retired int
 	require.NoError(t, Pool.QueryRow(ctx,
@@ -259,7 +259,7 @@ func retiredFlagOf(t *testing.T, ctx context.Context, playerID int64) int {
 	return retired
 }
 
-func statusEventsOf(t *testing.T, ctx context.Context, playerID int64) []string {
+func statusEventsOf(ctx context.Context, t *testing.T, playerID int64) []string {
 	t.Helper()
 	rows, err := Pool.Query(ctx,
 		`SELECT event FROM player_status_event WHERE player_id = $1 ORDER BY id`, playerID)
@@ -275,7 +275,7 @@ func statusEventsOf(t *testing.T, ctx context.Context, playerID int64) []string 
 	return events
 }
 
-func mustFlags(t *testing.T, ledger *availability.Ledger, ctx context.Context) map[int64]availability.Flag {
+func mustFlags(ctx context.Context, t *testing.T, ledger *availability.Ledger) map[int64]availability.Flag {
 	t.Helper()
 	flags, err := ledger.Flags(ctx, availability.DefaultActor)
 	require.NoError(t, err)
