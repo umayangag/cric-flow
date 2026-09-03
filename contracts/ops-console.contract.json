@@ -122,5 +122,14 @@
   "team_genders": [
     "male",
     "female"
+  ],
+  "pool_sources": [
+    "recency_window",
+    "all_time",
+    "manual"
+  ],
+  "pool_exclusion_reasons": [
+    "user_flagged",
+    "retired"
   ]
 }

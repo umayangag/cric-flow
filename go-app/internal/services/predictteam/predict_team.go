@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
@@ -37,6 +38,14 @@ type Input struct {
 	ExtraTeam2    []int64    `json:"extra_team2,omitempty"` // extra player IDs for team2
 	MinBowlers    int        `json:"min_bowlers,omitempty"` // default from config
 	RequireKeeper bool       `json:"require_keeper,omitempty"`
+	// Team1Pool and Team2Pool are what the caller asked for about each side's
+	// candidates: the recency window, whether to widen it to all-time, and a manual
+	// pick. The zero value is the per-format recency default (D-12).
+	Team1Pool PoolRequest `json:"team1_pool,omitempty"`
+	Team2Pool PoolRequest `json:"team2_pool,omitempty"`
+	// Actor is whose retirement ledger applies. Empty means the default user; the
+	// ledger is skipped entirely on a backtest, whatever this says.
+	Actor string `json:"actor,omitempty"`
 	// AsOf, when set, asks for ratings as they stood strictly before this date instead of
 	// "through today". Backtests over played matches set it to the match date, so a
 	// prediction provably cannot see the match's own result or any later one; live
@@ -182,6 +191,10 @@ type Result struct {
 	Forecast       ForecastSummary       `json:"forecast"`
 	WinProbability WinProbabilitySummary `json:"win_probability"`
 	Scorecard      *Scorecard            `json:"scorecard,omitempty"`
+	// Team1PoolSummary and Team2PoolSummary say which candidates each XI was chosen out
+	// of: the window, the size, and every player the ledger excluded (D-12).
+	Team1PoolSummary PoolSummary `json:"team1_pool"`
+	Team2PoolSummary PoolSummary `json:"team2_pool"`
 }
 
 // CrossGenderFixtureError reports a fixture whose two sides are not the same gender.
@@ -218,6 +231,8 @@ type fixture struct {
 	team1, team2 db.TeamSide
 	venueID      int64
 	pool1, pool2 []db.PlayerPoolRow
+	summary1     PoolSummary
+	summary2     PoolSummary
 	constraints  Constraints
 	asOf         time.Time
 }
@@ -235,11 +250,13 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	}
 
 	result := &Result{
-		Team1Side: newResolvedSide(fix.team1),
-		Team2Side: newResolvedSide(fix.team2),
-		Team1:     newSelectedPlayers(xi1, fix.pool1, marginals),
-		Team2:     newSelectedPlayers(xi2, fix.pool2, marginals),
-		Selection: selection,
+		Team1Side:        newResolvedSide(fix.team1),
+		Team2Side:        newResolvedSide(fix.team2),
+		Team1:            newSelectedPlayers(xi1, fix.pool1, marginals),
+		Team2:            newSelectedPlayers(xi2, fix.pool2, marginals),
+		Selection:        selection,
+		Team1PoolSummary: fix.summary1,
+		Team2PoolSummary: fix.summary2,
 	}
 
 	display, err := service.PredictMatchWinXI(ctx, XIWinRequest{
@@ -318,11 +335,25 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	}
 
 	constraints := resolveConstraints(input)
-	pool1, err := loadPool(ctx, format, team1, cutoff, input.ExtraTeam1, constraints.Size)
+
+	// The ledger applies to upcoming-match requests only. A backtest names its as-of
+	// date, and a retirement flagged today says nothing about who was available then.
+	applyLedger := input.AsOf.IsZero()
+	var flags map[int64]availability.Flag
+	if applyLedger {
+		flags, err = poolFlags(ctx, input.Actor)
+		if err != nil {
+			return fixture{}, err
+		}
+	}
+
+	pool1, summary1, err := loadPool(
+		ctx, format, team1, cutoff, input.Team1Pool, input.ExtraTeam1, flags, applyLedger, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
-	pool2, err := loadPool(ctx, format, team2, cutoff, input.ExtraTeam2, constraints.Size)
+	pool2, summary2, err := loadPool(
+		ctx, format, team2, cutoff, input.Team2Pool, input.ExtraTeam2, flags, applyLedger, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
@@ -334,6 +365,8 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		venueID:     venueID,
 		pool1:       pool1,
 		pool2:       pool2,
+		summary1:    summary1,
+		summary2:    summary2,
 		constraints: constraints,
 		asOf:        input.AsOf,
 	}, nil
@@ -369,28 +402,6 @@ func resolveConstraints(input Input) Constraints {
 		}
 	}
 	return Constraints{Size: size, MinBowlers: minBowlers, RequireKeeper: input.RequireKeeper}
-}
-
-func loadPool(
-	ctx context.Context,
-	format string,
-	team db.TeamSide,
-	cutoff time.Time,
-	extra []int64,
-	teamSize int,
-) ([]db.PlayerPoolRow, error) {
-	label := team.Label()
-	pool, err := db.ListPlayerPoolByOpposition(ctx, format, team.ClubID, cutoff, extra)
-	if err != nil {
-		slog.Error("predictteam.PredictTeams pool failed", slog.String("team", label), slog.Any("err", err))
-		return nil, fmt.Errorf("%s pool: %w", label, err)
-	}
-	if len(pool) < teamSize {
-		err := fmt.Errorf("%s has only %d players, need at least %d", label, len(pool), teamSize)
-		slog.Error("predictteam.PredictTeams pool size", slog.String("team", label), slog.Any("err", err))
-		return nil, err
-	}
-	return pool, nil
 }
 
 // newSelectedPlayers turns the chosen registry keys into response rows, in the order the

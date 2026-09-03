@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 )
@@ -65,6 +66,13 @@ type contractDoc struct {
 	// frontend's picker sends it; ml-service matches on the literal when it groups the
 	// E7 context baselines. Three copies of one vocabulary is the D-9 shape (D-10).
 	TeamGenders []string `json:"team_genders"`
+	// PoolSources and PoolExclusionReasons are the candidate pool's vocabulary (D-12).
+	// go-app names the source of every pool it builds and the reason for every player
+	// the retirement ledger removes; the console renders both, and a pool whose source
+	// the UI does not recognise would be shown as "unknown" while looking fine on the
+	// wire. H-24: declared once in internal/availability, asserted from both sides.
+	PoolSources          []string `json:"pool_sources"`
+	PoolExclusionReasons []string `json:"pool_exclusion_reasons"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -139,10 +147,12 @@ func buildContract() contractDoc {
 			Hint:    CutoffHint,
 			Example: CutoffExample,
 		},
-		MLCalls:           contractMLCalls(),
-		FormatCodes:       formats.CanonicalCodes(),
-		TeamGenders:       TeamGenders(),
-		StopResponseField: StopResponseField,
+		MLCalls:              contractMLCalls(),
+		FormatCodes:          formats.CanonicalCodes(),
+		TeamGenders:          TeamGenders(),
+		StopResponseField:    StopResponseField,
+		PoolSources:          availability.PoolSources(),
+		PoolExclusionReasons: availability.ExclusionReasons(),
 	}
 }
 
