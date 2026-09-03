@@ -13,7 +13,8 @@ import {
 } from '@mui/material';
 import type { EvaluationFormatReport } from '../types';
 import { MetricLabel } from './common/MetricInfo';
-import { formatShare, formatStat } from '../utils/evaluationReport';
+import MetricValue from './common/MetricValue';
+import { formatStat } from '../utils/evaluationReport';
 
 const totalLabels: Record<string, string> = {
   first_innings: 'First innings',
@@ -104,9 +105,17 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
             {Object.entries(totals).map(([name, entry]) => (
               <TableRow key={name} hover>
                 <TableCell>{totalLabels[name] ?? name}</TableCell>
-                <TableCell align="right">{formatShare(entry.coverage_80)}</TableCell>
+                <TableCell align="right">
+                  <MetricValue metricKey="coverage_80" value={entry.coverage_80} as="share" />
+                </TableCell>
                 <TableCell align="right">{formatStat(entry.width_80, 1)}</TableCell>
-                <TableCell align="right">{formatStat(entry.dispersion_ratio, 2)}</TableCell>
+                <TableCell align="right">
+                  <MetricValue
+                    metricKey="dispersion_ratio"
+                    value={entry.dispersion_ratio}
+                    digits={2}
+                  />
+                </TableCell>
                 <TableCell align="right">{formatStat(entry.median_mae, 1)}</TableCell>
               </TableRow>
             ))}
@@ -115,8 +124,15 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
                 <MetricLabel metricKey="brier" label="Brier, simulated vs display" />
               </TableCell>
               <TableCell align="right" colSpan={4}>
-                {formatStat(locked?.win?.brier?.simulated ?? folds?.win?.brier?.simulated)} vs{' '}
-                {formatStat(locked?.win?.brier?.display ?? folds?.win?.brier?.display)}
+                <MetricValue
+                  metricKey="brier"
+                  value={locked?.win?.brier?.simulated ?? folds?.win?.brier?.simulated}
+                />{' '}
+                vs{' '}
+                <MetricValue
+                  metricKey="brier"
+                  value={locked?.win?.brier?.display ?? folds?.win?.brier?.display}
+                />
               </TableCell>
             </TableRow>
           </TableBody>
