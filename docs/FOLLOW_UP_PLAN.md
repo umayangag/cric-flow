@@ -338,8 +338,18 @@ nothing while looking fine on the wire, which is this defect's own silence one l
 the default T20I pool for two sides with famously retired ex-players is current-era where the
 all-time pool was not; flagging a long-retired player promotes with the inactivity criterion
 named, and the exclusion appears struck through with its reason; un-flagging demotes the fact
-and the player returns. `make evaluate` was run before and after on the same data and the
-reports compared, to show the measured record is untouched.
+and the player returns. Flagging MS Dhoni is the case worth keeping: his last T20I for
+India was in 2019, but he played in May 2025 in another format, so the inactivity
+criterion refuses and the flag stays one user's claim — retirement is not per format, and
+the surface says exactly that rather than promoting on the format the user happened to be
+looking at.
+
+`make evaluate` was run before and after on the same database and the two reports compared
+field by field: 125 fields differ and every one is a wall clock (`fit_seconds`, the two
+`ms_per_fixture` latencies, and the means and standard deviations they roll up into).
+Every measured number — walk-forward and locked, all four formats, plus `gates`,
+`serving_parity`, `leak_canary`, `e5_lineup_only` and `selection_decision` — is identical
+to the last digit.
 
 
 ---

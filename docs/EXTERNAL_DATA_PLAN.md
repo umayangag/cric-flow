@@ -394,8 +394,18 @@ all-time pool one click away and an Undo beside each exclusion.
 **Blast radius: none measured.** The L4 harness and the E5 gate build sides from fielded
 XIs (`match_player`), not from this pool; nothing under `ml-service/` reads
 `ListPlayerPoolByOpposition`, `player.is_retired`, or the ledger tables, and the change is
-confined to Go, TypeScript and SQL. `make evaluate` was run on the same data before and
-after the change and the two reports were compared; the diff is recorded on the PR.
+confined to Go, TypeScript and SQL.
+
+`make evaluate` was run on the same database before the change and again after it, and
+the two `xi_evaluate_report.json` files compared field by field. **125 fields differ, and
+every one of them is a wall clock**: `performance.fit.fit_seconds` (18),
+`simulation.latency.ms_per_fixture_at_default_samples` (18) and
+`…_at_harness_samples` (18) per fold, plus the three means and three standard deviations
+those roll up into, and `generated_at`. Every measured number is identical to the last
+digit — the walk-forward and locked AUC, Brier, coverage, width, pinball and Spearman for
+all four formats, `e5_lineup_only` and `selection_decision` per format, and the whole of
+`gates`, `serving_parity`, `leak_canary`, `data_quality`, `e5_previous_elevens`, `seeds`,
+`cutoffs`, `n_rows`, `n_player_rows` and `locked_window`. The measured record is untouched.
 `scripts/experiments/xi/selection_gate_rerun.py` gets the window relative to each
 fixture's own date and applies no ledger (a claim made in 2026 is not evidence about a
 2019 pool, H-19); `--all-time-pool` restores the pre-D-12 pool for a like-for-like
