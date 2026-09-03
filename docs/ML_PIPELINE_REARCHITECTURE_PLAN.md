@@ -1771,6 +1771,260 @@ node now carries `chase_response: null` beside the shared factor. H-8: 50 matche
 player rows, 1,100 performance predictions, 50 simulations at max abs difference **0.0 on
 both sources**. Gates (A-2 now in the embedded registry) and glossary pass on both.
 
+### 8.11 A-3: the T20 lineup signal — feature families in the selection objective (2026-09-03)
+
+The row in `docs/FOLLOW_UP_PLAN.md` § 4. As in §8.9 and §8.10: the evidence, the design,
+the leakage surface and the gate's H-23 triple first — the triple was registered in
+`ml/xi/gates.py` and printed by the script before anything ran — and the tables under
+*Results*, with nothing above that heading edited once a number existed.
+
+**The evidence it chases (§8.8, A-4's baseline in `docs/FOLLOW_UP_PLAN.md` § 5).** T20 is
+the one format whose objective fails the bar written beside it: lineup-only E5 **0.503
+against a derived bar of 0.506** over 2,168 walk-forward pairs (0.490 against 0.501 on the
+seven pre-rotation folds when P-7 decided it). §8.8 read the number two ways and both
+still hold. The objective's direction on a T20 lineup change is not distinguishable from
+chance (0.503 is 0.3 standard errors above 0.5), and it is *less right than its own claims*:
+an exactly-right objective with the same claimed effect (median |Δ| 0.021 win probability for
+a 1–3 player change) would agree 0.521 of the time. §8.6 named the likely reason — in
+domestic T20 much of a 1–3 player change is squad rotation, a change of names that is not a
+change of strength — which is a reason the signal is weakest there, not a reason it cannot
+be found. Optimised selection is scoped off in T20 on that number
+(`optimizer.NOT_OPTIMISED_REASONS`), the harness re-verdicts it every run, and this item is
+the attempt to move it. **The judge is the folds' lineup-only E5 against its re-derived bar
+— never AUC, never the locked window.** AUC and swap monotonicity are reported as a guard
+(a family must not degrade them), not as the decision.
+
+**What the objective can see today, and what it cannot.** The objective is a logistic
+regression on `XI_FEATURE_COLS` — 42 columns, every one a sum, a mean, a count or an
+extreme of per-player as-of ratings over an eleven, plus the differences between the two
+sides. It is additive by design (H-4: a one-player upgrade never lowers the score, which is
+what makes the search well-behaved). Three things follow. The per-player *phase* rates the
+pass already accumulates (`bat_pp_rate` … `bowl_death_rate`, in `PLAYER_ROLE_KEYS`) reach
+the performance model through every player row but reach the objective through nothing: no
+side aggregate reads them, so a side whose batting is front-loaded into the powerplay and one
+whose hitting is at the death read the same. Nothing in the row is a function of *both*
+sides beyond a difference: the objective prices "our batting" and "their bowling" but never
+"our batting against their bowling". And nothing within a side is a product: five bowlers
+and six batters is `n_bowlers`, `n_allrounders` and `has_keeper`, never whether the side has
+*both* a top order and an attack.
+
+**Design: three candidate families, one at a time.** Each family is one arm: the objective
+refitted per fold on `XI_FEATURE_COLS` plus the family's columns, the same model class and
+regularisation (`make_objective_model`), everything else held fixed. A family's columns
+follow the contract's pattern — `d_`, `t1_`, `t2_` per side stem, plus one `x_` column per
+cross term of the two sides.
+
+*(a) Phase matchup.* The follow-up plan named "batters' spin/pace splits against the opposing
+attack's composition". **Cricsheet carries no bowling style** — the ball-by-ball JSON names
+the bowler and nothing about how they bowl, and the people registry is identifiers only —
+so a spin/pace split is not constructible from anything the rating pass reads, and building
+one would mean an external registry of bowling styles, which is a data item, not a feature.
+The per-player split the pass *does* accumulate is by innings phase (powerplay / middle /
+death, `PHASE_BOUNDS`), and that is the matchup axis used here. Per side and phase *p*:
+
+| stem | definition |
+|---|---|
+| `bat_p` | Σ over the eleven of `bat_p_rate` × `exp_balls_faced` — the phase-resolved form of `imp_bat_sum` |
+| `bowl_p` | Σ of `bowl_p_rate` × `exp_balls_bowled` — the phase-resolved form of `imp_bowl_sum` |
+| `x_p_matchup` | `t1_bat_p` · `t2_bowl_p` − `t2_bat_p` · `t1_bowl_p` — team1's batting in *p* against team2's attack in *p*, minus the reverse, so the H-3 marginalisation is coherent |
+
+Six stems (18 columns) and three cross terms: 21 columns.
+
+*(b) Role balance.* Beyond the three counts the objective has, seven stems (21 columns), four
+of them roles the additive objective cannot count and three of them within-side products it
+cannot express:
+
+| stem | definition |
+|---|---|
+| `n_top_order` | players whose as-of expected batting position is ≤ 3.5 |
+| `n_specialist_batters` | players who bat in ≥ 60 % of their appearances and are not a bowling option |
+| `bowl_depth_6th` | the sixth-highest expected balls bowled — the sixth bowling option |
+| `keeper_bat` | the keeper's batting impact (0 without one) |
+| `bat_x_bowl` | `imp_bat_top6` × `imp_bowl_top5` — a side needs both |
+| `allround_x_tail` | `n_allrounders` × `imp_bat_tail` |
+| `attack_balance` | −\|`n_bowlers` − 6\| — an attack of the usual size |
+
+*(c) Reweighting the evidence by the claimed |Δ|.* Not an arm: **a change of the
+measurement, not of the model**, and treated as such. The rotation reading says the pairs
+that dilute T20's agreement are the ones on which the objective itself claims almost nothing
+(|Δ| under 0.01, a third of the scored pairs). Three readings are computed on every arm
+beside the unweighted E5: each pair weighted by the |Δ| the arm claims; the top half of
+pairs by |Δ| unweighted; and agreement by tercile of |Δ| against that tercile's own
+exactly-right expectation. **The bar is re-derived under the same weighting** — the
+weighted agreement an exactly-right objective would produce, its closed form and the 5th
+percentile of 2,000 replicates — so a weighting that concentrates on the pairs the objective
+is surest about raises the bar with the number, which is the point. Whether (c) could ever
+*decide* is settled before the run rather than after: it cannot. A gate whose decider is
+replaced once its number is known is the failure H-23 was written against, and a reweighted
+bar that a format passes by less than its own noise is not a verdict. (c) is reported as
+evidence about *why* the null occurs; if it were to argue for changing what E5 measures,
+that would be a new gate, registered first, with its own run.
+
+**Method (`scripts/experiments/xi/a3_t20_lineup_signal.py`).** Every eleven E5 scores is
+rebuilt from per-player as-of vectors, so that a family can be evaluated without re-running
+the pass: the fielded elevens of match *k* and *k+1* and their opponents from the player
+frame — the same numbers `RatingState.side_vectors` served when the row was built (H-8),
+checked by recomputing the 20 base stems for every training row against the win frame's own
+columns (max abs difference **0.0** in every fold of every arm) — and match *k*'s eleven at
+match *k+1*'s as-of from one advancing pass of `AsOfRatings` over the archive, exactly as
+`natural_experiment.score_previous_elevens` reads it, with the fielded eleven read from the
+same state and compared with the frame (max abs difference **0.0** over 25,751 pairs). Per
+arm, format and fold: the objective fitted on the rows before the cutoff; the marginalised
+AUC on the fold window (H-3, as the harness); H-4's swap probe — one player's five ratings
+raised by one population sd, the first 50 matches of the window — with the arm's own
+feature construction; E5 on the window's pairs with the fold's objective; then the pooled
+decision with `natural_experiment.agreement`, `effect_size` and `derived_bar`, the bar
+under **three seeds** (20260902, 20260903, 20260904). The objective is a deterministic fit,
+so the seeds are the bar's — the only stochastic element in the decision — and an arm must
+clear all three. The locked window (≥ 2026-09-02) is empty by construction (A-4) and is
+scored by `make evaluate` after the choice, as §8.9 and §8.10 did.
+
+**H-21 audit — what the families consume.** Every input is an as-of vector of the eleven
+read from the state at the match date (H-1): the phase rates, expected balls, batting
+position, innings share, keeper flag and the base aggregates. The cross terms are functions
+of the two elevens' as-of aggregates and nothing else. No outcome enters a feature; no
+fitted output is consumed by another fit — the arms are single logistic fits on rows
+before each cutoff. Family (c)'s weights are the arm's own claimed Δ, a function of as-of
+features, never of the result; the null world the weighted bar is derived from is the same
+Bernoulli world as the unweighted one. Serving would read the same stems through
+`aggregate_side` and `side_vectors`, the one read path, so a kept family would inherit H-8's
+parity check without new code on the serving side.
+
+**H-23 triple — gate A-3** (`ml.xi.gates`, registered before the script ran; the script
+prints it first):
+
+- *varies:* the feature family the selection objective reads beyond `XI_FEATURE_COLS` —
+  `none` (today's objective), `phase_matchup` (a), `role_balance` (b) — one logistic fit per
+  arm per fold; and, as a measurement diagnostic on every arm rather than an arm, E5's
+  evidence reweighted by the |Δobjective| the arm itself claims (c).
+- *fixed:* the rows, the eleven quarterly cutoffs (A-4's rotated set, 2024-01 … 2026-06),
+  E5's pairs (the same consecutive 1–3-change pairs, the previous eleven read once from the
+  same as-of pass), the bar's derivation (Bernoulli at the arm's own probabilities, 2,000
+  replicates, the 5th percentile), the objective's model class and regularisation, the
+  display models, the labels.
+- *decides:* in **T20**, an arm's pooled walk-forward lineup-only agreement at or above the
+  bar re-derived from that arm's own claimed effect size, under each of three bar seeds. An
+  arm that clears it ships only if, in **every** format, its fold objective AUC is not lower
+  than today's by more than one fold-level standard error (paired over folds) and its
+  swap-violation share stays under H-4's 2 % — the contract's columns are one list for all
+  formats, so a family that breaks another format's objective is not shippable for T20's
+  sake. The reweighted (c) reading is reported beside the verdict and never decides on its
+  own. A recorded null ships nothing and T20 stays rating-ordered.
+
+**Results** (`scripts/experiments/xi/a3_t20_lineup_signal.py`, run 2026-09-03 on the
+archive frames; eleven folds 2024-01 … 2026-06, 25,751 lineup pairs across the formats,
+the whole run six minutes of which the as-of pass is 40 seconds). "Bar" is the range over
+the three seeds; "by changes" is the agreement on 1- / 2- / 3-player changes; the AUC delta
+and the swap share are the guard.
+
+| arm | format | folds | objective AUC (Δ vs none ± se) | swap share | E5 pairs scored | agreement ± se | claimed median \|Δ\| | exactly-right | bar (3 seeds) | by changes 1 / 2 / 3 | verdict |
+|---|---|---:|---|---:|---:|---|---:|---:|---|---|---|
+| none | **T20** | 11 | 0.697 | 0.0023 | 2,169 | **0.503 ± 0.011** | 0.0208 | 0.521 | 0.505–0.506 | 0.512 / 0.512 / 0.452 | control: fails |
+| none | T20I | 10 | 0.756 | 0.0075 | 220 | 0.564 ± 0.033 | 0.0228 | 0.523 | 0.472–0.474 | 0.575 / 0.610 / 0.482 | reported: passes |
+| none | ODI | 11 | 0.672 | 0.0000 | 692 | 0.566 ± 0.019 | 0.0241 | 0.534 | 0.502–0.504 | 0.588 / 0.529 / 0.591 | reported: passes |
+| none | TEST | 11 | 0.626 | 0.0050 | 213 | 0.549 ± 0.034 | 0.0234 | 0.531 | 0.476–0.477 | 0.629 / 0.597 / 0.432 | reported: passes |
+| phase_matchup | **T20** | 11 | 0.700 (+0.003 ± 0.002) | 0.0012 | 2,169 | **0.510 ± 0.011** | 0.0217 | 0.522 | 0.505–0.506 | 0.521 / 0.523 / 0.442 | **clears the bar; guard fails** |
+| phase_matchup | T20I | 10 | 0.753 (−0.004 ± 0.010) | 0.0076 | 220 | **0.486 ± 0.034** | 0.0275 | 0.511 | 0.459–0.462 | 0.517 / 0.481 / 0.446 | reported: passes |
+| phase_matchup | ODI | 11 | 0.671 (−0.002 ± 0.003) | **0.2431** | 692 | 0.566 ± 0.019 | 0.0240 | 0.535 | 0.504 | 0.602 / 0.529 / 0.565 | reported: passes; **guard fails (H-4)** |
+| phase_matchup | TEST | 11 | 0.619 (**−0.007 ± 0.006**) | 0.0048 | 213 | 0.549 ± 0.034 | 0.0246 | 0.533 | 0.478–0.481 | 0.629 / 0.545 / 0.486 | reported: passes; **guard fails (AUC)** |
+| role_balance | **T20** | 11 | 0.701 (+0.003 ± 0.001) | **0.0287** | 2,169 | **0.496 ± 0.011** | 0.0210 | 0.521 | 0.504–0.506 | 0.504 / 0.510 / 0.439 | **fails; guard fails (H-4)** |
+| role_balance | T20I | 10 | 0.750 (**−0.006 ± 0.004**) | 0.0107 | 220 | 0.559 ± 0.033 | 0.0238 | 0.521 | 0.471–0.472 | 0.563 / 0.597 / 0.500 | reported: passes; guard fails (AUC) |
+| role_balance | ODI | 11 | 0.676 (+0.004 ± 0.004) | 0.0000 | 692 | 0.548 ± 0.019 | 0.0257 | 0.533 | 0.501–0.502 | 0.570 / 0.525 / 0.545 | reported: passes |
+| role_balance | TEST | 11 | 0.622 (−0.004 ± 0.009) | 0.0050 | 213 | 0.512 ± 0.034 | 0.0248 | 0.531 | 0.476–0.479 | 0.581 / 0.532 / 0.432 | reported: passes |
+
+Per-fold T20 agreement, none / phase_matchup / role_balance (pairs in the window):
+2024-01 0.508 / 0.534 / 0.471 (411) · 2024-04 0.512 / 0.482 / 0.494 (447) · 2024-07 0.519 /
+0.533 / 0.537 (496) · 2024-10 0.439 / 0.424 / 0.444 (472) · 2025-01 0.529 / 0.543 / 0.536
+(318) · 2025-04 0.468 / 0.511 / 0.426 (253) · 2025-06 0.469 / 0.472 / 0.458 (805) · 2025-09
+0.517 / 0.510 / 0.517 (360) · 2025-12 0.526 / 0.512 / 0.573 (492) · 2026-03 0.487 / 0.532 /
+0.449 (413) · 2026-06 0.551 / 0.568 / 0.527 (725).
+
+Family (c), the measurement reweighted by the claimed |Δ|, on every arm — agreement /
+exactly-right / bar (three seeds), and the terciles of |Δ| as agreement vs exactly-right:
+
+| arm | format | unweighted | \|Δ\|-weighted (effective pairs) | top half by \|Δ\| | terciles bottom / middle / top (median \|Δ\| 0.006 / 0.021 / 0.052 in T20) |
+|---|---|---|---|---|---|
+| none | **T20** | 0.503 / 0.521 / 0.505–0.506 fails | 0.524 / 0.544 / 0.522–0.523 passes (65) | 0.521 / 0.539 / 0.515–0.516 passes (1,123) | **0.476 vs 0.502** (n=683) / 0.495 vs 0.513 (721) / **0.535 vs 0.549** (765) |
+| none | T20I | 0.564 / 0.523 / 0.472–0.474 passes | 0.561 / 0.548 / 0.475–0.479 passes | 0.564 / 0.536 / 0.463–0.466 passes | 0.559 vs 0.499 / 0.605 vs 0.525 / 0.526 vs 0.543 |
+| none | ODI | 0.566 / 0.534 / 0.502–0.504 passes | **0.612 / 0.557** / 0.512–0.515 passes | 0.616 / 0.551 / 0.507–0.512 passes | 0.527 vs 0.516 / 0.563 vs 0.527 / 0.607 vs 0.557 |
+| none | TEST | 0.549 / 0.531 / 0.476–0.477 passes | 0.555 / 0.563 / 0.488–0.492 passes | 0.529 / 0.562 / 0.482–0.486 passes | 0.533 vs 0.501 / 0.656 vs 0.519 / 0.473 vs 0.571 |
+| phase_matchup | T20 | 0.510 / 0.522 / 0.505–0.506 passes | 0.519 / 0.543 / 0.521 fails | 0.516 / 0.540 / 0.517–0.518 fails | 0.515 vs 0.503 / 0.477 vs 0.511 / 0.535 vs 0.550 |
+| phase_matchup | T20I | 0.486 / 0.511 / 0.459–0.462 passes | 0.572 / 0.552 / 0.478–0.481 passes | 0.559 / 0.548 / 0.476–0.481 passes | 0.377 vs 0.473 / 0.500 vs 0.493 / 0.575 vs 0.561 |
+| phase_matchup | ODI | 0.566 / 0.535 / 0.504 passes | 0.606 / 0.557 / 0.512–0.517 passes | 0.602 / 0.550 / 0.507–0.508 passes | 0.541 vs 0.518 / 0.552 vs 0.521 / 0.604 vs 0.563 |
+| role_balance | T20 | 0.496 / 0.521 / 0.504–0.506 fails | 0.526 / 0.548 / 0.525–0.526 passes | 0.524 / 0.541 / 0.518–0.519 passes | 0.454 vs 0.497 / 0.501 vs 0.512 / 0.529 vs 0.553 |
+| role_balance | ODI | 0.548 / 0.533 / 0.501–0.502 passes | 0.591 / 0.556 / 0.511–0.514 passes | 0.576 / 0.551 / 0.506–0.508 passes | 0.489 vs 0.511 / 0.571 vs 0.527 / 0.579 vs 0.558 |
+
+**Neither family ships; the null is recorded per family and T20 stays rating-ordered.**
+
+- *The control reproduces the harness.* 0.503 over 2,169 pairs against 0.505–0.506
+  (the database run: 0.503 over 2,168 against 0.506 — the archive holds 81 files the
+  database does not yet, one of which makes a pair), the same per-fold rates to every
+  printed decimal, the same AUCs and swap shares in every format. The reconstruction from
+  per-player vectors reads what the pass wrote (parity 0.0 twice over), so what the arms
+  measure is the objective and not the plumbing.
+- *Phase matchup clears T20's bar and is not shippable.* 0.510 ± 0.011 against 0.505–0.506:
+  over the bar by 0.004, **under half a standard error**, and +0.007 over the control — the
+  same pairs, better in seven folds of eleven and worse in four — which is inside the noise
+  floor H-14 draws (the fold sd of the control's agreement is 0.030). Even on the letter
+  of the decider it passes, and the guard says why it must not ship: in **ODI a quarter of
+  one-player upgrades lower P(win)** (1,422 of 5,667; 11–41 % per fold, against H-4's 2 %).
+  The mechanism is collinearity: the three phase impacts sum to almost the whole batting or
+  bowling impact, so the fit is free to put the strength on the phase columns and a
+  *negative* weight on the unresolved total — and an upgrade of a player's overall rating,
+  which moves the total but not the phase columns, then reads as a downgrade. T20's fit
+  happened not to (0.12 %), which is the point of a guard in every format: a column list is
+  one contract. TEST's AUC falls by 0.007 ± 0.006, and — reported, not decided on, but the
+  most telling number in the table — **T20I's agreement falls from 0.564 to 0.486** (2.3
+  standard errors, on the 220 pairs of the one format where the objective is a proven
+  selector): the family does not add a lineup signal, it re-spends the one there is.
+- *Role balance fails outright.* T20 0.496 ± 0.011 against 0.504–0.506, worse than the
+  control on 1- and 2-player changes alike; the within-side products make T20's own
+  surface non-monotone (2.9 % of upgrades lower P(win), over H-4's line), T20I's AUC falls
+  by 0.006 ± 0.004, ODI's agreement drops 0.566 → 0.548. Counting roles the objective does
+  not count changes what it prefers and not how often it is right.
+- *Family (c): the rotation reading is half right, and it is not a verdict.* On the control,
+  T20's agreement rises with the claimed |Δ| — **0.476 / 0.495 / 0.535** across the terciles
+  (median |Δ| 0.006 / 0.021 / 0.052) — so the pairs on which the objective claims almost
+  nothing, the rotation pairs, carry no sign (the bottom tercile is 1.3 standard errors
+  *under* chance) and the pairs it is surest about agree more often. But every tercile sits
+  under its own exactly-right expectation (0.502 / 0.513 / 0.549): the objective is not
+  right as often as it claims anywhere in its range, which is §8.8's reading again, one
+  slice at a time. The reweighted numbers pass their re-derived bars by 0.001–0.005 —
+  |Δ|-weighted 0.524 against 0.522–0.523 on an effective sample of 65 pairs (the weights sit
+  on the p90 tail); top half 0.521 against 0.515–0.516 — which is a coin balanced on its
+  edge, not a selector. ODI shows what a real one looks like under the same weighting:
+  0.566 → 0.612 against an exactly-right 0.557. So (c) is **dropped as a measurement** —
+  it would flip T20's verdict on a margin smaller than its noise, after the number was
+  seen, on a reading whose own expectation it still fails — and **kept as the diagnosis**:
+  the T20 null is the rotation pairs' chance-level sign diluting a small-|Δ| signal that
+  is itself under its claims.
+- *What this leaves.* Two families that address what the objective cannot see leave the
+  number where it was; the constraint is not the feature set tried. To clear its bar at the
+  claimed effect the T20 objective needs about +0.02 of agreement — two standard errors at
+  2,169 pairs — and more pairs (A-5's cadence) shrink the bar's noise but do not move
+  0.503. The candidates the record supports are: a matchup axis the data does not carry
+  (bowling style, which is an external registry and a data item before it is a feature);
+  and an objective fitted *on the pairs* — Δresult regressed on the lineup Δ directly, the
+  one model change that targets this number rather than AUC, which the migration's "model
+  class is not the constraint" lesson (§8.2) did not test because it was measured on AUC.
+  Either is its own item with its own gate; neither is this one.
+- *Two things the guard taught, recorded for the next family.* H-4's probe upgrades five
+  base ratings; a family whose columns are collinear with the base impacts can pass the
+  probe in one format and fail it by 25 % in another from the same fit, so the guard has to
+  run in every format the contract serves. And a family that reads per-player keys the
+  probe does not upgrade (the phase rates) is tested for monotonicity in the base ratings
+  only — a kept family of that kind would need the probe extended to its inputs.
+- *Cost:* six minutes for three arms × four formats × eleven folds; the as-of pass 40
+  seconds with the pairs cached (`output/ml-service/a3/pairs.pkl`).
+
+**Judgment calls, recorded.** The spin/pace split is not in the data, so family (a) is the
+phase matchup (above). "Three seeds" is applied to the bar, the decision's only stochastic
+element, because the objective is a deterministic fit. The guard is in every format because
+`XI_FEATURE_COLS` is one list. The reason on the wire (`NOT_OPTIMISED_REASONS` and go-app's
+mirror) now quotes A-4's rotated-fold figure (0.503 against 0.506 over 2,168 pairs) beside
+P-7's, and says A-3 did not change it.
+
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not

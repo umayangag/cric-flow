@@ -39,8 +39,9 @@ var notOptimisedReasons = map[string]string{
 		"not optimised for win probability.",
 	"T20": "Rating-ordered XI: this format's win objective ranks but has not shown it selects — " +
 		"in the natural experiment (E5) its preference between one side's consecutive elevens " +
-		"agreed with the result change 0.490 of the time against a bar of 0.501 derived from its " +
-		"own claimed effect — so the eleven is picked by as-of rating under the same constraints " +
+		"agreed with the result change 0.503 of the time against a bar of 0.506 derived from its " +
+		"own claimed effect (0.490 against 0.501 when first decided; neither of A-3's feature " +
+		"families changed the verdict) — so the eleven is picked by as-of rating under the same constraints " +
 		"and is not optimised for win probability; the win probability shown still reads the eleven.",
 }
 

@@ -615,7 +615,12 @@ because E5 said X against bar Y` — with the serving policy read from
 `ml.xi.optimizer.NOT_OPTIMISED_REASONS`, so a run whose verdict disagrees with the policy says
 so. The policy itself is set by hand from the report, as E2's is. As of P-7 (plan §8.8): T20I
 and ODI pass their derived bars and are searched on the win objective; **T20 fails its bar and
-is served the rating-ordered eleven**, labelled with that reason, beside TEST's H-17 reason.
+is served the rating-ordered eleven**, labelled with that reason, beside TEST's H-17 reason. Follow-up
+A-3 (plan §8.11) tried to move that number — two feature families in the objective, phase matchup and
+role balance, one at a time on the folds, and a reading of E5 reweighted by the objective's own claimed
+\|Δ\| — and recorded a null per family: the one that clears the bar does so by less than half a
+standard error and breaks H-4's monotonicity in ODI, so nothing shipped and T20 stays rating-ordered
+(0.503 against 0.506 on A-4's rotated folds).
 
 **Rotating the locked window (H-19, A-4).** A locked window is only a holdout while no
 decision has read it. The moment its numbers have guided a release choice — a feature family
