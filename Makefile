@@ -119,7 +119,7 @@ retrain:
 	$(MAKE) -C ml-service retrain CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
 
 # Point `current` at a run and load it into the running ML service. RUN=<id> names one;
-# with none, the run `current` already names, or the newest one.
+# with none, the newest run on disk -- which is the run a retrain just built.
 RUN ?=
 reload:
 	$(MAKE) -C ml-service reload API_KEY="$(API_KEY)" ML_URL="$(ML_URL)" RUN="$(RUN)"

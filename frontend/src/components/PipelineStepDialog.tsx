@@ -149,8 +149,8 @@ const PipelineStepDialog: React.FC<PipelineStepDialogProps> = ({ step, onClose, 
                   fullWidth
                 />
                 <Typography variant="caption" color="text.secondary" display="block">
-                  Leave blank to load the run <code>current</code> already names, or the newest one.
-                  Name a run to swap back to it — the Artifacts panel lists the ones on disk.
+                  Leave blank to load the newest run — the one a retrain just built. Name a run to
+                  swap back to it — the Artifacts panel lists the ones on disk.
                 </Typography>
               </Box>
             )}

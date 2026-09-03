@@ -344,6 +344,62 @@ def test_health_reports_the_run_and_the_freshness_verdict(client, tmp_path, monk
     assert data["ratings"]["code"] == "RATINGS_STALE"
 
 
+def test_reload_with_no_run_publishes_the_newest_one(client, tmp_path):
+    """The pipeline's publish step. `retrain` writes a run and publishes nothing, so the
+    reload after it — which names no run, because neither step passes an id to the other
+    — has to reach the run just built.
+
+    It did not. `current` is set by every reload, and the endpoint consulted it first, so
+    on any box that had ever reloaded, this call re-loaded the run already serving. It
+    succeeded, the run plan completed, and `/xi/status` went on reporting the older run's
+    `ratings_through` — the whole chain green while nothing was published. Two runs on the
+    box A-5 was written on were never served that way.
+    """
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    client.post("/admin/reload?run=20260901T090000Z-11111111")
+
+    _write_run(tmp_path, "20260903T154222Z-4e009a52")
+    resp = client.post("/admin/reload")
+
+    assert resp.status_code == 200
+    assert resp.json()["run_id"] == "20260903T154222Z-4e009a52"
+    assert runs.read_current(str(tmp_path)) == "20260903T154222Z-4e009a52"
+
+
+def test_reload_of_a_named_run_still_rolls_back(client, tmp_path):
+    """Rolling back is naming a run, and stays that way: publishing the newest by default
+    must not take away the only way to serve an earlier one."""
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    _write_run(tmp_path, "20260903T154222Z-4e009a52")
+    client.post("/admin/reload")
+
+    resp = client.post("/admin/reload?run=20260901T090000Z-11111111")
+
+    assert resp.json()["run_id"] == "20260901T090000Z-11111111"
+    assert runs.read_current(str(tmp_path)) == "20260901T090000Z-11111111"
+
+
+def test_a_restart_serves_what_was_published_not_the_newest_run(tmp_path):
+    """The startup path is deliberately the other rule. It calls the registry directly,
+    where `current` wins, so a deliberate rollback survives a restart — the newest run on
+    disk may be exactly the one an operator rolled away from."""
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    _write_run(tmp_path, "20260903T154222Z-4e009a52")
+    runs.set_current(str(tmp_path), "20260901T090000Z-11111111")
+
+    status = xi_service.XiRegistry().reload(str(tmp_path))
+
+    assert status["run_id"] == "20260901T090000Z-11111111"
+
+
+def test_reload_with_no_run_and_nothing_on_disk_says_so(client):
+    """An empty box still answers rather than failing on the newest run being None."""
+    resp = client.post("/admin/reload")
+
+    assert resp.status_code == 200
+    assert resp.json()["loaded"] is False
+
+
 def test_retrain_requires_a_cutoff(client):
     resp = client.post("/admin/train/retrain")
 

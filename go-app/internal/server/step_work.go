@@ -28,9 +28,11 @@ type StepRequest struct {
 	ImportDir string
 	// PlaceholdersFielding fills missing fielding rows during import.
 	PlaceholdersFielding bool
-	// RunID names the run a reload should point `current` at. Empty means "reload
-	// whatever `current` already names", which is what a plan wants: the retrain
-	// before it in the same plan has just written that pointer.
+	// RunID names the run a reload should point `current` at. Empty means the newest
+	// run, which is what a plan wants: the retrain before it in the same plan has just
+	// written one, and it publishes nothing itself. This comment used to say `current`
+	// instead, on the belief that a retrain moved that pointer -- it does not, and the
+	// pipeline published nothing for as long as the belief lasted.
 	RunID string
 	// Feed and SourceURL name the archive an acquisition step works on. Empty means
 	// the configured source (inputs.cricsheet_source_url), which is what a plan and

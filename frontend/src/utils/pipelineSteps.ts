@@ -89,8 +89,8 @@ export function derivePipelineSteps(data: OpsStatus | null): PipelineStep[] {
       migrationCommand: 'xi-reload',
       description:
         'Point `current` at a run and load it into the running ML service. With no run id it loads ' +
-        'the run `current` already names, or the newest one — so Retrain followed by Reload serves ' +
-        'the run just built. Naming a run is how you swap back to an earlier one.',
+        'the newest run on disk — so Retrain followed by Reload serves the run just built. ' +
+        'Naming a run is how you swap back to an earlier one.',
       runnable: true,
     },
   ];

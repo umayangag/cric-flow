@@ -113,9 +113,13 @@ class XiRegistry:
 
     def reload(self, models_dir: str, run_id: Optional[str] = None) -> dict:
         """Load a run and serve it. ``run_id`` names one; without it, whichever run
-        ``current`` points at, and if nothing does, the newest run -- which is then
-        published, so `retrain` followed by `reload` serves the run just built without
-        either step having to pass an id to the other.
+        ``current`` points at, and if nothing does, the newest run.
+
+        Serving what was published is what startup wants, and it is the *only* caller
+        that leaves ``run_id`` empty. The `reload` step does not: ``POST /admin/reload``
+        resolves the newest run first (``main._run_to_publish``), because a reload with
+        no run named is asking for the run just built, and `current` -- which every
+        reload sets -- would otherwise answer with the run already serving.
 
         A run that cannot be served is *refused*, and the reason is kept and reported
         (D-6): loading is where an operator can still be told to retrain, and an

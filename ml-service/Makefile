@@ -66,7 +66,7 @@ xi-parity: venv
 	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)"
 
 # Point `current` at a run and load it into the running service (the `reload` step).
-# RUN names one; with none, the run `current` already names, or the newest one.
+# RUN names one; with none, the newest run on disk -- the one a retrain just built.
 API_KEY ?= dev-local-key
 ML_URL ?= http://localhost:8000
 RUN ?=
