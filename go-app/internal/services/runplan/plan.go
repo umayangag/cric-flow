@@ -40,6 +40,21 @@ const (
 	// rather than a second chaining mechanism, so it gets per-step live state, Stop
 	// and run history without any of them being written twice.
 	PlanImport = "import"
+	// PlanRefresh is the scheduled cadence (A-5): fetch, extract, import, retrain,
+	// reload — new matches all the way through to the run being served.
+	//
+	// It exists because the two halves being separate plans is what lets them come
+	// apart. On the box this was written on the `import` plan had run and no retrain
+	// followed it: the database held matches to 2026-09-01 while the served run's
+	// ratings ran through 2026-08-25, nine days old against H-11's fourteen-day
+	// limit. Nothing was broken; the second half was simply never triggered. One plan
+	// removes the gap, because reload is reached only by walking through retrain.
+	//
+	// Reload publishing only on success is the executor's ordinary behaviour, not a
+	// property of this plan: a failed step stops the walk, so a retrain that fails —
+	// including on the data-quality gate, which the automated path never accepts on
+	// an operator's behalf — leaves `current` pointing where it already pointed.
+	PlanRefresh = "refresh"
 )
 
 // StepStatus is where one step of a plan has got to.
@@ -139,6 +154,19 @@ func planSteps(name string) ([]string, error) {
 		return include(func(s pipelinesvc.Step) bool { return !s.Optional }), nil
 	case PlanRetrainOnly:
 		return include(func(s pipelinesvc.Step) bool { return !s.Optional && s.ID != "import" }), nil
+	case PlanRefresh:
+		// Composed from the two plans it is the concatenation of rather than written
+		// out. A fourth literal list of steps here would be the one that keeps its
+		// old shape after the registry changes.
+		acquire, err := planSteps(PlanImport)
+		if err != nil {
+			return nil, err
+		}
+		train, err := planSteps(PlanRetrainOnly)
+		if err != nil {
+			return nil, err
+		}
+		return append(acquire, train...), nil
 	default:
 		return nil, fmt.Errorf("unknown plan %q; known plans: %s", name, strings.Join(Names(), ", "))
 	}
@@ -146,7 +174,7 @@ func planSteps(name string) ([]string, error) {
 
 // Names returns the known plan names, sorted, for error messages and the API.
 func Names() []string {
-	names := []string{PlanFull, PlanRetrainOnly, PlanImport}
+	names := []string{PlanFull, PlanRetrainOnly, PlanImport, PlanRefresh}
 	sort.Strings(names)
 	return names
 }

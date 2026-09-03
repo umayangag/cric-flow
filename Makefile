@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity full-pipeline
+.PHONY: retrain evaluate reload xi-parity full-pipeline cadence cadence-dry-run
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -139,6 +139,27 @@ xi-parity:
 
 # The pipeline against data already imported: build a run and serve it.
 full-pipeline: retrain reload
+
+# --- The cadence: the pipeline on a schedule (A-5) ---
+#
+# One command a scheduler runs unattended: fetch -> extract -> import -> retrain, and
+# reload only if every step before it succeeded. It drives the `refresh` run plan
+# through the API rather than chaining the targets above, so step ordering, run history,
+# progress and Stop are the server's — a cron entry that chained make targets would be a
+# second pipeline to keep in step with the first, and it could not be stopped.
+#
+# Weekly is the default rhythm: Cricsheet republishes its archive daily-ish, and H-11
+# refuses predictions against ratings older than 14 days, so a weekly run can be missed
+# once and still be inside the limit. See docs/overview.md § Cadence.
+#
+# The stack must be up (make dev-up) and API_KEY must match what it was started with.
+CADENCE_PLAN ?= refresh
+cadence:
+	API_URL="$(API_URL)" API_KEY="$(API_KEY)" PLAN="$(CADENCE_PLAN)" bash scripts/cadence.sh
+
+# The same command, checking its preconditions and starting nothing.
+cadence-dry-run:
+	DRY_RUN=1 $(MAKE) cadence --no-print-directory
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -449,6 +470,8 @@ help:
 	@echo "[Orchestration]"
 	@echo "  up-all             One-shot: docker up → migrate → import → retrain → reload"
 	@echo "  full-pipeline      retrain → reload, against data already imported"
+	@echo "  cadence            The scheduled refresh: fetch → extract → import → retrain → reload [API]"
+	@echo "  cadence-dry-run    Check the cadence's preconditions and start nothing"
 	@echo
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"

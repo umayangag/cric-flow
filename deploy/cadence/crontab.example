@@ -1,0 +1,22 @@
+# Example crontab for the data cadence (A-5), for a box without systemd. NOT installed
+# by anything in this repository: `crontab -e` and paste, or drop it in /etc/cron.d/
+# with a user column.
+#
+# Prefer the systemd timer beside this file where there is a choice. cron has no
+# equivalent of Persistent=true, so a box that is off on Monday morning simply skips the
+# week -- and two skipped weeks is ratings older than H-11's 14-day limit, which is a
+# service answering RATINGS_STALE rather than a run that is merely late.
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+# The cadence's own output is the log. MAILTO turns a non-zero exit into mail; the exit
+# codes are in scripts/cadence.sh, and only 0 means "the run is served and fresh".
+MAILTO=ops@example.com
+
+# Weekly, Monday 06:17 UTC. The odd minute is deliberate: Cricsheet is one small
+# volunteer-run host, and every deployment fetching on the hour is a herd.
+17 6 * * 1  cd /opt/cric-flow && API_KEY="$(cat /etc/cric-flow/api-key)" make cadence
+
+# Checking the cadence without running it -- what to put in a smoke check or run by hand
+# after changing the key or the URL. It starts nothing.
+# 0 5 * * 1   cd /opt/cric-flow && API_KEY="$(cat /etc/cric-flow/api-key)" make cadence-dry-run

@@ -1,0 +1,28 @@
+# Example timer for the data cadence (A-5). NOT installed or enabled by anything in
+# this repository. See cric-flow-cadence.service for how to install both.
+#
+# Weekly, because Cricsheet's update rhythm decides the cadence: the archive is
+# republished daily-ish, and a week's worth of matches is the smallest batch that is
+# worth a 10-minute retrain. H-11 refuses predictions against ratings older than 14
+# days, so a weekly run may be missed once and still leave the service answering.
+#
+# Monday morning UTC: the weekend's cricket is in the archive by then, and a run that
+# fails has the working week in front of it rather than behind it.
+
+[Unit]
+Description=Weekly cric-flow data cadence
+Documentation=file:///opt/cric-flow/docs/overview.md
+
+[Timer]
+OnCalendar=Mon *-*-* 06:00:00 UTC
+# Cricsheet is one small volunteer-run host; every deployment firing at exactly 06:00
+# would be a self-inflicted thundering herd on it.
+RandomizedDelaySec=1800
+# A box that was off on Monday runs the cadence when it comes back rather than waiting
+# a week -- which is the difference between ratings 8 days old and 15 (H-11 refuses at
+# 14).
+Persistent=true
+Unit=cric-flow-cadence.service
+
+[Install]
+WantedBy=timers.target

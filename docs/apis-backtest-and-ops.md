@@ -196,3 +196,33 @@ to do three things in an order the message does not name is how the old list was
 **Force gaps to test:** point `GO_APP_ARTIFACTS_ROOT` at an empty directory and recheck
 `artifacts` and `suggestions`; remove a run's `manifest.json` and recheck that it is listed as
 `has_manifest: false` and that a reload of it answers 409.
+
+---
+
+## The cadence (unattended)
+
+`make cadence` is the scheduled counterpart of the console: it starts the `refresh` run plan
+(fetch → extract → import → retrain → reload) through `POST /ops/pipeline/run-plan`, polls
+`GET /ops/pipeline/plan` until it stops, and turns the outcome into an exit code. Nothing about
+the pipeline lives in the script — ordering, lanes, run history and "stop at the first failure"
+are already the server's, and a scheduler with its own copy of them would be a second pipeline.
+`make cadence-dry-run` checks the same preconditions (API reachable, key accepted, the plan
+offered, nothing already running) and starts nothing.
+
+| Exit | |
+|---|---|
+| 0 | the plan completed and `ratings.fresh` is true |
+| 1 | precondition: missing `curl`/`jq`, unreachable API, unknown plan |
+| 2 | a step failed; nothing after it ran, so `current` did not move |
+| 3 | a plan was already in flight |
+| 4 | cancelled, or still running after `TIMEOUT_MINUTES` |
+| 5 | the plan completed but the ratings are still outside H-11's limit |
+
+Exit 5 is the interesting one: the chain worked and the service will still refuse live
+predictions, which means the data itself is old (no matches published, or a source problem) —
+not something another run will fix. `POST /ops/pipeline/stop` stops a cadence exactly as it
+stops a console run, including the training process on ml-service.
+
+Environment: `API_URL`, `API_KEY`, `PLAN`, `POLL_SECONDS`, `TIMEOUT_MINUTES`, `DRY_RUN`.
+Scheduler examples are in `deploy/cadence/`; the rhythm and what to check afterwards are in
+[overview.md](overview.md) § Cadence.

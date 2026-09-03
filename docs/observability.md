@@ -72,6 +72,13 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   surface and carries no `Requires`. There is no longer a `tune` plan: the grid runs
   inside `retrain`, so searching and training cannot be run in the order that throws the
   artifacts away.
+- **`refresh` is the scheduled cadence** (A-5): `import` followed by `retrain-only`, so
+  fetch → extract → import → retrain → reload. It is composed from the two plans rather
+  than written out, and it exists because those two being separate is what lets them come
+  apart — on the box A-5 was written on the `import` plan had run with no retrain after
+  it, leaving the served ratings 9 days old (H-11 refuses at 14) while the database held
+  matches 2 days old. `make cadence` is the unattended way in; see
+  [overview.md](overview.md) § Cadence.
 - **State lives in `data_migrations`** under `pipeline-plan`, written before and after
   every step rather than only at the end. A page reload, another tab, or a browser
   closed overnight does not lose the run.
