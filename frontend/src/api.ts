@@ -19,6 +19,9 @@ import type {
   RunPlanStartResponse,
   TeamSideOption,
   PipelineStopResult,
+  CandidatesResponse,
+  PoolRequest,
+  RetirementStatus,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -412,10 +415,54 @@ export const api = {
     extra_team2?: number[];
     min_bowlers?: number;
     require_keeper?: boolean;
+    /** Each side's candidate pool (D-12). Omitted, both get the per-format recency window. */
+    team1_pool?: PoolRequest;
+    team2_pool?: PoolRequest;
   }): Promise<PredictTeamSelectionResponse> {
     return httpApi('/api/predict/team-selection', {
       method: 'POST',
       body: JSON.stringify(params),
     });
+  },
+
+  /**
+   * The candidate list a manual pool is ticked out of (D-12).
+   *
+   * It returns the players the pool would offer *and* the ones the retirement ledger is
+   * keeping out, marked with the reason — an exclusion a user cannot see is one they
+   * cannot undo.
+   */
+  getCandidates(params: {
+    format: string;
+    club_id: number;
+    match_date?: string;
+    window_months?: number;
+    all_time?: boolean;
+  }): Promise<CandidatesResponse> {
+    const url = new URL('/api/options/candidates', BASE_API_URL);
+    url.searchParams.set('format', params.format);
+    url.searchParams.set('club_id', String(params.club_id));
+    if (params.match_date) url.searchParams.set('match_date', params.match_date);
+    if (params.window_months) url.searchParams.set('window_months', String(params.window_months));
+    if (params.all_time) url.searchParams.set('all_time', 'true');
+    return httpApi(url.toString());
+  },
+
+  /**
+   * Flag a player retired.
+   *
+   * The claim hides him from this user's default pools straight away; it becomes the
+   * stored `is_retired` fact only where an independent criterion corroborates it, and the
+   * response says which one did — or which checks could not be made.
+   */
+  flagRetirement(playerId: number, format?: string): Promise<RetirementStatus> {
+    const url = new URL(`/api/players/${playerId}/retirement`, BASE_API_URL);
+    if (format) url.searchParams.set('format', format);
+    return httpApi(url.toString(), { method: 'POST' });
+  },
+
+  /** Withdraw a retirement flag, demoting the stored fact it had raised. */
+  unflagRetirement(playerId: number): Promise<RetirementStatus> {
+    return httpApi(`/api/players/${playerId}/retirement`, { method: 'DELETE' });
   },
 };

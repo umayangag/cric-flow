@@ -19,7 +19,9 @@ import TeamTable from './TeamTable';
 import MatchScorecard from './MatchScorecard';
 import ErrorNotice from './common/ErrorNotice';
 import PredictionReadiness from './PredictionReadiness';
-import { useUpcomingMatch } from '../hooks/useUpcomingMatch';
+import PoolSummary from './PoolSummary';
+import CandidatePoolDialog from './CandidatePoolDialog';
+import { useUpcomingMatch, type SidePoolChoice } from '../hooks/useUpcomingMatch';
 import type { TeamSideOption } from '../types';
 
 // Sides are matched on their display name -- "India (men)" -- so typing "women" narrows the
@@ -69,7 +71,27 @@ const UpcomingMatchTab: React.FC = () => {
     handlePredict,
     maxFutureDays,
     opsStatus,
+    team1Pool,
+    setTeam1Pool,
+    team2Pool,
+    setTeam2Pool,
+    widenPool,
   } = useUpcomingMatch();
+
+  // Which side's candidate list is open, if any. Manual picking is optional and off by
+  // default, so this starts closed and staying closed changes nothing (D-12).
+  const [openPoolFor, setOpenPoolFor] = React.useState<1 | 2 | null>(null);
+
+  const sides: {
+    side: 1 | 2;
+    team: TeamSideOption | null;
+    pool: SidePoolChoice;
+    setPool: React.Dispatch<React.SetStateAction<SidePoolChoice>>;
+  }[] = [
+    { side: 1, team: team1, pool: team1Pool, setPool: setTeam1Pool },
+    { side: 2, team: team2, pool: team2Pool, setPool: setTeam2Pool },
+  ];
+  const openSide = sides.find((entry) => entry.side === openPoolFor) ?? null;
 
   return (
     <Box>
@@ -155,6 +177,27 @@ const UpcomingMatchTab: React.FC = () => {
           fullWidth
         />
 
+        {/*
+          The candidate pool is bounded by recency now, and this is where a user widens it
+          or picks by hand. Touching neither control is the default and the unchanged flow
+          (D-12).
+        */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+          {sides.map((entry) => (
+            <Button
+              key={entry.side}
+              size="small"
+              variant="outlined"
+              disabled={!format || !entry.team}
+              onClick={() => setOpenPoolFor(entry.side)}
+            >
+              {entry.pool.players?.length
+                ? `Team ${entry.side} pool: ${entry.pool.players.length} chosen`
+                : `Choose team ${entry.side} candidates`}
+            </Button>
+          ))}
+        </Stack>
+
         <Button
           variant="contained"
           onClick={handlePredict}
@@ -164,6 +207,21 @@ const UpcomingMatchTab: React.FC = () => {
           {loading ? 'Predicting…' : 'Predict best 11'}
         </Button>
       </Stack>
+
+      {openSide?.team && (
+        <CandidatePoolDialog
+          open
+          onClose={() => setOpenPoolFor(null)}
+          format={format}
+          clubId={openSide.team.club_id}
+          teamName={openSide.team.display_name}
+          matchDate={matchDate}
+          allTime={openSide.pool.allTime}
+          onAllTimeChange={(allTime) => openSide.setPool((current) => ({ ...current, allTime }))}
+          selected={openSide.pool.players}
+          onApply={(players) => openSide.setPool((current) => ({ ...current, players }))}
+        />
+      )}
 
       <PredictionReadiness status={opsStatus} />
 
@@ -192,16 +250,30 @@ const UpcomingMatchTab: React.FC = () => {
               : 'Rating-ordered 11 for each team'}
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-            <TeamTable
-              teamName={result.team1_side.display_name}
-              players={result.team1}
-              optimised={result.selection.optimised}
-            />
-            <TeamTable
-              teamName={result.team2_side.display_name}
-              players={result.team2}
-              optimised={result.selection.optimised}
-            />
+            <Box sx={{ flex: 1 }}>
+              <PoolSummary
+                pool={result.team1_pool}
+                teamName={result.team1_side.display_name}
+                onWiden={() => void widenPool(1)}
+              />
+              <TeamTable
+                teamName={result.team1_side.display_name}
+                players={result.team1}
+                optimised={result.selection.optimised}
+              />
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <PoolSummary
+                pool={result.team2_pool}
+                teamName={result.team2_side.display_name}
+                onWiden={() => void widenPool(2)}
+              />
+              <TeamTable
+                teamName={result.team2_side.display_name}
+                players={result.team2}
+                optimised={result.selection.optimised}
+              />
+            </Box>
           </Stack>
         </Box>
       )}

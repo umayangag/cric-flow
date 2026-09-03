@@ -3,9 +3,31 @@ import { api } from '../api';
 import { useAsync } from './useAsync';
 import { useVenueSearch } from './useVenueSearch';
 import type { ApiError } from '../lib/apiError';
-import type { PredictTeamSelectionResponse, TeamSideOption } from '../types';
+import type { PoolRequest, PredictTeamSelectionResponse, TeamSideOption } from '../types';
 
 const MAX_FUTURE_DAYS = 14;
+
+/**
+ * One side's pool choice: the default recency window, widened to all-time, or a hand-picked
+ * subset (D-12).
+ *
+ * `players: null` is the default pool, and is not the same as an empty list — that
+ * difference is what keeps manual picking optional.
+ */
+export type SidePoolChoice = { allTime: boolean; players: number[] | null };
+
+const DEFAULT_POOL_CHOICE: SidePoolChoice = { allTime: false, players: null };
+
+/**
+ * Turn a side's choice into the request field, leaving it out entirely when nothing was
+ * chosen. An omitted `team1_pool` is the per-format recency window, which is the default
+ * and the fix: sending `{}` would say the same thing more loudly and no more truly.
+ */
+function poolRequestFrom(choice: SidePoolChoice): PoolRequest | undefined {
+  if (choice.players?.length) return { players: choice.players };
+  if (choice.allTime) return { all_time: true };
+  return undefined;
+}
 
 function formatDateForInput(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -60,6 +82,10 @@ export function useUpcomingMatch() {
   const [team2, setTeam2] = useState<TeamSideOption | null>(null);
   const [venue, setVenue] = useState('');
   const [matchDate, setMatchDate] = useState('');
+  // Each side's pool choice. The default is the per-format recency window, which is what
+  // a user gets by touching none of this (D-12).
+  const [team1Pool, setTeam1Pool] = useState<SidePoolChoice>(DEFAULT_POOL_CHOICE);
+  const [team2Pool, setTeam2Pool] = useState<SidePoolChoice>(DEFAULT_POOL_CHOICE);
 
   const formats = useAsync(api.getFormats, {
     runOnMount: [],
@@ -130,16 +156,43 @@ export function useUpcomingMatch() {
   );
 
   const { run: predict } = prediction;
-  const handlePredict = useCallback(async () => {
-    if (!canPredict || !team1 || !team2) return;
-    await predict({
-      format: format.trim(),
-      team1_id: team1.club_id,
-      team2_id: team2.club_id,
-      venue: venue.trim() || undefined,
-      match_date: matchDate,
-    });
-  }, [canPredict, predict, format, team1, team2, venue, matchDate]);
+  const runPrediction = useCallback(
+    async (pool1: SidePoolChoice, pool2: SidePoolChoice) => {
+      if (!canPredict || !team1 || !team2) return;
+      await predict({
+        format: format.trim(),
+        team1_id: team1.club_id,
+        team2_id: team2.club_id,
+        venue: venue.trim() || undefined,
+        match_date: matchDate,
+        team1_pool: poolRequestFrom(pool1),
+        team2_pool: poolRequestFrom(pool2),
+      });
+    },
+    [canPredict, predict, format, team1, team2, venue, matchDate],
+  );
+
+  const handlePredict = useCallback(
+    () => runPrediction(team1Pool, team2Pool),
+    [runPrediction, team1Pool, team2Pool],
+  );
+
+  // Widening a side's pool predicts again straight away: "use the all-time pool" is a
+  // question about the answer on screen, and leaving the old one there would answer it
+  // with a number the new pool did not produce.
+  const widenPool = useCallback(
+    async (side: 1 | 2) => {
+      const widened: SidePoolChoice = { allTime: true, players: null };
+      if (side === 1) {
+        setTeam1Pool(widened);
+        await runPrediction(widened, team2Pool);
+        return;
+      }
+      setTeam2Pool(widened);
+      await runPrediction(team1Pool, widened);
+    },
+    [runPrediction, team1Pool, team2Pool],
+  );
 
   // One error at a time, newest first: a failed prediction is what the user just did,
   // and an option list that failed to load is visible as an empty picker anyway.
@@ -173,5 +226,10 @@ export function useUpcomingMatch() {
     handlePredict,
     maxFutureDays: MAX_FUTURE_DAYS,
     opsStatus: opsStatus.data,
+    team1Pool,
+    setTeam1Pool,
+    team2Pool,
+    setTeam2Pool,
+    widenPool,
   };
 }

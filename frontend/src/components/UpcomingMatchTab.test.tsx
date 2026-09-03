@@ -55,6 +55,20 @@ const baseState = {
   handlePredict: vi.fn(),
   maxFutureDays: 14,
   opsStatus: null,
+  team1Pool: { allTime: false, players: null },
+  setTeam1Pool: vi.fn(),
+  team2Pool: { allTime: false, players: null },
+  setTeam2Pool: vi.fn(),
+  widenPool: vi.fn(),
+};
+
+/** The default pool a response carries: the measured recency window, nothing excluded. */
+const defaultPool = {
+  source: 'recency_window' as const,
+  window_months: 9,
+  since: '2025-12-10',
+  size: 24,
+  retired_excluded: 0,
 };
 
 function prediction(
@@ -77,6 +91,8 @@ function prediction(
     team2: [],
     selection: { objective: 'win', optimised: true },
     win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
+    team1_pool: defaultPool,
+    team2_pool: defaultPool,
     ...overrides,
   };
 }
