@@ -2,19 +2,14 @@ package db
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-)
 
-// guardIntegration returns true if RUN_DB_TESTS=1
-func guardIntegration(t *testing.T) bool {
-	t.Helper()
-	return os.Getenv("RUN_DB_TESTS") == "1"
-}
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
+)
 
 // migrationsDir returns an absolute path to the migrations directory regardless of the
 // working directory Go test uses (which may be a temp dir). It derives the path from
@@ -26,9 +21,7 @@ func migrationsDir() string {
 }
 
 func TestInsertBallEvents_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)

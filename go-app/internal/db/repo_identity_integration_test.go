@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 )
 
 // connectAndMigrateForIdentity brings up a migrated database and empties the two identity
@@ -28,9 +30,7 @@ func connectAndMigrateForIdentity(t *testing.T) context.Context {
 }
 
 func TestGetOrCreatePlayer_TwoPeopleSharingANameAreTwoRows_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 
 	westIndies, _, err := GetOrCreatePlayer(ctx, "92cf79a8", "SR Taylor", "2015-06-01")
@@ -42,9 +42,7 @@ func TestGetOrCreatePlayer_TwoPeopleSharingANameAreTwoRows_Integration(t *testin
 }
 
 func TestGetOrCreatePlayer_OnePersonUnderTwoSpellingsIsOneRow_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 
 	first, _, err := GetOrCreatePlayer(ctx, "f3a18a0c", "NR Sciver", "2022-06-01")
@@ -57,9 +55,7 @@ func TestGetOrCreatePlayer_OnePersonUnderTwoSpellingsIsOneRow_Integration(t *tes
 }
 
 func TestGetOrCreatePlayer_WithoutARegistryEntryFallsBackToOneRowPerName_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 
 	first, _, err := GetOrCreatePlayer(ctx, "", "Unregistered Player", "2024-01-01")
@@ -74,9 +70,7 @@ func TestGetOrCreatePlayer_WithoutARegistryEntryFallsBackToOneRowPerName_Integra
 }
 
 func TestUpdatePlayerDisplayNames_RenamesToTheMostRecentSpelling_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	id, _, err := GetOrCreatePlayer(ctx, "f3a18a0c", "NR Sciver", "2022-06-01")
 	require.NoError(t, err)
@@ -91,9 +85,7 @@ func TestUpdatePlayerDisplayNames_RenamesToTheMostRecentSpelling_Integration(t *
 }
 
 func TestUpdatePlayerDisplayNames_AnOlderMatchNeverRevertsAName_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	id, _, err := GetOrCreatePlayer(ctx, "f3a18a0c", "NR Sciver-Brunt", "2024-07-01")
 	require.NoError(t, err)
@@ -108,9 +100,7 @@ func TestUpdatePlayerDisplayNames_AnOlderMatchNeverRevertsAName_Integration(t *t
 }
 
 func TestGetOrCreateOpposition_SameNameDifferentGenderAreTwoTeams_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 
 	mens, err := GetOrCreateOpposition(ctx, "Australia", "male")
@@ -125,9 +115,7 @@ func TestGetOrCreateOpposition_SameNameDifferentGenderAreTwoTeams_Integration(t 
 }
 
 func TestResolveTeamSide_UnknownTeamIsAnError_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	_, err := GetOrCreateOpposition(ctx, "Australia", "male")
 	require.NoError(t, err)
@@ -139,9 +127,7 @@ func TestResolveTeamSide_UnknownTeamIsAnError_Integration(t *testing.T) {
 }
 
 func TestUpdatePlayerDisplayNames_LeavesTheNameKeyedFallbackAlone_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	id, _, err := GetOrCreatePlayer(ctx, "", "Unregistered Player", "2024-01-01")
 	require.NoError(t, err)
@@ -159,9 +145,7 @@ func TestUpdatePlayerDisplayNames_LeavesTheNameKeyedFallbackAlone_Integration(t 
 }
 
 func TestApplyTeamLineage_LinksASupersededClubToItsCurrentRow_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	old, err := GetOrCreateOpposition(ctx, "Royal Challengers Bangalore", "male")
 	require.NoError(t, err)
@@ -188,9 +172,7 @@ func TestApplyTeamLineage_LinksASupersededClubToItsCurrentRow_Integration(t *tes
 }
 
 func TestApplyTeamLineage_LeavesTheOtherGenderAlone_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	womensOld, err := GetOrCreateOpposition(ctx, "Lightning", "female")
 	require.NoError(t, err)
@@ -219,9 +201,7 @@ func TestApplyTeamLineage_LeavesTheOtherGenderAlone_Integration(t *testing.T) {
 }
 
 func TestApplyTeamLineage_IsIdempotentAndSkipsARenameThisDatasetDoesNotHave_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	_, err := GetOrCreateOpposition(ctx, "Kings XI Punjab", "male")
 	require.NoError(t, err)

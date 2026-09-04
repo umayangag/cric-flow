@@ -12,6 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// DefaultDatabase is the database a process talks to when POSTGRES_DB is unset: the
+// working one, holding the imported archive. It is exported because the destructive
+// integration tests refuse to run against it, and that refusal must name the same
+// database this default names.
+const DefaultDatabase = "cricket_data"
+
 // BuildDSN composes a PostgreSQL DSN from individual parts. Pure helper for testing.
 func BuildDSN(user, pass, host, port, database, ssl string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, database, ssl)
@@ -30,7 +36,7 @@ func getenv(key, def string) string {
 func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	host := getenv("POSTGRES_HOST", "localhost")
 	port := getenv("POSTGRES_PORT", "5432")
-	database := getenv("POSTGRES_DB", "cricket_data")
+	database := getenv("POSTGRES_DB", DefaultDatabase)
 	user := getenv("POSTGRES_USER", "postgres")
 	pass := getenv("POSTGRES_PASSWORD", "postgres")
 	ssl := getenv("POSTGRES_SSLMODE", "disable")
