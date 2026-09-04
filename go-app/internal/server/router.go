@@ -71,9 +71,20 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/options/venues", optionsHandler.HandleGetVenues).
 		Methods(http.MethodGet, http.MethodOptions)
+	// The candidate list a user picks a pool out of, and what the ledger is keeping out
+	// of it (D-12). It is an options route because that is what it is: the choices a
+	// prediction request can be built from.
+	admin.HandleFunc("/api/options/candidates", a.candidatesHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Domain queries
 	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet, http.MethodOptions)
+	// The retirement ledger: a user's claim that a player has retired, and its
+	// withdrawal. POST records the claim and promotes it to the stored fact only where a
+	// criterion corroborates it; DELETE withdraws the claim and demotes the fact it
+	// raised (D-12).
+	admin.HandleFunc("/api/players/{id}/retirement", a.retirementFlagHandler).
+		Methods(http.MethodPost, http.MethodDelete, http.MethodOptions)
 	admin.HandleFunc("/matches/{id}", getMatchHandler).Methods(http.MethodGet, http.MethodOptions)
 
 	// Future match prediction: both XIs, the win probability and the simulated scorecard.

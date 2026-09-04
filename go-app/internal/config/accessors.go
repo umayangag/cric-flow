@@ -151,6 +151,24 @@ func SelectionBestResponseRounds(cfg *Config) int {
 	return DefaultSelectionBestResponseRounds
 }
 
+// RetirementInactiveYears returns criterion (a)'s bound: how long a player must have
+// appeared in no format for an inactivity claim to corroborate a retirement flag (D-12).
+func RetirementInactiveYears(cfg *Config) int {
+	if cfg != nil && cfg.Pool.Retirement.InactiveYears > 0 {
+		return cfg.Pool.Retirement.InactiveYears
+	}
+	return DefaultRetirementInactiveYears
+}
+
+// RetirementAgeInactiveYears returns criterion (c)'s inactivity half: how long a player
+// above the age bound must also have been inactive (D-12).
+func RetirementAgeInactiveYears(cfg *Config) int {
+	if cfg != nil && cfg.Pool.Retirement.AgeInactiveYears > 0 {
+		return cfg.Pool.Retirement.AgeInactiveYears
+	}
+	return DefaultRetirementAgeInactiveYears
+}
+
 // Resource limits (used by the resources package). 0 in config = use default constant.
 func ResourcesImportMBPerWorker(cfg *Config) int {
 	if cfg != nil && cfg.Resources != nil && cfg.Resources.ImportMBPerWorker > 0 {

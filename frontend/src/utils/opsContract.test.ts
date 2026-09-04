@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
-import { TEAM_GENDERS } from '../types';
+import { POOL_EXCLUSION_REASONS, POOL_SOURCES, TEAM_GENDERS } from '../types';
 
 /**
  * The backend/frontend contract test.
@@ -39,6 +39,9 @@ type Contract = {
   cutoff: { pattern: string; hint: string; example: string };
   /** The gender half of a team's identity, as all three components spell it (H-24, D-10). */
   team_genders: string[];
+  /** How a candidate pool was chosen, and why the ledger excluded a player (H-24, D-12). */
+  pool_sources: string[];
+  pool_exclusion_reasons: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -154,6 +157,19 @@ describe('ops console contract', () => {
    */
   it('spells the team genders the way the backend does', () => {
     expect([...TEAM_GENDERS].sort()).toEqual([...contract.team_genders].sort());
+  });
+
+  /**
+   * The candidate pool's vocabulary is the contract's too (H-24, D-12).
+   *
+   * go-app names the source of every pool it builds and the reason for every player the
+   * retirement ledger removes; the Upcoming-match tab renders both. A source the UI does
+   * not recognise would be shown as nothing while looking perfectly fine on the wire —
+   * which is exactly the silence D-12 fixed, put back one layer up.
+   */
+  it('spells the pool sources and exclusion reasons the way the backend does', () => {
+    expect([...POOL_SOURCES].sort()).toEqual([...contract.pool_sources].sort());
+    expect([...POOL_EXCLUSION_REASONS].sort()).toEqual([...contract.pool_exclusion_reasons].sort());
   });
 
   /**

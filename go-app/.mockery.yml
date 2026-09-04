@@ -11,6 +11,12 @@ packages:
       DB: {}
       Row: {}
       Rows: {}
+  github.com/umayangag/cric-flow/go-app/internal/availability:
+    config:
+      dir: internal/availability/mocks
+      pkgname: mocks
+    interfaces:
+      Store: {}
   github.com/umayangag/cric-flow/go-app/internal/cricsheet:
     config:
       dir: internal/cricsheet/mocks

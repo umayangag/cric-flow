@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 	"github.com/umayangag/cric-flow/go-app/internal/teams"
@@ -189,10 +190,11 @@ func TestBuildPredictInput_CarriesBothSideReferencesThrough(t *testing.T) {
 		Team1ID:     43,
 		Team2:       "Australia",
 		Team2Gender: "male",
-	}, matchDate)
+	}, matchDate, availability.DefaultActor)
 
 	assert.Equal(t, db.TeamRef{ClubID: 43}, input.Team1)
 	assert.Equal(t, db.TeamRef{Name: "Australia", Gender: "male"}, input.Team2)
+	assert.Equal(t, availability.DefaultActor, input.Actor)
 }
 
 func TestParseClubID(t *testing.T) {

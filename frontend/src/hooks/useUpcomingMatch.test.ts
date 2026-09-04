@@ -95,7 +95,67 @@ describe('useUpcomingMatch', () => {
       team2_id: 12,
       venue: undefined,
       match_date: tomorrow(),
+      team1_pool: undefined,
+      team2_pool: undefined,
     });
+  });
+
+  // The default pool is the per-format recency window, and asking for it is saying
+  // nothing: an omitted `team1_pool` is what the backend reads as the default (D-12).
+  it('asks for nothing about the pool by default', async () => {
+    const { result } = renderHook(() => useUpcomingMatch());
+    act(() => {
+      result.current.setFormat('T20I');
+      result.current.setTeam1(indiaWomen);
+      result.current.setTeam2(australiaWomen);
+      result.current.setMatchDate(tomorrow());
+    });
+    await waitFor(() => expect(result.current.canPredict).toBe(true));
+
+    await act(() => result.current.handlePredict());
+
+    expect(mockPredict.mock.calls[0][0].team1_pool).toBeUndefined();
+    expect(mockPredict.mock.calls[0][0].team2_pool).toBeUndefined();
+  });
+
+  // Widening is a question about the answer on screen, so it predicts again rather than
+  // leaving a number the new pool did not produce beside a line that says it did.
+  it('widens one side to the all-time pool and predicts again', async () => {
+    const { result } = renderHook(() => useUpcomingMatch());
+    act(() => {
+      result.current.setFormat('T20I');
+      result.current.setTeam1(indiaWomen);
+      result.current.setTeam2(australiaWomen);
+      result.current.setMatchDate(tomorrow());
+    });
+    await waitFor(() => expect(result.current.canPredict).toBe(true));
+
+    await act(() => result.current.widenPool(1));
+
+    expect(mockPredict).toHaveBeenCalledWith(
+      expect.objectContaining({ team1_pool: { all_time: true }, team2_pool: undefined }),
+    );
+    expect(result.current.team1Pool).toEqual({ allTime: true, players: null });
+  });
+
+  // A manual pick is the pool: the ids the user ticked, and neither the window nor the
+  // ledger applied to them.
+  it('sends a hand-picked pool as the pool', async () => {
+    const { result } = renderHook(() => useUpcomingMatch());
+    act(() => {
+      result.current.setFormat('T20I');
+      result.current.setTeam1(indiaWomen);
+      result.current.setTeam2(australiaWomen);
+      result.current.setMatchDate(tomorrow());
+    });
+    await waitFor(() => expect(result.current.canPredict).toBe(true));
+    act(() => result.current.setTeam2Pool({ allTime: true, players: [4, 9] }));
+
+    await act(() => result.current.handlePredict());
+
+    expect(mockPredict).toHaveBeenCalledWith(
+      expect.objectContaining({ team2_pool: { players: [4, 9] } }),
+    );
   });
 
   it('does not predict while the form is incomplete', async () => {

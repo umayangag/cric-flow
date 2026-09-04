@@ -110,6 +110,92 @@ export type TeamSideOption = {
   display_name: string;
 };
 
+/**
+ * How a side's candidate pool was chosen, exactly as the wire spells it.
+ *
+ * Declared in contracts/ops-console.contract.json and asserted against it by
+ * `opsContract.test.ts` (H-24). The pool used to be all-time and unstated, which is how
+ * the Upcoming-match tab came to offer players who retired a decade ago (D-12); a source
+ * the UI cannot name would put that silence back.
+ */
+export const POOL_SOURCES = ['recency_window', 'all_time', 'manual'] as const;
+export type PoolSource = (typeof POOL_SOURCES)[number];
+
+/** Why the retirement ledger left a candidate out of the pool. */
+export const POOL_EXCLUSION_REASONS = ['user_flagged', 'retired'] as const;
+export type PoolExclusionReason = (typeof POOL_EXCLUSION_REASONS)[number];
+
+/** One candidate the ledger kept out of the pool, with the reason a user can undo. */
+export type PoolExcludedCandidate = {
+  player_id: number;
+  player_name: string;
+  /** YYYY-MM-DD; absent where he never played for this club in this format. */
+  last_played?: string;
+  reason: PoolExclusionReason;
+  /** The criterion's evidence, where a criterion corroborated the flag. */
+  detail?: string;
+};
+
+/** Which candidates an XI was chosen out of, and who was left out (D-12). */
+export type PoolSummary = {
+  source: PoolSource;
+  /** The window applied, in months; absent on an all-time or manual pool. */
+  window_months?: number;
+  /** The first match date the window accepted, YYYY-MM-DD. */
+  since?: string;
+  size: number;
+  retired_excluded: number;
+  excluded?: PoolExcludedCandidate[];
+};
+
+/** One player on the candidate list a manual pool is ticked out of. */
+export type PoolCandidate = {
+  player_id: number;
+  player_name: string;
+  is_wicket_keeper: boolean;
+  last_played?: string;
+  /** True where the ledger is keeping him out of the default pool. */
+  excluded: boolean;
+  reason?: PoolExclusionReason;
+  detail?: string;
+};
+
+/** GET /api/options/candidates: the list, and the scope it was drawn from. */
+export type CandidatesResponse = {
+  side: TeamSideOption;
+  pool: PoolSummary;
+  candidates: PoolCandidate[];
+};
+
+/**
+ * What flagging or un-flagging a player did.
+ *
+ * `promoted` is the honest part: a claim that corroborated nothing hides the player from
+ * this user's pools and from nobody else's, and the response says so rather than letting
+ * the user believe they changed a fact about the player.
+ */
+export type RetirementStatus = {
+  player_id: number;
+  flagged: boolean;
+  promoted: boolean;
+  criterion?: string;
+  detail?: string;
+  /** Criteria whose evidence does not exist yet. */
+  unchecked?: string[];
+  notes?: string[];
+  /** On an un-flag: whether there was a claim, and whether withdrawing it lowered the fact. */
+  existed?: boolean;
+  demoted?: boolean;
+};
+
+/** One side's pool scope on a prediction request: the window, or a hand-picked subset. */
+export type PoolRequest = {
+  window_months?: number;
+  all_time?: boolean;
+  /** The manual pick. When present it is the pool; the window and ledger do not apply. */
+  players?: number[];
+};
+
 export type PredictTeamSelectionResponse = {
   /** The sides that were actually scored, echoed back whether or not the request was clear. */
   team1_side: TeamSideOption;
@@ -119,6 +205,9 @@ export type PredictTeamSelectionResponse = {
   selection: PredictSelectionSummary;
   win_probability: PredictWinProbability;
   scorecard?: PredictScorecard;
+  /** Which candidates each XI was chosen out of, and who the ledger excluded (D-12). */
+  team1_pool: PoolSummary;
+  team2_pool: PoolSummary;
 };
 
 /** ml-service GET /health, via the go-app proxy. */

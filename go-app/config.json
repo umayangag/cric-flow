@@ -35,6 +35,24 @@
   "predictor": {
     "team_size": 11
   },
+  "pool": {
+    "recency_months": {
+      "TEST": 12,
+      "ODI": 12,
+      "T20": 12,
+      "T20I": 9
+    },
+    "retirement": {
+      "inactive_years": 5,
+      "age_bound_years": {
+        "TEST": 40,
+        "ODI": 40,
+        "T20": 42,
+        "T20I": 40
+      },
+      "age_inactive_years": 2
+    }
+  },
   "pipeline": {
     "import_timeout_ms": 86400000,
     "import_concurrency": 0

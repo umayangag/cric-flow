@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UpcomingMatchTab from './UpcomingMatchTab';
+import { api } from '../api';
 import type { PredictTeamSelectionResponse, TeamSideOption } from '../types';
 
 const mockUseUpcomingMatch = vi.fn();
@@ -55,6 +56,20 @@ const baseState = {
   handlePredict: vi.fn(),
   maxFutureDays: 14,
   opsStatus: null,
+  team1Pool: { allTime: false, players: null },
+  setTeam1Pool: vi.fn(),
+  team2Pool: { allTime: false, players: null },
+  setTeam2Pool: vi.fn(),
+  widenPool: vi.fn(),
+};
+
+/** The default pool a response carries: the measured recency window, nothing excluded. */
+const defaultPool = {
+  source: 'recency_window' as const,
+  window_months: 9,
+  since: '2025-12-10',
+  size: 24,
+  retired_excluded: 0,
 };
 
 function prediction(
@@ -77,6 +92,8 @@ function prediction(
     team2: [],
     selection: { objective: 'win', optimised: true },
     win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
+    team1_pool: defaultPool,
+    team2_pool: defaultPool,
     ...overrides,
   };
 }
@@ -161,5 +178,56 @@ describe('UpcomingMatchTab', () => {
     expect(screen.getByText(/no win objective that ranks/)).toBeInTheDocument();
     expect(screen.getByText('Rating-ordered 11 for each team')).toBeInTheDocument();
     expect(screen.queryByText('Marginal')).not.toBeInTheDocument();
+  });
+  // D-12 at the surface: the answer says which candidates it was chosen out of, and the
+  // all-time pool is one click away — which predicts again rather than leaving a number
+  // the new pool did not produce beside a line describing it.
+  it('says which pool each XI came from, and offers the all-time one', async () => {
+    const user = userEvent.setup();
+    const widenPool = vi.fn();
+    mockUseUpcomingMatch.mockReturnValue({ ...baseState, widenPool, result: prediction() });
+    render(<UpcomingMatchTab />);
+
+    expect(
+      screen.getAllByText(/played for India \(women\) in the last 9 months \(24 players\)/i).length,
+    ).toBeGreaterThan(0);
+
+    await user.click(screen.getAllByRole('button', { name: /use the all-time pool/i })[0]);
+
+    expect(widenPool).toHaveBeenCalledWith(1);
+  });
+
+  // Manual picking is optional and off: the button is there, and opening it is a decision.
+  it('opens the candidate list for one side', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'getCandidates').mockResolvedValue({
+      side: indiaWomen,
+      pool: {
+        source: 'recency_window',
+        window_months: 9,
+        since: '2025-12-10',
+        size: 0,
+        retired_excluded: 0,
+      },
+      candidates: [],
+    });
+    render(<UpcomingMatchTab />);
+
+    await user.click(screen.getByRole('button', { name: /choose team 1 candidates/i }));
+
+    expect(await screen.findByText(/candidates for India \(women\)/i)).toBeInTheDocument();
+    expect(api.getCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ format: 'T20I', club_id: 132 }),
+    );
+  });
+
+  it('says how many players a hand-picked pool holds', () => {
+    mockUseUpcomingMatch.mockReturnValue({
+      ...baseState,
+      team1Pool: { allTime: false, players: [1, 2, 3] },
+    });
+    render(<UpcomingMatchTab />);
+
+    expect(screen.getByRole('button', { name: /team 1 pool: 3 chosen/i })).toBeInTheDocument();
   });
 });

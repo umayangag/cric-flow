@@ -42,6 +42,32 @@ type predictTeamRequest struct {
 	ExtraTeam2             []int64         `json:"extra_team2"`
 	MinBowlers             int             `json:"min_bowlers"`
 	RequireKeeper          *bool           `json:"require_keeper"`
+	// The candidate pool each side is chosen from (D-12). Omitted, each side gets the
+	// per-format recency window, which is the default and the fix: the pool used to be
+	// all-time and offered players who retired a decade ago.
+	Team1Pool poolRequestBody `json:"team1_pool"`
+	Team2Pool poolRequestBody `json:"team2_pool"`
+}
+
+// poolRequestBody is one side's pool scope as a caller spells it.
+//
+// `players` is the manual pick: the subset a user ticked out of
+// /api/options/candidates. When it is present it is the pool, and neither the window nor
+// the ledger applies to it — the user has looked at the candidates and chosen, which is
+// better evidence about availability than anything this service holds.
+type poolRequestBody struct {
+	WindowMonths int     `json:"window_months,omitempty"`
+	AllTime      bool    `json:"all_time,omitempty"`
+	Players      []int64 `json:"players,omitempty"`
+}
+
+// poolRequest converts the body's pool scope into the service's.
+func (b poolRequestBody) poolRequest() predictteam.PoolRequest {
+	return predictteam.PoolRequest{
+		WindowMonths: b.WindowMonths,
+		AllTime:      b.AllTime,
+		Manual:       b.Players,
+	}
 }
 
 // retiredPredictBodyFields are request fields whose behaviour P-5 deleted. Refusing them
@@ -94,6 +120,14 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 		v := strings.EqualFold(s, "true") || s == "1"
 		body.RequireKeeper = &v
 	}
+	// The pool scope is readable off the query string too, so a `curl` of the GET form
+	// can widen a pool. Manual picking is not: a list of ticked ids belongs in a body.
+	pool, apiErr := parsePoolRequest(q.Get("window_months"), q.Get("all_time"), nil)
+	if apiErr != nil {
+		return body, *apiErr
+	}
+	body.Team1Pool = poolRequestBody{WindowMonths: pool.WindowMonths, AllTime: pool.AllTime}
+	body.Team2Pool = body.Team1Pool
 	return body, nil
 }
 
@@ -109,7 +143,7 @@ func parseClubID(raw string) int64 {
 }
 
 // buildPredictInput converts a parsed request into a predictteam.Input.
-func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam.Input {
+func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor string) predictteam.Input {
 	input := predictteam.Input{
 		Format:        body.Format,
 		Team1:         db.TeamRef{ClubID: body.Team1ID, Name: body.Team1, Gender: body.Team1Gender},
@@ -120,6 +154,9 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time) predictteam
 		ExtraTeam2:    body.ExtraTeam2,
 		MinBowlers:    body.MinBowlers,
 		RequireKeeper: true,
+		Team1Pool:     body.Team1Pool.poolRequest(),
+		Team2Pool:     body.Team2Pool.poolRequest(),
+		Actor:         actor,
 	}
 	if body.RequireKeeper != nil {
 		input.RequireKeeper = *body.RequireKeeper
@@ -142,6 +179,11 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 				Message: retired.param.Message,
 				Hint:    retired.param.Hint,
 			})
+			return
+		}
+		var invalid apiError
+		if errors.As(err, &invalid) {
+			writeJSON(w, http.StatusBadRequest, invalid)
 			return
 		}
 		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_JSON", Message: err.Error()})
@@ -168,7 +210,8 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		)
 		return
 	}
-	result, err := predictteam.PredictTeams(r.Context(), buildPredictInput(body, matchDate), a.mlClient)
+	result, err := predictteam.PredictTeams(
+		r.Context(), buildPredictInput(body, matchDate, actorFrom(r)), a.mlClient)
 	if err != nil {
 		respondPredictErr(w, err)
 		return
@@ -227,6 +270,19 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 			Code:    "FIXTURE_CROSS_GENDER",
 			Message: crossGender.Error(),
 			Hint:    "both sides of a fixture are the same gender; pick two sides from one list",
+		})
+		return
+	}
+	// A pool too small to field an XI is the caller's scope being too narrow, not a
+	// failure here, and after D-12 the recency window is the likely cause. The refusal
+	// names the window and the two ways out, because both are the user's to choose.
+	var insufficient *predictteam.InsufficientPoolError
+	if errors.As(err, &insufficient) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "POOL_TOO_SMALL",
+			Message: insufficient.Error(),
+			Hint: "send all_time=true to widen the pool, window_months to change it, " +
+				"or team1_pool.players / team2_pool.players to choose the candidates by hand",
 		})
 		return
 	}

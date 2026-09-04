@@ -19,6 +19,12 @@ type apiError struct {
 	Available []string `json:"available,omitempty"`
 }
 
+// Error lets a refusal travel as an error, so a parsing step deep in a request can carry
+// the code and hint it would have written and one place renders it. Without it a parser
+// either returns a bare error, losing the hint, or writes the response itself, which puts
+// two writers on one ResponseWriter.
+func (e apiError) Error() string { return e.Message }
+
 // writeJSON writes a pretty-printed JSON response with the provided status code and value.
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
