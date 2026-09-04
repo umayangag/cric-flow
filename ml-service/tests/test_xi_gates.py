@@ -26,6 +26,7 @@ def _report_with_every_gate() -> dict:
     return {
         "leak_canary": {"test_control_suspects": []},
         "serving_parity": {"passed": True},
+        "market_benchmark": {"formats": {"T20": {}, "ODI": {}}},
         "formats": {"T20": node, "ODI": copy.deepcopy(node)},
         "gates": {"registry": gates.as_dict()},
     }

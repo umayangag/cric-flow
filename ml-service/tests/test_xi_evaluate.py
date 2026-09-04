@@ -62,6 +62,13 @@ def test_evaluate_win_window_reports_why_it_skipped() -> None:
     assert fold["skipped_reason"] == "insufficient training rows"
 
 
+def _no_cached_odds(tmp_path_factory) -> str:
+    """An empty odds directory, so a harness run is the same on a machine that happens to
+    have X-4's cache and one that does not. Tests are offline; the market benchmark then
+    reports zero coverage, which is what it should say."""
+    return str(tmp_path_factory.mktemp("no-cached-odds"))
+
+
 @pytest.fixture(scope="module")
 def harness_report(tmp_path_factory) -> dict:
     """One end-to-end harness run over a compressed synthetic timeline."""
@@ -73,7 +80,11 @@ def harness_report(tmp_path_factory) -> dict:
     ev.LOCKED_START = "2023-05-01"
     try:
         with fast_fits():
-            report = ev.evaluate(_ListSource(matches), lambda: _ListSource(matches))
+            report = ev.evaluate(
+                _ListSource(matches),
+                lambda: _ListSource(matches),
+                market_odds_dir=_no_cached_odds(tmp_path_factory),
+            )
     finally:
         ev.WALK_FORWARD_CUTOFFS, ev.LOCKED_START = original
     out = tmp_path_factory.mktemp("harness") / "report.json"
@@ -91,7 +102,11 @@ def freshly_rotated_report(tmp_path_factory) -> dict:
     ev.LOCKED_START = "2030-01-01"
     try:
         with fast_fits():
-            return ev.evaluate(_ListSource(matches), lambda: _ListSource(matches))
+            return ev.evaluate(
+                _ListSource(matches),
+                lambda: _ListSource(matches),
+                market_odds_dir=_no_cached_odds(tmp_path_factory),
+            )
     finally:
         ev.WALK_FORWARD_CUTOFFS, ev.LOCKED_START = original
 
@@ -209,8 +224,20 @@ def test_harness_embeds_the_gate_registry_and_checks_it(harness_report) -> None:
     gates_node = harness_report["gates"]
 
     assert gates_node["passed"], gates_node["problems"]
-    assert set(gates_node["registry"]) >= {"E5", "E2", "H-4", "H-8", "H-17", "E3"}
+    assert set(gates_node["registry"]) >= {"E5", "E2", "H-4", "H-8", "H-17", "E3", "X-4"}
     assert gates_node["registry"]["E5"]["varies"].startswith("the eleven")
+    assert gates_node["registry"]["X-4"]["decides"].startswith("nothing automatically")
+
+
+def test_harness_carries_the_market_benchmark_even_with_no_odds_cached(harness_report) -> None:
+    """X-4: a run with no cached odds still says what the benchmark covered — nothing —
+    rather than dropping the section, so a reader is never left guessing whether it ran."""
+    benchmark = harness_report["market_benchmark"]
+
+    assert benchmark["available"] is False
+    assert set(benchmark["formats"]) == set(ev.C.FORMAT_CODES)
+    assert benchmark["formats"]["T20"]["joined_share"] == 0.0
+    assert benchmark["formats"]["T20"]["pooled"] is None
 
 
 def test_harness_explains_every_metric_it_reports(harness_report) -> None:
@@ -241,6 +268,9 @@ def _fake_report(parity_passed: bool = True, gates_passed: bool = True) -> dict:
                 "selection_decision": {"reason": "optimised selection not served in T20, because E5 ... fails"},
             }
         },
+        "market_benchmark": {
+            "formats": {"T20": {"matches_in_windows": 100, "matches_joined": 0, "joined_share": 0.0, "pooled": None}}
+        },
         "serving_parity": {"passed": parity_passed, "mismatches": [] if parity_passed else ["row 1"]},
         "gates": {"passed": gates_passed, "problems": [] if gates_passed else ["gate E5: T20 carries nothing"]},
     }
@@ -256,7 +286,11 @@ def test_main_writes_the_report_and_fails_on_parity_or_gate_problems(
     """The run's exit code is the two verdicts that make a report untrustworthy: H-8 parity
     and the H-23 gate registry. Everything else is reported, never fatal."""
     monkeypatch.setattr(
-        ev, "evaluate", lambda source, factory, gender_split_context=False: _fake_report(parity_passed, gates_passed)
+        ev,
+        "evaluate",
+        lambda source, factory, gender_split_context=False, market_odds_dir=None: _fake_report(
+            parity_passed, gates_passed
+        ),
     )
     out = tmp_path / "report"
 

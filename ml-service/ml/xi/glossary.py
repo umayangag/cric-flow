@@ -131,6 +131,15 @@ E5_BAND = (
     "for that."
 )
 PARITY_BAND = "Exactly 0.0. Anything else is a bug, not a shade of grey."
+MARKET_BAND = (
+    "Read it beside the joined coverage printed with it, and beside the other arm on the same "
+    "matches -- never on its own. It is a different, usually much smaller, set of matches than the "
+    "format's headline numbers."
+)
+MARKET_DELTA_BAND = (
+    "Zero is parity with the market. Read it through the 95 % interval beside it: an interval "
+    "spanning zero means the two are indistinguishable on the matches scored."
+)
 
 #: The anchors behind the shared bands above. Each is the sentence as two numbers: an
 #: AUC is painted from chance to the measured ceiling, a Brier from the base rate it
@@ -147,6 +156,8 @@ VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
 SPECIFIC_XI_SCALE = Scale(bad=0.0, good=0.02)
 COVERAGE_SCALE = Scale(bad=0.65, good=0.80)
 E2_TOLERANCE_SCALE = Scale(bad=0.01, good=0.0)
+#: X-4's gap is painted from "the market is 0.05 of AUC ahead" to parity with it.
+MARKET_DELTA_SCALE = Scale(bad=0.05, good=0.0)
 
 
 METRICS: Tuple[Metric, ...] = (
@@ -745,6 +756,119 @@ METRICS: Tuple[Metric, ...] = (
         band="Format-dependent; read it against the other bowlers in the same eleven.",
         better=LOWER,
     ),
+    # --- X-4: the market benchmark. A yardstick, never an input ---
+    Metric(
+        key="market_auc",
+        name="Market AUC",
+        explanation=(
+            "The same measure applied to the betting market's closing price, de-vigged into a "
+            "probability. It is the best publicly observable forecast of the same match, so it is the "
+            "yardstick the display model is held against. " + AUC_EXPLANATION
+        ),
+        band=MARKET_BAND,
+        better=HIGHER,
+        scale=AUC_SCALE,
+    ),
+    Metric(
+        key="market_brier",
+        name="Market Brier",
+        explanation="The same squared-error score for the market's de-vigged closing probability. " + BRIER_EXPLANATION,
+        band=MARKET_BAND,
+        better=LOWER,
+        scale=BRIER_SCALE,
+    ),
+    Metric(
+        key="display_toss_aware_auc",
+        name="Display AUC, toss-aware",
+        explanation=(
+            "The displayed model read at the batting order that actually happened, rather than averaged "
+            "over both. The served probability marginalises over the toss because the toss is unknown "
+            "when a user asks; the closing market price is struck after it. This arm gives the market's "
+            "information set to our model, so the comparison is like for like."
+        ),
+        band=MARKET_BAND,
+        better=HIGHER,
+        scale=AUC_SCALE,
+    ),
+    Metric(
+        key="display_toss_aware_brier",
+        name="Display Brier, toss-aware",
+        explanation="The same squared-error score for the toss-aware reading of the displayed model.",
+        band=MARKET_BAND,
+        better=LOWER,
+        scale=BRIER_SCALE,
+    ),
+    Metric(
+        key="market_minus_display_auc",
+        name="Market minus display, AUC",
+        explanation=(
+            "How much better the market ranks the same matches than the probability a user is shown. "
+            "Positive means the market is ahead; it is the distance to the practical ceiling, in AUC."
+        ),
+        band=MARKET_DELTA_BAND,
+        better=LOWER,
+        scale=MARKET_DELTA_SCALE,
+    ),
+    Metric(
+        key="market_minus_display_brier",
+        name="Market minus display, Brier",
+        explanation=(
+            "The same gap in Brier score. Negative means the market's probabilities are better stated "
+            "than ours; positive means ours are."
+        ),
+        band=MARKET_DELTA_BAND,
+        better=HIGHER,
+    ),
+    Metric(
+        key="market_minus_toss_aware_auc",
+        name="Market minus display, AUC, toss-aware",
+        explanation=(
+            "The same gap against the toss-aware arm -- the honest one, because both sides then know who batted first."
+        ),
+        band=MARKET_DELTA_BAND,
+        better=LOWER,
+        scale=MARKET_DELTA_SCALE,
+    ),
+    Metric(
+        key="market_minus_display_auc_ci95",
+        name="95 % interval of the market-minus-display AUC gap",
+        explanation=(
+            "The range the gap could plausibly be, from resampling the scored matches in pairs (both "
+            "arms score the same matches, so the resample keeps them together). An interval spanning "
+            "zero means the two are indistinguishable on this many matches."
+        ),
+        band="Read the gap only through this interval; one spanning zero is not a gap.",
+        better=PAIRED,
+    ),
+    Metric(
+        key="market_minus_toss_aware_auc_ci95",
+        name="95 % interval of the toss-aware AUC gap",
+        explanation="The same interval for the like-for-like comparison.",
+        band="Read the gap only through this interval; one spanning zero is not a gap.",
+        better=PAIRED,
+    ),
+    Metric(
+        key="market_overround",
+        name="Market overround",
+        explanation=(
+            "The two sides' implied probabilities added up before de-vigging. On an exchange the excess "
+            "over 1.0 is the back/lay spread rather than a bookmaker's margin, which is why it is small."
+        ),
+        band="About 1.00 on an exchange; a bookmaker's would be 1.05 or more. Reported so the de-vig is auditable.",
+        better=PAIRED,
+    ),
+    Metric(
+        key="joined_share",
+        name="Joined coverage",
+        explanation=(
+            "The share of the format's evaluated matches that a closing price could be joined to. It is "
+            "part of the benchmark's answer, not a footnote: a market comparison over a tenth of a "
+            "format says what it says about that tenth."
+        ),
+        band="0.0 means the benchmark says nothing about this format. Read every market number beside it.",
+        better=HIGHER,
+        scale=Scale(bad=0.0, good=1.0),
+    ),
 )
 
 REGISTRY: Dict[str, Metric] = {metric.key: metric for metric in METRICS}
@@ -781,6 +905,19 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "performance_predictions_compared": "how many predictions the parity check rebuilt",
     "simulations_compared": "how many simulated innings the parity check rebuilt",
     "by_changes": "pair counts split by how many players changed",
+    # X-4's join: how many closing quotes there were and what became of each.
+    "rows_read": "how many odds rows the cached files held",
+    "quotes": "how many closing quotes were loaded",
+    "quotes_loaded": "how many closing quotes were loaded",
+    "quotes_unusable": "quotes dropped before any join: not two runners, or an unreadable price",
+    "quotes_joined": "how many quotes reached a match",
+    "quotes_unknown_team": "quotes whose team the identity layer does not know",
+    "quotes_no_match": "quotes whose date and teams match no fixture we hold",
+    "quotes_ambiguous": "quotes whose date and teams match more than one fixture",
+    "label_disagreements": "joined quotes whose recorded winner is not the one our result says -- the join's integrity check",
+    "quotes_joined_outside_scored_windows": "joined quotes whose match falls before the first walk-forward cutoff",
+    "matches_in_windows": "how many matches the harness scored in this format's windows",
+    "matches_joined": "how many of those a closing price was joined to",
     # Inputs and configuration, not results.
     "seed": "the random seed a simulation was run under",
     "seeds": "the random seeds the display model was fitted under",
