@@ -82,8 +82,9 @@ const (
 	DefaultRetirementInactiveYears = 5
 
 	// DefaultRetirementAgeBoundYears is criterion (c)'s age bound for a format the
-	// config does not name. Provisional: the criterion reports itself unavailable
-	// until X-1a supplies dates of birth, so this number has no effect yet.
+	// config does not name. Provisional: X-1a supplies the dates of birth the criterion
+	// reads, but no measurement has yet been made of where the bound should sit, so this
+	// number is a conservative placeholder rather than a derived one.
 	DefaultRetirementAgeBoundYears = 40
 
 	// DefaultRetirementAgeInactiveYears is criterion (c)'s inactivity half. Two years
