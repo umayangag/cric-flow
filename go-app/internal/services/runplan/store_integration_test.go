@@ -3,7 +3,6 @@ package runplan
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
@@ -19,14 +19,10 @@ import (
 // metadata update that also stamped completed_at, or a plan row that LaneBusy counted,
 // would pass every one of them and break on the box.
 //
-//	RUN_DB_TESTS=1 make -C go-app test-db
-func guardIntegration(t *testing.T) {
-	t.Helper()
-	if os.Getenv("RUN_DB_TESTS") != "1" {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
-}
+//	make -C go-app test-db
 
+// migrationsDir resolves go-app/migrations from this file's location, so the test works
+// whatever working directory go test picks.
 func migrationsDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "../../../migrations"))
@@ -42,7 +38,7 @@ func setupPlanDB(t *testing.T) {
 }
 
 func TestStoreRoundTrip_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupPlanDB(t)
 	ctx := context.Background()
 	store := TrackingStore{}
@@ -65,7 +61,7 @@ func TestStoreRoundTrip_Integration(t *testing.T) {
 // status-changing update stamps completed_at, which would mark a plan finished on its
 // first step.
 func TestSaveDoesNotFinishThePlan_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupPlanDB(t)
 	ctx := context.Background()
 	store := TrackingStore{}
@@ -86,7 +82,7 @@ func TestSaveDoesNotFinishThePlan_Integration(t *testing.T) {
 }
 
 func TestFinishRecordsTheOutcome_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := context.Background()
 	store := TrackingStore{}
 
@@ -123,7 +119,7 @@ func TestFinishRecordsTheOutcome_Integration(t *testing.T) {
 // registry step: were it one, the plan's in-progress row would make LaneBusy true and
 // block the very steps it exists to run.
 func TestPlanRowDoesNotBlockItsOwnSteps_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupPlanDB(t)
 	ctx := context.Background()
 
@@ -139,7 +135,7 @@ func TestPlanRowDoesNotBlockItsOwnSteps_Integration(t *testing.T) {
 // TestLatestSurvivesTheBrowserBeingClosed_Integration: the state lives in the
 // database, so a page reload — or a browser closed overnight — does not lose the run.
 func TestLatestSurvivesTheBrowserBeingClosed_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupPlanDB(t)
 	ctx := context.Background()
 	store := TrackingStore{}

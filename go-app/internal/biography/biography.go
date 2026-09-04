@@ -8,8 +8,11 @@
 //
 // The join is Cricsheet's people register → ESPNcricinfo player id → Wikidata property
 // P2697. It is the only free, licence-clean bridge between the two: Cricsheet publishes
-// the register under ODbL and Wikidata's data is CC0, and no scraping or account-gated
-// source is involved.
+// the register under ODC-By 1.0 (Open Data Commons Attribution — attribution is owed on
+// any public use, and there is no share-alike term) and Wikidata's data is CC0, and no
+// scraping or account-gated source is involved. The licences are the ones read from the
+// sources themselves and recorded in docs/config-and-data.md § Data-source licence
+// register; that table is what this comment must agree with.
 //
 // The package is split so the network is at one edge and everything else is pure: the
 // register parser, the SPARQL result decoder, the vocabulary mapping and the coverage

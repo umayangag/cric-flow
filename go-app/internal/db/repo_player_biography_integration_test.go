@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/umayangag/cric-flow/go-app/internal/biography"
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 )
 
 // connectAndMigrateForBiography brings up a migrated database and empties the tables the
@@ -51,9 +52,7 @@ func seedTwoPlayersInOneODI(ctx context.Context, t *testing.T) (int64, int64) {
 // X-1b gate reads: the share of *appearances* a fact covers, and the gap listed by how
 // much closing it would be worth.
 func TestPlayerBiographyStore_CoverageWeightsByAppearances_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForBiography(t)
 	covered, missing := seedTwoPlayersInOneODI(ctx, t)
 	born := time.Date(1990, 4, 1, 0, 0, 0, 0, time.UTC)
@@ -98,9 +97,7 @@ func TestPlayerBiographyStore_CoverageWeightsByAppearances_Integration(t *testin
 // player corrects the row rather than failing or duplicating it, which is what makes the
 // backfill safe to re-run.
 func TestPlayerBiographyStore_UpsertReplacesTheRow_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForBiography(t)
 	covered, _ := seedTwoPlayersInOneODI(ctx, t)
 	store := NewPlayerBiographyStore()
@@ -123,9 +120,7 @@ func TestPlayerBiographyStore_UpsertReplacesTheRow_Integration(t *testing.T) {
 // TestPlayerBiographyStore_ListPlayers_Integration returns the registry identifiers and
 // the appearance weights the whole report is expressed in.
 func TestPlayerBiographyStore_ListPlayers_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForBiography(t)
 	seedTwoPlayersInOneODI(ctx, t)
 
@@ -140,9 +135,7 @@ func TestPlayerBiographyStore_ListPlayers_Integration(t *testing.T) {
 // TestPlayerBiographyStore_UpsertNothingIsNotAnError keeps an empty registry from failing
 // a run that had nothing to write.
 func TestPlayerBiographyStore_UpsertNothingIsNotAnError_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForBiography(t)
 
 	require.NoError(t, NewPlayerBiographyStore().UpsertBiographies(ctx, nil))
@@ -152,9 +145,7 @@ func TestPlayerBiographyStore_UpsertNothingIsNotAnError_Integration(t *testing.T
 // X-1a closes: the age and career-end criteria reported themselves unavailable because
 // nothing supplied these two fields, and now something does.
 func TestPlayerStatusStore_RetirementEvidenceReadsTheBiography_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForBiography(t)
 	covered, missing := seedTwoPlayersInOneODI(ctx, t)
 	born := time.Date(1980, 4, 1, 0, 0, 0, 0, time.UTC)

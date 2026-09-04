@@ -62,10 +62,16 @@ vet:
 test:
 	go test ./...
 
-# Run tests including DB integration tests (requires a running Postgres configured via POSTGRES_* envs)
+# Run tests including DB integration tests (requires a running Postgres configured via POSTGRES_* envs).
+#
+# Every one of those fixtures begins with a TRUNCATE, so they run against a scratch
+# database and never against POSTGRES_DB above, which is the working one. Create it once
+# with `createdb -h $(POSTGRES_HOST) -U $(POSTGRES_USER) $(TEST_POSTGRES_DB)`; the tests
+# migrate it themselves and refuse to run if this is not overridden.
+TEST_POSTGRES_DB ?= cricket_flow_test
 .PHONY: test-db
 test-db:
-	RUN_DB_TESTS=1 go test ./...
+	POSTGRES_DB=$(TEST_POSTGRES_DB) RUN_DB_TESTS=1 go test ./...
 
 # Initialize local Go development environment (tools + modules)
 init:
@@ -128,8 +134,9 @@ COV_MIN ?= 76
 
 # Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data
 # structs), internal/db (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
+# internal/db/dbtest (test scaffolding, exercised only by the suites it gates),
 # internal/server (HTTP handlers; covered by API/integration tests)
-COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/db$$|/internal/server$$
+COVERAGE_EXCLUDE := /mocks|/cmd/|/internal/models$$|/internal/db$$|/internal/db/dbtest$$|/internal/server$$
 
 # Packages included in coverage. Default: internal libs excluding mocks, cmd, models. Override with COVERAGE_PACKAGES=./... for full.
 COVERAGE_PACKAGES ?= $(shell go list ./... | grep -vE '$(COVERAGE_EXCLUDE)' | tr '\n' ' ')
@@ -182,7 +189,8 @@ help:
 	@echo "  deadcode           Fail on functions unreachable from main or tests"
 	@echo "  vet                Run go vet"
 	@echo "  test               Run unit tests (no DB)"
-	@echo "  test-db            Run all tests including DB integration (requires Postgres)"
+	@echo "  test-db            Run all tests including DB integration (needs Postgres and the"
+	@echo "                     scratch database TEST_POSTGRES_DB; the fixtures truncate)"
 	@echo "  test-int           Run integration tests in ./integration"
 	@echo "  coverage           Run coverage for selected packages"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN, default 76%%)"

@@ -2,7 +2,6 @@ package datasetregistry
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 )
 
 // These exercise the SQL itself. The unit tests above use a mocked DB, which proves
@@ -18,13 +18,7 @@ import (
 // naming a column that is not unique, or a COALESCE over the wrong table alias, would
 // pass every one of them and fail on the box. Run with:
 //
-//	RUN_DB_TESTS=1 make -C go-app test-db
-func guardIntegration(t *testing.T) {
-	t.Helper()
-	if os.Getenv("RUN_DB_TESTS") != "1" {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
-}
+//	make -C go-app test-db
 
 // migrationsDir resolves go-app/migrations from this file's location, so the test
 // works whatever working directory go test picks.
@@ -45,7 +39,7 @@ func setupRegistryDB(t *testing.T) {
 }
 
 func TestRecordAndList_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -74,7 +68,7 @@ func TestRecordAndList_Integration(t *testing.T) {
 // TestRefetchDoesNotDuplicateOrEraseTheExtract_Integration is the behaviour the whole
 // upsert design exists for, checked against real Postgres rather than a string match.
 func TestRefetchDoesNotDuplicateOrEraseTheExtract_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -106,7 +100,7 @@ func TestRefetchDoesNotDuplicateOrEraseTheExtract_Integration(t *testing.T) {
 // TestExtractKeepsFetchProvenance_Integration: an extract knows less about origin
 // than the fetch did, so it must not overwrite feed and URL with its own blanks.
 func TestExtractKeepsFetchProvenance_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -130,7 +124,7 @@ func TestExtractKeepsFetchProvenance_Integration(t *testing.T) {
 // TestExtractOfAHandPlacedArchive_Integration: extract has to be able to create the
 // row, since an archive can reach staging without ever passing through fetch.
 func TestExtractOfAHandPlacedArchive_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -149,7 +143,7 @@ func TestExtractOfAHandPlacedArchive_Integration(t *testing.T) {
 }
 
 func TestListMarksTheLiveDataset_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -174,7 +168,7 @@ func TestListMarksTheLiveDataset_Integration(t *testing.T) {
 }
 
 func TestListOrdersNewestFirst_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 
@@ -190,7 +184,7 @@ func TestListOrdersNewestFirst_Integration(t *testing.T) {
 }
 
 func TestListRespectsTheLimit_Integration(t *testing.T) {
-	guardIntegration(t)
+	dbtest.SkipUnlessScratchDatabase(t)
 	setupRegistryDB(t)
 	ctx := context.Background()
 

@@ -33,11 +33,14 @@ jobs:
         image: postgres:15-alpine
         ports: ['5432:5432']
         env:
-          POSTGRES_DB: cricket_data
+          # Named for what it is. The DB integration suites truncate on every fixture and
+          # refuse to run against the working database's name (`cricket_data`), which is
+          # what kept them out of CI and therefore unrun -- see B-4 in docs/BUG_BACKLOG.md.
+          POSTGRES_DB: cricket_flow_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-
-          --health-cmd "pg_isready -U postgres -d cricket_data"
+          --health-cmd "pg_isready -U postgres -d cricket_flow_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -84,7 +87,7 @@ jobs:
         env:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
-          POSTGRES_DB: cricket_data
+          POSTGRES_DB: cricket_flow_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_SSLMODE: disable
@@ -92,6 +95,20 @@ jobs:
 
       - name: Run unit tests with coverage
         run: make -C go-app coverage
+
+      # The database suites are gated behind RUN_DB_TESTS=1 and nothing set it, so five of
+      # them had never once executed and had been failing on a not-null constraint since
+      # they were written (B-4). This step is what makes them tests rather than text. They
+      # truncate, which is why the service database above is a scratch one; `test-db`
+      # points POSTGRES_DB at it and the suites refuse any database named cricket_data.
+      - name: Run database integration tests
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_SSLMODE: disable
+        run: make -C go-app test-db TEST_POSTGRES_DB=cricket_flow_test
 
       - name: Enforce coverage threshold
         env:

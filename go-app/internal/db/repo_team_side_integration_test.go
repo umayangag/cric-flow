@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 	"github.com/umayangag/cric-flow/go-app/internal/teams"
 )
 
@@ -45,9 +46,7 @@ func bothIndias(ctx context.Context, t *testing.T) (mens, womens int64) {
 }
 
 func TestResolveTeamSide_ABareAmbiguousNameIsRefused_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	mens, womens := bothIndias(ctx, t)
 
@@ -62,9 +61,7 @@ func TestResolveTeamSide_ABareAmbiguousNameIsRefused_Integration(t *testing.T) {
 }
 
 func TestResolveTeamSide_AnExplicitSideIsHonoured_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	mens, womens := bothIndias(ctx, t)
 
@@ -82,9 +79,7 @@ func TestResolveTeamSide_AnExplicitSideIsHonoured_Integration(t *testing.T) {
 // A name is unambiguous when the format holds one side of it, and then it still resolves:
 // the fix refuses doubt, not names.
 func TestResolveTeamSide_AnUnambiguousNameStillResolves_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	scotland, err := GetOrCreateOpposition(ctx, "Scotland", teams.GenderMale)
 	require.NoError(t, err)
@@ -99,9 +94,7 @@ func TestResolveTeamSide_AnUnambiguousNameStillResolves_Integration(t *testing.T
 }
 
 func TestResolveTeamSide_AGenderThatPlayedNothingIsNotFound_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	bothIndias(ctx, t)
 	// Only the men's side plays TEST here.
@@ -118,9 +111,7 @@ func TestResolveTeamSide_AGenderThatPlayedNothingIsNotFound_Integration(t *testi
 
 // A club that renamed is one club, and the club id names the row it plays under now.
 func TestResolveTeamSide_ARetiredNameResolvesToTheClub_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	bangalore, err := GetOrCreateOpposition(ctx, "Royal Challengers Bangalore", teams.GenderMale)
 	require.NoError(t, err)
@@ -146,9 +137,7 @@ func TestResolveTeamSide_ARetiredNameResolvesToTheClub_Integration(t *testing.T)
 }
 
 func TestListTeamSidesForFormat_ListsEachSideOnce_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	bothIndias(ctx, t)
 
@@ -165,9 +154,7 @@ func TestListTeamSidesForFormat_ListsEachSideOnce_Integration(t *testing.T) {
 }
 
 func TestListOpponentSidesForFormat_ListsWhoThisClubHasPlayed_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	mens, _ := bothIndias(ctx, t)
 
@@ -186,9 +173,7 @@ func TestListOpponentSidesForFormat_ListsWhoThisClubHasPlayed_Integration(t *tes
 // other means would silently merge two teams' Elo, form and head-to-head. Measured against
 // the live database on 2026-09-02: 0 of 10 lineage links bridge a gender.
 func TestTeamLineageNeverBridgesTwoGenders_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)
 	mensFrom, err := GetOrCreateOpposition(ctx, "Delhi Daredevils", teams.GenderMale)
 	require.NoError(t, err)

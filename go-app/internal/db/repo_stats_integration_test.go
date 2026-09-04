@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 )
 
 func TestGetTableStats_Integration(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)

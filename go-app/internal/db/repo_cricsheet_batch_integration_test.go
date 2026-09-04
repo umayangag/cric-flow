@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/umayangag/cric-flow/go-app/internal/db/dbtest"
 )
 
 // These integration tests guard against regressions that occurred during cricsheet import:
@@ -33,9 +35,7 @@ func namedPlayerID(ctx context.Context, t *testing.T, name string) int64 {
 }
 
 func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
@@ -64,9 +64,7 @@ func TestMultiBatchFieldingEventsInSameTx(t *testing.T) {
 }
 
 func TestMultiBatchBattingInSameTx(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
@@ -96,9 +94,7 @@ func TestMultiBatchBattingInSameTx(t *testing.T) {
 }
 
 func TestMultiBatchBowlingInSameTx(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
@@ -128,9 +124,7 @@ func TestMultiBatchBowlingInSameTx(t *testing.T) {
 }
 
 func TestRecomputeFieldingAggregatesTxNoConnBusy(t *testing.T) {
-	if !guardIntegration(t) {
-		t.Skip("integration test skipped; set RUN_DB_TESTS=1 to run")
-	}
+	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
 	pool, err := Connect(ctx)
