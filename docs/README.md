@@ -19,7 +19,7 @@ How the system works now. These should always be true of `main`.
 | Doc | Purpose |
 |-----|--------|
 | [overview.md](overview.md) | Components, data flow, the three pipeline steps, how to run them |
-| [config-and-data.md](config-and-data.md) | go-app and ml-service config keys, migrations, Cricsheet import, dataset acquisition |
+| [config-and-data.md](config-and-data.md) | go-app and ml-service config keys, migrations, Cricsheet import, dataset acquisition, the data-source licence register |
 | [apis-backtest-and-ops.md](apis-backtest-and-ops.md) | Go and ML API contracts, the prediction and evaluation surfaces, the ops status dashboard |
 | [ml-and-training.md](ml-and-training.md) | The XI layer: the rating pass, the win models, the performance model, the simulator, and the L4 harness |
 | [observability.md](observability.md) | Where to look for health and behaviour: endpoints, run identity, progress, logs, frontend tabs |

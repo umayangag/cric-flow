@@ -402,3 +402,37 @@ confirmed is never reported as a stop. A `?lane=data` stop leaves training alone
 the point of the lanes. See D-11 in [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) § 1.4.
 
 ---
+
+## Data-source licence register
+
+Every external source the system reads today, with its licence **as read from the source
+on 2026-09-04** — not from memory, and not from a third party's summary of it. The standing
+constraint in [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) (a prototype on free, publicly
+available, licence-clean data; nothing paid, nothing account-gated) is what this table is
+checked against, so a source whose terms could not be established says exactly that rather
+than carrying a guessed licence. Every source below is free to obtain and asks for no
+account; what differs is what each permits afterwards. Re-verify a row whenever its source
+is next touched — terms change, and the date on this section is the date of the reading.
+
+| source | what the system reads | licence, as stated at the source | redistribution | what that leaves us with |
+|---|---|---|---|---|
+| **Cricsheet match archive** — `https://cricsheet.org/downloads/all_json.zip` and the per-competition zips | every match, ball by ball: the whole training, evaluation and serving population | **Not stated at the source.** The front page's footer reads *"Site © 2009–2026 Cricsheet. All rights reserved"*, which is the site, not the data. The downloads page, the format pages and the JSON archive's `README.txt` carry no licence statement at all. The CSV archive's README says, in the author's words: *"any feedback as to the licence the data should be released under would be greatly appreciated … I'd like to choose the 'right' licence. My basic criteria may be that: the data should be free, corrections are encouraged/required to be reported to the project, derivative works are allowed, you can't just take data and sell it."* Third-party pages describe the data as ODC-By 1.0; nothing on cricsheet.org does, so that is **not recorded as verified** here | **Not granted anywhere we could find.** The archive is fetched onto each box (`POST /ops/data/fetch`) into `data/`, which is git-ignored, and nothing that reproduces it is committed or published | The author's stated criteria — free, derivatives allowed, corrections reported, not resold — are the terms this prototype behaves as if it were under, and its use (a local, unsold prototype that credits Cricsheet in its README) sits inside all four. **Before anything ships publicly or is sold**, this is the row P0-2 has to settle, by asking the project directly; it cannot be settled from the site |
+| **Cricsheet people register** — `https://cricsheet.org/register/people.csv` | the ESPNcricinfo id per player, the join key for X-1a | **ODC-By 1.0** (Open Data Commons Attribution). The register page states: *"This dataset is made available under the Open Data Commons Attribution License: http://opendatacommons.org/licenses/by/1.0/."* and *"You must attribute any public use of the dataset, or works produced from the dataset, in the manner specified in the license."* | Permitted, with the licence made clear and notices kept intact: *"For any use or redistribution of the dataset, or works produced from it, you must make clear to others the license of the dataset and keep intact any notices on the original dataset."* | Attribution is owed on any public use, including works produced from it. One discrepancy: the comment in `go-app/internal/biography/biography.go` describes the register as published under **ODbL**; the source says ODC-By, which carries no share-alike term. Recorded as B-6 in [BUG_BACKLOG.md](BUG_BACKLOG.md); the code is untouched here |
+| **Wikidata** — the SPARQL query service; properties `P2697`, `P569`, `P570`, `P2032`, `P741`, `P552`, `P2545` | player biographies (X-1a) | **CC0 1.0.** Wikidata:Licensing states: *"All structured data in the main, property and lexeme namespaces is made available under the Creative Commons CC0 License"* | Permitted, without conditions | Nothing is owed; the licence is recorded per row as `player_biography.source_license` (`CC0-1.0`). The query service asks for an identifying `User-Agent`, which the backfill sends |
+| **Betfair Exchange season summaries** — BBL / WBBL Match Odds CSVs at `betfair-datascientists.github.io/data/dataListing/` | closing odds, read by `make evaluate` only as a yardstick (X-4); never a feature | **No licence granted.** The page carries a warranty disclaimer and nothing else: *"By downloading this data, you acknowledge and agree that: (a) Betfair does not make any representations, or give any warranties, as to the accuracy or completeness of the data provided; and (b) you use the data at your own risk, and Betfair will not be liable for any loss suffered in using the data."* | **Not permitted** — no right is granted, so none is assumed. The files are cached under `data/market-odds/` (git-ignored) per machine and never committed | Usable as a local measurement, which is all X-4 does with them; the numbers derived from them (AUC, Brier, coverage) are published in the harness report, the rows are not |
+
+**Not yet used, and to be verified before it is — Open-Meteo (X-2).** Read on the same
+date: the terms page says *"You may only use the free API services for non-commercial
+purposes"*; the licence page says *"API data are offered under Attribution 4.0
+International (CC BY 4.0)"*; the ERA5 dataset page at the Copernicus Climate Data Store
+names a CC-BY licence and a citation DOI (`10.24381/cds.adbb2d47`). The pricing page also
+says *"Historical, climate, ensemble, and satellite radiation APIs require the Professional
+API Plan or higher"*, and whether that governs the free non-commercial endpoint or only the
+paid customer endpoints could not be settled from the pages. X-2's worker settles it from
+the source before acquiring anything, adds the row here, and stops with a recorded finding
+if the answer is "paid" ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-2).
+
+**Sources evaluated and rejected** on licence or cost — Betfair's historical-data service,
+The Odds API, OddsPortal, OddsMatrix, aussportsbetting.com — are recorded with their terms
+and prices in [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4, and are not repeated
+here because nothing reads them.
