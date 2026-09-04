@@ -67,28 +67,45 @@ func (s *PlayerStatusStore) ListFlags(ctx context.Context, actor string) (map[in
 }
 
 // RetirementEvidence reads what the corroboration criteria are allowed to see about a
-// player: his most recent appearance in any format, and — once X-1a lands — his date of
-// birth and career end date. Those two are not in this schema yet, so they come back
-// zero and the criteria that read them report themselves unavailable.
+// player: his most recent appearance in any format, his date of birth and his career end
+// date.
+//
+// The last two come from `player_biography`, which X-1a acquires from Wikidata. Before
+// X-1a the criteria that read them reported themselves unavailable; they now answer for
+// the players the acquisition matched, and go on reporting unavailable for the rest —
+// which is the same distinction, drawn per player instead of per deployment.
+//
+// A death date is deliberately not read as a career end. Wikidata carries the two as
+// separate facts because they are separate facts: a player who died in 2022 may have
+// stopped playing in 2007, and reading one as the other would date a career end by an
+// event that has nothing to do with it.
 func (s *PlayerStatusStore) RetirementEvidence(ctx context.Context, playerID int64) (availability.Evidence, error) {
 	if Pool == nil {
 		return availability.Evidence{}, errors.New("db pool not initialized")
 	}
 	evidence := availability.Evidence{PlayerID: playerID}
-	var lastPlayed *time.Time
+	var lastPlayed, birthDate, careerEnd *time.Time
 	err := Pool.QueryRow(ctx, `
 		SELECT GREATEST(
 		  (SELECT MAX(m.match_date) FROM batting_data bd JOIN match m ON m.match_id = bd.match_id
 		    WHERE bd.player_id = $1),
 		  (SELECT MAX(m.match_date) FROM bowling_data bw JOIN match m ON m.match_id = bw.match_id
 		    WHERE bw.player_id = $1)
-		)
-	`, playerID).Scan(&lastPlayed)
+		),
+		(SELECT birth_date FROM player_biography WHERE player_id = $1),
+		(SELECT career_end_date FROM player_biography WHERE player_id = $1)
+	`, playerID).Scan(&lastPlayed, &birthDate, &careerEnd)
 	if err != nil {
 		return availability.Evidence{}, err
 	}
 	if lastPlayed != nil {
 		evidence.LastPlayed = *lastPlayed
+	}
+	if birthDate != nil {
+		evidence.BirthDate = *birthDate
+	}
+	if careerEnd != nil {
+		evidence.CareerEnd = *careerEnd
 	}
 	return evidence, nil
 }

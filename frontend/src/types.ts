@@ -840,6 +840,53 @@ export type DatasetRegistryResponse = {
 };
 
 /**
+ * Biography coverage for one format and gender, weighted by appearances (X-1a).
+ *
+ * Every count is a count of fielded player-sides, not of players: a biography for
+ * someone who played once in 2004 is worth less than one for someone in every eleven
+ * this season, and a player-weighted figure counts them the same.
+ */
+export type BiographyCoverageRow = {
+  format: string;
+  gender: string;
+  appearances: number;
+  /** Appearances whose player has a biography row at all — the pass looked him up. */
+  attempted: number;
+  /** Appearances whose player was found on Wikidata. */
+  matched: number;
+  birth_date: number;
+  batting_hand: number;
+  /** Only styles the controlled vocabulary could place; a stated but unplaceable style is not coverage. */
+  bowling_style: number;
+  career_end: number;
+  death: number;
+  players: number;
+  matched_players: number;
+};
+
+/** A player the biography pass found nothing for, with what fixing him would be worth. */
+export type BiographyUnmatchedPlayer = {
+  player_id: number;
+  name: string;
+  cricsheet_id: string;
+  cricinfo_id?: string;
+  appearances: number;
+  /** False when there is no biography row at all: the pass has not run for him. */
+  attempted: boolean;
+};
+
+/** GET /ops/data/biography-coverage: the state of the acquired player biographies. */
+export type BiographyCoverageResponse = {
+  generated_at: string;
+  rows: BiographyCoverageRow[];
+  total: BiographyCoverageRow;
+  unmatched: BiographyUnmatchedPlayer[];
+  /** Newest fetched_at in the table; absent when the acquisition has never run. */
+  last_fetched_at?: string;
+  source_license: string;
+};
+
+/**
  * Resource a step contends for. Steps in one lane run one at a time; the lanes
  * overlap, so a dataset download and a training run can be in flight together.
  * Generated backend-side from the step registry (contracts/ops-console.contract.json).

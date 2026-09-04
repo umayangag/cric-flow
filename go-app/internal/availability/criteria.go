@@ -12,10 +12,11 @@ import (
 // value, not a query, so a criterion cannot reach the database and cannot therefore
 // depend on when it happens to run.
 //
-// BirthDate and CareerEnd are X-1a's facts and are zero until X-1a lands. That is why a
-// criterion reports Unavailable rather than false when its evidence is missing: "we have
-// no age for him" and "he is not old enough" are different answers, and only the second
-// is a reason to leave a claim uncorroborated.
+// BirthDate and CareerEnd are X-1a's facts, read from `player_biography` for the players
+// the Wikidata pass matched and zero for the rest. That is why a criterion reports
+// Unavailable rather than false when its evidence is missing: "we have no age for him"
+// and "he is not old enough" are different answers, and only the second is a reason to
+// leave a claim uncorroborated.
 type Evidence struct {
 	PlayerID int64
 	// LastPlayed is the player's most recent appearance in *any* format. Retirement is
@@ -23,9 +24,13 @@ type Evidence struct {
 	// inactivity criterion looks wider than the pool window does. Zero means he has
 	// never appeared, which corroborates nothing: it is a data gap, not a career end.
 	LastPlayed time.Time
-	// BirthDate is X-1a's date of birth. Zero until X-1a lands.
+	// BirthDate is X-1a's date of birth (player_biography.birth_date). Zero for a player
+	// the Wikidata pass did not match, which X-1a measured at about 15% of appearances.
 	BirthDate time.Time
-	// CareerEnd is X-1a's Wikidata career end date. Zero until X-1a lands.
+	// CareerEnd is X-1a's Wikidata career end date (player_biography.career_end_date).
+	// Zero for almost everybody: X-1a measured Wikidata as carrying an end-of-work-period
+	// date for three players in this registry, so this criterion is available in code and
+	// all but never in evidence.
 	CareerEnd time.Time
 }
 
@@ -69,19 +74,19 @@ const (
 	// CriterionInactivity is (a): no match in any format for N years.
 	CriterionInactivity = "inactivity"
 
-	// CriterionCareerEnd is (b): a Wikidata career end date before the cutoff. Needs
-	// X-1a.
+	// CriterionCareerEnd is (b): a Wikidata career end date before the cutoff. X-1a
+	// supplies it, and measured that Wikidata almost never states one.
 	CriterionCareerEnd = "career_end"
 
 	// CriterionAgeAndInactivity is (c): age above a per-format bound with M years
-	// inactive. Needs X-1a.
+	// inactive. X-1a supplies the age.
 	CriterionAgeAndInactivity = "age_and_inactivity"
 )
 
 // Criteria returns the corroboration criteria, in the order they are tried. Inactivity
-// is first because it is the only one whose evidence this repository already holds;
-// the other two are registered now, report themselves unavailable, and start answering
-// the day X-1a fills their fields in.
+// is first because its evidence is this repository's own; the other two read X-1a's
+// acquired biographies and answer per player, reporting unavailable for a player the
+// Wikidata pass matched nothing for.
 func Criteria(cfg *config.Config) []Criterion {
 	return []Criterion{
 		inactivityCriterion{years: config.RetirementInactiveYears(cfg)},
@@ -129,15 +134,16 @@ func (c inactivityCriterion) Corroborates(subject Subject) Verdict {
 }
 
 // careerEndCriterion is (b): an external career end date before the moment of the claim.
-// Its evidence arrives with X-1a; until then it reports unavailable, which is the honest
-// answer and not a "no".
+// Its evidence is X-1a's; where Wikidata states no end of work period it reports
+// unavailable, which is the honest answer and not a "no". X-1a measured that as almost
+// always: the property is stated for three players in this registry.
 type careerEndCriterion struct{}
 
 func (c careerEndCriterion) Name() string { return CriterionCareerEnd }
 
 func (c careerEndCriterion) Corroborates(subject Subject) Verdict {
 	if subject.Evidence.CareerEnd.IsZero() {
-		return Verdict{Unavailable: true, Detail: "no external career end date on record (needs X-1a)"}
+		return Verdict{Unavailable: true, Detail: "no external career end date on record for this player"}
 	}
 	if subject.Evidence.CareerEnd.Before(subject.At) {
 		return Verdict{Corroborated: true, Detail: fmt.Sprintf(
@@ -154,7 +160,8 @@ func (c careerEndCriterion) Corroborates(subject Subject) Verdict {
 // is an injury.
 //
 // The age bound is per format because the formats do not end a career at the same age.
-// Its evidence arrives with X-1a; until then it reports unavailable.
+// Its evidence is X-1a's date of birth, which covers about 85% of appearances; a player
+// the pass did not match reports unavailable.
 type ageAndInactivityCriterion struct {
 	ageBounds     map[string]int
 	fallbackBound int
@@ -165,7 +172,7 @@ func (c ageAndInactivityCriterion) Name() string { return CriterionAgeAndInactiv
 
 func (c ageAndInactivityCriterion) Corroborates(subject Subject) Verdict {
 	if subject.Evidence.BirthDate.IsZero() {
-		return Verdict{Unavailable: true, Detail: "no date of birth on record (needs X-1a)"}
+		return Verdict{Unavailable: true, Detail: "no date of birth on record for this player"}
 	}
 	if subject.Evidence.LastPlayed.IsZero() {
 		return Verdict{Unavailable: true, Detail: "no appearance on record in any format"}

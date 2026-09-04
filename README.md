@@ -130,6 +130,16 @@ non-zero if the ratings it ends up serving are outside H-11's staleness limit. W
 default rhythm; `make cadence-dry-run` starts nothing. See **docs/overview.md** § Cadence and
 `deploy/cadence/` for scheduler examples.
 
+`make player-biographies` is an optional step *beside* the cadence, not in it: it acquires
+dates of birth, batting handedness, bowling style and career end from Wikidata (CC0), joined
+to the player registry through the ESPNcricinfo id Cricsheet's people register carries, into
+`player_biography`. Resumable, one command from a clean database, and it re-asks nothing it
+has already asked. A biography changes on the scale of a career, so it runs when the registry
+has grown enough to matter rather than on every refresh. Coverage — weighted by appearances,
+per format and gender — is on the Ops tab beside the dataset registry and committed in
+**docs/player-biography-coverage.md**. No model or feature reads the table. See
+**docs/config-and-data.md** § Player biographies.
+
 ## Logging (Go)
 
 Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|warn|error). Example: `cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api`.

@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity full-pipeline cadence cadence-dry-run
+.PHONY: retrain evaluate reload xi-parity full-pipeline cadence cadence-dry-run player-biographies
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -160,6 +160,30 @@ cadence:
 # The same command, checking its preconditions and starting nothing.
 cadence-dry-run:
 	DRY_RUN=1 $(MAKE) cadence --no-print-directory
+
+# --- Player biographies: an optional step beside the cadence (X-1a) ---
+#
+# Acquire dates of birth, handedness, bowling style and career end from Wikidata (CC0),
+# joined to the player registry through the ESPNcricinfo id Cricsheet's people register
+# carries, and write the coverage report. One command from a clean database; resumable —
+# every batch's answers are cached before the next one starts, so a run that is
+# interrupted is resumed by running it again.
+#
+# It is *beside* the cadence rather than in it because a date of birth does not change and
+# a bowling style rarely does: re-asking Wikidata on every weekly refresh would be work
+# whose answer is known. Run it when the registry has grown enough to matter, or weekly
+# beside `make cadence` if that is simpler to schedule. No model or feature reads it.
+#
+# BIOGRAPHY_ARGS passes flags through: -report-only re-measures and rewrites the report
+# without asking Wikidata, -register takes a local copy of the people register.
+BIOGRAPHY_ARGS ?=
+player-biographies:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	cd go-app && go run ./cmd/player-biography-backfill \
+		-overrides "$(CURDIR)/configs/player_biography_overrides.json" \
+		-report "$(CURDIR)/docs/player-biography-coverage.md" \
+		-cache "$(CURDIR)/output/player-biographies/wikidata-lookups.jsonl" \
+		$(BIOGRAPHY_ARGS)
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports
@@ -321,8 +345,8 @@ frontend-check: frontend-install
 go-app-check:
 	@echo "[go-app] Running lint, fmt check, tests and coverage..."
 	$(MAKE) -C go-app vet fmt-check lint coverage
-	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 74)..."
-	COV_MIN=$${COV_MIN_GO:-74} $(MAKE) -C go-app coverage-check
+	@echo "[go-app] Enforcing coverage threshold (COV_MIN_GO, default 76)..."
+	COV_MIN=$${COV_MIN_GO:-76} $(MAKE) -C go-app coverage-check
 
 ml-service-check:
 	@echo "[ml-service] Running lint, fmt check, tests and coverage..."
@@ -438,7 +462,7 @@ dev-rebuild-nocache:
 
 
 # --- CI aggregate helpers ---
-COV_MIN_GO ?= 74
+COV_MIN_GO ?= 76
 COV_MIN_ML ?= 93
 
 # Run ml-service CI pipeline (fmt, lint, coverage + threshold)
@@ -472,6 +496,7 @@ help:
 	@echo "  full-pipeline      retrain → reload, against data already imported"
 	@echo "  cadence            The scheduled refresh: fetch → extract → import → retrain → reload [API]"
 	@echo "  cadence-dry-run    Check the cadence's preconditions and start nothing"
+	@echo "  player-biographies Acquire player biographies from Wikidata and write the coverage report"
 	@echo
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"

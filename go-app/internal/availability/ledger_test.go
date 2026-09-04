@@ -83,9 +83,9 @@ func TestLedgerFlag_AnUncorroboratedClaimStillHidesHimFromThatUser(t *testing.T)
 	assert.Equal(t, availability.ReasonUserFlagged, result.Flag.Reason())
 }
 
-// TestLedgerFlag_ReportsWhatItCouldNotCheck keeps the answer honest while X-1a is
-// outstanding: two of the three criteria have no evidence to read, and the response says
-// so rather than implying they were checked and said no.
+// TestLedgerFlag_ReportsWhatItCouldNotCheck keeps the answer honest for a player X-1a
+// acquired nothing for: two of the three criteria have no evidence to read, and the
+// response says so rather than implying they were checked and said no.
 func TestLedgerFlag_ReportsWhatItCouldNotCheck(t *testing.T) {
 	t.Parallel()
 	store := mocks.NewMockStore(t)
@@ -127,7 +127,7 @@ func TestLedgerFlag_StopsAtTheFirstCorroboratingCriterion(t *testing.T) {
 }
 
 // TestLedgerFlag_HonoursTheConfiguredCriteria shows the list is injected, which is what
-// makes it pluggable: X-1a adds an entry and nothing here changes.
+// makes it pluggable: X-1a supplied two criteria's evidence and nothing here changed.
 func TestLedgerFlag_HonoursTheConfiguredCriteria(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{}

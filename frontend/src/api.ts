@@ -11,6 +11,7 @@ import type {
   PipelineRunResponse,
   PipelineProgressPayload,
   PipelineLane,
+  BiographyCoverageResponse,
   DatasetRegistryResponse,
   DataFeedsResponse,
   StagedResponse,
@@ -247,6 +248,19 @@ export const api = {
     const u = new URL('/ops/data/datasets', BASE_API_URL);
     u.searchParams.set('limit', String(limit));
     return httpApi(u.toString(), { signal: options?.signal });
+  },
+  /**
+   * Biography coverage (GET /ops/data/biography-coverage): how much of the archive the
+   * acquired player biographies cover, per format and gender, weighted by appearances.
+   *
+   * It is measured on every call rather than stored, for the same reason the dataset
+   * registry derives "live" from disk: a stored coverage figure goes stale the moment
+   * an import adds players, and a stale figure is worse than none.
+   */
+  opsBiographyCoverage(options?: { signal?: AbortSignal }): Promise<BiographyCoverageResponse> {
+    return httpApi(new URL('/ops/data/biography-coverage', BASE_API_URL).toString(), {
+      signal: options?.signal,
+    });
   },
   /**
    * Trigger a pipeline step (import, retrain, evaluate, reload).

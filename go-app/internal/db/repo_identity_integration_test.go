@@ -9,8 +9,10 @@ import (
 )
 
 // connectAndMigrateForIdentity brings up a migrated database and empties the two identity
-// tables, so each case starts from a known state. Truncating both together satisfies the
-// foreign keys that point at them.
+// tables, so each case starts from a known state. Truncating them together satisfies the
+// foreign keys that point at them -- and the list has to name *every* table referencing
+// one in it, so the per-player tables D-12 and X-1a added are in it too. Postgres refuses
+// the whole statement otherwise, which is how those two additions were noticed.
 func connectAndMigrateForIdentity(t *testing.T) context.Context {
 	t.Helper()
 	ctx := context.Background()
@@ -20,7 +22,8 @@ func connectAndMigrateForIdentity(t *testing.T) context.Context {
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 	require.NoError(t, Exec(ctx, `TRUNCATE TABLE
 		ball_event, match_player, batting_data, bowling_data, fielding_data, fielding_event,
-		match_inning, match, player, opposition RESTART IDENTITY`))
+		match_inning, match, player, opposition,
+		player_status, player_status_event, player_biography RESTART IDENTITY`))
 	return ctx
 }
 

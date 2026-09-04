@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/pipeline"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataacquire"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
@@ -243,6 +244,24 @@ func (a *App) dataDatasetsHandler(w http.ResponseWriter, r *http.Request) {
 		// rather than rendering as an empty list.
 		"live_sha256": liveSHA,
 	})
+}
+
+// dataBiographyCoverageHandler handles GET /ops/data/biography-coverage: how much of the
+// archive the acquired player biographies (X-1a) actually cover, per format and gender.
+//
+// It sits beside the dataset registry rather than in a log because the coverage *is* the
+// state of a data source, and §8.7's rule is that the data's state belongs on a surface.
+// A biography pass that has not been run and one that ran and found nothing produce very
+// different figures here, and neither is visible from the row counts.
+func (a *App) dataBiographyCoverageHandler(w http.ResponseWriter, r *http.Request) {
+	coverage, err := db.NewPlayerBiographyStore().Coverage(r.Context())
+	if err != nil {
+		slog.Error("ops biography coverage: measuring failed", slog.Any("err", err))
+		respondJSON(w, http.StatusInternalServerError,
+			map[string]string{"error": "could not measure biography coverage"})
+		return
+	}
+	respondJSON(w, http.StatusOK, coverage)
 }
 
 // Dataset listing bounds, mirroring the backtest list conventions.

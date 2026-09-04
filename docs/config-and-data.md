@@ -181,6 +181,70 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 
 ---
 
+## Player biographies (X-1a)
+
+The archive says what happened, never who it happened to. Dates of birth, batting
+handedness and bowling style are not in a Cricsheet file at any price, and X-1b wants to
+test them as features — so X-1a acquires them, measures how far they reach, and stops
+there. Nothing under `ml-service/` reads this table.
+
+**The source and the join.** Wikidata, licensed **CC0-1.0**, joined to the player registry
+through the ESPNcricinfo player id that Cricsheet's [people
+register](https://cricsheet.org/register/people.csv) and Wikidata (property `P2697`) both
+carry. Both files are free and need no account, which is the standing constraint on this
+plan. The properties read are `P569` date of birth, `P570` date of death, `P2032` end of
+work period, `P741`/`P552` handedness and `P2545` bowling style.
+
+**One command, resumable.**
+
+```bash
+make player-biographies                          # acquire, then write the coverage report
+make player-biographies BIOGRAPHY_ARGS=-report-only   # re-measure what is stored, ask nothing
+```
+
+It is a step **beside** the cadence, not in it: a date of birth never changes and a bowling
+style rarely does, so re-asking Wikidata on every weekly refresh would be work whose answer
+is known. Run it when the registry has grown enough to matter, or weekly beside `make
+cadence` if that is simpler to schedule.
+
+Every batch's answers — **including its misses** — are appended to
+`output/player-biographies/wikidata-lookups.jsonl` before the next batch starts, so a run
+that is interrupted is resumed by running the same command again, and a second run over
+unchanged data asks Wikidata nothing. The query service is asked in batches of 500 ids with
+a second between them and a `User-Agent` that identifies the caller; set
+`WIKIDATA_USER_AGENT` to put your own contact address in it, as the service asks.
+
+**What is stored.** `player_biography` (migration `0010`), one row per player — *including
+the players nothing was found for*. "Wikidata has no item carrying this id" is an answer;
+no row at all means the pass has not run for him, and only the first is a measured coverage
+figure. A bowling style is mapped into a small controlled vocabulary (`pace`, `medium`,
+`off-spin`, `leg-spin`, `left-arm-orthodox`, `left-arm-wrist`, `unknown`) with the source
+label kept beside it, so a mapping can be corrected later without re-fetching. A date of
+death is recorded as itself and never written into `career_end_date`: a player who died in
+2022 may have stopped playing in 2007.
+
+**Curated overrides.** `configs/player_biography_overrides.json`, keyed by
+`player.external_id`, lays hand-checked facts over the acquired ones — the same pattern as
+the venue geocoding placeholder. Only the fields a row names change, every row needs a
+`note` saying where the fact came from, and the vocabulary and dates are validated before
+anything is written. Work down `docs/player-biography-coverage.md` § The largest gaps: it
+lists unmatched players by appearances, so the top of the list is where an override buys
+the most coverage.
+
+**Where the coverage shows.** `GET /ops/data/biography-coverage` measures it live from the
+table — per format and gender, weighted by appearances rather than by players, because that
+is the share a feature would actually see — and the Ops tab renders it beside the dataset
+registry. The committed figures are in
+[player-biography-coverage.md](player-biography-coverage.md); what they mean for X-1b is in
+[EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-1a.
+
+**One consequence outside acquisition.** The retirement ledger's corroboration criteria
+(D-12) are a pluggable list, and two of them read a date of birth and a career end date.
+They reported themselves *unavailable* because nothing supplied either. They now read
+`player_biography`, and answer per player rather than per deployment.
+
+---
+
 ## Acquiring a dataset
 
 Getting a new Cricsheet archive onto the box used to require a shell. It is now two

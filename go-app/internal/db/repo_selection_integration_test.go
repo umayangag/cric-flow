@@ -42,7 +42,8 @@ func setUpPoolFixture(t *testing.T) poolFixture {
 	t.Cleanup(func() { pool.Close() })
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 	require.NoError(t, Exec(ctx, `TRUNCATE TABLE
-		player_status_event, player_status, ball_event, match_player, batting_data, bowling_data,
+		player_status_event, player_status, player_biography,
+		ball_event, match_player, batting_data, bowling_data,
 		fielding_data, fielding_event, match_inning, match, player, opposition RESTART IDENTITY`))
 
 	formatID, err := GetOrCreateMatchFormat(ctx, "ODI")

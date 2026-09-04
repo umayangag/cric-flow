@@ -82,7 +82,7 @@ check-all green; coverage gates never move down. Then stop and hand over the pus
 PR commands.
 ```
 
-## X-1a — player biographies acquired from Wikidata (model: Opus)
+## X-1a — player biographies acquired from Wikidata (model: Opus) — **acquired and measured**
 
 **What.** Date of birth, batting handedness, bowling style and — where Wikidata carries
 it — the career end date or a retirement statement, for the player registry,
@@ -91,6 +91,13 @@ joined via the ESPNcricinfo id that Cricsheet's people registry and Wikidata bot
 building on — matched biography with DOB for players covering ≥ 80 % of match
 appearances in each limited-overs format (report the true figure per format and gender
 whatever it is).
+
+*Done on `feat/x-1a-player-biographies`; the measured coverage and the three recorded
+nulls are in § Record of outcomes below. The short version: **date of birth clears the
+gate** at 85.3 % of appearances overall, and in every limited-overs format and gender
+except women's T20 (61.4 %). **Bowling style, batting handedness and career end do not
+exist in Wikidata at usable scale** — 265, 18 and 3 of 13,662 players — so X-1b's matchup
+family has no labels to build from and only its age family is runnable.*
 
 ```
 Read docs/EXTERNAL_DATA_PLAN.md (X-1a) — acquisition only; X-1b owns features. Read how
@@ -133,6 +140,15 @@ only see the past; a 21-year-old and a 36-year-old with identical form differ
 predictably) and **handedness/style matchups** (left–right combinations, spin-type vs
 handedness — the effects with real empirical support, which A-3 could not test for want
 of labels). Three families, each with its own gate; nulls per family acceptable.
+
+**X-1a's coverage narrows this before it starts.** Families 1 and 3 (age, age-aware cold
+start) have their input: a date of birth for 85.3 % of appearances, and ≥ 80 % in every
+limited-overs format and gender bar women's T20 at 61.4 %, which is therefore out of
+scope for them. **Family 2 (matchups) has no input at all** — Wikidata states a bowling
+style for 265 players and a batting hand for 18 — so it is a recorded null on coverage
+before a fold is run, and the honest step is to say so in its row rather than to fit a
+model to 1.9 % of the registry. The E5 re-run beside it was the only part of family 2
+that did not need labels; it can still be run on its own terms.
 
 ```
 Read docs/EXTERNAL_DATA_PLAN.md (X-1b and X-1a's measured coverage) and, in
@@ -331,8 +347,8 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | id | status |
 |---|---|
 | X-4 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero. Paid and account-gated sources rejected. It does not price the rest |
-| X-1a | open |
-| X-1b | open — gated on X-1a's coverage |
+| X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
+| X-1b | open — X-1a's coverage supports the **age** family only; the matchup family has no labels to build from and its gate cannot be run |
 | X-3 | open |
 | X-2 | open — run last |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
@@ -482,6 +498,133 @@ odds was found, and paid ones are out of scope, so the question stays open rathe
 becoming a purchase decision. If a free source with international coverage appears — an
 academic release, a permissively licensed archive — dropping its files in `data/market-odds/`
 is the whole integration.
+
+### X-1a — what Wikidata actually carries, and what it does not
+
+*Done on `feat/x-1a-player-biographies`. Acquisition and measurement only: nothing under
+`ml-service/` reads the table, no feature was built, and no model number moved.*
+
+**The join, and why it is the only free one.** Cricsheet's people register
+(`https://cricsheet.org/register/people.csv`, 18,507 people) carries `key_cricinfo` beside
+the identifier `player.external_id` already holds, and Wikidata carries the same
+ESPNcricinfo id as property `P2697`. Both files are free, need no account and are
+licence-clean (Wikidata's data is CC0-1.0), which is the standing no-paid-sources rule.
+The join reaches **13,638 of 13,662 players — 99.98 % of appearances**; the 24 misses are
+people ESPNcricinfo does not list at all. 31,691 Wikidata items carry a `P2697` value, so
+the source is not thin in principle.
+
+**What the pass found, per player.** 13,662 rows written — one per player, *including* the
+6,484 nothing was found for, because "asked and had nothing" is a measurement and "never
+asked" is not:
+
+| fact | Wikidata property | players | share of players |
+|---|---|---:|---:|
+| matched to an item | `P2697` | 7,178 | 52.5 % |
+| date of birth | `P569` | 6,967 | 51.0 % |
+| bowling style, placed in the vocabulary | `P2545` | 265 | 1.9 % |
+| batting handedness | `P741` / `P552` | 18 | 0.13 % |
+| career end date | `P2032` | 3 | 0.02 % |
+| date of death | `P570` | 25 | 0.18 % |
+
+**Weighted by appearances**, which is the share a feature would actually see — a biography
+for a man who played once in 2004 is not worth one for a man in every eleven this season.
+503,371 fielded player-sides:
+
+| format | gender | appearances | matched | **DOB** | style | hand | career end |
+|---|---|---:|---:|---:|---:|---:|---:|
+| TEST | female | 528 | 100.0 % | 99.6 % | 3.0 % | 0.0 % | 0.0 % |
+| TEST | male | 68,220 | 97.7 % | 97.2 % | 6.0 % | 0.7 % | 0.1 % |
+| ODI | female | 20,865 | 97.3 % | **94.0 %** | 1.3 % | 0.3 % | 0.0 % |
+| ODI | male | 94,058 | 94.0 % | **93.1 %** | 6.7 % | 0.8 % | 0.2 % |
+| T20 | female | 63,175 | 63.4 % | **61.4 %** | 0.3 % | 0.3 % | 0.0 % |
+| T20 | male | 209,675 | 83.3 % | **82.6 %** | 4.9 % | 0.2 % | 0.0 % |
+| T20I | female | 16,881 | 95.5 % | **93.7 %** | 1.9 % | 0.1 % | 0.0 % |
+| T20I | male | 29,969 | 92.8 % | **92.5 %** | 7.2 % | 0.4 % | 0.0 % |
+| **all** | | **503,371** | **86.3 %** | **85.3 %** | 4.7 % | 0.4 % | 0.1 % |
+
+The full report, with the unweighted player counts and the ranked gap list, is committed at
+[player-biography-coverage.md](player-biography-coverage.md).
+
+**The gate: date of birth passes, with one named exception.** The bar was "matched
+biography with DOB for players covering ≥ 80 % of match appearances in each limited-overs
+format". ODI **93.1 % / 94.0 %**, T20I **92.5 % / 93.7 %** and men's T20 **82.6 %** clear
+it. **Women's T20 fails at 61.4 %.** That is not noise and it is not a bug in the join: the
+T20 (All) format is mostly domestic and associate-nation cricket, and Wikidata's cricket
+coverage falls away exactly where the players are not internationals. X-1b's age family may
+therefore be run for ODI, T20I and men's T20; women's T20 is out of scope for it on
+coverage grounds, and saying so here is cheaper than discovering it as a fold that will not
+fit.
+
+**Three recorded nulls, and none of them is fixable with more effort.**
+
+1. **Bowling style is not in Wikidata at any usable scale.** `P2545` is stated for 1,145
+   items *world-wide* and for 265 of the players in this registry (4.7 % of appearances),
+   and its distribution is a bot import rather than a labelling: 179 left-arm-orthodox, 73
+   leg-spin, and single figures for everything else. A vocabulary was still built and
+   mapped (`pace` / `medium` / `off-spin` / `leg-spin` / `left-arm-orthodox` /
+   `left-arm-wrist`, plus `unknown` for a label too coarse to place, such as "spin bowling"
+   or "right arm") because X-1b needs a stable label set the day a source appears — but on
+   today's coverage **X-1b's matchup family cannot be run at all**, which is the same
+   conclusion A-3 reached from inferred labels and now has a labelled reason.
+2. **Batting handedness is effectively absent.** 18 players. `P741` (playing hand) is on 23
+   cricketer items world-wide and `P552` (handedness) on 29. The left–right top-order
+   balance feature X-1b wanted has no labels.
+3. **A career end date is effectively absent.** `P2032` is stated for 21 cricketer items
+   world-wide and 3 in this registry. Wikidata records that a career happened, not when it
+   stopped.
+
+**Why nothing was inferred.** A date of death (`P570`, 25 players here) is stored as its own
+column and is deliberately *never* written into `career_end_date`: a player who died in 2022
+may have stopped playing in 2007, and a retirement ledger reading one as the other would
+promote a claim on evidence that does not exist. A `P569` value is also stored as given —
+Wikidata renders a year-precision date as the first of January and the `wdt:` shortcut does
+not carry the precision qualifier, so a birth date here can be a year wearing a day. That
+costs an age feature at most half a year and is recorded rather than smoothed away.
+
+**Overrides do not close the gap, and were measured before being skipped.** The report
+ranks unmatched players by appearances so a curator works down a list. Of the 23,126
+unmatched women's T20 appearances, the **top 25 overrides recover 1,909** — 61.4 % → 64.4 %,
+about three points. Reaching 80 % would need roughly 350 hand-checked rows. The top of the
+men's T20 list is worth 1.0 point for 25 rows. "A handful of overrides moves coverage
+materially" is false here, so `configs/player_biography_overrides.json` ships **empty**,
+with its format, validation and the pattern in place for the day a specific player matters.
+Every unmatched player in the top 25 is an associate-nation or domestic women's player
+(Papua New Guinea, Thailand, Indonesia, Vanuatu, Uganda, Rwanda) — the shape of the gap,
+not an accident of it.
+
+**What shipped.** Migration `0010_player_biography.sql`, one row per player keyed by the
+registry id, with the join key and the licence recorded per row; `internal/biography` (the
+register parser, the SPARQL builder and decoder, the vocabulary, the resumable cache, the
+override validator and the coverage arithmetic — all pure, all tested);
+`cmd/player-biography-backfill` behind `make player-biographies`; and
+`GET /ops/data/biography-coverage`, rendered on the Ops tab beside the dataset registry so
+the state of the source is on a surface rather than in a log (§8.7). The importer did not
+change and no model or feature did.
+
+**Resumability, demonstrated rather than asserted.** Every batch's answers, misses
+included, are appended to `output/player-biographies/wikidata-lookups.jsonl` before the
+next batch starts. The first run was killed mid-way by a real 502 from the query service at
+batch 9 of 28; re-running the same command resumed at 4,500 of 13,707 ids and finished. A
+bounded retry (three attempts, doubling wait, only on 429 and 5xx) was added afterwards so
+the common case does not need an operator. The database was then truncated and rebuilt from
+the archive for the integration tests, and the backfill re-run: it asked Wikidata **nothing**
+and produced **the same figures to the last digit** (86.33 % matched, 85.33 % DOB, 4.68 %
+style).
+
+**One consequence outside acquisition.** D-12 registered two corroboration criteria that
+reported themselves *unavailable* because nothing supplied a date of birth or a career end
+date. Both now read `player_biography` and answer per player. In practice: criterion (c)
+(age with inactivity) is live for the 85 % of appearances with a date of birth, and
+criterion (b) (career end) is live in code but will almost never have evidence — three
+players. That is the honest state, and it is why the criteria report "unavailable" rather
+than "no".
+
+**H-24.** No new literal crosses a service boundary. The bowling-style vocabulary lives in
+Go and in a Go-validated config file; the coverage endpoint returns counts, and the frontend
+renders them without matching on any of the values. The day X-1b sends a style label to
+ml-service, that vocabulary becomes an H-24 declaration — it is not one yet, and declaring a
+literal only one side matches on would be the JSON-file-next-to-an-untested-seam the rule
+warns against.
 
 ### D-12 — the measurement, and what shipped
 

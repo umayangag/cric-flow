@@ -95,8 +95,8 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
-          # Keep aligned with go-app/Makefile COV_MIN (currently 74). Raise together once coverage improves.
-          COV_MIN: "74"
+          # Keep aligned with go-app/Makefile COV_MIN (currently 76). Raise together once coverage improves.
+          COV_MIN: "76"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact

@@ -104,10 +104,12 @@ func TestInactivityCriterion_HonoursTheConfiguredBound(t *testing.T) {
 	assert.True(t, verdict.Corroborated, "three years away is beyond a two-year bound")
 }
 
-// TestCareerEndCriterion_IsUnavailableUntilItsEvidenceExists states what X-1a will
-// change. "We have no career end date" is not "he has not retired", and reporting the
-// first as the second would make the criterion look like it had checked.
-func TestCareerEndCriterion_IsUnavailableUntilItsEvidenceExists(t *testing.T) {
+// TestCareerEndCriterion_IsUnavailableWithoutACareerEndDate is the answer for the player
+// X-1a matched nothing for -- and, since Wikidata states an end of work period for three
+// players in this registry, for nearly everyone. "We have no career end date" is not "he
+// has not retired", and reporting the first as the second would make the criterion look
+// like it had checked.
+func TestCareerEndCriterion_IsUnavailableWithoutACareerEndDate(t *testing.T) {
 	t.Parallel()
 	criterion := criterionNamed(t, nil, availability.CriterionCareerEnd)
 
@@ -118,11 +120,11 @@ func TestCareerEndCriterion_IsUnavailableUntilItsEvidenceExists(t *testing.T) {
 
 	assert.True(t, verdict.Unavailable)
 	assert.False(t, verdict.Corroborated)
-	assert.Contains(t, verdict.Detail, "X-1a")
+	assert.Contains(t, verdict.Detail, "no external career end date on record")
 }
 
-// TestCareerEndCriterion_CorroboratesAPastCareerEnd exercises the branch X-1a will
-// switch on, by handing the criterion the fact it will one day read.
+// TestCareerEndCriterion_CorroboratesAPastCareerEnd exercises the branch X-1a's acquired
+// career end date switches on.
 func TestCareerEndCriterion_CorroboratesAPastCareerEnd(t *testing.T) {
 	t.Parallel()
 	criterion := criterionNamed(t, nil, availability.CriterionCareerEnd)
