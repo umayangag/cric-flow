@@ -170,7 +170,7 @@ in spirit already (the A-6 market-benchmark sketch).
 
 | id | status |
 |---|---|
-| P0-1 | open |
+| P0-1 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero, so it does not resolve the market question (§ 2; [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4) |
 | P0-2 | open |
 | P0-3 | open |
 | P0-4 | open |
