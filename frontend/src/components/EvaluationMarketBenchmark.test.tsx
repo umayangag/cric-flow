@@ -82,7 +82,7 @@ describe('EvaluationMarketBenchmark', () => {
   it('says a format has no market comparison rather than showing an empty table', () => {
     render(<EvaluationMarketBenchmark benchmark={benchmark({ ODI: uncoveredOdi })} format="ODI" />);
 
-    expect(screen.getByText(/No closing price joined to a ODI match/)).toBeInTheDocument();
+    expect(screen.getByText(/No closing price joined to any ODI match/)).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
