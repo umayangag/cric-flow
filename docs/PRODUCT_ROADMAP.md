@@ -61,7 +61,10 @@ constraint is the user's to lift, not this plan's.
   leagues, where public ball-by-ball data is the same data everyone has.
 - **Freshness is the real operating cost.** Cricsheet lags matches by days. A product
   whose ratings are stale is H-11 with a paying customer attached; near-real-time needs
-  a licensed data feed (recurring cost) or honest "as of <date>" positioning.
+  a licensed data feed (recurring cost) or honest "as of <date>" positioning. **Decided
+  (P0-4, § 2.1): the honest positioning.** The recurring data cost is zero and the price
+  is paid in staleness — single-digit days, measured at 2 against H-11's 14 on this box —
+  and the residual exposure is the Cricsheet licence, not a subscription.
 - **Regulatory adjacency.** A tool that optimises fantasy teams or resembles betting
   advice carries real compliance weight in the biggest cricket market (India). Phase 0
   was to scope this before any fantasy pivot; P0-2 is now deferred (§ 2), so it stays
@@ -84,7 +87,7 @@ Accuracy-as-superiority is not the pitch; *verified honesty and interactivity* a
 | P0-1 | **Market benchmark.** ✅ **Run, on free sources only** ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4). The one free, licence-clean cricket closing-odds series found is Betfair's published Big Bash / Women's Big Bash summaries; every candidate with international coverage was paid or behind a gambling account and was rejected. 588 of 592 markets joined with zero winner disagreements; 185 fall in the harness's scored windows — 4.2 % of T20, 0 % of T20I/ODI/TEST | **Answered for the hardest T20 subset only, and inconclusively.** Market AUC 0.608 vs display 0.556 (Brier 0.2387 vs 0.2488), but the gap's 95 % interval is −0.020 to +0.128. The honest sentence: *"we are not benchmarked against the market on internationals — no free source of those odds exists — and on the Big Bash matches we could price, neither we nor the market is far from a coin flip."* The limit is coverage, and under a no-paid-data rule it stays there until a freely licensed international series appears |
 | P0-2 | **Legal scan** — ⏸ **deferred, not deleted** (standing constraint). Done properly it needs paid legal counsel, and the prototype pays for nothing. The scope stands as written for the day it runs: fantasy-adjacency and prediction-tool rules in target jurisdictions (India foremost), stats/name usage (facts are generally fair; images/logos are not — budget for licensing or ship without), terms for "not betting advice". It becomes a prerequisite again before anything ships publicly or takes payment | **Not answered, and known not to be.** The prototype carries **no verified disclaimer architecture and no jurisdictional clearance**. That is an accepted gap, not an answered question: which wedges are open at all is unknown, and nothing here may be presented publicly or built fantasy-facing (3c) until this runs |
 | P0-3 | **Wedge interviews** — ✗ **skipped** (standing constraint: human-subject research). The 10–15 conversations — serious fantasy players, one associate-nation or women's-team analyst, one emerging-league operator — are interviews, and interviews are out of scope | **Cannot be answered.** The Phase 3 wedge cannot be chosen on evidence. Any wedge chosen later is a judgment call with no validation behind it, and has to be recorded as exactly that — the gate below says how |
-| P0-4 | **Freshness decision** — **answer forced, item simplified** (standing constraint). With paid feeds out of scope there is no licensed feed to quote against, so the comparison collapses: the system ships **"as of last import" with the date always visible** — the H-11 staleness refusal and the `ratings_through` surfaces already do the showing. P0-4 survives as the **write-up of that forced decision** — the cadence it implies, what the lag costs per format, where and how the date is shown — rather than as a comparison. **Not done**: the write-up is still its own item | The recurring-cost line is zero by construction; the write-up records what that buys and what it forgoes |
+| P0-4 | **Freshness decision** — ✅ **answered as a decision** (2026-09-04; the write-up is § 2.1 below). With paid feeds out of scope there was no licensed feed to quote against, so the comparison collapsed and the answer was forced: the system ships **"as of last import", with the as-of date visible**, and refuses a live prediction against ratings past H-11's limit rather than answering from a squad that has moved on. The write-up records the decision, audits the freshness machinery that actually exists (and names what does not), measures the staleness this box lives with, and puts the **Cricsheet licence question beside the cost line**, where it belongs | **The recurring data cost is zero, and what is paid instead is staleness.** Measured 2026-09-04 on this box: served ratings run through 2026-09-02, 2 days against the 14-day limit, and the weekly cadence bounds that at eight or nine days in normal operation. The decision is made; the *surfacing* it implies — the as-of date on the prediction itself, not only on the operator tabs — is Phase 2 work (§ 5), and § 2.1 names the gaps without closing them |
 
 Exit gate: a one-page positioning statement whose every claim the harness supports, a
 chosen first wedge, and a cost line. If P0-1 lands far below market and P0-3 finds no
@@ -92,9 +95,9 @@ pull, the honest outcome is "internal tool, no business" — recorded, like any 
 
 **Where the gate stands (2026-09-04): awaiting a user decision.** P0-1 ran and did not
 resolve the market question; P0-2 is deferred; P0-3 — the evidence the gate's "chosen
-first wedge" was to rest on — is skipped; P0-4's answer is forced; the cost line is zero
-by construction. The gate cannot close on evidence, and there are two honest routes
-through it:
+first wedge" was to rest on — is skipped; P0-4's answer was forced and is now written up
+(§ 2.1); the cost line is zero by construction. The gate cannot close on evidence, and
+there are two honest routes through it:
 
 - **(a)** accept the prototype framing and record the exit gate as *"internal tool /
   prototype, no wedge chosen"* — the outcome this section already names as a legitimate
@@ -104,6 +107,105 @@ through it:
 
 Neither is chosen here. That decision is the user's; this document records the routes,
 not a preference, and § 10 carries the gate as open until the user records one.
+
+### 2.1 P0-4 written out — the freshness decision (2026-09-04)
+
+**The decision.** The system ships **"as of last import", with the as-of date visible and
+a hard refusal behind it**. It does not pursue near-real-time. The original item was a
+comparison — quote licensed feeds against honest lag — and the standing constraint above
+removed one side of it: a licensed feed is a paid, account-gated source, so there is no
+quote to obtain and nothing to compare. The answer is therefore forced rather than chosen,
+and this write-up records it as such. What the system promises is not *current* but
+*dated*: every number it serves describes the game as it stood on a date the product can
+name, and a number whose date has gone past the limit is refused instead of served.
+
+**The cost line: zero recurring, staleness paid instead.** The recurring data cost is
+**zero** — Cricsheet's archive is a free download, no account, no subscription, and the
+same is true of every other source the system reads
+([config-and-data.md](config-and-data.md) § Data-source licence register). What is paid
+instead is **staleness**. Cricsheet is a volunteer-run archive published in batches, so the
+data lags the matches themselves; the product's honest positioning is a visible as-of date
+and a refusal past the limit, never "live" or "near-real-time". The operating cost that
+does exist is compute and an operator's attention: one cadence run a week (`make cadence`,
+measured at **11 min 22 s** end to end in A-5), which is a machine that is already on.
+
+**What freshness machinery exists today** — read from the code on 2026-09-04, not assumed:
+
+- **The H-11 refusal.** `ml-service/app/xi_service.py`: `XiRegistry.freshness()` compares
+  the loaded rating state's `last_date` against `ml.ratings_max_age_days`
+  (`ml-service/config.default.json`, **14**; `XI_RATINGS_MAX_AGE_DAYS` overrides, `0`
+  turns the check off). A **live** request past the limit raises `RatingsStale` →
+  **503 `RATINGS_STALE`**, with a hint naming the step that fixes it. A request naming its
+  own `as_of` is served, because a backtest asks for a date and gets it. The refusal and
+  the reported verdict are the same computation, so they cannot disagree.
+- **What the surfaces expose.** `/xi/status` carries `ratings_through` and the verdict
+  object (`fresh`, `age_days`, `max_age_days`, `code`); `/health` and go-app's
+  `/ops/status` (`artifacts.ratings*`) copy it through; the frontend reads it via
+  `/api/ml/xi-status`.
+- **What the run manifest exposes.** `ml-service/ml/xi/runs.py` — `run_id`, `created_at`,
+  `cutoff`, `dataset_sha`, `git_sha`, rating params, hyperparameters, metrics,
+  `state_shape` (player count and array widths). It does **not** record `ratings_through`:
+  the as-of date is read from the loaded state at serve time, so a run's data date cannot
+  be read from its manifest alone. On this box the served run's manifest `cutoff` is
+  `2026-09-03` (the retrain's wall clock) while its ratings run through `2026-09-02`.
+- **A second, independent freshness view.** go-app computes `db_freshness`
+  (`go-app/internal/services/opsstatus/db_insights.go`): the latest match date per format
+  straight from the database, bucketed `ok` ≤ 7 days, `stale` ≤ 30, `missing` beyond.
+- **Where the date is shown in the UI.** Health tab ("Ratings: through *date* (*n* days
+  old)", and the limit plus `RATINGS_STALE` when it is not fresh); Ops Status (the loaded
+  run panel, and the per-format `db_freshness` grid); Workbench's "Loaded run" card
+  ("Ratings through"); the System map's `ratings_through` / `ratings_age` bindings.
+- **Where it is not.** On the **Upcoming match prediction** tab the date appears only
+  through `PredictionReadiness`, which renders **when the prediction would be refused** —
+  nothing loaded, or stale — and renders *nothing at all* when the run is loaded and
+  fresh. A successful prediction is shown without a date.
+- **`as_of` is not reachable from the product.** The predict request struct
+  (`go-app/internal/server/predict_handlers.go`) has no `as_of` field; only backtests set
+  `predictteam.Input.AsOf`. So the H-11 exemption cannot be tripped from the UI.
+- **The cadence.** `deploy/cadence/` holds a systemd timer and a crontab for a weekly run
+  (Monday 06:17 UTC), as documentation — **enabled by nothing**. Weekly against a 14-day
+  limit leaves one missed run of slack; two consecutive misses is `RATINGS_STALE`.
+
+**The gaps this audit found, named and deliberately not fixed here.** (1) The prediction
+payload is dateless: `predictteam.Result` carries the XIs, selection, forecast, win
+probability, scorecard and pools, and **no `ratings_through` and no run id** — so a number
+copied, exported or screenshotted out of the product loses exactly the date the decision
+says must always travel with it. (2) The as-of date is absent from the one user-facing
+prediction surface except when the prediction fails. (3) The manifest cannot answer "what
+date is this run's data?" without loading the run. (4) Two freshness rules with different
+inputs and different thresholds coexist and can disagree — and today they do: `db_freshness`
+reads **stale** overall (TEST's latest match is 8 days old, past its 7-day bucket) while
+H-11 reads **fresh** (2 days of 14). Neither is wrong; they measure different things, and
+nothing reconciles them or says which one a badge would mean. All four belong to Phase 2's
+freshness badge (§ 5), not to this item, which is a decision and an audit.
+
+**The staleness the prototype actually lives with** — measured on this machine on
+2026-09-04, from the `cricket_data` database and the running service, not estimated. The
+served run is `20260903T160602Z-0e1e39c2`, whose ratings run **through 2026-09-02**: **2
+days old** against the 14-day limit, `fresh`. The database's latest match date is **also
+2026-09-02** across 22,818 matches, so **nothing is lost between import and serving** — the
+whole lag is Cricsheet's publication rhythm plus the time since the last cadence run. Per
+format the database's latest match is T20 2026-09-02, ODI and T20I 2026-09-01, TEST
+2026-08-27 (a sparse format, not a broken pipe). The archive that produced this run carried
+`Last-Modified: Wed, 02 Sep 2026 16:49:50 GMT` and was fetched on 2026-09-03; its final day
+is **partial** — 2026-09-02 holds 2 matches against a mean of ~9.7 per day over the
+preceding 18 days — so the last fully-populated date is roughly one day earlier than the
+as-of date suggests. Under the weekly cadence the age just before a run is due is therefore
+about **eight or nine days** (seven of cycle plus one or two of archive tail), which sits
+inside H-11's 14 with roughly a five-day margin and no room for two missed weeks. That is
+the honest lag: single-digit days, always visible, never live.
+
+**The Cricsheet licence, which belongs beside the cost line.** The zero-cost line rests on
+one source whose terms are **unresolved**. Cricsheet states no licence for the match
+archive; what the author states are criteria rather than a grant — free, derivatives
+allowed, corrections reported, not resold — recorded in full, as read from the source, in
+[config-and-data.md](config-and-data.md) § Data-source licence register (which also carries
+the people register's verified ODC-By 1.0, and is not restated here). The prototype's use —
+local, unsold, crediting Cricsheet, publishing no reproduction of the data — sits inside
+all four criteria. This is a real operating risk, not a formality: **it must be settled
+with the project directly before anything ships publicly or is sold**, which is P0-2's
+row to close, and until it is, the true cost of the data is "zero, with an unpriced
+licence question attached".
 
 ## 3. Phase 1 — the Team Lab (the product core)
 
@@ -159,7 +261,8 @@ lists, not a licensed feed** — a feed is a paid source and the standing constr
 out, so availability is what operators and users record, and D-12's retirement ledger
 (a user's flag, promoted to a fact only when held data corroborates it) is the first piece
 of that list; the pool-accuracy problem is a product problem now — the freshness badge
-everywhere (P0-4's forced answer, on every surface), and the **public track record page**: every published prediction
+everywhere (P0-4's decision, on every surface, closing the four gaps § 2.1 names, the
+dateless prediction payload first), and the **public track record page**: every published prediction
 scored after the match, cumulative calibration plotted, misses included. This page is
 the moat seed: it compounds, and a competitor who won't publish theirs loses the
 comparison by refusing it.
@@ -194,7 +297,7 @@ the moment they are real.
 | No data moat; clone risk | Ship the trust asset and product speed; accumulate operational data (Phase 2) |
 | Marketing drifts into claims the record contradicts | Every public claim maps to a harness number; the §8.8-class nulls are shown, not hidden |
 | Fantasy/betting regulation | P0-2 before any 3c work; jurisdiction gating |
-| Freshness cost eats the margin | P0-4 decides feed-vs-honest-lag before pricing exists |
+| Freshness cost eats the margin | **Decided (P0-4, § 2.1): recurring data cost zero, staleness paid instead** — "as of last import", the date visible, H-11 refusing past 14 days. The residual risk is the licence, not the price: Cricsheet grants none, and that must be settled with the project before anything ships or is sold |
 | Solo-maintainer bus factor | The run pipeline, contracts and docs already assume operator-independence; keep it that way |
 | The lab is a toy (week-3 retention fails) | Phase 1 exit gate measures it; pivot weight to 3a/3b, which sell to workflows, not curiosity |
 
@@ -222,7 +325,7 @@ the parts that cost money or need people, and says so.
 | P0-1 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero, so it does not resolve the market question (§ 2; [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4) |
 | P0-2 | ⏸ **deferred** (2026-09-04, standing constraint: needs paid counsel) — a prerequisite again before anything ships publicly or takes payment; until then the prototype has no verified disclaimer architecture and no jurisdictional clearance, an accepted gap (§ 2) |
 | P0-3 | ✗ **skipped** (2026-09-04, standing constraint: interviews are human-subject research) — the Phase 3 wedge cannot be chosen on evidence; any later choice is a judgment call recorded as unevidenced (§ 2) |
-| P0-4 | open — **answer forced** by the constraint (no feed to quote; ship "as of last import" with the date visible); the write-up of that decision is still to be done as its own item (§ 2) |
+| P0-4 | ✅ **answered as a decision** (2026-09-04; write-up in § 2.1). The system ships **"as of last import" with the as-of date visible**, and refuses a live prediction past H-11's limit rather than answering from stale ratings; paid feeds were out of scope, so there was no feed to quote and the answer was forced. **Recurring data cost: zero. What is paid instead: staleness** — measured on this box, served ratings through 2026-09-02, **2 days** against the 14-day limit, with the database's own latest match on the same date (nothing lost between import and serving), and the weekly cadence bounding the age at eight or nine days. **Recorded beside the cost line: the Cricsheet licence is unresolved** — no licence is stated for the match archive, only the author's criteria (free, derivatives allowed, corrections reported, not resold), which this prototype's use sits inside; it must be settled with the project directly before anything ships or is sold ([config-and-data.md](config-and-data.md) § Data-source licence register). **The decision is answered; the surfacing it implies is not** — § 2.1's audit names four gaps (the prediction payload carries no as-of date or run id; the Upcoming-match tab shows the date only when the prediction would be refused; the run manifest records `cutoff` but not `ratings_through`; go-app's `db_freshness` buckets and H-11 are two unreconciled rules, disagreeing today) and fixes none: that is Phase 2's freshness badge (§ 5) |
 | P0 exit gate | **awaiting a user decision** — route (a) "internal tool / prototype, no wedge chosen" or route (b) a wedge chosen by judgment and recorded as unevidenced; neither chosen here (§ 2) |
 | P1 | open — gated on P0; scoped as a **locally-run prototype** under the standing constraint (no hosting, accounts or metering; § 3, § 9) |
 | P2 | open — availability as **maintained lists, not a licensed feed**; D-12's retirement ledger is the first piece (§ 5) |
