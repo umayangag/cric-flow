@@ -26,7 +26,11 @@ format it reports, with mean and spread over cutoffs (and seeds, where a model h
   locked window; with the format's selection policy stated beside the verdict;
 * the train/serve parity check (H-8): the last ``PARITY_LAST_N`` matches rebuilt from the
   as-of serving path and compared with the training frame -- rows, performance
-  predictions and simulator outputs at a fixed seed alike.
+  predictions and simulator outputs at a fixed seed alike;
+* the market benchmark (X-4, ``ml.xi.market``): where closing odds have been cached, the
+  market's de-vigged probability scored beside the display model on the matches both cover,
+  per format, with the joined coverage stated beside every number. It informs and decides
+  nothing, and no model anywhere reads odds as a feature.
 
 Every gate the report prints is registered in ``ml.xi.gates`` with what it varies, what it
 holds fixed and what decides (H-23); the report embeds the registry and fails if a gate is
@@ -47,6 +51,7 @@ import json
 import logging
 import os
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -57,6 +62,7 @@ from ml.xi import contract as C
 from ml.xi import (
     gates,
     glossary,
+    market,
     natural_experiment,
     perf_baselines,
     perf_harness,
@@ -200,6 +206,22 @@ def _evaluate_win_window(
     return metrics, objective, displays
 
 
+@dataclass
+class FoldOutcome:
+    """One window's report and the fitted models later stages read.
+
+    ``objective`` is what E5 scores the window's lineup pairs with, ``performance_model``
+    is what H-8 serves through the as-of path, and ``displays`` are the seeds' display
+    models -- which the market benchmark scores its joined matches with, so the market is
+    compared against the very model the fold reported and never a refitted lookalike.
+    """
+
+    report: Dict
+    performance_model: Optional[PerformanceModels] = None
+    objective: Optional[object] = None
+    displays: List[object] = field(default_factory=list)
+
+
 def _evaluate_fold(
     format_code: str,
     format_frame: pd.DataFrame,
@@ -207,12 +229,22 @@ def _evaluate_fold(
     cutoff: pd.Timestamp,
     end: pd.Timestamp,
     recalibrate: Tuple[str, ...] = (),
-) -> Tuple[Dict, Optional[PerformanceModels], Optional[object]]:
-    """One window's report, its performance model and its fitted objective (which E5
-    scores the window's lineup pairs with)."""
+    benchmark: Optional[market.Benchmark] = None,
+    window_label: str = "fold",
+) -> FoldOutcome:
+    """One window's report, its performance model and its fitted objective."""
     fold, objective, displays = _evaluate_win_window(format_frame, cutoff, end)
     if objective is None:
-        return fold, None, None
+        return FoldOutcome(report=fold)
+    if benchmark is not None:
+        benchmark.observe(
+            format_code,
+            window_label,
+            cutoff,
+            end,
+            format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)],
+            displays,
+        )
     format_players = player_frame[player_frame.format_code == format_code]
     window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
     fold["swap_monotonicity"] = selection_metrics.swap_monotonicity(
@@ -228,7 +260,7 @@ def _evaluate_fold(
         fold["simulation"] = sim_harness.evaluate_window(
             performance.model, displays, window_matches, window_players, format_code, fold["train_positive_rate"]
         )
-    return fold, performance.model, objective
+    return FoldOutcome(report=fold, performance_model=performance.model, objective=objective, displays=displays)
 
 
 def _summarize_folds(folds: List[Dict]) -> Dict:
@@ -272,36 +304,47 @@ def evaluate_format(
     frame: pd.DataFrame,
     player_frame: pd.DataFrame,
     pairs: Sequence[natural_experiment.LineupPair] = (),
+    benchmark: Optional[market.Benchmark] = None,
 ) -> Tuple[Dict, Optional[PerformanceModels]]:
     """The format's walk-forward folds and its locked window; also returns the performance
     model the parity check serves through the as-of path -- the locked window's, or the last
     fold that fitted one while a freshly rotated window is still too small to score (A-4),
     so H-8 always has a model to serve. ``pairs`` are E5's lineup pairs (all formats;
-    filtered here), already carrying the previous eleven's as-of aggregates."""
+    filtered here), already carrying the previous eleven's as-of aggregates. ``benchmark``,
+    when given, is handed each window's display models to score X-4's market arm beside
+    them; it reads and decides nothing else."""
     format_frame = frame[frame.format_code == format_code]
     folds: List[Dict] = []
     fold_objectives: List[Tuple[pd.Timestamp, pd.Timestamp, Optional[natural_experiment.Proba]]] = []
     latest_fold_model: Optional[PerformanceModels] = None
     latest_fold_cutoff: Optional[pd.Timestamp] = None
     for cutoff, end in fold_windows():
-        fold, fold_model, objective = _evaluate_fold(format_code, format_frame, player_frame, cutoff, end)
-        if fold_model is not None:
-            latest_fold_model, latest_fold_cutoff = fold_model, cutoff
-        folds.append(fold)
-        fold_objectives.append((cutoff, end, _proba(objective)))
+        outcome = _evaluate_fold(format_code, format_frame, player_frame, cutoff, end, benchmark=benchmark)
+        if outcome.performance_model is not None:
+            latest_fold_model, latest_fold_cutoff = outcome.performance_model, cutoff
+        folds.append(outcome.report)
+        fold_objectives.append((cutoff, end, _proba(outcome.objective)))
     summary = _summarize_folds(folds)
     # H-5: the folds, never the locked window, decide which quantiles get recalibrated.
     recalibrate = tuple(perf_harness.recalibration_needed(summary["performance"]))
-    locked, locked_model, locked_objective = _evaluate_fold(
-        format_code, format_frame, player_frame, pd.Timestamp(LOCKED_START), pd.Timestamp.max, recalibrate
+    locked_outcome = _evaluate_fold(
+        format_code,
+        format_frame,
+        player_frame,
+        pd.Timestamp(LOCKED_START),
+        pd.Timestamp.max,
+        recalibrate,
+        benchmark=benchmark,
+        window_label="locked",
     )
+    locked, locked_model = locked_outcome.report, locked_outcome.performance_model
     locked["note"] = locked_note()
     locked["recalibrated_targets"] = list(recalibrate)
     e5 = natural_experiment.evaluate_format(
         format_code,
         pairs,
         fold_objectives,
-        (pd.Timestamp(LOCKED_START), _proba(locked_objective)),
+        (pd.Timestamp(LOCKED_START), _proba(locked_outcome.objective)),
         C.XI_FEATURE_COLS,
         served=format_code in OPTIMISED_SELECTION_FORMATS,
     )
@@ -331,10 +374,27 @@ def evaluate_format(
     }, parity_model
 
 
+def _market_benchmark(source: MatchSource, frame: pd.DataFrame, market_odds_dir: Optional[str]) -> market.Benchmark:
+    """X-4's collector, loaded and joined before any fold is scored.
+
+    The join runs once, here, so every fold reads one settled table rather than re-deciding
+    which quote belongs to which match. An empty cache directory is not an error: the
+    collector then reports no coverage, which is the honest state of a harness run with no
+    odds beside it.
+    """
+    directory = market.cache_dir(market_odds_dir)
+    quotes, load_counts = market.load_quotes(directory)
+    if not quotes:
+        return market.Benchmark(pd.DataFrame(columns=["match_id"]), load_counts, market.JoinCounts(), directory)
+    joined, join_counts = market.join_to_matches(quotes, frame, source.team_key_for)
+    return market.Benchmark(joined, load_counts, join_counts, directory)
+
+
 def evaluate(
     source: MatchSource,
     parity_source_factory: Callable[[], MatchSource],
     gender_split_context: bool = False,
+    market_odds_dir: Optional[str] = None,
 ) -> Dict:
     """Run the harness over a source and return the report dict."""
     result = build(
@@ -366,12 +426,18 @@ def evaluate(
         "e5_previous_elevens": previous_elevens,
         "formats": {},
     }
+    # X-4: the market arm, joined once and scored inside each fold beside that fold's own
+    # display models. It informs and decides nothing, and nothing else in the run reads it.
+    benchmark = _market_benchmark(source, result.frame, market_odds_dir)
     locked_models: Dict[str, PerformanceModels] = {}
     for format_code in C.FORMAT_CODES:
         logger.info("evaluating %s", format_code)
-        report["formats"][format_code], model = evaluate_format(format_code, result.frame, player_frame, pairs)
+        report["formats"][format_code], model = evaluate_format(
+            format_code, result.frame, player_frame, pairs, benchmark=benchmark
+        )
         if model is not None:
             locked_models[format_code] = model
+    report["market_benchmark"] = benchmark.report(C.FORMAT_CODES)
     logger.info("serving parity (H-8): rebuilding the last %d matches from the as-of path", PARITY_LAST_N)
     report["serving_parity"] = serving_parity(
         parity_source_factory(),
@@ -416,6 +482,33 @@ def _log_performance(format_code: str, performance: Optional[Dict]) -> None:
         )
 
 
+def _log_market_benchmark(format_code: str, entry: Dict) -> None:
+    """One line per format: the market against the display model, and over how much of
+    the format the comparison was possible (X-4)."""
+    pooled = entry.get("pooled")
+    if not pooled:
+        logger.info(
+            "%-5s market benchmark (X-4): no joined closing prices (%d of %d matches covered)",
+            format_code,
+            entry["matches_joined"],
+            entry["matches_in_windows"],
+        )
+        return
+    logger.info(
+        "%-5s market benchmark (X-4): market AUC %.3f vs display %.3f (toss-aware %.3f), "
+        "Brier %.4f vs %.4f, over %d of %d matches (%.1f%%)",
+        format_code,
+        pooled["market_auc"],
+        pooled["display_auc_mean"],
+        pooled["display_toss_aware_auc"],
+        pooled["market_brier"],
+        pooled["display_brier_mean"],
+        pooled["n"],
+        entry["matches_in_windows"],
+        100.0 * entry["joined_share"],
+    )
+
+
 def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
@@ -426,6 +519,15 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "--gender-split-context",
         action="store_true",
         help="E7 (H-7): split the context baselines (runs/wickets per format x over) by gender",
+    )
+    p.add_argument(
+        "--market-odds-dir",
+        default=None,
+        help=(
+            "X-4: directory of cached closing-odds CSVs for the market benchmark "
+            f"(default: ${market.CACHE_DIR_ENV}, else {market.DEFAULT_CACHE_DIR}). "
+            "Absent or empty, the report says the benchmark covered nothing."
+        ),
     )
     return p.parse_args(argv)
 
@@ -456,7 +558,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from ml.config import default_artifacts_dir
 
         out_dir = default_artifacts_dir()
-    report = evaluate(source_factory(), source_factory, gender_split_context=args.gender_split_context)
+    report = evaluate(
+        source_factory(),
+        source_factory,
+        gender_split_context=args.gender_split_context,
+        market_odds_dir=args.market_odds_dir,
+    )
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, REPORT_NAME)
     with open(path, "w") as fh:
@@ -487,6 +594,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.info(
             "%-5s selection (E5): %s", format_code, report["formats"][format_code]["selection_decision"]["reason"]
         )
+        _log_market_benchmark(format_code, report["market_benchmark"]["formats"][format_code])
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])
         return 1

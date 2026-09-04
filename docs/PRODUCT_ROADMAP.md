@@ -37,9 +37,13 @@ gate on evidence, the way the migration's PRs did.
   team in months. The defensible assets are product execution, the trust asset, and
   (over time) proprietary operational data — squad/availability data users enter, and a
   public accuracy track record.
-- **Unbenchmarked against the market.** We do not yet know whether these probabilities
-  match betting-market accuracy on our own match population. The first sophisticated
-  customer asks this; Phase 0 answers it before marketing writes a word.
+- **Still effectively unbenchmarked against the market.** P0-1 has now run, and the honest
+  result is that it could only be run at all on 4.2 % of T20 (Big Bash and Women's Big Bash,
+  the one competition pair with free licence-clean closing odds) and on no international
+  match. There the market leads on both AUC and Brier, but the gap's interval spans zero. So
+  the first sophisticated customer's question is answered with "we measured everything we
+  could obtain freely, and it was not enough to tell" — and, with paid odds out of scope, it
+  stays that way until someone publishes international closing odds under an open licence.
 - **Entrenched B2B incumbents** (ball-tracking-data analytics firms) own the franchise
   market's top end. The open flank is women's cricket, associate nations and emerging
   leagues, where public ball-by-ball data is the same data everyone has.
@@ -64,7 +68,7 @@ Accuracy-as-superiority is not the pitch; *verified honesty and interactivity* a
 
 | id | what | gate it answers |
 |---|---|---|
-| P0-1 | **Market benchmark.** Join historical closing odds (a purchasable dataset) onto our matches; score them in the harness beside the display model, per format | The honest sentence marketing may use. At market accuracy → "market-grade, plus interactivity and explanations". Below → the pitch is the lab, and we say so |
+| P0-1 | **Market benchmark.** ✅ **Run, on free sources only** ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4). The one free, licence-clean cricket closing-odds series found is Betfair's published Big Bash / Women's Big Bash summaries; every candidate with international coverage was paid or behind a gambling account and was rejected. 588 of 592 markets joined with zero winner disagreements; 185 fall in the harness's scored windows — 4.2 % of T20, 0 % of T20I/ODI/TEST | **Answered for the hardest T20 subset only, and inconclusively.** Market AUC 0.608 vs display 0.556 (Brier 0.2387 vs 0.2488), but the gap's 95 % interval is −0.020 to +0.128. The honest sentence: *"we are not benchmarked against the market on internationals — no free source of those odds exists — and on the Big Bash matches we could price, neither we nor the market is far from a coin flip."* The limit is coverage, and under a no-paid-data rule it stays there until a freely licensed international series appears |
 | P0-2 | **Legal scan**: fantasy-adjacency and prediction-tool rules in target jurisdictions (India foremost), stats/name usage (facts are generally fair; images/logos are not — budget for licensing or ship without), terms for "not betting advice" | Which wedges are open at all, and the disclaimer architecture |
 | P0-3 | **Wedge interviews**: 10–15 conversations — serious fantasy players, one associate-nation or women's-team analyst, one emerging-league operator | Which Phase 3 wedge is pulled, not pushed |
 | P0-4 | **Freshness decision**: quote licensed feeds vs ship "as of last import" with the date always visible | The recurring-cost line in the model |
@@ -166,7 +170,7 @@ in spirit already (the A-6 market-benchmark sketch).
 
 | id | status |
 |---|---|
-| P0-1 | open |
+| P0-1 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero, so it does not resolve the market question (§ 2; [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4) |
 | P0-2 | open |
 | P0-3 | open |
 | P0-4 | open |

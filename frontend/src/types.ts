@@ -487,6 +487,64 @@ export type EvaluationFormatReport = {
   selection_decision?: EvaluationSelectionDecision;
 };
 
+/** One window of X-4's market benchmark: the three arms, and the gaps between them. */
+export type MarketBenchmarkWindow = {
+  n: number;
+  cutoff?: string;
+  end?: string;
+  market_auc?: number;
+  market_brier?: number;
+  display_auc_mean?: number;
+  display_brier_mean?: number;
+  display_toss_aware_auc?: number;
+  display_toss_aware_brier?: number;
+  market_minus_display_auc?: number;
+  market_minus_display_brier?: number;
+  market_minus_toss_aware_auc?: number;
+  market_minus_display_auc_ci95?: number[] | null;
+  market_minus_toss_aware_auc_ci95?: number[] | null;
+  skipped_reason?: string;
+  note?: string;
+};
+
+/** One format's market benchmark, coverage first: the numbers mean nothing without it. */
+export type MarketBenchmarkFormat = {
+  matches_in_windows: number;
+  matches_joined: number;
+  joined_share: number;
+  folds: MarketBenchmarkWindow[];
+  pooled: MarketBenchmarkWindow | null;
+  locked: MarketBenchmarkWindow;
+};
+
+/**
+ * X-4: the betting market scored beside the display model on the matches both cover. It
+ * informs and decides nothing, and no model anywhere reads odds as a feature.
+ */
+export type MarketBenchmark = {
+  available: boolean;
+  source: {
+    name: string;
+    url: string;
+    licence: string;
+    cached_dir: string;
+    priced_at: string;
+    files?: string[];
+  };
+  devig: { method: string; note: string; market_overround: number | null };
+  join: {
+    quotes: number;
+    quotes_joined: number;
+    quotes_no_match: number;
+    quotes_unknown_team: number;
+    quotes_ambiguous: number;
+    label_disagreements: number;
+    quotes_joined_outside_scored_windows?: number;
+    key: string;
+  };
+  formats: Record<string, MarketBenchmarkFormat>;
+};
+
 export type EvaluationReport = {
   generated_at: string;
   source: string;
@@ -509,6 +567,8 @@ export type EvaluationReport = {
     test_control_suspects?: unknown[];
   };
   formats: Record<string, EvaluationFormatReport>;
+  /** X-4: the market benchmark, absent from reports written before it existed. */
+  market_benchmark?: MarketBenchmark;
   serving_parity: {
     passed: boolean;
     mismatches?: unknown[];

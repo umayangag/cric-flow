@@ -707,7 +707,8 @@
           "ml.xi.parity",
           "ml.xi.natural_experiment",
           "ml.xi.selection_metrics",
-          "ml.xi.glossary"
+          "ml.xi.glossary",
+          "ml.xi.market"
         ],
         "endpoints": [
           "POST /admin/train/evaluate",
@@ -735,7 +736,8 @@
           "E3",
           "A-1",
           "A-2",
-          "A-3"
+          "A-3",
+          "X-4"
         ]
       },
       "documented_in": [

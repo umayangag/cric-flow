@@ -12,10 +12,13 @@ H-22 (width beside coverage), H-23 (varies / fixed / decides written before a ga
 H-24 (boundary literals in the generated contract), never commit to main.
 
 Run each item's prompt in a fresh chat with the model noted; each ends by handing over
-the push and PR commands. Order: **X-4 → X-1a → X-1b → X-3 → X-2.** X-4 goes first
-because it prices the whole hunt: if the display model already sits at market accuracy,
-the remaining items are curiosities and can be taken slowly or not at all. D-12 (a defect fix, not an experiment) is runnable at any time
-and does not wait for X-1a.
+the push and PR commands. Order: **X-4 → X-1a → X-1b → X-3 → X-2.** X-4 went first
+because it was meant to price the whole hunt: if the display model already sat at market
+accuracy, the remaining items would be curiosities. **It did not price it** — the only
+licence-clean free odds reach 4.2 % of one format, and the measured gap's interval spans
+zero (§ Record). X-1a → X-2 therefore proceed on their own merits, unpriced, and the
+cheapest way to price them later is coverage bought rather than code written. D-12 (a
+defect fix, not an experiment) is runnable at any time and does not wait for X-1a.
 
 **Explicit non-goals**, so effort is not re-spent: official rankings (redundant with the
 system's own Elo), pitch reports (no structured source exists), injury/fitness data (not
@@ -26,7 +29,16 @@ yardstick, never as a feature.
 
 ---
 
-## X-4 — the market benchmark (model: Opus; this is PRODUCT_ROADMAP P0-1)
+## X-4 — the market benchmark (model: Opus; this is PRODUCT_ROADMAP P0-1) — **measured, and the answer is "not yet resolvable"**
+
+*Done on `feat/x-4-odds-benchmark`, under a **no-paid-data** rule: "acceptable cost" was
+defined as zero, so only freely obtainable, licence-clean sources were eligible. The source
+review, the join and the numbers are in § Record of outcomes below. The short version: a
+free, licence-usable closing-odds series exists for exactly two competitions (BBL and WBBL),
+it joins to 99.3 % of the markets it carries, and it reaches **4.2 % of T20 and 0 % of every
+other format** — so the market gap is measured but its interval spans zero, and X-1…X-3 are
+not priced by it. Every source with international coverage was paid or behind a gambling
+account and was rejected; the costs are recorded as evidence, not as options.*
 
 **What.** Join historical closing odds onto our matches and score the market's implied
 probabilities in the harness beside the display model. **Gate it answers:** how far from
@@ -318,12 +330,158 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 
 | id | status |
 |---|---|
-| X-4 | open — run first; prices the rest |
+| X-4 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero. Paid and account-gated sources rejected. It does not price the rest |
 | X-1a | open |
 | X-1b | open — gated on X-1a's coverage |
 | X-3 | open |
 | X-2 | open — run last |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
+
+### X-4 — the source review, the join, and what the numbers support
+
+**1. The source decision, made before any code.** The question was whether a historical
+closing-odds series for cricket exists whose licence permits this use, at an acceptable
+cost — and **"acceptable cost" here is zero**: only sources that are free to obtain and free
+to use are eligible. Costs are recorded below for the paid candidates as evidence of what
+was looked at, not as options held open. Everything evaluated, and why it was taken or left:
+
+| candidate | cricket coverage | cost | licence | verdict |
+|---|---|---|---|---|
+| **Betfair Exchange season summaries** (BBL / WBBL CSVs published by Betfair's data-science team) | BBL 2020-21 → 2025-26, WBBL 2020 → 2025; one row per runner per Match Odds market, best back and lay at the first ball and at nine in-play points | **free**, no account, direct download | published openly with a warranty disclaimer and **no** open licence — usable, not redistributable | **taken.** The only cricket odds series obtainable with no payment and no gambling account |
+| Betfair Historical Data service (`historicdata.betfair.com`) | every Exchange market since 2016, cricket included — internationals and franchise leagues | Basic tier free (last traded price per minute, no volume); Advanced and Pro priced on application, not published | Betfair's own terms; copyright and database right asserted, no redistribution | **rejected on availability.** The free tier is gated behind a Betfair account — a gambling account, in a jurisdiction Betfair serves — which is not a source that is simply free to obtain. The paid tiers are out of scope under the zero-cost rule |
+| The Odds API (`the-odds-api.com`) historical endpoint | from 2020-06-06 at 10-minute (later 5-minute) snapshots; Tests, ODIs, IPL, T20 World Cup and more | paid only: **$30/mo** (20k credits), **$59/mo** (100k), $119/mo (5M); a snapshot costs 10 credits per region per market, so ~3,000 matches ≈ 30,000 credits ≈ the $59 tier for one month | commercial terms; no redistribution | **rejected: paid.** It has the international coverage the free source lacks, and the price is recorded as evidence of what that coverage costs — not as an option to take |
+| OddsPortal / oddsbase and similar odds archives | broad, back many years | free to browse | terms of use forbid extraction and reuse | rejected on licence — and not scraped |
+| OddsMatrix historical odds feed | broad, 30+ bookmakers | enterprise, price on application only | commercial | **rejected: paid** (and no published price to record) |
+| aussportsbetting.com | Big Bash only, one xlsx | free | "personal use only… should not be made available elsewhere" | rejected: duplicates the Betfair BBL coverage under a narrower permission, and the site blocks automated download |
+| Sports Insights historical database | US sports; no cricket | — | — | rejected: no cricket |
+| Open research repositories (Kaggle, Zenodo, figshare, Mendeley) | searched for a cricket odds series under CC0/CC-BY | free | open | **nothing found.** The open cricket datasets are ball-by-ball and scorecard data; no odds series |
+
+So a free, licence-clean source exists, and it is small. The finding worth recording is not
+"no source" but **"a free source that covers two competitions and no international cricket
+at all"**. Every candidate with international coverage was either paid or behind a gambling
+account, and all of them are rejected: the eligible universe of free cricket closing odds is
+the Big Bash and the Women's Big Bash, and that is the ceiling on what this benchmark can
+ever say without a change to that rule.
+
+**2. The join.** 592 usable two-runner markets were loaded from twelve cached season files
+(1,188 rows; 2 markets dropped for an unusable price). Each was joined on the exact match
+date plus both sides resolved through the identity layer — `opposition_name` + gender folded
+by `COALESCE(canonical_id, id)`, the same key the rating frame is built on (D-10), reached
+through the new `MatchSource.team_key_for`. A runner name is tried as written and then, only
+if the archive has never fielded a club of that name, without a trailing competition token
+(`Perth Scorchers W` → `Perth Scorchers`).
+
+| outcome | markets |
+|---|---|
+| joined to exactly one match | **588 (99.3 %)** |
+| no match on that date | 4 |
+| team the identity layer does not know | 0 |
+| more than one candidate match | 0 |
+| **joined quotes whose winner disagrees with ours** | **0** |
+
+Zero winner disagreements across 588 joins is the integrity check on the whole mapping: an
+odds row silently attached to the wrong fixture would show up here. The four misses are
+date offsets of one day (three) and one fixture the archive does not hold; they stay
+unmatched and counted, because a ±1-day join is a guess.
+
+**3. Coverage, which is half the answer.** Of the 588 joined markets, **403 fall before the
+harness's first walk-forward cutoff (2024-01-01)** and so sit in no scored window — the
+report carries that count as `quotes_joined_outside_scored_windows`, so the join total and
+the per-format counts cannot read as a contradiction. That leaves **185 scored matches, all
+T20**:
+
+| format | matches the harness scored | with a closing price | joined coverage |
+|---|---|---|---|
+| T20 | 4,387 | 185 | **4.2 %** |
+| T20I | 433 | 0 | 0 % |
+| ODI | 1,105 | 0 | 0 % |
+| TEST | 443 | 0 | 0 % |
+
+The locked window (from 2026-09-02) contains **no** priced match at all — the next Big Bash
+season starts in December — so the market benchmark has nothing to say there, and says so.
+
+The earlier seasons were deliberately *not* scored by extending the fold grid backwards.
+Doing so would compare the 2026 market against a display model fitted with four fewer years
+of history: the market's quality does not degrade with our training set, so the comparison
+would be biased against us and would price a model nobody ships.
+
+**4. The measurement.** De-vig is proportional on the best back price at the first ball
+(each side's `1 / price`, divided by the pair's sum); the mean overround was **1.006**,
+which on an exchange is the back/lay spread rather than a bookmaker's margin. Three arms,
+same matches, same fold models — the H-23 triple is registered as gate `X-4`, and it
+**informs**: nothing in the system changes on these numbers.
+
+| fold (T20) | n | market AUC | display AUC | display AUC, toss-aware | market Brier | display Brier |
+|---|---|---|---|---|---|---|
+| 2024-01-01 → 2024-04-01 | 22 | 0.500 | 0.525 | 0.525 | 0.2530 | 0.2650 |
+| 2024-10-01 → 2025-01-01 | 57 | 0.529 | 0.485 | 0.432 | 0.2507 | 0.2644 |
+| 2025-01-01 → 2025-04-01 | 24 | 0.578 | 0.563 | 0.578 | 0.2470 | 0.2455 |
+| 2025-09-01 → 2025-12-01 | 28 | 0.556 | 0.610 | 0.631 | 0.2404 | 0.2379 |
+| 2025-12-01 → 2026-03-01 | 54 | 0.747 | 0.666 | 0.651 | 0.2157 | 0.2329 |
+| **pooled** | **185** | **0.608** | **0.556** | **0.536** | **0.2387** | **0.2488** |
+
+*(Folds not listed held fewer than twenty priced matches and are reported with their count
+and no metrics.)*
+
+- **Market − display, AUC: +0.052, 95 % interval −0.020 to +0.128** (paired bootstrap over
+  matches, 2,000 replicates, seed 0). The interval spans zero.
+- Against the toss-aware arm — the like-for-like one, since the closing price is struck
+  after the toss while the served probability marginalises over it — **+0.072, 95 % interval
+  −0.003 to +0.152**. Also spans zero, barely.
+- **Market − display, Brier: −0.010.** The market's probabilities are better stated on these
+  matches; on 185 matches that is not resolvable either.
+
+**5. The honest sentence the numbers support.** *"On the only cricket matches for which we
+could obtain closing odds — 185 Big Bash and Women's Big Bash fixtures, 4.2 % of our T20
+matches and none of any other format — the market ranked winners at 0.608 AUC and our
+displayed model at 0.556. The market is ahead on both AUC and Brier, but on this many
+matches the gap's 95 % interval spans zero, so we cannot yet claim either parity or a
+deficit. We have not benchmarked ourselves on internationals at all."*
+
+Two further readings, both stated because they are easy to misread otherwise:
+
+- **These are hard matches.** The display model's headline T20 AUC in the same run is
+  **0.730 ± 0.050** over the whole format; on this subset it is 0.556 and the *market* only
+  reaches 0.608. Big Bash fixtures are deliberately balanced, so the population priced here is
+  close to a coin flip for everyone. The 0.730 and the 0.556 are not in conflict — they are
+  different populations, and that is exactly why the coverage figure travels with every number.
+- **The toss-aware arm scored worse than the served one** (0.536 vs 0.556) despite knowing
+  more. Marginalising over the two batting orders averages two correlated readings and
+  reduces variance; on 185 matches that is worth more than the toss. It is reported, not
+  explained away.
+
+**Blast radius: additive by construction.** The benchmark fits nothing. It is handed each
+fold's already-fitted display models and reads them; it mutates no frame, and its bootstrap
+draws from its own `RandomState` rather than the global stream, so it cannot perturb a
+simulator seed. The only edit to existing logic is `_evaluate_fold` returning a `FoldOutcome`
+instead of a three-tuple. The run above reports H-8 parity **0.0** across 50 matches, 1,100
+player rows, 1,100 performance predictions and 50 simulations, and its walk-forward display
+AUCs — T20 0.730 ± 0.050, T20I 0.753 ± 0.037, ODI 0.707 ± 0.069, TEST 0.646 ± 0.101 —
+reproduce the last stored pre-change report on this machine to three decimals. That stored
+report is a close control rather than an exact one: it predates three matches imported since,
+so a field-by-field zero diff was not available and is not claimed.
+
+**The run.** `make evaluate` against Postgres, 67 minutes, 21,096 match rows: gates pass
+(H-23, X-4 registered), the glossary explains every metric the report prints (L-1), H-8
+parity 0.0, the locked window still holds 0 matches.
+
+**What shipped.** `ml-service/ml/xi/market.py` (load, de-vig, join, score), a
+`market_benchmark` section in `xi_evaluate_report.json`, gate `X-4` in the H-23 registry,
+eleven glossary entries (L-1, copied into [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) § 3's
+table), and an *Evaluation report → Market benchmark* panel that prints the coverage beside
+the numbers and says plainly when a format has none. The odds files are cached under
+`data/market-odds/` (git-ignored; `ML_MARKET_ODDS_DIR` or `make evaluate MARKET_ODDS_DIR=…`
+overrides it) and are **not** committed, because the source grants no redistribution right.
+`tests/test_xi_market.py` asserts by import graph that nothing which builds a feature, fits a
+model or serves a prediction can reach the odds.
+
+**What would resolve the question, and why it stays open.** Coverage, not code: the machinery
+scores whatever is in the cache, and a second reader in the loader is the only piece a new
+file format would need. But no free, licence-clean source of international cricket closing
+odds was found, and paid ones are out of scope, so the question stays open rather than
+becoming a purchase decision. If a free source with international coverage appears — an
+academic release, a permissively licensed archive — dropping its files in `data/market-odds/`
+is the whole integration.
 
 ### D-12 — the measurement, and what shipped
 

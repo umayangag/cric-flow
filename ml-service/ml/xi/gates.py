@@ -172,6 +172,21 @@ GATES: Tuple[Gate, ...] = (
         "rating-ordered",
         report_path=None,
     ),
+    Gate(
+        id="X-4",
+        name="Market benchmark: the closing price beside the display model",
+        varies="which probability is scored -- the market's de-vigged closing price, the display model as "
+        "served (marginalised over the toss), or the same display model read at the orientation that "
+        "actually happened (the market's own information set)",
+        fixed="the matches (only those a closing price joined to), the labels, the walk-forward windows, the "
+        "display models the fold itself fitted, the de-vig method and the price point (best back at the "
+        "first ball)",
+        decides="nothing automatically -- this gate INFORMS. It prices the distance between the display model "
+        "and the market on the matches both cover, per format, with the joined coverage printed beside every "
+        "number; no feature, threshold or format scoping moves on its result, and odds are never a model "
+        "input",
+        report_path=REPORT_SCOPE + "market_benchmark.formats",
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}

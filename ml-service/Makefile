@@ -56,7 +56,7 @@ retrain: venv
 # and performance metrics, the leak canary, and the train/serve parity check (H-8). Writes
 # one JSON report (xi_evaluate_report.json) and touches no artifact `current` points at.
 evaluate: venv
-	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,)
+	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,) $(if $(MARKET_ODDS_DIR),--market-odds-dir "$(MARKET_ODDS_DIR)",)
 
 # Check the database against the Cricsheet archive: both rating sources are supposed to
 # describe the same cricket, and twice they did not (H-15). Needs both, so it is not part

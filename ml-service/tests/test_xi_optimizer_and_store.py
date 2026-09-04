@@ -54,6 +54,12 @@ class _ListSource:
     def iter_matches(self):
         yield from self.matches
 
+    def team_key_for(self, name, gender):
+        """The synthetic matches carry their team key as the team name, so the identity
+        layer is the identity here (the real sources fold renames and gender into it)."""
+        del gender
+        return name
+
 
 def _synthetic_history(n_matches: int = 160, seed: int = 0):
     """Two squads of 14 with graded skill; stronger XIs win more often. Both sides bat and

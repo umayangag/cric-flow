@@ -18,6 +18,7 @@ import EvaluationWalkForward from './EvaluationWalkForward';
 import EvaluationSelectionMetrics from './EvaluationSelectionMetrics';
 import EvaluationPerformanceTable from './EvaluationPerformance';
 import EvaluationSimulation from './EvaluationSimulation';
+import EvaluationMarketBenchmark from './EvaluationMarketBenchmark';
 import { useEvaluationReport } from '../hooks/useEvaluationReport';
 
 /**
@@ -140,6 +141,7 @@ const EvaluationReportTab: React.FC = () => {
             caption="Every number is a mean over the rolling origins with its spread; differences inside the spread are not evidence (H-14)."
           />
           <EvaluationSimulation report={formatReport} />
+          <EvaluationMarketBenchmark benchmark={report.market_benchmark} format={format} />
         </>
       )}
     </Box>

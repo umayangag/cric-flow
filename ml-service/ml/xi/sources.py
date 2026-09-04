@@ -136,6 +136,18 @@ class MatchSource(Protocol):
         """Yield matches in ascending date order."""
         ...
 
+    def team_key_for(self, name: str, gender: str) -> Optional[str]:
+        """The key this source rates a club under, given the (name, gender) an outside
+        dataset spells it with.
+
+        It is the identity layer's join point (D-10): a dataset that arrives keyed by team
+        name -- X-4's closing odds are the first -- reaches our matches through this and
+        never through string equality on a frame column, so a rename or a men's/women's
+        namesake cannot join to the wrong side. ``None`` when the source does not know the
+        name; a caller counts that rather than guessing.
+        """
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Cricsheet JSON directory
@@ -318,6 +330,13 @@ class CricsheetJsonSource:
         self.lineage = lineage if lineage is not None else load_lineage()
         self.counts = SourceCounts()
 
+    def team_key_for(self, name: str, gender: str) -> Optional[str]:
+        """The club key for a name, through the same lineage the parser uses. Every name
+        yields one -- the archive path has no registry of teams to check a name against --
+        so a name this dataset never fielded resolves to a key no match carries, which the
+        caller drops as unmatched."""
+        return team_key(name, gender, self.lineage)
+
     def iter_matches(self) -> Iterator[MatchRecord]:
         names = sorted(n for n in os.listdir(self.directory) if n.endswith(".json"))
         self.counts = SourceCounts(offered=len(names))
@@ -374,6 +393,10 @@ ORDER BY m.match_date, m.match_id
 # Every match in the date range, whatever its format, so a run can say how many it left
 # out on purpose. Without it "22,425 matches" is a number with nothing to check it against.
 _MATCH_COUNT_SQL = "SELECT count(*) FROM match WHERE match_date < %s"
+
+# The identity layer's name -> key table, for a dataset that arrives keyed by team name
+# (X-4's closing odds). The same COALESCE the match query uses, so both speak of one club.
+_TEAM_KEYS_SQL = "SELECT opposition_name, gender, COALESCE(canonical_id, id) FROM opposition"
 
 
 def _player_key(alias: str) -> str:
@@ -442,6 +465,18 @@ class PostgresSource:
         self.formats = list(formats)
         self.before = before or date(9999, 1, 1)
         self.counts = SourceCounts()
+        self._team_keys: Optional[Dict[Tuple[str, str], str]] = None
+
+    def team_key_for(self, name: str, gender: str) -> Optional[str]:
+        """The club key for a (name, gender), read from ``opposition`` -- the same
+        ``COALESCE(canonical_id, id)`` the match query keys teams by, so a rebranded club
+        resolves to the row its matches are recorded under. Read once and cached: it is a
+        small table and the caller asks per odds row."""
+        if self._team_keys is None:
+            with self.connection.cursor() as cur:
+                cur.execute(_TEAM_KEYS_SQL)
+                self._team_keys = {(str(row[0]), str(row[1])): str(row[2]) for row in cur.fetchall()}
+        return self._team_keys.get((name, gender))
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         with self.connection.cursor() as cur:

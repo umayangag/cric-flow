@@ -101,7 +101,7 @@ Notes:
 
 ## Evaluation and frontend
 
-Evaluation report tab: L4's walk-forward folds, the locked window, per-target performance with interval width beside coverage, the simulator's E2 section and the train/serve parity check. It reads one file (`make evaluate` writes it) — there is no form, because the folds and the locked window are the harness's. See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
+Evaluation report tab: L4's walk-forward folds, the locked window, per-target performance with interval width beside coverage, the simulator's E2 section, the train/serve parity check and the market benchmark (X-4: closing odds scored beside the displayed probability, with the joined coverage printed beside every number — a yardstick, never a model input). It reads one file (`make evaluate` writes it) — there is no form, because the folds and the locked window are the harness's. See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
 
 ## CI
 
