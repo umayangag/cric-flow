@@ -16,7 +16,7 @@ per-player models and the auto-tune stack are gone (P-5, P-6).
 | L2-B performance model (`ml/xi/performance.py`) | Player | Quantile runs / balls / runs conceded, a two-part Poisson of wickets, a catch rate, and P(bats) / P(bowls) |
 | L2-C simulator (`ml/xi/simulator.py`) | Match | Draws whole matches from L2-B for two elevens; no training of its own |
 | L3 selection (`ml/xi/optimizer.py`) | Match | The XI that maximises the objective, its marginal values, and — where the objective does not rank — the rating-ordered pick |
-| L4 harness (`ml/xi/evaluate.py`) | — | Walk-forward folds and the locked window, the selection and performance metrics, the leak canary and the train/serve parity check |
+| L4 harness (`ml/xi/evaluate.py`) | — | Walk-forward folds and the locked window, the selection and performance metrics, the leak canary, the train/serve parity check and the market benchmark (X-4) |
 
 Every serving call into the XI layer takes **player ids and a format**, never a feature map.
 The rating state lives in ml-service, which is what makes the training and serving paths
@@ -574,7 +574,7 @@ predictions omit `as_of` and are served from the loaded state unchanged.
 
 ### Evaluation harness (`make evaluate`, L4 / H-19)
 
-**Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc` and `max_abs_difference` among them.
+**Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc`, `max_abs_difference`, and X-4's `market_auc`, `market_minus_display_auc` and `joined_share` among them.
 
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
 quarterly cutoffs 2024-01 … 2026-06 for every choice-facing number, and the **locked
@@ -596,6 +596,20 @@ rule decided on the folds; and the natural experiment for selection (E5, below).
 with the train/serve parity check (H-8): the last 50 matches rebuilt from the as-of serving
 path and compared with the training frame — rows, performance predictions and simulator
 draws at a fixed seed alike — and the run fails if they differ.
+
+**The market benchmark (X-4, `ml/xi/market.py`).** Where closing odds have been cached, the
+report also carries a `market_benchmark` section: the market's de-vigged probability scored
+beside the display model on the matches both cover, per format, per fold and pooled, with
+the joined coverage printed beside every number. Three arms, same matches, same fold models
+— the market's closing price, the display model as served (marginalised over the toss) and
+the display model read at the batting order that happened, which is the market's own
+information set. It is registered as gate `X-4` and it **informs**: nothing in the system
+changes on its result, and no model anywhere reads odds as a feature (a test asserts the
+import graph). The odds files live in `data/market-odds/` — git-ignored, since the source
+grants no redistribution right — overridable with `ML_MARKET_ODDS_DIR` or
+`make evaluate MARKET_ODDS_DIR=…`; with no files there the section reports zero coverage
+rather than disappearing. What is cached today and what it measured is in
+[EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4.
 
 **E5, lineup-only (`ml/xi/natural_experiment.py`, P-7).** The one selection gate that
 varies one side while holding the rest of the world still. For each consecutive pair of one

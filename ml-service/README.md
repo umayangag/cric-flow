@@ -19,6 +19,8 @@ Key modules:
 - `ml/xi/retrain.py` — the `retrain` command: one run, its artifacts and its manifest
 - `ml/xi/runs.py` — run identity (H-16): the manifest, the `current` pointer, the refusal (D-6)
 - `ml/xi/evaluate.py` — the L4 harness (`make evaluate`)
+- `ml/xi/market.py` — X-4's market benchmark: closing odds scored beside the display model
+  inside the harness. A yardstick only; nothing that fits or serves a model may import it
 
 **Prerequisites:** Python 3.10+ locally; CI and Docker use Python 3.12.
 
@@ -74,6 +76,7 @@ Build a run (the rating pass, the win models and the performance models), serve 
 make retrain CUTOFF=2025-09-01   # writes runs/<run_id>/, publishes nothing
 make reload                      # points current at it and loads it
 make evaluate                    # L4 over the database; touches no artifact current points at
+make evaluate MARKET_ODDS_DIR=../data/market-odds   # …with X-4's market benchmark beside it
 ```
 
 Docker:

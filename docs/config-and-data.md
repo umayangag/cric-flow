@@ -95,7 +95,21 @@ and are recorded per run in `manifest.json`, not configured here.
   refused with `RATINGS_STALE`. `XI_RATINGS_MAX_AGE_DAYS` overrides it; 0 turns the check off.
 
 **Environment:** `ML_SERVICE_CONFIG`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `ENABLE_HOT_RELOAD`,
-`ADMIN_API_KEY`, `XI_RATINGS_MAX_AGE_DAYS`, `MAX_CONCURRENT_TRAINING_JOBS`.
+`ADMIN_API_KEY`, `XI_RATINGS_MAX_AGE_DAYS`, `MAX_CONCURRENT_TRAINING_JOBS`,
+`ML_MARKET_ODDS_DIR`.
+
+**Cached market odds (X-4), not a model input.** `make evaluate` looks for closing-odds CSVs
+in `data/market-odds/` at the repository root — `ML_MARKET_ODDS_DIR`, or
+`make evaluate MARKET_ODDS_DIR=…`, overrides it. The directory is **git-ignored on purpose**:
+the source (Betfair's published Big Bash / Women's Big Bash season summaries) charges nothing
+and asks for no account, but grants no redistribution right, so the files are cached per
+machine and never committed. A file is read only if its name starts with a declared
+competition prefix (`BBL`, `WBBL`), because the file name is what says which gender the
+runner names belong to. With the directory absent or empty the harness still emits its
+`market_benchmark` section and reports zero coverage. **Odds are a yardstick only** — nothing
+that builds a feature, fits a model or serves a prediction may read them, and a test in
+`ml-service/tests/test_xi_market.py` enforces that by import graph. See
+**ml-and-training.md** § Evaluation harness and **EXTERNAL_DATA_PLAN.md** § X-4.
 
 **Artifacts naming:** `runs/<run_id>/` holds `xi_ratings.joblib`, `xi_win_<FORMAT>.joblib`,
 `xi_perf_<FORMAT>.joblib`, the run's report and `manifest.json`; `current_run.json` at the root

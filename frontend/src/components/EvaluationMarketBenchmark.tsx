@@ -167,8 +167,8 @@ const EvaluationMarketBenchmark: React.FC<{
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ px: 2, pb: 2 }}>
           No closing price joined to any {format} match in the scored windows, so this format has no
-          market comparison. The cached source covers the Big Bash and Women&apos;s Big Bash only;
-          internationals need a paid or account-gated feed.
+          market comparison. The cached odds cover the Big Bash and Women&apos;s Big Bash only — no
+          freely licensed source of closing odds for the other formats has been found.
         </Typography>
       )}
     </Paper>

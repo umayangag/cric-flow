@@ -175,7 +175,11 @@ and the sentence saying why). Beside them: the data-quality counts, the leak can
 TEST control, the train/serve parity verdict, the gate registry (`gates`: every gate's
 varies / fixed / decides triple and whether the report carries all of them, H-23) and the metric
 glossary (`glossary`: one entry per metric key the report prints, and whether it explained all
-of them, L-1). At the top it names the window every locked figure came from: `locked_start`,
+of them, L-1). `market_benchmark` (X-4) carries the market arm: the source and its licence, the
+de-vig method and mean overround, the join's counts, and per format the joined coverage with
+the per-fold and pooled AUC/Brier of the market, the display model as served and the display
+model read toss-aware. A format with no joined closing price still has a node, stating zero
+coverage. At the top it names the window every locked figure came from: `locked_start`,
 and `locked_window` with the date the line was last moved, the window it replaced and why
 (A-4 — see **docs/ml-and-training.md** § Rotating the locked window).
 
