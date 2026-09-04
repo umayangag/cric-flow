@@ -27,6 +27,20 @@ freely or reliably available), squad/availability feeds (a product problem —
 is the free canonical source), and **odds as a model input** — X-4 uses the market as a
 yardstick, never as a feature.
 
+**Standing constraint (2026-09-04).** This system is a **prototype built on publicly
+available, free data**, and the rule X-4 was run under — "acceptable cost" is zero — is now
+the rule for the whole plan rather than that item's choice: **no paid, purchasable,
+subscription or account-gated sources, and no human-subject research** (interviews,
+surveys, user studies). Free, publicly available, licence-clean sources only, each licence
+verified at the source and recorded in [config-and-data.md](config-and-data.md) § Data-source
+licence register. [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) states the same constraint at
+its head and records what it removes there (P0-2 deferred, P0-3 skipped, P0-4 forced).
+Here it changes two things. **X-4 was already run under it** and needs no re-run, but the
+pricing route named above — "coverage bought rather than code written" — is closed unless
+the user lifts the constraint, so the market question stays open on coverage grounds.
+And **X-2 must verify its source's terms before it acquires anything** (§ X-2): the
+expectation is free, but it is an expectation, and a paid finding is a completed gate.
+
 ---
 
 ## X-4 — the market benchmark (model: Opus; this is PRODUCT_ROADMAP P0-1) — **measured, and the answer is "not yet resolvable"**
@@ -230,8 +244,24 @@ windows — Cricsheet has no start times, so competition/format norms infer them
 A-1/A-2 nulls predict this fails its gates; it runs last and closes the question with
 a number.
 
+**Licence check first, under the standing constraint.** Open-Meteo's current terms must
+be verified against the source and recorded in the licence register by this item's
+worker **before any acquisition**. The expectation is *free for non-commercial use with
+attribution*: read on 2026-09-04, its terms page said *"You may only use the free API
+services for non-commercial purposes"*, its licence page *"API data are offered under
+Attribution 4.0 International (CC BY 4.0)"*, and the ERA5 dataset page at the Copernicus
+Climate Data Store names a CC-BY licence. But its pricing page also said *"Historical,
+climate, ensemble, and satellite radiation APIs require the Professional API Plan or
+higher"*, and whether that sentence governs the free non-commercial endpoint
+(`archive-api.open-meteo.com`) or only the paid customer endpoints could not be settled
+from the pages alone. That is the question to answer from the source, not from memory.
+If the historical archive turns out to require payment for this use, X-2 **records that
+as its finding in § Record and stops** — a completed gate, the X-4 way — rather than
+buying access or substituting an account-gated source.
+
 ```
-Read docs/EXTERNAL_DATA_PLAN.md (X-2) and docs/FOLLOW_UP_PLAN.md (the A-1 and A-2
+Read docs/EXTERNAL_DATA_PLAN.md (X-2, including the licence check that precedes any
+acquisition) and docs/FOLLOW_UP_PLAN.md (the A-1 and A-2
 nulls — venue-level context and the chase response both failed, which bounds what
 weather can add). Branch off main as feat/x-2-weather-context. Rules: folds decide
 over three seeds; H-19; H-21 (every feature computable BEFORE the match — pre-match
@@ -239,6 +269,12 @@ window readings or daily values, never in-match observations); H-22; H-23 per fa
 H-24 for any new wire literal; never commit to main.
 
 Do X-2:
+0. LICENCE FIRST: verify Open-Meteo's current terms for the historical archive at the
+   source (terms, licence and pricing pages) and record them in
+   docs/config-and-data.md § Data-source licence register. If this use is free and
+   non-commercial with attribution, proceed. If it requires payment or an account,
+   record that in the X-2 row and § Record as the finding and STOP — no purchase, no
+   substitute source.
 1. Acquisition: a venue -> lat/lon table (curated file, name-normalised the identity
    way; unmappable venues recorded, not guessed) and a backfill pulling hourly ERA5
    data from the Open-Meteo historical API per match date and venue, cached and
@@ -350,7 +386,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | open — X-1a's coverage supports the **age** family only; the matchup family has no labels to build from and its gate cannot be run |
 | X-3 | open |
-| X-2 | open — run last |
+| X-2 | open — run last; the licence check in § X-2 precedes any acquisition, and a paid finding closes the item |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
 ### X-4 — the source review, the join, and what the numbers support
