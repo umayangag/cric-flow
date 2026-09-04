@@ -6,6 +6,7 @@ import OpsMigrationsTable from './OpsMigrationsTable';
 import OpsTableStats from './OpsTableStats';
 import OpsStatusDetailsGrid from './OpsStatusDetailsGrid';
 import OpsDatasetSection from './OpsDatasetSection';
+import BiographyCoverageSection from './BiographyCoverageSection';
 import DatasetRegistrySection from './DatasetRegistrySection';
 import { Button, Grid, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
@@ -79,6 +80,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
         </SectionCard>
         <OpsDatasetSection dataset={data.dataset} />
         <DatasetRegistrySection />
+        <BiographyCoverageSection />
 
         <SectionCard title="Migration History">
           <OpsMigrationsTable />

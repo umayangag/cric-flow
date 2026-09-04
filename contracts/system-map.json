@@ -234,6 +234,40 @@
       ]
     },
     {
+      "id": "player-biographies",
+      "label": "Player biographies",
+      "lane": "l0",
+      "column": 3,
+      "kind": "data",
+      "summary": "Facts about people the ball-by-ball archive cannot hold: date of birth, batting handedness, bowling style and career end, acquired from Wikidata under CC0 and joined to the player registry through the ESPNcricinfo id that Cricsheet's people register and Wikidata both publish. A backfill writes one row per player -- including the players nothing was found for, because \"the source was asked and had nothing\" is a measured answer and \"nobody has asked\" is not. It is a step beside the cadence rather than in it, since a date of birth never changes. No model reads it: X-1a acquires and measures, and a separate gated experiment decides whether any of it becomes a feature.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/biography",
+          "go-app/internal/services/biographybackfill"
+        ],
+        "endpoints": [
+          "GET /ops/data/biography-coverage"
+        ],
+        "tables": [
+          "player_biography"
+        ],
+        "make_targets": [
+          "player-biographies"
+        ],
+        "files": [
+          "go-app/migrations/0010_player_biography.sql",
+          "configs/player_biography_overrides.json",
+          "docs/player-biography-coverage.md"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/config-and-data.md",
+          "section": "## Player biographies (X-1a)"
+        }
+      ]
+    },
+    {
       "id": "rating-pass",
       "label": "The rating pass",
       "lane": "l1",
@@ -1258,6 +1292,11 @@
       "from": "ops-console",
       "to": "reload",
       "kind": "control"
+    },
+    {
+      "from": "player-biographies",
+      "to": "ops-console",
+      "label": "coverage"
     }
   ]
 }

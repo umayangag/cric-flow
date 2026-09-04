@@ -56,6 +56,11 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/ops/data/staged", a.dataStagedHandler).Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/ops/data/extract", a.dataExtractHandler).Methods(http.MethodPost, http.MethodOptions)
 	admin.HandleFunc("/ops/data/datasets", a.dataDatasetsHandler).Methods(http.MethodGet, http.MethodOptions)
+	// The state of the acquired player biographies (X-1a): how much of the archive they
+	// cover, per format and gender, and how stale the acquisition is. It is a data
+	// source's state, so it belongs beside the dataset registry rather than in a log.
+	admin.HandleFunc("/ops/data/biography-coverage", a.dataBiographyCoverageHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Options
 	optionsHandler := &OptionsHandler{}
