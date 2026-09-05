@@ -53,6 +53,7 @@ MODULE_ENTRYPOINTS = (
 SCRIPT_ENTRYPOINTS: Dict[str, str] = {
     "ml.xi.parity": "make xi-parity",
     "ml.xi.evaluate": "make evaluate",
+    "ml.xi.biography": "make export-birth-dates",
 }
 
 ENTRYPOINTS = MODULE_ENTRYPOINTS + tuple(SCRIPT_ENTRYPOINTS)

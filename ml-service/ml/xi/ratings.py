@@ -17,11 +17,13 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from datetime import date
+from typing import Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 
 from ml.xi import contract as C
+from ml.xi.biography import age_vectors
 from ml.xi.sequence import sequence_flags
 from ml.xi.sources import Deliveries, MatchRecord, batting_positions
 
@@ -79,6 +81,15 @@ def elo_expected(rating_a: float, rating_b: float) -> float:
 _N_PHASES = len(C.PHASE_NAMES)
 #: What a fixture-context key the state has never seen reads: no runs, no dismissals, no balls.
 _NO_SCORING = (0.0, 0.0, 0.0)
+#: The debut accumulators' last axis (X-1b family 3): the sums a debutant's band pools over
+#: every debut match before this one -- the impact numerator, the balls, the wicket
+#: numerator and the matches with at least one ball -- exactly the four quantities a
+#: player's own ``side_vectors`` are computed from.
+DEBUT_IMPACT, DEBUT_BALLS, DEBUT_WICKETS, DEBUT_MATCHES = 0, 1, 2, 3
+#: The vector keys the age-band debut prior replaces for a player with no history in the
+#: format. Elo and the role keys keep their neutral values: the prior is about what a
+#: debutant of that age does with the ball, not where he bats.
+DEBUT_PRIOR_KEYS = ("exp_balls_faced", "bat_rate", "bat_wrate", "exp_balls_bowled", "bowl_rate", "bowl_wrate")
 
 
 class RatingState:
@@ -88,11 +99,25 @@ class RatingState:
     and wickets per (format, over) -- are kept separately for women's and men's matches, so
     a woman's impact is measured against women's cricket rather than a blend. Off by
     default; the flag is part of the feature definition and is recorded in the artifact.
+
+    ``birth_dates`` is X-1b's input: a date of birth per player key, read from the source
+    once, so ``age_vectors`` can say how old a player is at any match date. It is a static
+    fact, not an accumulator -- nothing in ``update`` touches it. ``age_aware_cold_start``
+    is X-1b's family 3: when True, ``side_vectors`` reads a player with no history in the
+    format and a known age as the as-of debut profile of his age band instead of the
+    neutral vector. Off by default; both are recorded in the artifact.
     """
 
-    def __init__(self, gender_split_context: bool = False) -> None:
+    def __init__(
+        self,
+        gender_split_context: bool = False,
+        birth_dates: Optional[Mapping[str, date]] = None,
+        age_aware_cold_start: bool = False,
+    ) -> None:
         self.players = PlayerIndex()
         self.gender_split_context = gender_split_context
+        self.birth_dates: Dict[str, date] = dict(birth_dates or {})
+        self.age_aware_cold_start = age_aware_cold_start
         n = 1024
         z = lambda: np.zeros((_N_FMT, n))  # noqa: E731
         self.bat_rae, self.bat_balls, self.bat_wae, self.bat_matches = z(), z(), z(), z()
@@ -139,6 +164,11 @@ class RatingState:
         # [runs, dismissals, deliveries] over every ball of every match under that key
         self.venue_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
         self.competition_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+        # age-band debut profiles (X-1b family 3): per (format, age band) the lifetime sums
+        # of what debutants of that band did in their debut match, batting and bowling
+        # (``DEBUT_IMPACT`` .. ``DEBUT_MATCHES``). Not decayed: it is a population prior.
+        self.debut_bat = np.zeros((_N_FMT, C.N_AGE_BANDS, 4))
+        self.debut_bowl = np.zeros((_N_FMT, C.N_AGE_BANDS, 4))
         self.matches_seen = 0
         self.last_date = None
 
@@ -177,11 +207,24 @@ class RatingState:
         return self.players.read_slots(keys, unrated)
 
     # -- reads ---------------------------------------------------------------------------
-    def side_vectors(self, format_code: str, player_keys: Sequence[str]) -> Dict[str, np.ndarray]:
+    def age_vectors(self, player_keys: Sequence[str], on: date) -> Dict[str, np.ndarray]:
+        """``contract.AGE_COLS`` for the players at ``on``: age in years and whether a date
+        of birth exists (0.0 / 0.0 when it does not -- a category, never an imputed age)."""
+        return age_vectors(self.birth_dates, player_keys, on)
+
+    def side_vectors(
+        self, format_code: str, player_keys: Sequence[str], on: Optional[date] = None
+    ) -> Dict[str, np.ndarray]:
         """Per-player as-of vectors for one side (``contract.PLAYER_VECTOR_KEYS`` plus
         ``contract.PLAYER_ROLE_KEYS``). One read path for the win features, the optimiser
         and the player-match rows, so training and serving cannot compute different
-        functions of the same eleven names."""
+        functions of the same eleven names.
+
+        ``on`` is the date the eleven is read at, which only the age-aware cold start
+        (X-1b family 3) consumes: a player with no history in the format and a known age
+        then reads his age band's as-of debut profile instead of the neutral vector. The
+        rows pass the match date; a caller without one reads the state's own date.
+        """
         f = C.FORMAT_INDEX[format_code]
         s = self._read_slots(player_keys)
         bat_m = self.bat_matches[f, s]
@@ -207,7 +250,28 @@ class RatingState:
         for key, i in _SEQ_INDEX.items():
             prior_num, prior_den = _SEQ_PRIOR.get(key, _SEQ_DEFAULT_PRIOR)
             out[key] = (self.seq_num[i, f, s] + prior_num) / (self.seq_den[i, f, s] + prior_den)
+        if self.age_aware_cold_start:
+            self._apply_debut_prior(f, player_keys, out, on if on is not None else self.last_date)
         return out
+
+    def _apply_debut_prior(self, f: int, player_keys: Sequence[str], out: Dict[str, np.ndarray], on) -> None:
+        """Overwrite ``DEBUT_PRIOR_KEYS`` for the players with no history in the format and
+        a known age at ``on`` with their band's debut profile. Everyone else -- every player
+        with a match behind him, and every debutant without a date of birth -- is untouched,
+        which is what the gate's third condition asks for."""
+        if on is None:
+            return
+        debut = out["career"] == 0
+        if not debut.any():
+            return
+        ages = self.age_vectors(player_keys, on)
+        mask = debut & (ages["age_known"] > 0)
+        if not mask.any():
+            return
+        bands = C.age_band(ages["age"][mask])
+        prior = debut_prior_vectors(self.debut_bat[f], self.debut_bowl[f], bands)
+        for key in DEBUT_PRIOR_KEYS:
+            out[key][mask] = prior[key]
 
     def _ctx_group(self, gender: str) -> int:
         """Which context-baseline group a match belongs to (E7).
@@ -282,11 +346,12 @@ class RatingState:
         f = C.FORMAT_INDEX[match.format_code]
         s1, s2 = self._slots(match.team1_players), self._slots(match.team2_players)
         d = match.deliveries
+        both = np.concatenate([s1, s2])
         if len(d):
-            self._update_impact(f, self._ctx_group(match.gender), match.format_code, d)
+            debut_bands = self._debut_bands(f, both, list(match.team1_players) + list(match.team2_players), match)
+            self._update_impact(f, self._ctx_group(match.gender), match.format_code, d, debut_bands)
             self._update_simulation_context(f, self._ctx_group(match.gender), d)
             self._update_fixture_context(match, d)
-        both = np.concatenate([s1, s2])
         self.career[f, both] += 1.0
         self.career_all[both] += 1.0
         # Expected batting slot: every XI member's accumulators decay together, so the mean
@@ -327,13 +392,33 @@ class RatingState:
         self.matches_seen += 1
         self.last_date = match.match_date
 
-    def _update_impact(self, f: int, g: int, format_code: str, d: Deliveries) -> None:
+    def _debut_bands(self, f: int, slots: np.ndarray, keys: Sequence[str], match: MatchRecord) -> Dict[int, int]:
+        """Slot -> age band for the XI members making their debut in the format today
+        whose age is known: the players whose debut match joins their band's profile once
+        the day closes. Read before ``career`` is incremented, so it is the same population
+        ``side_vectors`` would have called debutants when the row was built."""
+        debut = self.career[f, slots] == 0
+        if not debut.any():
+            return {}
+        ages = self.age_vectors(keys, match.match_date)
+        mask = debut & (ages["age_known"] > 0)
+        bands = C.age_band(ages["age"])
+        return {int(slot): int(band) for slot, band in zip(slots[mask], bands[mask])}
+
+    def _update_impact(
+        self, f: int, g: int, format_code: str, d: Deliveries, debut_bands: Optional[Dict[int, int]] = None
+    ) -> None:
         over = np.minimum(d.over, C.MAX_OVER_INDEX - 1)
         exp_runs = self.ctx_runs[g, f, over] / self.ctx_balls[g, f, over]
         exp_wk = self.ctx_wickets[g, f, over] / self.ctx_balls[g, f, over]
         batters = self._slots(list(d.batter))
         bowlers = self._slots(list(d.bowler))
         ones = np.ones(len(d))
+        if debut_bands:
+            self._accumulate_debut(self.debut_bat[f], debut_bands, batters, d.runs_batter - exp_runs, exp_wk - d.wicket)
+            self._accumulate_debut(
+                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_total, d.bowler_wicket - exp_wk
+            )
         self._accumulate(
             self.bat_rae,
             self.bat_balls,
@@ -396,6 +481,20 @@ class RatingState:
             entry[1] += wickets
             entry[2] += balls
 
+    @staticmethod
+    def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue) -> None:
+        """Land a debutant's balls on his age band's lifetime sums (``DEBUT_IMPACT`` ..
+        ``DEBUT_MATCHES``): the same per-ball quantities ``_accumulate`` lands on the
+        player, pooled by band and never decayed."""
+        for slot, band in debut_bands.items():
+            mine = who == slot
+            if not mine.any():
+                continue
+            table[band, DEBUT_IMPACT] += float(value[mine].sum())
+            table[band, DEBUT_BALLS] += float(mine.sum())
+            table[band, DEBUT_WICKETS] += float(wvalue[mine].sum())
+            table[band, DEBUT_MATCHES] += 1.0
+
     def _accumulate(self, total, balls, wtotal, matches, f, who, value, wvalue, count) -> None:
         uniq, inv = np.unique(who, return_inverse=True)
         for arr in (total, balls, wtotal, matches):
@@ -457,6 +556,24 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
+
+
+def debut_prior_vectors(debut_bat: np.ndarray, debut_bowl: np.ndarray, bands: np.ndarray) -> Dict[str, np.ndarray]:
+    """``DEBUT_PRIOR_KEYS`` for debutants in ``bands``, from one format's debut tables:
+    the band's pooled sums put through the formulas ``side_vectors`` applies to a player's
+    own sums -- balls per match batted (bowled), and each impact shrunk over
+    ``PRIOR_BALLS`` -- so a band nobody has debuted in yet reads exactly the neutral vector."""
+    out: Dict[str, np.ndarray] = {}
+    for table, balls_key, rate_key, wrate_key in (
+        (debut_bat, "exp_balls_faced", "bat_rate", "bat_wrate"),
+        (debut_bowl, "exp_balls_bowled", "bowl_rate", "bowl_wrate"),
+    ):
+        rows = table[bands]
+        balls, matches = rows[:, DEBUT_BALLS], rows[:, DEBUT_MATCHES]
+        out[balls_key] = np.where(matches > 0, balls / np.maximum(matches, 1e-9), 0.0)
+        out[rate_key] = rows[:, DEBUT_IMPACT] / (balls + C.PRIOR_BALLS)
+        out[wrate_key] = rows[:, DEBUT_WICKETS] / (balls + C.PRIOR_BALLS)
+    return out
 
 
 def _shrunk_relative_rate(key_total: float, key_balls: float, format_rate: float) -> float:

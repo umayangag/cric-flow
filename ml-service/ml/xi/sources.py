@@ -18,6 +18,7 @@ from typing import Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 
+from ml.xi.biography import BirthDates, load_birth_dates_csv, load_birth_dates_postgres
 from ml.xi.contract import FORMAT_CODES
 from ml.xi.lineage import TeamLineage
 from ml.xi.lineage import load as load_lineage
@@ -146,6 +147,12 @@ class MatchSource(Protocol):
         namesake cannot join to the wrong side. ``None`` when the source does not know the
         name; a caller counts that rather than guessing.
         """
+        ...
+
+    def birth_dates(self) -> BirthDates:
+        """Date of birth per player key, for every player the source knows one for
+        (X-1b). The rating state reads it once; a player absent from the map has an
+        unknown age, which is a category of its own and never an imputed value."""
         ...
 
 
@@ -323,12 +330,19 @@ class CricsheetJsonSource:
         international_teams: Sequence[str],
         formats: Sequence[str] = FORMAT_CODES,
         lineage: Optional[TeamLineage] = None,
+        birth_dates_path: Optional[str] = None,
     ):
         self.directory = directory
         self.international_teams = list(international_teams)
         self.formats = set(formats)
         self.lineage = lineage if lineage is not None else load_lineage()
+        # The archive carries no biography; the CSV ``ml.xi.biography --export`` writes from
+        # the database is how the offline path reads the same dates of birth.
+        self.birth_dates_path = birth_dates_path
         self.counts = SourceCounts()
+
+    def birth_dates(self) -> BirthDates:
+        return load_birth_dates_csv(self.birth_dates_path)
 
     def team_key_for(self, name: str, gender: str) -> Optional[str]:
         """The club key for a name, through the same lineage the parser uses. Every name
@@ -477,6 +491,9 @@ class PostgresSource:
                 cur.execute(_TEAM_KEYS_SQL)
                 self._team_keys = {(str(row[0]), str(row[1])): str(row[2]) for row in cur.fetchall()}
         return self._team_keys.get((name, gender))
+
+    def birth_dates(self) -> BirthDates:
+        return load_birth_dates_postgres(self.connection)
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         with self.connection.cursor() as cur:

@@ -13,7 +13,7 @@ COV_MIN?=93
 REQUIREMENTS_FILE?=requirements.txt
 
 .PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload
-.PHONY: xi-parity docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
+.PHONY: xi-parity export-birth-dates docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
@@ -50,20 +50,27 @@ run:
 # nothing; `make reload` moves `current`.
 retrain: venv
 	@test -n "$(CUTOFF)" || (echo "CUTOFF is required (YYYY-MM-DD; rows at/after it are the holdout), e.g. make retrain CUTOFF=2025-09-01" && exit 1)
-	$(PY) -m ml.xi.retrain --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
+	$(PY) -m ml.xi.retrain --cutoff "$(CUTOFF)" $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(BIRTH_DATES),--birth-dates "$(BIRTH_DATES)",) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(ACCEPT_DATA_QUALITY),--accept-data-quality,)
 
 # L4 evaluation harness (H-19): rolling-origin walk-forward + the locked window, selection
 # and performance metrics, the leak canary, and the train/serve parity check (H-8). Writes
 # one JSON report (xi_evaluate_report.json) and touches no artifact `current` points at.
 evaluate: venv
-	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,) $(if $(MARKET_ODDS_DIR),--market-odds-dir "$(MARKET_ODDS_DIR)",)
+	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(BIRTH_DATES),--birth-dates "$(BIRTH_DATES)",) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,) $(if $(MARKET_ODDS_DIR),--market-odds-dir "$(MARKET_ODDS_DIR)",)
 
 # Check the database against the Cricsheet archive: both rating sources are supposed to
 # describe the same cricket, and twice they did not (H-15). Needs both, so it is not part
 # of a retrain. Usage: make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet
 xi-parity: venv
 	@test -n "$(CRICSHEET_DIR)" || (echo "CRICSHEET_DIR is required, e.g. make xi-parity CRICSHEET_DIR=../data/go-app/cricsheet" && exit 1)
-	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)"
+	$(PY) -m ml.xi.parity --cricsheet-dir "$(CRICSHEET_DIR)" $(if $(BIRTH_DATES),--birth-dates "$(BIRTH_DATES)",)
+
+# The archive carries no biography (X-1b): export the database's dates of birth as the CSV
+# the archive path reads, so an offline retrain, evaluate or parity run sees the same ages.
+# Usage: make export-birth-dates BIRTH_DATES=../data/go-app/player-birth-dates.csv
+export-birth-dates: venv
+	@test -n "$(BIRTH_DATES)" || (echo "BIRTH_DATES is required, e.g. make export-birth-dates BIRTH_DATES=../data/go-app/player-birth-dates.csv" && exit 1)
+	$(PY) -m ml.xi.biography --export "$(BIRTH_DATES)"
 
 # Point `current` at a run and load it into the running service (the `reload` step).
 # RUN names one; with none, the newest run on disk -- the one a retrain just built.
@@ -175,6 +182,7 @@ help:
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  xi-parity          Compare both rating sources (CRICSHEET_DIR=...)"
+	@echo "  export-birth-dates Write the database's dates of birth as the CSV the archive path reads (BIRTH_DATES=...)"
 	@echo "  test               Run pytest"
 	@echo "  coverage           Run pytest with coverage (xml + term)"
 	@echo "  coverage-check     Enforce coverage threshold (COV_MIN)"

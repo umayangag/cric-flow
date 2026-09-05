@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+
 FORMAT_CODES: List[str] = ["T20", "T20I", "ODI", "TEST"]
 FORMAT_INDEX: Dict[str, int] = {code: i for i, code in enumerate(FORMAT_CODES)}
 
@@ -157,6 +159,33 @@ FIXTURE_CONTEXT_PRIOR_BALLS = 600.0
 #: standard error), the -47-run quarter untouched -- so the performance model reads none.
 FIXTURE_CONTEXT_FAMILIES_KEPT: Tuple[str, ...] = ()
 
+# Player biography (X-1b): the one fact the archive cannot hold that X-1a found at usable
+# coverage -- a date of birth for 85 % of appearances. ``age`` is the player's age in years
+# at the match date and ``age_known`` says whether a date of birth exists; a player without
+# one reads ``age`` 0.0 *and* ``age_known`` 0.0, so the missing rows are their own category
+# and never an imputed age. Both columns are on every player row (``rows.player_feature_rows``
+# computes them from the state's birth dates and the match date, one read path for training
+# and serving), and the performance model reads them only if gate X-1b's age family kept
+# them (``AGE_FEATURES_KEPT``, plan §8.12). No curvature term: the model is a tree ensemble,
+# whose splits are invariant to any monotone transform of a column, and age squared is
+# monotone over every age a cricketer has.
+AGE_COLS: List[str] = ["age", "age_known"]
+#: Gate X-1b, family 1 (plan §8.12): whether the performance model reads ``AGE_COLS``.
+AGE_FEATURES_KEPT = False
+#: Age bands for the age-aware cold start (X-1b family 3): the upper bound of each band in
+#: years, the last band open. Chosen from the population -- the quartiles of age at match
+#: date sit near 24.5 / 28 / 31.5 in every format -- before any outcome was read.
+AGE_BANDS: Tuple[float, ...] = (22.0, 26.0, 30.0, 34.0)
+N_AGE_BANDS = len(AGE_BANDS) + 1
+#: Gate X-1b, family 3 (plan §8.12): whether a player with no history in the format and a
+#: known age reads the as-of debut profile of his age band instead of the neutral vector.
+AGE_AWARE_COLD_START = False
+
+
+def age_band(age_years) -> "np.ndarray":
+    """The band index (0 .. ``N_AGE_BANDS`` - 1) of an age; works on scalars and arrays."""
+    return np.searchsorted(np.asarray(AGE_BANDS), np.asarray(age_years, dtype=float), side="right")
+
 
 # One side's aggregates, produced by ml.xi.ratings.aggregate_side. Order is the contract.
 SIDE_FEATURE_STEMS: List[str] = [
@@ -287,6 +316,7 @@ PLAYER_MATCH_FEATURE_COLS: List[str] = (
     + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
     + ["venue_bf_rate", "venue_n", "elo_edge"]  # elo_edge = own team Elo minus opponent's
     + FIXTURE_CONTEXT_COLS
+    + AGE_COLS
 )
 
 # What the player then did. Counts are over deliveries, wides included -- the same
@@ -356,10 +386,11 @@ def performance_feature_cols(
     sequence_families: Tuple[str, ...] = SEQUENCE_FAMILIES_KEPT,
     joint_format: bool = False,
     fixture_context_families: Tuple[str, ...] = FIXTURE_CONTEXT_FAMILIES_KEPT,
+    age: bool = AGE_FEATURES_KEPT,
 ) -> List[str]:
     """The performance model's input columns: the row's as-of vectors and role, the kept
     sequence families, both sides' aggregates, venue context, the Elo edge, the kept
-    fixture-context families and the innings."""
+    fixture-context families, the age columns if gate X-1b kept them, and the innings."""
     sequence_keys = [key for family in sequence_families for key in SEQUENCE_FAMILIES[family]]
     fixture_keys = [key for family in fixture_context_families for key in FIXTURE_CONTEXT_FAMILIES[family]]
     cols = (
@@ -370,6 +401,7 @@ def performance_feature_cols(
         + [f"opp_{s}" for s in SIDE_FEATURE_STEMS]
         + ["venue_bf_rate", "venue_n", "elo_edge"]
         + fixture_keys
+        + (list(AGE_COLS) if age else [])
         + [BATS_FIRST_COL]
     )
     if joint_format:

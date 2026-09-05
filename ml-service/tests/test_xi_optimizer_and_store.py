@@ -54,6 +54,9 @@ class _ListSource:
     def iter_matches(self):
         yield from self.matches
 
+    def birth_dates(self):
+        return {}
+
     def team_key_for(self, name, gender):
         """The synthetic matches carry their team key as the team name, so the identity
         layer is the identity here (the real sources fold renames and gender into it)."""

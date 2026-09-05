@@ -9,6 +9,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from ml.xi import contract as C
+from ml.xi.biography import count_known
 from ml.xi.quality import DataQuality
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
@@ -33,13 +34,18 @@ def build(
     source: MatchSource,
     progress: Optional[Callable[[int], None]] = None,
     gender_split_context: bool = False,
+    age_aware_cold_start: bool = C.AGE_AWARE_COLD_START,
 ) -> BuildResult:
     """Run the pass. Matches are folded into the state at *day close*: every match on a date
     reads features from prior dates only, then the whole day is applied. Within a date the
     source's order is by id, not by start time, so sequential updates would let a match see
     the result of a same-day match it may in fact have preceded. 78% of matches share a date
     with another in the same format; the cost of the strict rule is <= 0.003 AUC."""
-    state = RatingState(gender_split_context=gender_split_context)
+    state = RatingState(
+        gender_split_context=gender_split_context,
+        birth_dates=source.birth_dates(),
+        age_aware_cold_start=age_aware_cold_start,
+    )
     rows = []
     player_rows = []
     n_undecided = 0
@@ -87,10 +93,11 @@ def build(
         unknown_player_keys=_unknown_player_keys(state),
         player_keys=len(state.players),
         team_keys=len(team_keys),
+        players_with_birth_date=count_known(state.birth_dates, state.players.keys),
     )
     logger.info(
         "rating pass: %d training rows, %d player-match rows, %d undecided matches, %d players "
-        "(%d namesake sides, %d sides over eleven, %d unresolved player keys)",
+        "(%d namesake sides, %d sides over eleven, %d unresolved player keys, %d with a date of birth)",
         len(frame),
         len(player_frame),
         n_undecided,
@@ -98,6 +105,7 @@ def build(
         quality.namesake_sides,
         quality.oversized_squads,
         quality.unknown_player_keys,
+        quality.players_with_birth_date,
     )
     return BuildResult(frame=frame, player_frame=player_frame, state=state, n_undecided=n_undecided, quality=quality)
 

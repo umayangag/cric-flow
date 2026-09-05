@@ -82,6 +82,11 @@ class DataQuality:
     # archive -- so a lineage applied on one side only shows up here as a difference.
     team_keys: int = 0
 
+    # Players the pass rated who have a date of birth (X-1b): how much of the population an
+    # age feature could see. The archive path reads a CSV exported from the database, so
+    # the two sources are expected to agree here as they do on every other count.
+    players_with_birth_date: int = 0
+
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
 

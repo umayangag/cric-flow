@@ -357,7 +357,22 @@ is empty; plan §8.9): on the walk-forward folds neither the ground nor the comp
 moved the simulator's per-quarter bias in T20, and in ODI by 0.2–0.4 runs on a mean of 14,
 inside the fold noise. The quarters with the large biases turned out to be population-mix
 quarters (associate men's and women's ODIs against one baseline), not venue or competition
-effects.
+effects. Since X-1b every player row also carries the player's **age at the match date**
+(`contract.AGE_COLS`: `age` in years and `age_known`), computed by `rows.player_feature_rows`
+from the dates of birth the source supplies (`player_biography.birth_date` from Postgres; the
+CSV `make export-birth-dates` writes for the archive path, `ml/xi/biography.py`) — a static,
+knowable fact read at a date (H-21). A player without a date of birth reads `0.0 / 0.0`:
+his own category, never an imputed age. The same rule again: the columns are always on the
+rows, and the performance model reads them only if gate X-1b's age family kept them — and
+**it kept none** (`contract.AGE_FEATURES_KEPT` is False; plan §8.12): on the walk-forward
+folds the pinball loss of runs and wickets moved by 0.02 % on the deciding slices (at most
+0.2 % anywhere), inside E1's 0.5 % band, with coverage unchanged. The rating state also
+holds an **age-band debut prior** (`RatingState.debut_bat` / `debut_bowl`: per format and
+age band, what earlier debutants of that band did in their debut match), which
+`side_vectors` applies to a player with no history in the format and a known age only when
+`contract.AGE_AWARE_COLD_START` is on — and gate X-1b-cold-start left it **off** (plan §8.12):
+H-10 stayed bounded, but the debut rows' pinball worsened in every format (runs −0.3 … −2.7 %),
+because the model already learns its own debutant neutral jointly with the rest of the row.
 
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
 
@@ -382,7 +397,8 @@ structures are scored on one population with one loss.
 **Inputs.** The row's as-of vectors and expected role, the sequence families E1 kept (none —
 `SEQUENCE_FAMILIES_KEPT` is empty), both sides' aggregates, venue context, the Elo edge, the
 fixture-context families gate A-1 kept (none — `FIXTURE_CONTEXT_FAMILIES_KEPT` is empty; the
-ground's and the competition's as-of scoring level, above), and
+ground's and the competition's as-of scoring level, above), the age columns gate X-1b kept
+(none — `AGE_FEATURES_KEPT` is False; the age at the match date, above), and
 the innings (bat first / chase). The
 innings is the toss, not the result: at prediction it is **marginalised** — predicted under
 both and averaged — unless the caller passes `team1_bats_first`, the same knob
@@ -579,6 +595,9 @@ predictions omit `as_of` and are served from the loaded state unchanged.
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
 quarterly cutoffs 2024-01 … 2026-06 for every choice-facing number, and the **locked
 window** (matches ≥ 2026-09-02) scored once per release, labeled, never used for a choice.
+Against the archive, pass `BIRTH_DATES=<csv>` (from `make export-birth-dates`) so the
+rows carry the same ages the database run's do; without it every age reads as unknown and
+the run says so.
 The window's start date and the date it was last rotated travel in the report
 (`locked_start`, `locked_window`) and on every locked figure's label, so a reader can tell
 which window a number came from — see *Rotating the locked window* below.

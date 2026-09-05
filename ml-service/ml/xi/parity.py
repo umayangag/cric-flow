@@ -46,6 +46,7 @@ _COMPARED_COUNTS = (
     "unknown_player_keys",
     "player_keys",
     "team_keys",
+    "players_with_birth_date",
 )
 
 
@@ -101,7 +102,9 @@ def counts_table(postgres: BuildResult, cricsheet: BuildResult) -> str:
     return "\n".join(f"  {str(name):<{width}}  {str(a):>10}  {str(b):>10}" for name, a, b in rows)
 
 
-def build_both(cricsheet_dir: str, formats: Sequence[str]) -> Tuple[BuildResult, BuildResult]:
+def build_both(
+    cricsheet_dir: str, formats: Sequence[str], birth_dates_path: Optional[str] = None
+) -> Tuple[BuildResult, BuildResult]:
     from ml.db import get_db_connection
     from ml.xi.sources import CricsheetJsonSource, PostgresSource
     from ml.xi.train import _international_teams_from_config
@@ -109,7 +112,11 @@ def build_both(cricsheet_dir: str, formats: Sequence[str]) -> Tuple[BuildResult,
     logger.info("rating pass over postgres")
     postgres = build(PostgresSource(get_db_connection(), formats))
     logger.info("rating pass over %s", cricsheet_dir)
-    cricsheet = build(CricsheetJsonSource(cricsheet_dir, _international_teams_from_config(), formats))
+    cricsheet = build(
+        CricsheetJsonSource(
+            cricsheet_dir, _international_teams_from_config(), formats, birth_dates_path=birth_dates_path
+        )
+    )
     return postgres, cricsheet
 
 
@@ -117,13 +124,18 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--cricsheet-dir", required=True, help="directory of Cricsheet JSON files")
     p.add_argument("--formats", nargs="+", default=list(C.FORMAT_CODES))
+    p.add_argument(
+        "--birth-dates",
+        default=None,
+        help="CSV of player_key,birth_date for the archive path (python -m ml.xi.biography --export)",
+    )
     return p.parse_args(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     args = _parse_args(argv)
-    postgres, cricsheet = build_both(args.cricsheet_dir, args.formats)
+    postgres, cricsheet = build_both(args.cricsheet_dir, args.formats, args.birth_dates)
     logger.info("data-quality counts:\n%s", counts_table(postgres, cricsheet))
     differences = compare(postgres, cricsheet)
     if differences:

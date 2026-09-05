@@ -73,12 +73,15 @@ CONTEXT_ARRAY_NAMES = (
     "ctx_dismissals",
     "ctx_full_innings_deliveries",
     "ctx_full_innings",
+    "debut_bat",
+    "debut_bowl",
 )  # fmt: skip
 
 STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
 
-# The keyed tables beside the arrays: team and venue state, and the fixture-context sums
-# (A-1). Checked for presence the same way, for the same reason.
+# The keyed tables beside the arrays: team and venue state, the fixture-context sums
+# (A-1) and the players' dates of birth (X-1b). Checked for presence the same way, for
+# the same reason.
 STATE_TABLE_NAMES = (
     "team_elo",
     "team_results",
@@ -87,6 +90,7 @@ STATE_TABLE_NAMES = (
     "team_venue_matches",
     "venue_scoring",
     "competition_scoring",
+    "birth_dates",
 )
 
 
@@ -118,6 +122,7 @@ def _state_to_payload(state: RatingState) -> Dict:
     return {
         "keys": list(state.players.keys),
         "gender_split_context": state.gender_split_context,
+        "age_aware_cold_start": state.age_aware_cold_start,
         "arrays": {name: getattr(state, name) for name in STATE_ARRAY_NAMES},
         "team_elo": dict(state.team_elo),
         "team_results": dict(state.team_results),
@@ -126,6 +131,7 @@ def _state_to_payload(state: RatingState) -> Dict:
         "team_venue_matches": dict(state.team_venue_matches),
         "venue_scoring": dict(state.venue_scoring),
         "competition_scoring": dict(state.competition_scoring),
+        "birth_dates": dict(state.birth_dates),
         "matches_seen": state.matches_seen,
         "last_date": state.last_date,
     }
@@ -182,7 +188,10 @@ def _check_payload_shape(payload: Dict, run_id: str) -> None:
 
 def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
     _check_payload_shape(payload, run_id)
-    state = RatingState(gender_split_context=bool(payload.get("gender_split_context", False)))
+    state = RatingState(
+        gender_split_context=bool(payload.get("gender_split_context", False)),
+        age_aware_cold_start=bool(payload.get("age_aware_cold_start", False)),
+    )
     for k in payload["keys"]:
         state.players.slot(k)
     for name, arr in payload["arrays"].items():
@@ -292,7 +301,10 @@ class XiStore:
         return [k in self.state.players.key_to_slot for k in keys]
 
     def side_vectors(self, format_code: str, keys: Sequence[str]) -> Dict[str, np.ndarray]:
-        return self.state.side_vectors(format_code, keys)
+        """The per-player vectors as of the state's own date -- the ratings-through date
+        for a live request, the as-of date's eve for a backtest -- which is also the date
+        ``serving_match`` stamps on a fixture the serving path builds rows for."""
+        return self.state.side_vectors(format_code, keys, on=self.state.last_date)
 
     def objective_probability(
         self, format_code: str, side1: Dict[str, np.ndarray], side2: Dict[str, np.ndarray]

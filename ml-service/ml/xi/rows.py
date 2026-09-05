@@ -126,14 +126,19 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
     match date. The win row also carries the simulator's as-of context
     (``SIMULATION_CONTEXT_COLS``) and the fixture context (``FIXTURE_CONTEXT_COLS``), which
-    every player row repeats. The performance model's serving path reads rows from here;
+    every player row repeats; every player row also carries the player's age at the match
+    date (``AGE_COLS``). The performance model's serving path reads rows from here;
     the training pass adds what the player then did through ``build_match_rows``."""
-    vectors1 = state.side_vectors(match.format_code, match.team1_players)
-    vectors2 = state.side_vectors(match.format_code, match.team2_players)
+    vectors1 = state.side_vectors(match.format_code, match.team1_players, on=match.match_date)
+    vectors2 = state.side_vectors(match.format_code, match.team2_players, on=match.match_date)
     side1 = aggregate_side(vectors1, match.format_code)
     side2 = aggregate_side(vectors2, match.format_code)
     context = team_context_or_neutral(state, match)
     fixture_context = state.fixture_context(match)
+    # Age at the match date (X-1b): a static fact read at a date, on every player row; the
+    # win row does not carry it, since no win feature reads it.
+    ages1 = state.age_vectors(match.team1_players, match.match_date)
+    ages2 = state.age_vectors(match.team2_players, match.match_date)
 
     win_row = {
         "match_id": match.match_id,
@@ -152,10 +157,10 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
 
     player_rows: List[Dict] = []
     sides = (
-        (1, match.team1_players, vectors1, side1, side2, match.team1, match.team2, 1.0),
-        (2, match.team2_players, vectors2, side2, side1, match.team2, match.team1, -1.0),
+        (1, match.team1_players, vectors1, ages1, side1, side2, match.team1, match.team2, 1.0),
+        (2, match.team2_players, vectors2, ages2, side2, side1, match.team2, match.team1, -1.0),
     )
-    for side, keys, vectors, own, opp, own_team, opp_team, elo_sign in sides:
+    for side, keys, vectors, ages, own, opp, own_team, opp_team, elo_sign in sides:
         for i, key in enumerate(keys):
             row = {
                 "match_id": match.match_id,
@@ -177,6 +182,8 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
             row["venue_n"] = context["venue_n"]
             row["elo_edge"] = elo_sign * context["team_elo_diff"]
             row.update(fixture_context)
+            for name in C.AGE_COLS:
+                row[name] = float(ages[name][i])
             player_rows.append(row)
     return win_row, player_rows
 

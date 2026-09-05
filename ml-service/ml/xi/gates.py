@@ -173,6 +173,47 @@ GATES: Tuple[Gate, ...] = (
         report_path=None,
     ),
     Gate(
+        id="X-1b-age",
+        name="Age in the performance model",
+        varies="whether the performance model reads the player's age at the match date and the known-age "
+        "indicator (AGE_COLS) -- none (today's model) or age -- one fit per arm per fold; a player without a "
+        "date of birth reads age 0 with the indicator 0, a category of his own and never an imputed age",
+        fixed="the rows (one frame, the age columns on every row, both arms read the same rows), the eleven "
+        "quarterly cutoffs (A-4's rotated set), the three seeds, the hyperparameters, the structure per target, "
+        "every other input column, the labels; the simulator is not run -- this is a performance-model gate",
+        decides="the family is kept only if, against the no-age arm on the same folds, the mean pinball loss of "
+        "runs or of wickets improves by more than 0.5 % (E1's noise band) AND by more than one fold-level "
+        "standard error of the paired difference, in both T20 and ODI, with every quantile headline target's "
+        "10-90 coverage within +/- 0.03 of the control's (H-22; width reported beside it). T20 is decided on "
+        "men's rows: women's T20 has a date of birth for 61.4 % of appearances (X-1a) and is out of scope for "
+        "the age family, reported beside the verdict and never deciding it. T20I and TEST are reported, not "
+        "decided on. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="X-1b-cold-start",
+        name="Age-aware cold start: the debutant prior shaped by age",
+        varies="what a player with no history in the format and a known age reads from the state -- the "
+        "neutral vector (today's cold start) or his age band's as-of debut profile (balls per match and the "
+        "four shrunk impacts, pooled over every earlier debutant of that band) -- two passes over the source, "
+        "every model refitted per fold on each pass's frame",
+        fixed="the source, the dates of birth, the age bands (cuts at 22 / 26 / 30 / 34, the population's "
+        "quartiles, chosen before any outcome was read), the cutoffs, the seeds, the hyperparameters, the model "
+        "classes, the performance model's columns (family 1's decided setting, the same for both arms), the "
+        "labels, and the H-10 probe: the same 50 evaluation matches per fold, the same replaced player (team1's "
+        "lowest player Elo), the same probe ages (19 / 27 / 34 / unknown), the end-of-pass debut tables",
+        decides="kept only if, in both T20 and ODI: (a) H-10 stays bounded -- for every probe age the arm's "
+        "median debutant-swap delta p is within +/- 0.02 of the control's and its 10th percentile within "
+        "+/- 0.03 of the control's; (b) the pinball loss of runs or of wickets on the held-out debut rows "
+        "(career 0 in the format, the only rows whose own vectors the prior changes) improves against the "
+        "control by more than 0.5 % AND more than one fold-level standard error of the paired difference; "
+        "(c) the per-player vectors of every row with history are identical between the arms (max abs "
+        "difference 0.0 -- a check, not a metric); and, as a guard in every format, the display AUC does not "
+        "fall by more than one paired fold-level standard error and H-4's swap share stays under 2 %. T20 is "
+        "decided on men's rows, as family 1. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
         id="X-4",
         name="Market benchmark: the closing price beside the display model",
         varies="which probability is scored -- the market's de-vigged closing price, the display model as "

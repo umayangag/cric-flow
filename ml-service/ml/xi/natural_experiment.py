@@ -161,11 +161,12 @@ def score_previous_elevens(
     max_difference = 0.0
     scored = 0
     for pair in sorted(pairs, key=lambda p: (p.after_date, str(p.after_match_id))):
-        state = asof.state_as_of(pair.after_date.date())
+        on = pair.after_date.date()
+        state = asof.state_as_of(on)
         pair.before_side = aggregate_side(
-            state.side_vectors(pair.format_code, list(pair.before_keys)), pair.format_code
+            state.side_vectors(pair.format_code, list(pair.before_keys), on=on), pair.format_code
         )
-        fielded = aggregate_side(state.side_vectors(pair.format_code, list(pair.after_keys)), pair.format_code)
+        fielded = aggregate_side(state.side_vectors(pair.format_code, list(pair.after_keys), on=on), pair.format_code)
         max_difference = max(
             max_difference, max(abs(fielded[stem] - pair.after_side[stem]) for stem in C.SIDE_FEATURE_STEMS)
         )

@@ -514,6 +514,14 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--cricsheet-dir", help="directory of Cricsheet JSON files")
     src.add_argument("--postgres", action="store_true", help="read the go-app database (POSTGRES_* env vars)")
+    p.add_argument(
+        "--birth-dates",
+        default=None,
+        help=(
+            "archive path only: CSV of player_key,birth_date written by `python -m ml.xi.biography --export` "
+            "(X-1b); without it every player's age reads as unknown"
+        ),
+    )
     p.add_argument("--out", default=None, help="report directory (default: ml.config.default_artifacts_dir())")
     p.add_argument(
         "--gender-split-context",
@@ -542,7 +550,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         international_teams = _international_teams_from_config()
 
         def source_factory() -> MatchSource:
-            return CricsheetJsonSource(args.cricsheet_dir, international_teams)
+            return CricsheetJsonSource(args.cricsheet_dir, international_teams, birth_dates_path=args.birth_dates)
 
     else:
         from ml.db import get_db_connection

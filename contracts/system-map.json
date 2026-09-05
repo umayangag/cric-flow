@@ -431,6 +431,16 @@
           }
         },
         {
+          "id": "frame-biography",
+          "label": "Age at the match date",
+          "summary": "The one biographical fact the archive cannot hold and Wikidata carries at usable coverage: a date of birth for 85 % of appearances (X-1a). Every player row carries the player's age at the match date and whether a date of birth exists at all; a player without one is his own category, never an imputed age. Whether the performance model reads the two columns, and whether a debutant of known age starts from his age band's debut profile rather than the neutral vector, were decided on the walk-forward folds (gates X-1b-age and X-1b-cold-start).",
+          "anchors": {
+            "feature_groups": [
+              "AGE_COLS"
+            ]
+          }
+        },
+        {
           "id": "frame-player-rows",
           "label": "Player-match rows",
           "summary": "One row per player per match: who he was, what his record said beforehand, what his own side and the opposition looked like, and then what he actually did — runs, balls, wickets, runs conceded, catches. Every player of the eleven gets a row, including the ones who never batted, because who got to bat is decided by how the match went.",
@@ -771,7 +781,9 @@
           "A-1",
           "A-2",
           "A-3",
-          "X-4"
+          "X-4",
+          "X-1b-age",
+          "X-1b-cold-start"
         ]
       },
       "documented_in": [

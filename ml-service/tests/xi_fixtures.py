@@ -78,3 +78,6 @@ class ListSource:
 
     def iter_matches(self):
         yield from self.matches
+
+    def birth_dates(self):
+        return {}
