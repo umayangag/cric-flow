@@ -209,6 +209,52 @@ def test_a_league_without_a_knockout_round_has_no_reconstructible_table() -> Non
     assert all(entry.stage_label == stakes.STAGE_GROUP for entry in derived.values())
 
 
+def _four_club_pool(x_result: Optional[str]) -> List[stakes.Header]:
+    """Four clubs, two through, a final. X's first two fixtures are the only thing that
+    varies: ``"X"`` for two wins, ``None`` for two no-results."""
+    return [
+        header("m1", 0, "X", "Z", winner=x_result, match_number=1),
+        header("m2", 0, "Y", "W", winner="Y", match_number=2),
+        header("m3", 1, "X", "W", winner=x_result, match_number=3),
+        header("m4", 1, "Y", "Z", winner="Y", match_number=4),
+        header("m5", 2, "Z", "W", winner="Z", match_number=5),
+        header("m6", 3, "X", "Y", winner="X", match_number=6),
+        header("f1", 6, "X", "Y", winner="X", event_stage="Final"),
+    ]
+
+
+def test_two_wins_each_put_the_bottom_two_out_of_reach() -> None:
+    """X and Y on four points with two through: Z and W, on zero with one game each, can
+    reach two at most, so their fixture decides nothing."""
+    derived = stakes.derive(_four_club_pool("X"))
+
+    assert derived["m5"].dead_rubber
+
+
+def test_a_no_result_is_a_point_each_and_keeps_the_bottom_two_alive() -> None:
+    """The same two fixtures washed out leave X on two and Z and W on one apiece, so
+    second place is still open and their fixture is live. A no result read as a loss would
+    eliminate them both, which is the arithmetic this pins."""
+    derived = stakes.derive(_four_club_pool(None))
+
+    assert derived["m5"].dead_rubber_known and not derived["m5"].dead_rubber
+
+
+def test_a_tournament_fixture_with_neither_a_number_nor_a_pool_stays_unlabelled() -> None:
+    """Three clubs and no fixture number is a match the archive does not place, and an
+    unplaced match is unlabelled rather than assumed to be a group game."""
+    headers = [
+        header("a", 0, "X", "Y", winner="X"),
+        header("b", 1, "Y", "Z", winner="Y"),
+        header("c", 2, "X", "Z", winner="X"),
+    ]
+
+    derived = stakes.derive(headers)
+
+    assert {entry.stage_label for entry in derived.values()} == {stakes.STAGE_UNLABELLED}
+    assert not any(entry.dead_rubber_known for entry in derived.values())
+
+
 def _two_pool_league() -> List[stakes.Header]:
     """Two pools of three clubs, one through from each, then a final.
 
