@@ -287,7 +287,22 @@ TEAM_CONTEXT_COLS: List[str] = [
     "venue_fam_diff",
 ]
 
-DISPLAY_FEATURE_COLS: List[str] = XI_FEATURE_COLS + TEAM_CONTEXT_COLS
+# Match stakes (X-3): what the fixture was worth, derived from Cricsheet's event fields
+# (``ml.xi.stakes``). ``stakes_knockout`` is 1.0 for a knockout or a final and
+# ``stakes_stage_known`` says whether the archive placed the match in its competition at
+# all -- so an unlabelled match reads 0.0 on both and is its own category rather than an
+# implied group fixture, the same shape ``age`` / ``age_known`` uses. Both columns are on
+# every win row; the display model reads them only if gate X-3's stakes family kept them
+# (``STAKES_FEATURES_KEPT``). The dead-rubber flag is deliberately NOT here: it needs the
+# edition's fixture list, which makes it fit to clean a measurement and unfit to be a
+# feature (H-21, ``ml.xi.stakes``).
+STAKES_COLS: List[str] = ["stakes_knockout", "stakes_stage_known"]
+#: Gate X-3, use 2: whether the display model reads ``STAKES_COLS``.
+STAKES_FEATURES_KEPT = False
+
+DISPLAY_FEATURE_COLS: List[str] = (
+    XI_FEATURE_COLS + TEAM_CONTEXT_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
+)
 
 TARGET_COL = "team1_wins"
 

@@ -47,6 +47,10 @@ _COMPARED_COUNTS = (
     "player_keys",
     "team_keys",
     "players_with_birth_date",
+    "matches_with_stage_label",
+    "knockout_matches",
+    "matches_with_reconstructible_table",
+    "dead_rubber_matches",
 )
 
 

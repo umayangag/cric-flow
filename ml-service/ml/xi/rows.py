@@ -121,6 +121,20 @@ def serving_match(
     )
 
 
+def stakes_columns(match: MatchRecord) -> Dict[str, float]:
+    """The match's stakes as win-row columns (``contract.STAKES_COLS``).
+
+    A record built for the serving path carries no stakes, so an upcoming match reads 0.0
+    on both -- the unlabelled category, not "a league game". A caller that knows a fixture
+    is a final can say so by handing the record its stakes; nothing served today does,
+    because gate X-3 kept no stakes feature.
+    """
+    return {
+        "stakes_knockout": float(match.stakes.is_knockout),
+        "stakes_stage_known": float(match.stakes.stage_known),
+    }
+
+
 def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
     """Both sides' aggregates as the win-feature row, and one feature row per XI player
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
@@ -154,6 +168,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     win_row.update(context)
     win_row.update(state.simulation_context(match.format_code, match.gender))
     win_row.update(fixture_context)
+    win_row.update(stakes_columns(match))
 
     player_rows: List[Dict] = []
     sides = (

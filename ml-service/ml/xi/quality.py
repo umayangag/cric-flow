@@ -87,6 +87,17 @@ class DataQuality:
     # the two sources are expected to agree here as they do on every other count.
     players_with_birth_date: int = 0
 
+    # Match stakes (X-3), the three numbers that say how far the derivation reaches: how
+    # many matches the archive places in their competition at all, how many are knockouts,
+    # and how many have a reconstructible table. They are compared across sources because
+    # they are the only thing that would notice the importer dropping an event field: the
+    # database and the archive would still describe the same cricket, and one of them
+    # would silently know less about it.
+    matches_with_stage_label: int = 0
+    knockout_matches: int = 0
+    matches_with_reconstructible_table: int = 0
+    dead_rubber_matches: int = 0
+
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
 

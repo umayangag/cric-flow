@@ -53,6 +53,7 @@ def build(
     team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
+    stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
     pending: List = []
     current_date = None
     for i, match in enumerate(source.iter_matches()):
@@ -60,6 +61,10 @@ def build(
         team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
+        stakes_counts["stage"] += int(match.stakes.stage_known)
+        stakes_counts["knockout"] += int(match.stakes.is_knockout)
+        stakes_counts["table"] += int(match.stakes.dead_rubber_known)
+        stakes_counts["dead"] += int(match.stakes.dead_rubber)
         if current_date is not None and match.match_date < current_date:
             raise ValueError(f"source is not in date order: {match.match_id} ({match.match_date}) after {current_date}")
         if current_date is not None and match.match_date != current_date:
@@ -94,6 +99,10 @@ def build(
         player_keys=len(state.players),
         team_keys=len(team_keys),
         players_with_birth_date=count_known(state.birth_dates, state.players.keys),
+        matches_with_stage_label=stakes_counts["stage"],
+        knockout_matches=stakes_counts["knockout"],
+        matches_with_reconstructible_table=stakes_counts["table"],
+        dead_rubber_matches=stakes_counts["dead"],
     )
     logger.info(
         "rating pass: %d training rows, %d player-match rows, %d undecided matches, %d players "

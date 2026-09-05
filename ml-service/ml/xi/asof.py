@@ -144,6 +144,7 @@ def serving_parity(
         + C.TEAM_CONTEXT_COLS
         + C.SIMULATION_CONTEXT_COLS
         + C.FIXTURE_CONTEXT_COLS
+        + C.STAKES_COLS
         + C.INNINGS_OUTCOME_COLS
     )
     player_cols = C.PLAYER_MATCH_FEATURE_COLS + C.PLAYER_MATCH_TARGET_COLS
