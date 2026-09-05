@@ -301,6 +301,90 @@ GATES: Tuple[Gate, ...] = (
         "input",
         report_path=REPORT_SCOPE + "market_benchmark.formats",
     ),
+    Gate(
+        id="X-2-daynight",
+        name="Day/night flag in the win and performance models",
+        varies="whether the display model and the performance model read the day/night flag (wx_night) -- a fact about the schedule inferred per match from the documented session rules, not a weather reading beyond the "
+        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
+        "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
+        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
+        "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
+        "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
+        decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
+        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
+        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
+        "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
+        "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
+        "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
+        "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="X-2-humidity-temperature",
+        name="Pre-match humidity and temperature",
+        varies="whether the display model and the performance model read the pre-match humidity and temperature (wx_pre_humidity, wx_pre_temp_c, the mean of the three ERA5 hours before the inferred start) with wx_known beyond the "
+        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
+        "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
+        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
+        "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
+        "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
+        decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
+        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
+        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
+        "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
+        "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
+        "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
+        "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="X-2-dew",
+        name="Dew-likelihood proxy",
+        varies="whether the display model and the performance model read the dew proxy (wx_dew_proxy: the night flag times the pre-match relative humidity) with wx_known beyond the "
+        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
+        "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
+        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
+        "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
+        "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
+        decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
+        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
+        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
+        "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
+        "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
+        "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
+        "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="X-2-rain",
+        name="Rain that has fallen before the match",
+        varies="whether the display model and the performance model read the rain already fallen (wx_rain_prior_day_mm: the day before plus the match day's hours before the start; wx_rain_prior_week_mm: the seven days before) with wx_known beyond the "
+        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
+        "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
+        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
+        "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
+        "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
+        decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
+        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
+        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
+        "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
+        "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
+        "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
+        "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}

@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies restore-player-biographies
+.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies restore-player-biographies venue-weather restore-venue-weather
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -212,6 +212,25 @@ restore-player-biographies:
 		-overrides "$(CURDIR)/configs/player_biography_overrides.json" \
 		-report "" \
 		$(BIOGRAPHY_ARGS)
+
+# X-2: pre-match weather. The venue -> coordinates table and the reduced ERA5 days are
+# tracked under reference-data/ (CC BY 4.0, non-commercial use) and ARE the cache: an
+# online run asks Open-Meteo only about venues and match days the files do not hold, so a
+# fresh clone fetches nothing for history and only its own new fixtures. Like the
+# biographies, it is beside the cadence, not in it. WEATHER_ARGS passes extra flags
+# (e.g. WEATHER_ARGS=--to-db to write the database as well).
+WEATHER_CRICSHEET_DIR ?= data/go-app/cricsheet
+venue-weather:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service venue-weather CRICSHEET_DIR="$(abspath $(WEATHER_CRICSHEET_DIR))" WEATHER_ARGS="--report $(WEATHER_ARGS)"
+
+# Rebuild venue coordinates and `venue_weather` from the committed files, asking nothing
+# over the network: the recovery path after a purge-and-rebuild or on a fresh clone. Run
+# it after `make migrate` (0012) and the Cricsheet import (the venue rows it keys through).
+# See reference-data/README.md and docs/config-and-data.md § Recovering the external data.
+restore-venue-weather:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service venue-weather CRICSHEET_DIR="$(abspath $(WEATHER_CRICSHEET_DIR))" WEATHER_ARGS="--offline --to-db --report $(WEATHER_ARGS)"
 
 # -------------------- Backtest fixtures and smoke --------------------
 # Defaults for local DB that mirror docker-compose ports

@@ -12,7 +12,7 @@ LINE_LENGTH?=120
 COV_MIN?=93
 REQUIREMENTS_FILE?=requirements.txt
 
-.PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload
+.PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload venue-weather
 .PHONY: xi-parity export-birth-dates docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
@@ -71,6 +71,12 @@ xi-parity: venv
 export-birth-dates: venv
 	@test -n "$(BIRTH_DATES)" || (echo "BIRTH_DATES is required, e.g. make export-birth-dates BIRTH_DATES=../data/go-app/player-birth-dates.csv" && exit 1)
 	$(PY) -m ml.xi.biography --export "$(BIRTH_DATES)"
+
+# X-2: the weather acquisition and its offline restore, one command (ml/weather/backfill.py).
+# Usage: make venue-weather CRICSHEET_DIR=../data/go-app/cricsheet WEATHER_ARGS="--offline --to-db"
+venue-weather: venv
+	@test -n "$(CRICSHEET_DIR)" || (echo "CRICSHEET_DIR is required, e.g. make venue-weather CRICSHEET_DIR=../data/go-app/cricsheet" && exit 1)
+	$(PY) -m ml.weather.backfill --cricsheet-dir "$(CRICSHEET_DIR)" $(WEATHER_ARGS)
 
 # Point `current` at a run and load it into the running service (the `reload` step).
 # RUN names one; with none, the newest run on disk -- the one a retrain just built.
