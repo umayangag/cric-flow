@@ -441,6 +441,16 @@
           }
         },
         {
+          "id": "frame-stakes",
+          "label": "What the match was worth",
+          "summary": "Whether a fixture was a knockout or a final, and whether the archive placed it in its competition at all \u2014 read from the round and the pool Cricsheet states in its event fields (X-3), which the importer had been discarding. It reaches 96.5 % of matches; a match the archive does not place is its own category rather than an assumed league game. Whether the displayed win probability reads the two columns was decided on the walk-forward folds (gate X-3-stakes). The dead-rubber flag the same derivation produces is not here on purpose: it needs the season's fixture list, which makes it fit to clean a measurement and unfit to be a feature.",
+          "anchors": {
+            "feature_groups": [
+              "STAKES_COLS"
+            ]
+          }
+        },
+        {
           "id": "frame-player-rows",
           "label": "Player-match rows",
           "summary": "One row per player per match: who he was, what his record said beforehand, what his own side and the opposition looked like, and then what he actually did — runs, balls, wickets, runs conceded, catches. Every player of the eleven gets a row, including the ones who never batted, because who got to bat is decided by how the match went.",
@@ -783,7 +793,9 @@
           "A-3",
           "X-4",
           "X-1b-age",
-          "X-1b-cold-start"
+          "X-1b-cold-start",
+          "X-3-e5",
+          "X-3-stakes"
         ]
       },
       "documented_in": [
