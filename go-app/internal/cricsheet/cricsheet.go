@@ -112,9 +112,28 @@ func (i *Info) UnmarshalJSON(data []byte) error {
 }
 
 // Event contains optional tournament information.
+//
+// Stage and Group are the two fields that say which *part* of a competition a match
+// belonged to, and the reason the pair is stored rather than derived: an event name names
+// the tournament, never the round. Stage is the round as Cricsheet spells it ("Final",
+// "Qualifier 1", "3rd Place Play-Off", "Group Stage"), Group the pool of a group-stage
+// match. Both are absent from most files and stay empty when they are -- X-3 labels what
+// the archive states and leaves the rest unlabelled.
 type Event struct {
-	Name        string `json:"name"`
-	MatchNumber *int   `json:"match_number"`
+	Name        string      `json:"name"`
+	MatchNumber *int        `json:"match_number"`
+	Stage       string      `json:"stage"`
+	Group       FlexibleTag `json:"group"`
+}
+
+// FlexibleTag is a short label Cricsheet writes as either a string or a bare number --
+// group "A" in one file, group 1 in the next. It decodes both to text.
+type FlexibleTag string
+
+// UnmarshalJSON decodes a string, a number or null into text; anything else becomes "".
+func (t *FlexibleTag) UnmarshalJSON(data []byte) error {
+	*t = FlexibleTag(flexibleString(data))
+	return nil
 }
 
 // Toss records which team won the toss and the decision.
@@ -186,36 +205,33 @@ type Season string
 // - 2012.0 -> "2012"
 // - null -> ""
 func (s *Season) UnmarshalJSON(data []byte) error {
-	// null -> empty string
+	*s = Season(flexibleString(data))
+	return nil
+}
+
+// flexibleString decodes one JSON scalar Cricsheet spells inconsistently into text:
+// a string as itself, an integer or an integral float without its ".0", any other number
+// in its shortest exact form, and null or anything unreadable as "".
+func flexibleString(data []byte) string {
 	if string(data) == "null" {
-		*s = Season("")
-		return nil
+		return ""
 	}
-	// Try as string first
 	var str string
 	if err := json.Unmarshal(data, &str); err == nil {
-		*s = Season(str)
-		return nil
+		return str
 	}
-	// Try as int
 	var i int
 	if err := json.Unmarshal(data, &i); err == nil {
-		*s = Season(strconv.Itoa(i))
-		return nil
+		return strconv.Itoa(i)
 	}
-	// Try as float; format cleanly (drop trailing .0 when integer)
 	var f float64
 	if err := json.Unmarshal(data, &f); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
 		if float64(int(f)) == f {
-			*s = Season(strconv.Itoa(int(f)))
-		} else {
-			*s = Season(strconv.FormatFloat(f, 'f', -1, 64))
+			return strconv.Itoa(int(f))
 		}
-		return nil
+		return strconv.FormatFloat(f, 'f', -1, 64)
 	}
-	// Fallback: empty string
-	*s = Season("")
-	return nil
+	return ""
 }
 
 // UnmarshalJSON allows `Collection` to flexibly decode from various Cricsheet encodings:

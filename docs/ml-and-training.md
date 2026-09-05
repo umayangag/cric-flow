@@ -374,6 +374,22 @@ age band, what earlier debutants of that band did in their debut match), which
 H-10 stayed bounded, but the debut rows' pinball worsened in every format (runs −0.3 … −2.7 %),
 because the model already learns its own debutant neutral jointly with the rest of the row.
 
+Since X-3 every **win row** also carries the match's **stakes** (`contract.STAKES_COLS`:
+`stakes_knockout` and `stakes_stage_known`), derived by `ml/xi/stakes.py` from Cricsheet's
+`info.event` — the round (`event.stage`), the pool (`event.group`), the fixture number and
+the shape of the competition's edition (`match.event_stage` / `match.event_group` in the
+database, added by migration `0011`). Both sources produce them, `make xi-parity` compares
+four counts of them, and H-8 compares the columns themselves; a record built for the serving
+path carries no stakes and reads `0.0 / 0.0`, the unlabelled category rather than an implied
+league game. The same rule once more: the columns are always on the win row, and the display
+model reads them only if gate X-3 kept them — and **it kept none**
+(`contract.STAKES_FEATURES_KEPT` is False; [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md)
+§ X-3): on the walk-forward folds a knockout flag moved display AUC by +0.0000 in T20, ODI
+and TEST and +0.0021 in T20I alone. The **dead-rubber flag** the same derivation produces is
+deliberately *not* a frame column: it needs the edition's fixture list and its qualifying
+cut, which makes it fit to clean a measurement (X-3's E5 hygiene run) and unfit to be a
+feature (H-21).
+
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): `within_match_spearman`, `within_match_spearman_involved`, `top3_hit_rate`, `mae`, `pinball`, `pinball_by_level`, `coverage_80`, `coverage_80_strict`, `width_80`, `q10`, `q90`, `probabilities`, `reliability`, `vs_career_mean`, `vs_career_quantiles`.

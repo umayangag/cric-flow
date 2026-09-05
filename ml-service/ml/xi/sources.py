@@ -22,6 +22,8 @@ from ml.xi.biography import BirthDates, load_birth_dates_csv, load_birth_dates_p
 from ml.xi.contract import FORMAT_CODES
 from ml.xi.lineage import TeamLineage
 from ml.xi.lineage import load as load_lineage
+from ml.xi.stakes import UNLABELLED, Header, MatchStakes
+from ml.xi.stakes import derive as derive_stakes
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,16 @@ class MatchRecord:
     # importer stores verbatim as ``match.event_name``, so both sources spell it the same.
     # Empty when the source names none; an empty key is no key (``RatingState.update``).
     competition: str = ""
+    # The rest of Cricsheet's ``info.event``, stored verbatim by both sources (migration
+    # 0011 for Postgres) and read only by ``ml.xi.stakes``: the fixture's number in its
+    # competition, the round, and the pool.
+    match_number: Optional[int] = None
+    event_stage: str = ""
+    event_group: str = ""
+    # What the match was worth (X-3), filled by the source once it knows the whole edition:
+    # a fixture's stakes are a fact about its competition, not about the file it came in.
+    # A record built for the serving path carries the unlabelled default.
+    stakes: MatchStakes = UNLABELLED
 
     @property
     def outcome(self) -> Optional[float]:
@@ -253,6 +265,7 @@ def parse_cricsheet_file(
     if not fmt or len(teams) != 2 or not innings or innings[0].get("team") not in teams:
         return None
     registry = (info.get("registry") or {}).get("people") or {}
+    event = info.get("event") or {}
     team1 = innings[0]["team"]
     team2 = teams[1] if teams[0] == team1 else teams[0]
     players = info.get("players") or {}
@@ -282,8 +295,22 @@ def parse_cricsheet_file(
         winner=winner,
         result=outcome.get("result"),
         deliveries=_deliveries_from_cricsheet(innings, registry),
-        competition=(info.get("event") or {}).get("name") or "",
+        competition=event.get("name") or "",
+        match_number=_match_number(event.get("match_number")),
+        event_stage=str(event.get("stage") or "").strip(),
+        # Cricsheet writes a pool as a string in most files and as a bare number in the
+        # rest; the importer normalises the same way (cricsheet.FlexibleTag).
+        event_group="" if event.get("group") is None else str(event["group"]).strip(),
     )
+
+
+def _match_number(value: object) -> Optional[int]:
+    """The fixture's number in its competition, or None where the archive gives none or
+    gives something that is not a number."""
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def team_key(name: str, gender: str, lineage: "TeamLineage") -> str:
@@ -368,6 +395,11 @@ class CricsheetJsonSource:
                 continue
             records.append(rec)
         self.counts.yielded = len(records)
+        # Stakes are derived over the whole set this source yields, because an edition's
+        # table is a fact about its fixtures rather than about any one of them (X-3).
+        stakes = derive_stakes(records)
+        for record in records:
+            record.stakes = stakes.get(str(record.match_id), UNLABELLED)
         logger.info(
             "cricsheet source: %d matches from %d files (%d out of scope, %d unusable)",
             self.counts.yielded,
@@ -393,7 +425,8 @@ SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
        COALESCE(bowl.canonical_id, bowl.id),
        COALESCE(win.canonical_id, win.id),
-       COALESCE(m.event_name, '')
+       COALESCE(m.event_name, ''), m.match_number,
+       COALESCE(m.event_stage, ''), COALESCE(m.event_group, '')
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
@@ -503,7 +536,15 @@ class PostgresSource:
             matches = cur.fetchall()
         self.counts = SourceCounts(offered=offered, out_of_scope=offered - len(matches))
         logger.info("postgres source: %d matches of %d in the date range", len(matches), offered)
-        for match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id, event_name in matches:
+        # The whole edition before the first delivery is read: the same derivation the
+        # archive path runs, over the same set of matches, so the two agree or H-15 says
+        # which field they differ on (X-3). "The same set" is exact while
+        # ``unusable_matches`` is zero, as it is on this dataset -- a match this source
+        # later drops for having no recorded squad is in this fixture list and not in the
+        # archive path's, which the parity counts would report as a difference.
+        stakes = derive_stakes([_stakes_header(row) for row in matches])
+        for row in matches:
+            match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id, event_name = row[:9]
             with self.connection.cursor() as cur:
                 cur.execute(_PLAYERS_SQL, (match_id,))
                 players = cur.fetchall()
@@ -530,7 +571,30 @@ class PostgresSource:
                 result=None,
                 deliveries=_deliveries_from_rows(balls),
                 competition=event_name or "",
+                match_number=row[9],
+                event_stage=row[10] or "",
+                event_group=row[11] or "",
+                stakes=stakes.get(str(match_id), UNLABELLED),
             )
+
+
+def _stakes_header(row: Sequence) -> Header:
+    """One row of ``_MATCH_SQL`` as the stakes derivation reads it. Teams are the club
+    keys the records below carry, so an edition's clubs are counted the same way on both
+    sources."""
+    return Header(
+        match_id=str(row[0]),
+        match_date=row[1],
+        format_code=row[2],
+        gender=row[3] or "",
+        team1=str(row[5]),
+        team2=str(row[6]),
+        competition=row[8] or "",
+        match_number=row[9],
+        event_stage=row[10] or "",
+        event_group=row[11] or "",
+        winner=None if row[7] is None else str(row[7]),
+    )
 
 
 def _deliveries_from_rows(rows) -> Deliveries:

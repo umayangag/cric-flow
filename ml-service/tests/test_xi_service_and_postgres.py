@@ -359,10 +359,11 @@ class _FakeConnection:
 
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
+        # Columns follow _MATCH_SQL: ..., winner, event name, match number, stage, group.
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series"),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, ""),
-            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", ""),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", ""),
+            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -395,6 +396,13 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert d.fielders[1] == ["b0000005"]
     assert recs[1].outcome == 1.0
     assert "caught" in BOWLER_CREDITED_KINDS and "run out" not in BOWLER_CREDITED_KINDS
+    # The event fields reach the record verbatim and the stakes derivation reads them over
+    # the whole set the source yields (X-3). Both matches here are between the same two
+    # clubs, so the named edition is a bilateral series; the match with no event name
+    # belongs to no edition and stays unlabelled rather than being guessed at.
+    assert first.match_number == 1 and first.event_stage == "" and first.event_group == ""
+    assert first.stakes.stage_label == "bilateral" and not first.stakes.dead_rubber
+    assert recs[1].stakes.stage_label == "" and not recs[1].stakes.dead_rubber_known
 
 
 def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
