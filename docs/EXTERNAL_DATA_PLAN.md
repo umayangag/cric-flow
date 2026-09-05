@@ -534,6 +534,9 @@ table), and an *Evaluation report → Market benchmark* panel that prints the co
 the numbers and says plainly when a format has none. The odds files are cached under
 `data/market-odds/` (git-ignored; `ML_MARKET_ODDS_DIR` or `make evaluate MARKET_ODDS_DIR=…`
 overrides it) and are **not** committed, because the source grants no redistribution right.
+Losing that cache costs nothing but a download: the twelve season CSVs are re-fetched from
+`betfair-datascientists.github.io/data/dataListing/` into the same directory — see
+[config-and-data.md](config-and-data.md) § Recovering the external data.
 `tests/test_xi_market.py` asserts by import graph that nothing which builds a feature, fits a
 model or serves a prediction can reach the odds.
 
@@ -656,6 +659,12 @@ the common case does not need an operator. The database was then truncated and r
 the archive for the integration tests, and the backfill re-run: it asked Wikidata **nothing**
 and produced **the same figures to the last digit** (86.33 % matched, 85.33 % DOB, 4.68 %
 style).
+
+That cache was written under `output/`, which is git-ignored and which `make dev-purge`
+deletes, so it was one machine away from being gone. The durable copy is now committed as
+`reference-data/wikidata-player-lookups.jsonl` with the people register it joins through,
+and `make restore-player-biographies` rebuilds the table from them offline — see
+[config-and-data.md](config-and-data.md) § Recovering the external data.
 
 **One consequence outside acquisition.** D-12 registered two corroboration criteria that
 reported themselves *unavailable* because nothing supplied a date of birth or a career end

@@ -237,3 +237,66 @@ func TestRun_ReportsAStoreFailureRatherThanSwallowingIt(t *testing.T) {
 	require.Error(t, writeFailed)
 	assert.Contains(t, writeFailed.Error(), "storing biographies")
 }
+
+// TestRun_OfflineAnswersFromTheCacheAndAsksNothing is the restore path: rebuilding the
+// table from the committed snapshot must be incapable of starting a rate-limited pass
+// over every player, so the lookuper is not consulted even when one is supplied.
+func TestRun_OfflineAnswersFromTheCacheAndAsksNothing(t *testing.T) {
+	t.Parallel()
+	store := &recordingStore{players: []biography.Player{
+		{ID: 1, ExternalID: "aaa"},
+		{ID: 2, ExternalID: "bbb"},
+	}}
+	lookuper := &scriptedLookuper{answers: map[string]biography.Lookup{
+		"222": {CricinfoID: "222", QID: "Q2", BirthDate: born(1988)},
+	}}
+	options := testOptions(t, map[string]biography.RegisterEntry{
+		"aaa": {CricinfoIDs: []string{"111"}},
+		"bbb": {CricinfoIDs: []string{"222"}},
+	})
+	require.NoError(t, options.Cache.Put([]biography.Lookup{
+		{CricinfoID: "111", QID: "Q1", BirthDate: born(1990)},
+	}))
+	options.Offline = true
+
+	result, err := biography.Run(context.Background(), store, lookuper, options)
+
+	require.NoError(t, err)
+	assert.Empty(t, lookuper.asked, "an offline run must ask Wikidata nothing")
+	assert.Equal(t, 0, result.AskedNow)
+	assert.Equal(t, 1, result.FromCache)
+	assert.Equal(t, 1, result.Unanswered, "the id the snapshot is short of is reported, not guessed")
+	require.Len(t, store.written, 2)
+	assert.Equal(t, "Q1", store.written[0].WikidataQID)
+	assert.Empty(t, store.written[1].WikidataQID)
+	assert.Equal(t, "222", store.written[1].CricinfoID, "the id tried is still recorded")
+}
+
+// TestRun_OfflineDoesNotCacheAnUnansweredIDAsAMiss: a fabricated miss would make the next
+// online run skip the one id it should have asked about.
+func TestRun_OfflineDoesNotCacheAnUnansweredIDAsAMiss(t *testing.T) {
+	t.Parallel()
+	store := &recordingStore{players: []biography.Player{{ID: 1, ExternalID: "aaa"}}}
+	options := testOptions(t, map[string]biography.RegisterEntry{
+		"aaa": {CricinfoIDs: []string{"111"}},
+	})
+	options.Offline = true
+
+	_, err := biography.Run(context.Background(), store, nil, options)
+
+	require.NoError(t, err)
+	_, cached := options.Cache.Get("111")
+	assert.False(t, cached, "an unasked id must stay unasked")
+}
+
+// TestRun_RefusesAnOnlineRunWithNoLookuper: the alternative is a nil dereference partway
+// through a pass whose earlier batches have already been written.
+func TestRun_RefusesAnOnlineRunWithNoLookuper(t *testing.T) {
+	t.Parallel()
+	options := testOptions(t, nil)
+
+	_, err := biography.Run(context.Background(), &recordingStore{}, nil, options)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Offline")
+}

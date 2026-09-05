@@ -10,6 +10,11 @@
 // The run is resumable: every batch's answers, including its misses, are appended to a
 // local cache before the next batch starts, so an interrupted run is resumed by running
 // the same command again.
+//
+// With -offline it rebuilds the table from the snapshots committed under reference-data/
+// and makes no network call at all. That is the recovery path after a purge, and it is
+// the reason those snapshots are tracked: re-acquiring them is a rate-limited pass over
+// every player in the archive.
 package main
 
 import (
@@ -92,29 +97,42 @@ func acquire(
 		slog.Int("cached_lookups", cache.Len()),
 		slog.String("license", biography.SourceLicense))
 
-	lookuper := &biography.SPARQLClient{
-		Endpoint:  options.Endpoint,
-		UserAgent: options.UserAgent,
-		HTTP:      client,
-		Pause:     options.Pause,
-	}
-	result, err := biography.Run(ctx, store, lookuper, biography.Options{
+	result, err := biography.Run(ctx, store, lookuperFor(options, client), biography.Options{
 		Register:  register,
 		Overrides: overrides,
 		Cache:     cache,
 		BatchSize: options.BatchSize,
+		Offline:   options.Offline,
 	})
 	if err != nil {
 		return err
 	}
 	slog.Info("player biographies: acquisition finished",
+		slog.Bool("offline", options.Offline),
 		slog.Int("players", result.Players),
 		slog.Int("with_cricinfo_id", result.WithCricinfoID),
 		slog.Int("asked_now", result.AskedNow),
 		slog.Int("from_cache", result.FromCache),
+		slog.Int("unanswered", result.Unanswered),
 		slog.Int("matched", result.Matched),
 		slog.Int("overridden", result.Overridden))
 	return nil
+}
+
+// lookuperFor returns the Wikidata client, or nothing at all for an offline restore.
+//
+// An offline run gets no client rather than a client it promises not to use: the promise
+// that the restore cannot reach Wikidata is then structural, not a comment.
+func lookuperFor(options biographybackfill.Options, client *http.Client) biography.Lookuper {
+	if options.Offline {
+		return nil
+	}
+	return &biography.SPARQLClient{
+		Endpoint:  options.Endpoint,
+		UserAgent: options.UserAgent,
+		HTTP:      client,
+		Pause:     options.Pause,
+	}
 }
 
 // report measures what is stored and writes it out.

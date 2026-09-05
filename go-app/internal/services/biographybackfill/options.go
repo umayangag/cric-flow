@@ -73,6 +73,10 @@ type Options struct {
 	// ReportOnly re-measures what is stored and writes the report, fetching nothing. It
 	// is how the committed report is regenerated without asking Wikidata again.
 	ReportOnly bool
+	// Offline rebuilds the table from committed snapshots and makes no network call at
+	// all: the register must be a local copy and Wikidata is never asked. It is the
+	// restore path after a purge — see the Makefile target restore-player-biographies.
+	Offline bool
 }
 
 // ParseArgs parses the flags, returning an error rather than exiting so tests can assert
@@ -99,6 +103,8 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	fs.DurationVar(&options.Timeout, "timeout", DefaultTimeout, "overall run timeout")
 	fs.BoolVar(&options.ReportOnly, "report-only", false,
 		"re-measure what is stored and write the report, fetching nothing")
+	fs.BoolVar(&options.Offline, "offline", false,
+		"rebuild from committed snapshots, making no network call; -register must be a local copy")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
@@ -108,10 +114,20 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 
 // validate refuses settings that would produce a run whose result cannot be trusted.
 func (o Options) validate() error {
+	if o.ReportOnly && o.Offline {
+		return errors.New("-report-only and -offline are alternatives: -report-only writes " +
+			"no rows at all, -offline writes them from the committed snapshots")
+	}
 	if !o.ReportOnly && strings.TrimSpace(o.Register) == "" {
 		return errors.New("a people register is required: pass -register")
 	}
-	if !o.ReportOnly && strings.TrimSpace(o.UserAgent) == "" {
+	if o.Offline && strings.HasPrefix(o.Register, "https://") {
+		// The default register is a URL, so an -offline run that inherited it would
+		// quietly fetch — the one thing this mode exists to rule out.
+		return errors.New("-offline makes no network call, so -register must name a local " +
+			"copy of the people register, not " + o.Register)
+	}
+	if !o.ReportOnly && !o.Offline && strings.TrimSpace(o.UserAgent) == "" {
 		return errors.New(
 			"the query service requires a User-Agent identifying the caller: set " + UserAgentEnvVar)
 	}
