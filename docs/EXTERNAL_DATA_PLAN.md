@@ -254,7 +254,7 @@ included); parity 0.0; make check-all green; coverage gates never move down;
 docs/EXTERNAL_DATA_PLAN.md updated. Then stop and hand over the push and PR commands.
 ```
 
-## X-2 — weather (model: Fable; last, expect a null)
+## X-2 — weather (model: Fable; last, expect a null) — **run: four recorded nulls; the data stays**
 
 **What.** Pre-match weather context (day/night, humidity, dew likelihood, rain
 probability) from the Open-Meteo ERA5 historical archive, mapped to inferred session
@@ -404,7 +404,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | **done — three recorded nulls, nothing shipped** — the **matchup** family is *not runnable for want of labels* (Wikidata: a batting hand for 18 and a bowling style for 265 of 13,662 players; the labelled confirmation of A-3's null; E5 not re-run, X-3 owns it); the **age** family moves the performance model's runs and wickets pinball by ~0.02 % on the deciding slices (T20 men +0.02 / +0.02 %, ODI +0.02 / −0.01 %), inside E1's band, women's T20 out of scope at 61.4 % and reported; the **age-aware cold start** keeps H-10 bounded and moves no player with history, and worsens the debut rows' pinball in every format (T20 −0.30 / −0.53 %, ODI −0.69 / −1.11 %). The date of birth now reaches every player row (`AGE_COLS`, missing = its own indicator) and both models read it only through flags that stay off; `make evaluate` after the choice reproduces A-4's baseline with H-8 parity 0.0 on both sources |
 | X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources; `make evaluate` on Postgres afterwards has **H-8 parity 0.0** with `STAKES_COLS` compared, and reproduces X-1b's walk-forward table to four decimals in every format |
-| X-2 | open — run last; the licence check in § X-2 precedes any acquisition, and a paid finding closes the item |
+| X-2 | **in progress (checkpoint)** — licence verified free/non-commercial/CC BY 4.0; acquisition complete and committed (892/892 venues placed, 19,561 ERA5 venue-days covering 99.9 % of matches, restore verified on the scratch database); **gate (a) measured: four recorded nulls**; gates (b)/(c) running on T20 and ODI |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
 ### X-4 — the source review, the join, and what the numbers support
@@ -1038,6 +1038,114 @@ and `scripts/experiments/xi/x3_match_stakes.py` (coverage, both gates, `--decide
 shipped: any change to a model, a feature, a threshold or a format's scoping.
 `STAKES_FEATURES_KEPT` is `False`, `DISPLAY_FEATURE_COLS` is byte-for-byte what it was, and
 `make evaluate` reproduces the run before it to four decimals.
+
+### X-2 — the licence, the acquisition, and what the four families measured
+
+**The licence, from the source (step 0).** Read on 2026-09-05: Open-Meteo's terms page
+says *"You may only use the free API services for non-commercial purposes"* and *"The data
+obtained through the API is provided under the terms of the CC-BY 4.0 licence"*, with the
+free limits *"Less than 10'000 API calls per day, 5'000 per hour and 600 per minute"*; the
+historical-weather docs page lists the `apikey` parameter as *"Only required to commercial
+use to access reserved API resources for customers"*; and `archive-api.open-meteo.com`
+answered a keyless request with HTTP 200. The pricing page's sentence that worried § X-2 —
+*"Historical, climate, ensemble, and satellite radiation APIs require the Professional API
+Plan or higher"* — sits under the question *"Using the Standard API Plan can I use
+historical, climate and ensemble data?"*: it ranks the **commercial** plans against each
+other and says nothing about the free non-commercial endpoint, which the docs and the
+endpoint's own behaviour both put outside it. So: **free, non-commercial only, CC BY 4.0
+with attribution**, the ERA5 data underneath it Copernicus's under CC-BY (DOI
+`10.24381/cds.adbb2d47`). Recorded in [config-and-data.md](config-and-data.md) § Data-source
+licence register, and the one real constraint — non-commercial — beside P0-4's zero-cost
+line in [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md): weather would be the first input to carry
+a recurring cost if the product were ever sold. The acquisition went ahead on that.
+
+**Where the grounds are.** 896 venue names in the archive fold to **892 keys** the identity
+way (case, accents, punctuation). The geocoder was asked about the city Cricsheet names
+beside the venue (`info.city`, present on 93 % of files and never stored by the importer)
+or, failing that, the venue name's own parts, and the sides that played there voted for the
+country — international sides for their home, the big leagues for theirs — which is what
+made Hamilton New Zealand's rather than Ontario's and Kingston Jamaica's rather than
+Ontario's. The automatic pass placed 826 keys; **140 rows were then placed by hand**, each
+with a `note` saying so: 66 the geocoder could not name at all (Indian club grounds,
+university ovals, `Cello Basin Reserve`), and the rest it placed wrongly — Lincoln,
+Nebraska for Lincoln, Canterbury; Providence, Rhode Island for Guyana's national stadium;
+Køge rendered as a North Korean county; Dar-es-Salaam in Sri Lanka; Richmond, Virginia for
+Old Deer Park. One ground, `F B Colony Ground`, was placed last from Wikipedia's alias
+(the former Alembic No 2 Ground, Vadodara), at city level with the reason written in its
+row. **892 of 892 mapped.** City-level is the data's own resolution: the archive API snaps
+a request to a ~0.1° grid point, so a ground and its city centre share a cell.
+
+**When the matches started.** Cricsheet carries no start times, so `ml/weather/sessions.py`
+infers a window per match from norms and records the rule that placed it: the league's
+usual hour (the earlier of a double-header from its match number: IPL 15:30/19:30, PSL
+14:00/19:00, BBL 13:00/19:00 …), the country's usual hour for a men's ODI or T20I (India's
+ODIs at 13:30 under lights, England's at 11:00 by day), weekday evenings and weekend
+afternoons for a domestic T20 in a country that plays under lights, and the morning for
+first-class, women's, associate and domestic one-day cricket. Night means play runs into
+the evening: a T20 starting at or after 16:00, a one-day match at or after 12:00. The
+census the report prints places **142 rules** over 22,818 matches, the largest
+`first_class` (3,115), `t20i_women` (1,992), `t20_domestic:weekday` (1,647),
+`t20i_associate:slot_0` (1,477) and `one_day_domestic:GB` (1,249); **35.2 % of matches are
+placed at night** (ODI 48.8 %, T20 44.9 %, T20I 33.4 %, none of the first-class or domestic
+one-day matches). What the rules do not know is written beside them: day/night Tests, a
+league's one-off day game, the actual hour of anything. That error is inspectable per match
+and is one reason a null here is a null for *this* inference, not for weather as such.
+
+**The weather.** One archive call per cluster of match days at a venue (days within 45
+days fetched together, with the seven days' lead the rain family needs), **4,638 calls**
+in all, reduced to the match day's 24 local hours of temperature, humidity and precipitation
+and the seven prior daily totals — **19,561 venue-days, 0 misses**, 8.8 MB,
+covering **22,789 of 22,818 matches (99.9 %)**; the 29 not covered are
+match days within a week of the run, which the archive does not yet hold and the backfill
+leaves unasked rather than recording as misses. The run met two things the docs do not
+advertise: a 200 response with a non-JSON body under load, and an hourly quota **weighted by
+the data a call returns** (it was spent at ~3,700 nominal calls of 5,000), both of which the
+client now waits out. The cache and the coordinates are tracked under `reference-data/`
+(CC BY 4.0 permits it, and a second acquisition would cost the same ~4,638 paced calls and
+the same hand pass), so a purge or a fresh clone restores every historical match offline —
+`make restore-venue-weather`, verified against the scratch database: seeded with the live database's 896 venue names, the restore placed all 896 and wrote 19,909 `venue_weather` rows across 895 venue ids with no network call, and a row read back matches its snapshot line value for value ([config-and-data.md](config-and-data.md) § Restoring the weather). The live database was read for the venue names and not written; its counts are unchanged (22,818 matches, 11,539,808 ball events, 13,662 biographies).
+
+**Gate (a) — each family in the display model.** X-3's display arm: the display model
+refitted per fold and seed with the family's columns beyond XI_FEATURE_COLS +
+TEAM_CONTEXT_COLS, against the same eleven folds without them; the rule is the registered
+one (AUC up by more than both the control's seed-to-seed sd and one fold-level s.e. of the
+paired difference, in every format, with the swap share under H-4's line). Three seeds;
+where the seed sd reads 0.0000 the fit is deterministic at that size, as X-3 found.
+
+| format | family | display AUC (control) | with family | Δ ± se | seed sd | Brier Δ | swap share (control → arm) | verdict |
+|---|---|---:|---:|---|---:|---|---:|---|
+| T20 | daynight | 0.7299 | 0.7307 | +0.0008 ± 0.0004 | 0.0008 | -0.0001 | 0.0478 → 0.0515 | inside noise; H-4 fails |
+| T20 | humidity_temperature | 0.7299 | 0.7304 | +0.0005 ± 0.0011 | 0.0008 | +0.0000 | 0.0478 → 0.0447 | inside noise; H-4 fails |
+| T20 | dew | 0.7299 | 0.7294 | -0.0005 ± 0.0007 | 0.0008 | +0.0002 | 0.0478 → 0.0477 | inside noise; H-4 fails |
+| T20 | rain | 0.7299 | 0.7291 | -0.0008 ± 0.0005 | 0.0008 | +0.0003 | 0.0478 → 0.0450 | inside noise; H-4 fails |
+| T20I | daynight | 0.7495 | 0.7492 | -0.0003 ± 0.0016 | 0.0000 | +0.0002 | 0.0684 → 0.0690 | inside noise; H-4 fails |
+| T20I | humidity_temperature | 0.7495 | 0.7470 | -0.0025 ± 0.0069 | 0.0000 | +0.0000 | 0.0684 → 0.0739 | inside noise; H-4 fails |
+| T20I | dew | 0.7495 | 0.7452 | -0.0043 ± 0.0034 | 0.0000 | +0.0006 | 0.0684 → 0.0719 | inside noise; H-4 fails |
+| T20I | rain | 0.7495 | 0.7490 | -0.0005 ± 0.0028 | 0.0000 | +0.0000 | 0.0684 → 0.0743 | inside noise; H-4 fails |
+| ODI | daynight | 0.7083 | 0.7063 | -0.0020 ± 0.0011 | 0.0000 | -0.0001 | 0.0307 → 0.0299 | inside noise; H-4 fails |
+| ODI | humidity_temperature | 0.7083 | 0.7107 | +0.0024 ± 0.0026 | 0.0000 | -0.0002 | 0.0307 → 0.0299 | inside noise; H-4 fails |
+| ODI | dew | 0.7083 | 0.7060 | -0.0024 ± 0.0018 | 0.0000 | +0.0008 | 0.0307 → 0.0305 | inside noise; H-4 fails |
+| ODI | rain | 0.7083 | 0.7095 | +0.0011 ± 0.0022 | 0.0000 | -0.0000 | 0.0307 → 0.0317 | inside noise; H-4 fails |
+| TEST | daynight | 0.6431 | 0.6431 | +0.0000 ± 0.0000 | 0.0000 | +0.0000 | 0.0616 → 0.0616 | inside noise; H-4 fails |
+| TEST | humidity_temperature | 0.6431 | 0.6465 | +0.0034 ± 0.0047 | 0.0000 | +0.0008 | 0.0616 → 0.0679 | inside noise; H-4 fails |
+| TEST | dew | 0.6431 | 0.6431 | +0.0000 ± 0.0000 | 0.0000 | +0.0000 | 0.0616 → 0.0616 | inside noise; H-4 fails |
+| TEST | rain | 0.6431 | 0.6482 | +0.0052 ± 0.0031 | 0.0000 | -0.0004 | 0.0616 → 0.0756 | beyond noise; H-4 fails |
+
+**Reading it.** No family moves the display AUC beyond noise in T20, T20I or ODI: the
+largest paired move in a deciding format is ODI humidity/temperature at +0.0024 ± 0.0026,
+under one standard error, and three of the four families carry a *negative* sign in at
+least one format. The one reading past the noise rule is **TEST rain, +0.0052 ± 0.0031**
+— under two standard errors, in the format with the fewest matches, on a family that
+reads −0.0008 ± 0.0005 in T20 — and the every-format clause disposes of it. TEST's day/night
+and dew rows read exactly +0.0000 because no first-class match is placed at night, so
+both columns are constant there and the fits identical. The swap-violation column is
+reported as the control → arm pair because the **control already fails H-4's 2 % line**
+(4.8 % T20, 6.8 % T20I, 3.1 % ODI, 6.2 % TEST — B-7's finding, mis-specified against the
+display surface, as X-3 recorded); what the families do to it is a delta of −0.003 to
++0.006, except TEST rain, which worsens it by 0.014. **Gate (a): a recorded null for all
+four families.**
+
+*Gates (b) and (c) are running; their tables land here when the folds finish.*
 
 ### D-12 — the measurement, and what shipped
 
