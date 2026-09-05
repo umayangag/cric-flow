@@ -164,6 +164,20 @@ def test_monotone_directions_follow_the_contract() -> None:
     assert C.monotone_directions(C.TEAM_CONTEXT_COLS) == [0] * len(C.TEAM_CONTEXT_COLS)
 
 
+def test_team_context_is_constrained_only_when_gate_b7s_switch_is_on() -> None:
+    """B-7's arm switch. The shipped default leaves every context column free; the gate's
+    arm constrains the three whose direction is knowable and nothing else."""
+    constrained = dict(zip(C.TEAM_CONTEXT_COLS, C.monotone_directions(C.TEAM_CONTEXT_COLS, True)))
+
+    assert constrained["team_elo_diff"] == 1
+    assert constrained["team_form_diff"] == 1
+    assert constrained["venue_fam_diff"] == 1
+    assert constrained["team_h2h"] == 0
+    assert constrained["venue_n"] == 0
+    assert C.DISPLAY_CONTEXT_MONOTONE_KEPT is False
+    assert C.monotone_directions(C.XI_FEATURE_COLS, True) == C.monotone_directions(C.XI_FEATURE_COLS, False)
+
+
 def test_build_rejects_out_of_order_sources() -> None:
     t1, t2 = _xi("a"), _xi("b")
     d = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)

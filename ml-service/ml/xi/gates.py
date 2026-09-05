@@ -246,6 +246,47 @@ GATES: Tuple[Gate, ...] = (
         report_path=None,
     ),
     Gate(
+        id="B-7-display-monotone",
+        name="Monotone team context in the display model",
+        varies="whether the display model's three directional team-context columns "
+        "(team_elo_diff, team_form_diff, venue_fam_diff) carry a +1 monotone constraint or the 0 they "
+        "carry today -- one fit per arm per fold per seed",
+        fixed="the rows (one frame, both arms read the same rows), the eleven quarterly cutoffs, the three "
+        "display seeds, the hyperparameters, the columns the model reads (DISPLAY_FEATURE_COLS is unchanged), "
+        "the constraints on every XI column, the marginalisation over batting order, the swap probe (the same "
+        "50 evaluation matches per fold, one player's five ratings raised by one population sd, the team "
+        "context held at the fixture's values), the labels; the objective, the performance model and the "
+        "simulator are not refitted -- this is a display-model gate",
+        decides="the constrained display model ships only if BOTH, in every format: (a) the mean walk-forward "
+        "display swap-violation share falls by more than one fold-level standard error of the paired "
+        "difference AND by at least a quarter of the control's own distance from H-4's 2 % line, so a fall "
+        "inside the noise or a fall too small to matter is not a pass; and (b) display AUC falls by no more "
+        "than one fold-level standard error of the paired difference and no more than the control's "
+        "seed-to-seed standard deviation. Violations falling while AUC degrades past (b) does NOT ship on "
+        "this gate's judgement: it is a product trade-off between a coherent surface and discrimination, and "
+        "is recorded with its fold table for the decision to be made deliberately. Neither moving is a "
+        "recorded null, and the measurement stays either way",
+        report_path=None,
+    ),
+    Gate(
+        id="B-7-pelo-spread",
+        name="The one free column the upgrade moves",
+        varies="whether the display model reads t1_pelo_std and t2_pelo_std -- the spread of player Elo across "
+        "an eleven, the only column in DISPLAY_FEATURE_COLS that a one-player upgrade moves and the monotone "
+        "contract leaves free (measured: it moves on 100 % of upgrades in every format, and no constrained "
+        "column ever moves against its direction) -- one fit per arm per fold per seed",
+        fixed="the rows, the eleven quarterly cutoffs, the three display seeds, the hyperparameters, every "
+        "other column and its constraint, the marginalisation over batting order, the swap probe, the labels; "
+        "the objective keeps the column and is not refitted -- H-4 is measured on a linear model that does not "
+        "have this problem",
+        decides="nothing automatically -- this gate INFORMS. B-7 scoped a constraint on team context, not a "
+        "change to what the display model reads, and dropping a column from the display contract moves a "
+        "served artifact's feature list. It prices the fix the mechanism actually points at: what the swap "
+        "violations and the display AUC would be without the free column, so the trade can be decided "
+        "deliberately rather than inferred. Nothing ships on it in this item",
+        report_path=None,
+    ),
+    Gate(
         id="X-4",
         name="Market benchmark: the closing price beside the display model",
         varies="which probability is scored -- the market's de-vigged closing price, the display model as "

@@ -646,8 +646,19 @@ counts under `display_swap_monotonicity`, and the glossary states that H-4's lin
 its contract. Nothing selects on the display model, so nothing shipped is wrong; what was
 wrong was that the number did not exist.
 
-Whether the surface can be made monotone, and at what price, is gated separately; this
-half of B-7 is the measurement, and it changes no prediction.
+The cause is not the team-context columns the constraint set leaves free, as first
+supposed: the probe holds team context at the fixture's values, because a selector cannot
+change them, so no constraint on them can move the probe at all — and constraining them
+was measured to make the violations *worse* (gate `B-7-display-monotone`, a recorded null;
+`DISPLAY_CONTEXT_MONOTONE_KEPT` stays `False`). Every column an upgrade moves that the
+contract constrains moves the way it should, on 100 % of upgrades; the one free column it
+moves, also on 100 % of upgrades, is `pelo_std`, the spread of player Elo across an eleven,
+whose direction is genuinely unknown and so is declared 0. The tree model's step response
+to it is the whole of the effect: with `t1_pelo_std` / `t2_pelo_std` removed from the
+display columns the share is exactly 0.0000 in all four formats, for −0.0004 (T20), +0.0088
+(T20I), −0.0055 (ODI), −0.0047 (TEST) of AUC. That reading is gate `B-7-pelo-spread`, which
+informs and ships nothing; the trade is in `docs/BUG_BACKLOG.md` § B-7 for a deliberate
+decision.
 
 **The market benchmark (X-4, `ml/xi/market.py`).** Where closing odds have been cached, the
 report also carries a `market_benchmark` section: the market's de-vigged probability scored

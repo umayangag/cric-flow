@@ -13,11 +13,14 @@ item, and the row names it.
 | B-4 | X-1a | Five `internal/db` integration tests failed against a real database with `ERROR: null value in column "match_id" of relation "match" violates not-null constraint`. `insertAppearance` inserted into `match` without a `match_id` (and without `original_match_type`, also `NOT NULL`), and neither column has a default — `match_id` is assigned by the importer from the Cricsheet file, not by a sequence. The tests therefore cannot have passed since they were written. They are gated behind `RUN_DB_TESTS=1`, which `make check-all` does not set, so nothing had ever reported it. | `go-app/internal/db/repo_selection_integration_test.go`, `insertAppearance` (and the four cases through it, plus `TestPlayerStatusStore_PromotionAndDemotionAreOneStateChange_Integration`) | D-12's pool-window arithmetic and its ledger promotion/demotion path are the parts of that item with no working test against the database — the half most likely to be wrong in SQL rather than in Go. A gated test that has never run is a test that does not exist. | no | fixed — PR #255 (`fix/b-4-b-6-integration-tests`). The fixture now gives each match an explicit id and match type, the way the importer does. With the tests running, **the D-12 SQL they cover was found correct**: the window is closed at `since` and half-open at the cutoff, `last_played` is the latest appearance, and a promotion reaches `player.is_retired`, `player_status` and `player_status_event` together. Two of the tests were passing vacuously and were tightened — a `LastPlayed` assertion inside a `continue` loop that skipped an absent row, and a case named for the cutoff boundary that had no appearance on the cutoff day; a fourth fixture player now supplies one. **43 database integration tests run**, and `.github/workflows/go-app-ci.yml` now runs them on every PR (`make -C go-app test-db`) |
 | B-5 | X-1a | A `TRUNCATE` in an integration fixture must name *every* table with a foreign key into one it truncates, or Postgres refuses the whole statement. `player_status` and `player_status_event` (D-12) were not added to the identity fixture's list, so all 11 `repo_identity_integration_test.go` cases failed with `cannot truncate a table referenced in a foreign key constraint` — again invisibly, behind `RUN_DB_TESTS=1`. Fixed in this branch, along with adding `player_biography` to both fixtures, since X-1a's own table would have compounded it. | `go-app/internal/db/repo_identity_integration_test.go` and `repo_selection_integration_test.go`, the `TRUNCATE` lists | It is the failure mode a new per-player table causes every time, and the reason it went unnoticed is B-4's reason: the suite is not in `make check-all`. Worth deciding whether it should be. | no | fixed in X-1a's branch. The open question it left — whether the suite belongs in a check that runs — is answered by B-4: it runs in CI now, so a missing table in a `TRUNCATE` list fails a PR instead of nothing |
 | B-6 | the licence register (`docs/free-data-prototype-scope`) | The package comment in `go-app/internal/biography/biography.go` said Cricsheet "publishes the register under ODbL". The register page at `https://cricsheet.org/register/` says **ODC-By 1.0** (Open Data Commons Attribution), read 2026-09-04 — attribution only, no share-alike term. The value stored per row (`source_license = CC0-1.0`) is Wikidata's and is correct; only the comment about the join key's source was wrong. | `go-app/internal/biography/biography.go`, the package comment | A licence stated wrongly in code is the kind of claim `docs/config-and-data.md` § Data-source licence register exists to stop: ODbL would oblige share-alike on derived databases, ODC-By does not. Nothing behaves differently today; the record should not disagree with itself. | no | fixed — PR #255. The comment now states ODC-By 1.0, says what it does and does not oblige, and points at the register as the record it must agree with; the register's row no longer reports the discrepancy |
-| B-7 | X-3 | The **display** model's swap-violation share has never been measured, and it is **3–7 %**: 0.048 (T20), 0.068 (T20I), 0.031 (ODI), 0.062 (TEST) over the eleven walk-forward folds, on the same one-player upgrade H-4 uses. H-4's 2 % line is checked on the *objective*, whose surface is monotone-constrained on every stem it reads; the display model reads team context as well and its `monotonic_cst` gives those columns 0, so nothing constrains them. Found because X-3's stakes gate wrote the 2 % line into its own triple and then watched the control fail it. | `ml-service/ml/xi/train.py`, `make_display_model` / `contract.monotone_directions`; the probe is `scripts/experiments/xi/x3_match_stakes.py`, `_display_swap_probe` | Nothing selects on the display model — the optimiser reads the objective, which is inside H-4 — so no shipped behaviour is wrong. But the display model is the number a *user* sees change when they swap a player in the Team Lab, and one swap in twenty moves it the wrong way. Either that is acceptable and should be said out loud in the harness, or the constraint set should cover the context columns whose direction is knowable (`team_elo_diff`, `team_form_diff`, `venue_fam_diff`). It is currently neither measured nor stated. | no | **measured and stated** — see § B-7 below. The harness now reports `display_swap_violation_share` per format and `display_swap_monotonicity` per fold (`ml/xi/selection_metrics.display_swap_monotonicity`, one probe shared with `x3_match_stakes.py`), with a glossary entry saying H-4's 2 % line is the objective's contract and not this surface's; the Evaluation tab and the system map carry it. Measured **5.1 % T20, 7.1 % T20I, 3.4 % ODI, 6.1 % TEST** against the database. No prediction moved. Whether the surface can be made monotone, and at what price, is gated next |
+| B-7 | X-3 | The **display** model's swap-violation share has never been measured, and it is **3–7 %**: 0.048 (T20), 0.068 (T20I), 0.031 (ODI), 0.062 (TEST) over the eleven walk-forward folds, on the same one-player upgrade H-4 uses. H-4's 2 % line is checked on the *objective*, whose surface is monotone-constrained on every stem it reads; the display model reads team context as well and its `monotonic_cst` gives those columns 0, so nothing constrains them. Found because X-3's stakes gate wrote the 2 % line into its own triple and then watched the control fail it. | `ml-service/ml/xi/train.py`, `make_display_model` / `contract.monotone_directions`; the probe is `scripts/experiments/xi/x3_match_stakes.py`, `_display_swap_probe` | Nothing selects on the display model — the optimiser reads the objective, which is inside H-4 — so no shipped behaviour is wrong. But the display model is the number a *user* sees change when they swap a player in the Team Lab, and one swap in twenty moves it the wrong way. Either that is acceptable and should be said out loud in the harness, or the constraint set should cover the context columns whose direction is knowable (`team_elo_diff`, `team_form_diff`, `venue_fam_diff`). It is currently neither measured nor stated. | no | **measured and stated** — see § B-7 below. The harness now reports `display_swap_violation_share` per format and `display_swap_monotonicity` per fold (`ml/xi/selection_metrics.display_swap_monotonicity`, one probe shared with `x3_match_stakes.py`), with a glossary entry saying H-4's 2 % line is the objective's contract and not this surface's; the Evaluation tab and the system map carry it. Measured **5.1 % T20, 7.1 % T20I, 3.4 % ODI, 6.1 % TEST** against the database, and no prediction moved (checked against a `main` run on the same database: every measured number bit-identical). **Gate `B-7-display-monotone` is a null and then some:** constraining the three context columns moves the violations the *wrong* way (T20 +0.0073 ± 0.0039, T20I **+0.0638 ± 0.0078**, ODI +0.0171 ± 0.0062, TEST −0.0007 ± 0.0042) at no AUC gain, so nothing shipped. It cannot have worked, and the diagnosis above is corrected: the probe holds team context at the fixture's values, so those columns never move under it. What does move, on **100 %** of upgrades in every format, is `t1_pelo_std` — the only column of `DISPLAY_FEATURE_COLS` an upgrade touches that the contract leaves at 0 — while no constrained column ever moves against its direction. Gate `B-7-pelo-spread` (informs, ships nothing) prices the fix that follows: dropping `t1_pelo_std` / `t2_pelo_std` from the display columns takes the share to **exactly 0.0000 in all four formats** for −0.0004 / +0.0088 / −0.0055 / −0.0047 of AUC. That trade is left for a deliberate decision |
 
 ---
 
-## B-7 — the display surface, measured
+## B-7 — the display surface: measured, and what the gate found
+
+Two separable pieces, in this order, because the first is worth having whatever the second
+says.
 
 ### Part 1 — measure it and say so (no prediction changed)
 
@@ -54,6 +57,78 @@ differently; a measurement was added after the models were fitted. (The comparis
 be against a fresh `main` run: the last recorded run predates X-3's re-import, and the
 extra `stage`/`group` columns move the performance model's early-stopping iteration counts
 even though nothing about the harness changed.)
+
+### Part 2 — gate `B-7-display-monotone`: a recorded null, and a corrected diagnosis
+
+Eleven quarterly folds, three display seeds, one frame both arms read, everything but the
+constraint held (the triple is in `ml/xi/gates.py` and is printed before the run;
+`scripts/experiments/xi/b7_display_monotonicity.py`). The control reproduces X-3's recorded
+figures exactly, which is the wiring check.
+
+| format | swap (control) | swap (constrained) | Δ ± se | material floor | display AUC (control) | Δ AUC ± se | verdict |
+|---|---:|---:|---|---:|---:|---|---|
+| T20 | 0.0478 | 0.0551 | +0.0073 ± 0.0039 | −0.0069 | 0.7299 | −0.0003 ± 0.0008 | no |
+| T20I | 0.0684 | 0.1322 | **+0.0638 ± 0.0078** | −0.0121 | 0.7495 | −0.0006 ± 0.0063 | no |
+| ODI | 0.0307 | 0.0478 | +0.0171 ± 0.0062 | −0.0027 | 0.7083 | +0.0009 ± 0.0017 | no |
+| TEST | 0.0616 | 0.0609 | −0.0007 ± 0.0042 | −0.0104 | 0.6431 | −0.0018 ± 0.0051 | no |
+
+Not a null in the flat sense: three of four formats get *worse*, T20I by eight standard
+errors, and the fourth moves by a sixth of one. AUC is unchanged everywhere. Nothing
+shipped; `DISPLAY_CONTEXT_MONOTONE_KEPT` stays `False`.
+
+**Why it could not have worked, measured two ways.** The recorded diagnosis — the
+context columns' `monotonic_cst` is 0, so nothing constrains them — describes the model
+correctly and the *probe* not at all. The probe holds team context at the fixture's values,
+so those columns do not move under it, and a constraint on a column that does not move
+cannot change the count. Two diagnostics beside the arms say so directly:
+
+| format | swap, boosting with **no team context at all** | swap, control (with it) | share of upgrades moving a *constrained* column the wrong way | share moving an *unconstrained* column |
+|---|---:|---:|---:|---:|
+| T20 | 0.0504 | 0.0478 | 0.000 | **1.000** |
+| T20I | 0.1364 | 0.0684 | 0.000 | **1.000** |
+| ODI | 0.0352 | 0.0307 | 0.000 | **1.000** |
+| TEST | 0.0568 | 0.0616 | 0.000 | **1.000** |
+
+A display model that never sees team context violates as much or more. In feature space,
+with no model involved, **no constrained column ever moves against its direction**, and the
+one unconstrained column an upgrade moves — on every single upgrade, in every format — is
+`t1_pelo_std`, the spread of player Elo across the eleven. Its direction is 0 because it is
+genuinely unknown: raising a player above the side's mean widens the spread, raising one
+below it narrows the spread, so no sign is defensible. The objective survives the same
+column because it is linear and its coefficient there is small; a boosted tree responds in
+steps, and some of those steps go down. Constraining team context makes matters worse
+presumably because it removes fitting capacity that then routes through the free column —
+an explanation the numbers are consistent with and this run did not separately test.
+
+### `B-7-pelo-spread` — the fix the mechanism points at, priced and not taken
+
+Registered as an **informing** gate (`ml/xi/gates.py`), because B-7 scoped a constraint on
+team context, not a change to what the display model reads, and dropping a column from
+`DISPLAY_FEATURE_COLS` changes a served artifact's feature list. Same folds, same seeds,
+same everything else:
+
+| format | swap (control) | swap without `pelo_std` | Δ ± se | display AUC (control) | Δ AUC ± se |
+|---|---:|---:|---|---:|---|
+| T20 | 0.0478 | **0.0000** | −0.0478 ± 0.0082 | 0.7299 | −0.0004 ± 0.0015 |
+| T20I | 0.0684 | **0.0000** | −0.0684 ± 0.0076 | 0.7495 | **+0.0088 ± 0.0062** |
+| ODI | 0.0307 | **0.0000** | −0.0307 ± 0.0029 | 0.7083 | −0.0055 ± 0.0039 |
+| TEST | 0.0616 | **0.0000** | −0.0616 ± 0.0098 | 0.6431 | −0.0047 ± 0.0052 |
+
+Exactly zero violations in every format and every fold — which is the confirmation that the
+mechanism is fully identified, not merely correlated with. **The decision is not this
+gate's to make**, and is recorded here so it can be made deliberately:
+
+- **Take it.** The Team Lab's what-if becomes coherent: every upgrade raises the displayed
+  probability, in every format. It costs about half a point of AUC in ODI and TEST (−0.0055
+  and −0.0047, 1.4 and 0.9 fold-level standard errors — real but not resolved), nothing in
+  T20, and *gains* 0.0088 in T20I. It is a change to `DISPLAY_FEATURE_COLS`, so it needs a
+  retrain, and H-8 parity and the stored `display_cols` move with it.
+- **Leave it.** Nothing selects on this model, the AUC is the number the display model
+  exists for, and one swap in twenty going the wrong way is now stated in the harness, the
+  glossary, the Evaluation tab and the system map rather than being invisible.
+
+Either way the measurement from part 1 stays. Absent the decision, `DISPLAY_FEATURE_COLS`
+is unchanged.
 
 ---
 

@@ -804,7 +804,9 @@
           "X-1b-age",
           "X-1b-cold-start",
           "X-3-e5",
-          "X-3-stakes"
+          "X-3-stakes",
+          "B-7-display-monotone",
+          "B-7-pelo-spread"
         ]
       },
       "documented_in": [
