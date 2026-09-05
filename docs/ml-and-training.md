@@ -365,12 +365,14 @@ knowable fact read at a date (H-21). A player without a date of birth reads `0.0
 his own category, never an imputed age. The same rule again: the columns are always on the
 rows, and the performance model reads them only if gate X-1b's age family kept them — and
 **it kept none** (`contract.AGE_FEATURES_KEPT` is False; plan §8.12): on the walk-forward
-folds the pinball loss of runs and wickets moved by under 0.1 % in every format, inside E1's
-0.5 % band and one fold-level standard error, with coverage unchanged. The rating state also
+folds the pinball loss of runs and wickets moved by 0.02 % on the deciding slices (at most
+0.2 % anywhere), inside E1's 0.5 % band, with coverage unchanged. The rating state also
 holds an **age-band debut prior** (`RatingState.debut_bat` / `debut_bowl`: per format and
 age band, what earlier debutants of that band did in their debut match), which
 `side_vectors` applies to a player with no history in the format and a known age only when
-`contract.AGE_AWARE_COLD_START` is on — and gate X-1b-cold-start left it **off** (plan §8.12).
+`contract.AGE_AWARE_COLD_START` is on — and gate X-1b-cold-start left it **off** (plan §8.12):
+H-10 stayed bounded, but the debut rows' pinball worsened in every format (runs −0.3 … −2.7 %),
+because the model already learns its own debutant neutral jointly with the rest of the row.
 
 ### Performance model (L2-B, `ml/xi/performance.py`, P-3)
 
