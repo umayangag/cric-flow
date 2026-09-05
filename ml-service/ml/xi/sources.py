@@ -538,7 +538,10 @@ class PostgresSource:
         logger.info("postgres source: %d matches of %d in the date range", len(matches), offered)
         # The whole edition before the first delivery is read: the same derivation the
         # archive path runs, over the same set of matches, so the two agree or H-15 says
-        # which field they differ on (X-3).
+        # which field they differ on (X-3). "The same set" is exact while
+        # ``unusable_matches`` is zero, as it is on this dataset -- a match this source
+        # later drops for having no recorded squad is in this fixture list and not in the
+        # archive path's, which the parity counts would report as a difference.
         stakes = derive_stakes([_stakes_header(row) for row in matches])
         for row in matches:
             match_id, match_date, fmt, gender, venue_id, team1_id, team2_id, winner_id, event_name = row[:9]
@@ -575,7 +578,7 @@ class PostgresSource:
             )
 
 
-def _stakes_header(row: Sequence) -> "Header":
+def _stakes_header(row: Sequence) -> Header:
     """One row of ``_MATCH_SQL`` as the stakes derivation reads it. Teams are the club
     keys the records below carry, so an edition's clubs are counted the same way on both
     sources."""
