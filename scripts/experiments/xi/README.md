@@ -78,3 +78,21 @@ verdict:
 
     python scripts/experiments/xi/a3_t20_lineup_signal.py --frames output/ml-service/a1/frames.pkl --cricsheet-dir data/go-app/cricsheet --pairs-cache output/ml-service/a3/pairs.pkl --out output/ml-service/a3/a3.json
     python scripts/experiments/xi/a3_t20_lineup_signal.py --decide output/ml-service/a3/a3.json
+
+`x1b_biography_features.py` is X-1b's two runnable gates (`docs/EXTERNAL_DATA_PLAN.md` § X-1b,
+plan §8.12), on `sim_frame_cache.py`'s frames built with the archive's dates of birth
+(`--birth-dates`, the CSV `make export-birth-dates` writes). Family 1, gate `X-1b-age`: two
+arms of the performance model per fold, without and with `AGE_COLS`, decided by the pinball
+of runs or wickets beyond E1's 0.5 % band and one fold-level standard error with coverage
+held, T20 on men's rows (women's T20 is out of scope at 61.4 % coverage). Family 3, gate
+`X-1b-cold-start`: two passes -- the age-band debut prior off and on (`--age-aware-cold-start`
+on the cache) -- with the win models, H-4, the H-10 debutant-swap probe and a runs + wickets
+fit per fold and arm, decided by H-10 staying bounded, the debut rows' pinball, the check
+that no player with history moved, and a display-AUC / H-4 guard. Every fold is written as
+it is scored and a re-run resumes; `--decide <family>` prints the tables and the verdict:
+
+    python scripts/experiments/xi/sim_frame_cache.py --cricsheet-dir data/go-app/cricsheet --birth-dates data/go-app/player-birth-dates.csv --out output/ml-service/x1b/frames_off.pkl
+    python scripts/experiments/xi/sim_frame_cache.py --cricsheet-dir data/go-app/cricsheet --birth-dates data/go-app/player-birth-dates.csv --age-aware-cold-start --out output/ml-service/x1b/frames_on.pkl
+    python scripts/experiments/xi/x1b_biography_features.py --family age --frames output/ml-service/x1b/frames_off.pkl --format T20 --out output/ml-service/x1b/age_T20.json
+    python scripts/experiments/xi/x1b_biography_features.py --family cold-start --frames output/ml-service/x1b/frames_off.pkl --frames-on output/ml-service/x1b/frames_on.pkl --format T20 --out output/ml-service/x1b/cold_T20.json
+    python scripts/experiments/xi/x1b_biography_features.py --decide age output/ml-service/x1b/age_T20.json output/ml-service/x1b/age_ODI.json

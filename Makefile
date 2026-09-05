@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity full-pipeline cadence cadence-dry-run player-biographies
+.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -116,7 +116,7 @@ ml-install:
 # It publishes nothing; `make reload` moves `current`.
 retrain:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service retrain CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
+	$(MAKE) -C ml-service retrain CUTOFF="$(CUTOFF)" $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(BIRTH_DATES),BIRTH_DATES="$(abspath $(BIRTH_DATES))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(ACCEPT_DATA_QUALITY),ACCEPT_DATA_QUALITY=1,)
 
 # Point `current` at a run and load it into the running ML service. RUN=<id> names one;
 # with none, the newest run on disk -- which is the run a retrain just built.
@@ -129,13 +129,19 @@ reload:
 # points at, which is why it is a step beside the pipeline rather than in it.
 evaluate:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,) $(if $(MARKET_ODDS_DIR),MARKET_ODDS_DIR="$(abspath $(MARKET_ODDS_DIR))",)
+	$(MAKE) -C ml-service evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(BIRTH_DATES),BIRTH_DATES="$(abspath $(BIRTH_DATES))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,) $(if $(MARKET_ODDS_DIR),MARKET_ODDS_DIR="$(abspath $(MARKET_ODDS_DIR))",)
 
 # Compare the database against the Cricsheet archive (H-15). See ml-service/Makefile.
 XI_PARITY_DIR ?= data/go-app/cricsheet
 xi-parity:
 	set -a; [ -f .env ] && . ./.env; set +a; \
-	$(MAKE) -C ml-service xi-parity CRICSHEET_DIR="$(abspath $(XI_PARITY_DIR))"
+	$(MAKE) -C ml-service xi-parity CRICSHEET_DIR="$(abspath $(XI_PARITY_DIR))" $(if $(BIRTH_DATES),BIRTH_DATES="$(abspath $(BIRTH_DATES))",)
+
+# X-1b: the archive carries no biography, so an offline retrain / evaluate / xi-parity run
+# reads the database's dates of birth from a CSV (BIRTH_DATES=<path>) this writes.
+export-birth-dates:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service export-birth-dates BIRTH_DATES="$(abspath $(BIRTH_DATES))"
 
 # The pipeline against data already imported: build a run and serve it.
 full-pipeline: retrain reload
@@ -520,6 +526,7 @@ help:
 	@echo "  reload             Point current at a run and load it (RUN=<id> optional)"
 	@echo "  evaluate           L4 harness: walk-forward + locked window, one JSON report"
 	@echo "  xi-parity          Check the database against the Cricsheet archive (H-15; XI_PARITY_DIR=)"
+	@echo "  export-birth-dates Write the database's dates of birth as the CSV an archive-path run reads (BIRTH_DATES=)"
 	@echo
 	@echo "[Testing & CI]"
 	@echo "  check-all          Run lint, fmt, typecheck, and tests for all components"

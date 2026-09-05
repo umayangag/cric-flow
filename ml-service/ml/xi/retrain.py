@@ -110,6 +110,7 @@ def retrain(
             "k_team_elo": C.K_TEAM_ELO,
             "k_player_elo": C.K_PLAYER_ELO,
             "gender_split_context": result.state.gender_split_context,
+            "age_aware_cold_start": result.state.age_aware_cold_start,
         },
         hyperparameters=chosen_hyperparameters(summary),
         metrics=metrics,
@@ -166,6 +167,14 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     src.add_argument("--cricsheet-dir", help="directory of Cricsheet JSON files")
     src.add_argument("--postgres", action="store_true", help="read the go-app database (POSTGRES_* env vars)")
     p.add_argument(
+        "--birth-dates",
+        default=None,
+        help=(
+            "archive path only: CSV of player_key,birth_date written by `python -m ml.xi.biography --export` "
+            "(X-1b); without it every player's age reads as unknown"
+        ),
+    )
+    p.add_argument(
         "--cutoff",
         required=True,
         help="YYYY-MM-DD (an RFC3339 timestamp is accepted and read as its date); "
@@ -195,7 +204,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from ml.xi.sources import CricsheetJsonSource
         from ml.xi.train import _international_teams_from_config
 
-        source = CricsheetJsonSource(args.cricsheet_dir, _international_teams_from_config(), args.formats)
+        source = CricsheetJsonSource(
+            args.cricsheet_dir, _international_teams_from_config(), args.formats, birth_dates_path=args.birth_dates
+        )
     else:
         from ml.db import get_db_connection
         from ml.xi.sources import PostgresSource

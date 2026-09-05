@@ -18,7 +18,8 @@ structures are available per target and chosen on the walk-forward folds by pinb
 
 Inputs are the row's as-of vectors and role, the kept sequence families (E1), both sides'
 aggregates, venue context, the Elo edge, the kept fixture-context families (A-1: the
-ground's and the competition's as-of scoring level), and the innings (bat first / chase). The innings
+ground's and the competition's as-of scoring level), the player's age at the match date if
+gate X-1b kept it, and the innings (bat first / chase). The innings
 is the toss, not the result; it is marginalised at prediction -- predict under both and
 average -- unless the caller knows it (the same knob the win model has). Every fit is
 repeated over three seeds, which enter through the early-stopping split, and the members'
@@ -114,6 +115,8 @@ class FitSpec:
     # Which fixture-context families the feature columns include (A-1), recorded so a run's
     # manifest says what its performance model read.
     fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT
+    # Whether the feature columns include the player's age at the match date (X-1b family 1).
+    age: bool = C.AGE_FEATURES_KEPT
     # Which chase response the simulator's calibration fits on the calibration fold (A-2,
     # ``simulator.CHASE_RESPONSE_ARMS``); needs the shared factor, whose per-match factors
     # take the pitch out of the difficulty.
@@ -131,6 +134,7 @@ class FitSpec:
             "targets": list(self.targets),
             "shared_factor": self.shared_factor,
             "fixture_context_families": list(self.fixture_context_families),
+            "age": self.age,
             "chase_response": self.chase_response,
         }
 
@@ -162,11 +166,12 @@ def default_spec(
     shared_factor: Optional[bool] = None,
     fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT,
     chase_response: Optional[str] = None,
+    age: bool = C.AGE_FEATURES_KEPT,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
     test can shrink the seeds without rebinding every caller."""
     return FitSpec(
-        feature_cols=tuple(C.performance_feature_cols(sequence_families, joint_format, fixture_context_families)),
+        feature_cols=tuple(C.performance_feature_cols(sequence_families, joint_format, fixture_context_families, age)),
         hyperparameters=HYPERPARAMETER_GRID[hyperparameters],
         hyperparameters_name=hyperparameters,
         structure=dict(structure or DEFAULT_STRUCTURE),
@@ -175,6 +180,7 @@ def default_spec(
         targets=tuple(targets) if targets is not None else tuple(t.name for t in TARGETS),
         shared_factor=simulator.SHARED_FACTOR if shared_factor is None else bool(shared_factor),
         fixture_context_families=tuple(fixture_context_families),
+        age=bool(age),
         chase_response=simulator.CHASE_RESPONSE if chase_response is None else chase_response,
     )
 

@@ -137,8 +137,12 @@ to the player registry through the ESPNcricinfo id Cricsheet's people register c
 has already asked. A biography changes on the scale of a career, so it runs when the registry
 has grown enough to matter rather than on every refresh. Coverage — weighted by appearances,
 per format and gender — is on the Ops tab beside the dataset registry and committed in
-**docs/player-biography-coverage.md**. No model or feature reads the table. See
-**docs/config-and-data.md** § Player biographies.
+**docs/player-biography-coverage.md**. The rating pass reads one column of it — the date of
+birth, which puts a player's age at the match date on every player row (X-1b) — and an
+offline run against the archive reads the same dates from the CSV `make export-birth-dates
+BIRTH_DATES=<path>` writes (`BIRTH_DATES=` on `make retrain` / `evaluate` / `xi-parity`).
+Whether any model *uses* the age was decided on the walk-forward folds: see
+**docs/EXTERNAL_DATA_PLAN.md** § X-1b. See **docs/config-and-data.md** § Player biographies.
 
 ## Logging (Go)
 

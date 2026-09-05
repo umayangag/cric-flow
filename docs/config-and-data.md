@@ -186,7 +186,22 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 The archive says what happened, never who it happened to. Dates of birth, batting
 handedness and bowling style are not in a Cricsheet file at any price, and X-1b wants to
 test them as features — so X-1a acquires them, measures how far they reach, and stops
-there. Nothing under `ml-service/` reads this table.
+there. Since X-1b one column is read by `ml-service/`: `birth_date`, through
+`ml/xi/biography.py`, so every player row carries the player's age at the match date and
+whether a date of birth exists (`contract.AGE_COLS`; a missing date is its own category,
+never an imputed age). The archive path has no table to read, so an offline retrain,
+evaluate or parity run takes the same dates from a CSV:
+
+```bash
+make export-birth-dates BIRTH_DATES=data/go-app/player-birth-dates.csv   # from the database
+make evaluate CRICSHEET_DIR=data/go-app/cricsheet BIRTH_DATES=data/go-app/player-birth-dates.csv
+```
+
+Without `BIRTH_DATES=` an archive run logs that every age reads as unknown, and the pass's
+data-quality count `players_with_birth_date` says how many players it could see a date for
+(`make xi-parity` compares it between the sources). Nothing else in the table — style,
+hand, career end, death — is read by any model: X-1a found them for 265, 18, 3 and 25 of
+13,662 players, and X-1b records the matchup family as not runnable on that.
 
 **The source and the join.** Wikidata, licensed **CC0-1.0**, joined to the player registry
 through the ESPNcricinfo player id that Cricsheet's [people

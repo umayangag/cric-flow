@@ -24,6 +24,7 @@ import pandas as pd
 
 from ml.xi import contract as C
 from ml.xi import simulator
+from ml.xi.biography import BirthDates
 from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
@@ -45,7 +46,7 @@ class AsOfRatings:
     """
 
     def __init__(self, source: MatchSource, gender_split_context: bool = False):
-        self.state = RatingState(gender_split_context=gender_split_context)
+        self.state = RatingState(gender_split_context=gender_split_context, birth_dates=source.birth_dates())
         self._matches: Iterator[MatchRecord] = source.iter_matches()
         self._next: Optional[MatchRecord] = next(self._matches, None)
         self._folded_through: Optional[date] = None
@@ -94,13 +95,18 @@ class AsOfServer:
 
 
 class _IteratorSource:
-    """Adapter presenting an already-open match iterator as a MatchSource."""
+    """Adapter presenting an already-open match iterator as a MatchSource, with the
+    birth dates of the source it was opened from."""
 
-    def __init__(self, matches: Iterator[MatchRecord]):
+    def __init__(self, matches: Iterator[MatchRecord], birth_dates: BirthDates):
         self._matches = matches
+        self._birth_dates = birth_dates
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         return self._matches
+
+    def birth_dates(self) -> BirthDates:
+        return self._birth_dates
 
 
 def serving_parity(
@@ -151,7 +157,7 @@ def serving_parity(
     performance_models = performance_models or {}
 
     matches_for_lookup, matches_for_state = itertools.tee(source.iter_matches())
-    asof = AsOfRatings(_IteratorSource(matches_for_state), gender_split_context)
+    asof = AsOfRatings(_IteratorSource(matches_for_state, source.birth_dates()), gender_split_context)
     for match in matches_for_lookup:
         # Advance on every match so the two tee'd iterators stay at most a day apart.
         state = asof.state_as_of(match.match_date)

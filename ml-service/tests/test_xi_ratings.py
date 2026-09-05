@@ -60,6 +60,9 @@ class _ListSource:
     def iter_matches(self):
         yield from self.matches
 
+    def birth_dates(self):
+        return {}
+
 
 def test_features_are_as_of_and_never_see_their_own_match() -> None:
     """The row for match k is identical whether or not later matches exist, and a match's

@@ -2043,6 +2043,262 @@ both sources**. Gates (A-3 now in the embedded registry) and glossary pass on bo
 `selection_decision` node restates the policy beside the verdict per format, and the two
 agree everywhere.
 
+---
+
+### 8.12 X-1b: biography features — age in the performance model, the age-aware cold start, and the matchups that could not run (2026-09-04)
+
+The row in `docs/EXTERNAL_DATA_PLAN.md` § X-1b. As in §8.9–§8.11: the evidence, the design,
+the leakage surface and the gates' H-23 triples first — both triples were registered in
+`ml/xi/gates.py` and printed by the script before anything ran — and the tables under
+*Results*, with nothing above that heading edited once a number existed.
+
+**The evidence it chases (§ X-1a).** The archive records what happened and nothing about
+who it happened to, and the follow-up plan's three nulls (A-1, A-2, A-3) said the models sit
+near the limit of what the archive holds. X-1a acquired the one biographical fact Wikidata
+carries at usable scale — a date of birth for **85.3 % of appearances**: ODI 93.1 / 94.0 %
+(men / women), T20I 92.5 / 93.7 %, men's T20 82.6 %, and **women's T20 61.4 %** — and found
+the two it does not: a bowling style for **265** players, a batting hand for **18**, a
+career end for **3**, of 13,662. Two mechanisms the ratings cannot express follow from a date
+of birth. *Trajectory:* the as-of ratings are a decayed summary of the past, so a 21-year-old
+and a 36-year-old with the same recent form read the same, while their next innings do not
+come from the same distribution. *Cold start:* a player with no history in the format reads
+the neutral vector (H-10) whatever his age, while a 19-year-old debutant and a 34-year-old
+one are drawn from different populations — the second has usually been kept out of the side
+for a reason, or has come from another format.
+
+**Family 2 — matchups — is not runnable, and this is the labelled confirmation of A-3.**
+The left–right top-order balance and the spin-type coverage against the opposition's
+handedness profile need a batting hand and a bowling style per player. X-1a measured those
+at **18 and 265 players of 13,662** (0.4 % and 4.7 % of appearances), and measured *why*:
+`P741` / `P552` are stated on 23 and 29 cricketer items world-wide, `P2545` on 1,145, and the
+265 are a bot import (179 left-arm-orthodox, 73 leg-spin, single figures elsewhere) rather
+than a labelling. There is no side-level aggregate to build from a label 1.9 % of the
+registry carries, and fitting one to that 1.9 % would be measuring the population Wikidata
+happened to tag, not a matchup. A-3 (§8.11) tried the matchup axis from what the archive
+does carry — the innings phase — because "Cricsheet carries no bowling style", and recorded
+a null; X-1b's family 2 is the same question asked with the labels, and the answer is that
+the labels do not exist either. Nothing was fitted, no inferred label was substituted (A-3
+already tested that route), and the E5 re-run the family carried is not run: it goes with
+the family, and X-3 owns E5's hygiene question on its own terms. Recorded, not attempted.
+
+**Family 1 — age in the performance model — design.** Two columns on every player row,
+`contract.AGE_COLS`:
+
+| column | definition |
+|---|---|
+| `age` | years between the date of birth and the match date, `(match_date − birth_date).days / 365.25`; **0.0 when no date of birth exists** |
+| `age_known` | 1.0 when a date of birth exists, else 0.0 |
+
+The pair is what makes a missing date **a category and never an imputed age**: a row
+without one reads `(0.0, 0.0)`, a value no cricketer has at a match, and the model reads the
+indicator beside it. The columns are computed by `rows.player_feature_rows` from the dates
+of birth the *source* supplies (`MatchSource.birth_dates()` — `player_biography.birth_date`
+joined to `player` on Postgres; for the archive, which has no biography, the CSV
+`make export-birth-dates` writes from that table, so both sources read the same dates) and
+held on the `RatingState` (`state.birth_dates`, persisted with the artifact), so training,
+the as-of serving path and a live request read one function of one map (H-8). The frame
+always carries both columns; the performance model reads them only if
+`contract.AGE_FEATURES_KEPT` is true, exactly as the sequence and fixture-context families.
+
+*No curvature term.* The prompt allowed "a curvature term or spline". The performance model
+is a tree ensemble (`HistGradientBoostingRegressor`), whose splits are invariant to any
+monotone transform of a column, and `age²` is monotone over every age a cricketer has; a
+spline basis is likewise nothing a depth-limited tree cannot cut for itself along one axis.
+Adding either would be a second copy of the same ordering, so the arm is `age` +
+`age_known` and the record says why there is no third column.
+
+*Scope.* X-1a's coverage decides which rows can carry the gate. ODI (93.1 / 94.0 %) and T20I
+(92.5 / 93.7 %) clear the 80 % bar for both genders and are scored whole. In T20 the men's
+rows (82.6 %) clear it and the women's rows (**61.4 %**) do not: a family judged on rows where
+four appearances in ten have no age would be judged on the indicator, so **T20's verdict is
+read on men's rows only**, and the women's T20 rows are reported beside it, never deciding.
+The model itself is still fitted on every T20 row (production serves women's T20 from the
+same artifact, and the indicator is how it reads a row without an age), so the scoping is of
+the *verdict*, not of the fit. TEST is reported, as A-1 reported it.
+
+**Family 3 — the age-aware cold start — design.** The neutral vector a no-history player
+reads today is the shrinkage target of every rate (0 above expectation, 0 balls, Elo 1500).
+The prior shaped by age replaces six of those values — `exp_balls_faced`, `bat_rate`,
+`bat_wrate`, `exp_balls_bowled`, `bowl_rate`, `bowl_wrate` (`ratings.DEBUT_PRIOR_KEYS`) —
+with the **as-of debut profile of the player's age band**: per format and band, the state
+pools, over every earlier player who debuted in the format at that age, what he did *in
+his debut match* — the impact numerator (runs above expectation, runs saved), the balls, the
+wicket numerator and the matches with at least one ball (`RatingState.debut_bat` /
+`debut_bowl`, shape formats × bands × 4) — and reads the pooled sums through the *same
+formulas* `side_vectors` applies to a player's own sums: balls per match batted (bowled),
+and each impact shrunk over `PRIOR_BALLS` (`ratings.debut_prior_vectors`). A band nobody has
+debuted in yet therefore reads exactly the neutral vector from the formula, not from a
+second code path. Elo and the role keys keep their neutral values: the prior is about what a
+debutant of that age does with the ball, not where he bats.
+
+*Bands.* Four cuts at **22 / 26 / 30 / 34** years (`contract.AGE_BANDS`, five bands), chosen
+from the population before any outcome was read: the quartiles of age at match date sit at
+24.3 / 27.8 / 31.3 (ODI), 24.6 / 28.2 / 32.1 (T20), 24.5 / 28.0 / 31.4 (T20I), so the cuts
+straddle them with a young band under 22 and an old band from 34.
+
+*Who it touches.* `side_vectors` applies the prior only where `career == 0` in the format
+**and** a date of birth exists. Every player with a match behind him reads what he read
+before, to the last bit; every debutant without a date of birth reads the neutral vector.
+The pool itself accumulates at day close, for the XI members whose `career` was 0 when the
+match was read and whose age is known, from the same per-ball quantities `_accumulate`
+lands on the player — pooled by band and never decayed, because it is a population prior.
+It reaches the win models through the side aggregates (`imp_bat_sum` is Σ rate × balls, so a
+side fielding a known-age debutant changes), the optimiser through the same `side_vectors`,
+the performance model through the debutant's own row, and E5's previous eleven through the
+as-of path, all read at the fixture's date (`on=`), with a live request reading the state's
+own date. Off unless `contract.AGE_AWARE_COLD_START` is true; recorded in the artifact and
+the run manifest.
+
+*A limitation, stated.* The pool has no decay, so the archive's first seasons — when every
+player is a "debutant" and the context baseline is still its prior (1.2 runs per ball in
+Test cricket that scores 0.5) — sit in the lifetime sums for ever. By the folds they are
+diluted (the T20 bands hold 190–1,150 debut matches each, TEST 94–857), but a debutant of
+2024 is read against a pool that includes 2003's warm-up. A decayed or era-windowed pool is
+the fix if the family were kept; it is not built for a family that is not.
+
+**H-21 audit — what the two families consume.**
+
+1. *A date of birth is static and knowable.* The same value is right for a 2010 row and a
+   2026 request, and nothing in `update` touches the map; the age on a row is a function of
+   that map and the match date, both known before the toss. The unit test that guards H-1
+   is unaffected because the columns are not accumulators; `test_serving_rows_carry_the_same_age_columns_as_the_training_frame`
+   asserts the serving path spells them as the frame does.
+2. *Wikidata's date precision.* A year-precision `P569` renders as the first of January and
+   the acquisition did not carry the qualifier (§ X-1a), so an age here can be up to a year
+   high for such a player. It is a bounded, symmetric-in-sign error the model sees on both
+   sides of a cutoff, recorded rather than smoothed.
+3. *The style label is not applied historically, because it is not applied at all.* The
+   prompt's caution — a current-day style label applied to a bowler's early career
+   mislabels the years before he changed — would have been a limitation of family 2. Family
+   2 did not run, so no current-day fact is projected backward anywhere in this item. The
+   date of birth has no such problem: it does not change.
+4. *The debut pool is as-of.* It accumulates at day close, after the match's rows are built
+   (H-18), so a debutant's own debut is never in the pool his row reads; every entry is an
+   earlier player's earlier match. The two-pass frames are checked row for row before a
+   format's folds run — the per-player vectors of every row with history must be identical
+   between the prior-off and prior-on passes — so the only rows the prior may move are the
+   debut rows and, through the side aggregates, the rows of sides fielding a known-age
+   debutant; the check's number is under *Results*.
+5. *Outcome columns.* No target enters either family. `performance_feature_cols` still
+   excludes every target column with or without `age`, and the pool's sums are runs above
+   expectation and balls, never who won.
+6. *In-sample stacking.* Nothing fitted produces either input; the age is arithmetic and the
+   pool is sums. The one fitted consumer of L2-B keeps its temporal fold.
+7. *Serving.* A live request reads `age` at the state's ratings-through date rather than the
+   fixture's date (the serving match is stamped `state.last_date`), so a served age can be
+   up to H-11's 14 days younger than the true one — 0.04 years, under the year-precision
+   error above, and the band a live debutant is read in is the same for all but a player
+   whose birthday falls in that fortnight. The as-of path reads the fixture's own date.
+
+**H-23 triples** (`ml.xi.gates`, registered before the script ran; the script prints them
+first):
+
+- **Gate X-1b-age.** *varies:* whether the performance model reads `AGE_COLS` — `none`
+  (today's model) or `age` — one fit per arm per fold; a player without a date of birth
+  reads age 0 with the indicator 0. *fixed:* the rows (one frame, the age columns on every
+  row, both arms read the same rows), the eleven quarterly cutoffs (A-4's rotated set), the
+  three seeds, the hyperparameters, the structure per target, every other input column,
+  the labels; the simulator is not run — this is a performance-model gate. *decides:* the
+  family is kept only if, against the no-age arm on the same folds, the mean pinball loss
+  of runs or of wickets improves by more than **0.5 %** (E1's noise band) **and** by more
+  than **one fold-level standard error** of the paired difference (the floor §8.9 asked the
+  next gate of this kind to state), in **both T20 and ODI**, with every quantile headline
+  target's 10–90 coverage within ± 0.03 of the control's (H-22; width reported beside it).
+  T20 is decided on men's rows; women's T20 (61.4 %) is reported and never decides. T20I
+  and TEST are reported. A recorded null ships nothing.
+- **Gate X-1b-cold-start.** *varies:* what a player with no history in the format and a
+  known age reads from the state — the neutral vector (today's cold start) or his age
+  band's as-of debut profile — two passes over the source, every model refitted per fold
+  on each pass's frame. *fixed:* the source, the dates of birth, the age bands, the
+  cutoffs, the seeds, the hyperparameters, the model classes, the performance model's
+  columns (family 1's decided setting, the same for both arms), the labels, and the H-10
+  probe: the same 50 evaluation matches per fold, the same replaced player (team1's lowest
+  player Elo), the same probe ages (19 / 27 / 34 / unknown), the end-of-pass debut tables.
+  *decides:* kept only if, in **both T20 and ODI**: (a) **H-10 stays bounded** — for every
+  probe age the arm's median debutant-swap Δp is within ± 0.02 of the control's and its
+  10th percentile within ± 0.03 of the control's; (b) the pinball loss of runs or of
+  wickets on the **held-out debut rows** (career 0 in the format, the only rows whose own
+  vectors the prior changes) improves against the control by more than 0.5 % and more than
+  one fold-level standard error; (c) the per-player vectors of every row with history are
+  identical between the arms (max abs difference 0.0 — a check, not a metric); and, as a
+  guard in every format, the display AUC does not fall by more than one paired fold-level
+  standard error and H-4's swap share stays under 2 %. T20 is decided on men's rows, as
+  family 1. A recorded null ships nothing.
+
+The performance fits in family 3 are runs and wickets only (`FitSpec.targets`), the two the
+gate names, so the two passes cost what one family-1 arm costs. The locked window (≥
+2026-09-02) holds no matches on either source and is scored once by `make evaluate` after
+the choice, as §8.9–§8.11 did.
+
+**Results — family 1, age in the performance model** (`scripts/experiments/xi/x1b_biography_features.py --family age`,
+run 2026-09-04 on the archive frames built with the exported dates of birth; eleven folds
+2024-01 … 2026-06, three seeds, every target fitted, the simulator not run). One row per
+format and slice; "age known" is the share of the slice's evaluation rows with a date of
+birth; each pinball cell is control → age with the paired difference (control − age,
+positive = age better) ± its fold-level standard error and its size relative to the
+control; the verdict is the registered rule applied on the deciding slice:
+
+| format | slice | folds | rows | age known | runs pinball none → age (Δ ± se, rel) | wickets pinball none → age (Δ ± se, rel) | balls pinball | conceded pinball | runs coverage none → age | runs width | balls coverage | conceded coverage | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T20 | all | 11 | 97,185 | 0.597 | 2.9202 → 2.9197 (+0.0005 ± 0.0005, +0.02 %) | 0.1410 → 0.1410 (+0.0000 ± 0.0001, +0.02 %) | 2.3199 → 2.3200 (−0.0000 ± 0.0001, −0.00 %) | 1.9338 → 1.9338 (+0.0000 ± 0.0004, +0.00 %) | 0.897 → 0.896 | 29.1 → 28.8 | 0.894 → 0.893 | 0.912 → 0.912 | reported |
+| T20 | **men (decides)** | 11 | 67,086 | 0.653 | 3.1632 → 3.1624 (+0.0008 ± 0.0006, +0.02 %) | 0.1415 → 0.1415 (+0.0000 ± 0.0001, +0.02 %) | 2.2668 → 2.2668 (+0.0000 ± 0.0002, +0.00 %) | 2.0187 → 2.0187 (+0.0000 ± 0.0004, +0.00 %) | 0.897 → 0.896 | 31.7 → 31.4 | 0.895 → 0.894 | 0.914 → 0.914 | **fails** |
+| T20 | women | 11 | 30,099 | 0.463 | 2.3718 → 2.3721 (−0.0003 ± 0.0007, −0.01 %) | 0.1401 → 0.1400 (+0.0001 ± 0.0002, +0.08 %) | 2.4363 → 2.4365 (−0.0003 ± 0.0004, −0.01 %) | 1.7442 → 1.7441 (+0.0001 ± 0.0006, +0.01 %) | 0.898 → 0.897 | 23.4 → 23.2 | 0.892 → 0.892 | 0.910 → 0.909 | reported (out of scope) |
+| T20 | debut | 11 | 3,381 | 0.136 | 2.1510 → 2.1514 (−0.0004 ± 0.0018, −0.02 %) | 0.1574 → 0.1577 (−0.0003 ± 0.0004, −0.19 %) | 2.2066 → 2.2057 (+0.0009 ± 0.0005, +0.04 %) | 2.7143 → 2.7160 (−0.0016 ± 0.0019, −0.06 %) | 0.898 → 0.896 | 18.5 → 18.0 | 0.888 → 0.887 | 0.897 → 0.898 | reported |
+| T20 | low history (≤ 2) | 11 | 8,644 | 0.159 | 2.0020 → 1.9993 (+0.0026 ± 0.0013, +0.13 %) | 0.1463 → 0.1464 (−0.0000 ± 0.0003, −0.02 %) | 2.0415 → 2.0411 (+0.0004 ± 0.0006, +0.02 %) | 2.3203 → 2.3208 (−0.0005 ± 0.0013, −0.02 %) | 0.902 → 0.901 | 18.2 → 17.8 | 0.894 → 0.893 | 0.891 → 0.892 | reported |
+| ODI | **all (decides)** | 11 | 24,324 | 0.837 | 4.7136 → 4.7126 (+0.0011 ± 0.0018, +0.02 %) | 0.1591 → 0.1591 (−0.0000 ± 0.0001, −0.01 %) | 5.2945 → 5.2945 (−0.0000 ± 0.0013, −0.00 %) | 2.8839 → 2.8833 (+0.0006 ± 0.0009, +0.02 %) | 0.900 → 0.899 | 47.7 → 47.5 | 0.900 → 0.901 | 0.915 → 0.914 | **fails** |
+| ODI | men | 11 | 16,554 | 0.806 | 4.8163 → 4.8171 (−0.0009 ± 0.0024, −0.02 %) | 0.1608 → 0.1607 (+0.0001 ± 0.0001, +0.05 %) | 5.2810 → 5.2821 (−0.0011 ± 0.0014, −0.02 %) | 2.9350 → 2.9341 (+0.0010 ± 0.0011, +0.03 %) | 0.902 → 0.900 | 48.6 → 48.3 | 0.900 → 0.901 | 0.916 → 0.915 | reported |
+| ODI | women | 11 | 7,770 | 0.886 | 4.4217 → 4.4171 (+0.0046 ± 0.0026, +0.10 %) | 0.1577 → 0.1579 (−0.0002 ± 0.0004, −0.14 %) | 5.2057 → 5.2030 (+0.0027 ± 0.0024, +0.05 %) | 2.7881 → 2.7885 (−0.0004 ± 0.0013, −0.01 %) | 0.904 → 0.903 | 45.7 → 45.6 | 0.905 → 0.905 | 0.915 → 0.916 | reported |
+| ODI | debut | 11 | 1,025 | 0.465 | 3.5317 → 3.5484 (−0.0167 ± 0.0229, −0.47 %) | 0.1946 → 0.1946 (−0.0000 ± 0.0011, −0.02 %) | 4.5591 → 4.5683 (−0.0092 ± 0.0112, −0.20 %) | 4.5850 → 4.5882 (−0.0032 ± 0.0075, −0.07 %) | 0.908 → 0.896 | 34.3 → 32.9 | 0.906 → 0.905 | 0.895 → 0.892 | reported |
+| ODI | low history (≤ 2) | 11 | 2,888 | 0.497 | 3.4460 → 3.4463 (−0.0004 ± 0.0080, −0.01 %) | 0.1843 → 0.1839 (+0.0004 ± 0.0007, +0.23 %) | 4.3362 → 4.3398 (−0.0036 ± 0.0044, −0.08 %) | 3.5467 → 3.5494 (−0.0027 ± 0.0035, −0.08 %) | 0.923 → 0.915 | 34.9 → 34.1 | 0.913 → 0.912 | 0.907 → 0.905 | reported |
+| T20I | all | 10 | 9,532 | 0.947 | 3.2236 → 3.2241 (−0.0006 ± 0.0017, −0.02 %) | 0.1315 → 0.1317 (−0.0002 ± 0.0002, −0.18 %) | 2.2882 → 2.2877 (+0.0005 ± 0.0007, +0.02 %) | 1.8941 → 1.8931 (+0.0009 ± 0.0007, +0.05 %) | 0.888 → 0.888 | 31.1 → 31.1 | 0.884 → 0.884 | 0.902 → 0.901 | reported: fails |
+| T20I | men | 10 | 5,392 | 0.975 | 3.4637 → 3.4672 (−0.0035 ± 0.0021, −0.10 %) | 0.1356 → 0.1360 (−0.0004 ± 0.0004, −0.29 %) | 2.2912 → 2.2912 (−0.0000 ± 0.0011, −0.00 %) | 1.9757 → 1.9749 (+0.0008 ± 0.0008, +0.04 %) | 0.884 → 0.884 | 33.0 → 33.0 | 0.878 → 0.879 | 0.904 → 0.902 | reported |
+| T20I | women | 10 | 4,140 | 0.914 | 2.9196 → 2.9180 (+0.0016 ± 0.0024, +0.05 %) | 0.1252 → 0.1251 (+0.0001 ± 0.0005, +0.06 %) | 2.2838 → 2.2831 (+0.0006 ± 0.0012, +0.03 %) | 1.7948 → 1.7937 (+0.0011 ± 0.0015, +0.06 %) | 0.892 → 0.892 | 28.4 → 28.4 | 0.891 → 0.888 | 0.898 → 0.898 | reported |
+| T20I | debut | 10 | 207 | 0.671 | 2.5401 → 2.5485 (−0.0084 ± 0.0085, −0.33 %) | 0.1668 → 0.1717 (−0.0049 ± 0.0028, −2.92 %) | 1.9858 → 1.9835 (+0.0023 ± 0.0040, +0.12 %) | 3.4600 → 3.4542 (+0.0058 ± 0.0068, +0.17 %) | 0.906 → 0.910 | 24.6 → 24.0 | 0.919 → 0.916 | 0.872 → 0.872 | reported |
+| T20I | low history (≤ 2) | 10 | 573 | 0.710 | 2.4412 → 2.4469 (−0.0057 ± 0.0054, −0.23 %) | 0.1473 → 0.1505 (−0.0032 ± 0.0012, −2.16 %) | 1.8059 → 1.8055 (+0.0004 ± 0.0033, +0.02 %) | 2.5580 → 2.5627 (−0.0047 ± 0.0047, −0.18 %) | 0.914 → 0.915 | 22.8 → 22.5 | 0.918 → 0.916 | 0.890 → 0.890 | reported |
+| TEST | all | 11 | 9,812 | 0.921 | 8.3351 → 8.3372 (−0.0022 ± 0.0030, −0.03 %) | 0.3037 → 0.3034 (+0.0003 ± 0.0006, +0.10 %) | 13.7828 → 13.7778 (+0.0050 ± 0.0074, +0.04 %) | 5.9513 → 5.9544 (−0.0031 ± 0.0030, −0.05 %) | 0.774 → 0.774 | 82.1 → 82.1 | 0.778 → 0.777 | 0.915 → 0.914 | reported: fails |
+| TEST | debut | 11 | 422 | 0.601 | 7.3233 → 7.3197 (+0.0036 ± 0.0416, +0.05 %) | 0.4808 → 0.4754 (+0.0055 ± 0.0065, +1.14 %) | 12.2955 → 12.2025 (+0.0930 ± 0.0458, +0.76 %) | 10.4626 → 10.4458 (+0.0168 ± 0.0451, +0.16 %) | 0.782 → 0.775 | 76.2 → 75.4 | 0.778 → 0.787 | 0.895 → 0.892 | reported |
+| TEST | low history (≤ 2) | 11 | 1,006 | 0.659 | 7.5944 → 7.6127 (−0.0183 ± 0.0171, −0.24 %) | 0.3867 → 0.3824 (+0.0043 ± 0.0034, +1.11 %) | 13.2333 → 13.1992 (+0.0341 ± 0.0297, +0.26 %) | 8.3910 → 8.3764 (+0.0146 ± 0.0135, +0.17 %) | 0.770 → 0.771 | 73.5 → 72.9 | 0.771 → 0.773 | 0.907 → 0.897 | reported |
+
+*(TEST's men's and women's rows — 9,680 and 132 — are in the run's JSON and add nothing the
+whole-population row does not say.)*
+
+**Decision — family 1 is a recorded null.** In every format the deciding deltas are of
+the order of 0.02 % — runs +0.02 % (T20 men), +0.02 % (ODI), −0.02 % (T20I), −0.03 %
+(TEST); wickets +0.02 %, −0.01 %, −0.18 %, +0.10 % — twenty-five times under E1's 0.5 %
+band, and inside one fold-level standard error on every deciding slice except T20 men's
+runs (+0.0008 ± 0.0006, an improvement of 0.02 % that clears one standard error and not
+the band) and T20I's wickets (−0.0002 ± 0.0002, a *worsening* of 0.18 %). Coverage moves by at most 0.002
+and width by at most 0.3 runs (narrower, by an amount that means nothing at that
+coverage). `contract.AGE_FEATURES_KEPT` stays False and the performance model reads no age
+column; the columns stay on every row, as the sequence and fixture-context families did,
+so the question can be re-asked without a new pass.
+
+**Reading it.**
+
+- *The model already knows most of what age says.* The tree reads `career` (matches in the
+  format), `career_all`, the decayed rates and the expected role, and a player's age is
+  strongly collinear with those: a 34-year-old with 200 matches and a 21-year-old with 4
+  are already different rows. What age adds is the residual — the trajectory of a player
+  *at* a given history — and on these folds that residual is worth 0.02 % of pinball, which
+  is to say nothing the loss can see.
+- *The low-history slices are where age could have shown, and they say the same.* On the
+  debut and ≤ 2-match rows — where the ratings carry least and an age prior has most room —
+  the deltas are −0.5 … +0.1 % for runs with standard errors two to five times their size
+  (1,025 ODI debut rows spread over eleven folds), and the only readings past one standard
+  error are wickets *worsening* on T20I's 207 debut rows (−2.9 % ± 1.0) and T20's low-history
+  runs improving by +0.13 % ± 0.07: both under the band, opposite in sign, and on the
+  smallest slices in the table. There is no age effect hiding in the debutants that the
+  population average buried.
+- *Coverage in the windows is lower than X-1a's archive figure, and the scoping held.* The
+  folds' rows carry a date of birth for 65 % of men's T20 rows (X-1a: 82.6 % of all-time
+  appearances), 46 % of women's (61.4 %), 84 % of ODI, 95 % of T20I and 92 % of TEST: the
+  recent windows hold more associate and domestic newcomers than the archive as a whole,
+  which is where Wikidata's coverage falls away. The men's-only T20 verdict is the same
+  as the whole-population one to the second decimal of a percent, and the women's T20 rows
+  — reported, never deciding — read −0.01 % / +0.08 %, the indicator doing exactly the
+  work it was put there to do.
+- *Cost:* two columns on every row; the fit time is unchanged (136–142 s per T20 fold,
+  either arm).
 
 ---
 
