@@ -213,11 +213,10 @@ the push and PR commands.
 
 *Done on `feat/x-3-match-stakes`; the coverage figures, both gates' fold tables and the H-21
 audit are in § Record of outcomes below. The short version: the derivation is real and
-cheap — a stage label for 96.5 % of matches, a dead-rubber flag for the 72.9 % where a table
+cheap — a stage label for 96.5 % of matches, a dead-rubber flag for the 72.3 % where a table
 is reconstructible as-of — and **neither use clears its gate**. Cleaning E5's pairs does not
-rescue T20 (four of five arms move the agreement down; the fifth clears its bar by one
-twentieth of a standard error), and a knockout flag adds nothing to the display model
-outside T20I. The one thing that was not a null is the plumbing: Cricsheet states
+rescue T20 (all five arms fail, and four of the five move the agreement *down*), and a
+knockout flag adds nothing to the display model outside T20I. The one thing that was not a null is the plumbing: Cricsheet states
 `event.stage` and `event.group` and the importer was discarding both.*
 
 **What.** Tournament stage and dead-rubber flags reconstructed from Cricsheet's event
@@ -404,7 +403,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-4 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero. Paid and account-gated sources rejected. It does not price the rest |
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | **done — three recorded nulls, nothing shipped** — the **matchup** family is *not runnable for want of labels* (Wikidata: a batting hand for 18 and a bowling style for 265 of 13,662 players; the labelled confirmation of A-3's null; E5 not re-run, X-3 owns it); the **age** family moves the performance model's runs and wickets pinball by ~0.02 % on the deciding slices (T20 men +0.02 / +0.02 %, ODI +0.02 / −0.01 %), inside E1's band, women's T20 out of scope at 61.4 % and reported; the **age-aware cold start** keeps H-10 bounded and moves no player with history, and worsens the debut rows' pinball in every format (T20 −0.30 / −0.53 %, ODI −0.69 / −1.11 %). The date of birth now reaches every player row (`AGE_COLS`, missing = its own indicator) and both models read it only through flags that stay off; `make evaluate` after the choice reproduces A-4's baseline with H-8 parity 0.0 on both sources |
-| X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.9 % of matches**, 2,196 dead rubbers, bilateral scorelines and leagues whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** of five pair filters in T20 only "exclude dead rubbers" crosses its re-derived bar, by **0.0006 against a standard error of 0.0117**, while excluding knockouts (0.4976), excluding both (0.4972) and down-weighting (0.5005) all move *below* the 0.5030 control — rotation noise was not masking selection signal, and the T20 scoping does not move. The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources |
+| X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources |
 | X-2 | open — run last; the licence check in § X-2 precedes any acquisition, and a paid finding closes the item |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
@@ -852,13 +851,13 @@ competition, and "Indian Premier League" is one event name and eighteen tables.
 
 | scope | matches | stage known | group | knockout | final | bilateral | unlabelled | table reconstructible | dead rubbers |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| T20 | 12,356 | 12,076 (97.7 %) | 10,284 | 699 | 306 | 787 | 280 | 9,794 (79.3 %) | 1,266 |
-| T20 men | 9,485 | 9,236 (97.4 %) | 7,997 | 537 | 213 | 489 | 249 | 7,603 (80.2 %) | 952 |
-| T20 women | 2,871 | 2,840 (98.9 %) | 2,287 | 162 | 93 | 298 | 31 | 2,191 (76.3 %) | 314 |
-| T20I | 2,129 | 2,063 (96.9 %) | 728 | 91 | 53 | 1,191 | 66 | 1,792 (84.2 %) | 240 |
-| ODI | 5,218 | 4,978 (95.4 %) | 2,854 | 142 | 106 | 1,876 | 240 | 3,933 (75.4 %) | 603 |
-| TEST | 3,115 | 2,897 (93.0 %) | 1,969 | 0 | 14 | 914 | 218 | 1,113 (35.7 %) | 87 |
-| **all** | **22,818** | **22,014 (96.5 %)** | 15,835 | 932 | 479 | 4,768 | 804 | **16,632 (72.9 %)** | 2,196 |
+| T20 | 12,356 | 12,076 (97.7 %) | 10,284 | 699 | 306 | 787 | 280 | 9,696 (78.5 %) | 1,298 |
+| T20 men | 9,485 | 9,236 (97.4 %) | 7,997 | 537 | 213 | 489 | 249 | 7,510 (79.2 %) | 969 |
+| T20 women | 2,871 | 2,840 (98.9 %) | 2,287 | 162 | 93 | 298 | 31 | 2,186 (76.1 %) | 329 |
+| T20I | 2,129 | 2,063 (96.9 %) | 728 | 91 | 53 | 1,191 | 66 | 1,776 (83.4 %) | 230 |
+| ODI | 5,218 | 4,978 (95.4 %) | 2,854 | 142 | 106 | 1,876 | 240 | 3,923 (75.2 %) | 600 |
+| TEST | 3,115 | 2,897 (93.0 %) | 1,969 | 0 | 14 | 914 | 218 | 1,098 (35.2 %) | 84 |
+| **all** | **22,818** | **22,014 (96.5 %)** | 15,835 | 932 | 479 | 4,768 | 804 | **16,493 (72.3 %)** | 2,212 |
 
 The archive spells **55 distinct stages**; the vocabulary recognises 53. The two it does not
 are `ODI` and `T20` (4 matches), which name a format rather than a round, and leaving them
@@ -869,18 +868,24 @@ carrying neither a number nor a pool.
 **The dead-rubber flag exists only where a table is reconstructible as-of, and that is
 stated per match rather than assumed.** Two shapes qualify. A **bilateral series** — the
 "table" is the scoreline, and the series is dead once one side has won more than half of its
-fixtures. A **league with playoffs** — the number of qualifying places is the number of clubs
-that played the edition's knockout matches, and a side is dead when it is *mathematically*
-out of the top *k* (at least *k* rivals already hold more points than it can reach by winning
-everything left) or *mathematically* in it (at most *k* − 1 rivals can reach its current
-points at all). Both tests use rivals' current points against the side's maximum, which
-cannot fire on a table still open, and both ignore net run rate, which only ever makes a
-place harder to take. A match is a dead rubber when **either** side is dead. Two situations
-are honestly *not* flagged: a round robin whose knockout round the archive does not label
-(no observable cut), and a cut that takes every club — a four-team edition whose knockout is
-two semi-finals decides nothing, so it says nothing. That is why the flag reaches 72.9 % of
-matches and not more, and why TEST reaches only 35.7 % (its "tournament" is the World Test
-Championship, whose final is one match between two of nine clubs).
+fixtures. A **league with playoffs, one pool at a time** — the number of
+qualifying places is the number of *that pool's* clubs that played the edition's knockout
+matches, and a side is dead when it is *mathematically* out of the top *k* (at least *k*
+rivals in its pool already hold more points than it can reach by winning everything left) or
+*mathematically* in it (at most *k* − 1 of them can reach its current points at all). Both
+tests use rivals' current points against the side's maximum, which cannot fire on a table
+still open, and both ignore net run rate, which only ever makes a place harder to take. A
+match is a dead rubber when **either** side is dead. **The pool is the table**: Vitality
+Blast's North and South groups send four clubs each to the quarter-finals and a North club
+never plays a South club for a place, so `event.group` partitions the standing — pooling the
+two, which the first cut of this derivation did, scores a side against clubs it is not
+competing with, and it changed the T20 answer (below). Three situations are honestly *not*
+flagged: a round robin whose knockout round the archive does not label (no observable cut), a
+pool none of whose clubs reached the knockout round, and a cut that takes every club — a
+four-team pool whose knockout is two semi-finals decides nothing, so it says nothing. That is
+why the flag reaches 72.3 % of matches and not more, and why TEST reaches only 35.2 % (its
+"tournament" is the World Test Championship, whose final is one match between two of nine
+clubs).
 
 Spot-checked by hand against a season anyone can verify: IPL 2019 flags **4 of its 56 league
 matches**, all in the last five days (matches 50, 54, 55 and 56), and no knockout — which is
@@ -903,8 +908,8 @@ column in the training frame.
 `stakes_stage_known` — on every win row, from both sources, compared by H-8 (a serving record
 built for an unplayed match carries no stakes and reads 0.0 on both, the unlabelled category
 rather than an implied league game). `make xi-parity` gained four counts and they agree
-exactly across the database and the archive: **22,014 stage labels, 1,411 knockouts, 16,632
-reconstructible tables, 2,196 dead rubbers**, on both sources.
+exactly across the database and the archive: **22,014 stage labels, 1,411 knockouts, 16,493
+reconstructible tables, 2,212 dead rubbers**, on both sources.
 
 #### Use 1 — E5 hygiene: the null survives the cleaning
 
@@ -918,23 +923,23 @@ rotation in either contaminates the comparison.
 
 | format | arm | pairs | effective | agreement ± se | exactly-right | bar (3 seeds) | verdict |
 |---|---|---:|---:|---|---:|---|---|
-| **T20** | all (control) | 5,194 | 2,169 | 0.5030 ± 0.0114 | 0.522 | 0.5050–0.5059 | fails |
-| **T20** | exclude dead rubbers | 4,398 | 1,833 | **0.5046** ± 0.0117 | 0.521 | 0.5030–0.5040 | **clears, by 0.0006** |
+| **T20** | all (control) | 5,194 | 2,169 | 0.5030 ± 0.0107 | 0.522 | 0.5050–0.5059 | fails |
+| **T20** | exclude dead rubbers | 4,388 | 1,827 | 0.5014 ± 0.0117 | 0.520 | 0.5021–0.5032 | fails |
 | **T20** | exclude knockouts | 4,563 | 1,865 | 0.4976 ± 0.0116 | 0.522 | 0.5039–0.5049 | fails |
-| **T20** | exclude both | 3,919 | 1,601 | 0.4972 ± 0.0125 | 0.521 | 0.5011–0.5031 | fails |
-| **T20** | down-weight both (½) | 5,194 | 1,885 | 0.5005 ± 0.0115 | 0.521 | 0.5042–0.5053 | fails |
+| **T20** | exclude both | 3,907 | 1,594 | 0.4944 ± 0.0125 | 0.520 | 0.5000–0.5022 | fails |
+| **T20** | down-weight both (½) | 5,194 | 1,882 | 0.4993 ± 0.0115 | 0.521 | 0.5037–0.5049 | fails |
 | ODI | all (control) | 1,475 | 692 | 0.5665 ± 0.0188 | 0.534 | 0.5030–0.5045 | passes |
-| ODI | exclude dead rubbers | 1,238 | 578 | 0.5796 ± 0.0205 | 0.535 | 0.5008–0.5035 | passes |
+| ODI | exclude dead rubbers | 1,228 | 575 | 0.5791 ± 0.0206 | 0.535 | 0.5009–0.5036 | passes |
 | ODI | exclude knockouts | 1,413 | 654 | 0.5749 ± 0.0193 | 0.534 | 0.5031–0.5043 | passes |
-| ODI | exclude both | 1,192 | 551 | 0.5844 ± 0.0210 | 0.534 | 0.4991–0.5018 | passes |
-| ODI | down-weight both (½) | 1,475 | 622 | 0.5744 ± 0.0198 | 0.534 | 0.5023–0.5043 | passes |
+| ODI | exclude both | 1,183 | 549 | 0.5829 ± 0.0210 | 0.535 | 0.4991–0.5028 | passes |
+| ODI | down-weight both (½) | 1,475 | 620 | 0.5737 ± 0.0199 | 0.534 | 0.5020–0.5045 | passes |
 | T20I | all (control) | 571 | 220 | 0.5636 ± 0.0334 | 0.523 | 0.4715–0.4720 | passes |
-| T20I | exclude both | 371 | 152 | 0.5658 ± 0.0402 | 0.517 | 0.4533–0.4534 | passes |
+| T20I | exclude both | 371 | 151 | 0.5629 ± 0.0404 | 0.514 | 0.4483–0.4500 | passes |
 | TEST | all (control) | 461 | 213 | 0.5493 ± 0.0341 | 0.531 | 0.4759–0.4785 | passes |
 | TEST | exclude both | 417 | 191 | 0.5602 ± 0.0359 | 0.532 | 0.4740–0.4759 | passes |
 
-Suspect share of the pooled pairs: **T20 dead rubber 15.3 %, knockout 12.1 %**; T20I 31.0 % /
-4.6 %; ODI 16.1 % / 4.2 %; TEST 8.0 % / 1.7 %. The filters have real bite — the T20 arm that
+Suspect share of the pooled pairs: **T20 dead rubber 15.5 %, knockout 12.1 %**; T20I 31.5 % /
+4.6 %; ODI 16.7 % / 4.2 %; TEST 8.0 % / 1.7 %. The filters have real bite — the T20 arm that
 drops both loses a quarter of the pairs — so this is not a null for want of a treatment.
 
 **The wiring check, because a control has to be the metric it claims to be.** Restricted to
@@ -944,19 +949,28 @@ walk-forward figures (0.490 / n=1,358, 0.562 / n=429, 0.586 / n=111) to every di
 prints. The control above differs from those only because a year of pairs retired into the
 folds with the rotation; the arms vary the filter and nothing else.
 
-**The reading, and it is a null.** One arm of five crosses its bar, and it crosses it by
-**0.0006 against a standard error of 0.0117** — one twentieth of a standard error, which is
-not a measurement, and A-1's lesson (a gate with no effect-size floor passed on 0.2 runs) is
-exactly this shape. Every other arm moves the number **down**: removing knockouts costs
-0.005, removing both costs 0.006, and down-weighting instead of dropping costs 0.003. If
-rotation noise were masking a signal, cleaning it out would raise the agreement in every arm
-that removes it and raise it most where most is removed; the opposite happens. **Rotation
-noise was not masking selection signal in T20.** The scoping does not move, T20 stays
-rating-ordered (`optimizer.NOT_OPTIMISED_REASONS`), and nothing in this PR touches it — the
-gate said before it ran that it decides nothing, and it decided nothing.
+**The reading, and it is a null.** **Every one of the five T20 arms fails**, and four of
+them move the agreement *down*: removing knockouts costs 0.005, removing both costs 0.009,
+down-weighting instead of dropping costs 0.004, and even removing dead rubbers alone costs
+0.002. If rotation noise were masking a signal, cleaning it out would raise the agreement in
+every arm that removes it and raise it most where most is removed; the opposite happens.
+**Rotation noise was not masking selection signal in T20.** The scoping does not move, T20
+stays rating-ordered (`optimizer.NOT_OPTIMISED_REASONS`), and nothing in this PR touches it —
+the gate said before it ran that it decides nothing, and it decided nothing.
+
+*A near miss recorded because it nearly became the finding.* The first cut of the
+dead-rubber arithmetic built one table per **edition** rather than one per **pool**, which
+scores a Blast North club against South clubs it never plays. On that reading the
+exclude-dead-rubbers arm read 0.5046 against a bar of 0.5030–0.5040 and "cleared" — by 0.0006,
+one twentieth of its 0.0117 standard error, which A-1's lesson says is not a measurement, and
+against the other four arms all pointing the other way. Partitioning by `event.group` (the
+bug was found by reading the code, not by the number) moves it to 0.5014 against 0.5021–0.5032
+and it fails with the rest. Both the wrong number and the right one say null; recording the
+first is the point, because a gate that had stopped at the first arm to cross a line would
+have shipped a scoping change on 0.05 of a standard error.
 
 The one thing worth carrying forward is on the other side of the ledger: **ODI's agreement
-rises monotonically with the cleaning** (0.5665 → 0.5749 → 0.5796 → 0.5844 as more suspect
+rises monotonically with the cleaning** (0.5665 → 0.5749 → 0.5791 → 0.5829 as more suspect
 pairs go), and TEST's rises with the knockouts removed. Both already pass; the movement is
 inside one standard error in both, so it is a direction and not a finding, and it is recorded
 here rather than acted on.
@@ -990,7 +1004,12 @@ comparison it was reaching for is arm against control, and that is **+0.0020 (T2
 (T20I), 0.0000 (ODI), 0.0000 (TEST)** — the stakes columns do not reshape the surface. The
 verdict above therefore rests on the AUC clause alone, and the next gate of this kind states
 its bar against the control it will actually be measured against. (This is the same class of
-mistake A-1 recorded: a rule written before the control's own value was known.)
+mistake A-1 recorded: a rule written before the control's own value was known.) The
+observation the mistake produced is worth keeping and is recorded as **B-7** in
+[BUG_BACKLOG.md](BUG_BACKLOG.md): nobody had ever measured the display model's swap
+monotonicity, and one player upgrade in twenty moves the number a Team Lab user sees the
+wrong way. Nothing selects on that model, so nothing shipped is wrong — but it is neither
+measured in the harness nor stated anywhere, and it should be one or the other.
 
 #### What shipped, and what did not
 

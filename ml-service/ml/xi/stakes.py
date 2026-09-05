@@ -17,11 +17,13 @@ group stage.
 
 * a **bilateral series**, where the "table" is the scoreline -- as of a match, one side has
   won more than half the series' fixtures, so the series is decided;
-* a **league with playoffs**, where the number of qualifying places is observable (the
-  clubs that played the edition's knockout matches) and the group table is reconstructible
-  from the edition's earlier results. A side is dead when it is *mathematically* out of the
-  top k or *mathematically* in it, on the conservative arithmetic below, and the match is a
-  dead rubber when either side is.
+* a **league with playoffs**, one pool at a time, where the number of qualifying places is
+  observable (the pool's clubs that played the edition's knockout matches) and the table is
+  reconstructible from the pool's earlier results. A side is dead when it is
+  *mathematically* out of the top k or *mathematically* in it, on the conservative
+  arithmetic below, and the match is a dead rubber when either side is. The pool matters:
+  Vitality Blast's North and South groups send four clubs each to the quarter-finals, and a
+  North club is not competing with a South club for a place.
 
 Everything else -- a round robin with no knockout stage, a competition whose playoff round
 the archive does not label -- is **not flagged**, and the coverage report says so. A flag
@@ -46,7 +48,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
+from typing import AbstractSet, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -273,13 +275,22 @@ def _league_dead_rubbers(edition: Edition, labels: Dict[str, str]) -> Optional[D
     """A league whose top ``k`` go through: dead where neither side's group result can
     still change whether it is one of them.
 
-    ``k`` is the number of clubs the edition's knockout matches were played by -- the
-    published playoff format, read from the archive. A side is **out** when at least ``k``
-    rivals already hold more points than it could reach by winning all its remaining
-    fixtures, and **through** when at most ``k - 1`` rivals could reach its current points
-    at all. Both tests use rivals' *current* points against the side's *maximum*, which is
-    the conservative direction: neither can fire on a table that is still open, and both
-    ignore net run rate, which can only make a place harder to take, never easier to hold.
+    The table is built **per pool**, because a pool is what a table is: Vitality Blast's
+    North and South groups send four clubs each to the quarter-finals and a North club is
+    not competing with a South club for a place. Cricsheet names the pool in
+    ``event.group``; an edition that names none (the Indian Premier League, the Big Bash)
+    is one pool. ``k`` is then the number of *that pool's* clubs the edition's knockout
+    matches were played by -- the published playoff format, read from the archive.
+
+    A side is **out** when at least ``k`` rivals in its pool already hold more points than
+    it could reach by winning all its remaining fixtures, and **through** when at most
+    ``k - 1`` of them could reach its current points at all. Both tests use rivals'
+    *current* points against the side's *maximum*, which is the conservative direction:
+    neither can fire on a table that is still open, and both ignore net run rate, which can
+    only make a place harder to take, never easier to hold.
+
+    Returns None when no pool of the edition has a readable table -- a round robin whose
+    knockout round the archive does not label, or a cut that takes every club.
     """
     knockout_clubs = {
         club
@@ -287,25 +298,47 @@ def _league_dead_rubbers(edition: Edition, labels: Dict[str, str]) -> Optional[D
         if labels[str(header.match_id)] in (STAGE_KNOCKOUT, STAGE_FINAL)
         for club in (header.team1, header.team2)
     }
-    k = len(knockout_clubs)
-    group_matches = [h for h in edition.headers if labels[str(h.match_id)] == STAGE_GROUP]
-    if k < 2 or not group_matches:
+    if len(knockout_clubs) < 2:
         return None
+    pools: Dict[str, List[MatchHeader]] = defaultdict(list)
+    for header in edition.headers:
+        if labels[str(header.match_id)] == STAGE_GROUP:
+            pools[header.event_group.strip()].append(header)
 
+    out: Dict[str, bool] = {}
+    for matches in pools.values():
+        flags = _pool_dead_rubbers(matches, knockout_clubs)
+        if flags is not None:
+            out.update(flags)
+    if not out:
+        return None
+    # A knockout match is never a dead rubber; saying so is part of the flag's coverage.
+    # Only the knockouts: a pool whose own cut was unreadable stays unknown rather than
+    # borrowing the answer from the pool beside it.
+    for header in edition.headers:
+        if labels[str(header.match_id)] in (STAGE_KNOCKOUT, STAGE_FINAL):
+            out.setdefault(str(header.match_id), False)
+    return out
+
+
+def _pool_dead_rubbers(matches: Sequence[MatchHeader], knockout_clubs: AbstractSet[str]) -> Optional[Dict[str, bool]]:
+    """One pool's table, walked forward at day close. None when its cut is unreadable."""
     remaining: Dict[str, int] = defaultdict(int)
-    for header in group_matches:
+    for header in matches:
         remaining[header.team1] += 1
         remaining[header.team2] += 1
     points: Dict[str, int] = {club: 0 for club in remaining}
-    # A cut that takes everyone decides nothing, so the table cannot say a match is dead.
-    # (It happens: a four-club edition whose knockout round is two semi-finals.)
-    if k >= len(points):
+    k = len(knockout_clubs & set(points))
+    # A pool none of whose clubs reached the knockout round has no observable cut, and a
+    # cut that takes every club decides nothing (a four-club pool whose knockout round is
+    # two semi-finals). Either way the table cannot say a match is dead.
+    if k < 1 or k >= len(points):
         return None
 
     out: Dict[str, bool] = {}
     pending: List[MatchHeader] = []
     current: Optional[date] = None
-    for header in group_matches:
+    for header in matches:
         # Day close, as the rating pass folds results in: a fixture reads only dates
         # strictly before its own, so a match played the same day is still to come both
         # in the table and in the fixture list (H-21).
@@ -318,9 +351,6 @@ def _league_dead_rubbers(edition: Edition, labels: Dict[str, str]) -> Optional[D
         current = header.match_date
         out[str(header.match_id)] = any(_is_dead(club, points, remaining, k) for club in (header.team1, header.team2))
         pending.append(header)
-    # A knockout match is never a dead rubber; saying so is part of the flag's coverage.
-    for header in edition.headers:
-        out.setdefault(str(header.match_id), False)
     return out
 
 
@@ -333,7 +363,7 @@ def _apply_result(header: MatchHeader, points: Dict[str, int]) -> None:
 
 
 def _is_dead(club: str, points: Dict[str, int], remaining: Dict[str, int], k: int) -> bool:
-    """Whether this club's remaining group matches can still change its qualification."""
+    """Whether this club's remaining matches in its pool can still change its qualification."""
     own_points = points.get(club, 0)
     own_maximum = own_points + POINTS_WIN * remaining.get(club, 0)
     rivals = [other for other in points if other != club]

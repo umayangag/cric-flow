@@ -308,7 +308,7 @@ to two model families and one derived simulator, all fed by one pass over one ta
 | E2 | Is the simulator consistent with the display model? | Simulated P(win) vs display P(win) on holdout matches; calibration of each | If simulated P(win) is worse-calibrated by > 0.01 Brier, keep it as a display-only distribution and never as a probability — **run in P-4, §8.3: simulated − display Brier +0.0028 ± 0.0057 T20, +0.0034 ± 0.0131 ODI on the folds — within tolerance, a probability, served beside the display model's, which stays the headline** |
 | E3 | Can batting order be optimised? | Expected-slot model + L2-B; for the chosen XI, evaluate objective / simulated totals under permutations of the top 7 | If reordering moves simulated totals by > 3% for > 30% of XIs, add batting-order suggestion to L3; else leave order to the captain — **run in P-7, §8.8: the best of 64 sampled orders of the top seven, confirmed with a fresh seed, moves the simulated median total by > 3 % for 25.0 % ± 3.1 of T20 elevens and 12.6 % ± 2.3 of ODI elevens (median move 1.5–1.7 %); under the line in both, order stays with the captain** |
 | E4 | How much does identity cost? | Re-run S-10 on the Postgres source before and after IDENTITY I-3/I-4 | Report the AUC delta; expect the women's-cricket subset to move most — **run in P-1, §5.1** |
-| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | ~~If agreement > 55% on ≥ 300 pairs~~ — **the bar is derived from the objective's own claimed effect size (P-7, §8.8): an exactly-right objective would score about 0.52, so 0.55 was never reachable.** The metric is the *lineup-only* form, in L4 (`ml/xi/natural_experiment.py`): both elevens scored against match k+1's opponent at match k+1's as-of; §5's as-played form is confounded (Δresult is an identity on `won_k`, §8.6) and is not computed. Walk-forward, against the derived bar: **T20I 0.586 (n=111) vs 0.469 — passes; ODI 0.562 (n=429) vs 0.487 — passes; T20 0.490 (n=1,358) vs 0.501 — fails.** On every development pair (in-sample for the weights, well-powered): T20I 0.589 vs 0.496, ODI 0.521 vs 0.504, T20 0.509 vs 0.512 — the same verdicts. Optimised selection is scoped off in T20 on this reading, on beside TEST's H-17 rule. **X-3 re-ran the T20 measurement with the rotation-heavy fixtures filtered out (§8.6) and the null held**: four of five pair filters move the agreement below the control, and the fifth clears its re-derived bar by 0.0006 against a standard error of 0.0117 (EXTERNAL_DATA_PLAN.md § X-3). The scoping stands |
+| E5 | Natural experiment for selection | Same side, consecutive matches, 1–3 changes: sign agreement between Δobjective and Δresult | ~~If agreement > 55% on ≥ 300 pairs~~ — **the bar is derived from the objective's own claimed effect size (P-7, §8.8): an exactly-right objective would score about 0.52, so 0.55 was never reachable.** The metric is the *lineup-only* form, in L4 (`ml/xi/natural_experiment.py`): both elevens scored against match k+1's opponent at match k+1's as-of; §5's as-played form is confounded (Δresult is an identity on `won_k`, §8.6) and is not computed. Walk-forward, against the derived bar: **T20I 0.586 (n=111) vs 0.469 — passes; ODI 0.562 (n=429) vs 0.487 — passes; T20 0.490 (n=1,358) vs 0.501 — fails.** On every development pair (in-sample for the weights, well-powered): T20I 0.589 vs 0.496, ODI 0.521 vs 0.504, T20 0.509 vs 0.512 — the same verdicts. Optimised selection is scoped off in T20 on this reading, on beside TEST's H-17 rule. **X-3 re-ran the T20 measurement with the rotation-heavy fixtures filtered out (§8.6) and the null held**: all five pair filters fail their re-derived bars, and four of the five move the agreement below the control (EXTERNAL_DATA_PLAN.md § X-3). The scoping stands |
 | E7 | Do gender-split context baselines help? | Split the (format, over) baseline by gender in the rating pass; measure objective AUC overall and on the women's subset | Keep if the women's subset improves by > 0.01 without hurting men's — **run in P-2, §5.2: no effect; the split ships off** |
 | E6 | Format transfer for L2-B | Train T20 + T20I jointly with a format indicator vs separately | Keep separate unless joint wins by > 0.01 Spearman (for the win model it lost; the performance model may differ) — **run in P-3, §5.3: joint moves Spearman by at most 0.003; separate stays** |
 
@@ -1000,15 +1000,15 @@ script, and wiring it in is P-7's.
 domestic T20, much of a 1–3 player change is squad rotation" was a hypothesis with a
 measurable consequence: strip the fixtures where rotation is heaviest and the agreement
 should rise. `ml/xi/stakes.py` derives a stage label for 96.5 % of matches and a dead-rubber
-flag for the 72.9 % where a table is reconstructible as-of, from Cricsheet's own event
+flag for the 72.3 % where a table is reconstructible as-of, from Cricsheet's own event
 fields; `scripts/experiments/xi/x3_match_stakes.py` re-ran E5 with the suspect pairs excluded
-and, separately, halved. The suspect pairs are 15.3 % (dead rubber) and 12.1 % (knockout) of
-T20's pooled pairs, so the treatment has bite — and **four of the five arms move the
-agreement down** (control 0.5030; excluding knockouts 0.4976, excluding both 0.4972,
-down-weighting both 0.5005), while the fifth (excluding dead rubbers, 0.5046) clears its
-re-derived bar by 0.0006 against a standard error of 0.0117. The T20 null is not rotation
-noise. Fold tables in [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-3; the control there
-reproduces this section's walk-forward figures exactly on the pre-A-4 window.
+and, separately, halved. The suspect pairs are 15.5 % (dead rubber) and 12.1 % (knockout) of
+T20's pooled pairs, so the treatment has bite — and **all five arms fail their re-derived
+bars, four of them below the control** (control 0.5030; excluding dead rubbers 0.5014,
+excluding knockouts 0.4976, excluding both 0.4944, down-weighting both 0.4993). The T20 null
+is not rotation noise. Fold tables in [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-3;
+the control there reproduces this section's walk-forward figures exactly on the pre-A-4
+window.
 
 
 ### 8.7 What §8.5 and §8.6 set up for P-6 and P-7

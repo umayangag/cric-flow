@@ -209,6 +209,49 @@ def test_a_league_without_a_knockout_round_has_no_reconstructible_table() -> Non
     assert all(entry.stage_label == stakes.STAGE_GROUP for entry in derived.values())
 
 
+def _two_pool_league() -> List[stakes.Header]:
+    """Two pools of three clubs, one through from each, then a final.
+
+    Pool A (X, Y, Z) and pool B (P, Q, R) play their own round robins on the same days.
+    X wins both of its matches, so its last-day pool fixture is already settled; pool B
+    stays level to the end. Pooling the two tables into one would score X against clubs it
+    never plays, which is the mistake this pins.
+    """
+    return [
+        header("a1", 0, "X", "Y", winner="X", event_group="A", match_number=1),
+        header("b1", 0, "P", "Q", winner="P", event_group="B", match_number=2),
+        header("a2", 1, "X", "Z", winner="X", event_group="A", match_number=3),
+        header("b2", 1, "Q", "R", winner="Q", event_group="B", match_number=4),
+        header("a3", 2, "Y", "Z", winner="Y", event_group="A", match_number=5),
+        header("b3", 2, "P", "R", winner="R", event_group="B", match_number=6),
+        header("f1", 5, "X", "P", winner="X", event_stage="Final"),
+    ]
+
+
+def test_each_pool_gets_its_own_table() -> None:
+    """One club through from each pool: X is safe in A by the last day, and nobody in B is."""
+    derived = stakes.derive(_two_pool_league())
+
+    assert derived["a3"].dead_rubber_known and derived["b3"].dead_rubber_known
+    # a3 is Y v Z, and by then X has won both of its matches and cannot be caught.
+    assert derived["a3"].dead_rubber
+    # Pool B is level at the last fixture, so nothing there is settled.
+    assert not derived["b3"].dead_rubber
+    assert not derived["b1"].dead_rubber and not derived["b2"].dead_rubber
+
+
+def test_a_pool_whose_cut_is_unreadable_is_left_unflagged_without_taking_the_others() -> None:
+    """Pool B loses its finalist, so only pool A has an observable cut -- and pool A is
+    still flagged rather than the whole edition going dark."""
+    headers = [h for h in _two_pool_league() if h.match_id != "f1"]
+    headers.append(header("f1", 5, "X", "Y", winner="X", event_stage="Final"))
+
+    derived = stakes.derive(headers)
+
+    assert derived["a3"].dead_rubber_known
+    assert not derived["b3"].dead_rubber_known
+
+
 # --- Coverage and the vocabulary report --------------------------------------------------
 
 

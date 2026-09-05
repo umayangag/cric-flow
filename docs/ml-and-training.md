@@ -377,7 +377,8 @@ because the model already learns its own debutant neutral jointly with the rest 
 Since X-3 every **win row** also carries the match's **stakes** (`contract.STAKES_COLS`:
 `stakes_knockout` and `stakes_stage_known`), derived by `ml/xi/stakes.py` from Cricsheet's
 `info.event` — the round (`event.stage`), the pool (`event.group`), the fixture number and
-the shape of the competition's edition. Both sources produce them, `make xi-parity` compares
+the shape of the competition's edition (`match.event_stage` / `match.event_group` in the
+database, added by migration `0011`). Both sources produce them, `make xi-parity` compares
 four counts of them, and H-8 compares the columns themselves; a record built for the serving
 path carries no stakes and reads `0.0 / 0.0`, the unlabelled category rather than an implied
 league game. The same rule once more: the columns are always on the win row, and the display
