@@ -134,6 +134,16 @@ def test_describe_states_the_band_and_the_direction() -> None:
     assert line.endswith("(lower is better)")
 
 
+def test_the_display_surfaces_swap_share_says_h4s_line_does_not_bind_it() -> None:
+    """B-7: the number is stated with the reason it is not the objective's 2 % gate, or a
+    reader would take a 5 % reading for a failed contract."""
+    line = glossary.describe("display_swap_violation_share")
+
+    assert line.startswith("display_swap_violation_share (Swap violations, display surface)")
+    assert "does NOT bind it" in line
+    assert glossary.REGISTRY["display_swap_violation_share"].scale.bad > glossary.VIOLATION_SCALE.bad
+
+
 def test_a_scale_never_points_the_opposite_way_from_the_direction_it_is_read_with() -> None:
     """The colour and the sentence come from one entry, so an anchor pair that ran the
     wrong way would paint a bad number green while the popover said the opposite."""

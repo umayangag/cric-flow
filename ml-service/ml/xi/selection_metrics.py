@@ -5,6 +5,11 @@ These are the numbers that gate an argmax over XIs, per the rearchitecture plan:
 * **Swap monotonicity** (H-4): the share of one-player upgrades that *lower* the
   objective's P(win). An optimiser cannot trust a surface where making a player better
   makes the team worse.
+* **Display swap monotonicity** (B-7): the same probe against the *display* surface --
+  the number a person watches move when they swap a player in the Team Lab. It decides
+  nothing (H-4's line is checked on the objective, which is what the optimiser reads),
+  but until B-7 it was never measured, and an unmeasured surface is one nobody can say
+  is coherent.
 * **Specific-XI-beyond-typical-XI**: does knowing the actual eleven beat knowing only the
   team's recent typical eleven? This is the selection-facing replacement for the P-0
   winner-accuracy gate, which an arm optimising both sides must lose regardless of XI
@@ -17,17 +22,22 @@ These are the numbers that gate an argmax over XIs, per the rearchitecture plan:
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 from ml.xi import contract as C
-from ml.xi.ratings import aggregate_side, xi_feature_vector
+from ml.xi.ratings import aggregate_side, match_features, xi_feature_vector
+from ml.xi.train import marginalised_probabilities
 
 # An upgrade must clearly beat float noise before it counts as a violation.
 _VIOLATION_EPS = 1e-12
+#: The five per-player ratings an upgrade raises, each by one population standard
+#: deviation. They are the axes the objective's monotone contract is written against, so
+#: a probability that falls when all five rise is the surface contradicting itself.
+UPGRADE_RATING_KEYS = ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate", "pelo")
 # How many recent matches define a team's "typical" side aggregates.
 TYPICAL_WINDOW = 10
 # A team needs at least this many prior matches before its typical XI means anything.
@@ -45,6 +55,41 @@ def _objective_probability(model, columns: List[str], own: Dict, opp: Dict) -> f
     return float(0.5 * (p[0] + (1.0 - p[1])))
 
 
+def upgrade_steps(player_rows: pd.DataFrame) -> Dict[str, float]:
+    """One population standard deviation per upgraded rating, over the window's own rows."""
+    return {name: float(player_rows[name].std()) for name in UPGRADE_RATING_KEYS}
+
+
+def upgraded_sides(
+    vectors: Dict[str, np.ndarray], steps: Dict[str, float], n_players: int
+) -> List[Dict[str, np.ndarray]]:
+    """The side as it was, then one variant per player with his five ratings raised.
+
+    The first entry is the base, so a probe scores the base and its upgrades through one
+    code path and cannot compare two differently built rows.
+    """
+    variants = [vectors]
+    for position in range(n_players):
+        upgraded = {name: values.copy() for name, values in vectors.items()}
+        for name, step in steps.items():
+            upgraded[name][position] += step
+        variants.append(upgraded)
+    return variants
+
+
+def _violation_counts(probabilities: Sequence[float]) -> Tuple[int, int]:
+    """(upgrades tried, upgrades that lowered P(win)) for one fixture, whose base
+    probability is the first entry and whose upgrades are the rest."""
+    base = probabilities[0]
+    return len(probabilities) - 1, sum(1 for p in probabilities[1:] if p < base - _VIOLATION_EPS)
+
+
+def _violation_report(upgrades: int, violations: int) -> Optional[Dict]:
+    if upgrades == 0:
+        return None
+    return {"upgrades": upgrades, "violations": violations, "violation_share": violations / upgrades}
+
+
 def swap_monotonicity(
     model, columns: List[str], player_rows: pd.DataFrame, format_code: str, max_matches: int = 50
 ) -> Optional[Dict]:
@@ -56,9 +101,7 @@ def swap_monotonicity(
     """
     if player_rows.empty:
         return None
-    steps = {
-        name: float(player_rows[name].std()) for name in ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate", "pelo")
-    }
+    steps = upgrade_steps(player_rows)
     upgrades = 0
     violations = 0
     match_ids = player_rows.match_id.drop_duplicates().tolist()[:max_matches]
@@ -72,22 +115,72 @@ def swap_monotonicity(
         opponent = aggregate_side(
             {name: side2[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}, format_code
         )
-        base = _objective_probability(model, columns, aggregate_side(vectors, format_code), opponent)
-        for j in range(len(side1)):
-            upgraded = {name: values.copy() for name, values in vectors.items()}
-            for name, step in steps.items():
-                upgraded[name][j] += step
-            p = _objective_probability(model, columns, aggregate_side(upgraded, format_code), opponent)
-            upgrades += 1
-            if p < base - _VIOLATION_EPS:
-                violations += 1
-    if upgrades == 0:
+        probabilities = [
+            _objective_probability(model, columns, aggregate_side(variant, format_code), opponent)
+            for variant in upgraded_sides(vectors, steps, len(side1))
+        ]
+        tried, lowered = _violation_counts(probabilities)
+        upgrades += tried
+        violations += lowered
+    return _violation_report(upgrades, violations)
+
+
+def display_swap_monotonicity(
+    model,
+    columns: List[str],
+    window_matches: pd.DataFrame,
+    player_rows: pd.DataFrame,
+    format_code: str,
+    max_matches: int = 50,
+) -> Optional[Dict]:
+    """H-4's probe run against the *display* surface (B-7).
+
+    The same one-player upgrade, but scored on the model a person actually watches: the
+    match's non-XI columns -- team Elo, form, head-to-head, venue -- are held exactly as
+    the fixture had them, because a selector cannot change them, and only the columns the
+    upgraded eleven produces move. The probability is marginalised over the batting order
+    the way the serving path marginalises it.
+
+    ``swap_monotonicity`` cannot serve here: it builds its rows from side aggregates
+    alone, which is all the objective reads. This decides nothing -- H-4's 2 % line is a
+    contract on the objective the optimiser maximises -- and is reported because a surface
+    nobody has measured is a surface nobody can call coherent.
+    """
+    if window_matches.empty or player_rows.empty:
         return None
-    return {
-        "upgrades": upgrades,
-        "violations": violations,
-        "violation_share": violations / upgrades,
-    }
+    steps = upgrade_steps(player_rows)
+    rows: List[Dict[str, Any]] = []
+    variants_per_match: List[int] = []
+    by_match = {match_id: group for match_id, group in player_rows.groupby("match_id", sort=False)}
+    for match in window_matches.head(max_matches).itertuples():
+        players = by_match.get(match.match_id)
+        if players is None:
+            continue
+        side1, side2 = players[players.side == 1], players[players.side == 2]
+        if side1.empty or side2.empty:
+            continue
+        vectors = {name: side1[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}
+        opponent = aggregate_side(
+            {name: side2[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}, format_code
+        )
+        fixture = {column: getattr(match, column) for column in window_matches.columns}
+        for variant in upgraded_sides(vectors, steps, len(side1)):
+            row = dict(fixture)
+            row.update(match_features(aggregate_side(variant, format_code), opponent))
+            rows.append(row)
+        variants_per_match.append(len(side1) + 1)
+    if not rows:
+        return None
+    probabilities = marginalised_probabilities(model, pd.DataFrame(rows), columns)
+    upgrades = 0
+    violations = 0
+    offset = 0
+    for count in variants_per_match:
+        tried, lowered = _violation_counts(probabilities[offset : offset + count])
+        upgrades += tried
+        violations += lowered
+        offset += count
+    return _violation_report(upgrades, violations)
 
 
 def _swap_stems(rows: pd.DataFrame) -> pd.DataFrame:

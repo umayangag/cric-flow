@@ -529,7 +529,7 @@
       "lane": "l2",
       "column": 1,
       "kind": "model",
-      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice.",
+      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice. The price of the extra columns is that this surface is not monotone the way the objective is: roughly one player upgrade in twenty moves the displayed probability the wrong way, which is measured here rather than left unsaid.",
       "anchors": {
         "modules": [
           "ml.xi.train",
@@ -569,6 +569,15 @@
           "per_format": true,
           "value_kind": "ratio3",
           "glossary_key": "base_rate_brier"
+        },
+        {
+          "key": "display_swap_violation_share",
+          "label": "Upgrades that lower the displayed P(win)",
+          "source": "report",
+          "path": "formats.{format}.walk_forward.summary.display_swap_violation_share",
+          "per_format": true,
+          "value_kind": "percent",
+          "glossary_key": "display_swap_violation_share"
         }
       ]
     },
@@ -795,7 +804,9 @@
           "X-1b-age",
           "X-1b-cold-start",
           "X-3-e5",
-          "X-3-stakes"
+          "X-3-stakes",
+          "B-7-display-monotone",
+          "B-7-pelo-spread"
         ]
       },
       "documented_in": [

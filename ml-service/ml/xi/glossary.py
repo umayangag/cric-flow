@@ -153,6 +153,10 @@ E5_SCALE = Scale(bad=0.50, good=0.52)
 PARITY_SCALE = Scale(bad=0.0, good=0.0)
 SEED_SD_SCALE = Scale(bad=0.010, good=0.0)
 VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
+#: The display surface is painted against its own measured range, not against H-4's 2 %:
+#: that line is a contract on the objective the optimiser reads, and a scale that
+#: saturates red at every value tells a reader nothing about which format is worse (B-7).
+DISPLAY_VIOLATION_SCALE = Scale(bad=0.10, good=0.0)
 SPECIFIC_XI_SCALE = Scale(bad=0.0, good=0.02)
 COVERAGE_SCALE = Scale(bad=0.65, good=0.80)
 E2_TOLERANCE_SCALE = Scale(bad=0.01, good=0.0)
@@ -308,6 +312,39 @@ METRICS: Tuple[Metric, ...] = (
         band="Under 2 % passes (H-4); this system measures under 1 %.",
         better=LOWER,
         scale=VIOLATION_SCALE,
+    ),
+    Metric(
+        key="display_swap_violation_share",
+        name="Swap violations, display surface",
+        explanation=(
+            "The same one-player upgrade, scored on the model a person actually watches -- the "
+            "number that moves in the Team Lab when a player is swapped in. The team context is "
+            "held exactly as the fixture had it, because a selector cannot change it. Each "
+            "violation is a swap that made the eleven better and the displayed win chance worse."
+        ),
+        band=(
+            "Measured 3-7 % over the folds (T20 5.1 %, T20I 7.1 %, ODI 3.4 %, TEST 6.1 %). H-4's "
+            "2 % line does NOT bind it: that line is a contract on the objective the optimiser "
+            "maximises, whose every column is monotone-constrained, while the display model also "
+            "reads team context and is fitted as trees. Reported so the gap is visible; nothing "
+            "is selected on it (B-7)."
+        ),
+        better=LOWER,
+        scale=DISPLAY_VIOLATION_SCALE,
+    ),
+    Metric(
+        key="display_swap_monotonicity",
+        name="Swap violations, display surface (one fold)",
+        explanation=(
+            "One fold's count of the same probe: how many one-player upgrades were tried on the "
+            "displayed surface, how many lowered the displayed win chance, and their share."
+        ),
+        band=(
+            "Read against the walk-forward mean beside it, which measures 3-7 % by format. H-4's "
+            "2 % line is the objective's contract, not this surface's (B-7)."
+        ),
+        better=LOWER,
+        scale=DISPLAY_VIOLATION_SCALE,
     ),
     Metric(
         key="agreement",

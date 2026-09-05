@@ -606,7 +606,7 @@ predictions omit `as_of` and are served from the loaded state unchanged.
 
 ### Evaluation harness (`make evaluate`, L4 / H-19)
 
-**Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc`, `max_abs_difference`, and X-4's `market_auc`, `market_minus_display_auc` and `joined_share` among them.
+**Glossary keys** (L-1, `ml/xi/glossary.py`): every key the report emits — `objective_auc`, `display_auc_mean`, `base_rate_brier`, `swap_violation_share`, `display_swap_violation_share`, `specific_vs_typical_delta`, `agreement`, `bar`, `expected_if_exactly_right`, `delta_brier_mean`, `auc`, `test_auc`, `max_abs_difference`, and X-4's `market_auc`, `market_minus_display_auc` and `joined_share` among them.
 
 One command, one JSON report (`xi_evaluate_report.json`): rolling-origin walk-forward over
 quarterly cutoffs 2024-01 … 2026-06 for every choice-facing number, and the **locked
@@ -619,7 +619,10 @@ The window's start date and the date it was last rotated travel in the report
 which window a number came from — see *Rotating the locked window* below.
 Per format it reports, with mean ± spread over cutoffs (and seeds where a model has one):
 objective/display AUC and Brier against the base rate; the specific-XI-beyond-typical-XI
-delta and swap monotonicity (the selection gates that replace P-0's winner accuracy); the
+delta and swap monotonicity (the selection gates that replace P-0's winner accuracy), and
+the same swap probe against the **display** surface — reported, never a gate, because H-4's
+2 % line is a contract on the objective the optimiser reads (see *The display surface's swap
+share* below); the
 best-single-column leak canary with the TEST-format control (H-2); and the performance
 model on the player-match rows — per target and format, within-match Spearman, top-3 hit,
 the median's MAE, pinball loss and the 10–90 interval's coverage beside its width (H-22),
@@ -631,6 +634,31 @@ rule decided on the folds; and the natural experiment for selection (E5, below).
 with the train/serve parity check (H-8): the last 50 matches rebuilt from the as-of serving
 path and compared with the training frame — rows, performance predictions and simulator
 draws at a fixed seed alike — and the run fails if they differ.
+
+**The display surface's swap share (B-7).** H-4 holds the *objective* to under 2 % of
+one-player upgrades lowering P(win), and it measures 0.0–0.8 %. The display model — the
+number a person actually watches move in the Team Lab — had never been probed at all, and
+it violates at **3–7 %**: 5.1 % T20, 7.1 % T20I, 3.4 % ODI, 6.1 % TEST over the folds
+(the database source; the archive frame reads 4.8 / 6.8 / 3.1 / 6.2, the same difference in
+ground keying X-3 recorded).
+`display_swap_violation_share` now carries that figure per format, with the fold-level
+counts under `display_swap_monotonicity`, and the glossary states that H-4's line is not
+its contract. Nothing selects on the display model, so nothing shipped is wrong; what was
+wrong was that the number did not exist.
+
+The cause is not the team-context columns the constraint set leaves free, as first
+supposed: the probe holds team context at the fixture's values, because a selector cannot
+change them, so no constraint on them can move the probe at all — and constraining them
+was measured to make the violations *worse* (gate `B-7-display-monotone`, a recorded null;
+`DISPLAY_CONTEXT_MONOTONE_KEPT` stays `False`). Every column an upgrade moves that the
+contract constrains moves the way it should, on 100 % of upgrades; the one free column it
+moves, also on 100 % of upgrades, is `pelo_std`, the spread of player Elo across an eleven,
+whose direction is genuinely unknown and so is declared 0. The tree model's step response
+to it is the whole of the effect: with `t1_pelo_std` / `t2_pelo_std` removed from the
+display columns the share is exactly 0.0000 in all four formats, for −0.0004 (T20), +0.0088
+(T20I), −0.0055 (ODI), −0.0047 (TEST) of AUC. That reading is gate `B-7-pelo-spread`, which
+informs and ships nothing; the trade is in `docs/BUG_BACKLOG.md` § B-7 for a deliberate
+decision.
 
 **The market benchmark (X-4, `ml/xi/market.py`).** Where closing odds have been cached, the
 report also carries a `market_benchmark` section: the market's de-vigged probability scored

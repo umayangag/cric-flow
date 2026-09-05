@@ -78,7 +78,14 @@ DISPLAY_GRID_MARGIN = 0.002
 GRID_VALIDATION_FRACTION = 0.2
 
 
-def make_display_model(columns: List[str], seed: int, params: Optional[Dict[str, float]] = None) -> object:
+def make_display_model(
+    columns: List[str],
+    seed: int,
+    params: Optional[Dict[str, float]] = None,
+    constrain_team_context: bool = C.DISPLAY_CONTEXT_MONOTONE_KEPT,
+) -> object:
+    """The display model. ``constrain_team_context`` is gate B-7's arm switch and defaults
+    to what the gate decided; nothing but that experiment should pass it."""
     settings = dict(DISPLAY_GRID[0] if params is None else params)
     return HistGradientBoostingClassifier(
         max_depth=int(settings["max_depth"]),
@@ -87,7 +94,7 @@ def make_display_model(columns: List[str], seed: int, params: Optional[Dict[str,
         l2_regularization=1.0,
         min_samples_leaf=40,
         random_state=seed,
-        monotonic_cst=C.monotone_directions(columns),
+        monotonic_cst=C.monotone_directions(columns, constrain_team_context),
     )
 
 

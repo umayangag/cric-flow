@@ -20,6 +20,10 @@ it says whether the null survives the cleaning.
 ``STAKES_COLS`` added, against the same folds without them: display AUC beyond the seed
 noise, and H-4's swap-violation share unchanged. Expect a null.
 
+The display swap probe this script introduced now lives in
+``ml.xi.selection_metrics.display_swap_monotonicity``, where the harness reports it per
+fold as well (B-7); this script calls it rather than keeping a second copy.
+
     python x3_match_stakes.py --coverage --cricsheet-dir ../../../data/go-app/cricsheet \\
         --out x3_coverage.json
     python x3_match_stakes.py --frames frames.pkl --cricsheet-dir ... --out x3.json
@@ -56,8 +60,7 @@ from ml.xi.evaluate import (  # noqa: E402
     SWAP_MAX_MATCHES,
     fold_windows,
 )
-from ml.xi.ratings import aggregate_side, match_features  # noqa: E402
-from ml.xi.selection_metrics import _VIOLATION_EPS  # noqa: E402
+from ml.xi.selection_metrics import display_swap_monotonicity  # noqa: E402
 from ml.xi.sources import CricsheetJsonSource  # noqa: E402
 from ml.xi.train import (  # noqa: E402
     _international_teams_from_config,
@@ -65,7 +68,6 @@ from ml.xi.train import (  # noqa: E402
     _xy,
     make_display_model,
     make_objective_model,
-    marginalised_probabilities,
 )
 
 logger = logging.getLogger("x3_match_stakes")
@@ -257,63 +259,6 @@ def e5_by_arm(
 # --- Use 2: the stakes feature in the display model -------------------------------------
 
 
-def _display_swap_probe(
-    model, columns: List[str], window: pd.DataFrame, window_players: pd.DataFrame, format_code: str
-) -> Optional[Dict[str, Any]]:
-    """H-4's probe against the *display* model: one player's five ratings raised by a
-    population standard deviation each, with the match's non-XI columns held exactly as
-    the fixture had them, and the share of upgrades that lower the marginalised P(win).
-
-    ``selection_metrics.swap_monotonicity`` cannot be reused: it builds its rows from side
-    aggregates alone, which is all the objective reads, and the display model also reads
-    team context -- and, on the treatment arm, the stakes columns whose effect on the
-    surface is the thing being checked.
-    """
-    if window.empty or window_players.empty:
-        return None
-    steps = {
-        name: float(window_players[name].std()) for name in ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate", "pelo")
-    }
-    rows: List[Dict[str, Any]] = []
-    counts: List[int] = []
-    by_match = {match_id: group for match_id, group in window_players.groupby("match_id", sort=False)}
-    for row in window.head(SWAP_MAX_MATCHES).itertuples():
-        players = by_match.get(row.match_id)
-        if players is None:
-            continue
-        side1, side2 = players[players.side == 1], players[players.side == 2]
-        if side1.empty or side2.empty:
-            continue
-        vectors = {name: side1[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}
-        opponent = aggregate_side(
-            {name: side2[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}, format_code
-        )
-        base = {column: getattr(row, column) for column in window.columns}
-        variants = [vectors]
-        for j in range(len(side1)):
-            upgraded = {name: values.copy() for name, values in vectors.items()}
-            for name, step in steps.items():
-                upgraded[name][j] += step
-            variants.append(upgraded)
-        for variant in variants:
-            candidate = dict(base)
-            candidate.update(match_features(aggregate_side(variant, format_code), opponent))
-            rows.append(candidate)
-        counts.append(len(variants))
-    if not rows:
-        return None
-    probabilities = marginalised_probabilities(model, pd.DataFrame(rows), columns)
-    upgrades = violations = 0
-    offset = 0
-    for count in counts:
-        base_probability = probabilities[offset]
-        upgraded = probabilities[offset + 1 : offset + count]
-        upgrades += len(upgraded)
-        violations += int((upgraded < base_probability - _VIOLATION_EPS).sum())
-        offset += count
-    return {"upgrades": upgrades, "violations": violations, "violation_share": violations / upgrades}
-
-
 def display_arm(format_frame: pd.DataFrame, player_frame: pd.DataFrame, format_code: str, columns: List[str]) -> Dict:
     """Walk-forward display AUC, Brier and the swap-violation share for one column set."""
     folds: List[Dict[str, Any]] = []
@@ -337,7 +282,9 @@ def display_arm(format_frame: pd.DataFrame, player_frame: pd.DataFrame, format_c
         entry["display_auc_seed_sd"] = float(np.std([s["auc"] for s in scores]))
         entry["display_brier_mean"] = float(np.mean([s["brier"] for s in scores]))
         window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
-        entry["swap_monotonicity"] = _display_swap_probe(models[0], columns, evaluation, window_players, format_code)
+        entry["swap_monotonicity"] = display_swap_monotonicity(
+            models[0], columns, evaluation, window_players, format_code, max_matches=SWAP_MAX_MATCHES
+        )
         folds.append(entry)
     return {"columns": columns, "folds": folds}
 

@@ -30,6 +30,7 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
           display_brier_mean: 0.22,
           base_rate_brier: 0.25,
           swap_monotonicity: { upgrades: 250, violations: 1, violation_share: 0.004 },
+          display_swap_monotonicity: { upgrades: 250, violations: 12, violation_share: 0.048 },
           specific_vs_typical: {
             n: 210,
             auc_specific_xi: 0.74,
@@ -43,6 +44,7 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
         display_auc: { mean: 0.747, sd: 0.012, n_folds: 7 },
         base_rate_brier: { mean: 0.25, sd: 0.002, n_folds: 7 },
         swap_violation_share: { mean: 0.003, sd: 0.001, n_folds: 7 },
+        display_swap_violation_share: { mean: 0.048, sd: 0.006, n_folds: 7 },
         specific_vs_typical_delta: { mean: 0.045, sd: 0.021, n_folds: 7 },
         performance: {
           targets: {
@@ -239,7 +241,7 @@ describe('EvaluationReportTab', () => {
       expect(screen.getByText(/Specific XI beyond typical XI/)).toBeInTheDocument(),
     );
     expect(screen.getAllByText('0.045 ± 0.021').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Swap monotonicity/)).toBeInTheDocument();
+    expect(screen.getByText('Swap monotonicity')).toBeInTheDocument();
     expect(screen.getByText(/Natural experiment \(E5\), lineup-only/)).toBeInTheDocument();
     expect(screen.getByText('0.509 ± 0.014 (n=1,204)')).toBeInTheDocument();
     // The caption is the harness's own definition and the run's numbers -- the frontend
@@ -248,6 +250,19 @@ describe('EvaluationReportTab', () => {
       screen.getByText(/both elevens scored in the later fixture at its as-of\. Bar 0.501/),
     ).toBeInTheDocument();
     expect(screen.getByText(/would score 0.523\) — passes/)).toBeInTheDocument();
+  });
+
+  it('states the display surface’s swap share beside the objective’s, as a measurement', async () => {
+    // B-7: the display model is the number a person watches move in the Team Lab, and it
+    // violates at 3-7%. The tile says so, and says H-4's 2% line is not its contract.
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Swap monotonicity, display surface')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('4.8%')).toBeInTheDocument();
+    expect(screen.getByText(/H-4’s 2% line is the objective’s contract/)).toBeInTheDocument();
   });
 
   it('states the selection decision per format with the locked window labelled beside it', async () => {

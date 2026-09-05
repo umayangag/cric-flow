@@ -73,6 +73,7 @@ const formatReport: EvaluationReport['formats'][string] = {
       display_auc: foldStat(0.724),
       base_rate_brier: foldStat(0.249),
       swap_violation_share: foldStat(0.003),
+      display_swap_violation_share: foldStat(0.048),
       specific_vs_typical_delta: foldStat(0.012),
       performance: {
         targets: {

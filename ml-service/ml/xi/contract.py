@@ -287,6 +287,24 @@ TEAM_CONTEXT_COLS: List[str] = [
     "venue_fam_diff",
 ]
 
+# Sign of each team-context column's effect on P(team1 wins), for the three whose direction
+# is knowable rather than merely plausible: a stronger, better-formed side more familiar
+# with the ground does not win less often, and all three are negated by
+# ``train.swap_orientation``, so the constraint means the same thing in both batting orders.
+# The other four are deliberately absent: ``team_h2h_n``, ``venue_n`` and ``venue_bf_rate``
+# are sample sizes and a venue property with no side attached, and ``team_h2h`` is a rate
+# whose small-sample values say more about how often the pair has met than who is better.
+#
+# Gate B-7 decides whether the display model reads them as constraints; the objective never
+# sees these columns at all.
+_CONTEXT_DIRECTION: Dict[str, int] = {
+    "team_elo_diff": 1,
+    "team_form_diff": 1,
+    "venue_fam_diff": 1,
+}
+#: Gate B-7: whether the display model's team-context columns are monotone-constrained.
+DISPLAY_CONTEXT_MONOTONE_KEPT = False
+
 # Match stakes (X-3): what the fixture was worth, derived from Cricsheet's event fields
 # (``ml.xi.stakes``). ``stakes_knockout`` is 1.0 for a knockout or a final and
 # ``stakes_stage_known`` says whether the archive placed the match in its competition at
@@ -424,8 +442,13 @@ def performance_feature_cols(
     return cols
 
 
-def monotone_directions(columns: List[str]) -> List[int]:
-    """Monotone constraint per column for P(team1 wins): +1 / -1 / 0."""
+def monotone_directions(columns: List[str], constrain_team_context: bool = DISPLAY_CONTEXT_MONOTONE_KEPT) -> List[int]:
+    """Monotone constraint per column for P(team1 wins): +1 / -1 / 0.
+
+    ``constrain_team_context`` is gate B-7's arm switch: with it off, every column outside
+    the XI stems reads 0 and nothing constrains the display model's view of team strength,
+    form and venue familiarity. It defaults to what the gate decided.
+    """
     out = []
     for col in columns:
         if col.startswith("d_"):
@@ -434,6 +457,8 @@ def monotone_directions(columns: List[str]) -> List[int]:
             out.append(_STEM_DIRECTION.get(col[3:], 0))
         elif col.startswith("t2_"):
             out.append(-_STEM_DIRECTION.get(col[3:], 0))
+        elif constrain_team_context:
+            out.append(_CONTEXT_DIRECTION.get(col, 0))
         else:
             out.append(0)
     return out
