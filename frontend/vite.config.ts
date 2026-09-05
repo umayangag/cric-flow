@@ -66,11 +66,20 @@ export default defineConfig({
       // moved to `setupFiles` above.
       //
       // Set to the measured figures rounded down; raise them, never lower them.
+      //
+      // Re-baselined once, at the vitest 2 -> 5 bump. Vitest 5 makes AST-aware
+      // remapping mandatory (the opt-out flag is gone), which redefines these
+      // metrics rather than measuring the suite differently well: the same 337
+      // tests over the same sources scored 82.82/80.98/77.93/82.82 under vitest 2
+      // and 76.61/69.36/76.03/78.75 under vitest 5. The tell is statements and
+      // lines, which were one number under the old provider and are now two.
+      // A change of ruler, not of test quality -- so the figures below are the
+      // new measurement rounded down, and the ratchet resumes from them.
       thresholds: {
-        lines: 82,
-        functions: 77,
-        statements: 82,
-        branches: 80,
+        lines: 78,
+        functions: 76,
+        statements: 76,
+        branches: 69,
       },
     },
   },
