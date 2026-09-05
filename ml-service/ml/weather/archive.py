@@ -44,6 +44,7 @@ ARCHIVE_LAG_DAYS = 7
 #: Pacing: the published limit is 600 calls a minute; a tenth of that is plenty.
 PAUSE_SECONDS = 0.3
 RETRY_PAUSES = (5.0, 30.0, 120.0)
+RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
 
 
 class DailyLimitReached(RuntimeError):
@@ -68,8 +69,8 @@ class DayWeather:
             "tz": self.timezone,
             "t": _rounded(self.temperature_c, 1),
             "rh": _rounded(self.relative_humidity, 0),
-            "p": _rounded(self.precipitation_mm, 2),
-            "p7": _rounded(self.prior_precipitation_mm, 2),
+            "p": _rounded(self.precipitation_mm, 1),
+            "p7": _rounded(self.prior_precipitation_mm, 1),
             "fetched_at": self.fetched_at,
         }
 
@@ -191,33 +192,38 @@ class OpenMeteoArchive:
             "daily": ",".join(DAILY_VARIABLES),
             "timezone": "auto",
         }
+        reason = ""
         for attempt, retry_pause in enumerate((*RETRY_PAUSES, None)):
             self.calls += 1
-            response = self._http.get(ARCHIVE_URL, params=params)
-            time.sleep(self._pause)
-            if response.status_code == 200:
-                payload = response.json()
-                return ArchiveResponse(
-                    timezone=payload.get("timezone", ""),
-                    hourly_time=list(payload.get("hourly", {}).get("time", [])),
-                    hourly={k: list(v) for k, v in payload.get("hourly", {}).items() if k != "time"},
-                    daily_time=list(payload.get("daily", {}).get("time", [])),
-                    daily={k: list(v) for k, v in payload.get("daily", {}).items() if k != "time"},
-                )
-            reason = _error_reason(response)
-            if response.status_code == 429 and "daily" in reason.casefold():
-                raise DailyLimitReached(reason)
-            if retry_pause is None or response.status_code not in (429, 500, 502, 503, 504):
-                response.raise_for_status()
-            logger.warning(
-                "archive call failed (%s: %s); retry %d in %.0f s",
-                response.status_code,
-                reason,
-                attempt + 1,
-                retry_pause,
-            )
+            try:
+                response = self._http.get(ARCHIVE_URL, params=params)
+                time.sleep(self._pause)
+                if response.status_code == 200:
+                    return _parse(response.json())
+                reason = _error_reason(response)
+                if response.status_code == 429 and "daily" in reason.casefold():
+                    raise DailyLimitReached(reason)
+                if response.status_code not in RETRYABLE_STATUSES:
+                    response.raise_for_status()
+            except (httpx.TransportError, ValueError) as exc:
+                # A dropped connection, or a 200 whose body is not JSON (the service does
+                # that under load): transient, like a 503, and retried the same way.
+                reason = f"{type(exc).__name__}: {exc}"
+            if retry_pause is None:
+                raise RuntimeError(f"archive call failed after {attempt + 1} attempts: {reason}")
+            logger.warning("archive call failed (%s); retry %d in %.0f s", reason, attempt + 1, retry_pause)
             time.sleep(retry_pause)
         raise RuntimeError("unreachable")
+
+
+def _parse(payload: dict) -> ArchiveResponse:
+    return ArchiveResponse(
+        timezone=payload.get("timezone", ""),
+        hourly_time=list(payload.get("hourly", {}).get("time", [])),
+        hourly={k: list(v) for k, v in payload.get("hourly", {}).items() if k != "time"},
+        daily_time=list(payload.get("daily", {}).get("time", [])),
+        daily={k: list(v) for k, v in payload.get("daily", {}).items() if k != "time"},
+    )
 
 
 def _error_reason(response: httpx.Response) -> str:
@@ -303,7 +309,7 @@ def backfill(
             continue
         counts["venues"] += 1
         for cluster in clusters(wanted):
-            fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            fetched_at = datetime.now(timezone.utc).date().isoformat()
             response = client.fetch(
                 location.latitude, location.longitude, cluster[0] - timedelta(days=PRIOR_DAYS), cluster[-1]
             )
