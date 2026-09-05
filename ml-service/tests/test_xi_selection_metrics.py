@@ -13,14 +13,18 @@ from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 
 
 class _LinearModel:
-    """predict_proba as a logistic of a fixed linear score over XI_FEATURE_COLS."""
+    """predict_proba as a logistic of a fixed linear score over ``columns``."""
 
-    def __init__(self, weights_by_column):
-        self.weights = np.asarray([weights_by_column.get(col, 0.0) for col in C.XI_FEATURE_COLS])
+    def __init__(self, weights_by_column, columns=None):
+        self.weights = np.asarray([weights_by_column.get(col, 0.0) for col in (columns or C.XI_FEATURE_COLS)])
 
     def predict_proba(self, x):
         z = 1.0 / (1.0 + np.exp(-np.asarray(x) @ self.weights))
         return np.column_stack([1.0 - z, z])
+
+
+def _display_model(weights_by_column) -> _LinearModel:
+    return _LinearModel(weights_by_column, C.DISPLAY_FEATURE_COLS)
 
 
 @pytest.fixture(scope="module")
@@ -51,6 +55,77 @@ def test_swap_monotonicity_is_none_without_rows() -> None:
     empty = pd.DataFrame(columns=C.PLAYER_MATCH_COLS)
 
     assert sm.swap_monotonicity(_LinearModel({}), C.XI_FEATURE_COLS, empty, "T20") is None
+
+
+def test_display_swap_monotonicity_is_clean_for_a_monotone_display_surface(synthetic_build) -> None:
+    """B-7: a display surface that likes a better batting eleven never contradicts itself."""
+    model = _display_model({"d_imp_bat_sum": 0.5, "team_elo_diff": 0.01})
+
+    report = sm.display_swap_monotonicity(
+        model, C.DISPLAY_FEATURE_COLS, synthetic_build.frame, synthetic_build.player_frame, "T20", max_matches=10
+    )
+
+    assert report["upgrades"] > 0
+    assert report["violations"] == 0
+    assert report["violation_share"] == 0.0
+
+
+def test_display_swap_monotonicity_catches_a_surface_that_falls_on_an_upgrade(synthetic_build) -> None:
+    """The number a person watches moving the wrong way is exactly what this counts.
+
+    The player Elo weight is what makes every upgrade move the surface: a player with no
+    expected balls faced changes no batting impact at all, and an unmoved probability is
+    not a violation.
+    """
+    model = _display_model({"d_imp_bat_sum": -0.5, "d_pelo_mean": -0.01})
+
+    report = sm.display_swap_monotonicity(
+        model, C.DISPLAY_FEATURE_COLS, synthetic_build.frame, synthetic_build.player_frame, "T20", max_matches=10
+    )
+
+    assert report["violation_share"] == 1.0
+
+
+def test_display_swap_monotonicity_holds_the_team_context_fixed(synthetic_build) -> None:
+    """A selector cannot change team Elo, so the probe must not either.
+
+    A surface reading nothing but team context therefore cannot move under an upgrade,
+    whatever sign its weight has -- which is why constraining those columns is not what
+    moves this number (B-7).
+    """
+    model = _display_model({"team_elo_diff": -5.0, "team_form_diff": -5.0, "venue_fam_diff": -5.0})
+
+    report = sm.display_swap_monotonicity(
+        model, C.DISPLAY_FEATURE_COLS, synthetic_build.frame, synthetic_build.player_frame, "T20", max_matches=10
+    )
+
+    assert report["upgrades"] > 0
+    assert report["violations"] == 0
+
+
+def test_display_swap_monotonicity_is_none_without_matches(synthetic_build) -> None:
+    empty = synthetic_build.frame.head(0)
+
+    report = sm.display_swap_monotonicity(
+        _display_model({}), C.DISPLAY_FEATURE_COLS, empty, synthetic_build.player_frame, "T20"
+    )
+
+    assert report is None
+
+
+def test_display_swap_monotonicity_skips_a_match_with_no_player_rows(synthetic_build) -> None:
+    """A window's win rows and its player rows are separate frames, and a match present in
+    one but not the other is skipped rather than scored against a half-built eleven."""
+    frame = synthetic_build.frame
+    kept = set(frame.match_id.tolist()[1:])
+    players = synthetic_build.player_frame
+    model = _display_model({"d_imp_bat_sum": 0.5})
+
+    report = sm.display_swap_monotonicity(
+        model, C.DISPLAY_FEATURE_COLS, frame, players[players.match_id.isin(kept)], "T20", max_matches=10
+    )
+
+    assert report["upgrades"] > 0
 
 
 def test_specific_vs_typical_reports_the_delta(synthetic_build) -> None:

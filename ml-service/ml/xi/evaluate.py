@@ -9,7 +9,10 @@ format it reports, with mean and spread over cutoffs (and seeds, where a model h
 
 * win-model objective and display AUC / Brier against the base rate;
 * the specific-XI-beyond-typical-XI delta and swap monotonicity (the selection gates
-  that replace P-0's winner accuracy);
+  that replace P-0's winner accuracy), and the same swap probe run against the *display*
+  surface -- reported, never a gate: H-4's 2 % line is a contract on the objective the
+  optimiser reads, while the display model also reads team context nothing constrains
+  (B-7);
 * the best-single-column leak canary with the TEST-format control (H-2);
 * the performance model (L2-B) on the player-match rows, per target and format: within-match
   Spearman, top-3 hit, the median's MAE, pinball loss, and 10-90 interval coverage beside
@@ -247,8 +250,14 @@ def _evaluate_fold(
         )
     format_players = player_frame[player_frame.format_code == format_code]
     window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
+    window_matches = format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)]
     fold["swap_monotonicity"] = selection_metrics.swap_monotonicity(
         objective, C.XI_FEATURE_COLS, window_players, format_code, max_matches=SWAP_MAX_MATCHES
+    )
+    # B-7: the same probe on the surface a person watches. It gates nothing -- the seed-0
+    # display model is the one served, so it is the one probed.
+    fold["display_swap_monotonicity"] = selection_metrics.display_swap_monotonicity(
+        displays[0], C.DISPLAY_FEATURE_COLS, window_matches, window_players, format_code, max_matches=SWAP_MAX_MATCHES
     )
     fold["specific_vs_typical"] = selection_metrics.specific_vs_typical(
         objective, C.XI_FEATURE_COLS, format_frame, cutoff, end
@@ -256,7 +265,6 @@ def _evaluate_fold(
     performance = perf_harness.evaluate_fold(player_frame, format_code, cutoff, end, recalibrate, format_frame)
     fold["performance"] = performance.report
     if performance.model is not None:
-        window_matches = format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)]
         fold["simulation"] = sim_harness.evaluate_window(
             performance.model, displays, window_matches, window_players, format_code, fold["train_positive_rate"]
         )
@@ -284,6 +292,7 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "display_auc_seed_sd_mean": over_folds(lambda f: f["display_auc_seed_sd"]),
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
+        "display_swap_violation_share": over_folds(lambda f: nested(f, "display_swap_monotonicity", "violation_share")),
         "specific_vs_typical_delta": over_folds(lambda f: nested(f, "specific_vs_typical", "delta")),
         "performance": perf_harness.summarize_folds(
             [f["performance"] for f in scored if "targets" in f.get("performance", {})]

@@ -286,6 +286,7 @@ export type EvaluationFold = {
   display_brier_mean?: number;
   base_rate_brier?: number;
   swap_monotonicity?: { upgrades: number; violations: number; violation_share: number };
+  display_swap_monotonicity?: { upgrades: number; violations: number; violation_share: number };
   specific_vs_typical?: {
     n: number;
     auc_specific_xi: number;
@@ -468,6 +469,8 @@ export type EvaluationFormatReport = {
       display_auc?: FoldStat | null;
       base_rate_brier?: FoldStat | null;
       swap_violation_share?: FoldStat | null;
+      /** B-7: the same probe on the display surface. Reported, never a gate. */
+      display_swap_violation_share?: FoldStat | null;
       specific_vs_typical_delta?: FoldStat | null;
       performance?: EvaluationPerformance | null;
       simulation?: EvaluationSimulation | null;

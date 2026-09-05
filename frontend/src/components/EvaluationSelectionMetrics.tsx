@@ -66,13 +66,18 @@ function formatAgreement(
 }
 
 /**
- * The three selection gates.
+ * The three selection gates, and the display surface's swap share beside them.
  *
  * P-0's winner accuracy is not here on purpose: both arms of that comparison drew their
  * probabilities from the same win model, so an arm that optimises *both* sides moves the
  * counterfactual fixture toward parity and must lose winner accuracy whether or not its
  * XIs are better. It was replaced by these — measured on the folds, never on the locked
  * window. E5 varies one side only: the eleven, with the opponent and the as-of fixed.
+ *
+ * The fourth tile is a measurement, not a gate (B-7): the display model is the surface a
+ * person watches move in the Team Lab, and until it was measured nobody could say whether
+ * it agreed with itself about what a better player is. It sits beside H-4's tile because
+ * the probe is the same one, and carries no gate triple because nothing decides on it.
  */
 const EvaluationSelectionMetrics: React.FC<{
   report: EvaluationFormatReport;
@@ -115,6 +120,13 @@ const EvaluationSelectionMetrics: React.FC<{
           measured={summary.swap_violation_share}
           caption="One player upgraded at a time, the other ten and the opponent held fixed (H-4)."
           gate={gates?.['H-4']}
+        />
+        <Metric
+          label="Swap monotonicity, display surface"
+          metricKey="display_swap_violation_share"
+          value={formatShare(summary.display_swap_violation_share)}
+          measured={summary.display_swap_violation_share}
+          caption="The same upgrade scored on the model a person watches. H-4’s 2% line is the objective’s contract, not this surface’s; this is measured and stated, and decides nothing (B-7)."
         />
         <Metric
           label="Natural experiment (E5), lineup-only"

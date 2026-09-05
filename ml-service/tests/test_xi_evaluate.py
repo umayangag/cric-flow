@@ -170,6 +170,16 @@ def test_harness_reports_selection_metrics_per_fold(harness_report) -> None:
     assert fold["specific_vs_typical"]["n"] >= 20
 
 
+def test_harness_reports_the_display_surfaces_swap_share_beside_the_objectives(harness_report) -> None:
+    """B-7: the display model is probed too, per fold and as a walk-forward mean."""
+    walk_forward = harness_report["formats"]["T20"]["walk_forward"]
+    fold = next(f for f in walk_forward["folds"] if "objective_auc" in f)
+
+    assert fold["display_swap_monotonicity"]["upgrades"] > 0
+    assert 0.0 <= fold["display_swap_monotonicity"]["violation_share"] <= 1.0
+    assert walk_forward["summary"]["display_swap_violation_share"]["n_folds"] >= 1
+
+
 def test_harness_reports_the_performance_model_beside_its_baselines(harness_report) -> None:
     t20 = harness_report["formats"]["T20"]
     scored = [f for f in t20["walk_forward"]["folds"] if "objective_auc" in f]
