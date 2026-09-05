@@ -43,11 +43,12 @@ func TestUpsertMatchSQL_EveryInsertedColumnIsRefreshedOnConflict(t *testing.T) {
 // insertedColumns reads the column list out of an INSERT ... VALUES statement.
 func insertedColumns(t *testing.T, statement string) []string {
 	t.Helper()
-	open := strings.Index(statement, "(")
-	close := strings.Index(statement, ")")
-	require.Greater(t, close, open, "statement has no column list")
-	var columns []string
-	for _, name := range strings.Split(statement[open+1:close], ",") {
+	start := strings.Index(statement, "(")
+	end := strings.Index(statement, ")")
+	require.Greater(t, end, start, "statement has no column list")
+	names := strings.Split(statement[start+1:end], ",")
+	columns := make([]string, 0, len(names))
+	for _, name := range names {
 		trimmed := strings.TrimSpace(name)
 		require.NotEmpty(t, trimmed)
 		columns = append(columns, trimmed)
