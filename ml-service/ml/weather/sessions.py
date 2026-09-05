@@ -166,8 +166,10 @@ def _infer_t20(fixture, country, women, rank_on_day, matches_on_day, rank_at_ven
     needle, norm = _league_norm(fixture.competition)
     if norm is not None:
         if matches_on_day >= 2:
-            hour = norm.double[min(rank_on_day, 1)]
-            return SessionWindow(hour, hour >= T20_NIGHT_FROM_HOUR, f"t20_league:{needle}:double_{rank_on_day}")
+            first = rank_on_day == 0
+            hour = norm.double[0 if first else 1]
+            slot = "first_of_day" if first else "later_in_day"
+            return SessionWindow(hour, hour >= T20_NIGHT_FROM_HOUR, f"t20_league:{needle}:{slot}")
         return SessionWindow(norm.single, norm.single >= T20_NIGHT_FROM_HOUR, f"t20_league:{needle}:single")
     if _is_icc_t20_event(fixture.competition):
         slots = ICC_T20_WOMEN_SLOTS if women else ICC_T20_MEN_SLOTS

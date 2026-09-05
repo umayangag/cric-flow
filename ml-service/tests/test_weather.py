@@ -239,13 +239,13 @@ def _fixture(**kw) -> venues.Fixture:
             dict(competition="Indian Premier League"),
             "IN",
             (0, 2, 0),
-            (15, False, "t20_league:indian premier league:double_0"),
+            (15, False, "t20_league:indian premier league:first_of_day"),
         ),
         (
             dict(competition="Indian Premier League"),
             "IN",
             (1, 2, 0),
-            (19, True, "t20_league:indian premier league:double_1"),
+            (19, True, "t20_league:indian premier league:later_in_day"),
         ),
         (dict(competition="ICC Men's T20 World Cup", international=True), "US", (0, 1, 0), (19, True, "t20i_icc:men")),
         (
@@ -286,8 +286,8 @@ def test_assign_ranks_double_headers_by_match_number_and_censuses_the_rules() ->
     windows = sessions.assign([late, early], {"v": "IN", "elsewhere": "IN"})
     assert windows["early"].start_hour == 15 and windows["late"].start_hour == 19
     assert sessions.census(windows) == {
-        "t20_league:indian premier league:double_0": 1,
-        "t20_league:indian premier league:double_1": 1,
+        "t20_league:indian premier league:first_of_day": 1,
+        "t20_league:indian premier league:later_in_day": 1,
     }
 
 
