@@ -403,7 +403,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-4 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero. Paid and account-gated sources rejected. It does not price the rest |
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | **done — three recorded nulls, nothing shipped** — the **matchup** family is *not runnable for want of labels* (Wikidata: a batting hand for 18 and a bowling style for 265 of 13,662 players; the labelled confirmation of A-3's null; E5 not re-run, X-3 owns it); the **age** family moves the performance model's runs and wickets pinball by ~0.02 % on the deciding slices (T20 men +0.02 / +0.02 %, ODI +0.02 / −0.01 %), inside E1's band, women's T20 out of scope at 61.4 % and reported; the **age-aware cold start** keeps H-10 bounded and moves no player with history, and worsens the debut rows' pinball in every format (T20 −0.30 / −0.53 %, ODI −0.69 / −1.11 %). The date of birth now reaches every player row (`AGE_COLS`, missing = its own indicator) and both models read it only through flags that stay off; `make evaluate` after the choice reproduces A-4's baseline with H-8 parity 0.0 on both sources |
-| X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources |
+| X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources; `make evaluate` on Postgres afterwards has **H-8 parity 0.0** with `STAKES_COLS` compared, and reproduces X-1b's walk-forward table to four decimals in every format |
 | X-2 | open — run last; the licence check in § X-2 precedes any acquisition, and a paid finding closes the item |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
@@ -978,7 +978,11 @@ here rather than acted on.
 #### Use 2 — a stakes feature in the display model: a null
 
 Gate `X-3-stakes`, on the same eleven folds and three display seeds, with the two stakes
-columns added to `XI_FEATURE_COLS + TEAM_CONTEXT_COLS` and everything else held.
+columns added to `XI_FEATURE_COLS + TEAM_CONTEXT_COLS` and everything else held. Both arms
+read the archive frame `sim_frame_cache.py` builds, as A-1, A-2, A-3 and X-1b's did, so the
+absolute AUC below sits within 0.004 of the harness's Postgres figure (the two sources key a
+ground by name and by id, which is a difference the parity counts do not see); the paired
+arm-minus-control delta, which is what the gate reads, is unaffected.
 
 | format | display AUC (control) | with stakes | Δ ± se (paired over folds) | control seed sd | Brier Δ | swap-violation share (control → arm) |
 |---|---:|---:|---|---:|---|---:|
@@ -1011,6 +1015,21 @@ monotonicity, and one player upgrade in twenty moves the number a Team Lab user 
 wrong way. Nothing selects on that model, so nothing shipped is wrong — but it is neither
 measured in the harness nor stated anywhere, and it should be one or the other.
 
+#### Verification
+
+`make xi-parity` on both sources: no differences, with the four stakes counts equal —
+**22,014 / 1,411 / 16,493 / 2,212**. `make evaluate` against Postgres after the choice:
+**H-8 serving parity max abs difference 0.0** over 50 matches, 1,100 player rows, 1,100
+performance predictions and 50 simulations, with `STAKES_COLS` in the compared win-row
+columns; the gate registry and the glossary report no problems; and every walk-forward
+headline reproduces X-1b's run **to four decimals in every format** — objective AUC 0.6973 /
+0.7561 / 0.6725 / 0.6259, display AUC 0.7299 / 0.7533 / 0.7067 / 0.6456, swap-violation
+share, specific-vs-typical delta and E5 all identical, because nothing reads the new columns.
+The harness's own E5 lands on this item's control in every format (T20 0.503 / 2,169 pairs,
+T20I 0.564 / 220, ODI 0.566 / 692, TEST 0.549 / 213), which is the other half of the wiring
+check above. `cricket_data`'s row counts are identical before and after the re-import
+(22,818 matches, 11,539,808 deliveries, 13,662 biographies).
+
 #### What shipped, and what did not
 
 Shipped: migration `0011`, the two importer fields, `ml/xi/stakes.py` and its unit tests, the
@@ -1018,7 +1037,7 @@ stakes columns on the win row from both sources, four parity counts, two H-23 ga
 and `scripts/experiments/xi/x3_match_stakes.py` (coverage, both gates, `--decide`). Not
 shipped: any change to a model, a feature, a threshold or a format's scoping.
 `STAKES_FEATURES_KEPT` is `False`, `DISPLAY_FEATURE_COLS` is byte-for-byte what it was, and
-`make evaluate` reproduces the run before it.
+`make evaluate` reproduces the run before it to four decimals.
 
 ### D-12 — the measurement, and what shipped
 
