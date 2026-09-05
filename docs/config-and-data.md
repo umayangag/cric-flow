@@ -571,4 +571,12 @@ make restore-venue-weather         # coordinates and venue_weather, offline
 file has no line for, is counted as `unanswered` in the report the command prints, which
 is the signal to run `make venue-weather` once, online, for the days a newer archive added.
 
-«WEATHER_RESTORE_VERIFIED»
+Verified on 2026-09-05 against a scratch database (`cricket_flow_test`, seeded with the
+live database's 896 venue names and nothing else): `make restore-venue-weather` with
+`POSTGRES_DB=cricket_flow_test` placed all 896 venue rows and wrote 19,909 `venue_weather`
+rows across 895 venue ids — the 19,561 snapshot keys, four spelling pairs of one ground
+each landing on both rows — every one with 24 hourly values and 7 prior-day totals, asking
+Open-Meteo nothing; a row read back (Wankhede Stadium, 2011-04-02) matches its snapshot
+line value for value. The live database was read for the venue names and not written.
+Note the default `WEATHER_CRICSHEET_DIR` is `data/go-app/cricsheet` relative to the
+repository; name it when the archive lives elsewhere.
