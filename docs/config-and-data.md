@@ -266,6 +266,71 @@ registry. The committed figures are in
 They reported themselves *unavailable* because nothing supplied either. They now read
 `player_biography`, and answer per player rather than per deployment.
 
+## Pre-match weather (X-2)
+
+The archive says where a match was played and on what day, never what the air was like.
+X-2 acquires that from Open-Meteo's ERA5 archive — free for non-commercial use, CC BY 4.0,
+no key (§ Data-source licence register) — measured four families of pre-match weather
+against the gates, and **shipped none**: every family is a recorded null, with the tables in
+[EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-2. Nothing in `ml/xi/` reads the
+weather. What stays is the data, because a venue's whereabouts and a match day's weather
+are product facts in their own right and re-acquiring them is the one cost worth never
+paying twice.
+
+**Three things are held, all under `ml-service/ml/weather/`.**
+
+- **Where each venue is** — `reference-data/venue-geocoding.csv`, one row per venue key
+  (the name folded the identity way: case, accents and punctuation, so two spellings of one
+  ground share a row). The geocoder was asked about the city Cricsheet names beside the
+  venue (`info.city`, which the importer never stored) or, failing that, the venue name's
+  own parts, and the sides that played there voted for the country — which is what makes
+  Hamilton New Zealand's and not Ontario's. 140 rows the geocoder placed wrongly or not at
+  all were then placed by hand, each with a `note` saying so; one ground stays
+  `unmappable` on purpose rather than guessed at. Rows already in the file are never
+  rewritten by a run, so a correction survives. ERA5 is a 0.25° reanalysis, so a ground's
+  city places it as well as its gates would.
+- **One reduced day per (venue, match day)** — `reference-data/era5-venue-days.jsonl`: the
+  day's 24 local hours of temperature, relative humidity and precipitation, and the
+  precipitation totals of the seven days before, a few hundred bytes per day rather than
+  the hourly archive of every venue's every year. Multi-day matches are keyed by their
+  first day. A day the archive holds no readings for is written as a **miss with its
+  reason**, so a restore does not ask again. The file is append-only and flushed after
+  every call, so an interrupted run loses at most the cluster in flight.
+- **When the match started** — `ml/weather/sessions.py`. Cricsheet carries no start
+  times, so a session window is *inferred* from competition and format norms: the league's
+  usual hour (the earlier of a double-header from its match number), the country's usual
+  hour for internationals, the weekday or weekend hour for a domestic T20, the morning for
+  first-class and women's and associate cricket. Every match records the rule that placed
+  it (`SessionWindow.rule`), the census is in the coverage report, and the error is
+  inspectable rather than hidden in a feature.
+
+**Every feature is fixed before the first ball (H-21).** The families read the mean of the
+three hours *before* the inferred start (humidity, temperature), the night flag times that
+humidity (dew), and the rain that had already fallen (the day before plus the match day's
+hours before the start; the seven days before). Nothing reads the match's own hours. A
+match without readings in its window is its own category (`wx_known` 0), never an
+imputed climate.
+
+**One command, resumable.**
+
+```bash
+make venue-weather                       # geocode new venues, fetch the days the file lacks, print coverage
+make venue-weather WEATHER_ARGS=--to-db  # the same, and write the database
+```
+
+It is beside the cadence, not in it: the past does not change, and the archive trails the
+present by several days, so a match day younger than a week is left unasked rather than
+recorded as a miss. Calls are paced well under the published limits; the daily quota, if
+it is ever hit, ends the run with the file intact and the same command resumes it.
+
+**The database.** `make venue-weather WEATHER_ARGS=--to-db` (or the restore below) writes
+the coordinates onto the `venue` columns that had waited empty since the baseline schema
+(`latitude`, `longitude`, `timezone`, `city`, `country`, `source`, `verified_at`) and the
+days into `venue_weather` (migration `0012`), keyed by `venue.id` through the venue name
+the importer stored — the same string the archive spells.
+
+---
+
 ---
 
 ## Acquiring a dataset
@@ -443,17 +508,7 @@ is next touched — terms change, and the date on this section is the date of th
 | **Cricsheet people register** — `https://cricsheet.org/register/people.csv` | the ESPNcricinfo id per player, the join key for X-1a | **ODC-By 1.0** (Open Data Commons Attribution). The register page states: *"This dataset is made available under the Open Data Commons Attribution License: http://opendatacommons.org/licenses/by/1.0/."* and *"You must attribute any public use of the dataset, or works produced from the dataset, in the manner specified in the license."* | Permitted, with the licence made clear and notices kept intact: *"For any use or redistribution of the dataset, or works produced from it, you must make clear to others the license of the dataset and keep intact any notices on the original dataset."* | Attribution is owed on any public use, including works produced from it. The comment in `go-app/internal/biography/biography.go` used to describe the register as **ODbL**, which carries a share-alike term ODC-By does not; that was B-6 in [BUG_BACKLOG.md](BUG_BACKLOG.md) and the comment now states ODC-By 1.0 and points back at this table. A pinned copy is **committed** as `reference-data/cricsheet-people-register.csv` with the licence and attribution stated in `reference-data/README.md`, because the Wikidata snapshot keys to nothing without it |
 | **Wikidata** — the SPARQL query service; properties `P2697`, `P569`, `P570`, `P2032`, `P741`, `P552`, `P2545` | player biographies (X-1a) | **CC0 1.0.** Wikidata:Licensing states: *"All structured data in the main, property and lexeme namespaces is made available under the Creative Commons CC0 License"* | Permitted, without conditions | Nothing is owed; the licence is recorded per row as `player_biography.source_license` (`CC0-1.0`). The query service asks for an identifying `User-Agent`, which the backfill sends. Because redistribution is permitted and re-acquisition is a rate-limited pass over every player, the acquired answers — hits and misses — are **committed** as `reference-data/wikidata-player-lookups.jsonl`; see § Recovering the external data |
 | **Betfair Exchange season summaries** — BBL / WBBL Match Odds CSVs at `betfair-datascientists.github.io/data/dataListing/` | closing odds, read by `make evaluate` only as a yardstick (X-4); never a feature | **No licence granted.** The page carries a warranty disclaimer and nothing else: *"By downloading this data, you acknowledge and agree that: (a) Betfair does not make any representations, or give any warranties, as to the accuracy or completeness of the data provided; and (b) you use the data at your own risk, and Betfair will not be liable for any loss suffered in using the data."* | **Not permitted** — no right is granted, so none is assumed. The files are cached under `data/market-odds/` (git-ignored) per machine and never committed | Usable as a local measurement, which is all X-4 does with them; the numbers derived from them (AUC, Brier, coverage) are published in the harness report, the rows are not |
-
-**Not yet used, and to be verified before it is — Open-Meteo (X-2).** Read on the same
-date: the terms page says *"You may only use the free API services for non-commercial
-purposes"*; the licence page says *"API data are offered under Attribution 4.0
-International (CC BY 4.0)"*; the ERA5 dataset page at the Copernicus Climate Data Store
-names a CC-BY licence and a citation DOI (`10.24381/cds.adbb2d47`). The pricing page also
-says *"Historical, climate, ensemble, and satellite radiation APIs require the Professional
-API Plan or higher"*, and whether that governs the free non-commercial endpoint or only the
-paid customer endpoints could not be settled from the pages. X-2's worker settles it from
-the source before acquiring anything, adds the row here, and stops with a recorded finding
-if the answer is "paid" ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-2).
+| **Open-Meteo** — the historical weather archive `https://archive-api.open-meteo.com/v1/archive` (ERA5, `hourly=temperature_2m,relative_humidity_2m,precipitation`, `daily=precipitation_sum`, `timezone=auto`) and the geocoding API `https://geocoding-api.open-meteo.com/v1/search` | one reduced day of readings per (venue, match day) and the venue coordinates (X-2); read by nothing in the models today — every weather family is a recorded null | **CC BY 4.0, free for non-commercial use, no key.** Verified at the source on **2026-09-05**: the terms page says *"You may only use the free API services for non-commercial purposes"* and *"The data obtained through the API is provided under the terms of the CC-BY 4.0 licence"*, with the free limits *"Less than 10'000 API calls per day, 5'000 per hour and 600 per minute"*; the historical-weather docs page lists `apikey` as *"Only required to commercial use to access reserved API resources for customers"*; and the archive endpoint answered HTTP 200 to a keyless request. The pricing page's *"Historical, climate, ensemble, and satellite radiation APIs require the Professional API Plan or higher"* is a statement about the **commercial** plans (it sits under "Using the Standard API Plan can I use historical … data?"), not about the free non-commercial endpoint — the three pages are consistent read that way, and the endpoint behaves that way. The underlying ERA5 data is Copernicus's, CC-BY, citation DOI `10.24381/cds.adbb2d47` | Permitted with attribution (CC BY 4.0), which `reference-data/README.md` carries beside the ERA5/Copernicus citation | **Non-commercial use only.** This prototype is non-commercial, so the recurring cost is zero — but weather would be the **first input in the system to carry a recurring cost if it ever went commercial** (Open-Meteo's commercial plans are the paid route), which [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) records beside P0-4's zero-cost line. Because redistribution is permitted and re-acquisition is a rate-limited pass over ~20,000 venue-days, the reduced days and the curated coordinates are **committed** under `reference-data/`; see § Recovering the external data |
 
 **Sources evaluated and rejected** on licence or cost — Betfair's historical-data service,
 The Odds API, OddsPortal, OddsMatrix, aussportsbetting.com — are recorded with their terms
@@ -476,6 +531,7 @@ is expensive is the one tracked in git.
 | **Wikidata biographies** | `make restore-player-biographies` — rebuilds `player_biography` from `reference-data/`, with no network call | CC0, so a copy may be committed; re-acquiring is a rate-limited SPARQL pass over every player in the archive, which is the one cost worth never paying twice |
 | **Cricsheet people register** | Committed beside it as `reference-data/cricsheet-people-register.csv`; the same restore reads it | ODC-By permits redistribution with the licence made clear (it is, in `reference-data/README.md`). Without it the lookups key to nothing, so committing one and not the other would preserve neither |
 | **Betfair BBL/WBBL odds** | Re-download the season CSVs from `betfair-datascientists.github.io/data/dataListing/` into `data/market-odds/` (git-ignored), then `make evaluate MARKET_ODDS_DIR=data/market-odds` | **Not committed, deliberately: the page grants no licence at all.** Only the numbers derived from them — AUC, Brier, coverage — are published, in the harness report. The download is free and unmetered, so nothing is lost by re-fetching |
+| **Open-Meteo ERA5 days and venue coordinates** | `make restore-venue-weather` — rebuilds `venue.latitude/longitude/timezone/city/country` and `venue_weather` from `reference-data/venue-geocoding.csv` and `reference-data/era5-venue-days.jsonl`, with no network call | CC BY 4.0, so a copy may be committed with attribution; re-acquiring is ~4,600 paced archive calls over every venue's match days plus a hand-curated pass over 140 venues the geocoder placed wrongly or not at all, which is not a thing to do twice |
 | **Cricsheet match archive** | `POST /ops/data/fetch`, then extract and import (§ Acquiring a dataset) | No licence is stated at the source, so nothing that reproduces it is committed. It is also ~4 GB, which is not a thing to put in git even if the terms allowed it |
 
 ### Restoring the biographies
@@ -499,3 +555,20 @@ Verified on 2026-09-05 against a scratch database (`cricket_flow_test`, the one
 `SkipUnlessScratchDatabase` exists to insist on): the snapshots rebuilt all 13,662 rows —
 7,178 matched, 6,967 with a date of birth — asking Wikidata nothing, and every column but
 `fetched_at` hashed identical to the live table.
+
+### Restoring the weather
+
+The same shape, one table later: `venue` rows must exist (the days key through them), so
+run it after the Cricsheet import:
+
+```
+make migrate                       # schema, including 0012
+make cricsheet-import              # venues
+make restore-venue-weather         # coordinates and venue_weather, offline
+```
+
+`--offline` opens no client at all: a venue the table has no row for, or a match day the
+file has no line for, is counted as `unanswered` in the report the command prints, which
+is the signal to run `make venue-weather` once, online, for the days a newer archive added.
+
+«WEATHER_RESTORE_VERIFIED»
