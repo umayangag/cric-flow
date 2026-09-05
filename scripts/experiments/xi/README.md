@@ -96,3 +96,18 @@ it is scored and a re-run resumes; `--decide <family>` prints the tables and the
     python scripts/experiments/xi/x1b_biography_features.py --family age --frames output/ml-service/x1b/frames_off.pkl --format T20 --out output/ml-service/x1b/age_T20.json
     python scripts/experiments/xi/x1b_biography_features.py --family cold-start --frames output/ml-service/x1b/frames_off.pkl --frames-on output/ml-service/x1b/frames_on.pkl --format T20 --out output/ml-service/x1b/cold_T20.json
     python scripts/experiments/xi/x1b_biography_features.py --decide age output/ml-service/x1b/age_T20.json output/ml-service/x1b/age_ODI.json
+
+`x3_match_stakes.py` is X-3 (`docs/EXTERNAL_DATA_PLAN.md`): two gates, plus the coverage
+figures that qualify both. The derivation itself is not here — it is
+`ml-service/ml/xi/stakes.py`, inside the rating pass on both sources — so `--coverage` only
+measures what the labels reach, per format and gender, beside the stage vocabulary the
+archive actually spells. Gate `X-3-e5` re-runs E5's lineup-only agreement with the pairs
+whose matches were dead rubbers or knockouts excluded and, separately, halved, the bar
+re-derived on each arm's own weights under three seeds; it informs and decides nothing. Gate
+`X-3-stakes` refits the display model per fold with `STAKES_COLS` added, against the same
+folds without them, on display AUC beyond the seed noise with the swap-violation share held.
+Both run on `sim_frame_cache.py`'s frames and one as-of pass cached in `--pairs-cache`:
+
+    python scripts/experiments/xi/x3_match_stakes.py --coverage --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x3/coverage.json
+    python scripts/experiments/xi/x3_match_stakes.py --frames output/ml-service/x3/frames.pkl --cricsheet-dir data/go-app/cricsheet --pairs-cache output/ml-service/x3/pairs.pkl --out output/ml-service/x3/x3.json
+    python scripts/experiments/xi/x3_match_stakes.py --decide output/ml-service/x3/x3.json --coverage-json output/ml-service/x3/coverage.json

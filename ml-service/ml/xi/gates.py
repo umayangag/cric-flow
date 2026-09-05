@@ -214,6 +214,38 @@ GATES: Tuple[Gate, ...] = (
         report_path=None,
     ),
     Gate(
+        id="X-3-e5",
+        name="E5 hygiene: the lineup-only measurement with rotation-suspect pairs filtered",
+        varies="which of E5's pairs the measurement reads -- all of them (today's E5), those with neither match "
+        "a dead rubber, those with neither match a knockout or final, neither of the two, and the same pairs "
+        "down-weighted to a half rather than dropped",
+        fixed="the rows, the eleven quarterly cutoffs, E5's pairs and the previous eleven read once from the "
+        "as-of serving path, the objective (one logistic fit per fold on XI_FEATURE_COLS, the same model every "
+        "arm scores with), the lineup-only definition, the bar's derivation (Bernoulli at the objective's own "
+        "probabilities, 2,000 replicates, the 5th percentile, three seeds) -- re-derived on each arm's own "
+        "weights, because a filter changes the sampling noise as well as the sample",
+        decides="nothing automatically -- this gate INFORMS. It says whether T20's E5 null survives removing the "
+        "matches where a 1-3 player change is most likely to be rotation rather than selection. An arm that "
+        "clears its re-derived bar is evidence for revisiting the T20 scoping through the P-7 machinery, and is "
+        "recorded as such; the scoping does not move on this run",
+        report_path=None,
+    ),
+    Gate(
+        id="X-3-stakes",
+        name="Match stakes in the display model",
+        varies="whether the display model reads the two stakes columns (STAKES_COLS: the knockout flag and the "
+        "stage-known indicator) beyond XI_FEATURE_COLS + TEAM_CONTEXT_COLS -- one fit per arm per fold per seed",
+        fixed="the rows (one frame, the stakes columns on every win row, both arms read the same rows), the "
+        "eleven quarterly cutoffs, the three display seeds, the hyperparameters, the monotone constraints, the "
+        "marginalisation over batting order, the labels; the objective, the performance model and the simulator "
+        "are not refitted -- this is a display-model gate",
+        decides="the family is kept only if, against the no-stakes arm on the same folds, the mean walk-forward "
+        "display AUC rises by more than both the control's own seed-to-seed standard deviation and one "
+        "fold-level standard error of the paired difference, in every format, with the swap-violation share of "
+        "the display surface still under H-4's 2 %. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
         id="X-4",
         name="Market benchmark: the closing price beside the display model",
         varies="which probability is scored -- the market's de-vigged closing price, the display model as "
