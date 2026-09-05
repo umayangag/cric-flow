@@ -887,9 +887,9 @@ why the flag reaches 72.3 % of matches and not more, and why TEST reaches only 3
 "tournament" is the World Test Championship, whose final is one match between two of nine
 clubs).
 
-Spot-checked by hand against a season anyone can verify: IPL 2019 flags **4 of its 56 league
-matches**, all in the last five days (matches 50, 54, 55 and 56), and no knockout — which is
-what that season's table did.
+Spot-checked by hand against seasons anyone can verify: IPL 2019 (no pools) flags **4 of its
+56 league matches** — 50, 54, 55 and 56, all in the last five days — and no knockout, which
+is what that season's table did; the 2021 Vitality Blast (two pools) flags **11 of 120**.
 
 **H-21, stated precisely, because half of this is fixture knowledge and half is results.**
 The stage label uses only what is knowable before the first ball: the fixture's own event
