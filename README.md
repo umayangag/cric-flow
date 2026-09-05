@@ -144,6 +144,14 @@ BIRTH_DATES=<path>` writes (`BIRTH_DATES=` on `make retrain` / `evaluate` / `xi-
 Whether any model *uses* the age was decided on the walk-forward folds: see
 **docs/EXTERNAL_DATA_PLAN.md** § X-1b. See **docs/config-and-data.md** § Player biographies.
 
+Those acquired answers are the one external input kept in git, under `reference-data/`:
+Wikidata is CC0 and Cricsheet's people register is ODC-By, so both may be redistributed, and
+re-asking Wikidata is a rate-limited pass over every player. After a purge or on a fresh
+clone, `make restore-player-biographies` rebuilds the whole table from those snapshots with
+no network call. The Betfair odds and the Cricsheet archive are *not* committed — no licence
+is granted for the first and none is stated for the second — and are re-downloaded instead.
+See **docs/config-and-data.md** § Recovering the external data and `reference-data/README.md`.
+
 ## Logging (Go)
 
 Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|warn|error). Example: `cd go-app && LOG_FORMAT=text LOG_LEVEL=debug go run ./cmd/api`.

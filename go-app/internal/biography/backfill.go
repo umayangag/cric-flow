@@ -47,6 +47,15 @@ type Options struct {
 	BatchSize int
 	// Now supplies the fetch timestamp, injected so a test can assert on it.
 	Now func() time.Time
+	// Offline answers every player from the cache alone and asks Wikidata nothing.
+	//
+	// It is how a purged database is rebuilt from the committed snapshot: the cost of
+	// re-acquiring these biographies is a rate-limited pass over every player, so the
+	// restore has to be provably incapable of starting one. An id the snapshot has no
+	// answer for is left unanswered and reported, not guessed at and not cached as a
+	// miss — a fabricated miss would make the next online run skip the one id it should
+	// ask about.
+	Offline bool
 }
 
 // DefaultBatchSize is how many ids one query carries. Five hundred keeps the query well
@@ -62,6 +71,9 @@ type Result struct {
 	FromCache      int
 	Matched        int
 	Overridden     int
+	// Unanswered is how many ids an offline run had no cached answer for and therefore
+	// left alone. It is always zero for an online run, which asks about them instead.
+	Unanswered int
 }
 
 // Run acquires biographies for every player and stores them.
@@ -74,9 +86,17 @@ type Result struct {
 // It is resumable at batch granularity and idempotent: running it twice against an
 // unchanged register and an unchanged cache asks Wikidata nothing and writes the same
 // rows.
+//
+// With Options.Offline the cache is the only source and lookuper is never consulted, so a
+// restore from the committed snapshot cannot reach the network even if the snapshot is
+// short of an id.
 func Run(ctx context.Context, store Store, lookuper Lookuper, options Options) (Result, error) {
 	if options.Cache == nil {
 		return Result{}, fmt.Errorf("a cache is required; it is what makes the run resumable")
+	}
+	if !options.Offline && lookuper == nil {
+		return Result{}, fmt.Errorf(
+			"an online run needs a lookuper; pass one, or set Offline to answer from the cache alone")
 	}
 	batchSize := options.BatchSize
 	if batchSize <= 0 {
@@ -98,9 +118,17 @@ func Run(ctx context.Context, store Store, lookuper Lookuper, options Options) (
 		slog.Int("players", len(players)),
 		slog.Int("with_cricinfo_id", result.WithCricinfoID),
 		slog.Int("already_cached", result.FromCache),
-		slog.Int("to_ask", len(wanted)))
+		slog.Int("to_ask", len(wanted)),
+		slog.Bool("offline", options.Offline))
 
-	if err := askInBatches(ctx, lookuper, options.Cache, wanted, batchSize, &result); err != nil {
+	if options.Offline {
+		result.Unanswered = len(wanted)
+		if result.Unanswered > 0 {
+			slog.Warn("player biographies: ids the snapshot has no answer for, left unanswered",
+				slog.Int("unanswered", result.Unanswered),
+				slog.String("fix", "run the online backfill to acquire them"))
+		}
+	} else if err := askInBatches(ctx, lookuper, options.Cache, wanted, batchSize, &result); err != nil {
 		return result, err
 	}
 

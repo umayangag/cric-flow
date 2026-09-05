@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies
+.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies restore-player-biographies
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -189,6 +189,28 @@ player-biographies:
 		-overrides "$(CURDIR)/configs/player_biography_overrides.json" \
 		-report "$(CURDIR)/docs/player-biography-coverage.md" \
 		-cache "$(CURDIR)/output/player-biographies/wikidata-lookups.jsonl" \
+		$(BIOGRAPHY_ARGS)
+
+# Rebuild `player_biography` from the snapshots committed under reference-data/, asking
+# nothing over the network. This is the recovery path after a purge-and-rebuild or on a
+# fresh clone: the acquired answers are expensive — a rate-limited Wikidata pass over
+# every player — so they are tracked in git rather than re-fetched.
+#
+# -offline refuses a remote register and is given no Wikidata client at all, so the run
+# cannot reach either source even for an id the snapshot is short of; such ids are counted
+# and logged as `unanswered` instead. It writes no coverage report, because the report
+# carries a generation timestamp and a restore should leave the tree clean; regenerate it
+# with `make player-biographies BIOGRAPHY_ARGS=-report-only`.
+#
+# See reference-data/README.md and docs/config-and-data.md § Recovering the external data.
+restore-player-biographies:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	cd go-app && go run ./cmd/player-biography-backfill \
+		-offline \
+		-register "$(CURDIR)/reference-data/cricsheet-people-register.csv" \
+		-cache "$(CURDIR)/reference-data/wikidata-player-lookups.jsonl" \
+		-overrides "$(CURDIR)/configs/player_biography_overrides.json" \
+		-report "" \
 		$(BIOGRAPHY_ARGS)
 
 # -------------------- Backtest fixtures and smoke --------------------
@@ -503,6 +525,7 @@ help:
 	@echo "  cadence            The scheduled refresh: fetch → extract → import → retrain → reload [API]"
 	@echo "  cadence-dry-run    Check the cadence's preconditions and start nothing"
 	@echo "  player-biographies Acquire player biographies from Wikidata and write the coverage report"
+	@echo "  restore-player-biographies  Rebuild player_biography from the committed snapshots, offline"
 	@echo
 	@echo "[Services & Logs]"
 	@echo "  dev-up             Start docker-compose stack (Postgres, API, ML)"

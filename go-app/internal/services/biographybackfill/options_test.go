@@ -86,6 +86,52 @@ func TestParseArgs_RefusesAnAnonymousCaller(t *testing.T) {
 	assert.Contains(t, err.Error(), "User-Agent")
 }
 
+// TestParseArgs_OfflineNeedsNoCallerIdentity: it calls nobody, so there is nobody to
+// identify itself to.
+func TestParseArgs_OfflineNeedsNoCallerIdentity(t *testing.T) {
+	options, err := parse(t, "-offline", "-register", "reference-data/people.csv",
+		"-user-agent", "  ")
+
+	require.NoError(t, err)
+	assert.True(t, options.Offline)
+}
+
+// TestParseArgs_RefusesAnOfflineRunThatWouldStillFetch. The default register is a URL, so
+// an -offline run that inherited it would quietly fetch — the one thing the mode rules out.
+func TestParseArgs_RefusesAnOfflineRunThatWouldStillFetch(t *testing.T) {
+	testCases := []struct {
+		name  string
+		args  []string
+		wants string
+	}{
+		{
+			name:  "the default register is a URL",
+			args:  []string{"-offline"},
+			wants: "local",
+		},
+		{
+			name:  "an explicit remote register is no better",
+			args:  []string{"-offline", "-register", "https://example.test/people.csv"},
+			wants: "local",
+		},
+		{
+			name:  "report-only writes no rows, so it is not a restore",
+			args:  []string{"-offline", "-report-only", "-register", "reference-data/people.csv"},
+			wants: "alternatives",
+		},
+	}
+
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := parse(t, testCase.args...)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), testCase.wants)
+		})
+	}
+}
+
 // TestLoadRegister_ReadsALocalCopy is the offline path: a box with no outbound network,
 // or a run pinned to a register someone has already looked at.
 func TestLoadRegister_ReadsALocalCopy(t *testing.T) {

@@ -229,6 +229,14 @@ unchanged data asks Wikidata nothing. The query service is asked in batches of 5
 a second between them and a `User-Agent` that identifies the caller; set
 `WIKIDATA_USER_AGENT` to put your own contact address in it, as the service asks.
 
+**The answers are preserved in git.** `output/` is git-ignored and `make dev-purge` deletes
+it, so that working cache is not a copy anyone should rely on. The durable one is
+`reference-data/wikidata-player-lookups.jsonl`, committed with the people register it joins
+through; Wikidata is CC0 and the register is ODC-By, so both may be redistributed.
+`make restore-player-biographies` rebuilds the whole table from them without a network call.
+See [reference-data/README.md](../reference-data/README.md) and § Recovering the external
+data below.
+
 **What is stored.** `player_biography` (migration `0010`), one row per player — *including
 the players nothing was found for*. "Wikidata has no item carrying this id" is an answer;
 no row at all means the pass has not run for him, and only the first is a measured coverage
@@ -432,8 +440,8 @@ is next touched — terms change, and the date on this section is the date of th
 | source | what the system reads | licence, as stated at the source | redistribution | what that leaves us with |
 |---|---|---|---|---|
 | **Cricsheet match archive** — `https://cricsheet.org/downloads/all_json.zip` and the per-competition zips | every match, ball by ball: the whole training, evaluation and serving population | **Not stated at the source.** The front page's footer reads *"Site © 2009–2026 Cricsheet. All rights reserved"*, which is the site, not the data. The downloads page, the format pages and the JSON archive's `README.txt` carry no licence statement at all. The CSV archive's README says, in the author's words: *"any feedback as to the licence the data should be released under would be greatly appreciated … I'd like to choose the 'right' licence. My basic criteria may be that: the data should be free, corrections are encouraged/required to be reported to the project, derivative works are allowed, you can't just take data and sell it."* Third-party pages describe the data as ODC-By 1.0; nothing on cricsheet.org does, so that is **not recorded as verified** here | **Not granted anywhere we could find.** The archive is fetched onto each box (`POST /ops/data/fetch`) into `data/`, which is git-ignored, and nothing that reproduces it is committed or published | The author's stated criteria — free, derivatives allowed, corrections reported, not resold — are the terms this prototype behaves as if it were under, and its use (a local, unsold prototype that credits Cricsheet in its README) sits inside all four. **Before anything ships publicly or is sold**, this is the row P0-2 has to settle, by asking the project directly; it cannot be settled from the site |
-| **Cricsheet people register** — `https://cricsheet.org/register/people.csv` | the ESPNcricinfo id per player, the join key for X-1a | **ODC-By 1.0** (Open Data Commons Attribution). The register page states: *"This dataset is made available under the Open Data Commons Attribution License: http://opendatacommons.org/licenses/by/1.0/."* and *"You must attribute any public use of the dataset, or works produced from the dataset, in the manner specified in the license."* | Permitted, with the licence made clear and notices kept intact: *"For any use or redistribution of the dataset, or works produced from it, you must make clear to others the license of the dataset and keep intact any notices on the original dataset."* | Attribution is owed on any public use, including works produced from it. The comment in `go-app/internal/biography/biography.go` used to describe the register as **ODbL**, which carries a share-alike term ODC-By does not; that was B-6 in [BUG_BACKLOG.md](BUG_BACKLOG.md) and the comment now states ODC-By 1.0 and points back at this table |
-| **Wikidata** — the SPARQL query service; properties `P2697`, `P569`, `P570`, `P2032`, `P741`, `P552`, `P2545` | player biographies (X-1a) | **CC0 1.0.** Wikidata:Licensing states: *"All structured data in the main, property and lexeme namespaces is made available under the Creative Commons CC0 License"* | Permitted, without conditions | Nothing is owed; the licence is recorded per row as `player_biography.source_license` (`CC0-1.0`). The query service asks for an identifying `User-Agent`, which the backfill sends |
+| **Cricsheet people register** — `https://cricsheet.org/register/people.csv` | the ESPNcricinfo id per player, the join key for X-1a | **ODC-By 1.0** (Open Data Commons Attribution). The register page states: *"This dataset is made available under the Open Data Commons Attribution License: http://opendatacommons.org/licenses/by/1.0/."* and *"You must attribute any public use of the dataset, or works produced from the dataset, in the manner specified in the license."* | Permitted, with the licence made clear and notices kept intact: *"For any use or redistribution of the dataset, or works produced from it, you must make clear to others the license of the dataset and keep intact any notices on the original dataset."* | Attribution is owed on any public use, including works produced from it. The comment in `go-app/internal/biography/biography.go` used to describe the register as **ODbL**, which carries a share-alike term ODC-By does not; that was B-6 in [BUG_BACKLOG.md](BUG_BACKLOG.md) and the comment now states ODC-By 1.0 and points back at this table. A pinned copy is **committed** as `reference-data/cricsheet-people-register.csv` with the licence and attribution stated in `reference-data/README.md`, because the Wikidata snapshot keys to nothing without it |
+| **Wikidata** — the SPARQL query service; properties `P2697`, `P569`, `P570`, `P2032`, `P741`, `P552`, `P2545` | player biographies (X-1a) | **CC0 1.0.** Wikidata:Licensing states: *"All structured data in the main, property and lexeme namespaces is made available under the Creative Commons CC0 License"* | Permitted, without conditions | Nothing is owed; the licence is recorded per row as `player_biography.source_license` (`CC0-1.0`). The query service asks for an identifying `User-Agent`, which the backfill sends. Because redistribution is permitted and re-acquisition is a rate-limited pass over every player, the acquired answers — hits and misses — are **committed** as `reference-data/wikidata-player-lookups.jsonl`; see § Recovering the external data |
 | **Betfair Exchange season summaries** — BBL / WBBL Match Odds CSVs at `betfair-datascientists.github.io/data/dataListing/` | closing odds, read by `make evaluate` only as a yardstick (X-4); never a feature | **No licence granted.** The page carries a warranty disclaimer and nothing else: *"By downloading this data, you acknowledge and agree that: (a) Betfair does not make any representations, or give any warranties, as to the accuracy or completeness of the data provided; and (b) you use the data at your own risk, and Betfair will not be liable for any loss suffered in using the data."* | **Not permitted** — no right is granted, so none is assumed. The files are cached under `data/market-odds/` (git-ignored) per machine and never committed | Usable as a local measurement, which is all X-4 does with them; the numbers derived from them (AUC, Brier, coverage) are published in the harness report, the rows are not |
 
 **Not yet used, and to be verified before it is — Open-Meteo (X-2).** Read on the same
@@ -451,3 +459,43 @@ if the answer is "paid" ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-2).
 The Odds API, OddsPortal, OddsMatrix, aussportsbetting.com — are recorded with their terms
 and prices in [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4, and are not repeated
 here because nothing reads them.
+
+---
+
+## Recovering the external data
+
+None of the acquired data lives only in a database. Purging and rebuilding the database is
+a normal thing to do here, `make dev-purge` deletes `output/`, and a fresh clone starts with
+neither — so each external source has a stated way back. What differs per source is *where*
+the copy is allowed to live, and that is decided by the licence register above, not by
+convenience: the one source whose licence permits redistribution and whose re-acquisition
+is expensive is the one tracked in git.
+
+| source | how to get it back | why that way |
+|---|---|---|
+| **Wikidata biographies** | `make restore-player-biographies` — rebuilds `player_biography` from `reference-data/`, with no network call | CC0, so a copy may be committed; re-acquiring is a rate-limited SPARQL pass over every player in the archive, which is the one cost worth never paying twice |
+| **Cricsheet people register** | Committed beside it as `reference-data/cricsheet-people-register.csv`; the same restore reads it | ODC-By permits redistribution with the licence made clear (it is, in `reference-data/README.md`). Without it the lookups key to nothing, so committing one and not the other would preserve neither |
+| **Betfair BBL/WBBL odds** | Re-download the season CSVs from `betfair-datascientists.github.io/data/dataListing/` into `data/market-odds/` (git-ignored), then `make evaluate MARKET_ODDS_DIR=data/market-odds` | **Not committed, deliberately: the page grants no licence at all.** Only the numbers derived from them — AUC, Brier, coverage — are published, in the harness report. The download is free and unmetered, so nothing is lost by re-fetching |
+| **Cricsheet match archive** | `POST /ops/data/fetch`, then extract and import (§ Acquiring a dataset) | No licence is stated at the source, so nothing that reproduces it is committed. It is also ~4 GB, which is not a thing to put in git even if the terms allowed it |
+
+### Restoring the biographies
+
+The restore assumes the schema and the players are already there — it writes one
+`player_biography` row per row of `player`, so run it *after* migrations and the Cricsheet
+import, not before:
+
+```
+make migrate                       # schema
+make cricsheet-import              # players
+make restore-player-biographies    # biographies, offline
+```
+
+`-offline` refuses a remote register and the command is handed no Wikidata client at all,
+so the run cannot reach either source. An id the snapshot has no answer for is counted and
+logged as `unanswered` rather than guessed at or cached as a miss — that is the signal to
+run `make player-biographies` once, online, to acquire the few ids a newer archive added.
+
+Verified on 2026-09-05 against a scratch database (`cricket_flow_test`, the one
+`SkipUnlessScratchDatabase` exists to insist on): the snapshots rebuilt all 13,662 rows —
+7,178 matched, 6,967 with a date of birth — asking Wikidata nothing, and every column but
+`fetched_at` hashed identical to the live table.
