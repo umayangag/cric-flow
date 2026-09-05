@@ -299,9 +299,11 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		}
 	}
 	scheduledOvers := scheduledOversFromFormatOrInfo(formatCode, info.Overs)
-	eventName := ""
+	eventName, eventStage, eventGroup := "", "", ""
 	if info.Event != nil {
 		eventName = info.Event.Name
+		eventStage = strings.TrimSpace(info.Event.Stage)
+		eventGroup = strings.TrimSpace(string(info.Event.Group))
 	}
 	matchInsert := &db.MatchInsert{
 		MatchID:                   mid,
@@ -316,6 +318,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		OutcomeByRuns:             outcomeByRuns(info.Outcome),
 		OutcomeByWickets:          outcomeByWickets(info.Outcome),
 		EventName:                 strPtrNonEmpty(eventName),
+		EventStage:                strPtrNonEmpty(eventStage),
+		EventGroup:                strPtrNonEmpty(eventGroup),
 		MatchNumber:               matchNumber,
 		Gender:                    strPtrNonEmpty(info.Gender),
 		BallsPerOver:              ballsPerOver,

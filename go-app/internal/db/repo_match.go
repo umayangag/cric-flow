@@ -19,6 +19,8 @@ type MatchInsert struct {
 	OutcomeByRuns             *int
 	OutcomeByWickets          *int
 	EventName                 *string
+	EventStage                *string
+	EventGroup                *string
 	MatchNumber               *int
 	Gender                    *string
 	BallsPerOver              int
@@ -41,77 +43,57 @@ type MatchInningInsert struct {
 	WinnerOppositionID      *int64
 }
 
+// upsertMatchSQL is the one statement both entry points below run. It was written out
+// twice, which is how a column added to one of them would reach only half the callers.
+const upsertMatchSQL = `
+		INSERT INTO match (
+			match_id, format_id, match_date, original_match_type, venue_id, season_id,
+			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
+			outcome_by_runs, outcome_by_wickets, event_name, event_stage, event_group,
+			match_number, gender, balls_per_over, scheduled_overs_per_innings
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		ON CONFLICT (match_id) DO UPDATE SET
+			format_id = EXCLUDED.format_id,
+			match_date = EXCLUDED.match_date,
+			original_match_type = EXCLUDED.original_match_type,
+			venue_id = EXCLUDED.venue_id,
+			season_id = EXCLUDED.season_id,
+			toss_winner_opposition_id = EXCLUDED.toss_winner_opposition_id,
+			toss_decision = EXCLUDED.toss_decision,
+			outcome_winner_opposition_id = EXCLUDED.outcome_winner_opposition_id,
+			outcome_by_runs = EXCLUDED.outcome_by_runs,
+			outcome_by_wickets = EXCLUDED.outcome_by_wickets,
+			event_name = EXCLUDED.event_name,
+			event_stage = EXCLUDED.event_stage,
+			event_group = EXCLUDED.event_group,
+			match_number = EXCLUDED.match_number,
+			gender = EXCLUDED.gender,
+			balls_per_over = EXCLUDED.balls_per_over,
+			scheduled_overs_per_innings = EXCLUDED.scheduled_overs_per_innings
+	`
+
+// upsertMatchArgs is the argument list for upsertMatchSQL, in the statement's order.
+func upsertMatchArgs(m *MatchInsert) []any {
+	return []any{
+		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.VenueID, m.SeasonID,
+		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
+		m.OutcomeByRuns, m.OutcomeByWickets, m.EventName, m.EventStage, m.EventGroup,
+		m.MatchNumber, m.Gender, m.BallsPerOver, m.ScheduledOversPerInnings,
+	}
+}
+
 // UpsertMatch inserts or updates the match table. Call once per match.
 func UpsertMatch(ctx context.Context, m *MatchInsert) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(
-		ctx, `
-		INSERT INTO match (
-			match_id, format_id, match_date, original_match_type, venue_id, season_id,
-			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
-			outcome_by_runs, outcome_by_wickets, event_name, match_number, gender,
-			balls_per_over, scheduled_overs_per_innings
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-		ON CONFLICT (match_id) DO UPDATE SET
-			format_id = EXCLUDED.format_id,
-			match_date = EXCLUDED.match_date,
-			original_match_type = EXCLUDED.original_match_type,
-			venue_id = EXCLUDED.venue_id,
-			season_id = EXCLUDED.season_id,
-			toss_winner_opposition_id = EXCLUDED.toss_winner_opposition_id,
-			toss_decision = EXCLUDED.toss_decision,
-			outcome_winner_opposition_id = EXCLUDED.outcome_winner_opposition_id,
-			outcome_by_runs = EXCLUDED.outcome_by_runs,
-			outcome_by_wickets = EXCLUDED.outcome_by_wickets,
-			event_name = EXCLUDED.event_name,
-			match_number = EXCLUDED.match_number,
-			gender = EXCLUDED.gender,
-			balls_per_over = EXCLUDED.balls_per_over,
-			scheduled_overs_per_innings = EXCLUDED.scheduled_overs_per_innings
-	`,
-		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.VenueID, m.SeasonID,
-		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
-		m.OutcomeByRuns, m.OutcomeByWickets, m.EventName, m.MatchNumber, m.Gender,
-		m.BallsPerOver, m.ScheduledOversPerInnings,
-	)
+	_, err := Pool.Exec(ctx, upsertMatchSQL, upsertMatchArgs(m)...)
 	return err
 }
 
 // UpsertMatchTx inserts or updates the match table using the given transaction.
 func UpsertMatchTx(ctx context.Context, tx CopyFromTx, m *MatchInsert) error {
-	err := tx.Exec(
-		ctx, `
-		INSERT INTO match (
-			match_id, format_id, match_date, original_match_type, venue_id, season_id,
-			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
-			outcome_by_runs, outcome_by_wickets, event_name, match_number, gender,
-			balls_per_over, scheduled_overs_per_innings
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-		ON CONFLICT (match_id) DO UPDATE SET
-			format_id = EXCLUDED.format_id,
-			match_date = EXCLUDED.match_date,
-			original_match_type = EXCLUDED.original_match_type,
-			venue_id = EXCLUDED.venue_id,
-			season_id = EXCLUDED.season_id,
-			toss_winner_opposition_id = EXCLUDED.toss_winner_opposition_id,
-			toss_decision = EXCLUDED.toss_decision,
-			outcome_winner_opposition_id = EXCLUDED.outcome_winner_opposition_id,
-			outcome_by_runs = EXCLUDED.outcome_by_runs,
-			outcome_by_wickets = EXCLUDED.outcome_by_wickets,
-			event_name = EXCLUDED.event_name,
-			match_number = EXCLUDED.match_number,
-			gender = EXCLUDED.gender,
-			balls_per_over = EXCLUDED.balls_per_over,
-			scheduled_overs_per_innings = EXCLUDED.scheduled_overs_per_innings
-	`,
-		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.VenueID, m.SeasonID,
-		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
-		m.OutcomeByRuns, m.OutcomeByWickets, m.EventName, m.MatchNumber, m.Gender,
-		m.BallsPerOver, m.ScheduledOversPerInnings,
-	)
-	return err
+	return tx.Exec(ctx, upsertMatchSQL, upsertMatchArgs(m)...)
 }
 
 // UpsertMatchInning inserts or updates a match_inning row. Call once per inning.
