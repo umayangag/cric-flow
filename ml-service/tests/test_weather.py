@@ -426,6 +426,21 @@ def test_open_meteo_archive_retries_transient_errors_and_raises_on_the_daily_lim
     transport, _ = _archive_transport([(200, None)] * 4)
     with pytest.raises(RuntimeError, match="after 4 attempts"):
         archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
+    slept = []
+    monkeypatch.setattr(archive.time, "sleep", lambda s: slept.append(s))
+    transport, calls = _archive_transport(
+        [
+            (429, {"reason": "Hourly API request limit exceeded"}),
+            (200, {"timezone": "UTC", "hourly": {"time": []}, "daily": {"time": []}}),
+        ]
+    )
+    assert (
+        archive.OpenMeteoArchive(httpx.Client(transport=transport))
+        .fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
+        .timezone
+        == "UTC"
+    )
+    assert len(calls) == 2 and archive.HOURLY_LIMIT_PAUSE_SECONDS in slept
     transport, _ = _archive_transport([(400, {"reason": "bad"})])
     with pytest.raises(httpx.HTTPStatusError):
         archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))

@@ -45,6 +45,11 @@ ARCHIVE_LAG_DAYS = 7
 PAUSE_SECONDS = 0.3
 RETRY_PAUSES = (5.0, 30.0, 120.0)
 RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
+#: The hourly quota is weighted by the data a call returns, so a backfill of long ranges
+#: meets it well under the nominal 5,000 calls; the service says to try again next hour,
+#: and an unattended run waits for it in these steps rather than failing.
+HOURLY_LIMIT_PAUSE_SECONDS = 15 * 60
+HOURLY_LIMIT_MAX_WAITS = 6
 
 
 class DailyLimitReached(RuntimeError):
@@ -193,6 +198,7 @@ class OpenMeteoArchive:
             "timezone": "auto",
         }
         reason = ""
+        hourly_waits = 0
         for attempt, retry_pause in enumerate((*RETRY_PAUSES, None)):
             self.calls += 1
             try:
@@ -203,6 +209,13 @@ class OpenMeteoArchive:
                 reason = _error_reason(response)
                 if response.status_code == 429 and "daily" in reason.casefold():
                     raise DailyLimitReached(reason)
+                if response.status_code == 429 and "hourly" in reason.casefold():
+                    if hourly_waits >= HOURLY_LIMIT_MAX_WAITS:
+                        raise RuntimeError(f"archive: hourly quota still spent after {hourly_waits} waits: {reason}")
+                    hourly_waits += 1
+                    logger.warning("archive: hourly quota spent (%s); waiting %d s", reason, HOURLY_LIMIT_PAUSE_SECONDS)
+                    time.sleep(HOURLY_LIMIT_PAUSE_SECONDS)
+                    continue
                 if response.status_code not in RETRYABLE_STATUSES:
                     response.raise_for_status()
             except (httpx.TransportError, ValueError) as exc:
