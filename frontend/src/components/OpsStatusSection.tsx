@@ -80,11 +80,11 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
         </SectionCard>
         <OpsDatasetSection dataset={data.dataset} />
         <DatasetRegistrySection />
-        <BiographyCoverageSection />
-
         <SectionCard title="Migration History">
           <OpsMigrationsTable />
         </SectionCard>
+
+        <BiographyCoverageSection />
 
         <Grid container spacing={2} alignItems="stretch">
           <Grid item xs={12}>
