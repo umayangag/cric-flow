@@ -153,6 +153,39 @@ func TestRespondPredictErr_UnknownSideIs400(t *testing.T) {
 	assert.Equal(t, "TEAM_NOT_FOUND", decodeAPIError(t, rec).Code)
 }
 
+// Play mode's two refusals (P1-2). Both are the request being unanswerable rather than
+// this service failing, and both are refused instead of quietly repaired: an eleven that
+// is not an eleven, and a player the side cannot field.
+func TestRespondPredictErr_APinnedElevenThatIsNotAnElevenIs400(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	err := fmt.Errorf("resolve fixture: %w", &predictteam.IncompleteXIError{
+		Team: "India (men)", Size: 10, Need: 11,
+	})
+
+	respondPredictErr(rec, err)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "XI_INCOMPLETE", body.Code)
+	assert.Contains(t, body.Message, "10 players pinned")
+	assert.Contains(t, body.Hint, "team1_xi")
+}
+
+func TestRespondPredictErr_APinnedPlayerTheSideCannotFieldIs400(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	err := &predictteam.UnknownXIPlayerError{Team: "India (men)", PlayerIDs: []int64{404}}
+
+	respondPredictErr(rec, err)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "XI_PLAYER_UNKNOWN", body.Code)
+	assert.Contains(t, body.Message, "404")
+	assert.Contains(t, body.Hint, "candidates")
+}
+
 // Anything that is not one of D-10's refusals is still this service failing, and still a 500.
 func TestRespondPredictErr_LeavesEveryOtherFailureAlone(t *testing.T) {
 	t.Parallel()

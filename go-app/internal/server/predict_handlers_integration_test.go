@@ -112,9 +112,14 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 			return
 		}
 		var body struct {
-			PoolPlayerIDs  []string `json:"pool_player_ids"`
-			Team1PlayerIDs []string `json:"team1_player_ids"`
-			Team2PlayerIDs []string `json:"team2_player_ids"`
+			PoolPlayerIDs    []string `json:"pool_player_ids"`
+			Team1PlayerIDs   []string `json:"team1_player_ids"`
+			Team2PlayerIDs   []string `json:"team2_player_ids"`
+			Team1Constraints *struct {
+				MinBowlers    int      `json:"min_bowlers"`
+				RequireKeeper bool     `json:"require_keeper"`
+				MustInclude   []string `json:"must_include"`
+			} `json:"team1_constraints"`
 		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		switch r.URL.Path {
@@ -125,7 +130,22 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 				"evaluations": 0, "improved_over_seed": 0, "unknown_player_ids": [], "marginal_values": {}, %s}`,
 				selected, stamp)
 		case "/xi/predict-win":
-			_, _ = fmt.Fprintf(w, `{"team1_win_probability": 0.6, "objective_probability": 0.55, %s}`, stamp)
+			// Play mode: the eleven that was sent is checked against the constraints
+			// that came with it, and the check rides back on the same answer (P1-2).
+			checks := ""
+			if body.Team1Constraints != nil {
+				missing, err := json.Marshal(body.Team1Constraints.MustInclude)
+				require.NoError(t, err)
+				checks = fmt.Sprintf(`"team1_constraint_check": {"team_size": %d, "bowlers": 4, "min_bowlers": %d,
+					"has_keeper": false, "require_keeper": %t, "missing_must_include": %s, "met": false},
+					"team2_constraint_check": {"team_size": %d, "bowlers": 6, "min_bowlers": %d,
+					"has_keeper": true, "require_keeper": %t, "missing_must_include": [], "met": true},`,
+					len(body.Team1PlayerIDs), body.Team1Constraints.MinBowlers, body.Team1Constraints.RequireKeeper,
+					missing, len(body.Team2PlayerIDs), body.Team1Constraints.MinBowlers,
+					body.Team1Constraints.RequireKeeper)
+			}
+			_, _ = fmt.Fprintf(w, `{"team1_win_probability": 0.6, "objective_probability": 0.55, %s %s}`,
+				checks, stamp)
 		case "/performance/predict":
 			lines := make([]string, 0, 22)
 			for _, id := range append(body.Team1PlayerIDs, body.Team2PlayerIDs...) {
@@ -175,6 +195,134 @@ func TestPredictTeamSelectionHandler_AServedPredictionCarriesItsDateAndRun_Integ
 	assert.Equal(t, "20260906T083819Z-36689f80", payload.RunID)
 	assert.Len(t, payload.Team1, 11)
 	assert.InDelta(t, 0.6, payload.WinProbability.Team1, 1e-9)
+}
+
+// seededPlayerIDs returns one side's player ids in a stable order: the fixture gives each
+// side's eleven external ids beginning with its inning number.
+func seededPlayerIDs(t *testing.T, externalIDPrefix string) []int64 {
+	t.Helper()
+	rows, err := db.Pool.Query(context.Background(),
+		`SELECT id FROM player WHERE external_id LIKE $1 ORDER BY id`, externalIDPrefix+"%")
+	require.NoError(t, err)
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
+	}
+	require.NoError(t, rows.Err())
+	return ids
+}
+
+func playPredictRequest(fixture predictFixture, xi1, xi2 []int64, extraTeam1 []int64) *http.Request {
+	pinned1, _ := json.Marshal(xi1)
+	pinned2, _ := json.Marshal(xi2)
+	extras, _ := json.Marshal(extraTeam1)
+	return jsonPredictRequest(fmt.Sprintf(
+		`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q,
+		  "team1_xi":%s,"team2_xi":%s,"extra_team1":%s}`,
+		fixture.team1ID, fixture.team2ID, fixture.matchDate, pinned1, pinned2, extras))
+}
+
+// Play mode end to end (P1-2): the eleven the caller built is the eleven that is scored,
+// nothing is searched for, and the constraints it breaks are on the answer.
+func TestPredictTeamSelectionHandler_APinnedElevenIsScoredAsSent_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	xi1, xi2 := seededPlayerIDs(t, "1"), seededPlayerIDs(t, "2")
+	require.Len(t, xi1, 11)
+	app := &App{mlClient: scriptedMLService(t, nil)}
+	rec := httptest.NewRecorder()
+
+	// The eleven is sent in the caller's own order, with the last two swapped, and one
+	// must-include id the eleven does not hold.
+	pinned := append([]int64{}, xi1...)
+	pinned[9], pinned[10] = pinned[10], pinned[9]
+	app.predictTeamSelectionHandler(rec, playPredictRequest(fixture, pinned, xi2, []int64{xi1[0]}))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		RunID     string `json:"run_id"`
+		Selection struct {
+			Objective string `json:"objective"`
+			Optimised bool   `json:"optimised"`
+			Note      string `json:"note"`
+		} `json:"selection"`
+		Team1 []struct {
+			PlayerID      int64    `json:"player_id"`
+			MarginalValue *float64 `json:"marginal_value"`
+		} `json:"team1"`
+		Constraints *struct {
+			MinBowlers int `json:"min_bowlers"`
+			Team1      struct {
+				Bowlers            int  `json:"bowlers"`
+				Met                bool `json:"met"`
+				MissingMustInclude []struct {
+					PlayerID int64 `json:"player_id"`
+				} `json:"missing_must_include"`
+			} `json:"team1"`
+			Team2 struct {
+				Met bool `json:"met"`
+			} `json:"team2"`
+		} `json:"constraints"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	assert.Equal(t, "fixed", payload.Selection.Objective)
+	assert.False(t, payload.Selection.Optimised, "nothing was searched for")
+	assert.NotEmpty(t, payload.Selection.Note)
+	assert.Equal(t, "20260906T083819Z-36689f80", payload.RunID, "a re-score carries its date like any prediction")
+	require.Len(t, payload.Team1, 11)
+	scored := make([]int64, 0, 11)
+	for _, player := range payload.Team1 {
+		scored = append(scored, player.PlayerID)
+		assert.Nil(t, player.MarginalValue, "nothing was maximised, so no player has a margin")
+	}
+	assert.Equal(t, pinned, scored, "the eleven that was sent is the eleven that came back, in order")
+	require.NotNil(t, payload.Constraints)
+	assert.False(t, payload.Constraints.Team1.Met, "a broken constraint is reported, never repaired")
+	assert.Equal(t, 4, payload.Constraints.Team1.Bowlers)
+	require.Len(t, payload.Constraints.Team1.MissingMustInclude, 1)
+	assert.Equal(t, xi1[0], payload.Constraints.Team1.MissingMustInclude[0].PlayerID)
+	assert.True(t, payload.Constraints.Team2.Met)
+}
+
+func TestPredictTeamSelectionHandler_APinnedElevenShortOfPlayersIsRefused_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	xi1, xi2 := seededPlayerIDs(t, "1"), seededPlayerIDs(t, "2")
+	app := &App{mlClient: scriptedMLService(t, nil)}
+	rec := httptest.NewRecorder()
+
+	app.predictTeamSelectionHandler(rec, playPredictRequest(fixture, xi1[:10], xi2, nil))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "XI_INCOMPLETE", body.Code)
+	assert.NotContains(t, rec.Body.String(), "win_probability", "a refusal carries no number")
+}
+
+// A pinned id that names nobody is refused rather than dropped: the ten who resolved are
+// not the eleven that was sent, and an answer for them would say nothing about it.
+//
+// A pinned id that names a player of *another* club is honoured, deliberately: a pinned
+// player joins the pool the way a must-include id does, and a caller naming a signing the
+// database has not seen play for this club yet is the case that field exists for (D-12).
+func TestPredictTeamSelectionHandler_APinnedIdThatNamesNobodyIsRefused_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	xi1, xi2 := seededPlayerIDs(t, "1"), seededPlayerIDs(t, "2")
+	app := &App{mlClient: scriptedMLService(t, nil)}
+	rec := httptest.NewRecorder()
+
+	const noSuchPlayer int64 = 999999
+	pinned := append(append([]int64{}, xi1[:10]...), noSuchPlayer)
+	app.predictTeamSelectionHandler(rec, playPredictRequest(fixture, pinned, xi2, nil))
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "XI_PLAYER_UNKNOWN", body.Code)
+	assert.Contains(t, body.Message, "999999")
 }
 
 func TestPredictTeamSelectionHandler_StaleRatingsAreRefusedWith503RatingsStale_Integration(t *testing.T) {

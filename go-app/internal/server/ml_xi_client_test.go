@@ -161,3 +161,59 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	assert.Equal(t, "display", result.HeadlineSource)
 	assert.Equal(t, servedFromTheDevRun, result.Served)
 }
+
+// Play mode's constraint check rides on the call that scores the eleven (P1-2): the
+// request carries the constraints only where the caller pinned an eleven, and the check
+// that comes back describes that same eleven.
+func TestPredictMatchWinXI_SendsConstraintsOnlyForAPinnedElevenAndMapsTheCheck(t *testing.T) {
+	t.Parallel()
+	client, captured := xiCaptureServer(t, `{"team1_win_probability":0.62,"objective_probability":0.55,
+	  "team1_constraint_check":{"team_size":11,"bowlers":4,"min_bowlers":5,"has_keeper":true,
+	                            "require_keeper":true,"missing_must_include":["a9"],"met":false},
+	  "team2_constraint_check":{"team_size":11,"bowlers":6,"min_bowlers":5,"has_keeper":true,
+	                            "require_keeper":true,"missing_must_include":[],"met":true},
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`)
+
+	win, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+		Format:          "T20I",
+		Team1PlayerKeys: []string{"a1"},
+		Team2PlayerKeys: []string{"b1"},
+		Team1Constraints: &predictteam.ConstraintCheckRequest{
+			Constraints:     predictteam.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true},
+			MustIncludeKeys: []string{"a9"},
+		},
+		Team2Constraints: &predictteam.ConstraintCheckRequest{
+			Constraints: predictteam.Constraints{Size: 11, MinBowlers: 5, RequireKeeper: true},
+		},
+	})
+
+	require.NoError(t, err)
+	sent, present := (*captured)["team1_constraints"].(map[string]interface{})
+	require.True(t, present, "a pinned eleven is checked against the constraints it was sent with")
+	assert.Equal(t, float64(5), sent["min_bowlers"])
+	assert.Equal(t, []interface{}{"a9"}, sent["must_include"])
+	require.NotNil(t, win.Team1Check)
+	assert.False(t, win.Team1Check.Met)
+	assert.Equal(t, 4, win.Team1Check.Bowlers)
+	assert.Equal(t, []string{"a9"}, win.Team1Check.MissingMustIncludeKeys)
+	require.NotNil(t, win.Team2Check)
+	assert.True(t, win.Team2Check.Met)
+}
+
+func TestPredictMatchWinXI_SendsNoConstraintsForASearchedEleven(t *testing.T) {
+	t.Parallel()
+	client, captured := xiCaptureServer(t, `{"team1_win_probability":0.6,"objective_probability":0.55,
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`)
+
+	win, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+		Format:          "T20I",
+		Team1PlayerKeys: []string{"a1"},
+		Team2PlayerKeys: []string{"b1"},
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, *captured, "team1_constraints", "the optimiser applied them while it searched")
+	assert.NotContains(t, *captured, "team2_constraints")
+	assert.Nil(t, win.Team1Check, "no check was asked for, and none is invented")
+	assert.Nil(t, win.Team2Check)
+}

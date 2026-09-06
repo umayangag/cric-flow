@@ -31,6 +31,7 @@ from app.models.xi import (
     SimulateRequest,
     SimulateResponse,
     WicketDistribution,
+    XiConstraintCheck,
     XiConstraints,
     XiOptimizeRequest,
     XiOptimizeResponse,
@@ -39,6 +40,7 @@ from app.models.xi import (
     XiWinResponse,
 )
 from ml.config import get_ratings_max_age_days
+from ml.xi import contract as C
 from ml.xi import glossary, runs, simulator
 from ml.xi.asof import AsOfServer
 from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
@@ -375,6 +377,40 @@ def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unk
     )
 
 
+def _constraint_check(
+    store: XiStore, format_code: str, keys: List[str], constraints: Optional[XiConstraints]
+) -> Optional[XiConstraintCheck]:
+    """Report whether an eleven meets its constraints, without changing it (P1-2).
+
+    Only the counts are computed here; the rule that turns them into "broken" is the
+    caller's constraint, echoed back beside them. ``is_bowling_option`` and the keeper
+    flag come from the same contract and the same served vectors the optimiser reads, so
+    a chip that says "4 of 5 bowlers" is counting what the search would have counted.
+    """
+    if constraints is None:
+        return None
+    vectors = store.side_vectors(format_code, keys)
+    bowlers = int(sum(1 for balls in vectors["exp_balls_bowled"] if C.is_bowling_option(balls, format_code)))
+    has_keeper = bool(any(vectors["keeper"] > 0))
+    held = set(keys)
+    missing = [key for key in constraints.must_include if key not in held]
+    met = (
+        len(keys) == constraints.team_size
+        and bowlers >= constraints.min_bowlers
+        and (has_keeper or not constraints.require_keeper)
+        and not missing
+    )
+    return XiConstraintCheck(
+        team_size=len(keys),
+        bowlers=bowlers,
+        min_bowlers=constraints.min_bowlers,
+        has_keeper=has_keeper,
+        require_keeper=constraints.require_keeper,
+        missing_must_include=missing,
+        met=met,
+    )
+
+
 def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResponse:
     store = registry.store_as_of(req.format, req.as_of)
     t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
@@ -391,7 +427,11 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         team1_bats_first=req.team1_bats_first,
     )
     return XiWinResponse(
-        team1_win_probability=display, objective_probability=objective, served_ratings=_served_ratings(store)
+        team1_win_probability=display,
+        objective_probability=objective,
+        team1_constraint_check=_constraint_check(store, req.format, t1, req.team1_constraints),
+        team2_constraint_check=_constraint_check(store, req.format, t2, req.team2_constraints),
+        served_ratings=_served_ratings(store),
     )
 
 

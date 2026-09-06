@@ -59,14 +59,67 @@ type mlXIWinRequest struct {
 	Team1ID        *int64   `json:"team1_id,omitempty"`
 	Team2ID        *int64   `json:"team2_id,omitempty"`
 	VenueID        *int64   `json:"venue_id,omitempty"`
+	// Team1Constraints and Team2Constraints ask ml-service to check the eleven it is
+	// scoring against these constraints instead of selecting under them (P1-2). Omitted
+	// on the searched path, where the optimiser applied them while it searched.
+	Team1Constraints *mlXIConstraints `json:"team1_constraints,omitempty"`
+	Team2Constraints *mlXIConstraints `json:"team2_constraints,omitempty"`
 	// AsOf (YYYY-MM-DD) asks for ratings as of that date; omitted = through today.
 	AsOf string `json:"as_of,omitempty"`
 }
 
+// mlXIConstraintCheck is one eleven measured against its constraints (app/models/xi.py
+// XiConstraintCheck).
+type mlXIConstraintCheck struct {
+	TeamSize           int      `json:"team_size"`
+	Bowlers            int      `json:"bowlers"`
+	MinBowlers         int      `json:"min_bowlers"`
+	HasKeeper          bool     `json:"has_keeper"`
+	RequireKeeper      bool     `json:"require_keeper"`
+	MissingMustInclude []string `json:"missing_must_include"`
+	Met                bool     `json:"met"`
+}
+
+func (c *mlXIConstraintCheck) check() *predictteam.XIConstraintCheck {
+	if c == nil {
+		return nil
+	}
+	return &predictteam.XIConstraintCheck{
+		TeamSize:               c.TeamSize,
+		Bowlers:                c.Bowlers,
+		MinBowlers:             c.MinBowlers,
+		HasKeeper:              c.HasKeeper,
+		RequireKeeper:          c.RequireKeeper,
+		MissingMustIncludeKeys: c.MissingMustInclude,
+		Met:                    c.Met,
+	}
+}
+
+// constraintPayload renders a constraint check request for the wire; nil stays absent, so
+// a request that asks for no check sends no field.
+func constraintPayload(req *predictteam.ConstraintCheckRequest) *mlXIConstraints {
+	if req == nil {
+		return nil
+	}
+	mustInclude := req.MustIncludeKeys
+	if mustInclude == nil {
+		mustInclude = []string{}
+	}
+	return &mlXIConstraints{
+		TeamSize:      req.Size,
+		MinBowlers:    req.MinBowlers,
+		RequireKeeper: req.RequireKeeper,
+		MustInclude:   mustInclude,
+		MustExclude:   []string{},
+	}
+}
+
 type mlXIWinResponse struct {
-	Team1WinProbability  float64         `json:"team1_win_probability"`
-	ObjectiveProbability float64         `json:"objective_probability"`
-	ServedRatings        mlServedRatings `json:"served_ratings"`
+	Team1WinProbability  float64              `json:"team1_win_probability"`
+	ObjectiveProbability float64              `json:"objective_probability"`
+	Team1ConstraintCheck *mlXIConstraintCheck `json:"team1_constraint_check"`
+	Team2ConstraintCheck *mlXIConstraintCheck `json:"team2_constraint_check"`
+	ServedRatings        mlServedRatings      `json:"served_ratings"`
 }
 
 // OptimizeXI calls POST /xi/optimize: server-side selection over player ids against the
@@ -123,13 +176,15 @@ func (c *MLClient) PredictMatchWinXI(
 	req predictteam.XIWinRequest,
 ) (*predictteam.XIWinResult, error) {
 	payload, err := json.Marshal(mlXIWinRequest{
-		Format:         req.Format,
-		Team1PlayerIDs: req.Team1PlayerKeys,
-		Team2PlayerIDs: req.Team2PlayerKeys,
-		Team1ID:        optionalID(req.Team1ID),
-		Team2ID:        optionalID(req.Team2ID),
-		VenueID:        optionalID(req.VenueID),
-		AsOf:           asOfParam(req.AsOf),
+		Format:           req.Format,
+		Team1PlayerIDs:   req.Team1PlayerKeys,
+		Team2PlayerIDs:   req.Team2PlayerKeys,
+		Team1ID:          optionalID(req.Team1ID),
+		Team2ID:          optionalID(req.Team2ID),
+		VenueID:          optionalID(req.VenueID),
+		Team1Constraints: constraintPayload(req.Team1Constraints),
+		Team2Constraints: constraintPayload(req.Team2Constraints),
+		AsOf:             asOfParam(req.AsOf),
 	})
 	if err != nil {
 		return nil, err
@@ -140,6 +195,8 @@ func (c *MLClient) PredictMatchWinXI(
 	}
 	return &predictteam.XIWinResult{
 		Team1WinProbability: out.Team1WinProbability,
+		Team1Check:          out.Team1ConstraintCheck.check(),
+		Team2Check:          out.Team2ConstraintCheck.check(),
 		Served:              out.ServedRatings.served(),
 	}, nil
 }

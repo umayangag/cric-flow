@@ -437,6 +437,14 @@ export const api = {
     /** Each side's candidate pool (D-12). Omitted, both get the per-format recency window. */
     team1_pool?: PoolRequest;
     team2_pool?: PoolRequest;
+    /**
+     * Play mode (P1-2): each side's eleven, by player id. Sent, the API scores exactly
+     * these players and searches for nothing; omitted, it selects as it always has. Both
+     * sides or neither -- searching one side while the user edits the other would move
+     * numbers nobody touched.
+     */
+    team1_xi?: number[];
+    team2_xi?: number[];
   }): Promise<PredictTeamSelectionResponse> {
     return httpApi('/api/predict/team-selection', {
       method: 'POST',

@@ -53,6 +53,7 @@ It is a record, not a to-do list: the plan has no further PRs.
 | [../go-app/docs/testing-guidelines.md](../go-app/docs/testing-guidelines.md) | The Go unit-test conventions, in full |
 | [../ml-service/README.md](../ml-service/README.md) | FastAPI service, its endpoints, artifact loading |
 | [../scripts/experiments/xi/README.md](../scripts/experiments/xi/README.md) | The standalone experiment scripts the plan's numbers come from |
+| [../scripts/probes/README.md](../scripts/probes/README.md) | The probes that measure a *shipped surface* against a running stack |
 
 ## Cross-references
 

@@ -42,6 +42,12 @@ type Input struct {
 	// where team2 does. Nil is the default and means unknown, which is the marginalised
 	// behaviour the simulator has always had — half the draws each way.
 	Team1BatsFirst *bool `json:"team1_bats_first,omitempty"`
+	// Team1XI and Team2XI pin each side's eleven by player id: Play mode (P1-2) scores
+	// the eleven the caller built and never re-optimises underneath them. Both sides are
+	// pinned or neither is — an answer that searched one side while the user was editing
+	// the other would move numbers the user did not touch.
+	Team1XI []int64 `json:"team1_xi,omitempty"`
+	Team2XI []int64 `json:"team2_xi,omitempty"`
 	// Team1Pool and Team2Pool are what the caller asked for about each side's
 	// candidates: the recency window, whether to widen it to all-time, and a manual
 	// pick. The zero value is the per-format recency default (D-12).
@@ -211,6 +217,10 @@ type Result struct {
 	// of: the window, the size, and every player the ledger excluded (D-12).
 	Team1PoolSummary PoolSummary `json:"team1_pool"`
 	Team2PoolSummary PoolSummary `json:"team2_pool"`
+	// Constraints says whether each pinned eleven meets what was asked of it. Present
+	// only in Play mode: an eleven the optimiser chose was chosen under the constraints,
+	// while one the caller built is checked against them and never repaired (P1-2).
+	Constraints *ConstraintReport `json:"constraints,omitempty"`
 }
 
 // CrossGenderFixtureError reports a fixture whose two sides are not the same gender.
@@ -253,6 +263,10 @@ type fixture struct {
 	asOf         time.Time
 	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
 	team1BatsFirst *bool
+	// pinned holds both elevens where the caller built them (Play mode); isPinned says
+	// whether they did.
+	pinned   pinnedXI
+	isPinned bool
 }
 
 // PredictTeams picks both XIs and predicts the match.
@@ -262,7 +276,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		return nil, err
 	}
 
-	selection, err := selectBothXIs(ctx, service, fix)
+	selection, err := chooseXIs(ctx, service, fix)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +292,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team2PoolSummary: fix.summary2,
 	}
 
-	win, err := service.PredictMatchWinXI(ctx, XIWinRequest{
+	winRequest := XIWinRequest{
 		Format:          fix.format,
 		Team1PlayerKeys: selection.Team1Keys,
 		Team2PlayerKeys: selection.Team2Keys,
@@ -286,12 +300,25 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
 		AsOf:            fix.asOf,
-	})
+	}
+	// A pinned eleven is checked against the constraints on the call that scores it, so
+	// the check describes the same eleven the probability beside it describes.
+	if fix.isPinned {
+		winRequest.Team1Constraints, winRequest.Team2Constraints = constraintCheckRequests(fix)
+	}
+	win, err := service.PredictMatchWinXI(ctx, winRequest)
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
 	}
 	if err := result.adopt(win.Served); err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
+	}
+	if fix.isPinned {
+		if win.Team1Check == nil || win.Team2Check == nil {
+			return nil, fmt.Errorf(
+				"win probability: the constraints were sent for checking and the answer carried no check")
+		}
+		result.Constraints = newConstraintReport(fix, win.Team1Check, win.Team2Check)
 	}
 	result.WinProbability = WinProbabilitySummary{
 		Team1:           win.Team1WinProbability,
@@ -376,18 +403,23 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		}
 	}
 
+	// A pinned player joins his side's candidates whatever the window or the ledger says,
+	// the way a must-include id does: the caller has named him as playing, which is
+	// better evidence about availability than either (P1-2).
 	pool1, summary1, err := loadPool(
-		ctx, format, team1, cutoff, input.Team1Pool, input.ExtraTeam1, flags, applyLedger, constraints.Size)
+		ctx, format, team1, cutoff, input.Team1Pool,
+		append(append([]int64{}, input.ExtraTeam1...), input.Team1XI...), flags, applyLedger, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
 	pool2, summary2, err := loadPool(
-		ctx, format, team2, cutoff, input.Team2Pool, input.ExtraTeam2, flags, applyLedger, constraints.Size)
+		ctx, format, team2, cutoff, input.Team2Pool,
+		append(append([]int64{}, input.ExtraTeam2...), input.Team2XI...), flags, applyLedger, constraints.Size)
 	if err != nil {
 		return fixture{}, err
 	}
 
-	return fixture{
+	fix := fixture{
 		format:         format,
 		team1:          team1,
 		team2:          team2,
@@ -399,7 +431,44 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		constraints:    constraints,
 		asOf:           input.AsOf,
 		team1BatsFirst: input.Team1BatsFirst,
-	}, nil
+	}
+	if err := applyPinnedXIs(&fix, input); err != nil {
+		return fixture{}, err
+	}
+	return fix, nil
+}
+
+// applyPinnedXIs resolves both pinned elevens, where the caller sent them.
+//
+// One side pinned and the other not is refused rather than half-honoured: the answer
+// would search an eleven the user is not looking at while pinning the one they are, and
+// the two numbers on screen would have been produced by two different questions.
+func applyPinnedXIs(fix *fixture, input Input) error {
+	if len(input.Team1XI) == 0 && len(input.Team2XI) == 0 {
+		return nil
+	}
+	if len(input.Team1XI) == 0 || len(input.Team2XI) == 0 {
+		err := fmt.Errorf("both elevens are pinned or neither is: team1_xi has %d players and team2_xi has %d",
+			len(input.Team1XI), len(input.Team2XI))
+		slog.Warn("predictteam.PredictTeams refused a half-pinned fixture", slog.Any("err", err))
+		return err
+	}
+	keys1, err := resolvePinnedXI(fix.team1, fix.pool1, input.Team1XI, fix.constraints.Size)
+	if err != nil {
+		return err
+	}
+	keys2, err := resolvePinnedXI(fix.team2, fix.pool2, input.Team2XI, fix.constraints.Size)
+	if err != nil {
+		return err
+	}
+	fix.pinned = pinnedXI{
+		team1Keys:    keys1,
+		team2Keys:    keys2,
+		mustInclude1: mustIncludeKeys(fix.pool1, input.ExtraTeam1),
+		mustInclude2: mustIncludeKeys(fix.pool2, input.ExtraTeam2),
+	}
+	fix.isPinned = true
+	return nil
 }
 
 // resolveSide resolves one side reference, keeping the resolver's own error intact so the

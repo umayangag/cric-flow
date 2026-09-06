@@ -21,7 +21,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   rating state is built under (P-1), so a numeric id sent here matches nobody and every player
   comes back unrated (D-7a). A player whose row has no `external_id` cannot be sent.
 - **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format that is not offered an optimised selection — the message carries the format's reason from `ml.xi.optimizer.NOT_OPTIMISED_REASONS` (H-17: the objective does not rank, TEST; or E5: the objective has not shown it selects, plan §8.8) and the hint names `"ratings"`.
-- **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
+- **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`, and optional `team1_constraints` / `team2_constraints` (P1-2: check the eleven being scored against these instead of selecting under them). Response: `team1_win_probability` (the displayed probability), `objective_probability`, and `team1_constraint_check` / `team2_constraint_check` where constraints were sent — the eleven's size, its bowler count by the optimiser's own definition, whether it holds a keeper, the `must_include` ids it does not hold, and whether it `met` them all.
 - **Every prediction response** (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict`) carries `served_ratings: {run_id, ratings_through}` — the run the answering store was loaded from and the last match date its ratings include, read off that store (P1-5). A live request against ratings older than `ml.ratings_max_age_days` is **503 `RATINGS_STALE`**, the message naming the date, the age and the limit and the hint the step that fixes it (H-11).
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
 - **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
@@ -72,7 +72,23 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 
 **Body:** `format`, `match_date` (RFC3339 or `YYYY-MM-DD`), the two sides, and optionally
 `venue`, `extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`,
-`require_keeper`, `team1_pool` / `team2_pool`.
+`require_keeper`, `team1_pool` / `team2_pool`, `team1_bats_first` (the toss: true where
+team 1 bats first, absent where it is unknown and both orders are drawn, P1-1), and
+`team1_xi` / `team2_xi` (Play mode, P1-2).
+
+**Play mode: scoring an eleven the caller built (P1-2).** `team1_xi` / `team2_xi` name each
+side's eleven by `player_id`. Sent, the selection step is skipped and exactly those players
+are scored; omitted, the XIs are selected as they always were. Everything after the
+selection is the same code either way — the displayed probability is still
+`/xi/predict-win`'s and the totals, ranges and scorecard are still `/simulate`'s — so a
+re-score and an Optimise for the same eleven return the same numbers. A pinned player joins
+his side's pool whatever the window or the ledger says, the way a must-include id does.
+
+Four refusals, because a repaired eleven is not the eleven that was sent: a side that is
+not a full XI is **`400 XI_INCOMPLETE`** (every model here aggregates a whole side, so a
+ten-man side would be a prediction for a match nobody plays), an id that names no player is
+**`400 XI_PLAYER_UNKNOWN`**, and naming the same player twice or pinning one side while
+leaving the other to be searched is a `400` naming what is wrong.
 
 **The candidate pool (D-12).** Each side's XI is chosen out of the players who appeared for
 that club in that format within a **recency window** ending at `match_date` — twelve months
@@ -132,10 +148,12 @@ returns the sides that club has played, in the same shape.
 | `ratings_through`, `run_id` | Which rating state every number was computed from: the last match date the served ratings include (`YYYY-MM-DD`) and the run they were loaded from. Both required, never omitted (P1-5) — they are ml-service's `served_ratings` stamp, which every call the prediction made must agree on |
 | `team1_side`, `team2_side` | The sides that were actually scored — `club_id`, `name`, `gender`, `display_name` — echoed on every prediction, not only an ambiguous one |
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
-| `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects) |
+| `selection` | `objective` (`win` / `ratings` / `fixed`), `optimised`, and a `note` explaining an XI that was not optimised — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects), or, for `fixed`, that the caller pinned the eleven and nothing was searched for (P1-2) |
 | `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
 | `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
-| `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and per innings the median-band `total`, its `extras` and the 10-90 range of the draws |
+| `toss` | Which batting order the numbers assume: `team1_bats_first` (null where it was unknown and both orders were drawn), `honoured`, and a `note` where a named toss could not be used (P1-1) |
+| `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and `team1_innings` / `team2_innings` — named by side, not by batting position — each with the median-band `total`, its `extras` and the 10-90 range of the draws |
+| `constraints` | Present only where the caller pinned the elevens (P1-2): `team_size`, `min_bowlers` and `require_keeper` as they were asked for, and per side the `size`, the `bowlers` count, `has_keeper`, any `missing_must_include` players and whether the eleven `met` what was asked. The counts are ml-service's, measured on the eleven that was scored — nothing is repaired to satisfy them |
 | `team1_pool`, `team2_pool` | Which candidates each XI was chosen out of: `source` (`recency_window` / `all_time` / `manual`), the `window_months` and `since` it applied, the `size` it produced, and `retired_excluded` with the `excluded` players themselves — each with `reason` (`retired` / `user_flagged`) and `detail` |
 
 The scorecard lines and extras sum to the innings total by construction — they come from the

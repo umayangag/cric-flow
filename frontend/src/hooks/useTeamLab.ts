@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { useAsync } from './useAsync';
+import { usePlayMode } from './usePlayMode';
 import { useVenueSearch } from './useVenueSearch';
 import type { ApiError } from '../lib/apiError';
 import type { PoolRequest, PredictTeamSelectionResponse, TeamSideOption } from '../types';
@@ -15,6 +16,15 @@ const MAX_FUTURE_DAYS = 14;
  * difference is what keeps manual picking optional.
  */
 export type SidePoolChoice = { allTime: boolean; players: number[] | null };
+
+/**
+ * The two elevens a Play-mode re-score pins, by player id (P1-2).
+ *
+ * Both sides or neither: an answer that searched one side while the user edited the other
+ * would move numbers nobody touched, and the API refuses a half-pinned request for the
+ * same reason.
+ */
+export type PinnedXIs = { team1: number[]; team2: number[] };
 
 const DEFAULT_POOL_CHOICE: SidePoolChoice = { allTime: false, players: null };
 
@@ -258,7 +268,7 @@ export function useTeamLab() {
 
   const { run: predict } = prediction;
   const runPrediction = useCallback(
-    async (pool1: SidePoolChoice, pool2: SidePoolChoice) => {
+    async (pool1: SidePoolChoice, pool2: SidePoolChoice, pinned?: PinnedXIs) => {
       if (!canPredict || !team1 || !team2) return;
       await predict({
         format: format.trim(),
@@ -273,6 +283,11 @@ export function useTeamLab() {
         require_keeper: constraints.requireKeeper,
         extra_team1: extraIdsFrom(constraints.extraTeam1),
         extra_team2: extraIdsFrom(constraints.extraTeam2),
+        // Play mode's re-score is this same request with the two elevens named, so the
+        // probability, the totals and the scorecard come off the one path they always
+        // came off (P1-2).
+        team1_xi: pinned?.team1,
+        team2_xi: pinned?.team2,
       });
     },
     [canPredict, predict, format, team1, team2, venue, matchDate, toss, constraints],
@@ -280,6 +295,15 @@ export function useTeamLab() {
 
   const handlePredict = useCallback(
     () => runPrediction(team1Pool, team2Pool),
+    [runPrediction, team1Pool, team2Pool],
+  );
+
+  // Score the elevens the user built. It is deliberately the same call Optimise makes,
+  // with the selection step replaced by the caller's answer.
+  const rescoreXIs = useCallback(
+    async (team1XI: number[], team2XI: number[]) => {
+      await runPrediction(team1Pool, team2Pool, { team1: team1XI, team2: team2XI });
+    },
     [runPrediction, team1Pool, team2Pool],
   );
 
@@ -299,6 +323,15 @@ export function useTeamLab() {
     },
     [runPrediction, team1Pool, team2Pool],
   );
+
+  // Play mode edits the answer's two elevens and re-scores each change (P1-2). It reads
+  // the result and writes through `rescoreXIs`, so the request is still built in one
+  // place and there is still one surface on POST /api/predict/team-selection.
+  const play = usePlayMode({
+    result: (prediction.data as PredictTeamSelectionResponse | null) ?? null,
+    rescore: rescoreXIs,
+    loading: prediction.loading,
+  });
 
   // One error at a time, newest first: a failed prediction is what the user just did,
   // and an option list that failed to load is visible as an empty picker anyway.
@@ -342,6 +375,7 @@ export function useTeamLab() {
     constraints,
     setConstraints,
     constraintsError,
+    play,
   };
 }
 

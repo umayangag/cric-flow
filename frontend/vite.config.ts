@@ -80,10 +80,10 @@ export default defineConfig({
       // A change of ruler, not of test quality -- so the figures below are the
       // new measurement rounded down, and the ratchet resumes from them.
       thresholds: {
-        lines: 79,
-        functions: 79,
-        statements: 77,
-        branches: 70,
+        lines: 80,
+        functions: 80,
+        statements: 78,
+        branches: 71,
       },
     },
   },

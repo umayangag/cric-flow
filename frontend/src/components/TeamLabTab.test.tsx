@@ -67,7 +67,33 @@ const baseState = {
   constraints: { minBowlers: '', requireKeeper: true, extraTeam1: '', extraTeam2: '' },
   setConstraints: vi.fn(),
   constraintsError: null,
+  play: playState(),
 };
+
+/**
+ * Play mode's state as the tab receives it (P1-2).
+ *
+ * The board holds the eleven being built; by default it is the one the answer below it
+ * describes, which is every state except a half-finished edit.
+ */
+function playState(overrides: Partial<ReturnType<typeof defaultPlayState>> = {}) {
+  return { ...defaultPlayState(), ...overrides };
+}
+
+function defaultPlayState() {
+  return {
+    team1: [{ player_id: 1, player_name: 'Player A' }],
+    team2: [{ player_id: 2, player_name: 'Player B' }],
+    teamSize: 1,
+    complete: true,
+    edited: false,
+    addPlayer: vi.fn(),
+    removePlayer: vi.fn(),
+    swapPlayer: vi.fn(),
+    delta: null as ReturnType<typeof import('../lib/playDelta').playDelta>,
+    selectedIds: { 1: [1], 2: [2] } as Record<1 | 2, number[]>,
+  };
+}
 
 /** The default pool a response carries: the measured recency window, nothing excluded. */
 const defaultPool = {
@@ -456,5 +482,109 @@ describe('TeamLabTab', () => {
     render(<TeamLabTab />);
 
     expect(screen.getByRole('button', { name: /team 1 pool: 3 chosen/i })).toBeInTheDocument();
+  });
+
+  // Play mode (P1-2): the board is the eleven being built, every change re-scores, and a
+  // constraint the eleven breaks is on the surface rather than repaired underneath it.
+  describe('play mode', () => {
+    const constraints = {
+      team_size: 1,
+      min_bowlers: 5,
+      require_keeper: true,
+      team1: { size: 1, bowlers: 4, has_keeper: false, met: false },
+      team2: { size: 1, bowlers: 6, has_keeper: true, met: true },
+    };
+
+    function renderPlay(play: Partial<ReturnType<typeof defaultPlayState>> = {}, result = {}) {
+      mockUseTeamLab.mockReturnValue({
+        ...baseState,
+        play: playState(play),
+        result: prediction({ constraints, ...result }),
+      });
+      render(<TeamLabTab />);
+    }
+
+    it('lists both elevens with a swap and a remove on every player', () => {
+      renderPlay();
+
+      expect(screen.getByRole('heading', { name: /play mode/i })).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /^swap$/i })).toHaveLength(2);
+      expect(screen.getByRole('button', { name: /remove player a/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /optimise again/i })).toBeInTheDocument();
+    });
+
+    it('removes a player through the hook rather than in the markup', async () => {
+      const user = userEvent.setup();
+      const removePlayer = vi.fn();
+      renderPlay({ removePlayer });
+
+      await user.click(screen.getByRole('button', { name: /remove player a/i }));
+
+      expect(removePlayer).toHaveBeenCalledWith(1, 1);
+    });
+
+    it('shows a broken constraint as broken, with the counts behind it', () => {
+      renderPlay();
+
+      expect(screen.getByText(/bowlers 4 of 5 — broken/i)).toBeInTheDocument();
+      expect(screen.getByText(/no keeper — broken/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/scored as you built it/i).length).toBeGreaterThan(0);
+    });
+
+    it('says an unfinished eleven is not the eleven the numbers describe', () => {
+      renderPlay({ team1: [], complete: false });
+
+      expect(screen.getByText(/this eleven is not scored yet/i)).toBeInTheDocument();
+      expect(screen.getByText(/0 of 1/)).toBeInTheDocument();
+    });
+
+    it('shows what the last change did to the probability and the totals', () => {
+      renderPlay({
+        delta: {
+          winProbability: { previous: 0.61, current: 0.643, change: 0.033 },
+          team1Innings: {
+            total: { previous: 176, current: 182, change: 6 },
+            p10: { previous: 140, current: 145, change: 5 },
+            p90: { previous: 212, current: 219, change: 7 },
+          },
+          team2Innings: null,
+        },
+      });
+
+      expect(screen.getByLabelText(/change from the previous eleven/i)).toBeInTheDocument();
+      expect(screen.getByText('+3.3 pp')).toBeInTheDocument();
+      expect(screen.getByText(/\+6\.0 runs \(\+5\.0 \/ \+7\.0\)/)).toBeInTheDocument();
+    });
+
+    it('swaps a player for one picked out of the candidate list', async () => {
+      const user = userEvent.setup();
+      const swapPlayer = vi.fn();
+      vi.mocked(api.getCandidates).mockResolvedValue({
+        side: indiaWomen,
+        pool: {
+          source: 'all_time',
+          size: 1,
+          retired_excluded: 0,
+        },
+        candidates: [
+          {
+            player_id: 8,
+            player_name: 'Pickable Player',
+            is_wicket_keeper: false,
+            excluded: false,
+          },
+        ],
+      });
+      renderPlay({ swapPlayer });
+
+      await user.click(screen.getAllByRole('button', { name: /^swap$/i })[0]);
+      await screen.findByText(/replace player a/i);
+      await user.click(await screen.findByText(/pickable player/i));
+
+      expect(swapPlayer).toHaveBeenCalledWith(1, 1, {
+        player_id: 8,
+        player_name: 'Pickable Player',
+      });
+    });
   });
 });
