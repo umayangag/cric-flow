@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Box, Button, Chip, Grid, Stack, Typography } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import { Refresh as RefreshIcon } from '@mui/icons-material';
 import { api } from '../api';
 import { useAsync } from '../hooks/useAsync';
 import ErrorNotice from './common/ErrorNotice';

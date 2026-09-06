@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, IconButton, Popover, Stack, Typography } from '@mui/material';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { InfoOutlined as InfoOutlinedIcon } from '@mui/icons-material';
 import { useMetricGlossary } from '../../context/MetricGlossaryContext';
 
 type MetricInfoProps = {

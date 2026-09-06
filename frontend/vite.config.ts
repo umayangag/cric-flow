@@ -19,6 +19,10 @@ export default defineConfig({
       'prop-types',
       'react-is',
       '@mui/material',
+      // The icons barrel, for the same reason: a deep import per icon is both an extra
+      // pre-bundle entry and a CJS file, and the dev optimizer hands a CJS default back
+      // unwrapped (the icon arrives as {default: Component}, which React rejects).
+      '@mui/icons-material',
     ],
   },
   build: {
