@@ -42,6 +42,14 @@ def _teams(strength2: float = 1.0):
     return S.SideForecasts(_side(1), _side(11)), S.SideForecasts(_side(2, strength2), _side(12, strength2))
 
 
+def _calibration_sample(n: int) -> S.SharedFactorCalibrationSample:
+    """A stand-in for the evidence a fitted shared factor keeps, where a test builds the
+    factor by hand rather than fitting it."""
+    return S.SharedFactorCalibrationSample(
+        np.arange(n).astype(object), np.full(n, 150.0), np.full(n, 150.0), np.full(n, 15.0)
+    )
+
+
 CONTEXT = S.MatchContext("T20", extras_per_ball=0.08, innings_deliveries=124.0, bowler_wicket_share=0.9)
 CALIBRATION = S.SimulatorCalibration(runs_balls_rho=0.9)
 
@@ -139,7 +147,7 @@ def test_comonotonic_draws_collapse_the_spread_and_the_copula_restores_it() -> N
 
 def test_shared_factor_widens_totals_and_is_shared_by_both_innings() -> None:
     team1, team2 = _teams()
-    factor = S.SharedFactor(np.array([0.7, 1.0, 1.3]), 3, 0.06, 0.0, 1.0)
+    factor = S.SharedFactor(np.array([0.7, 1.0, 1.3]), 3, 0.06, 0.0, 1.0, _calibration_sample(3))
 
     without = S.simulate_match(team1, team2, CONTEXT, 800, 0, True, S.SimulatorCalibration(0.9))
     with_factor = S.simulate_match(team1, team2, CONTEXT, 800, 0, True, S.SimulatorCalibration(0.9, factor))
@@ -155,13 +163,31 @@ def test_fit_shared_factor_deconvolves_the_simulators_own_dispersion() -> None:
     simulated_sd = np.full(200, 15.0)
     true_factor = rng.normal(1.0, 0.1, 200)
     actual = simulated_mean * true_factor + rng.normal(0.0, 15.0, 200)
+    sample = S.SharedFactorCalibrationSample(np.arange(200).astype(object), actual, simulated_mean, simulated_sd)
 
-    fitted = S.fit_shared_factor(actual, simulated_mean, simulated_sd)
+    fitted = S.fit_shared_factor(sample)
 
     assert 0.05 < np.std(fitted.factors) < 0.15  # near the true 0.1, never the raw residual sd
     assert fitted.shrink < 1.0 and fitted.within_variance == pytest.approx(0.01)
+    assert len(fitted.sample_read) == 200  # the evidence is kept so an arm can refit from it
     with pytest.raises(ValueError, match="calibration matches"):
-        S.fit_shared_factor(actual[:10], simulated_mean[:10], simulated_sd[:10])
+        S.fit_shared_factor(sample.take(np.arange(10)))
+
+
+def test_shared_factor_calibration_sample_take_selects_the_same_matches_in_every_column() -> None:
+    sample = S.SharedFactorCalibrationSample(
+        np.array(["a", "b", "c"], dtype=object),
+        np.array([150.0, 160.0, 170.0]),
+        np.array([148.0, 158.0, 168.0]),
+        np.array([15.0, 16.0, 17.0]),
+    )
+
+    taken = sample.take(np.array([False, True, True]))
+
+    assert list(taken.match_ids) == ["b", "c"]
+    assert list(taken.actual) == [160.0, 170.0]
+    assert list(taken.simulated_mean) == [158.0, 168.0]
+    assert list(taken.simulated_sd) == [16.0, 17.0]
 
 
 def test_runs_balls_copula_rho_from_rank_correlation() -> None:

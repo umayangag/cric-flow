@@ -451,7 +451,11 @@ def _fit_simulator_calibration(
     actual_first = outcomes.innings1_runs.to_numpy(dtype=float)
     rho = simulator.calibrate(calibration_rows).runs_balls_rho
     draws = simulator.simulate_calibration_fixtures(fixtures, rho, SHARED_FACTOR_SAMPLES, seed=0)
-    shared_factor = simulator.fit_shared_factor(actual_first, draws.first_mean, draws.first_sd)
+    shared_factor = simulator.fit_shared_factor(
+        simulator.SharedFactorCalibrationSample(
+            np.asarray([f.match_id for f in fixtures], dtype=object), actual_first, draws.first_mean, draws.first_sd
+        )
+    )
     if chase_response == "none":
         return shared_factor, None
     sample = simulator.chase_calibration_sample(

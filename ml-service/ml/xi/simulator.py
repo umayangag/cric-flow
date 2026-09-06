@@ -237,6 +237,29 @@ def calibrate(
 
 
 @dataclass(frozen=True)
+class SharedFactorCalibrationSample:
+    """The calibration fold's first innings as the shared factor's fit reads them: per match
+    the actual first-innings total and the simulator's own mean and sd for it (simulated
+    without a factor). Kept on the fitted factor, as the chase response keeps its sample, so
+    an arm can refit the factor from the same evidence -- a subset of these matches, or the
+    same matches under another rule -- without simulating the calibration fold again."""
+
+    match_ids: np.ndarray
+    actual: np.ndarray
+    simulated_mean: np.ndarray
+    simulated_sd: np.ndarray
+
+    def __len__(self) -> int:
+        return int(len(self.actual))
+
+    def take(self, which: np.ndarray) -> "SharedFactorCalibrationSample":
+        """The sample restricted to a boolean mask or an index array over its matches."""
+        return SharedFactorCalibrationSample(
+            self.match_ids[which], self.actual[which], self.simulated_mean[which], self.simulated_sd[which]
+        )
+
+
+@dataclass(frozen=True)
 class SharedFactor:
     """One multiplicative factor per draw, shared by both innings, sampled from the as-of
     residual distribution: actual / simulated-mean first-innings totals on matches the
@@ -248,6 +271,7 @@ class SharedFactor:
     residual_variance: float
     within_variance: float
     shrink: float
+    sample_read: SharedFactorCalibrationSample
 
     def sample(self, rng: np.random.Generator, n: int) -> np.ndarray:
         return rng.choice(self.factors, size=n, replace=True)
@@ -262,19 +286,18 @@ class SharedFactor:
         }
 
 
-def fit_shared_factor(actual: np.ndarray, simulated_mean: np.ndarray, simulated_sd: np.ndarray) -> SharedFactor:
-    """Deconvolve the match-level residuals. ``actual`` are first-innings totals; the other
-    two describe the simulator's own distribution for each (without a factor)."""
-    if len(actual) < MIN_SHARED_FACTOR_MATCHES:
-        raise ValueError(f"{len(actual)} calibration matches; need {MIN_SHARED_FACTOR_MATCHES} for a shared factor")
-    mean = np.maximum(simulated_mean, 1.0)
-    ratio = actual / mean
+def fit_shared_factor(sample: SharedFactorCalibrationSample) -> SharedFactor:
+    """Deconvolve the match-level residuals of the calibration fold's first innings."""
+    if len(sample) < MIN_SHARED_FACTOR_MATCHES:
+        raise ValueError(f"{len(sample)} calibration matches; need {MIN_SHARED_FACTOR_MATCHES} for a shared factor")
+    mean = np.maximum(sample.simulated_mean, 1.0)
+    ratio = sample.actual / mean
     residual_variance = float(np.var(ratio))
-    within_variance = float(np.mean((simulated_sd / mean) ** 2))
+    within_variance = float(np.mean((sample.simulated_sd / mean) ** 2))
     excess = max(residual_variance - within_variance, 0.0)
     shrink = float(np.sqrt(excess / residual_variance)) if residual_variance > 0 else 0.0
     factors = 1.0 + (ratio - 1.0) * shrink
-    return SharedFactor(np.maximum(factors, 0.0), int(len(actual)), residual_variance, within_variance, shrink)
+    return SharedFactor(np.maximum(factors, 0.0), len(sample), residual_variance, within_variance, shrink, sample)
 
 
 # --- the chase response ---------------------------------------------------------------
