@@ -40,6 +40,10 @@ type predictTeamRequest struct {
 	IncludeBothScorecards  json.RawMessage `json:"include_both_scorecards,omitempty"`
 	ExtraTeam1             []int64         `json:"extra_team1"`
 	ExtraTeam2             []int64         `json:"extra_team2"`
+	// Team1XI and Team2XI pin each side's eleven by player id: Play mode scores the
+	// eleven the caller built rather than searching for one (P1-2). Both or neither.
+	Team1XI []int64 `json:"team1_xi"`
+	Team2XI []int64 `json:"team2_xi"`
 	MinBowlers             int             `json:"min_bowlers"`
 	RequireKeeper          *bool           `json:"require_keeper"`
 	// Team1BatsFirst is the toss (P1-1): true where team1 bats first, false where team2
@@ -187,6 +191,8 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor strin
 		MatchDate:     matchDate,
 		ExtraTeam1:    body.ExtraTeam1,
 		ExtraTeam2:    body.ExtraTeam2,
+		Team1XI:       body.Team1XI,
+		Team2XI:       body.Team2XI,
 		MinBowlers:    body.MinBowlers,
 		RequireKeeper: true,
 		Team1Pool:     body.Team1Pool.poolRequest(),
@@ -329,6 +335,28 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 			Code:    "TEAM_NOT_FOUND",
 			Message: err.Error(),
 			Hint:    "the side must have played this format; pick one from /api/options/teams-by-format",
+		})
+		return
+	}
+	// A pinned eleven that is not an eleven, or that names a player this side cannot
+	// field, is the caller's request being unanswerable rather than a failure here. Both
+	// are refused instead of repaired: scoring the ten who resolved would answer for an
+	// eleven nobody sent (§8.7, P1-2).
+	var incomplete *predictteam.IncompleteXIError
+	if errors.As(err, &incomplete) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "XI_INCOMPLETE",
+			Message: incomplete.Error(),
+			Hint:    "send a full eleven for each side in team1_xi and team2_xi, or omit both to have them selected",
+		})
+		return
+	}
+	var unknownPlayer *predictteam.UnknownXIPlayerError
+	if errors.As(err, &unknownPlayer) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "XI_PLAYER_UNKNOWN",
+			Message: unknownPlayer.Error(),
+			Hint:    "pick players from GET /api/options/candidates for that side",
 		})
 		return
 	}

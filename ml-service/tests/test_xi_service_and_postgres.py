@@ -315,6 +315,93 @@ def test_predict_win_with_and_without_context(registry, artifacts_dir) -> None:
     assert plain.objective_probability == pytest.approx(ctx.objective_probability), "context never enters the objective"
 
 
+def test_predict_win_reports_no_constraint_check_when_none_was_asked_for(registry, artifacts_dir) -> None:
+    """The optimised path sends no constraints, and gets no check back."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+
+    res = xi_service.predict_win(
+        XiWinRequest(
+            format="T20I", team1_player_ids=list(last.team1_players), team2_player_ids=list(last.team2_players)
+        ),
+        registry,
+    )
+
+    assert res.team1_constraint_check is None and res.team2_constraint_check is None
+
+
+def test_predict_win_checks_a_hand_built_eleven_against_its_constraints(registry, artifacts_dir) -> None:
+    """Play mode: the eleven is scored as sent, and the constraints are reported, not applied."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+    xi1, xi2 = list(last.team1_players), list(last.team2_players)
+
+    res = xi_service.predict_win(
+        XiWinRequest(
+            format="T20I",
+            team1_player_ids=xi1,
+            team2_player_ids=xi2,
+            team1_constraints=XiConstraints(team_size=11, min_bowlers=0, require_keeper=False),
+            team2_constraints=XiConstraints(team_size=11, min_bowlers=0, require_keeper=False),
+        ),
+        registry,
+    )
+
+    assert res.team1_constraint_check.team_size == len(xi1)
+    assert res.team1_constraint_check.bowlers >= 0
+    assert res.team1_constraint_check.met is True
+    assert res.team2_constraint_check.met is True
+
+
+def test_a_constraint_a_hand_built_eleven_breaks_is_reported_not_repaired(registry, artifacts_dir) -> None:
+    """An eleven short of bowlers, or missing a must-include, comes back broken and unchanged."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+    xi1, xi2 = list(last.team1_players), list(last.team2_players)
+    unreachable_bowlers = 11
+
+    res = xi_service.predict_win(
+        XiWinRequest(
+            format="T20I",
+            team1_player_ids=xi1,
+            team2_player_ids=xi2,
+            team1_constraints=XiConstraints(
+                team_size=11,
+                min_bowlers=unreachable_bowlers,
+                require_keeper=False,
+                must_include=[xi1[0], "nosuchplayer"],
+            ),
+        ),
+        registry,
+    )
+
+    assert res.team1_constraint_check.met is False
+    assert res.team1_constraint_check.bowlers < unreachable_bowlers
+    assert res.team1_constraint_check.min_bowlers == unreachable_bowlers
+    assert res.team1_constraint_check.missing_must_include == ["nosuchplayer"]
+    assert 0.0 <= res.team1_win_probability <= 1.0, "the eleven is still scored as it was sent"
+
+
+def test_the_constraint_check_never_moves_the_probability(registry, artifacts_dir) -> None:
+    """Checking is a measurement of the eleven, not a change to it."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+    request = {
+        "format": "T20I",
+        "team1_player_ids": list(last.team1_players),
+        "team2_player_ids": list(last.team2_players),
+    }
+
+    plain = xi_service.predict_win(XiWinRequest(**request), registry)
+    checked = xi_service.predict_win(
+        XiWinRequest(**request, team1_constraints=XiConstraints(min_bowlers=5)),
+        registry,
+    )
+
+    assert checked.team1_win_probability == pytest.approx(plain.team1_win_probability)
+    assert checked.served_ratings == plain.served_ratings
+
+
 # ---------------------------------------------------------------------------
 # Postgres source, with a fake connection
 # ---------------------------------------------------------------------------

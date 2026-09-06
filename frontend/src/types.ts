@@ -33,9 +33,13 @@ export type PredictTeamSelectedPlayer = {
 /**
  * How the XIs were chosen. `optimised` is false where the win objective does not rank
  * (H-17: TEST), and every surface showing such an XI has to say so.
+ *
+ * `fixed` is Play mode (P1-2): the caller built the eleven and the API scored it, so
+ * nothing was searched for and no player carries a marginal value. It is go-app's own
+ * value — ml-service is told which players to score and never asked how they were chosen.
  */
 export type PredictSelectionSummary = {
-  objective: 'win' | 'ratings';
+  objective: 'win' | 'ratings' | 'fixed';
   optimised: boolean;
   note?: string;
 };
@@ -221,6 +225,36 @@ export type PredictServedRatings = {
   run_id: string;
 };
 
+/** A must-include player an eleven does not hold, named rather than left as an id. */
+export type PredictMissingPlayer = {
+  player_id: number;
+  player_name: string;
+};
+
+/**
+ * One hand-built eleven measured against its constraints (P1-2).
+ *
+ * The counts are ml-service's, where "a bowling option" and "a keeper" are defined, so a
+ * chip reading "4 of 5 bowlers" counts what the optimiser would have counted. Nothing here
+ * changed the eleven: a broken constraint is shown broken and the eleven is scored as built.
+ */
+export type PredictConstraintStatus = {
+  size: number;
+  bowlers: number;
+  has_keeper: boolean;
+  missing_must_include?: PredictMissingPlayer[];
+  met: boolean;
+};
+
+/** What was asked of both elevens, and how each one measures up. */
+export type PredictConstraintReport = {
+  team_size: number;
+  min_bowlers: number;
+  require_keeper: boolean;
+  team1: PredictConstraintStatus;
+  team2: PredictConstraintStatus;
+};
+
 export type PredictTeamSelectionResponse = PredictServedRatings & {
   /** The sides that were actually scored, echoed back whether or not the request was clear. */
   team1_side: TeamSideOption;
@@ -235,6 +269,12 @@ export type PredictTeamSelectionResponse = PredictServedRatings & {
   /** Which candidates each XI was chosen out of, and who the ledger excluded (D-12). */
   team1_pool: PoolSummary;
   team2_pool: PoolSummary;
+  /**
+   * Whether each hand-built eleven meets what was asked of it (P1-2). Present only in
+   * Play mode: an eleven the optimiser chose was chosen under the constraints, while one
+   * a user built is checked against them and never repaired.
+   */
+  constraints?: PredictConstraintReport;
 };
 
 /** ml-service GET /health, via the go-app proxy. */

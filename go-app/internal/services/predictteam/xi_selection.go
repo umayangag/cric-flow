@@ -71,7 +71,31 @@ type XIWinPredictor interface {
 // probability, and the rating state it was read from.
 type XIWinResult struct {
 	Team1WinProbability float64
-	Served              ServedRatings
+	// Team1Check and Team2Check are the constraint checks, present only where the
+	// request asked for them — that is, only where the caller pinned the elevens.
+	Team1Check *XIConstraintCheck
+	Team2Check *XIConstraintCheck
+	Served     ServedRatings
+}
+
+// XIConstraintCheck is one eleven measured against its constraints by ml-service, which
+// is where "a bowling option" and "a keeper" are defined (P1-2).
+type XIConstraintCheck struct {
+	TeamSize               int
+	Bowlers                int
+	MinBowlers             int
+	HasKeeper              bool
+	RequireKeeper          bool
+	MissingMustIncludeKeys []string
+	Met                    bool
+}
+
+// ConstraintCheckRequest asks ml-service to check an eleven against these constraints
+// rather than select under them: the same three the optimiser reads, plus the registry
+// ids the caller requires in the side.
+type ConstraintCheckRequest struct {
+	Constraints
+	MustIncludeKeys []string
 }
 
 // XIOptimizationRequest is the Go-side payload for POST /xi/optimize.
@@ -120,6 +144,25 @@ type XIWinRequest struct {
 	Team2ID         int64
 	VenueID         int64
 	AsOf            time.Time
+	// Team1Constraints and Team2Constraints ask for a constraint check on the eleven
+	// being scored. Nil on the searched path, where the optimiser applied them already.
+	Team1Constraints *ConstraintCheckRequest
+	Team2Constraints *ConstraintCheckRequest
+}
+
+// chooseXIs settles which eleven each side plays: the caller's, where they built one
+// (Play mode), or the search's.
+//
+// It is the only step Play mode replaces. Everything after it — the displayed
+// probability, the simulated totals and the scorecard — runs on the elevens this returns,
+// so a hand-built eleven and a searched one are scored by the same code reading the same
+// models (P1-2).
+func chooseXIs(ctx context.Context, optimizer XISelectionOptimizer, fix fixture) (xiSelection, error) {
+	if fix.isPinned {
+		slog.InfoContext(ctx, "scoring the caller's elevens", slog.String("format", fix.format))
+		return pinnedSelection(fix.pinned), nil
+	}
+	return selectBothXIs(ctx, optimizer, fix)
 }
 
 // selectBothXIs picks an XI for each side and reports how.

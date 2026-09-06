@@ -49,7 +49,13 @@ describe('useTeamLab', () => {
     mockGetFormats.mockReset().mockResolvedValue(['T20I']);
     mockGetTeamSidesByFormat.mockReset().mockResolvedValue([indiaMen, indiaWomen]);
     mockGetOpponentSides.mockReset().mockResolvedValue([australiaWomen]);
-    mockPredict.mockReset().mockResolvedValue({ team1: [], team2: [] });
+    // The shape Play mode reads off an answer: how the elevens were chosen, and the two
+    // elevens themselves (P1-2).
+    mockPredict.mockReset().mockResolvedValue({
+      team1: [],
+      team2: [],
+      selection: { objective: 'win', optimised: true },
+    });
     mockOpsStatus.mockReset().mockResolvedValue(null);
     mockSearchVenues.mockReset().mockResolvedValue([]);
   });

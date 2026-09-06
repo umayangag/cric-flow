@@ -109,6 +109,12 @@ class XiWinRequest(BaseModel):
     team1_bats_first: Optional[bool] = Field(
         default=None, description="Known after the toss; omit before it to average both batting orders"
     )
+    team1_constraints: Optional[XiConstraints] = Field(
+        default=None,
+        description="Play mode (P1-2): check this eleven against these constraints instead of selecting "
+        "under them. Omitted where the eleven came from the optimiser, which applied them while searching.",
+    )
+    team2_constraints: Optional[XiConstraints] = Field(default=None, description="The same, for team2's eleven")
     as_of: Optional[date] = Field(
         default=None,
         description="Backtests only: serve from ratings as they stood before this date "
@@ -120,10 +126,42 @@ class XiWinRequest(BaseModel):
         return _upper(v) or ""
 
 
+class XiConstraintCheck(BaseModel):
+    """Whether an eleven somebody *built* meets the constraints it was sent with (P1-2).
+
+    The optimiser applies these constraints while it searches; a hand-built eleven is
+    never searched, so nothing applies them to it -- and repairing it silently would be
+    scoring a different eleven from the one on screen. So it is checked and reported
+    instead: the counts are the ones the constraint is defined on, not a caller's guess
+    at them. ``is_bowling_option`` is the same definition the optimiser and the feature
+    share (``ml.xi.contract``), and the keeper flag is the served rating state's, so
+    "five bowlers" means here exactly what it means inside the search.
+
+    Every field is on the wire rather than just ``met``: a chip that says "4 of 5
+    bowlers" is a broken constraint a user can act on, and "not met" is not.
+    """
+
+    team_size: int = Field(..., description="How many players the eleven actually holds")
+    bowlers: int = Field(..., description="How many of them are bowling options, by the optimiser's definition")
+    min_bowlers: int = Field(..., description="The minimum asked for, echoed so the answer stands alone")
+    has_keeper: bool
+    require_keeper: bool
+    missing_must_include: List[str] = Field(
+        default_factory=list, description="must_include ids the eleven does not hold"
+    )
+    met: bool = Field(..., description="True where the eleven satisfies every constraint above")
+
+
 class XiWinResponse(BaseModel):
     team1_win_probability: float = Field(..., ge=0, le=1)
     objective_probability: float = Field(
         ..., ge=0, le=1, description="XI-only model, the value the optimiser maximises"
+    )
+    team1_constraint_check: Optional[XiConstraintCheck] = Field(
+        default=None, description="Present only where the request carried team1_constraints"
+    )
+    team2_constraint_check: Optional[XiConstraintCheck] = Field(
+        default=None, description="Present only where the request carried team2_constraints"
     )
     served_ratings: ServedRatings
 

@@ -4,8 +4,11 @@ import ErrorNotice from './common/ErrorNotice';
 import PredictionReadiness from './PredictionReadiness';
 import CandidatePoolDialog from './CandidatePoolDialog';
 import TeamLabInputs from './TeamLabInputs';
+import TeamLabPlayMode from './TeamLabPlayMode';
 import TeamLabResult from './TeamLabResult';
+import PlayerPickerDialog from './PlayerPickerDialog';
 import { useTeamLab, type SidePoolChoice } from '../hooks/useTeamLab';
+import type { PlayPlayer, PlaySide } from '../hooks/usePlayMode';
 import type { TeamSideOption } from '../types';
 
 /**
@@ -34,6 +37,16 @@ const TeamLabTab: React.FC = () => {
     { side: 2, team: lab.team2, pool: lab.team2Pool, setPool: lab.setTeam2Pool },
   ];
   const openSide = sides.find((entry) => entry.side === openPoolFor) ?? null;
+
+  // Which side is picking a player, and whose place he would take: null while the picker
+  // is closed, which is every state but an add or a swap in progress (P1-2).
+  const [picking, setPicking] = React.useState<{
+    side: PlaySide;
+    replacing: PlayPlayer | null;
+  } | null>(null);
+  const pickingSide = picking
+    ? { side: picking.side, team: picking.side === 1 ? lab.team1 : lab.team2 }
+    : null;
 
   return (
     <Box>
@@ -72,7 +85,37 @@ const TeamLabTab: React.FC = () => {
       </Box>
 
       {lab.result && (
-        <TeamLabResult result={lab.result} onWiden={(side) => void lab.widenPool(side)} />
+        <>
+          <TeamLabPlayMode
+            play={lab.play}
+            result={lab.result}
+            team1={lab.team1}
+            team2={lab.team2}
+            loading={lab.loading}
+            onOptimise={lab.handlePredict}
+            onPick={(side, replacing) => setPicking({ side, replacing })}
+          />
+          {pickingSide?.team && (
+            <PlayerPickerDialog
+              open
+              onClose={() => setPicking(null)}
+              format={lab.format}
+              clubId={pickingSide.team.club_id}
+              teamName={pickingSide.team.display_name}
+              matchDate={lab.matchDate}
+              replacing={picking?.replacing ?? null}
+              selectedIds={lab.play.selectedIds[pickingSide.side]}
+              onPick={(player) => {
+                if (picking?.replacing) {
+                  lab.play.swapPlayer(pickingSide.side, picking.replacing.player_id, player);
+                  return;
+                }
+                lab.play.addPlayer(pickingSide.side, player);
+              }}
+            />
+          )}
+          <TeamLabResult result={lab.result} onWiden={(side) => void lab.widenPool(side)} />
+        </>
       )}
     </Box>
   );
