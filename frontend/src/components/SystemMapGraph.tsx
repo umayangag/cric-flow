@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, IconButton, Stack, Tooltip, Typography, useTheme } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
-import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
+import {
+  Add as AddIcon,
+  Remove as RemoveIcon,
+  CenterFocusStrong as CenterFocusStrongIcon,
+} from '@mui/icons-material';
 import { systemMap } from '../systemMap/contract';
 import { edgePath, layout } from '../systemMap/layout';
 import type { PlacedNode } from '../systemMap/layout';
