@@ -352,3 +352,44 @@ func TestPoolPlayerKeys_SendsRegistryIDsAndSkipsAPlayerWithout(t *testing.T) {
 	assert.Equal(t, []string{"2911de16", "a8c9f0b1"}, keys,
 		"the wire carries registry ids; a player the importer never matched cannot be selected")
 }
+
+// TestSelectBothXIs_SendsEachSidesMustIncludeLockOnEveryCall is B-10's fix at the seam it
+// broke: go-app used to resolve the must-include ids and then send an empty lock, so the
+// search never treated anyone as required. Every call for a side — the rating-ordered
+// seed and each best-response round — carries that side's lock and no other side's.
+func TestSelectBothXIs_SendsEachSidesMustIncludeLockOnEveryCall(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}, {"k4", "k5"}}}
+	fix := twoSidedFixture("T20I")
+	fix.mustInclude1 = []string{"k3"}
+	fix.mustInclude2 = []string{"k6"}
+
+	_, err := selectBothXIs(context.Background(), optimizer, fix)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, optimizer.calls)
+	for i := range optimizer.calls {
+		call := optimizer.calls[i]
+		want := []string{"k6"}
+		if call.TeamIsTeam1 {
+			want = []string{"k3"}
+		}
+		assert.Equal(t, want, call.MustIncludeKeys, "call %d", i)
+	}
+}
+
+// TestSelectBothXIs_WithNoMustIncludeSendsNoLock is the default this change must not move:
+// the overwhelming majority of calls ask for nobody in particular, and they must reach
+// ml-service exactly as they did before.
+func TestSelectBothXIs_WithNoMustIncludeSendsNoLock(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}, {"k4", "k5"}}}
+
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, optimizer.calls)
+	for i := range optimizer.calls {
+		assert.Empty(t, optimizer.calls[i].MustIncludeKeys, "call %d", i)
+	}
+}

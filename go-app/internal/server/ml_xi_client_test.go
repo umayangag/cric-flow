@@ -297,3 +297,49 @@ func TestPredictMatchWinXI_NamesAnUnreachableServiceOnTheWire(t *testing.T) {
 	assert.Contains(t, mlErr.Message, "did not answer /xi/predict-win")
 	assert.Contains(t, mlErr.Hint, "ML_SERVICE_URL")
 }
+
+// TestOptimizeXI_SendsTheMustIncludeLock is the wire half of B-10: the request's
+// must-include ids reach `/xi/optimize` as `must_include`, where they were sent as an
+// empty list whatever the request carried, so a "must include" bound nothing.
+func TestOptimizeXI_SendsTheMustIncludeLock(t *testing.T) {
+	t.Parallel()
+
+	client, captured := xiCaptureServer(
+		t, `{"selected_player_ids":["a1","a9"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0,`+
+			`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
+	)
+
+	_, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
+		Format:             "T20I",
+		PoolPlayerKeys:     []string{"a1", "a9"},
+		OpponentPlayerKeys: []string{"b1"},
+		MustIncludeKeys:    []string{"a9"},
+	})
+
+	require.NoError(t, err)
+	sent, present := (*captured)["constraints"].(map[string]interface{})
+	require.True(t, present)
+	assert.Equal(t, []interface{}{"a9"}, sent["must_include"])
+}
+
+// TestOptimizeXI_WithNoMustIncludeSendsAnEmptyLock holds the default still: a request that
+// requires nobody sends `must_include: []`, the payload every call sent before B-10.
+func TestOptimizeXI_WithNoMustIncludeSendsAnEmptyLock(t *testing.T) {
+	t.Parallel()
+
+	client, captured := xiCaptureServer(
+		t, `{"selected_player_ids":["a1"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0,`+
+			`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
+	)
+
+	_, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
+		Format:             "T20I",
+		PoolPlayerKeys:     []string{"a1", "a2"},
+		OpponentPlayerKeys: []string{"b1"},
+	})
+
+	require.NoError(t, err)
+	sent, present := (*captured)["constraints"].(map[string]interface{})
+	require.True(t, present)
+	assert.Equal(t, []interface{}{}, sent["must_include"])
+}

@@ -337,9 +337,11 @@ records it:
    about the policy; (b) *a point the stack serves with no range* — wickets on the
    performance-quantiles path (TEST) come as an expectation with P(0/1/2+) and no
    quantiles — reads "3.6 (no range)" and never a bare point, and the surface derives no
-   interval from the pmf; (c) *a must-include id on Optimise* joins the pool and is not
-   enforced, so the answer now names any the selection left out (`selection.must_include`)
-   and the input says "added to the pool, checked after". A served answer with no
+   interval from the pmf; (c) *a must-include id on Optimise* — P1-4 found it joined
+   the pool and was not enforced, made the label say so and put the outcome on the wire
+   (`selection.must_include`); **B-10 then made it true** (2026-09-06), so the ids are a
+   lock the search honours, the input says "required in the eleven", a request no eleven
+   can satisfy is refused with its reason, and the wire check stays as the postcondition. A served answer with no
    `selection.note` renders the notice saying no reason was served rather than a sentence
    the surface invented.
 5. **The card shows only what the objective consumed.** ✅ **Built in P1-3** (2026-09-06):
@@ -375,11 +377,12 @@ build is done and honest, and says nothing at all about the market — the quest
 left open and P0-3 could not ask are still open, and closing this gate does not touch
 them.
 
-Two things were left open by the phase and are recorded rather than folded in: B-8 (the
-selection's rating order can disagree with the display model, so a swap for a
-higher-*rated* player can lower the probability — surfaced in P1-3 and P1-4, not fixed)
-and, until the fix that carries this note, B-10 (must-include was a pool entry the search
-did not honour). Both live in `docs/BUG_BACKLOG.md`.
+Two things were left open by the phase and are recorded rather than folded into the
+acceptance: **B-8** — the selection's rating order can disagree with the display model, so
+a swap for a higher-*rated* player can lower the probability; surfaced honestly on the
+surface in P1-3 and P1-4 and not fixed — and **B-10**, must-include reaching the search as
+an empty lock, which is fixed on the branch that records this closure. Both live in
+`docs/BUG_BACKLOG.md`.
 
 ### 3.1 What Phase 1 inherits
 
@@ -860,12 +863,18 @@ them from an input the objective consumed. Each is omitted rather than approxima
    selection never saw, which is a second opinion about the player, not an explanation of
    the pick. **Form is therefore represented only as it is consumed**: the decayed rates
    inside `selection_rating`, and its standing in the pool.
-2. **A "must-include" role.** There is no such optimiser constraint on the predict path:
-   go-app puts a required id into the *pool* (P1-1) and sends ml-service an empty
-   `must_include`, so the search never treats anyone as required and may leave a
-   must-include player out. A chip saying "required" would name a constraint nothing
-   applied. (Play mode's constraint chips do report must-include, because there the check
-   really is made — P1-2.) The role vocabulary is therefore two values, `keeper` and
+2. **A "must-include" role.** Still omitted, but the reason changed when B-10 was fixed
+   (2026-09-06). It used to be that no such constraint existed on the predict path —
+   go-app put a required id into the *pool* (P1-1) and sent ml-service an empty
+   `must_include`, so a "required" chip would have named a constraint nothing applied.
+   The lock is now real: the ids reach `/xi/optimize` as `must_include`, the seed holds
+   them and no swap removes them. The card still does not carry it, for the rule's own
+   reason — a lock is the **caller's own input echoed back**, not something the selection
+   read *about* the player, and the two roles that are on the card are read off the
+   as-of vectors (`is_keeper`, `is_bowling_option`) exactly as the objective reads them.
+   Where the ask belongs is per side, and that is where it is reported:
+   `selection.must_include` on the answer, and Play mode's constraint chips on a pinned
+   eleven (P1-2). The role vocabulary is therefore still two values, `keeper` and
    `bowling_option`, declared in `contracts/ops-console.contract.json` under
    `selection_roles`.
 3. **A "top-order anchor" role.** Batting position (`exp_bat_position`) is a

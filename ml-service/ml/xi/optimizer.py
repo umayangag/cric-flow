@@ -58,9 +58,10 @@ OPTIMISED_SELECTION_FORMATS = frozenset(fmt for fmt in C.FORMAT_CODES if fmt not
 
 # The constraint state a "why this player" card may name (P1-3): the requirements in this
 # module that a selected player answers, each read off the same as-of vectors the objective
-# reads. Two, not three: ``must_include`` is deliberately absent, because the predict path
-# never sends one -- go-app puts a required id into the *pool* and the search may still
-# leave him out -- so no card can honestly say the objective was required to pick him.
+# reads. Two, not three: ``must_include`` is deliberately absent even now that go-app sends
+# and this module enforces it (B-10), because a lock is the caller's own input echoed back
+# and not something the selection read *about* the player -- and the answer already reports
+# it per side (``selection.must_include``) rather than per card.
 # Wire vocabulary, declared once in contracts/ops-console.contract.json and asserted from
 # every side (H-24).
 ROLE_KEEPER = "keeper"
@@ -145,7 +146,12 @@ class _Pool:
 
 
 def _locked_and_banned(pool: _Pool, c: Constraints) -> tuple:
-    """The must-include / must-exclude keys as pool positions, ignoring ids not in the pool."""
+    """The must-include / must-exclude keys as pool positions.
+
+    An id the pool does not hold has no position and so cannot be locked; it is dropped
+    here and caught by ``_seed_or_conflict``, which is the one place that turns "this
+    cannot be satisfied" into a sentence. Dropping it silently was B-10's shape.
+    """
     key_index = {k: i for i, k in enumerate(pool.keys)}
     locked = [key_index[k] for k in c.must_include if k in key_index]
     banned = {key_index[k] for k in c.must_exclude if k in key_index}
@@ -186,9 +192,13 @@ def rating_percentiles(scores: np.ndarray) -> np.ndarray:
     return 100.0 * lower / (n - 1)
 
 
-def _greedy_seed(pool: _Pool, c: Constraints, locked: List[int], banned: set) -> Optional[List[int]]:
-    """Rank players by their solo marginal value, fill role constraints first, then the rest."""
-    n = len(pool.keys)
+def _greedy_seed(pool: _Pool, c: Constraints, locked: List[int], banned: set) -> List[int]:
+    """Rank players by their solo marginal value, fill role constraints first, then the rest.
+
+    It returns the best it could assemble, feasible or not; ``_seed_or_conflict`` is what
+    decides. Keeping the two apart is what lets an infeasible answer be *explained* rather
+    than reported as one undifferentiated ``None``.
+    """
     order = list(np.argsort(-rating_order_score(pool.vectors)))
     chosen = list(locked)
     if c.require_keeper and not any(pool.is_keeper(i) for i in chosen):
@@ -206,9 +216,65 @@ def _greedy_seed(pool: _Pool, c: Constraints, locked: List[int], banned: set) ->
             break
         if i not in chosen and i not in banned:
             chosen.append(i)
-    if n < c.team_size or not pool.feasible(chosen, c):
-        return None
-    return chosen[: c.team_size]
+    return chosen
+
+
+class ConstraintConflict(ValueError):
+    """A constraint set no eleven in this pool can satisfy, with the reason named.
+
+    A ``ValueError`` so the route's existing 422 still catches it; what it adds is *which*
+    constraint failed. "pool cannot satisfy the constraints (size / bowlers / keeper)"
+    leaves a caller who locked two players guessing between three answers, and a locked
+    player is exactly the case where the caller can act on the difference (B-10).
+    """
+
+
+def _unresolved_must_include(pool: _Pool, c: Constraints) -> List[str]:
+    """must_include ids this pool does not hold, and so cannot lock anyone to."""
+    held = set(pool.keys)
+    return [key for key in c.must_include if key not in held]
+
+
+def _conflict_reason(pool: _Pool, c: Constraints, locked: List[int], chosen: List[int]) -> str:
+    """Why this pool cannot field an eleven under these constraints, most specific first.
+
+    Read off the seed the search would have started from, so the sentence describes what
+    actually happened rather than a second opinion about it.
+    """
+    if len(locked) > c.team_size:
+        return f"must_include names {len(locked)} players and the team holds {c.team_size}"
+    if len(pool.keys) < c.team_size:
+        return f"the pool holds {len(pool.keys)} players and the team needs {c.team_size}"
+    lock = f" alongside the {len(locked)} must_include player(s)" if locked else ""
+    if len(chosen) > c.team_size:
+        return (
+            f"the keeper and bowling options asked for do not fit in {c.team_size} places{lock}: "
+            f"filling every constraint needs {len(chosen)} players"
+        )
+    if c.require_keeper and not any(pool.is_keeper(i) for i in chosen):
+        return f"no wicketkeeper can be selected{lock}"
+    bowlers = int(sum(pool.is_bowler(i) for i in chosen))
+    if bowlers < c.min_bowlers:
+        return f"only {bowlers} of the {c.min_bowlers} bowling options asked for can be selected{lock}"
+    return f"the pool cannot fill {c.team_size} places{lock}"
+
+
+def _seed_or_conflict(pool: _Pool, c: Constraints, locked: List[int], banned: set) -> List[int]:
+    """The seed, or a ``ConstraintConflict`` naming the constraint that made one impossible.
+
+    An unresolvable ``must_include`` id is refused even when the eleven would otherwise be
+    feasible: the caller asked for a player this pool cannot field, and answering with a
+    perfectly good eleven that does not hold him is the silent relaxation B-10 records.
+    """
+    unresolved = _unresolved_must_include(pool, c)
+    if unresolved:
+        raise ConstraintConflict(
+            f"must_include names {len(unresolved)} player(s) this pool does not hold: {', '.join(unresolved)}"
+        )
+    chosen = _greedy_seed(pool, c, locked, banned)
+    if not pool.feasible(chosen, c):
+        raise ConstraintConflict(_conflict_reason(pool, c, locked, chosen))
+    return chosen
 
 
 def _best_neighbour(pool: _Pool, current: List[int], c: Constraints, locked: set, banned: set, pairs: bool):
@@ -249,9 +315,7 @@ def select_xi(
     c = constraints or Constraints()
     pool = _Pool(store, format_code, pool_keys, opponent_keys, team_is_team1)
     locked, banned = _locked_and_banned(pool, c)
-    seed = _greedy_seed(pool, c, locked, banned)
-    if seed is None:
-        raise ValueError("pool cannot satisfy the constraints (size / bowlers / keeper)")
+    seed = _seed_or_conflict(pool, c, locked, banned)
     current, current_score = seed, pool.score(seed)
     seed_score = current_score
     trace: List[str] = []
@@ -297,9 +361,7 @@ def select_xi_by_ratings(
     c = constraints or Constraints()
     pool = _Pool(store, format_code, pool_keys, opponent_keys=[], team_is_team1=True)
     locked, banned = _locked_and_banned(pool, c)
-    chosen = _greedy_seed(pool, c, locked, banned)
-    if chosen is None:
-        raise ValueError("pool cannot satisfy the constraints (size / bowlers / keeper)")
+    chosen = _seed_or_conflict(pool, c, locked, banned)
     logger.info("xi rating-ordered pick: %s, pool %d, no objective evaluated", format_code, len(pool.keys))
     return [pool.keys[i] for i in chosen]
 

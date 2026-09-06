@@ -108,7 +108,11 @@ type XIOptimizationRequest struct {
 	OpponentPlayerKeys []string
 	TeamIsTeam1        bool
 	Constraints        Constraints
-	MaxEvaluations     int
+	// MustIncludeKeys are the registry ids the search must keep in the eleven: the seed
+	// holds them, no swap removes them, and a constraint set that cannot hold them is
+	// refused with its reason rather than quietly relaxed (B-10).
+	MustIncludeKeys []string
+	MaxEvaluations  int
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
 	// means the serving state through today.
 	AsOf time.Time
@@ -303,6 +307,7 @@ func optimizeSide(
 		OpponentPlayerKeys: opponentXI,
 		TeamIsTeam1:        isTeam1,
 		Constraints:        fix.constraints,
+		MustIncludeKeys:    fix.mustIncludeFor(isTeam1),
 		MaxEvaluations:     config.SelectionMaxWinProbEvalBudget(config.Load()),
 		AsOf:               fix.asOf,
 	})

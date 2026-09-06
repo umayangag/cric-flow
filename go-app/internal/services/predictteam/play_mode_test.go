@@ -152,21 +152,20 @@ func TestApplyPinnedXIs_WithNeitherSidePinnedLeavesTheFixtureSearched(t *testing
 	assert.False(t, fix.isPinned)
 }
 
-func TestApplyPinnedXIs_KeepsTheMustIncludeIdsThePoolCanResolve(t *testing.T) {
+// TestApplyPinnedXIs_CarriesTheFixturesResolvedMustIncludeIds pins the one resolution
+// both paths read: Play mode checks the eleven against exactly the ids the search would
+// have been locked to, because they are resolved once, on the fixture (B-10).
+func TestApplyPinnedXIs_CarriesTheFixturesResolvedMustIncludeIds(t *testing.T) {
 	t.Parallel()
 	fix := twoSidedFixture("T20I")
+	fix.mustInclude1 = []string{"k3"}
+	fix.mustInclude2 = []string{"k6"}
 
-	err := applyPinnedXIs(&fix, Input{
-		Team1XI:    []int64{1, 2},
-		Team2XI:    []int64{4, 5},
-		ExtraTeam1: []int64{3, 404},
-		ExtraTeam2: []int64{6},
-	})
+	err := applyPinnedXIs(&fix, Input{Team1XI: []int64{1, 2}, Team2XI: []int64{4, 5}})
 
 	require.NoError(t, err)
 	assert.True(t, fix.isPinned)
-	assert.Equal(t, []string{"k3"}, fix.pinned.mustInclude1,
-		"an id no candidate matches cannot be missing from an eleven: it is a wrong id, not a broken constraint")
+	assert.Equal(t, []string{"k3"}, fix.pinned.mustInclude1)
 	assert.Equal(t, []string{"k6"}, fix.pinned.mustInclude2)
 }
 

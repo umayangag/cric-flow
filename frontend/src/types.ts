@@ -77,9 +77,10 @@ export type PredictSelectionSummary = {
   optimised: boolean;
   note?: string;
   /**
-   * What became of the must-include ids (P1-4): present where any were asked for on a
-   * selected eleven. They join the pool and are checked afterwards, never enforced, so the
-   * answer names the ones the selection left out.
+   * What became of the must-include ids: present where any were asked for on a selected
+   * eleven. Since B-10 the ids are a lock the selection honours, so this is the
+   * postcondition — an ordinary answer holds every one of them, and a named "left out"
+   * player means a lock the stack accepted was not honoured.
    */
   must_include?: PredictMustIncludeReport;
 };
