@@ -20,7 +20,7 @@ import {
 const HealthTab = lazy(() => import('./components/HealthTab'));
 const EvaluationReportTab = lazy(() => import('./components/EvaluationReportTab'));
 const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
-const UpcomingMatchTab = lazy(() => import('./components/UpcomingMatchTab'));
+const TeamLabTab = lazy(() => import('./components/TeamLabTab'));
 const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
 const SystemMapTab = lazy(() => import('./components/SystemMapTab'));
 const Login = lazy(() => import('./pages/Login'));
@@ -46,7 +46,7 @@ const AppContent: React.FC = () => {
   const currentTab = (() => {
     if (location.pathname.startsWith('/ops')) return 'ops';
     if (location.pathname.startsWith('/evaluate')) return 'evaluateDb';
-    if (location.pathname.startsWith('/upcoming')) return 'upcoming';
+    if (location.pathname.startsWith('/lab')) return 'lab';
     if (location.pathname.startsWith('/workbench')) return 'workbench';
     if (location.pathname.startsWith('/system-map')) return 'systemMap';
     return 'health';
@@ -56,7 +56,7 @@ const AppContent: React.FC = () => {
     if (newValue === 'health') navigate('/health');
     else if (newValue === 'ops') navigate('/ops');
     else if (newValue === 'evaluateDb') navigate('/evaluate');
-    else if (newValue === 'upcoming') navigate('/upcoming');
+    else if (newValue === 'lab') navigate('/lab');
     else if (newValue === 'workbench') navigate('/workbench');
     else if (newValue === 'systemMap') navigate('/system-map');
   };
@@ -174,7 +174,7 @@ const AppContent: React.FC = () => {
             <Tab value="ops" label="Ops Status" />
             <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluation report" />
-            <Tab value="upcoming" label="Upcoming match prediction" />
+            <Tab value="lab" label="Team Lab" />
             <Tab value="systemMap" label="System map" />
           </Tabs>
         )}
@@ -219,10 +219,10 @@ const AppContent: React.FC = () => {
                     }
                   />
                   <Route
-                    path="/upcoming"
+                    path="/lab"
                     element={
                       <ProtectedRoute>
-                        <UpcomingMatchTab />
+                        <TeamLabTab />
                       </ProtectedRoute>
                     }
                   />

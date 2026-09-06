@@ -1,15 +1,67 @@
 import React from 'react';
 import { Chip, Paper, Stack, Typography } from '@mui/material';
 import { MetricInfo } from './common/MetricInfo';
-import type { PredictInningsTotal, PredictScorecard, PredictWinProbability } from '../types';
+import type {
+  PredictInningsTotal,
+  PredictScorecard,
+  PredictTossSummary,
+  PredictWinProbability,
+} from '../types';
 
 type Props = {
   /** Absent for a format with no innings length: there is no total, and none is invented. */
   scorecard?: PredictScorecard;
   winProbability: PredictWinProbability;
+  /** Which batting order the numbers assume, straight off the wire (P1-1). */
+  toss: PredictTossSummary;
   team1: string;
   team2: string;
 };
+
+/**
+ * What the card says the toss was.
+ *
+ * The label is read off the response, not off the control the user last touched: a known
+ * toss has to read as known, and a request that could not be honoured has to read as one
+ * that was not (§8.7).
+ */
+function tossLabel(toss: PredictTossSummary, team1: string, team2: string): string {
+  if (toss.team1_bats_first === null) return 'toss unknown: both batting orders averaged';
+  return `toss: ${toss.team1_bats_first ? team1 : team2} bats first`;
+}
+
+/**
+ * Name one side's innings.
+ *
+ * By the side, never by a batting position: the response carries team1's innings and
+ * team2's innings whichever bats first, so "innings 1" beside "team 2 bats first" would be
+ * a label contradicting the numbers under it. Where the toss is known the position is said
+ * as well, because then it is known.
+ */
+function inningsLabel(team: string, toss: PredictTossSummary, isTeam1: boolean): string {
+  if (toss.team1_bats_first === null) return `${team} innings`;
+  const first = toss.team1_bats_first === isTeam1;
+  return `${team} (batting ${first ? 'first' : 'second'})`;
+}
+
+/**
+ * The two innings in the order they are played, where the toss says what that order is.
+ *
+ * Only the display order moves; both totals are the ones the response carried for their
+ * own side, and neither is recomputed.
+ */
+function inningsInBattingOrder(
+  scorecard: PredictScorecard,
+  toss: PredictTossSummary,
+  team1: string,
+  team2: string,
+): { label: string; total: PredictInningsTotal }[] {
+  const lines = [
+    { label: inningsLabel(team1, toss, true), total: scorecard.team1_innings },
+    { label: inningsLabel(team2, toss, false), total: scorecard.team2_innings },
+  ];
+  return toss.team1_bats_first === false ? [lines[1], lines[0]] : lines;
+}
 
 const winProbabilitySources: Record<PredictWinProbability['source'], string> = {
   display: 'display model (monotone GBM over both elevens)',
@@ -40,7 +92,7 @@ const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = (
  * together into. Where the format has no innings length there is no total at all, and the
  * card says so rather than summing eleven medians and calling it an innings.
  */
-const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, team1, team2 }) => {
+const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, toss, team1, team2 }) => {
   return (
     <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -70,23 +122,25 @@ const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, team1, tea
           variant="outlined"
           label={`source: ${winProbabilitySources[winProbability.source]}`}
         />
+        <Chip size="small" variant="outlined" label={tossLabel(toss, team1, team2)} />
         {scorecard && (
-          <>
-            <Chip
-              size="small"
-              variant="outlined"
-              label={`${scorecard.samples.toLocaleString()} draws`}
-            />
-            {scorecard.toss_marginalised && (
-              <Chip size="small" variant="outlined" label="toss unknown: both orders averaged" />
-            )}
-          </>
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`${scorecard.samples.toLocaleString()} draws`}
+          />
         )}
       </Stack>
+      {!toss.honoured && toss.note && (
+        <Typography variant="caption" color="warning.main" component="div" sx={{ mb: 1 }}>
+          {toss.note}
+        </Typography>
+      )}
       {scorecard ? (
         <Stack spacing={0.5}>
-          <InningsLine label={`Innings 1 (${team1})`} innings={scorecard.innings1} />
-          <InningsLine label={`Innings 2 (${team2})`} innings={scorecard.innings2} />
+          {inningsInBattingOrder(scorecard, toss, team1, team2).map((innings) => (
+            <InningsLine key={innings.label} label={innings.label} innings={innings.total} />
+          ))}
           <Typography variant="caption" color="text.secondary">
             Totals and the per-player lines come from the same draws, so the lines and extras sum to
             the total shown. Nothing is rescaled toward the win probability.

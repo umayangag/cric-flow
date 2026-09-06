@@ -144,6 +144,12 @@ const CandidatePoolDialog: React.FC<CandidatePoolDialogProps> = ({
                   >
                     {candidate.player_name}
                     {candidate.is_wicket_keeper ? ' (wk)' : ''}
+                    {/* The id is here so it can be typed into the Lab's must-include
+                        field, which takes ids and not names — two players share a name
+                        often enough that a name would not say which. */}
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                      #{candidate.player_id}
+                    </Typography>
                   </TableCell>
                   <TableCell>{candidate.last_played ?? '—'}</TableCell>
                   <TableCell>

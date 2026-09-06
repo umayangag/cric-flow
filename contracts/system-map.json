@@ -1229,10 +1229,10 @@
       "lane": "serve",
       "column": 2,
       "kind": "surface",
-      "summary": "The end of the line: the tabs a person actually reads. The upcoming-match tab shows both elevens, how they were chosen, the probability with its source, and — where the format has an innings length — a scorecard whose lines and extras add up to the total beside them. The evaluation tab shows the harness's report. This system map is a sibling of those tabs and shows the same numbers, because it reads the same two endpoints they do.",
+      "summary": "The end of the line: the tabs a person actually reads. The Team Lab shows both elevens, how they were chosen, the probability with its source, and — where the format has an innings length — a scorecard whose lines and extras add up to the total beside them. The evaluation tab shows the harness's report. This system map is a sibling of those tabs and shows the same numbers, because it reads the same two endpoints they do.",
       "anchors": {
         "files": [
-          "frontend/src/components/UpcomingMatchTab.tsx",
+          "frontend/src/components/TeamLabTab.tsx",
           "frontend/src/components/EvaluationReportTab.tsx",
           "frontend/src/components/MatchScorecard.tsx",
           "frontend/src/components/SystemMapTab.tsx"

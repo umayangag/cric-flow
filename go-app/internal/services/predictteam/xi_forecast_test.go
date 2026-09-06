@@ -103,7 +103,7 @@ func TestApplyXISimulation_WritesRangesTotalsAndSpreadFromOneSetOfDraws(t *testi
 
 	require.NotNil(t, result.Scorecard)
 	assert.Equal(t, 2000, result.Scorecard.Samples)
-	assert.Equal(t, InningsTotal{Total: 171, Extras: 9, P10: 130, Median: 170, P90: 210}, result.Scorecard.Innings1)
+	assert.Equal(t, InningsTotal{Total: 171, Extras: 9, P10: 130, Median: 170, P90: 210}, result.Scorecard.Team1Innings)
 	assert.Equal(t, 0.61, result.WinProbability.Team1)
 	assert.Equal(t, winProbabilitySourceDisplay, result.WinProbability.Source)
 	require.NotNil(t, result.WinProbability.Simulated)
@@ -272,4 +272,114 @@ func TestNewSelectedPlayers_DropsAKeyNoPoolRowClaims(t *testing.T) {
 
 	require.Len(t, players, 1, "a key with no pool row names nobody and is not invented")
 	assert.Equal(t, int64(1), players[0].PlayerID)
+}
+
+// The toss is an input now (P1-1), and these three states are what the control offers.
+// Each has to reach the simulator, and the response has to say which one it assumed.
+func TestApplyXISimulation_CarriesEachTossStateToTheSimulatorAndNamesIt(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		team1BatsFirst   *bool
+		tossMarginalised bool
+	}{
+		{name: "unknown draws both batting orders", team1BatsFirst: nil, tossMarginalised: true},
+		{name: "team1 bats first", team1BatsFirst: boolValue(true), tossMarginalised: false},
+		{name: "team2 bats first", team1BatsFirst: boolValue(false), tossMarginalised: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sim := simulationResult(winProbabilitySourceDisplay)
+			sim.TossMarginalised = tc.tossMarginalised
+			simulator := &fakeSimulator{result: sim}
+			fix := twoSidedFixture("T20")
+			fix.team1BatsFirst = tc.team1BatsFirst
+			result := resultWithOnePlayerEachSide()
+
+			err := applyXISimulation(context.Background(), simulator, fix, []string{"a1"}, []string{"b1"}, result)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.team1BatsFirst, simulator.req.Team1BatsFirst, "the toss reaches /simulate")
+			assert.Equal(t, tc.team1BatsFirst, result.Toss.Team1BatsFirst, "and the response names it")
+			assert.True(t, result.Toss.Honoured)
+			assert.Empty(t, result.Toss.Note)
+			require.NotNil(t, result.Scorecard)
+			assert.Equal(t, tc.tossMarginalised, result.Scorecard.TossMarginalised)
+		})
+	}
+}
+
+// A known toss answered by marginalised draws is the request being silently changed, and
+// `toss_marginalised` is the one field that can catch it (§8.7).
+func TestApplyXISimulation_RefusesDrawsThatIgnoredTheTossAsked(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		team1BatsFirst   *bool
+		tossMarginalised bool
+		want             string
+	}{
+		{
+			name:             "a named toss answered by both orders",
+			team1BatsFirst:   boolValue(true),
+			tossMarginalised: true,
+			want:             "the toss was team1 bats first",
+		},
+		{
+			name:             "an unknown toss answered by one order",
+			team1BatsFirst:   nil,
+			tossMarginalised: false,
+			want:             "the toss was unknown",
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sim := simulationResult(winProbabilitySourceDisplay)
+			sim.TossMarginalised = tc.tossMarginalised
+			fix := twoSidedFixture("T20")
+			fix.team1BatsFirst = tc.team1BatsFirst
+
+			err := applyXISimulation(context.Background(), &fakeSimulator{result: sim}, fix,
+				[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// A format with no innings length has no batting order to fix, and the response says the
+// toss was not used rather than returning numbers that quietly ignored it (§8.7).
+func TestTossNotSimulated_SaysANamedTossWasNotUsed(t *testing.T) {
+	t.Parallel()
+
+	unknown := tossNotSimulated(nil)
+	assert.Nil(t, unknown.Team1BatsFirst)
+	assert.True(t, unknown.Honoured, "asking for nothing and getting nothing is honoured")
+	assert.Empty(t, unknown.Note)
+
+	named := tossNotSimulated(boolValue(true))
+	assert.Nil(t, named.Team1BatsFirst, "there was no batting order to fix, so none is claimed")
+	assert.False(t, named.Honoured)
+	assert.Contains(t, named.Note, "no innings length")
+}
+
+func TestTossDescription_NamesEachState(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "unknown", tossDescription(nil))
+	assert.Equal(t, "team1 bats first", tossDescription(boolValue(true)))
+	assert.Equal(t, "team2 bats first", tossDescription(boolValue(false)))
+}
+
+func boolValue(v bool) *bool {
+	return &v
 }

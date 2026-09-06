@@ -348,18 +348,27 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
       left uncoloured on purpose, and the legend above the tables says so.
   - **Polling**: none. The report is a file the harness writes; there is nothing to poll.
 
-- **`UpcomingMatchTab`**
+- **`TeamLabTab`** (the Team Lab, `/lab` — the Upcoming-match tab grown up, P1-1)
   - **Endpoints**:
     - `GET /api/options/formats`, `/api/options/teams-by-format`, `/api/options/opponents`,
       `/api/options/venues` (the fixture pickers; sides, never bare names — D-10).
-    - `POST /api/predict/team-selection` (both XIs, the probability, the scorecard).
+    - `POST /api/predict/team-selection` (both XIs, the probability, the scorecard). The
+      one surface on this endpoint: two would drift and only one of them would be right.
     - `GET /api/options/candidates` and `POST` / `DELETE /api/players/{id}/retirement`
       (the candidate pool and the retirement ledger — D-12).
     - `GET /ops/status`, for the readiness notice that says what a prediction will be
       missing before it is run rather than after it has answered on zeros.
+  - **Inputs**: format, both sides, venue, date, each side's candidate pool, the **toss**
+    (bat first / bowl first / unknown, wired to `team1_bats_first`; unknown is sent by
+    omission and is the marginalised default), and the constraints — minimum bowlers, a
+    keeper, and must-include player ids that join the pool whatever the window or the
+    ledger says.
   - **Displays**:
     - Both XIs with their ranges, the selection and forecast notes, the probability with
       its source, and the simulated scorecard where the format has an innings length.
+    - **Which toss the numbers assume**, from the response's `toss`: the side that bats
+      first where it is known, "both batting orders averaged" where it is not, and the
+      reason where a named toss could not be used (§8.7).
     - **The pool each XI was chosen out of**: "played for `<team>` in the last `<N>`
       months (`<M>` players)", with the all-time pool one click away, and every player the
       retirement ledger removed shown struck through with his reason and an Undo. A filter
@@ -462,9 +471,9 @@ Where practical:
 
 When debugging or validating a deployment:
 
-The console has five tabs: Health, Ops Status, Workbench, Evaluation report and Upcoming
-match prediction. The ML-model-stats tab went with the endpoint behind it (P-6), and data
-acquisition is a section of Ops Status rather than a tab of its own.
+The console has five tabs: Health, Ops Status, Workbench, Evaluation report and the Team
+Lab. The ML-model-stats tab went with the endpoint behind it (P-6), and data acquisition is
+a section of Ops Status rather than a tab of its own.
 
 1. **Check basic health**
    - `frontend → HealthTab` (Go + ML status, latency, the loaded run and its freshness).

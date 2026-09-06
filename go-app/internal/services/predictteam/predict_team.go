@@ -38,6 +38,10 @@ type Input struct {
 	ExtraTeam2    []int64    `json:"extra_team2,omitempty"` // extra player IDs for team2
 	MinBowlers    int        `json:"min_bowlers,omitempty"` // default from config
 	RequireKeeper bool       `json:"require_keeper,omitempty"`
+	// Team1BatsFirst is the toss, when it is known: true where team1 bats first, false
+	// where team2 does. Nil is the default and means unknown, which is the marginalised
+	// behaviour the simulator has always had — half the draws each way.
+	Team1BatsFirst *bool `json:"team1_bats_first,omitempty"`
 	// Team1Pool and Team2Pool are what the caller asked for about each side's
 	// candidates: the recency window, whether to widen it to all-time, and a manual
 	// pick. The zero value is the per-format recency default (D-12).
@@ -145,11 +149,16 @@ type InningsTotal struct {
 }
 
 // Scorecard is the simulated match: present only for formats with an innings length.
+//
+// The two innings are named by *side*, not by batting position: the simulator reports
+// team1's innings and team2's innings whichever bats first. They were called `innings1` and
+// `innings2`, which was invisible while the toss was always unknown and wrong the moment it
+// could be named — "innings 1 (India)" beside "Australia bats first" (P1-1).
 type Scorecard struct {
 	Samples          int          `json:"samples"`
 	TossMarginalised bool         `json:"toss_marginalised"`
-	Innings1         InningsTotal `json:"innings1"`
-	Innings2         InningsTotal `json:"innings2"`
+	Team1Innings     InningsTotal `json:"team1_innings"`
+	Team2Innings     InningsTotal `json:"team2_innings"`
 }
 
 // ResolvedSide is the side a prediction actually scored.
@@ -179,9 +188,9 @@ func newResolvedSide(side db.TeamSide) ResolvedSide {
 //
 // Every substitution it makes is named on the wire: `team1_side` and `team2_side` say which
 // sides were scored (D-10), `selection` says whether the XIs were optimised or rating-ordered
-// (H-17), `forecast` says which model produced the per-player numbers, and
-// `win_probability.source` says which produced the headline probability. Nothing here falls
-// back silently (§8.7).
+// (H-17), `forecast` says which model produced the per-player numbers, `toss` says which
+// batting order they were produced under, and `win_probability.source` says which model
+// produced the headline probability. Nothing here falls back silently (§8.7).
 type Result struct {
 	Team1Side      ResolvedSide          `json:"team1_side"`
 	Team2Side      ResolvedSide          `json:"team2_side"`
@@ -190,7 +199,9 @@ type Result struct {
 	Selection      SelectionSummary      `json:"selection"`
 	Forecast       ForecastSummary       `json:"forecast"`
 	WinProbability WinProbabilitySummary `json:"win_probability"`
-	Scorecard      *Scorecard            `json:"scorecard,omitempty"`
+	// Toss says which batting order the numbers assume, and whether a named one was used.
+	Toss      TossSummary `json:"toss"`
+	Scorecard *Scorecard  `json:"scorecard,omitempty"`
 	// Team1PoolSummary and Team2PoolSummary say which candidates each XI was chosen out
 	// of: the window, the size, and every player the ledger excluded (D-12).
 	Team1PoolSummary PoolSummary `json:"team1_pool"`
@@ -235,6 +246,8 @@ type fixture struct {
 	summary2     PoolSummary
 	constraints  Constraints
 	asOf         time.Time
+	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
+	team1BatsFirst *bool
 }
 
 // PredictTeams picks both XIs and predicts the match.
@@ -297,6 +310,9 @@ func applyMatchForecast(
 	if formatHasInningsLength(fix.format) {
 		return applyXISimulation(ctx, service, fix, xi1, xi2, result)
 	}
+	// A named toss cannot be honoured without an innings to bat in, and the response says
+	// so rather than returning numbers that quietly ignored it (§8.7).
+	result.Toss = tossNotSimulated(fix.team1BatsFirst)
 	return applyPerformanceForecast(ctx, service, fix, xi1, xi2, result)
 }
 
@@ -359,16 +375,17 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	}
 
 	return fixture{
-		format:      format,
-		team1:       team1,
-		team2:       team2,
-		venueID:     venueID,
-		pool1:       pool1,
-		pool2:       pool2,
-		summary1:    summary1,
-		summary2:    summary2,
-		constraints: constraints,
-		asOf:        input.AsOf,
+		format:         format,
+		team1:          team1,
+		team2:          team2,
+		venueID:        venueID,
+		pool1:          pool1,
+		pool2:          pool2,
+		summary1:       summary1,
+		summary2:       summary2,
+		constraints:    constraints,
+		asOf:           input.AsOf,
+		team1BatsFirst: input.Team1BatsFirst,
 	}, nil
 }
 

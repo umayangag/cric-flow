@@ -429,6 +429,11 @@ export const api = {
     extra_team2?: number[];
     min_bowlers?: number;
     require_keeper?: boolean;
+    /**
+     * The toss (P1-1): true where team 1 bats first, false where team 2 does. Omitted where
+     * it is unknown, which is what the simulator marginalises over.
+     */
+    team1_bats_first?: boolean;
     /** Each side's candidate pool (D-12). Omitted, both get the per-format recency window. */
     team1_pool?: PoolRequest;
     team2_pool?: PoolRequest;
