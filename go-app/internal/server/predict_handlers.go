@@ -42,10 +42,10 @@ type predictTeamRequest struct {
 	ExtraTeam2             []int64         `json:"extra_team2"`
 	// Team1XI and Team2XI pin each side's eleven by player id: Play mode scores the
 	// eleven the caller built rather than searching for one (P1-2). Both or neither.
-	Team1XI []int64 `json:"team1_xi"`
-	Team2XI []int64 `json:"team2_xi"`
-	MinBowlers             int             `json:"min_bowlers"`
-	RequireKeeper          *bool           `json:"require_keeper"`
+	Team1XI       []int64 `json:"team1_xi"`
+	Team2XI       []int64 `json:"team2_xi"`
+	MinBowlers    int     `json:"min_bowlers"`
+	RequireKeeper *bool   `json:"require_keeper"`
 	// Team1BatsFirst is the toss (P1-1): true where team1 bats first, false where team2
 	// does, absent where it is unknown. Absent is the default and is today's behaviour —
 	// the simulator draws half the matches each way and reports `toss_marginalised`.
