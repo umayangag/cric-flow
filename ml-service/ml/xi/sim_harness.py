@@ -15,6 +15,10 @@ half the draws each) -- and reports, beside the display model scored on the same
   histogram and the dispersion ratio (actual spread around the simulated mean over the
   simulated spread) say in which direction any miss lies -- under-dispersion is what the
   shared match factor exists for. The chase total is reported the same way, on every match.
+  The walk-forward summary carries these totals twice -- over every scored fold, and over
+  the folds whose simulator had a shared factor fitted, with the count of each and the
+  windows that had none. A fold too thin to fit one ships the un-widened simulator of plan
+  §8.3, and pooling the two into one mean with nothing saying so was B-12.
 * **Margins**: coverage and width of the run margin when the side batting first won and of
   the balls remaining when the chaser did, and the simulated share of bat-first wins
   against the actual one.
@@ -25,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -244,10 +248,47 @@ def _numeric_only(node: Any) -> Any:
     return node
 
 
-def summarize_folds(folds: List[Dict]) -> Optional[Dict]:
-    """Mean and spread over folds of every numeric leaf (``perf_harness.summarize_folds``)."""
-    scored = [_numeric_only(f) for f in folds if f and "win" in f]
-    return perf_harness.summarize_folds(scored) if scored else None
+def has_shared_factor(fold: Optional[Dict]) -> bool:
+    """Did this window's simulator ship with the shared match factor fitted?
+
+    A calibration fold holding fewer complete first innings than
+    ``simulator.MIN_SHARED_FACTOR_MATCHES`` cannot deconvolve one, and
+    ``performance._fit_simulator_calibration`` then ships that window's simulator without a
+    shared factor *or* a chase response -- the un-widened simulator of plan §8.3. The fold
+    records it as a null ``calibration.shared_factor``, and this reads it back.
+    """
+    if not fold:
+        return False
+    return (fold.get("calibration") or {}).get("shared_factor") is not None
+
+
+def summarize_folds(folds: Mapping[str, Optional[Dict]]) -> Optional[Dict]:
+    """Mean and spread over folds of every numeric leaf (``perf_harness.summarize_folds``),
+    over the folds keyed by the window each came from.
+
+    B-12: a factorless fold's intervals are a different simulator's, so pooling them into
+    one mean averages two populations. The pooled figure stays -- it is what the totals
+    have always meant, and dropping a fold silently would be the same defect with the sign
+    flipped -- and ``shared_factor_folds`` reports beside it how many folds shipped with a
+    shared factor, which windows did not, and the same totals over the calibrated folds
+    alone. Both numbers are published; a reader sees which population each averaged.
+    """
+    scored = {window: fold for window, fold in folds.items() if fold and "win" in fold}
+    if not scored:
+        return None
+    summary = perf_harness.summarize_folds([_numeric_only(f) for f in scored.values()])
+    calibrated = [_numeric_only(f) for f in scored.values() if has_shared_factor(f)]
+    factorless = sorted(window for window, fold in scored.items() if not has_shared_factor(fold))
+    summary["shared_factor_folds"] = {
+        "folds_scored": len(scored),
+        "with_shared_factor": len(scored) - len(factorless),
+        "without_shared_factor": len(factorless),
+        "windows_without_shared_factor": factorless,
+        "totals_with_shared_factor": (
+            perf_harness.summarize_folds([f.get("totals") for f in calibrated]) if calibrated else None
+        ),
+    }
+    return summary
 
 
 def decision(summary: Optional[Dict]) -> Dict[str, Any]:

@@ -297,7 +297,9 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "performance": perf_harness.summarize_folds(
             [f["performance"] for f in scored if "targets" in f.get("performance", {})]
         ),
-        "simulation": sim_harness.summarize_folds([f.get("simulation") for f in scored]),
+        # Keyed by the fold's cutoff so the summary can name the windows that shipped
+        # without a shared factor rather than only count them (B-12).
+        "simulation": sim_harness.summarize_folds({f["cutoff"]: f.get("simulation") for f in scored}),
     }
     return summary
 
