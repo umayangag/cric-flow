@@ -304,3 +304,59 @@ def test_reading_an_unknown_player_does_not_register_him() -> None:
     state.side_vectors("T20", ["never-seen-1", "never-seen-2"])
 
     assert state.players.key_to_slot == keys_before, "a read registered a player it was only asked about"
+
+
+_TEAM_TABLES = ("team_elo", "team_results", "head_to_head", "venue_bat_first", "team_venue_matches")
+
+
+def _team_table_sizes(state: RatingState) -> dict:
+    return {name: len(getattr(state, name)) for name in _TEAM_TABLES}
+
+
+def test_reading_team_context_for_an_unknown_key_does_not_write_it() -> None:
+    """B-1, the D-7 class at team level: a request naming a team, a venue or a head-to-head
+    pair the state has never seen must leave all five keyed tables exactly as the artifact
+    left them, while still reading the neutral values the empty entries would have given."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    played = _match("m", 0, "A", t1, t2, _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6))
+    state.update(played)
+    sizes_before = _team_table_sizes(state)
+
+    unknown_team = _match("r1", 1, "A", t1, t2, played.deliveries)
+    unknown_team.team2 = "never-seen-team"
+    unknown_venue = _match("r2", 1, "A", t1, t2, played.deliveries)
+    unknown_venue.venue = ""
+    unknown_pair = _match("r3", 1, "A", t1, t2, played.deliveries, fmt="ODI")
+
+    for record in (unknown_team, unknown_venue, unknown_pair):
+        state.team_context(record)
+
+    assert _team_table_sizes(state) == sizes_before, "a read wrote a team, venue or head-to-head key"
+    # and the values are the neutral ones, unchanged by the fix
+    assert state.team_context(unknown_team)["team_elo_diff"] == pytest.approx(
+        state.team_elo[("T20", "A")] - C.ELO_INITIAL
+    )
+    assert state.team_context(unknown_venue)["venue_n"] == 0.0
+    assert state.team_context(unknown_venue)["venue_bf_rate"] == 0.5
+    assert state.team_context(unknown_pair)["team_h2h"] == 0.5
+    assert state.team_context(unknown_pair)["team_h2h_n"] == 0.0
+    assert state.team_context(unknown_pair)["team_elo_diff"] == 0.0, "neither side is rated in ODI"
+
+
+def test_update_still_writes_the_team_tables() -> None:
+    """The other half of B-1: writing on write is correct, so ``update`` keeps creating the
+    keys a match names. A fix that stopped it would stop the ratings accumulating at all."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+
+    state.update(_match("m", 0, "A", t1, t2, _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)))
+
+    assert _team_table_sizes(state) == {
+        "team_elo": 2,
+        "team_results": 2,
+        "head_to_head": 2,
+        "venue_bat_first": 1,
+        "team_venue_matches": 2,
+    }
+    assert state.team_elo[("T20", "A")] > state.team_elo[("T20", "B")]
