@@ -40,12 +40,39 @@ decide either candidate and is reported only. This also bounds X-2's ODI night f
 
 ## Measured so far
 
-(nothing yet — see the fold tables below as they land)
+### T20 — 11 folds, 1000 draws, done (25 min)
 
-### T20
+**The gap reproduces on current main to three decimals**: control first-innings coverage
+0.734 day / 0.841 night (nominal 0.80), width 78.4 / 96.3, dispersion 1.099 / 0.865, pooled
+0.771 / 84.7 — every figure equal to X-2's, so #267 dropping `t1_pelo_std` changed nothing here.
 
-_pending_
+| arm | pop | matches/fold | first cov | first width | dispersion | first bias | chase cov | chase width | Δ Brier |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 399 | 0.771 | 84.7 | — | +0.5 | 0.712 | 69.9 | +0.0019 |
+| control | day | 259 | 0.734 | 78.4 | 1.099 | +1.8 | 0.689 | 64.6 | +0.0024 |
+| control | night | 139 | 0.841 | 96.3 | 0.865 | −2.1 | 0.759 | 79.8 | +0.0002 |
+| split | all | 399 | 0.756 | 82.0 | — | +0.4 | 0.692 | 67.2 | +0.0017 |
+| split | day | 259 | 0.756 | 83.9 | 1.026 | +1.0 | 0.713 | 69.2 | +0.0023 |
+| split | night | 139 | 0.759 | 78.7 | 1.082 | −0.8 | 0.659 | 63.6 | −0.0004 |
+| scale | all | 399 | 0.754 | 81.6 | — | +0.6 | 0.698 | 66.8 | +0.0015 |
+| scale | day | 259 | 0.760 | 83.6 | 1.027 | +1.7 | 0.726 | 69.2 | +0.0022 |
+| scale | night | 139 | 0.748 | 78.2 | 1.076 | −1.6 | 0.655 | 62.8 | −0.0003 |
 
-### ODI
+Paired per fold (arm − control), one fold-level s.e. as the floor:
+
+| arm | first cov \|Δ→0.80\| day | night | dispersion \|Δ→1\| day | night | chase cov \|Δ→0.80\| day | night | Δ E2 | pooled width |
+|---|---|---|---|---|---|---|---|---|
+| split | −0.0113 ± 0.0072 | −0.0130 ± 0.0162 | −0.021 ± 0.020 | −0.069 ± 0.044 | −0.0240 ± 0.0057 | **+0.0829 ± 0.0156** | −0.00023 ± 0.00018 | 84.7 → 82.0 |
+| scale | −0.0160 ± 0.0075 | −0.0118 ± 0.0189 | −0.020 ± 0.019 | −0.072 ± 0.043 | −0.0352 ± 0.0049 | **+0.0873 ± 0.0150** | −0.00042 ± 0.00024 | 84.7 → 81.6 |
+
+Both fail, identically: `night_first_coverage_moves_to_nominal`,
+`night_chase_coverage_no_worse`, `e2_unchanged`. Passing: both day clauses, both dispersion
+clauses, `pooled_width_not_inflated` (the pooled width *falls*, 84.7 → 82.0 / 81.6).
+
+Per-fold factor spreads (split arm): pooled 0.103–0.224, day 0.124–0.257, night
+**0.000**–0.172 — the 2025-01 fold's night group deconvolves to exactly zero excess variance,
+i.e. no shared factor at all for its night matches.
+
+### ODI — running
 
 _pending_
