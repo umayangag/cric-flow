@@ -153,10 +153,12 @@ E5_SCALE = Scale(bad=0.50, good=0.52)
 PARITY_SCALE = Scale(bad=0.0, good=0.0)
 SEED_SD_SCALE = Scale(bad=0.010, good=0.0)
 VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
-#: The display surface is painted against its own measured range, not against H-4's 2 %:
-#: that line is a contract on the objective the optimiser reads, and a scale that
-#: saturates red at every value tells a reader nothing about which format is worse (B-7).
-DISPLAY_VIOLATION_SCALE = Scale(bad=0.10, good=0.0)
+#: The display surface used to be painted against its own 3-7 % range, because H-4's 2 %
+#: is a contract on the objective and a scale saturating red everywhere says nothing about
+#: which format is worse. Since B-7's decision the surface reads exactly 0.0000 in every
+#: format, so the reader's question changed: any nonzero value is a regression in the one
+#: column the display model no longer sees, and it should paint red as early as H-4's does.
+DISPLAY_VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
 SPECIFIC_XI_SCALE = Scale(bad=0.0, good=0.02)
 COVERAGE_SCALE = Scale(bad=0.65, good=0.80)
 E2_TOLERANCE_SCALE = Scale(bad=0.01, good=0.0)
@@ -323,11 +325,13 @@ METRICS: Tuple[Metric, ...] = (
             "violation is a swap that made the eleven better and the displayed win chance worse."
         ),
         band=(
-            "Measured 3-7 % over the folds (T20 5.1 %, T20I 7.1 %, ODI 3.4 %, TEST 6.1 %). H-4's "
-            "2 % line does NOT bind it: that line is a contract on the objective the optimiser "
-            "maximises, whose every column is monotone-constrained, while the display model also "
-            "reads team context and is fitted as trees. Reported so the gap is visible; nothing "
-            "is selected on it (B-7)."
+            "0.0000 in every format: since B-7's decision the display model no longer reads the "
+            "spread of player Elo across an eleven (t1_pelo_std / t2_pelo_std), the one column an "
+            "upgrade moved that nothing constrained, so every upgrade now raises the displayed "
+            "probability by construction. It used to measure 3-7 %. Still not a gate -- H-4's 2 % "
+            "line is a contract on the objective the optimiser maximises -- but anything above "
+            "0.0000 here is a regression. It cost display AUC to buy: -0.0055 ODI, -0.0047 TEST, "
+            "-0.0004 T20, +0.0088 T20I (B-7)."
         ),
         better=LOWER,
         scale=DISPLAY_VIOLATION_SCALE,
@@ -340,8 +344,9 @@ METRICS: Tuple[Metric, ...] = (
             "displayed surface, how many lowered the displayed win chance, and their share."
         ),
         band=(
-            "Read against the walk-forward mean beside it, which measures 3-7 % by format. H-4's "
-            "2 % line is the objective's contract, not this surface's (B-7)."
+            "Zero violations in every fold since B-7 took the spread of player Elo out of the "
+            "display columns. A fold above zero means an unconstrained column an upgrade moves has "
+            "come back. H-4's 2 % line is the objective's contract, not this surface's (B-7)."
         ),
         better=LOWER,
         scale=DISPLAY_VIOLATION_SCALE,

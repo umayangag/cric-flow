@@ -565,7 +565,7 @@
       "lane": "l2",
       "column": 1,
       "kind": "model",
-      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice. The price of the extra columns is that this surface is not monotone the way the objective is: roughly one player upgrade in twenty moves the displayed probability the wrong way, which is measured here rather than left unsaid.",
+      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice. It is monotone under the same probe the objective is held to: upgrading a player never lowers the displayed probability, in any format, measured at zero violations per fold. That guarantee was bought, not free -- roughly one upgrade in twenty used to move the number the wrong way, and the one column responsible (the spread of player Elo across an eleven, whose direction is genuinely unknown) was dropped from what this model reads at a cost of about half a point of AUC in ODI and TEST.",
       "anchors": {
         "modules": [
           "ml.xi.train",
@@ -578,7 +578,8 @@
           "xi_win_<FORMAT>.joblib"
         ],
         "feature_groups": [
-          "DISPLAY_FEATURE_COLS"
+          "DISPLAY_FEATURE_COLS",
+          "DISPLAY_EXCLUDED_COLS"
         ]
       },
       "documented_in": [

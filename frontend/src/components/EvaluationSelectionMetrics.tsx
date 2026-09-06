@@ -78,6 +78,10 @@ function formatAgreement(
  * person watches move in the Team Lab, and until it was measured nobody could say whether
  * it agreed with itself about what a better player is. It sits beside H-4's tile because
  * the probe is the same one, and carries no gate triple because nothing decides on it.
+ * It measured 3-7% and now reads zero everywhere: the display model no longer reads the
+ * spread of player Elo across an eleven, which was the only column an upgrade moved that
+ * nothing constrained. That was a deliberate trade of display AUC for a coherent what-if,
+ * so the tile states the cost as well as the zero.
  */
 const EvaluationSelectionMetrics: React.FC<{
   report: EvaluationFormatReport;
@@ -126,7 +130,7 @@ const EvaluationSelectionMetrics: React.FC<{
           metricKey="display_swap_violation_share"
           value={formatShare(summary.display_swap_violation_share)}
           measured={summary.display_swap_violation_share}
-          caption="The same upgrade scored on the model a person watches. H-4’s 2% line is the objective’s contract, not this surface’s; this is measured and stated, and decides nothing (B-7)."
+          caption="The same upgrade scored on the model a person watches. Zero by construction since the display model stopped reading the spread of player Elo; it used to be 3–7%, and the zero cost display AUC (−0.0055 ODI, −0.0047 TEST). Still not a gate — H-4’s 2% line is the objective’s contract (B-7)."
         />
         <Metric
           label="Natural experiment (E5), lineup-only"

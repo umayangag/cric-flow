@@ -283,7 +283,11 @@ GATES: Tuple[Gate, ...] = (
         "change to what the display model reads, and dropping a column from the display contract moves a "
         "served artifact's feature list. It prices the fix the mechanism actually points at: what the swap "
         "violations and the display AUC would be without the free column, so the trade can be decided "
-        "deliberately rather than inferred. Nothing ships on it in this item",
+        "deliberately rather than inferred. It read exactly 0.0000 violations in every format and every fold "
+        "for -0.0004 (T20), +0.0088 (T20I), -0.0055 (ODI), -0.0047 (TEST) of display AUC, and the trade was "
+        "then TAKEN by decision, not by this gate: the columns are out of DISPLAY_FEATURE_COLS "
+        "(contract.DISPLAY_EXCLUDED_COLS), display AUC was spent on a Team Lab surface that is coherent by "
+        "construction, and the cost is recorded in docs/BUG_BACKLOG.md § B-7",
         report_path=None,
     ),
     Gate(

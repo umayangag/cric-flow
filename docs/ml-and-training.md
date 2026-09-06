@@ -144,8 +144,11 @@ lists as "no manifest".
 
 **The loader refuses what it cannot serve.** `XiStore.load` reads the manifest first and
 raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when an array this
-code reads is absent, or when a player array is narrower than the number of players the
-payload registers. That is D-6: a rating artifact written before P-2 loaded without complaint
+code reads is absent, when a player array is narrower than the number of players the
+payload registers, or when a win artifact was fitted on `objective_cols` / `display_cols`
+that are not the contract's. That last one is B-7's: the serving path builds its row from
+the artifact's *own* column list, so a run predating the display change loads perfectly and
+answers with the surface the change removed. That is D-6: a rating artifact written before P-2 loaded without complaint
 and then raised `IndexError` on the first request past slot 1024, while `/xi/status` reported
 `loaded: true`. An artifact was trusted because it loaded; now it has to say which run it is
 from and what shape it is in. The refusal reaches `/xi/status`, `/health`, `/ops/status`, a
@@ -221,6 +224,12 @@ because it cannot distinguish two XIs.
 so monotone in practice (a one-player upgrade lowers p in <1% of cases vs 12% for
 unconstrained boosting); this is what `/xi/optimize` maximises. `display` —
 monotone-constrained gradient boosting on XI + team-context columns; the probability shown.
+The two column lists differ in exactly one place: the display model does **not** read
+`t1_pelo_std` / `t2_pelo_std`, the spread of player Elo across an eleven
+(`contract.DISPLAY_EXCLUDED_COLS`). It is the only column an upgrade moves whose direction
+the contract leaves free, and a tree's step response to it made one swap in twenty lower
+the displayed probability; dropping it makes the displayed surface monotone under the swap
+probe by construction, at a measured cost in display AUC (B-7, below).
 
 **Run:** `make retrain CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
 `CRICSHEET_DIR=data/go-app/cricsheet` it reads the raw Cricsheet JSON instead (same format
@@ -638,13 +647,15 @@ draws at a fixed seed alike — and the run fails if they differ.
 **The display surface's swap share (B-7).** H-4 holds the *objective* to under 2 % of
 one-player upgrades lowering P(win), and it measures 0.0–0.8 %. The display model — the
 number a person actually watches move in the Team Lab — had never been probed at all, and
-it violates at **3–7 %**: 5.1 % T20, 7.1 % T20I, 3.4 % ODI, 6.1 % TEST over the folds
-(the database source; the archive frame reads 4.8 / 6.8 / 3.1 / 6.2, the same difference in
-ground keying X-3 recorded).
-`display_swap_violation_share` now carries that figure per format, with the fold-level
+when it was, it violated at **3–7 %**: 5.1 % T20, 7.1 % T20I, 3.4 % ODI, 6.1 % TEST over
+the folds (the database source; the archive frame reads 4.8 / 6.8 / 3.1 / 6.2, the same
+difference in ground keying X-3 recorded).
+`display_swap_violation_share` carries that figure per format, with the fold-level
 counts under `display_swap_monotonicity`, and the glossary states that H-4's line is not
-its contract. Nothing selects on the display model, so nothing shipped is wrong; what was
-wrong was that the number did not exist.
+its contract. Nothing selects on the display model, so nothing shipped was wrong; what was
+wrong was that the number did not exist. **It now reads 0.0000 in every format**, because
+the column that caused it was taken out of the display contract — see the end of this
+section for what that cost.
 
 The cause is not the team-context columns the constraint set leaves free, as first
 supposed: the probe holds team context at the fixture's values, because a selector cannot
@@ -657,8 +668,20 @@ whose direction is genuinely unknown and so is declared 0. The tree model's step
 to it is the whole of the effect: with `t1_pelo_std` / `t2_pelo_std` removed from the
 display columns the share is exactly 0.0000 in all four formats, for −0.0004 (T20), +0.0088
 (T20I), −0.0055 (ODI), −0.0047 (TEST) of AUC. That reading is gate `B-7-pelo-spread`, which
-informs and ships nothing; the trade is in `docs/BUG_BACKLOG.md` § B-7 for a deliberate
-decision.
+informs and ships nothing on its own judgement.
+
+**The trade was taken, and it was not free.** The Team Lab's what-if — swap a player, watch
+the probability move — is what the product sells, and a swap that moves it the wrong way
+one time in twenty undermines the proposition whatever the AUC says. So the two columns are
+out of `DISPLAY_FEATURE_COLS` (`contract.DISPLAY_EXCLUDED_COLS`), the display surface is
+monotone under the probe by construction, and **display AUC in ODI and TEST is about half a
+point lower for it** (−0.0055 and −0.0047, 1.4 and 0.9 fold-level standard errors: real
+losses, not rounding), against −0.0004 in T20 and +0.0088 in T20I. The objective keeps the
+column — it is linear there, and H-4 measures under 1 % on it — so the two contracts differ
+on purpose. Because the display artifact's feature list moved with it, the store now
+refuses a win artifact whose `display_cols` or `objective_cols` are not the contract's
+(D-6): an older run is retrained, never reloaded. The decision and its cost are recorded in
+`docs/BUG_BACKLOG.md` § B-7.
 
 **The market benchmark (X-4, `ml/xi/market.py`).** Where closing odds have been cached, the
 report also carries a `market_benchmark` section: the market's de-vigged probability scored

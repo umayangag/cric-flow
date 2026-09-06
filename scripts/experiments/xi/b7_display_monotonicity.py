@@ -24,8 +24,11 @@ A second diagnostic asks the same question in feature space, with no model at al
 columns an upgrade actually moves, and whether any of them is one the contract constrains.
 
 Where those two point, gate ``B-7-pelo-spread`` prices: the same folds with the display
-model's ``t1_pelo_std`` / ``t2_pelo_std`` removed. It INFORMS and ships nothing here --
-B-7 scoped a constraint, not a change to what the display model reads.
+model's ``t1_pelo_std`` / ``t2_pelo_std`` removed. It INFORMS and shipped nothing on its
+own judgement -- B-7 scoped a constraint, not a change to what the display model reads --
+but its reading (exactly 0.0000 violations everywhere, for -0.0004 / +0.0088 / -0.0055 /
+-0.0047 of display AUC) was then taken by decision, so ``DISPLAY_FEATURE_COLS`` no longer
+carries the two columns and this script's control names them itself (``PRE_B7_DISPLAY_COLS``).
 
     python b7_display_monotonicity.py --frames frames.pkl --out b7.json
     python b7_display_monotonicity.py --decide b7.json
@@ -69,7 +72,14 @@ GATE_ID = "B-7-display-monotone"
 SPREAD_GATE_ID = "B-7-pelo-spread"
 #: The spread of player Elo across an eleven, in each side's raw form. There is no
 #: ``d_pelo_std``: the contract never made this stem a differential.
-PELO_SPREAD_COLS: Tuple[str, ...] = ("t1_pelo_std", "t2_pelo_std")
+PELO_SPREAD_COLS: Tuple[str, ...] = C.DISPLAY_EXCLUDED_COLS
+#: The display columns as they were when this gate ran, in the contract's own order. The
+#: reading below was acted on -- ``DISPLAY_FEATURE_COLS`` no longer carries the spread
+#: columns -- so the control has to name them itself, or after the ship both arms would be
+#: the same list and the gate would compare a model with itself.
+PRE_B7_DISPLAY_COLS: List[str] = (
+    list(C.XI_FEATURE_COLS) + list(C.TEAM_CONTEXT_COLS) + (list(C.STAKES_COLS) if C.STAKES_FEATURES_KEPT else [])
+)
 #: H-4's line, which this gate measures the distance to and does not itself enforce.
 SWAP_VIOLATION_LIMIT = 0.02
 #: How much of the control's own distance from H-4's line the arm must close before the
@@ -107,7 +117,7 @@ def display_arm(
     Everything but ``constrain_team_context`` and ``columns`` is the harness's own
     setting, so a number here is comparable with the one ``make evaluate`` reports.
     """
-    columns = list(columns or C.DISPLAY_FEATURE_COLS)
+    columns = list(columns or PRE_B7_DISPLAY_COLS)
     folds: List[Dict[str, Any]] = []
     format_players = player_frame[player_frame.format_code == format_code]
     for cutoff, end in fold_windows():
@@ -318,7 +328,7 @@ def run(frames_path: str, out: str) -> Dict[str, Any]:
             format_frame,
             player_frame,
             format_code,
-            columns=[column for column in C.DISPLAY_FEATURE_COLS if column not in PELO_SPREAD_COLS],
+            columns=[column for column in PRE_B7_DISPLAY_COLS if column not in PELO_SPREAD_COLS],
         )
         diagnostic = xi_only_diagnostic(format_frame, player_frame, format_code)
         result["formats"][format_code] = {

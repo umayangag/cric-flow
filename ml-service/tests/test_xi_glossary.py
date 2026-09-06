@@ -134,14 +134,16 @@ def test_describe_states_the_band_and_the_direction() -> None:
     assert line.endswith("(lower is better)")
 
 
-def test_the_display_surfaces_swap_share_says_h4s_line_does_not_bind_it() -> None:
-    """B-7: the number is stated with the reason it is not the objective's 2 % gate, or a
-    reader would take a 5 % reading for a failed contract."""
+def test_the_display_surfaces_swap_share_states_the_zero_and_what_it_cost() -> None:
+    """B-7: the surface reads 0.0000 by construction now, and the entry has to say both
+    that H-4's line still is not what binds it and that display AUC paid for the zero --
+    or a reader takes a free win from a trade that cost 0.005 in two formats."""
     line = glossary.describe("display_swap_violation_share")
 
     assert line.startswith("display_swap_violation_share (Swap violations, display surface)")
-    assert "does NOT bind it" in line
-    assert glossary.REGISTRY["display_swap_violation_share"].scale.bad > glossary.VIOLATION_SCALE.bad
+    assert "0.0000 in every format" in line
+    assert "not a gate" in line
+    assert "-0.0055 ODI" in line, "the cost is stated where the number is read"
 
 
 def test_a_scale_never_points_the_opposite_way_from_the_direction_it_is_read_with() -> None:

@@ -318,8 +318,28 @@ STAKES_COLS: List[str] = ["stakes_knockout", "stakes_stage_known"]
 #: Gate X-3, use 2: whether the display model reads ``STAKES_COLS``.
 STAKES_FEATURES_KEPT = False
 
+# B-7: the spread of player Elo across an eleven, in each side's raw form (there is no
+# ``d_pelo_std``; the contract never made this stem a differential). The *objective* keeps
+# it -- it is linear, its coefficient there is small, and H-4 measures 0.0-0.8 % on it --
+# but the display model is fitted as trees, and a tree's step response to a column whose
+# direction is 0 is what makes an upgrade lower the displayed probability.
+#
+# It is the only column of ``DISPLAY_FEATURE_COLS`` that a one-player upgrade moves and
+# the monotone contract leaves free, and it moves on 100 % of upgrades in every format,
+# while no constrained column ever moves against its direction. Dropping it takes the
+# display swap-violation share from 3-7 % to exactly 0.0000 in every format and every
+# fold, for -0.0004 (T20), +0.0088 (T20I), -0.0055 (ODI), -0.0047 (TEST) of display AUC:
+# discrimination traded for a surface that is coherent by construction, decided
+# deliberately because the Team Lab's what-if is the product (`docs/BUG_BACKLOG.md` § B-7,
+# gate ``B-7-pelo-spread``). Its direction cannot simply be declared instead: raising a
+# player above the side's mean widens the spread and raising one below it narrows it, so
+# no sign is defensible.
+DISPLAY_EXCLUDED_COLS: Tuple[str, ...] = ("t1_pelo_std", "t2_pelo_std")
+
 DISPLAY_FEATURE_COLS: List[str] = (
-    XI_FEATURE_COLS + TEAM_CONTEXT_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
+    [column for column in XI_FEATURE_COLS if column not in DISPLAY_EXCLUDED_COLS]
+    + TEAM_CONTEXT_COLS
+    + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
 )
 
 TARGET_COL = "team1_wins"

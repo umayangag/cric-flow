@@ -186,6 +186,33 @@ def _check_payload_shape(payload: Dict, run_id: str) -> None:
         )
 
 
+def _check_model_columns(models: "FormatModels", run_id: str) -> None:
+    """Refuse a win artifact fitted on columns this code no longer serves (D-6).
+
+    The serving path builds its row from the artifact's own ``display_cols``, so an older
+    artifact is internally consistent and loads without complaint -- it just answers with
+    a surface the code has stopped contracting for. That is exactly D-6's failure mode:
+    ``/xi/status`` reporting loaded while the numbers come from a shape nobody checked.
+    B-7 dropped ``t1_pelo_std`` / ``t2_pelo_std`` from the display columns to make every
+    upgrade raise the displayed probability; an artifact still carrying them would serve
+    the incoherent surface silently. Retrain rather than reload.
+    """
+    for attribute, expected in (("objective_cols", C.XI_FEATURE_COLS), ("display_cols", C.DISPLAY_FEATURE_COLS)):
+        actual = list(getattr(models, attribute, []) or [])
+        if actual == list(expected):
+            continue
+        extra = [column for column in actual if column not in set(expected)]
+        missing = [column for column in expected if column not in set(actual)]
+        raise RunArtifactsInvalid(
+            f"run {run_id}: the {models.format_code} win artifact was fitted on {attribute} this code does not "
+            f"serve ({len(actual)} columns, expected {len(expected)}"
+            f"{'; extra: ' + ', '.join(extra) if extra else ''}"
+            f"{'; missing: ' + ', '.join(missing) if missing else ''}"
+            f"{'; same columns in a different order' if not extra and not missing else ''}"
+            f"); it was written by an older training pass. Retrain."
+        )
+
+
 def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
     _check_payload_shape(payload, run_id)
     state = RatingState(
@@ -260,6 +287,7 @@ class XiStore:
             path = os.path.join(artifacts_dir, model_artifact_name(fmt))
             if os.path.exists(path):
                 models[fmt] = joblib.load(path)
+                _check_model_columns(models[fmt], manifest.run_id)
             performance_path = os.path.join(artifacts_dir, performance_artifact_name(fmt))
             if os.path.exists(performance_path):
                 performance[fmt] = joblib.load(performance_path)
