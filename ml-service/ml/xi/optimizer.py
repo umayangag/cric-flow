@@ -24,7 +24,7 @@ from __future__ import annotations
 import itertools
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -55,6 +55,17 @@ NOT_OPTIMISED_REASONS: Dict[str, str] = {
     ),
 }
 OPTIMISED_SELECTION_FORMATS = frozenset(fmt for fmt in C.FORMAT_CODES if fmt not in NOT_OPTIMISED_REASONS)
+
+# The constraint state a "why this player" card may name (P1-3): the requirements in this
+# module that a selected player answers, each read off the same as-of vectors the objective
+# reads. Two, not three: ``must_include`` is deliberately absent, because the predict path
+# never sends one -- go-app puts a required id into the *pool* and the search may still
+# leave him out -- so no card can honestly say the objective was required to pick him.
+# Wire vocabulary, declared once in contracts/ops-console.contract.json and asserted from
+# every side (H-24).
+ROLE_KEEPER = "keeper"
+ROLE_BOWLING_OPTION = "bowling_option"
+SELECTION_ROLES: Tuple[str, ...] = (ROLE_KEEPER, ROLE_BOWLING_OPTION)
 
 
 @dataclass
@@ -141,18 +152,44 @@ def _locked_and_banned(pool: _Pool, c: Constraints) -> tuple:
     return locked, banned
 
 
+def rating_order_score(vectors: Dict[str, np.ndarray]) -> np.ndarray:
+    """The composite the selection orders a pool by: decayed batting impact per innings,
+    plus decayed bowling impact per innings, plus the player's Elo above the initial rating
+    in units of 400 points.
+
+    It is the *only* ordering this module has. ``_greedy_seed`` fills the constraints and
+    then the rest of the eleven by it, so it is the seed every search starts from and the
+    whole answer where a format is not searched at all (``select_xi_by_ratings``). One
+    definition, so what the card calls a player's rating is what actually ranked him
+    (P1-3) -- and so B-8, which is this composite disagreeing with the display model, has
+    one place to point at.
+    """
+    return (
+        vectors["bat_rate"] * vectors["exp_balls_faced"]
+        + vectors["bowl_rate"] * vectors["exp_balls_bowled"]
+        + (vectors["pelo"] - C.ELO_INITIAL) / 400.0
+    )
+
+
+def rating_percentiles(scores: np.ndarray) -> np.ndarray:
+    """Where each ``rating_order_score`` stands in its own pool, 0-100: the share of the
+    pool the player outranks, as strictly-lower count over pool size minus one.
+
+    So the pool's top player reads 100 and its bottom reads 0, tied players read the same,
+    and the number means "this pool", never "all cricketers": the pool is what the
+    selection actually chose out of.
+    """
+    n = len(scores)
+    if n <= 1:
+        return np.full(n, 100.0)
+    lower = (scores[:, None] > scores[None, :]).sum(axis=1)
+    return 100.0 * lower / (n - 1)
+
+
 def _greedy_seed(pool: _Pool, c: Constraints, locked: List[int], banned: set) -> Optional[List[int]]:
     """Rank players by their solo marginal value, fill role constraints first, then the rest."""
     n = len(pool.keys)
-    order = list(
-        np.argsort(
-            -(
-                pool.vectors["bat_rate"] * pool.vectors["exp_balls_faced"]
-                + pool.vectors["bowl_rate"] * pool.vectors["exp_balls_bowled"]
-                + (pool.vectors["pelo"] - C.ELO_INITIAL) / 400.0
-            )
-        )
-    )
+    order = list(np.argsort(-rating_order_score(pool.vectors)))
     chosen = list(locked)
     if c.require_keeper and not any(pool.is_keeper(i) for i in chosen):
         for i in order:
@@ -265,6 +302,136 @@ def select_xi_by_ratings(
         raise ValueError("pool cannot satisfy the constraints (size / bowlers / keeper)")
     logger.info("xi rating-ordered pick: %s, pool %d, no objective evaluated", format_code, len(pool.keys))
     return [pool.keys[i] for i in chosen]
+
+
+@dataclass(frozen=True)
+class BestAlternative:
+    """The pool player the objective would most like to have instead of this one, and what
+    swapping him in costs: P(win) with the selected player minus P(win) with the alternative.
+
+    It is the search's own last question, asked once more and reported: exactly the
+    candidates ``_best_neighbour`` scores, under the same constraints, against the same
+    opponent XI. So the gap is a point estimate from one model evaluation and carries no
+    interval -- nothing in this module produces one -- and a value at or below zero means
+    the search stopped on its evaluation budget rather than at a local optimum.
+    """
+
+    player_key: str
+    win_probability_gap: float
+
+
+@dataclass(frozen=True)
+class SelectionReason:
+    """Why one selected player is in the eleven, in the terms the selection itself used.
+
+    Every field is read off the selection's own state: ``roles`` from the constraint
+    predicates ``_Pool`` evaluates, ``selection_rating`` and ``rating_percentile`` from the
+    composite ``_greedy_seed`` orders by, ``best_alternative`` from the swap candidates the
+    search scores. Nothing here is a second opinion about the player (P1-3 § 1).
+    """
+
+    roles: List[str]
+    selection_rating: float
+    rating_percentile: float
+    pool_size: int
+    best_alternative: Optional[BestAlternative] = None
+    #: Why there is no alternative, where the objective was asked and could not name one.
+    #: ``None`` on the rating-ordered path, where nothing was maximised and the response's
+    #: own ``optimised: false`` is the reason.
+    best_alternative_note: Optional[str] = None
+
+
+NO_FEASIBLE_ALTERNATIVE = (
+    "no swap from the rest of this pool keeps the eleven inside its constraints, so the "
+    "objective was never offered a replacement for this player"
+)
+
+
+def _best_alternatives(pool: _Pool, current: List[int], c: Constraints, banned: set) -> Dict[int, BestAlternative]:
+    """For each player in the eleven, the excluded pool player whose swap-in the objective
+    scores highest, and the P(win) that swap costs.
+
+    The candidate set is ``_best_neighbour``'s single-swap neighbourhood -- every feasible
+    one-for-one replacement -- scored in one batch, so the answer is the search's own
+    ranking rather than a new one invented for the card.
+    """
+    base = pool.score(current)
+    ins = [j for j in range(len(pool.keys)) if j not in current and j not in banned]
+    candidates: List[List[int]] = []
+    swaps: List[Tuple[int, int]] = []
+    for out in current:
+        for j in ins:
+            candidate = [j if x == out else x for x in current]
+            if pool.feasible(candidate, c):
+                candidates.append(candidate)
+                swaps.append((out, j))
+    if not candidates:
+        return {}
+    scores = pool.score_many(candidates)
+    best: Dict[int, Tuple[int, float]] = {}
+    for (out, j), score in zip(swaps, scores):
+        if out not in best or score > best[out][1]:
+            best[out] = (j, float(score))
+    return {
+        out: BestAlternative(player_key=pool.keys[j], win_probability_gap=base - score)
+        for out, (j, score) in best.items()
+    }
+
+
+def selection_reasons(
+    store: XiStore,
+    format_code: str,
+    xi_keys: Sequence[str],
+    pool_keys: Sequence[str],
+    opponent_keys: Sequence[str] = (),
+    constraints: Optional[Constraints] = None,
+    team_is_team1: bool = True,
+) -> Dict[str, SelectionReason]:
+    """What the selection read about each player it picked, keyed by registry id (P1-3).
+
+    ``opponent_keys`` empty is the rating-ordered path: nothing was maximised, so no
+    alternative is scored and none is reported. With an opponent it is the searched path,
+    and the eleven is measured against the pool it was searched out of.
+
+    A player the pool does not hold gets no entry rather than a blank one -- the eleven
+    would then not be the eleven this pool produced, and a card explaining a selection that
+    did not happen is the failure this whole item exists to avoid.
+    """
+    c = constraints or Constraints()
+    pool = _Pool(store, format_code, pool_keys, opponent_keys, team_is_team1)
+    position = {key: i for i, key in enumerate(pool.keys)}
+    scores = rating_order_score(pool.vectors)
+    percentiles = rating_percentiles(scores)
+
+    current = [position[key] for key in xi_keys if key in position]
+    missing = [key for key in xi_keys if key not in position]
+    if missing:
+        logger.warning("xi.selection_reasons.unpooled_players: %s", missing[:10])
+
+    alternatives: Dict[int, BestAlternative] = {}
+    if opponent_keys and current:
+        _, banned = _locked_and_banned(pool, c)
+        alternatives = _best_alternatives(pool, current, c, banned)
+
+    out: Dict[str, SelectionReason] = {}
+    for i in current:
+        roles = []
+        if pool.is_keeper(i):
+            roles.append(ROLE_KEEPER)
+        if pool.is_bowler(i):
+            roles.append(ROLE_BOWLING_OPTION)
+        alternative = alternatives.get(i)
+        out[pool.keys[i]] = SelectionReason(
+            roles=roles,
+            selection_rating=float(scores[i]),
+            rating_percentile=float(percentiles[i]),
+            pool_size=len(pool.keys),
+            best_alternative=alternative,
+            best_alternative_note=(
+                NO_FEASIBLE_ALTERNATIVE if opponent_keys and current and alternative is None else None
+            ),
+        )
+    return out
 
 
 def marginal_values(

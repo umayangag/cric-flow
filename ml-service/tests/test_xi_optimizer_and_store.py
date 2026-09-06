@@ -12,7 +12,18 @@ import pytest
 
 from ml.xi import contract as C
 from ml.xi.builder import build
-from ml.xi.optimizer import Constraints, marginal_values, select_xi, select_xi_by_ratings
+from ml.xi.optimizer import (
+    ROLE_BOWLING_OPTION,
+    ROLE_KEEPER,
+    SELECTION_ROLES,
+    Constraints,
+    marginal_values,
+    rating_order_score,
+    rating_percentiles,
+    select_xi,
+    select_xi_by_ratings,
+    selection_reasons,
+)
 from ml.xi.retrain import retrain
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
 from ml.xi.store import XiStore, load_ratings, save_ratings
@@ -247,6 +258,131 @@ def test_marginal_values_cover_every_player_and_rank_the_strongest_highest(train
     best = max(mv, key=mv.get)
     top_batters = sorted(last.team1_players, key=skill_rank)[:6]
     assert best in top_batters, "the most valuable player is one of the six who bat, and they are the most skilled"
+
+
+# --- P1-3: what the selection read about each player it picked ----------------------
+
+
+def test_rating_order_score_is_the_order_the_rating_ordered_pick_uses(trained_store) -> None:
+    """The card's "selection rating" has to be the number that actually ranked the player,
+    so the composite and the pick are checked against each other rather than described."""
+    store, squad_a, _, _ = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+
+    selected = select_xi_by_ratings(store, "T20", squad_a, c)
+    scores = dict(zip(squad_a, rating_order_score(store.side_vectors("T20", squad_a))))
+
+    assert sorted(selected, key=lambda k: -scores[k]) == sorted(squad_a, key=lambda k: -scores[k])[:11], (
+        "with no constraint to fill, the pick is the top eleven of the composite"
+    )
+
+
+def test_rating_percentiles_run_from_zero_to_a_hundred_over_the_pool() -> None:
+    """Percentile means "this pool": the best reads 100, the worst 0, ties read alike."""
+    percentiles = rating_percentiles(np.asarray([3.0, 1.0, 2.0, 1.0, 5.0]))
+
+    assert percentiles[4] == pytest.approx(100.0)
+    assert percentiles[1] == pytest.approx(0.0)
+    assert percentiles[3] == pytest.approx(0.0)
+    assert percentiles[2] == pytest.approx(50.0)
+
+
+def test_rating_percentiles_of_a_single_candidate_is_the_top_of_its_pool() -> None:
+    assert rating_percentiles(np.asarray([1.5])).tolist() == [100.0]
+
+
+def test_selection_reasons_name_the_roles_the_constraints_counted(trained_store) -> None:
+    """A role is the constraint predicate, not a judgement: it must agree with the same
+    ``is_bowling_option`` and keeper flag the search and the objective read."""
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=3, require_keeper=False)
+    selected = select_xi_by_ratings(store, "T20", squad_a, c)
+
+    reasons = selection_reasons(store, "T20", selected, squad_a, constraints=c)
+
+    vectors = store.side_vectors("T20", selected)
+    for i, key in enumerate(selected):
+        bowler = bool(C.is_bowling_option(vectors["exp_balls_bowled"][i], "T20"))
+        keeper = bool(vectors["keeper"][i] > 0)
+        assert (ROLE_BOWLING_OPTION in reasons[key].roles) == bowler
+        assert (ROLE_KEEPER in reasons[key].roles) == keeper
+        assert set(reasons[key].roles) <= set(SELECTION_ROLES)
+
+
+def test_selection_reasons_measure_the_percentile_over_the_pool_as_served(trained_store) -> None:
+    store, squad_a, _, _ = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    selected = select_xi_by_ratings(store, "T20", squad_a, c)
+
+    reasons = selection_reasons(store, "T20", selected, squad_a, constraints=c)
+
+    scores = dict(zip(squad_a, rating_order_score(store.side_vectors("T20", squad_a))))
+    assert set(reasons) == set(selected)
+    for key in selected:
+        assert reasons[key].pool_size == len(squad_a)
+        assert reasons[key].selection_rating == pytest.approx(scores[key])
+    top = max(squad_a, key=lambda k: scores[k])
+    assert reasons[top].rating_percentile == pytest.approx(100.0)
+
+
+def test_a_rating_ordered_selection_scores_no_alternative(trained_store) -> None:
+    """Nothing was maximised, so the card must be handed no win-model comparison at all."""
+    store, squad_a, _, _ = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    selected = select_xi_by_ratings(store, "T20", squad_a, c)
+
+    reasons = selection_reasons(store, "T20", selected, squad_a, constraints=c)
+
+    assert all(reason.best_alternative is None for reason in reasons.values())
+    assert all(reason.best_alternative_note is None for reason in reasons.values())
+
+
+def test_the_best_alternative_is_the_best_single_swap_the_search_could_have_made(trained_store) -> None:
+    """The gap is the search's own neighbourhood, so it is checked against a swap actually
+    scored through the same objective rather than against a description of one."""
+    store, squad_a, _, matches = trained_store
+    opponent = matches[-1].team2_players
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    result = select_xi(store, "T20", squad_a, opponent, c)
+
+    reasons = selection_reasons(store, "T20", result.selected, squad_a, opponent, constraints=c)
+
+    excluded = [key for key in squad_a if key not in result.selected]
+    assert excluded, "the fixture's pool is larger than an eleven"
+    for key, reason in reasons.items():
+        assert reason.best_alternative is not None
+        assert reason.best_alternative.player_key in excluded
+        swapped = [reason.best_alternative.player_key if k == key else k for k in result.selected]
+        gap = result.win_probability - store.objective_probability(
+            "T20", store.side_vectors("T20", swapped), store.side_vectors("T20", opponent)
+        )
+        assert reason.best_alternative.win_probability_gap == pytest.approx(gap, abs=1e-9)
+
+
+def test_the_searched_eleven_is_never_beaten_by_its_own_best_alternative(trained_store) -> None:
+    """A converged single-swap search has no improving swap left, so every gap is >= 0.
+    A negative one would say the search stopped on its budget, which is worth knowing."""
+    store, squad_a, _, matches = trained_store
+    opponent = matches[-1].team2_players
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    result = select_xi(store, "T20", squad_a, opponent, c)
+
+    reasons = selection_reasons(store, "T20", result.selected, squad_a, opponent, constraints=c)
+
+    assert all(reason.best_alternative.win_probability_gap >= -1e-9 for reason in reasons.values())
+
+
+def test_selection_reasons_skip_a_player_the_pool_does_not_hold(trained_store) -> None:
+    """A card for a player this pool never offered would explain a selection that did not
+    happen, so he gets no entry rather than a blank one."""
+    store, squad_a, _, _ = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    selected = select_xi_by_ratings(store, "T20", squad_a, c)
+
+    reasons = selection_reasons(store, "T20", list(selected) + ["not-in-this-pool"], squad_a, constraints=c)
+
+    assert "not-in-this-pool" not in reasons
+    assert set(reasons) == set(selected)
 
 
 def test_display_probability_accepts_missing_context(trained_store) -> None:

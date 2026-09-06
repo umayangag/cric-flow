@@ -75,6 +75,47 @@ class ServedRatings(BaseModel):
     ratings_through: str = Field(..., description="YYYY-MM-DD: the last match date the served ratings include")
 
 
+class BestAlternativeModel(BaseModel):
+    """The pool player the objective would most like instead of a selected one, and the
+    P(win) that swap costs (P1-3).
+
+    A point estimate with no interval, deliberately: it is one evaluation of the objective
+    on the swap candidates the search itself scores, and nothing in that computation
+    produces an uncertainty. A gap at or below zero means the search stopped on its
+    evaluation budget rather than at a local optimum."""
+
+    player_id: str = Field(..., description="Registry id of the best excluded alternative from the same pool")
+    win_probability_gap: float = Field(
+        ..., description="P(win) with the selected player minus P(win) with this alternative in his place"
+    )
+
+
+class PlayerSelectionReasonModel(BaseModel):
+    """Why one selected player is in the eleven, in the terms the selection used (P1-3).
+
+    Only what the selection consumed: the constraint predicates it evaluated, the composite
+    it ordered the pool by, and the swap candidates it scored. Nothing is a second opinion
+    about the player."""
+
+    roles: List[str] = Field(
+        default_factory=list,
+        description="Constraint state this player answers: 'keeper', 'bowling_option' (ml.xi.optimizer.SELECTION_ROLES)",
+    )
+    selection_rating: float = Field(
+        ..., description="The composite the pool was ordered by (ml.xi.optimizer.rating_order_score)"
+    )
+    rating_percentile: float = Field(
+        ..., ge=0, le=100, description="Share of this pool the player outranks on that composite, 0-100"
+    )
+    pool_size: int = Field(..., description="How many candidates the percentile is taken over")
+    best_alternative: Optional[BestAlternativeModel] = Field(
+        default=None, description="Absent on the rating-ordered path: nothing was maximised, so nothing was compared"
+    )
+    best_alternative_note: Optional[str] = Field(
+        default=None, description="Why the objective could name no alternative, where it was asked and could not"
+    )
+
+
 class XiOptimizeResponse(BaseModel):
     selected_player_ids: List[str]
     objective: Literal["win", "ratings"]
@@ -93,6 +134,11 @@ class XiOptimizeResponse(BaseModel):
     )
     marginal_values: Dict[str, float] = Field(
         default_factory=dict, description="P(win) lost if the player were replaced by an average one"
+    )
+    selection_reasons: Dict[str, PlayerSelectionReasonModel] = Field(
+        default_factory=dict,
+        description="Per selected player, what the selection read about him: role, rating standing in the "
+        "pool, and -- where an objective was maximised -- the best excluded alternative (P1-3)",
     )
     served_ratings: ServedRatings
 

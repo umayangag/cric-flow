@@ -258,6 +258,46 @@ def test_optimize_rating_ordered_needs_no_opponent_and_is_marked_not_optimised(r
     assert res.marginal_values == {}
 
 
+def test_optimize_carries_a_selection_reason_for_every_player_it_picked(registry, artifacts_dir) -> None:
+    """P1-3: the card is assembled from what the selection read, so every selected player
+    must arrive with that state and the pool the percentile is taken over."""
+    _, squad_a, _, matches = artifacts_dir
+    req = XiOptimizeRequest(
+        format="t20i",
+        pool_player_ids=squad_a,
+        opponent_player_ids=list(matches[-1].team2_players),
+        constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
+    )
+
+    res = xi_service.optimize(req, registry)
+
+    assert set(res.selection_reasons) == set(res.selected_player_ids)
+    for player_id, reason in res.selection_reasons.items():
+        assert reason.pool_size == len(squad_a)
+        assert 0.0 <= reason.rating_percentile <= 100.0
+        assert reason.best_alternative is not None
+        assert reason.best_alternative.player_id not in res.selected_player_ids
+        assert player_id not in {reason.best_alternative.player_id}
+
+
+def test_a_rating_ordered_selection_reason_names_no_alternative(registry, artifacts_dir) -> None:
+    """The rating-ordered path maximises nothing, so the card gets no win-model comparison
+    to show for a format the policy scoped off (P1-3 § 3)."""
+    _, squad_a, _, _ = artifacts_dir
+    req = XiOptimizeRequest(
+        format="t20i",
+        pool_player_ids=squad_a,
+        objective="ratings",
+        constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
+    )
+
+    res = xi_service.optimize(req, registry)
+
+    assert set(res.selection_reasons) == set(res.selected_player_ids)
+    assert all(reason.best_alternative is None for reason in res.selection_reasons.values())
+    assert all(reason.best_alternative_note is None for reason in res.selection_reasons.values())
+
+
 def test_optimize_refuses_the_win_objective_where_it_does_not_rank(registry, artifacts_dir) -> None:
     """H-17: TEST has no objective that ranks, so the win objective is not offered there."""
     _, squad_a, _, matches = artifacts_dir
