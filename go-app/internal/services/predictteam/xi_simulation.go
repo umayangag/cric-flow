@@ -119,6 +119,7 @@ func applyXISimulation(
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
+		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
 	})
 	if err != nil {
@@ -126,6 +127,14 @@ func applyXISimulation(
 	}
 	if len(sim.Team1.Players) == 0 || len(sim.Team2.Players) == 0 {
 		return fmt.Errorf("simulate match: the simulator returned no players")
+	}
+	// The toss the draws used has to be the toss that was asked for. A known toss answered
+	// by marginalised draws -- or the reverse -- is the request being silently changed, and
+	// `toss_marginalised` is the one field that can catch it (§8.7).
+	if sim.TossMarginalised != (fix.team1BatsFirst == nil) {
+		return fmt.Errorf(
+			"simulate match: the toss was %s but the simulator reports toss_marginalised=%t",
+			tossDescription(fix.team1BatsFirst), sim.TossMarginalised)
 	}
 	// The headline is E2's choice, made on the folds and served as a constant. An
 	// unrecognised source would put a number on screen with no honest label for it.
@@ -140,6 +149,7 @@ func applyXISimulation(
 		return fmt.Errorf("simulate match: %w", err)
 	}
 	result.Forecast = ForecastSummary{Source: forecastSourceSimulator}
+	result.Toss = tossApplied(fix.team1BatsFirst)
 	result.Scorecard = &Scorecard{
 		Samples:          sim.Samples,
 		TossMarginalised: sim.TossMarginalised,
@@ -160,8 +170,20 @@ func applyXISimulation(
 		slog.Float64("innings2", sim.Team2.TotalScorecard),
 		slog.Float64("p_display", sim.DisplayTeam1WinProbability),
 		slog.Float64("p_simulated", simulated),
-		slog.String("headline", sim.HeadlineSource))
+		slog.String("headline", sim.HeadlineSource),
+		slog.String("toss", tossDescription(fix.team1BatsFirst)))
 	return nil
+}
+
+// tossDescription names the batting order for a log line or an error message.
+func tossDescription(team1BatsFirst *bool) string {
+	if team1BatsFirst == nil {
+		return "unknown"
+	}
+	if *team1BatsFirst {
+		return "team1 bats first"
+	}
+	return "team2 bats first"
 }
 
 func inningsTotal(side XISimulatedSide) InningsTotal {

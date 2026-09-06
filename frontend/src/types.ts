@@ -60,6 +60,20 @@ export type PredictInningsTotal = {
   p90: number;
 };
 
+/**
+ * Which batting order the numbers assume (P1-1).
+ *
+ * `team1_bats_first` is null where the toss was unknown and both orders were drawn, which
+ * is the default. `honoured` is false where a named toss could not be used — a format with
+ * no innings length has no batting order to fix — and `note` says why, because an input
+ * that was dropped has to be visible on the answer (§8.7).
+ */
+export type PredictTossSummary = {
+  team1_bats_first: boolean | null;
+  honoured: boolean;
+  note?: string;
+};
+
 /** The simulated match. Absent for a format with no innings length. */
 export type PredictScorecard = {
   samples: number;
@@ -204,6 +218,8 @@ export type PredictTeamSelectionResponse = {
   team2: PredictTeamSelectedPlayer[];
   selection: PredictSelectionSummary;
   win_probability: PredictWinProbability;
+  /** Which batting order the numbers were produced under, and whether a named one was used. */
+  toss: PredictTossSummary;
   scorecard?: PredictScorecard;
   /** Which candidates each XI was chosen out of, and who the ledger excluded (D-12). */
   team1_pool: PoolSummary;

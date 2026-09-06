@@ -19,6 +19,92 @@ export type SidePoolChoice = { allTime: boolean; players: number[] | null };
 const DEFAULT_POOL_CHOICE: SidePoolChoice = { allTime: false, players: null };
 
 /**
+ * The toss, as the Lab offers it: bat first, bowl first, or not yet known (P1-1).
+ *
+ * "unknown" is the default and is not a missing answer — it is the simulator's long-standing
+ * behaviour of drawing half the matches each way, which the response reports as
+ * `toss_marginalised`. The three states are three different requests.
+ */
+export type TossChoice = 'unknown' | 'team1_bats_first' | 'team2_bats_first';
+
+/**
+ * What the caller requires of an XI, and who must be in the pool it is chosen from.
+ *
+ * The numbers are held as typed rather than as parsed values so that a half-typed field is
+ * a half-typed field and not a silent zero; {@link parseMinBowlers} and
+ * {@link parsePlayerIds} turn them into the request, and refuse what they cannot read.
+ */
+export type LabConstraints = {
+  minBowlers: string;
+  requireKeeper: boolean;
+  extraTeam1: string;
+  extraTeam2: string;
+};
+
+const DEFAULT_CONSTRAINTS: LabConstraints = {
+  minBowlers: '',
+  requireKeeper: true,
+  extraTeam1: '',
+  extraTeam2: '',
+};
+
+/** The wire value for a toss choice; `undefined` is "unknown", which is sent by omission. */
+export function tossRequestFrom(choice: TossChoice): boolean | undefined {
+  if (choice === 'team1_bats_first') return true;
+  if (choice === 'team2_bats_first') return false;
+  return undefined;
+}
+
+/**
+ * Read a list of player ids a user typed, keeping what could not be read.
+ *
+ * The unreadable tokens are returned rather than dropped: an id list that quietly loses a
+ * typo would send a pool the user did not ask for, and nothing on the answer would say so.
+ */
+export function parsePlayerIds(text: string): { ids: number[]; unreadable: string[] } {
+  const tokens = text
+    .split(/[\s,]+/)
+    .map((token) => token.trim())
+    .filter((token) => token !== '');
+  const ids: number[] = [];
+  const unreadable: string[] = [];
+  for (const token of tokens) {
+    const id = Number(token);
+    if (Number.isInteger(id) && id > 0) ids.push(id);
+    else unreadable.push(token);
+  }
+  return { ids, unreadable };
+}
+
+/** The minimum bowler count, or `undefined` where the field is empty and config decides. */
+export function parseMinBowlers(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return undefined;
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value <= 0) return undefined;
+  return value;
+}
+
+/** Why a constraint field cannot be sent, or null while it can. */
+export function constraintError(constraints: LabConstraints): string | null {
+  const minBowlers = constraints.minBowlers.trim();
+  if (minBowlers !== '' && parseMinBowlers(minBowlers) === undefined) {
+    return 'Minimum bowlers must be a whole number above zero';
+  }
+  const sides: [string, string][] = [
+    ['team 1', constraints.extraTeam1],
+    ['team 2', constraints.extraTeam2],
+  ];
+  for (const [label, text] of sides) {
+    const { unreadable } = parsePlayerIds(text);
+    if (unreadable.length > 0) {
+      return `These ${label} player ids are not ids: ${unreadable.join(', ')}`;
+    }
+  }
+  return null;
+}
+
+/**
  * Turn a side's choice into the request field, leaving it out entirely when nothing was
  * chosen. An omitted `team1_pool` is the per-format recency window, which is the default
  * and the fix: sending `{}` would say the same thing more loudly and no more truly.
@@ -27,6 +113,12 @@ function poolRequestFrom(choice: SidePoolChoice): PoolRequest | undefined {
   if (choice.players?.length) return { players: choice.players };
   if (choice.allTime) return { all_time: true };
   return undefined;
+}
+
+/** An id list for the request, left out entirely when it is empty. */
+function extraIdsFrom(text: string): number[] | undefined {
+  const { ids } = parsePlayerIds(text);
+  return ids.length > 0 ? ids : undefined;
 }
 
 function formatDateForInput(d: Date): string {
@@ -62,19 +154,17 @@ function keepIfStillOffered(
 }
 
 /**
- * The Upcoming Match tab's state.
+ * The Team Lab's state: the fixture, the pools, the constraints and the toss.
  *
- * It held 16 `useState` calls, five of which were three near-identical
- * fetch-and-cascade blocks (formats → teams → opponents) with their own `active`
- * flags, plus a hand-rolled debounce for venue search. The cascades are now three
- * {@link useAsync} calls whose effects say only what they depend on, and the debounce
- * moved to {@link useVenueSearch} where it can also discard a stale response — typing
- * "Lord's" used to let the answer for "Lor" land on top of it.
- *
- * What stays `useState` is the form: six fields the user types into, which are
- * component state and not an async lifecycle pretending to be one.
+ * It is the Upcoming-match tab's hook grown into the Lab's (P1-1), and it stays the one
+ * place a prediction request is built — there is a single surface on
+ * `POST /api/predict/team-selection`, so there is a single place that can get its request
+ * wrong. What it holds is the form: fields the user types into, which are component state
+ * and not an async lifecycle pretending to be one. The three cascades (formats → teams →
+ * opponents) are {@link useAsync} calls whose effects say only what they depend on, and the
+ * venue debounce lives in {@link useVenueSearch} where a stale response can be discarded.
  */
-export function useUpcomingMatch() {
+export function useTeamLab() {
   const [format, setFormat] = useState('');
   // Both sides are the chosen option, not the typed text: the request carries a club id,
   // because a name names two teams for a third of the dataset (D-10).
@@ -86,6 +176,9 @@ export function useUpcomingMatch() {
   // a user gets by touching none of this (D-12).
   const [team1Pool, setTeam1Pool] = useState<SidePoolChoice>(DEFAULT_POOL_CHOICE);
   const [team2Pool, setTeam2Pool] = useState<SidePoolChoice>(DEFAULT_POOL_CHOICE);
+  // The toss starts unknown, which is what the stack has always assumed.
+  const [toss, setToss] = useState<TossChoice>('unknown');
+  const [constraints, setConstraints] = useState<LabConstraints>(DEFAULT_CONSTRAINTS);
 
   const formats = useAsync(api.getFormats, {
     runOnMount: [],
@@ -144,8 +237,16 @@ export function useUpcomingMatch() {
     return null;
   }, [matchDate]);
 
+  // A constraint that cannot be read stops the prediction rather than being dropped from
+  // the request: a pool silently missing the player a user typed is exactly the kind of
+  // quiet substitution the response is built to make impossible.
+  const constraintsError = useMemo(() => constraintError(constraints), [constraints]);
+
   const canPredict =
-    Boolean(format && team1 && team2 && matchDate) && !dateError && !prediction.loading;
+    Boolean(format && team1 && team2 && matchDate) &&
+    !dateError &&
+    !constraintsError &&
+    !prediction.loading;
 
   const handleVenueInputChange = useCallback(
     (_: React.SyntheticEvent, value: string) => {
@@ -167,9 +268,14 @@ export function useUpcomingMatch() {
         match_date: matchDate,
         team1_pool: poolRequestFrom(pool1),
         team2_pool: poolRequestFrom(pool2),
+        team1_bats_first: tossRequestFrom(toss),
+        min_bowlers: parseMinBowlers(constraints.minBowlers),
+        require_keeper: constraints.requireKeeper,
+        extra_team1: extraIdsFrom(constraints.extraTeam1),
+        extra_team2: extraIdsFrom(constraints.extraTeam2),
       });
     },
-    [canPredict, predict, format, team1, team2, venue, matchDate],
+    [canPredict, predict, format, team1, team2, venue, matchDate, toss, constraints],
   );
 
   const handlePredict = useCallback(
@@ -231,5 +337,19 @@ export function useUpcomingMatch() {
     team2Pool,
     setTeam2Pool,
     widenPool,
+    toss,
+    setToss,
+    constraints,
+    setConstraints,
+    constraintsError,
   };
 }
+
+/**
+ * The Lab's state as its presentational pieces receive it.
+ *
+ * The components take this whole object rather than twenty-odd props: it keeps the surface
+ * and the hook provably in step, and there is nothing in it a component may compute for
+ * itself.
+ */
+export type TeamLabState = ReturnType<typeof useTeamLab>;

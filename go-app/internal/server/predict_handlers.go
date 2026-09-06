@@ -42,6 +42,10 @@ type predictTeamRequest struct {
 	ExtraTeam2             []int64         `json:"extra_team2"`
 	MinBowlers             int             `json:"min_bowlers"`
 	RequireKeeper          *bool           `json:"require_keeper"`
+	// Team1BatsFirst is the toss (P1-1): true where team1 bats first, false where team2
+	// does, absent where it is unknown. Absent is the default and is today's behaviour —
+	// the simulator draws half the matches each way and reports `toss_marginalised`.
+	Team1BatsFirst *bool `json:"team1_bats_first"`
 	// The candidate pool each side is chosen from (D-12). Omitted, each side gets the
 	// per-format recency window, which is the default and the fix: the pool used to be
 	// all-time and offered players who retired a decade ago.
@@ -120,6 +124,11 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 		v := strings.EqualFold(s, "true") || s == "1"
 		body.RequireKeeper = &v
 	}
+	batsFirst, apiErr := parseTossParam(q.Get("team1_bats_first"))
+	if apiErr != nil {
+		return body, *apiErr
+	}
+	body.Team1BatsFirst = batsFirst
 	// The pool scope is readable off the query string too, so a `curl` of the GET form
 	// can widen a pool. Manual picking is not: a list of ticked ids belongs in a body.
 	pool, apiErr := parsePoolRequest(q.Get("window_months"), q.Get("all_time"), nil)
@@ -142,6 +151,32 @@ func parseClubID(raw string) int64 {
 	return id
 }
 
+// parseTossParam reads the toss off the query string, where the three states are "true",
+// "false" and absent.
+//
+// An unreadable value is refused rather than read as unknown: "bat first" and "we do not
+// know" are different questions, and answering the second when the first was asked is the
+// silent substitution §8.7 forbids.
+func parseTossParam(raw string) (*bool, *apiError) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	if strings.EqualFold(raw, "true") || raw == "1" {
+		batsFirst := true
+		return &batsFirst, nil
+	}
+	if strings.EqualFold(raw, "false") || raw == "0" {
+		batsFirst := false
+		return &batsFirst, nil
+	}
+	return nil, &apiError{
+		Code:    "INVALID_PARAM",
+		Message: "team1_bats_first must be true or false",
+		Hint:    "leave it out where the toss is unknown; the simulator then draws both batting orders",
+	}
+}
+
 // buildPredictInput converts a parsed request into a predictteam.Input.
 func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor string) predictteam.Input {
 	input := predictteam.Input{
@@ -156,7 +191,10 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor strin
 		RequireKeeper: true,
 		Team1Pool:     body.Team1Pool.poolRequest(),
 		Team2Pool:     body.Team2Pool.poolRequest(),
-		Actor:         actor,
+		// Nil is unknown, which is the marginalised default: the field is nullable all the
+		// way down so that "unknown" is a state and not a value standing in for one.
+		Team1BatsFirst: body.Team1BatsFirst,
+		Actor:          actor,
 	}
 	if body.RequireKeeper != nil {
 		input.RequireKeeper = *body.RequireKeeper
