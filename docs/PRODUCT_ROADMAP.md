@@ -268,8 +268,10 @@ are in § 3.2; the ground truth they build on is in § 3.1.
   trade, made because this bullet is the product. P1-2 demonstrated it on the surface for
   a swap that is an upgrade on *every* rated axis, and found the limit of the claim: a
   player the rating order merely ranks higher is not one (B-8).
-- **The "why this player" card** (P1-3, specified in § 4) on every selected player, under
-  the rule that it shows only what the objective consumed.
+- **The "why this player" card** (P1-3, specified in § 4, **shipped 2026-09-06**) on every
+  selected player, under the rule that it shows only what the objective consumed. Four
+  fields § 4 first sketched are omitted with their reasons recorded there, because the
+  stack cannot produce them from a consumed input.
 - **Honesty built into the UI, not the footnotes** (P1-4): ranges always shown, the
   not-optimised notice where selection is rating-ordered (T20, TEST), "ratings as of
   <date>", the metric explainers (L-1) reused throughout.
@@ -322,9 +324,11 @@ records it:
 4. **The honesty surfaces are present.** Ranges always shown; the not-optimised notice
    wherever selection is rating-ordered (T20, TEST); "ratings as of <date>" on every
    served prediction; the L-1 explainers reachable from every number.
-5. **The card shows only what the objective consumed.** The why-this-player card carries
-   no input the objective did not read (§ 4), and says "picked by rating, not by the win
-   model" where that is the truth.
+5. **The card shows only what the objective consumed.** ✅ **Built in P1-3** (2026-09-06):
+   the why-this-player card carries no input the objective did not read, every field maps
+   to a named computation, and four fields § 4 first sketched are omitted with their
+   reasons recorded there rather than approximated. The rating-ordered card says "picked by
+   rating, not by the win model" and carries nothing the win model would have said.
 6. **Failure paths are honest.** Stale ratings are refused with `RATINGS_STALE` and the
    refusal is shown with its date; nothing loaded is shown as nothing loaded; no state is
    quietly served as a prediction.
@@ -629,7 +633,10 @@ docs/PRODUCT_ROADMAP.md § 10 (the P1-2 row). Then stop and hand over the push a
 commands.
 ```
 
-#### P1-3 — The "why this player" card, from what the objective consumed (model: Opus)
+#### P1-3 — The "why this player" card, from what the objective consumed (model: Opus) — **shipped**
+
+*Shipped on `feat/p1-3-why-this-player` (2026-09-06). What shipped, which four fields were
+omitted and why, and what was seen on the dev stack are in § 4 and in § 10's P1-3 row.*
 
 **What.** The card § 4 specifies, on every selected player: marginal value (headline),
 role in the XI, expected contribution with its range, form and standing, and the
@@ -776,17 +783,69 @@ commands.
 
 ## 4. The "why this player" card (Phase 1, and the honesty rule for it)
 
-Built by P1-3 (§ 3.2). Per selected player, assembled from existing computations:
-**marginal value** (P(win)
-lost if replaced by an average player — the headline); **role in the XI** (which
-constraint or balance they satisfy: keeper, fifth bowler, top-order anchor — from the
-optimiser's constraint state); **expected contribution** (L2-B median and 10–90 range
-for runs/wickets in THIS fixture); **form and standing** (rating percentile within the
-pool, trajectory); **the beats-whom line** (against the best excluded alternative:
-the marginal-value gap, with its uncertainty). The rule: the card shows only inputs the
-objective actually consumed (H-2's spirit — explanations are the model's real factors,
-never post-hoc stories), and where selection is rating-ordered the card says the simpler
-truth: picked by rating, not by the win model.
+**Built by P1-3, shipped 2026-09-06.** Per selected player, assembled from existing
+computations. The rule: the card shows only inputs the objective actually consumed (H-2's
+spirit — explanations are the model's real factors, never post-hoc stories), and where
+selection is rating-ordered the card says the simpler truth: picked by rating, not by the
+win model.
+
+### What the card shows, and which consumed input each field is
+
+Read from the code as it stands (`ml/xi/optimizer.py`, `app/xi_service.py`,
+`go-app/internal/services/predictteam`); the same list is the doc-comment on
+`frontend/src/components/WhyThisPlayer.tsx`, so the rule travels with the component.
+
+| field | the consumed input it is |
+|---|---|
+| **Marginal value** (the headline, searched formats only) | `marginal_values`: P(win) for the eleven minus P(win) with this player's rating vector neutralised, from the objective model the search maximised, against the same opposing eleven |
+| **Role in the eleven** | the two constraint predicates `_Pool` evaluates over the served as-of vectors: `is_keeper` (also the objective's `has_keeper` feature) and `is_bowler` (`exp_balls_bowled` against `MIN_BOWLING_BALLS`, also its `n_bowlers` feature) |
+| **Expected contribution** | L2-B's median and 10–90 range for runs and wickets in this fixture, already on the wire |
+| **Selection rating and its pool percentile** | `rating_order_score`, the one composite `_greedy_seed` orders the pool by — the seed every search starts from, and the whole answer where a format is not searched — with its standing *within the pool as served* and that pool's size |
+| **The next best** | the best excluded pool player over exactly the single swaps `_best_neighbour` scores, under the same constraints and against the same opposing eleven, and the P(win) that swap costs |
+
+### What is omitted, and why (the rule applied, not a footnote)
+
+Four fields § 4 first sketched are **not** on the card, because the stack cannot produce
+them from an input the objective consumed. Each is omitted rather than approximated:
+
+1. **Trajectory** ("form" as a direction of travel). The served rating state holds decayed
+   accumulators as of one date — `RatingState` has no history array and `side_vectors`
+   reads one snapshot — so the objective consumed no earlier value of anything. A
+   trajectory would have to be computed by re-running the rating pass over a window the
+   selection never saw, which is a second opinion about the player, not an explanation of
+   the pick. **Form is therefore represented only as it is consumed**: the decayed rates
+   inside `selection_rating`, and its standing in the pool.
+2. **A "must-include" role.** There is no such optimiser constraint on the predict path:
+   go-app puts a required id into the *pool* (P1-1) and sends ml-service an empty
+   `must_include`, so the search never treats anyone as required and may leave a
+   must-include player out. A chip saying "required" would name a constraint nothing
+   applied. (Play mode's constraint chips do report must-include, because there the check
+   really is made — P1-2.) The role vocabulary is therefore two values, `keeper` and
+   `bowling_option`, declared in `contracts/ops-console.contract.json` under
+   `selection_roles`.
+3. **A "top-order anchor" role.** Batting position (`exp_bat_position`) is a
+   `PLAYER_ROLE_KEYS` column the *performance* model reads. The selection objective never
+   sees it, so it explains the expected contribution and never the pick.
+4. **An uncertainty on the beats-whom gap.** The gap is one evaluation of the objective per
+   candidate swap and yields a point estimate and nothing else. The card shows the gap and
+   says so, rather than inventing an interval. (A gap at or below zero would say the search
+   stopped on its evaluation budget rather than at a local optimum; measured on the dev
+   stack the minimum was +0.0011.)
+
+### The rating-ordered card, and B-8
+
+Where `selection.optimised` is false (T20, TEST) the card carries **no marginal value and
+no next-best line**, because nothing was maximised, and it never computes one from the win
+model for a format the policy scoped off. It shows the selection rating with its pool
+percentile, the role, and the expected contribution with its range — and one sentence that
+is the honest half of `docs/BUG_BACKLOG.md` § B-8: *the ordering on screen is the
+selection's own composite and is not the win model's ranking; the two disagree about who is
+better, so swapping in a higher-rated player can move the displayed probability down.* This
+is where a user learns that before acting on the order. P1-4 carries the other half.
+
+In Play mode there is no card state at all — no `selection_reason` on any player — because
+the caller built the eleven and nothing selected it; the card says that and shows only the
+expected contribution.
 
 ## 5. Phase 2 — data operations as a product
 
@@ -867,7 +926,7 @@ the parts that cost money or need people, and says so.
 | P1-1 | ✅ **shipped** (2026-09-06) — one Lab surface, the toss toggle, the pools visible. The Upcoming-match tab **became** the Team Lab (`/lab`, `TeamLabTab` + `useTeamLab`) rather than gaining a sibling, so there is one surface on `POST /api/predict/team-selection`. New inputs: the **toss** (bat first / bowl first / unknown), and the constraints the endpoint always accepted but the UI never sent — minimum bowlers, the keeper, and must-include ids that join the pool whatever the window or the ledger says (an unreadable id stops the prediction rather than being dropped). **The toss reached the simulator for the first time**: `team1_bats_first` ran from `predictteam`'s simulation input through to `/simulate`, but `predictTeamRequest` had no field and the UI had no control, so nothing could set it; the field is nullable at every hop (absent = unknown = today's marginalised behaviour) and the response now carries `toss` — which batting order the numbers assume, and whether a named one could be used at all. Two §8.7 consequences: a named toss on a format with no innings length is reported *not honoured* with the reason instead of being ignored, and draws that disagree with the toss asked for (`toss_marginalised` against the request) are refused rather than served. One defect the toggle exposed and this fixes: `scorecard.innings1/innings2` were team1's and team2's innings whichever batted first, so "Innings 1 (India)" could sit beside "Australia bats first" — renamed `team1_innings`/`team2_innings` and labelled by side and batting position. **Verified on the dev stack** (run `20260906T083819Z-36689f80`, ratings through 2026-09-02, 4 days old): T20I India v Australia and ODI England v India come back `optimised true` with marginal values; T20 Mumbai Indians v Chennai Super Kings and TEST Australia v England come back `optimised false` with the H-17 / E5 note on screen and no marginal column; the three toss states give three different answers on the same fixture (unknown 73.1 % with innings 176/175 both orders averaged; team1 first 72.6 % with 189/170; team2 first 73.6 % with 168/183), each named on the surface; both pools render with window, size and the all-time pool one click away. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662. Frontend coverage ratcheted to 79/79/77/70 |
 | P1-5 | ✅ **shipped** (2026-09-06, PR #270) — every served prediction carries its date and run id, and a refused one says why. **The payload:** `predictteam.Result` gains `ratings_through` and `run_id`, required, never omitted (§ 2.1's gap (1) closed). They come from a `served_ratings {run_id, ratings_through}` stamp ml-service now puts on every answer a prediction is assembled from — `/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict` — read off the store that computed it (the same manifest and `state.last_date` `/xi/status` reports), rather than from one `/xi/status` read per prediction: a status read describes whatever is loaded at the moment of the read, and a reload can land between a prediction and that read. Nothing is cached past the request. go-app requires every stamp to agree; a prediction whose calls straddled a reload is `409 SERVED_RUN_CHANGED` naming both runs (§8.7), and an answer with no stamp is refused rather than read as an unknown date. **The surface:** the Lab shows "ratings as of *date* · run *id*" beside the headline probability, off its own payload (gap (2) closed); PredictionReadiness keeps the refused states, so the surface is dateless in no state. **The refusal, demonstrated end to end** on the dev stack with `XI_RATINGS_MAX_AGE_DAYS=1` as an env override on a branch ml-service (the served config untouched; the shared containers were not restarted): ml-service `/xi/status` read `fresh false, age_days 4, max_age_days 1, code RATINGS_STALE`; `POST /api/predict/team-selection` (T20I, India (men) v Australia (men), 2026-09-10) came back through go-app as **`503 {"code":"RATINGS_STALE","message":"ratings run through 2026-09-02 (4 days old, limit 1)","hint":"run the retrain step, then reload -- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate"}`** — a 503, because go-app now relays an upstream 503 as itself instead of rewriting it to 502, which had made a named refusal read as a broken gateway. On the Lab the refusal rendered with the date, the age against the limit, ml-service's hint, the place in this UI that fixes it (Ops → Pipeline: Retrain, then Reload) and the code, and no number: the failed request clears the previous answer. With the limit back at 14 the same fixture answered **200** with `ratings_through 2026-09-02`, `run_id 20260906T083819Z-36689f80`, P(India) 73.1 % (P1-1's figure), and the Lab showed "ratings as of **2026-09-02** · run 20260906T083819Z-36689f80" beside it. `as_of` stays unreachable from the product. No glossary entry: the date and the run id are labels, not numbers L-1's gate covers; the chip carries its own one-sentence tooltip. **Tests:** Go — the adopt/refuse rule, the selection and both forecast paths refusing a mid-prediction run change, the client mapping the stamp, `relayStatus` passing 503, the handler answering 503 `RATINGS_STALE` and 409 `SERVED_RUN_CHANGED`, and two scratch-database integration tests through the real handler (a served payload carries both fields; a stale registry is a 503 with the code on the wire); ml-service — the stamp equals the status on both the optimised and rating-ordered paths and on every response model, a backtest is dated by its as-of state, a store with no manifest is refused, and the 503 reaches the route with the code, the date, the age and the hint; frontend — the date renders on success, the refusal renders on 503 with no number, and neither state is blank. `make check-all` green; no coverage gate could move — the gates measure ml-service 93.60 %, go-app 76.7 % and frontend 77.85/70.16/79.13/79.87, each rounding down to its existing threshold. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
 | P1-2 | ✅ **shipped** (2026-09-06) — Play mode, on one code path, with two of this document's claims corrected. **The path:** a hand-built eleven takes the *existing* predict path with the selection step replaced by the caller's answer — `team1_xi` / `team2_xi` on `POST /api/predict/team-selection` — because the numbers never came from `/xi/optimize` in the first place: the displayed probability is `/xi/predict-win`'s display model and the totals, ranges and scorecard are `/simulate`'s draws, both of which read the eleven they are given. `selection.objective` is `fixed`, `optimised` is false and no player carries a marginal value, because nothing was maximised; **Optimise again** returns to the searched eleven, which is the win-model search in T20I and ODI and the rating-ordered pick with its notice in T20 and TEST. Refused rather than repaired: an eleven that is not an eleven (`400 XI_INCOMPLETE` — a ten-man side would be a prediction for a match nobody plays), a player id that names nobody (`400 XI_PLAYER_UNKNOWN`), one side pinned and the other searched, and the same player twice. **Constraints are checked, never applied:** ml-service's `/xi/predict-win` optionally checks the eleven it is scoring against the constraints it was sent with and reports the counts — the bowler count from `contract.is_bowling_option` and the keeper flag from the served vectors, so "five bowlers" means in the chip what it means inside the search — and go-app assembles them into a `constraints` block naming the missing must-include players. A pinned prediction whose answer carries no check is refused rather than shown as met. **Verified on the dev stack** (run `20260906T083819Z-36689f80`, ratings through 2026-09-02): on T20I India v Australia the searched eleven reads 73.1 %, one swap re-scores to 71.2 % with the delta shown as **−1.9 pp** beside **+2.2 runs (+1.0 / +2.0)** on India's innings; removing a player leaves "this eleven is not scored yet" over the previous answer rather than scoring ten; adding one back with `min_bowlers` 8 re-scores to 69.8 % and shows **Bowlers 5 of 8 — broken** and **Bowlers 7 of 8 — broken** with "scored as you built it; nothing was substituted"; Optimise again returns a searched eleven under the new constraint. **Clause 3, demonstrated:** `scripts/probes/p1_2_play_mode.py` through the real stack — pinning the searched eleven reproduces Optimise's probability with a gap of **0.0000000000** in all four formats (one code path, asserted rather than argued), and **0 falls in 20 dominating upgrades** (T20I 2, ODI 2, T20 8, TEST 8), where an upgrade is a swap for a player at least as good on every one of `contract.PLAYER_VECTOR_KEYS`. **Clause 2, corrected:** 30 timed re-scores per format, client to client, at the served 2,000 draws — T20I median **370.5 ms** / p95 738.6, ODI **388.0** / 532.8, T20 **399.0** / 516.4, TEST **354.9** / 471.0. Where it goes, timed in-process on one T20I `/simulate`: the performance model's per-player forecasts **295.6 ms**, `simulate_match` at 2,000 draws **9.4 ms**, summarising the draws 5.5 ms, the display probability 6.8 ms, assembling the rows 0.8 ms; `/xi/predict-win` is 6–8 ms of the total and go-app's own work (two pool queries, the fixture resolution, two hops) about 40 ms. **So the ~10 ms this document claimed was the draw loop alone** — the harness's `ms_per_fixture_at_default_samples`, 9.5–9.8 there — for a fixture whose forecasts were already computed, and § 1 and § 3 now say what a user waits for instead. Measured with the branch running as host processes against the shared Postgres and the shared containers' own run; the same `/simulate` payload against the containerised ml-service is 145.4 ms median against the host process's 317.2, so inside the dev stack's containers the re-score would land near 200 ms — the claim is out by a factor of 20–40 either way, which is why no draw count was lowered and no cache added to chase it. **One finding recorded rather than fixed:** the same probe's diagnostic arm swaps for a player the *rating order* ranks higher without dominating him, and the displayed probability falls in 0/8 T20I, 1/8 ODI, 4/8 T20 and 6/8 TEST cases (worst −0.0805) — `docs/BUG_BACKLOG.md` § B-8. **Tests:** Go — the pinned selection path, every refusal, the constraint report, the client sending constraints only for a pinned eleven, and three scratch-database integration tests through the real handler; ml-service — the check reports the counts, a broken constraint comes back broken and unrepaired, and checking moves no probability; frontend — the delta arithmetic as pure functions, the Play-mode state machine (an edit that leaves ten players does not re-score; the delta is measured against the answer the change was made from), and the board, chips and delta rendering. `make check-all` green; **frontend coverage ratcheted to 80/80/78/71**, go-app 76.8 % and ml-service 93.62 % each rounding down to the existing threshold. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
-| P1-3 | open — the "why this player" card, showing only what the objective consumed (§ 3.2, § 4; model Opus) |
+| P1-3 | ✅ **shipped** (2026-09-06) — the "why this player" card, on every selected player, showing what the selection consumed and nothing else. **The rule was applied, not asserted:** § 4 now carries the field-by-field map from each number on the card to the code that produced it, and the four fields it first sketched that are **omitted with their reasons** — a *trajectory* (the served state holds decayed accumulators as of one date, not a history, so the objective consumed no earlier value; form appears only as the decayed rates inside the selection rating and its standing), a *must-include* role (go-app puts a required id into the pool and sends ml-service an empty `must_include`, so the search never treats anyone as required and may leave him out — a "required" chip would name a constraint nothing applied), a *top-order anchor* role (`exp_bat_position` is read by the performance model, never by the objective), and an *interval on the beats-whom gap* (one objective evaluation per candidate swap yields a point estimate; the card says so instead of inventing one). The same list is the card component's doc-comment, so the rule travels with the code. **New on the wire:** `/xi/optimize` gains `selection_reasons` per selected player — `roles` (from `_Pool.is_keeper` / `is_bowler`, the same predicates the constraints and the `has_keeper` / `n_bowlers` features read), `selection_rating` (`rating_order_score`, extracted so `_greedy_seed` and the card cannot compute different composites), `rating_percentile` and `pool_size` (standing within the pool *as served*), and `best_alternative` (the best excluded pool player over exactly `_best_neighbour`'s single-swap neighbourhood, with the P(win) that swap costs) — and go-app carries it onto each `SelectedPlayer` as `selection_reason`, resolving the alternative's registry id to a player id and name. An alternative the pool cannot resolve is reported on the wire with its reason, never dropped (§8.7). `selection_roles` joins the H-24 contract, asserted from all three components. **Verified on the dev stack** (branch ml-service and go-api as host processes against the shared Postgres and run `20260906T083819Z-36689f80`, ratings through 2026-09-02): T20I India v Australia comes back `optimised true`, P(India) 0.7312, with a reason on all 22 players — pools of 26 and 24, percentiles 12 to 100, and every beats-whom gap positive (0.0011 to 0.1403), which is what a converged single-swap search should give; TEST Australia v England comes back `optimised false` with a reason on all 22, **no marginal value and no alternative anywhere**, percentiles 40.9 to 100 over pools of 18 and 23. **B-8's honest half:** the rating-ordered card says the ordering it shows is the selection's own composite and not the win model's ranking, and that swapping in a higher-rated player can move the displayed probability down — the sentence a user needs before acting on the order; P1-4 carries the other half. **Cost, measured rather than assumed:** the best-alternative sweep is **11.4 ms median** in-process on a 26-player T20I pool, beside the search's 383.8 ms and the marginal values' 1.7 ms, so about 46 ms on an Optimise (four win-objective calls); **Play mode's re-score is untouched**, because it makes no `/xi/optimize` call at all, and P1-2's 355–399 ms stands. **Glossary:** four new L-1 entries — `xi_role`, `selection_rating`, `rating_percentile`, `next_best_gap` — reachable from every labelled number on the card. **Tests:** ml-service — the composite is the order the rating-ordered pick uses, percentiles run 0 to 100 over the pool, roles agree with `is_bowling_option` and the keeper flag, the rating-ordered path scores no alternative, the best alternative equals a swap re-scored through the objective, no gap is negative on a converged search, an unpooled player gets no entry, and both `/xi/optimize` paths carry the block; go-app — the alternative resolves to a player id and name, an unresolvable one says so on the wire, the reasons come from the same round as the marginal values, Play mode carries none, the client maps the block on both objectives, and a scratch-database integration test through the real handler shows a rating-ordered payload carrying a reason per player with no alternative; frontend — the two card states, the rating-ordered one asserted to carry no marginal value and no beats-whom line even when handed one, the point-estimate sentence, the negative-marginal reading, and a control on every row. `make check-all` green; coverage gates never moved down. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
 | P1-4 | open — the honesty surfaces: ranges, the not-optimised notice, the date, the explainers, the failure paths (§ 3.2; model Fable) |
 | P2 | open — availability as **maintained lists, not a licensed feed**; D-12's retirement ledger is the first piece (§ 5); the freshness badge takes § 2.1's gaps (3) and (4) after P1-5 closes (1) and (2) |
 | P3 | open — **no wedge chosen** (route (a), § 2): P0-3 was skipped, so no evidence for a choice exists; if one is ever made it is recorded as an unevidenced judgment call, never as validated |
