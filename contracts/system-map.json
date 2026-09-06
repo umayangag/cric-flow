@@ -268,6 +268,42 @@
       ]
     },
     {
+      "id": "venue-weather",
+      "label": "Venue weather",
+      "lane": "l0",
+      "column": 4,
+      "kind": "data",
+      "summary": "Where each ground is and what the air was like on each match day, which the ball-by-ball archive cannot hold: a curated venue -> coordinates table (the geocoder asked about the city Cricsheet names beside the venue, the sides that played there voting for the country, 140 rows then placed by hand) and one reduced day of ERA5 readings per venue and match day from Open-Meteo's archive, free for non-commercial use under CC BY 4.0. Cricsheet carries no start times, so a session window is inferred per match from competition and format norms and the rule that placed it is recorded. Both files are tracked in the repository and are the cache, so a fresh clone fetches nothing for history; a day the archive has no readings for is stored as a miss with its reason. No model reads it: X-2 measured four pre-match weather families against the gates and every one is a recorded null.",
+      "anchors": {
+        "modules": [
+          "ml.weather.venues",
+          "ml.weather.geocoding",
+          "ml.weather.sessions",
+          "ml.weather.archive",
+          "ml.weather.features",
+          "ml.weather.backfill"
+        ],
+        "tables": [
+          "venue_weather"
+        ],
+        "make_targets": [
+          "venue-weather",
+          "restore-venue-weather"
+        ],
+        "files": [
+          "go-app/migrations/0012_venue_weather.sql",
+          "reference-data/venue-geocoding.csv",
+          "reference-data/era5-venue-days.jsonl"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/config-and-data.md",
+          "section": "## Pre-match weather (X-2)"
+        }
+      ]
+    },
+    {
       "id": "rating-pass",
       "label": "The rating pass",
       "lane": "l1",
@@ -806,7 +842,11 @@
           "X-3-e5",
           "X-3-stakes",
           "B-7-display-monotone",
-          "B-7-pelo-spread"
+          "B-7-pelo-spread",
+          "X-2-daynight",
+          "X-2-humidity-temperature",
+          "X-2-dew",
+          "X-2-rain"
         ]
       },
       "documented_in": [

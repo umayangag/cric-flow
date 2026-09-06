@@ -111,3 +111,17 @@ Both run on `sim_frame_cache.py`'s frames and one as-of pass cached in `--pairs-
     python scripts/experiments/xi/x3_match_stakes.py --coverage --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x3/coverage.json
     python scripts/experiments/xi/x3_match_stakes.py --frames output/ml-service/x3/frames.pkl --cricsheet-dir data/go-app/cricsheet --pairs-cache output/ml-service/x3/pairs.pkl --out output/ml-service/x3/x3.json
     python scripts/experiments/xi/x3_match_stakes.py --decide output/ml-service/x3/x3.json --coverage-json output/ml-service/x3/coverage.json
+
+`x2_weather_context.py` is X-2 (`docs/EXTERNAL_DATA_PLAN.md` § X-2): the four pre-match weather
+families -- day/night, pre-match humidity and temperature, the dew proxy, rain already fallen --
+one at a time, from `ml/weather/`'s data (the curated venue coordinates and the cached ERA5 days
+under `reference-data/`, the session windows inferred per match) joined by match id onto
+`sim_frame_cache.py`'s frames. Every column is fixed before the first ball (H-21). Three gates per
+family, each stating its H-23 triple before it runs: `--display` is X-3's display arm for every
+family in every format; `--simulate --format` is A-1's performance-model arm, the simulated
+first-innings and chase coverage and width split by the day/night flag (H-22) with E2's Brier
+delta beside them, resumable per fold; `--decide` prints the tables and the verdict:
+
+    python scripts/experiments/xi/x2_weather_context.py --display --frames output/ml-service/x1b/frames_off.pkl --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x2/display.json
+    python scripts/experiments/xi/x2_weather_context.py --simulate --format T20 --frames output/ml-service/x1b/frames_off.pkl --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x2/sim_T20.json
+    python scripts/experiments/xi/x2_weather_context.py --decide output/ml-service/x2/display.json output/ml-service/x2/sim_T20.json output/ml-service/x2/sim_ODI.json output/ml-service/x2/sim_T20I.json
