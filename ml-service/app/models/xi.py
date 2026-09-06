@@ -61,6 +61,20 @@ class XiOptimizeRequest(BaseModel):
         return _upper(v) or ""
 
 
+class ServedRatings(BaseModel):
+    """Which rating state answered: the run it was loaded from and the date its ratings run
+    through (P1-5).
+
+    It rides on every prediction response rather than being read off ``/xi/status``
+    afterwards, because a status read describes whatever is loaded *now*, and a reload can
+    land between a prediction and the read. Stamped here, the date is the one the numbers
+    beside it were computed from -- the same ``state.last_date`` and manifest ``/xi/status``
+    reports, so the two cannot disagree about a store, only about which store."""
+
+    run_id: str = Field(..., description="The run the served models and rating state were loaded from")
+    ratings_through: str = Field(..., description="YYYY-MM-DD: the last match date the served ratings include")
+
+
 class XiOptimizeResponse(BaseModel):
     selected_player_ids: List[str]
     objective: Literal["win", "ratings"]
@@ -80,6 +94,7 @@ class XiOptimizeResponse(BaseModel):
     marginal_values: Dict[str, float] = Field(
         default_factory=dict, description="P(win) lost if the player were replaced by an average one"
     )
+    served_ratings: ServedRatings
 
 
 class XiWinRequest(BaseModel):
@@ -110,6 +125,7 @@ class XiWinResponse(BaseModel):
     objective_probability: float = Field(
         ..., ge=0, le=1, description="XI-only model, the value the optimiser maximises"
     )
+    served_ratings: ServedRatings
 
 
 class RatingsFreshness(BaseModel):
@@ -186,6 +202,7 @@ class PerformancePredictResponse(BaseModel):
     unknown_player_ids: List[str] = Field(
         default_factory=list, description="Ids with no rating history; predicted as debutants"
     )
+    served_ratings: ServedRatings
 
 
 class SimulateRequest(PerformancePredictRequest):
@@ -267,3 +284,4 @@ class SimulateResponse(BaseModel):
     win_probability: SimulatedWinProbability
     margin: SimulatedMargin
     unknown_player_ids: List[str] = Field(default_factory=list)
+    served_ratings: ServedRatings

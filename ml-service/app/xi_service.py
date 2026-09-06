@@ -21,6 +21,7 @@ from app.models.xi import (
     PerformanceRange,
     PlayerPerformance,
     RatingsFreshness,
+    ServedRatings,
     SimulatedMargin,
     SimulatedPlayer,
     SimulatedScorecardLine,
@@ -276,6 +277,27 @@ def _keys(ids: List[str]) -> List[str]:
     return list(ids)
 
 
+def _served_ratings(store: XiStore) -> ServedRatings:
+    """The stamp every prediction carries: which run answered, and the date its ratings
+    run through (P1-5).
+
+    Read off the store that computed the answer -- ``manifest.run_id`` and
+    ``state.last_date``, the same two things ``XiRegistry.status`` reports -- so the
+    payload and ``/xi/status`` describe a store identically. A store that cannot name
+    either is refused rather than stamped with a blank: a prediction without its date is
+    the defect the stamp exists to close, and a state holding no matches has nothing to
+    predict from anyway.
+    """
+    run_id = None if store.manifest is None else store.manifest.run_id
+    through = store.state.last_date
+    if not run_id or through is None:
+        raise XiUnavailable(
+            "the served rating state cannot name its run or the date it runs through, so no prediction is made from it",
+            hint="reload a run written by `make retrain`; a state with no matches carries no date",
+        )
+    return ServedRatings(run_id=run_id, ratings_through=through.isoformat())
+
+
 def _constraints(c: XiConstraints) -> Constraints:
     return Constraints(
         team_size=c.team_size,
@@ -330,6 +352,7 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
         improved_over_seed=result.improved_over_seed,
         unknown_player_ids=unknown,
         marginal_values=dict(mv),
+        served_ratings=_served_ratings(store),
     )
 
 
@@ -348,6 +371,7 @@ def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unk
         improved_over_seed=0.0,
         unknown_player_ids=unknown,
         marginal_values={},
+        served_ratings=_served_ratings(store),
     )
 
 
@@ -366,7 +390,9 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         venue=None if req.venue_id is None else str(req.venue_id),
         team1_bats_first=req.team1_bats_first,
     )
-    return XiWinResponse(team1_win_probability=display, objective_probability=objective)
+    return XiWinResponse(
+        team1_win_probability=display, objective_probability=objective, served_ratings=_served_ratings(store)
+    )
 
 
 def _optional_str(value: Optional[int]) -> Optional[str]:
@@ -414,7 +440,10 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
     players = [_player_performance(rows, prediction, i) for i in range(len(rows))]
     logger.info("performance.predict.done", format=req.format, players=len(players), unknown=len(unknown))
     return PerformancePredictResponse(
-        players=players, innings_marginalised=req.team1_bats_first is None, unknown_player_ids=unknown
+        players=players,
+        innings_marginalised=req.team1_bats_first is None,
+        unknown_player_ids=unknown,
+        served_ratings=_served_ratings(store),
     )
 
 
@@ -500,6 +529,7 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
             }
         ),
         unknown_player_ids=unknown,
+        served_ratings=_served_ratings(store),
     )
 
 
