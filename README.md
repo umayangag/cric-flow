@@ -11,7 +11,7 @@ Cricket match and player performance prediction: Cricsheet import, one as-of rat
 
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
 - **Team selection API:** `POST /api/predict/team-selection` — `format`, `match_date`, and each side named by `team1_id` / `team2_id` (the `club_id` from `/api/options/teams-by-format`) or by name plus gender; see **docs/apis-backtest-and-ops.md**.
-- **Frontend:** five tabs — Health, Ops Status, Workbench, Evaluation report, Team Lab. (The Team Lab is the Upcoming-match tab grown up, on `/lab`: fixture, candidate pools, the toss and the constraints in, both XIs with their ranges out — P1-1. The ML-model-stats tab went with the endpoint behind it in P-6; data acquisition is a section of Ops Status.) `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
+- **Frontend:** five tabs — Health, Ops Status, Workbench, Evaluation report, Team Lab. (The Team Lab is the Upcoming-match tab grown up, on `/lab`: fixture, candidate pools, the toss and the constraints in, both XIs with their ranges out — P1-1 — and **Play mode**, where adding, removing or swapping a player on either side re-scores the fixture and shows the change against the eleven before it, with a broken constraint shown broken and never repaired — P1-2. The ML-model-stats tab went with the endpoint behind it in P-6; data acquisition is a section of Ops Status.) `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
 
 ## System architecture
 
