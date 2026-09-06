@@ -137,24 +137,6 @@ func resolvePinnedXI(team db.TeamSide, pool []db.PlayerPoolRow, ids []int64, tea
 	return keys, nil
 }
 
-// mustIncludeKeys resolves the caller's must-include ids to registry ids, keeping only
-// those this side's candidates hold: an id no candidate matches cannot be in any eleven
-// of theirs, and reporting it as a broken constraint would blame the user's eleven for
-// the id being wrong.
-func mustIncludeKeys(pool []db.PlayerPoolRow, ids []int64) []string {
-	byID := make(map[int64]db.PlayerPoolRow, len(pool))
-	for _, row := range pool {
-		byID[row.PlayerID] = row
-	}
-	keys := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if row, ok := byID[id]; ok && row.ExternalID != "" {
-			keys = append(keys, row.ExternalID)
-		}
-	}
-	return keys
-}
-
 // pinnedSelection is the selection step for a pinned eleven: the caller's answer, marked
 // as the caller's.
 func pinnedSelection(pinned pinnedXI) xiSelection {

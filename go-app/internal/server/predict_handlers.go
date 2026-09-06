@@ -360,6 +360,19 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// A must-include id that names nobody this side can field is a lock nothing can
+	// satisfy. Since B-10 the ids are enforced, so the honest answer is to refuse the
+	// request rather than serve an eleven that quietly leaves the asked-for player out.
+	var unresolvable *predictteam.UnresolvableMustIncludeError
+	if errors.As(err, &unresolvable) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "MUST_INCLUDE_UNRESOLVABLE",
+			Message: unresolvable.Error(),
+			Hint: "must-include ids come from GET /api/options/candidates for that side; " +
+				"a player with no Cricsheet registry id cannot be selected at all",
+		})
+		return
+	}
 	// A prediction assembled across a reload has no single date to carry, so it is not
 	// carried at all: the state changed under the request, and running it again is the
 	// whole remedy (P1-5).

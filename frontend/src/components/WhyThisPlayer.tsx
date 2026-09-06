@@ -35,9 +35,10 @@ import type {
  * **What is deliberately not here, because the stack cannot produce it from a consumed
  * input** (each recorded in docs/PRODUCT_ROADMAP.md § 4): a *trajectory* — the served state
  * holds decayed accumulators as of one date, not a history, so no earlier value was read
- * and none can be shown; a *must-include* role — go-app puts a required id into the pool
- * and sends ml-service an empty `must_include`, so the search never treated anyone as
- * required; a *top-order anchor* role — batting position is read by the performance model,
+ * and none can be shown; a *must-include* role — the lock is enforced since B-10, but it is
+ * the caller's own input echoed back rather than something the selection read *about* the
+ * player, and the answer already reports it per side (`selection.must_include`); a
+ * *top-order anchor* role — batting position is read by the performance model,
  * never by the objective, so it explains the contribution and never the pick; an
  * *uncertainty on the gap* — one evaluation of the objective per candidate swap yields a
  * point estimate and nothing else, so the card says so instead of inventing an interval.

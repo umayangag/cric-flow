@@ -186,6 +186,24 @@ func TestRespondPredictErr_APinnedPlayerTheSideCannotFieldIs400(t *testing.T) {
 	assert.Contains(t, body.Hint, "candidates")
 }
 
+// B-10: a must-include id the side cannot field is a lock nothing can satisfy, and since
+// the ids are enforced the request is refused rather than answered with an eleven that
+// leaves the asked-for player out.
+func TestRespondPredictErr_AMustIncludeIdTheSideCannotFieldIs400(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	err := fmt.Errorf("resolve fixture: %w",
+		&predictteam.UnresolvableMustIncludeError{Team: "India (men)", PlayerIDs: []int64{404}})
+
+	respondPredictErr(rec, err)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "MUST_INCLUDE_UNRESOLVABLE", body.Code)
+	assert.Contains(t, body.Message, "404")
+	assert.Contains(t, body.Hint, "candidates")
+}
+
 // Anything that is not one of D-10's refusals is still this service failing, and still a 500.
 func TestRespondPredictErr_LeavesEveryOtherFailureAlone(t *testing.T) {
 	t.Parallel()

@@ -16,6 +16,7 @@ from ml.xi.optimizer import (
     ROLE_BOWLING_OPTION,
     ROLE_KEEPER,
     SELECTION_ROLES,
+    ConstraintConflict,
     Constraints,
     marginal_values,
     rating_order_score,
@@ -174,8 +175,100 @@ def test_select_xi_must_include_and_exclude(trained_store) -> None:
 
 def test_select_xi_raises_when_constraints_cannot_be_met(trained_store) -> None:
     store, squad_a, _, matches = trained_store
-    with pytest.raises(ValueError, match="constraints"):
+    with pytest.raises(ConstraintConflict, match="the pool holds 8 players and the team needs 11"):
         select_xi(store, "T20", squad_a[:8], matches[-1].team2_players, Constraints(team_size=11))
+
+
+def test_select_xi_keeps_every_must_include_player_through_the_whole_search(trained_store) -> None:
+    """B-10: the lock holds past the seed -- no swap may drop a required player.
+
+    The players locked in are exactly the ones the *unlocked* search left out, so the lock
+    is asked to overturn the search's own answer rather than to agree with it.
+    """
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    unlocked = select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+    required = sorted(set(squad_a) - set(unlocked.selected))
+    assert required, "this fixture needs a pool bigger than the eleven"
+
+    locked = select_xi(
+        store,
+        "T20",
+        squad_a,
+        matches[-1].team2_players,
+        Constraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=required),
+    )
+
+    assert set(required) <= set(locked.selected)
+    assert len(locked.selected) == 11
+    # A lock can only narrow the feasible set, so the searched probability cannot rise.
+    assert locked.win_probability <= unlocked.win_probability + 1e-9
+
+
+def test_select_xi_refuses_a_must_include_id_the_pool_does_not_hold(trained_store) -> None:
+    """Silently dropping it -- and answering with a fine eleven that leaves him out -- was
+    B-10's shape: the caller asked for a player and never learns he was ignored."""
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=["nobody"])
+
+    with pytest.raises(ConstraintConflict, match="this pool does not hold: nobody"):
+        select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+
+
+def test_select_xi_refuses_more_must_include_players_than_the_team_holds(trained_store) -> None:
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=list(squad_a[:12]))
+
+    with pytest.raises(ConstraintConflict, match="must_include names 12 players and the team holds 11"):
+        select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+
+
+def test_select_xi_refuses_a_lock_that_leaves_no_room_for_the_bowlers_asked_for(trained_store) -> None:
+    """The third conflict: the lock is satisfiable on its own and the role constraints are
+    satisfiable on their own, and together they need more than eleven places."""
+    store, squad_a, _, matches = trained_store
+    vectors = store.side_vectors("T20", list(squad_a))
+    not_bowlers = [
+        key for key, balls in zip(squad_a, vectors["exp_balls_bowled"]) if not C.is_bowling_option(balls, "T20")
+    ]
+    assert len(not_bowlers) >= 3, "this fixture needs non-bowlers to lock in"
+    size = len(not_bowlers)
+    c = Constraints(team_size=size, min_bowlers=3, require_keeper=False, must_include=not_bowlers)
+
+    with pytest.raises(ConstraintConflict, match=f"do not fit in {size} places"):
+        select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+
+
+def test_select_xi_reports_a_pool_thinned_below_the_team_size_by_exclusions(trained_store) -> None:
+    """The last reason: every role is satisfiable and there are still not enough players
+    left to field, because must_exclude took them out."""
+    store, squad_a, _, matches = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False, must_exclude=list(squad_a[: len(squad_a) - 10]))
+
+    with pytest.raises(ConstraintConflict, match="cannot fill 11 places"):
+        select_xi(store, "T20", squad_a, matches[-1].team2_players, c)
+
+
+def test_select_xi_names_the_role_constraint_that_cannot_be_filled(trained_store) -> None:
+    """The reason is the point: "pool cannot satisfy the constraints (size / bowlers /
+    keeper)" left a caller guessing which of the three it was."""
+    store, squad_a, _, matches = trained_store
+    vectors = store.side_vectors("T20", list(squad_a))
+    keeperless = [key for key, keeper in zip(squad_a, vectors["keeper"]) if not keeper > 0]
+    bowlers = [key for key, balls in zip(squad_a, vectors["exp_balls_bowled"]) if C.is_bowling_option(balls, "T20")]
+    assert len(keeperless) >= 5 and len(bowlers) >= 1
+
+    with pytest.raises(ConstraintConflict, match="no wicketkeeper can be selected"):
+        select_xi(store, "T20", keeperless, matches[-1].team2_players, Constraints(team_size=5, min_bowlers=0))
+
+    with pytest.raises(ConstraintConflict, match=f"only \\d+ of the {len(bowlers) + 1} bowling options"):
+        select_xi(
+            store,
+            "T20",
+            squad_a,
+            matches[-1].team2_players,
+            Constraints(team_size=len(squad_a), min_bowlers=len(bowlers) + 1, require_keeper=False),
+        )
 
 
 def test_optimised_xi_scores_at_least_the_fielded_xi(trained_store) -> None:
@@ -246,8 +339,25 @@ def test_select_xi_by_ratings_is_the_search_seed_and_evaluates_no_model(trained_
 
 def test_select_xi_by_ratings_raises_when_constraints_cannot_be_met(trained_store) -> None:
     store, squad_a, _, _ = trained_store
-    with pytest.raises(ValueError, match="constraints"):
+    with pytest.raises(ConstraintConflict, match="the pool holds 8 players and the team needs 11"):
         select_xi_by_ratings(store, "T20", squad_a[:8], Constraints(team_size=11))
+
+
+def test_select_xi_by_ratings_honours_the_must_include_lock(trained_store) -> None:
+    """The rating-ordered path is a selection too, so a lock binds it the same way (B-10):
+    it is the seed, and the seed has held the locked players since P-5."""
+    store, squad_a, _, _ = trained_store
+    c = Constraints(team_size=11, min_bowlers=0, require_keeper=False)
+    unlocked = select_xi_by_ratings(store, "T20", squad_a, c)
+    required = sorted(set(squad_a) - set(unlocked))
+    assert required, "this fixture needs a pool bigger than the eleven"
+
+    locked = select_xi_by_ratings(
+        store, "T20", squad_a, Constraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=required)
+    )
+
+    assert set(required) <= set(locked)
+    assert len(locked) == 11
 
 
 def test_marginal_values_cover_every_player_and_rank_the_strongest_highest(trained_store) -> None:

@@ -71,7 +71,8 @@ Backtest and ops endpoints are described in the sections below. Keep contracts i
 **`POST /api/predict/team-selection`** (also GET with query params).
 
 **Body:** `format`, `match_date` (RFC3339 or `YYYY-MM-DD`), the two sides, and optionally
-`venue`, `extra_team1` / `extra_team2` (extra player ids for the pool), `min_bowlers`,
+`venue`, `extra_team1` / `extra_team2` (must-include player ids: they join the pool *and*
+the selection is required to pick them), `min_bowlers`,
 `require_keeper`, `team1_pool` / `team2_pool`, `team1_bats_first` (the toss: true where
 team 1 bats first, absent where it is unknown and both orders are drawn, P1-1), and
 `team1_xi` / `team2_xi` (Play mode, P1-2).
@@ -103,7 +104,13 @@ window, `{"all_time": true}` for everyone who has ever played for the club, or
 neither the window nor the ledger is applied to it. `window_months` and `all_time` are also
 readable off the query string on the GET form, and apply to both sides there. Omitting the
 field is the default window; there is no way to ask for an unbounded pool by leaving
-something out. `extra_team1` / `extra_team2` bypass every filter, as before.
+something out. `extra_team1` / `extra_team2` bypass every filter, as before, and since
+B-10 they are enforced: their registry ids reach `/xi/optimize` as `must_include`, so the
+seed holds them and no swap removes them. A lock nothing can satisfy is refused with its
+reason rather than quietly relaxed — a must-include id this side cannot field (no player
+row, or no `external_id`) is **`400 MUST_INCLUDE_UNRESOLVABLE`**, and more required players
+than places, or a lock that leaves no room for the keeper or the minimum bowlers, is
+ml-service's **`422 OPTIMIZATION_CONSTRAINT_ERROR`** naming which constraint failed.
 
 A pool with fewer than eleven players is **`400 POOL_TOO_SMALL`**, whose message names the
 window and whose hint names the two ways out.
@@ -148,7 +155,7 @@ returns the sides that club has played, in the same shape.
 | `ratings_through`, `run_id` | Which rating state every number was computed from: the last match date the served ratings include (`YYYY-MM-DD`) and the run they were loaded from. Both required, never omitted (P1-5) — they are ml-service's `served_ratings` stamp, which every call the prediction made must agree on |
 | `team1_side`, `team2_side` | The sides that were actually scored — `club_id`, `name`, `gender`, `display_name` — echoed on every prediction, not only an ambiguous one |
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
-| `selection` | `objective` (`win` / `ratings` / `fixed`), `optimised`, and a `note` explaining an XI that was not optimised — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects), or, for `fixed`, that the caller pinned the eleven and nothing was searched for (P1-2) |
+| `selection` | `objective` (`win` / `ratings` / `fixed`), `optimised`, and a `note` explaining an XI that was not optimised — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects), or, for `fixed`, that the caller pinned the eleven and nothing was searched for (P1-2). `must_include` is present where any were asked for on a selected eleven: per side, how many were required and each one the eleven does not hold — a postcondition on the lock since B-10, so `missing` is empty on any ordinary answer |
 | `forecast` | `source` (`simulator` / `performance_quantiles`) and a `note` where the numbers did not come from the simulator |
 | `win_probability` | `team1`, `source` (`display` / `simulator`), `simulated` where the simulator ran, `predicted_winner` |
 | `toss` | Which batting order the numbers assume: `team1_bats_first` (null where it was unknown and both orders were drawn), `honoured`, and a `note` where a named toss could not be used (P1-1) |

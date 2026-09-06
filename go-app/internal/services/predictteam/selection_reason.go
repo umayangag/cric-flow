@@ -37,11 +37,9 @@ import (
 
 // The constraint state a card may name. Two, not the three § 4 first sketched:
 //
-//   - "must-include" is absent because this stack has no such optimiser constraint on the
-//     predict path — go-app puts a required id into the *pool* (P1-1) and sends
-//     ml-service an empty must_include, so the search may still leave him out. A card
-//     claiming the objective was required to pick him would be describing a constraint
-//     nothing applied.
+//   - "must-include" is absent even though the search now honours it (B-10): a lock is the
+//     caller's own input echoed back, not something the selection read *about* the player,
+//     and the answer reports it per side (`selection.must_include`) where it belongs.
 //   - "top-order anchor" is absent because the batting-order state (exp_bat_position) is
 //     read by the performance model, not by the selection objective, so it explains the
 //     expected contribution and never the pick.

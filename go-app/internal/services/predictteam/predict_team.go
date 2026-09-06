@@ -268,6 +268,12 @@ type fixture struct {
 	summary1     PoolSummary
 	summary2     PoolSummary
 	constraints  Constraints
+	// mustInclude1 and mustInclude2 are each side's must-include ids as registry ids: the
+	// lock the search is sent, and in Play mode the list the caller's eleven is checked
+	// against. Resolved once, here, so the two paths cannot disagree about who was asked
+	// for.
+	mustInclude1 []string
+	mustInclude2 []string
 	asOf         time.Time
 	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
 	team1BatsFirst *bool
@@ -428,6 +434,15 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		return fixture{}, err
 	}
 
+	mustInclude1, err := mustIncludeKeys(team1, pool1, input.ExtraTeam1)
+	if err != nil {
+		return fixture{}, err
+	}
+	mustInclude2, err := mustIncludeKeys(team2, pool2, input.ExtraTeam2)
+	if err != nil {
+		return fixture{}, err
+	}
+
 	fix := fixture{
 		format:         format,
 		team1:          team1,
@@ -438,6 +453,8 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		summary1:       summary1,
 		summary2:       summary2,
 		constraints:    constraints,
+		mustInclude1:   mustInclude1,
+		mustInclude2:   mustInclude2,
 		asOf:           input.AsOf,
 		team1BatsFirst: input.Team1BatsFirst,
 	}
@@ -473,8 +490,8 @@ func applyPinnedXIs(fix *fixture, input Input) error {
 	fix.pinned = pinnedXI{
 		team1Keys:    keys1,
 		team2Keys:    keys2,
-		mustInclude1: mustIncludeKeys(fix.pool1, input.ExtraTeam1),
-		mustInclude2: mustIncludeKeys(fix.pool2, input.ExtraTeam2),
+		mustInclude1: fix.mustInclude1,
+		mustInclude2: fix.mustInclude2,
 	}
 	fix.isPinned = true
 	return nil

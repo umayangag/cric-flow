@@ -237,7 +237,7 @@ const TeamLabInputs: React.FC<TeamLabInputsProps> = ({ lab, onOpenPool }) => {
           <TextField
             size="small"
             fullWidth
-            label="Team 1 must-include ids (added to the pool, checked after)"
+            label="Team 1 must-include ids (required in the eleven)"
             placeholder="e.g. 4021, 5518"
             value={lab.constraints.extraTeam1}
             onChange={(e) => changeConstraint('extraTeam1', e.target.value)}
@@ -245,7 +245,7 @@ const TeamLabInputs: React.FC<TeamLabInputsProps> = ({ lab, onOpenPool }) => {
           <TextField
             size="small"
             fullWidth
-            label="Team 2 must-include ids (added to the pool, checked after)"
+            label="Team 2 must-include ids (required in the eleven)"
             placeholder="e.g. 4021, 5518"
             value={lab.constraints.extraTeam2}
             onChange={(e) => changeConstraint('extraTeam2', e.target.value)}
@@ -253,10 +253,13 @@ const TeamLabInputs: React.FC<TeamLabInputsProps> = ({ lab, onOpenPool }) => {
         </Stack>
         <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5 }}>
           Must-include ids join the candidate pool whatever the recency window or the retirement
-          ledger says — a new signing, or a player you know is available. They are not enforced:
-          nothing makes the search or the rating order pick them, and the answer names any it left
-          out. In Play mode the eleven you build is checked against them the same way. Ids are shown
-          beside each name in the candidate list.
+          ledger says — a new signing, or a player you know is available — and the selection is then
+          required to pick them: the search starts holding them and never swaps them out, and the
+          rating-ordered pick holds them too. A request nothing can satisfy — an id this side cannot
+          field, more required players than places, or a lock that leaves no room for the keeper or
+          the bowlers — is refused with the reason, never quietly relaxed. In Play mode the eleven
+          you build is checked against them instead. Ids are shown beside each name in the candidate
+          list.
         </Typography>
         {lab.constraintsError && (
           <Typography variant="caption" color="error" component="div" sx={{ mt: 0.5 }}>

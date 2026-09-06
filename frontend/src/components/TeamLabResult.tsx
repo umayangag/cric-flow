@@ -66,12 +66,13 @@ const NotOptimisedNotice: React.FC<{ selection: PredictSelectionSummary }> = ({ 
 );
 
 /**
- * What became of one side's must-include ids (P1-4).
+ * What became of one side's must-include ids (P1-4, enforced since B-10).
  *
- * The label on the input says the ids are added to the pool and checked afterwards, never
- * enforced; this is the check, on the surface, in both of its outcomes. A player left out
- * is named — the search does not enforce must-include, so leaving him out is not a bug in
- * the eleven, it is the eleven.
+ * The lock is real now: go-app sends the ids to `/xi/optimize` as `must_include`, so an
+ * ordinary answer holds every one of them and this reads "2 of 2 in the eleven". The
+ * left-out chips are kept as the postcondition — if one ever appears, a lock the stack
+ * accepted was not honoured, and the user sees that rather than a silently different
+ * eleven. A request no eleven can satisfy is refused before it gets here.
  */
 const MustIncludeOutcome: React.FC<{ status: PredictMustIncludeStatus; teamName: string }> = ({
   status,
@@ -100,7 +101,7 @@ const MustIncludeOutcome: React.FC<{ status: PredictMustIncludeStatus; teamName:
           size="small"
           color="warning"
           label={`${player.player_name} left out`}
-          title="You asked for this player; he joined the pool and the selection did not pick him. Must-include is checked, not enforced."
+          title="You asked for this player and the selection was required to pick him, and did not. That is a defect in the selection, not a choice it made."
         />
       ))}
     </Stack>

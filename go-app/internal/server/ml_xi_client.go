@@ -181,6 +181,12 @@ func (c *MLClient) OptimizeXI(
 	if opponent == nil {
 		opponent = []string{}
 	}
+	// The lock the search is held to (B-10). It used to be sent empty whatever the request
+	// carried, so a "must include" was a pool entry and nothing more.
+	mustInclude := req.MustIncludeKeys
+	if mustInclude == nil {
+		mustInclude = []string{}
+	}
 	payload, err := json.Marshal(mlXIOptimizeRequest{
 		Format:            req.Format,
 		Objective:         req.Objective,
@@ -191,7 +197,7 @@ func (c *MLClient) OptimizeXI(
 			TeamSize:      req.Constraints.Size,
 			MinBowlers:    req.Constraints.MinBowlers,
 			RequireKeeper: req.Constraints.RequireKeeper,
-			MustInclude:   []string{},
+			MustInclude:   mustInclude,
 			MustExclude:   []string{},
 		},
 		MaxEvaluations: maxEvals,

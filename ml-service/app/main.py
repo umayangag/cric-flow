@@ -604,6 +604,7 @@ async def xi_optimize(request: XiOptimizeRequest):
             detail=_error_payload(
                 code="OPTIMIZATION_CONSTRAINT_ERROR",
                 message=str(exc),
-                hint="Check the pool satisfies the constraints (size, bowling options, keeper).",
+                hint="Check the pool satisfies the constraints (size, bowling options, keeper), "
+                "and that every must_include id is in the pool and fits alongside them.",
             ),
         ) from exc

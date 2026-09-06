@@ -756,7 +756,8 @@ describe('TeamLabTab', () => {
       expect(screen.getByTestId('ratings-as-of')).toBeInTheDocument();
     });
 
-    // The must-include check the input's label promises, in both outcomes (P1-4).
+    // The must-include postcondition, in both outcomes: since B-10 the lock is enforced,
+    // so "left out" names a lock the stack accepted and did not honour.
     it('says what became of every must-include id', () => {
       renderWithResult(
         prediction({

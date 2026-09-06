@@ -340,6 +340,54 @@ def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_d
         xi_service.optimize(req, registry)
 
 
+def test_optimize_holds_the_must_include_lock_through_the_endpoint(registry, artifacts_dir) -> None:
+    """B-10, at the boundary go-app calls: a must_include id on the request is in the
+    answer, on the searched path and on the rating-ordered one alike."""
+    _, squad_a, _, matches = artifacts_dir
+    opponent = list(matches[-1].team2_players)
+    unlocked = xi_service.optimize(
+        XiOptimizeRequest(
+            format="t20i",
+            pool_player_ids=squad_a,
+            opponent_player_ids=opponent,
+            constraints=XiConstraints(team_size=11, min_bowlers=0, require_keeper=False),
+        ),
+        registry,
+    )
+    required = sorted(set(squad_a) - set(unlocked.selected_player_ids))
+    assert required, "this fixture needs a pool bigger than the eleven"
+    constraints = XiConstraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=required)
+
+    searched = xi_service.optimize(
+        XiOptimizeRequest(
+            format="t20i", pool_player_ids=squad_a, opponent_player_ids=opponent, constraints=constraints
+        ),
+        registry,
+    )
+    rating_ordered = xi_service.optimize(
+        XiOptimizeRequest(format="t20i", pool_player_ids=squad_a, objective="ratings", constraints=constraints),
+        registry,
+    )
+
+    assert set(required) <= set(searched.selected_player_ids)
+    assert set(required) <= set(rating_ordered.selected_player_ids)
+
+
+def test_optimize_refuses_a_must_include_id_the_pool_does_not_hold(registry, artifacts_dir) -> None:
+    """The conflict reaches the caller as a named reason rather than an eleven that
+    quietly leaves the asked-for player out (§8.7)."""
+    _, squad_a, _, matches = artifacts_dir
+    req = XiOptimizeRequest(
+        format="T20I",
+        pool_player_ids=squad_a,
+        opponent_player_ids=list(matches[-1].team2_players),
+        constraints=XiConstraints(team_size=11, min_bowlers=0, require_keeper=False, must_include=["nosuchplayer"]),
+    )
+
+    with pytest.raises(ValueError, match="this pool does not hold: nosuchplayer"):
+        xi_service.optimize(req, registry)
+
+
 def test_predict_win_with_and_without_context(registry, artifacts_dir) -> None:
     _, _, _, matches = artifacts_dir
     last = matches[-1]

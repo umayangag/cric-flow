@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -261,7 +262,56 @@ func TestFetch_FailsOnNonOKStatus(t *testing.T) {
 	assert.Contains(t, err.Error(), "404")
 }
 
-func TestFetch_StopsWhenTheJobContextIsCancelled(t *testing.T) {
+// refusingReader fails the test if it is read at all. It is how the cancellation test
+// below asserts that ctxReader stops *before* the wrapped reader, rather than asserting
+// an error that the wrapped reader could equally have produced.
+type refusingReader struct{ t *testing.T }
+
+func (r refusingReader) Read([]byte) (int, error) {
+	r.t.Helper()
+	r.t.Error("ctxReader read the body on a cancelled context")
+	return 0, errors.New("must not be read")
+}
+
+// TestCtxReader_Read_CancelledContext_ReturnsContextCanceledWithoutReading drives the
+// cancellation branch directly, which is the only way to assert it deterministically.
+//
+// Through Fetch the branch is a race: a cancelled job also fails the HTTP transport's own
+// read, so the transfer ends with an error either way and "Fetch returned an error" says
+// nothing about which of the two produced it. It is a race the coverage figure could see —
+// this statement was covered on a fast box and not on the CI runner, moving go-app's total
+// across a rounding boundary (docs/BUG_BACKLOG.md § B-9).
+func TestCtxReader_Read_CancelledContext_ReturnsContextCanceledWithoutReading(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	reader := &ctxReader{ctx: ctx, r: refusingReader{t: t}}
+	n, err := reader.Read(make([]byte, 8))
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Zero(t, n, "a cancelled read reports no bytes")
+}
+
+// TestCtxReader_Read_LiveContext_ReadsTheWrappedReader is the other half: a live context
+// must cost the transfer nothing, so the wrapper is a pass-through until it is not.
+func TestCtxReader_Read_LiveContext_ReadsTheWrappedReader(t *testing.T) {
+	t.Parallel()
+	reader := &ctxReader{ctx: context.Background(), r: strings.NewReader("cricsheet")}
+
+	buf := make([]byte, 9)
+	n, err := io.ReadFull(reader, buf)
+
+	require.NoError(t, err)
+	assert.Equal(t, 9, n)
+	assert.Equal(t, "cricsheet", string(buf))
+}
+
+// TestFetch_CancellingTheJobFailsTheTransfer is the end-to-end half: whichever of
+// ctxReader and the HTTP transport notices the cancellation first, the download must fail
+// with the cancellation rather than complete or hang. Which one notices is deliberately
+// not asserted here — that is what the two ctxReader tests above cover.
+func TestFetch_CancellingTheJobFailsTheTransfer(t *testing.T) {
 	t.Parallel()
 	srv := serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		chunk := make([]byte, 4096)
@@ -284,7 +334,7 @@ func TestFetch_StopsWhenTheJobContextIsCancelled(t *testing.T) {
 	}()
 
 	_, err := Fetch(ctx, testSource(t, srv.URL+"/all_json.zip"), testOptions(t))
-	require.Error(t, err, "a cancelled job must stop the transfer")
+	require.ErrorIs(t, err, context.Canceled, "a cancelled job must stop the transfer")
 }
 
 // TestNewClient_RejectsRedirectsOffTheAllowlist is the second half of the SSRF guard:
