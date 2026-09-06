@@ -70,6 +70,11 @@ class RunManifest:
     ``cutoff``), what the rating pass and the grid chose (``rating_params``,
     ``hyperparameters``), what the run measured (``metrics``), and what shape the arrays
     are in (``state_shape``), which is the one the loader checks before serving.
+
+    ``formats`` names what the run *trained*; ``format_notes`` says, per format, why one
+    of them carries no holdout metrics -- or why it was not trained at all (B-3). The two
+    together are what make "trained, nothing to score" and "nothing trained" different
+    answers rather than the same empty manifest.
     """
 
     run_id: str
@@ -82,6 +87,8 @@ class RunManifest:
     metrics: Dict[str, Any] = field(default_factory=dict)
     state_shape: Dict[str, Any] = field(default_factory=dict)
     formats: List[str] = field(default_factory=list)
+    #: format code -> why it has no headline metrics. Empty when every format was scored.
+    format_notes: Dict[str, str] = field(default_factory=dict)
     report: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
@@ -96,6 +103,7 @@ class RunManifest:
             "dataset_sha": self.dataset_sha,
             "git_sha": self.git_sha,
             "formats": list(self.formats),
+            "format_notes": dict(self.format_notes),
             "hyperparameters": dict(self.hyperparameters),
             "metrics": dict(self.metrics),
         }

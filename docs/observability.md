@@ -438,7 +438,10 @@ the literal `NaN`, which is not valid JSON and would make the file unreadable.
       its ratings run, the dataset digest, the commit, the formats it serves, the
       hyperparameters the grid chose and the run's headline metrics — all from
       `manifest.json`, which the run wrote beside the artifacts it produced (H-16). A run
-      the loader refused says so, with the reason (D-6).
+      the loader refused says so, with the reason (D-6). A format the run trained but had
+      no holdout to score reads its row counts plus the manifest's note saying why the
+      AUCs are missing (B-3), rather than an empty table that would look like a run which
+      trained nothing.
     - How well the models predict is the Evaluation report tab, which reads L4's own
       measurements rather than re-scoring anything here. That includes the walk-forward
       numbers: the tab renders L4's per-fold, per-format tables. The Workbench uploads

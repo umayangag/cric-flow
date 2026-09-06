@@ -69,6 +69,29 @@ const HeadlineMetrics: React.FC<{ metrics: Record<string, Record<string, number>
 };
 
 /**
+ * Why a format has no headline metrics, in the manifest's own words (B-3).
+ *
+ * A run at today's cutoff trains every format and has nothing to score them on. Showing
+ * the metrics table alone would leave that as a blank, which reads the same as a run that
+ * trained nothing — so the manifest's reason is rendered beside the numbers rather than
+ * left in the training log.
+ */
+const FormatNotes: React.FC<{ notes: Record<string, string> }> = ({ notes }) => {
+  const entries = Object.entries(notes);
+  if (!entries.length) return null;
+
+  return (
+    <Alert severity="info" aria-label="why a format has no headline metrics">
+      {entries.map(([format, note]) => (
+        <Typography key={format} variant="body2">
+          <strong>{format}</strong>: {note}
+        </Typography>
+      ))}
+    </Alert>
+  );
+};
+
+/**
  * What the loaded model *is*: the run that produced it, and what that run recorded
  * about itself (H-16).
  *
@@ -116,6 +139,7 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, loading, error }) => (
           />
         )}
         {status.manifest?.metrics && <HeadlineMetrics metrics={status.manifest.metrics} />}
+        {status.manifest?.format_notes && <FormatNotes notes={status.manifest.format_notes} />}
       </Stack>
     )}
   </SectionCard>
