@@ -1,6 +1,6 @@
 # External data plan: what the archive cannot contain, gated the usual way
 
-**Status: open.** Written 2026-09-03, after [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) closed
+**Status: complete (2026-09-06) — every item run, X-2 last; the outcomes are in § Record of outcomes.** Written 2026-09-03, after [FOLLOW_UP_PLAN.md](FOLLOW_UP_PLAN.md) closed
 with three recorded nulls (A-1 venue context, A-2 chase response, A-3 lineup features).
 Those nulls sharpen this plan's premise: the models are near the limit of what the
 ball-by-ball archive contains, so the only candidates worth effort carry information the
@@ -404,7 +404,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | **done — three recorded nulls, nothing shipped** — the **matchup** family is *not runnable for want of labels* (Wikidata: a batting hand for 18 and a bowling style for 265 of 13,662 players; the labelled confirmation of A-3's null; E5 not re-run, X-3 owns it); the **age** family moves the performance model's runs and wickets pinball by ~0.02 % on the deciding slices (T20 men +0.02 / +0.02 %, ODI +0.02 / −0.01 %), inside E1's band, women's T20 out of scope at 61.4 % and reported; the **age-aware cold start** keeps H-10 bounded and moves no player with history, and worsens the debut rows' pinball in every format (T20 −0.30 / −0.53 %, ODI −0.69 / −1.11 %). The date of birth now reaches every player row (`AGE_COLS`, missing = its own indicator) and both models read it only through flags that stay off; `make evaluate` after the choice reproduces A-4's baseline with H-8 parity 0.0 on both sources |
 | X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources; `make evaluate` on Postgres afterwards has **H-8 parity 0.0** with `STAKES_COLS` compared, and reproduces X-1b's walk-forward table to four decimals in every format |
-| X-2 | **in progress (checkpoint)** — licence verified free/non-commercial/CC BY 4.0; acquisition complete and committed (892/892 venues placed, 19,561 ERA5 venue-days covering 99.9 % of matches, restore verified on the scratch database); **gate (a) measured: four recorded nulls**; gates (b)/(c) running on T20 and ODI |
+| X-2 | **done — four recorded nulls; the data stays** — licence verified at the source (free, **non-commercial only**, CC BY 4.0; the pricing page's sentence governs the commercial plans), recorded in the register and beside P0-4's cost line. Acquired and **committed under `reference-data/`**: 892 of 892 venue keys placed (city-level, which is ERA5's own ~0.1° resolution; 140 by hand with provenance), 19,561 ERA5 venue-days with 0 misses covering 22,789 of 22,818 matches (99.9 %), session windows inferred by 164 documented rules (35.2 % of matches at night); `make restore-venue-weather` rebuilds `venue` coordinates and `venue_weather` (migration 0012) offline, verified on the scratch database (896 venues, 19,909 rows). **Gate (a), display AUC:** every family inside noise in T20, T20I and ODI (largest deciding move ODI humidity/temperature +0.0024 ± 0.0026; T20 rain −0.0008 ± 0.0005); TEST rain +0.0052 ± 0.0031 is the one reading past noise and fails the every-format clause. **Gates (b)/(c), simulator:** pinballs identical to three decimals in every arm, coverage within ±0.007 (T20) and one s.e. (ODI), widths within 0.6 runs, E2 within ±0.001 — nulls in both deciding formats; T20I not measurable per fold under the day/night split and recorded so. **One finding:** the H-22 split shows the control simulator too narrow by day and too wide at night (T20 first-innings coverage 0.734 vs 0.841, dispersion 1.10 vs 0.87; ODI 0.715 vs 0.932) — A-1's population mix and A-2's dispersion with the two populations named; no weather family touches it. Nothing ships; `ml/xi/` reads no weather column |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
 ### X-4 — the source review, the join, and what the numbers support
@@ -1083,7 +1083,7 @@ ODIs at 13:30 under lights, England's at 11:00 by day), weekday evenings and wee
 afternoons for a domestic T20 in a country that plays under lights, and the morning for
 first-class, women's, associate and domestic one-day cricket. Night means play runs into
 the evening: a T20 starting at or after 16:00, a one-day match at or after 12:00. The
-census the report prints places **142 rules** over 22,818 matches, the largest
+census the report prints places **164 rules** over 22,818 matches, the largest
 `first_class` (3,115), `t20i_women` (1,992), `t20_domestic:weekday` (1,647),
 `t20i_associate:slot_0` (1,477) and `one_day_domestic:GB` (1,249); **35.2 % of matches are
 placed at night** (ODI 48.8 %, T20 44.9 %, T20I 33.4 %, none of the first-class or domestic
@@ -1145,7 +1145,120 @@ display surface, as X-3 recorded); what the families do to it is a delta of −0
 +0.006, except TEST rain, which worsens it by 0.014. **Gate (a): a recorded null for all
 four families.**
 
-*Gates (b) and (c) are running; their tables land here when the folds finish.*
+**Gates (b) and (c) — each family in the performance model, simulated.** A-1's arm: the
+performance model refitted per fold with the family injected as a fixture-context family
+(`contract.FIXTURE_CONTEXT_FAMILIES`, for the run only), the control's display models,
+the shared factor's fitting rule and the simulator's seeds held (common random numbers
+across arms), 1,000 draws per fixture, eleven folds; the simulated first-innings and chase
+10–90 coverage and width **split by the inferred day/night flag** (H-22) and pooled from
+the split by match count, the dispersion ratio per split, E2's Brier delta and the headline
+pinballs. T20 and ODI decide. **T20I is reported on gate (a) only: its quarterly windows
+hold 20–40 matches, so once split day/night neither side reaches the simulator's 20-match
+floor in any fold** — the run was stopped after its first fold read n/a on every split, and
+that is recorded rather than worked around by dropping the split. The runs were resumed
+once per format from their written folds (the cause was CPU contention, not a failure):
+the ODI fold-2 control reproduced its pre-restart figures to every printed decimal.
+
+*T20 (11 folds; matches per fold: 399, of which 259 day and 139 night)*
+
+| arm | split | first bias | first coverage | first width | dispersion | chase bias | chase coverage | chase width | Δ Brier (E2) | runs pinball | wickets pinball |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | +0.5 | 0.771 | 84.7 | — | −6.6 | 0.712 | 69.9 | +0.0021 | 2.921 | 0.1413 |
+| control | day | +1.8 | 0.734 | 78.4 | 1.099 | −7.3 | 0.689 | 64.6 | +0.0024 | | |
+| control | night | −2.1 | 0.841 | 96.3 | 0.865 | −5.1 | 0.759 | 79.8 | +0.0005 | | |
+| daynight | all | +0.5 | 0.774 | 84.7 | — | −6.6 | 0.712 | 70.0 | +0.0014 | 2.921 | 0.1412 |
+| daynight | day | +1.8 | 0.738 | 78.5 | 1.099 | −7.4 | 0.688 | 64.7 | +0.0018 | | |
+| daynight | night | −2.1 | 0.841 | 96.3 | 0.865 | −5.0 | 0.759 | 79.8 | +0.0000 | | |
+| humidity_temperature | all | +0.5 | 0.770 | 84.7 | — | −6.6 | 0.718 | 69.9 | +0.0016 | 2.920 | 0.1411 |
+| humidity_temperature | day | +1.9 | 0.732 | 78.4 | 1.101 | −7.3 | 0.694 | 64.5 | +0.0016 | | |
+| humidity_temperature | night | −2.3 | 0.841 | 96.3 | 0.866 | −5.1 | 0.764 | 79.8 | +0.0010 | | |
+| dew | all | +0.4 | 0.775 | 84.9 | — | −6.6 | 0.713 | 70.0 | +0.0011 | 2.921 | 0.1412 |
+| dew | day | +1.7 | 0.739 | 78.6 | 1.097 | −7.4 | 0.689 | 64.7 | +0.0014 | | |
+| dew | night | −1.9 | 0.842 | 96.4 | 0.866 | −4.8 | 0.761 | 79.8 | +0.0000 | | |
+| rain | all | +0.4 | 0.771 | 84.9 | — | −6.5 | 0.717 | 70.0 | +0.0015 | 2.920 | 0.1411 |
+| rain | day | +1.8 | 0.733 | 78.6 | 1.095 | −7.3 | 0.691 | 64.6 | +0.0019 | | |
+| rain | night | −2.2 | 0.842 | 96.5 | 0.862 | −5.0 | 0.766 | 80.0 | +0.0002 | | |
+
+Paired over the eleven folds, family − control: Δ coverage (first / chase, day; first /
+chase, night) — daynight +0.004 ± 0.003 / −0.001 ± 0.003; +0.001 ± 0.003 / +0.000 ± 0.004;
+humidity/temperature −0.002 ± 0.003 / +0.005 ± 0.004; +0.000 ± 0.002 / +0.005 ± 0.004; dew
++0.005 ± 0.003 / +0.000 ± 0.002; +0.002 ± 0.002 / +0.001 ± 0.004; rain −0.001 ± 0.003 /
++0.003 ± 0.004; +0.001 ± 0.003 / +0.007 ± 0.003. Δ E2 — daynight −0.0006 ± 0.0005,
+humidity/temperature −0.0004 ± 0.0004, dew −0.0010 ± 0.0003, rain −0.0006 ± 0.0004.
+
+*ODI (11 folds, 10 with a night side; matches per fold: 103, of which 98 day and 24 night)*
+
+| arm | split | first bias | first coverage | first width | dispersion | chase bias | chase coverage | chase width | Δ Brier (E2) | runs pinball | wickets pinball |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | −0.4 | 0.723 | 147.5 | — | −12.3 | 0.679 | 128.2 | +0.0073 | 4.715 | 0.1591 |
+| control | day | −1.1 | 0.715 | 146.4 | 1.092 | −13.1 | 0.678 | 127.2 | +0.0061 | | |
+| control | night | −2.9 | 0.932 | 179.5 | 0.749 | −11.6 | 0.726 | 157.4 | +0.0279 | | |
+| daynight | all | −0.5 | 0.725 | 147.8 | — | −12.3 | 0.689 | 128.8 | +0.0068 | 4.715 | 0.1590 |
+| daynight | day | −1.2 | 0.717 | 146.6 | 1.091 | −13.1 | 0.689 | 127.6 | +0.0054 | | |
+| daynight | night | −2.5 | 0.932 | 179.4 | 0.740 | −10.9 | 0.726 | 158.2 | +0.0298 | | |
+| humidity_temperature | all | −0.4 | 0.721 | 147.8 | — | −12.3 | 0.685 | 128.5 | +0.0077 | 4.715 | 0.1592 |
+| humidity_temperature | day | −1.1 | 0.713 | 146.5 | 1.090 | −13.1 | 0.683 | 127.3 | +0.0064 | | |
+| humidity_temperature | night | −3.7 | 0.932 | 182.5 | 0.726 | −11.5 | 0.726 | 159.3 | +0.0322 | | |
+| dew | all | −0.7 | 0.726 | 148.1 | — | −12.4 | 0.692 | 129.1 | +0.0087 | 4.715 | 0.1591 |
+| dew | day | −1.4 | 0.719 | 146.9 | 1.086 | −13.2 | 0.690 | 128.1 | +0.0075 | | |
+| dew | night | −3.1 | 0.909 | 181.0 | 0.727 | −11.5 | 0.747 | 158.3 | +0.0303 | | |
+| rain | all | −0.5 | 0.726 | 147.8 | — | −12.1 | 0.685 | 128.5 | +0.0076 | 4.714 | 0.1591 |
+| rain | day | −1.3 | 0.720 | 146.6 | 1.091 | −12.9 | 0.683 | 127.3 | +0.0063 | | |
+| rain | night | −3.5 | 0.886 | 180.3 | 0.729 | −11.8 | 0.747 | 158.6 | +0.0303 | | |
+
+Paired over the folds: Δ coverage (first / chase, day; first / chase, night) — daynight
++0.002 ± 0.005 / +0.010 ± 0.005; 0 / 0; humidity/temperature −0.002 ± 0.007 / +0.005 ±
+0.007; 0 / 0; dew +0.004 ± 0.005 / +0.012 ± 0.006; −0.023 ± 0.023 / +0.022 ± 0.022; rain
++0.005 ± 0.006 / +0.004 ± 0.004; −0.045 ± 0.045 / +0.022 ± 0.022 (the night side is 24
+matches a fold, and one match is 0.04 of coverage). Δ E2 — daynight −0.0005 ± 0.0007,
+humidity/temperature +0.0005 ± 0.0012, dew +0.0014 ± 0.0011, rain +0.0003 ± 0.0007.
+
+**Reading it.** Nothing moves. The pinballs are identical to three decimals in every arm
+of both formats — the performance model finds nothing in any family to shift a player's
+runs or wickets by — so the simulator's totals are the control's totals with the seeds'
+noise: coverage within ±0.007 in T20 and within one standard error everywhere the sample
+is large enough to say so; widths within 0.0–0.6 runs of the control's (the `width does
+not grow` clause fails on +0.1 to +0.3 runs on a width of 85–180, which is the same
+no-floor strictness A-1 recorded, and the null does not rest on it); E2 within ±0.001 of
+the control's, favourable in sign in T20 and within the 0.01 tolerance in both formats,
+the `e2_unchanged` clause failing only where a −0.0010 ± 0.0003 *improvement* exceeds its
+own standard error. **Gates (b) and (c): a recorded null for all four families**, in both
+deciding formats.
+
+**What the split says, which is the one finding here.** The day/night split is a fact
+about the schedule, and it splits the simulator's calibration cleanly in the control
+itself: **by day the simulated first-innings totals are too narrow and at night too
+wide** — T20 coverage 0.734 against 0.841 at the nominal 0.80, width 78 against 96,
+dispersion ratio 1.10 against 0.87; ODI 0.715 against 0.932, dispersion 1.09 against 0.75
+on its 24 night matches a fold. The chase reads the same way (T20 0.689 / 0.759). The
+pooled 0.771 the harness reports is the average of an under- and an over-dispersed half.
+No weather family touches it, and neither did the night flag as an L2-B input, because
+L2-B moves a player's *level* and the simulator's spread is the shared factor's, fitted
+once per format. The night matches are the leagues and the internationals under lights —
+better-rated, more evenly matched sides — so this is A-1's population-mix finding again
+from another angle, and A-2's dispersion finding with a name on the two populations. The
+next candidate is a shared factor calibrated per population, not a weather reading; it is
+recorded here for whichever plan next takes up the simulator, and not attempted in X-2.
+
+**Verdict.** Four families, three gates each: **every one a recorded null**. Nothing ships:
+`ml/xi/` reads no weather column, no glossary entry is added, no wire literal changes
+(H-24 has nothing to record), H-8 parity is untouched because the rating pass is untouched,
+and `make evaluate` is not re-run because no choice was made that would change its rows.
+What stays is the acquisition: the geocoding table (X-1-adjacent product value, as the plan
+said it would), the ERA5 snapshot and its restore, the session-window rules and their
+census, and the scripts under `scripts/experiments/xi/`.
+
+**Judgment calls, recorded.** (1) The session windows are norms, not records; a null under
+them bounds *this* inference. The rule census and the whole-day snapshot are what let a
+better inference be tried without re-fetching. (2) The `width does not grow` and
+`e2_unchanged` clauses had no effect-size floor and failed on moves inside the seed noise
+and on an improvement respectively — as registered, they fail; the null was decided by the
+coverage and AUC clauses that do have floors. (3) T20I's simulator gate is not measurable
+per fold under the split and is recorded as such rather than measured unsplit. (4) The
+whole local day is kept in the snapshot (8.8 MB) rather than the hours today's rules read,
+because a corrected rule would otherwise cost a re-fetch. (5) The Open-Meteo hourly quota is
+weighted by data volume — it was met at ~3,700 nominal calls of 5,000 — and the client now
+waits it out; the daily quota was never reached.
 
 ### D-12 — the measurement, and what shipped
 
