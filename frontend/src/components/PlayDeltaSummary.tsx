@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Paper, Stack, Typography } from '@mui/material';
+import { MetricLabel } from './common/MetricInfo';
 import { changeDirection, formatChange, formatProbabilityChange } from '../lib/playDelta';
 import type { PlayDelta } from '../lib/playDelta';
 
@@ -10,6 +11,7 @@ import type { PlayDelta } from '../lib/playDelta';
  * Every number here is one response's value minus another's, and both responses are on
  * screen — the current answer above, the previous one only as the difference. The change
  * is never a forecast of its own: it is the arithmetic in {@link playDelta}, nothing more.
+ * Each label opens the explainer of the number it is a change in (P1-4).
  */
 
 export type PlayDeltaSummaryProps = {
@@ -24,14 +26,15 @@ const DIRECTION_COLOR = {
   none: 'text.secondary',
 } as const;
 
-const ChangeValue: React.FC<{ label: string; change: number; text: string }> = ({
-  label,
-  change,
-  text,
-}) => (
+const ChangeValue: React.FC<{
+  metricKey: string;
+  label: string;
+  change: number;
+  text: string;
+}> = ({ metricKey, label, change, text }) => (
   <Box>
     <Typography variant="caption" color="text.secondary" component="div">
-      {label}
+      <MetricLabel metricKey={metricKey} label={label} />
     </Typography>
     <Typography variant="body2" sx={{ color: DIRECTION_COLOR[changeDirection(change)] }}>
       {text}
@@ -66,6 +69,7 @@ const PlayDeltaSummary: React.FC<PlayDeltaSummaryProps> = ({ delta, team1, team2
       </Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} useFlexGap flexWrap="wrap">
         <ChangeValue
+          metricKey="win_probability"
           label={`P(${team1} wins)`}
           change={delta.winProbability.change}
           text={formatProbabilityChange(delta.winProbability.change)}
@@ -73,6 +77,7 @@ const PlayDeltaSummary: React.FC<PlayDeltaSummaryProps> = ({ delta, team1, team2
         {innings.map((entry) => (
           <ChangeValue
             key={entry.name}
+            metricKey="innings_total"
             label={`${entry.name} innings (10-90)`}
             change={entry.total}
             text={`${formatChange(entry.total, 1)} runs (${formatChange(entry.p10, 1)} / ${formatChange(entry.p90, 1)})`}

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -270,13 +272,36 @@ func (c *MLClient) postJSON(ctx context.Context, path string, payload []byte, ou
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return err
+		return unreachableError(path, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return logMLNon2xx(resp, path)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// mlUnreachableCode is the code a prediction is refused with when ml-service did not
+// answer at all — a refused connection, a timeout, a DNS failure.
+const mlUnreachableCode = "ML_UNREACHABLE"
+
+// unreachableError names a transport failure for what it is (P1-4).
+//
+// A bare transport error reached the surface as `500 INTERNAL` with a dial string for a
+// message, which blames this service for a dependency that is down and gives the operator
+// nothing to act on. It is a structured 502 instead: the dependency, the endpoint, the
+// reason the transport gave, and the step that fixes it — on the wire, not only in a log.
+func unreachableError(path string, err error) error {
+	slog.Error("ml-service unreachable",
+		slog.String("endpoint", path),
+		slog.Any("err", err))
+	return &mlServiceError{
+		Endpoint: path,
+		Status:   http.StatusBadGateway,
+		Code:     mlUnreachableCode,
+		Message:  fmt.Sprintf("ml-service did not answer %s: %v", path, err),
+		Hint:     "start ml-service (make dev-up), or check ML_SERVICE_URL; no prediction is served without it",
+	}
 }
 
 // Wire shapes for POST /simulate (app/models/xi.py: SimulateRequest / SimulateResponse).

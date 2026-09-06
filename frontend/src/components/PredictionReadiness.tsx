@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert, AlertTitle, Typography } from '@mui/material';
+import RatingsAsOf from './RatingsAsOf';
 import { asObj } from '../utils/opsStatusHelpers';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 
@@ -17,7 +18,10 @@ type Props = { status: OpsStatus | null };
  * an operator should know which before clicking: nothing is loaded (no run, or one the
  * loader refused — D-6), and the loaded run's ratings are older than the configured
  * limit (H-11, `RATINGS_STALE`). Both come from the artifacts section the Ops tab
- * already renders, so this cannot say the box is ready while that says it is not.
+ * already renders, so this cannot say the box is ready while that says it is not. The
+ * stale state carries its date through the same component every served prediction uses,
+ * so the surface is dateless in no state (P1-4); the nothing-loaded state has no run and
+ * so no date, and says that rather than showing one.
  */
 const PredictionReadiness: React.FC<Props> = ({ status }) => {
   if (!status) return null;
@@ -35,15 +39,21 @@ const PredictionReadiness: React.FC<Props> = ({ status }) => {
       <AlertTitle>This prediction will not be answered</AlertTitle>
       {loadedRun === '' && (
         <Typography variant="body2">
-          No training run is loaded, so there is no model to predict with.
+          No training run is loaded, so there is no model to predict with and no ratings date to
+          show.
           {error ? ` The artifacts on disk were refused: ${error}` : ''}
         </Typography>
       )}
       {stale && (
-        <Typography variant="body2">
-          The loaded run&apos;s ratings run through{' '}
-          <strong>{String(ratings.ratings_through ?? 'an unknown date')}</strong>, which is{' '}
-          {String(ratings.age_days ?? '?')} days old against a limit of{' '}
+        <Typography variant="body2" component="div">
+          The loaded run&apos;s ratings are older than the limit —{' '}
+          <RatingsAsOf
+            served={{
+              ratings_through: String(ratings.ratings_through ?? 'an unknown date'),
+              run_id: loadedRun,
+            }}
+          />{' '}
+          — which is {String(ratings.age_days ?? '?')} days old against a limit of{' '}
           {String(ratings.max_age_days ?? '?')}. A live prediction is refused with{' '}
           <strong>RATINGS_STALE</strong> rather than answered from a squad that has moved on.
         </Typography>

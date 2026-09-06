@@ -90,8 +90,10 @@ export function formatProbabilityPoints(fraction: number | null | undefined, dec
  * A point with the band the model gave it: `23 (4–55)`.
  *
  * The range is never optional presentation. A median printed alone reads as a promise the
- * model never made, so where a range exists it is shown, and where none does the bare
- * point is shown rather than an invented interval.
+ * model never made, so where a range exists it is shown, and where none does the point says
+ * so — `23 (no range)` — rather than standing bare or wearing an invented interval (P1-4).
+ * The one place the stack serves a point without a range is wickets on the
+ * performance-quantiles path, which carries an expectation and P(0/1/2+) and no quantiles.
  */
 export function pointWithRange(
   value: number | null | undefined,
@@ -100,7 +102,7 @@ export function pointWithRange(
 ): string {
   if (!isReal(value)) return MISSING;
   const point = value.toFixed(digits);
-  if (!range) return point;
+  if (!range) return `${point} (no range)`;
   return `${point} (${range.p10.toFixed(digits)}–${range.p90.toFixed(digits)})`;
 }
 

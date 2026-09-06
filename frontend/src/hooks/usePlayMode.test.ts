@@ -31,6 +31,7 @@ function answer(
     team1: [player(1), player(2)],
     team2: [player(3), player(4)],
     selection: { objective: 'win', optimised: true },
+    forecast: { source: 'simulator' },
     win_probability: { team1: 0.6, source: 'display', predicted_winner: 'India (men)' },
     toss: { team1_bats_first: null, honoured: true },
     team1_pool: pool,

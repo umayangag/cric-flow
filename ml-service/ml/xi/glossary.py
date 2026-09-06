@@ -829,6 +829,85 @@ METRICS: Tuple[Metric, ...] = (
         ),
         better=HIGHER,
     ),
+    # --- P1-4: the Lab's honesty surfaces. The sources by name, and the total itself ---
+    # Each source of a served number is a label the Lab shows and opens an explainer from,
+    # so a reader learns which model made the number without leaving the number. The
+    # values are go-app's wire vocabulary (contracts/ops-console.contract.json,
+    # `win_probability_sources` and `forecast_sources`); the key is `<field>_<value>`.
+    Metric(
+        key="innings_total",
+        name="Simulated innings total",
+        explanation=(
+            "The total the simulator expects this side to make: the median-band total the per-player "
+            "lines and the extras sum to, all from one set of drawn whole matches, with the 10-90 range "
+            "those draws produced beside it. Nothing is rescaled toward the win probability, and the "
+            "range is shown exactly as drawn."
+        ),
+        band=(
+            "Calibrated when reality lands inside the 10-90 range about 80 % of the time: measured 0.786 "
+            "(T20) and 0.790 (ODI) on the locked window. Split by day and night the same ranges cover "
+            "0.734 by day against 0.841 at night (T20) and 0.715 against 0.932 (ODI) -- too narrow by "
+            "day, too wide at night (X-2, H-22). That gap is neither adjusted for nor hidden here."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="win_probability_source_display",
+        name="Display model",
+        explanation=(
+            "The headline probability came from the display model: a gradient-boosted model over both "
+            "elevens' as-of rating vectors and the fixture's context, built so that a one-player upgrade "
+            "never lowers the number it shows. It reads an eleven; it does not search for one."
+        ),
+        band=(
+            "Walk-forward AUC 0.70-0.75, this system's measured range; swap-violation share 0.0000 in "
+            "every format since B-7. Judged by Brier and reliability in the evaluation report."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="win_probability_source_simulator",
+        name="Simulator win share",
+        explanation=(
+            "The share of simulated matches this side won, over the same draws the totals and the "
+            "scorecard come from. Where it is not the headline it is shown beside the display model's "
+            "number, never blended with it; which model is the headline was chosen per format on the folds (E2)."
+        ),
+        band=(
+            "Read against the display model's Brier beside it (delta_brier_simulated_minus_display in the "
+            "report); the two should agree in direction and usually within a few points."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="forecast_source_simulator",
+        name="Simulated match",
+        explanation=(
+            "The per-player runs, balls, wickets and conceded, their 10-90 ranges, the innings totals and "
+            "the scorecard are one set of drawn whole matches, so the lines and the extras sum to the total. "
+            "Nothing is rescaled toward the win probability."
+        ),
+        band=(
+            "2,000 draws per fixture as served. Coverage of the 10-90 ranges is measured at 0.786 (T20) and "
+            "0.790 (ODI) on the locked window, with the day/night split recorded under 'Simulated innings total'."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="forecast_source_performance_quantiles",
+        name="Performance quantiles",
+        explanation=(
+            "The per-player numbers are the performance model's own median and 10-90 quantiles, reported "
+            "directly, because this format has no innings length for the simulator to draw. There is no "
+            "simulated match, so no innings total, no scorecard and no economy rate: eleven medians do not "
+            "sum to an innings, and none is invented."
+        ),
+        band=(
+            "Judged by the per-player coverage and pinball loss in the evaluation report; nothing here is "
+            "summed into a total."
+        ),
+        better=PAIRED,
+    ),
     Metric(
         key="spread_share",
         name="Spread share",

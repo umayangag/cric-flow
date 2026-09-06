@@ -117,9 +117,12 @@ type SelectedPlayer struct {
 // rating-ordered pick, which is a selection but not an optimised one, and every surface
 // that shows it has to say so.
 type SelectionSummary struct {
-	Objective string `json:"objective"` // "win" or "ratings"
+	Objective string `json:"objective"` // "win", "ratings" or "fixed"
 	Optimised bool   `json:"optimised"`
 	Note      string `json:"note,omitempty"`
+	// MustInclude says what became of the must-include ids: present where any were asked
+	// for on a selected (not pinned) eleven, naming the ones it does not hold (P1-4).
+	MustInclude *MustIncludeReport `json:"must_include,omitempty"`
 }
 
 // ForecastSummary says which model produced the per-player numbers, and — where that is
@@ -285,6 +288,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	if err != nil {
 		return nil, err
 	}
+	selection.Summary.MustInclude = mustIncludeReport(input, fix, selection)
 
 	result := &Result{
 		ServedRatings:    selection.Served,

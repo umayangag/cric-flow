@@ -274,3 +274,26 @@ func TestPredictMatchWinXI_SendsNoConstraintsForASearchedEleven(t *testing.T) {
 	assert.Nil(t, win.Team1Check, "no check was asked for, and none is invented")
 	assert.Nil(t, win.Team2Check)
 }
+
+// A transport failure is a named refusal on the wire, not a 500 with a dial string for a
+// message: the code, the endpoint and the reason survive to the response (P1-4, §8.7).
+func TestPredictMatchWinXI_NamesAnUnreachableServiceOnTheWire(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	client := &MLClient{BaseURL: srv.URL, HTTP: &http.Client{Timeout: time.Second}}
+
+	_, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+		Format:          "T20I",
+		Team1PlayerKeys: []string{"a1"},
+		Team2PlayerKeys: []string{"b1"},
+	})
+
+	var mlErr *mlServiceError
+	require.ErrorAs(t, err, &mlErr)
+	assert.Equal(t, mlUnreachableCode, mlErr.Code)
+	assert.Equal(t, http.StatusBadGateway, mlErr.Status)
+	assert.Equal(t, "/xi/predict-win", mlErr.Endpoint)
+	assert.Contains(t, mlErr.Message, "did not answer /xi/predict-win")
+	assert.Contains(t, mlErr.Hint, "ML_SERVICE_URL")
+}

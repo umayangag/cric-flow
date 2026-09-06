@@ -140,6 +140,24 @@ const TeamLabPlayMode: React.FC<TeamLabPlayModeProps> = ({
         built, not one chosen for you. Optimise returns to the eleven this format&apos;s policy
         picks, which is the win-model search in T20I and ODI and the rating order in T20 and TEST.
       </Typography>
+      {/*
+        The other half of B-8: the ordering the swap guarantee holds under is dominance on
+        every rated axis, not the rating order the eleven is listed in on T20 and TEST, and
+        the surface has to say so before a swap is made on that order.
+      */}
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        component="div"
+        sx={{ mb: 2 }}
+        data-testid="swap-guarantee"
+      >
+        What a swap guarantees, and what it does not: the displayed probability never falls when the
+        player coming in is at least as good as the one going out on every rated axis the store
+        holds — batting, bowling and Elo, as of the ratings date. A player who merely ranks higher
+        in the rating order, or on one axis, can move it down: the rating order and the display
+        model disagree about who is better.
+      </Typography>
 
       <PlayDeltaSummary delta={play.delta} team1={team1Name} team2={team2Name} />
 
