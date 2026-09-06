@@ -24,6 +24,12 @@ const REMEDIES: Record<string, string> = {
     'No player pool for this team in this format — the teams are derived from imported matches, so a team with no history here cannot be picked from.',
   RATINGS_STALE:
     'Ops → Pipeline: run Retrain, then Reload. The Lab answers again once the loaded run’s ratings are inside the limit; until then no prediction is served from the old ones.',
+  FIXTURE_CROSS_GENDER:
+    'Pick both sides from the same list: the opposition picker offers only sides of the team you chose first, so this arrives from a request built elsewhere.',
+  ML_UNREACHABLE:
+    'Nothing was predicted: the model service did not answer, so there is no number to show. Health shows whether it is up; make dev-up starts it.',
+  XI_MODEL_UNAVAILABLE:
+    'No run is loaded, so there is no model to predict with and no ratings date to show. Ops → Pipeline: run Retrain, then Reload.',
 };
 
 export type ErrorNoticeProps = {

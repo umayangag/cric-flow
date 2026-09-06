@@ -1,18 +1,30 @@
 import React from 'react';
 import { Chip, Paper, Stack, Typography } from '@mui/material';
-import { MetricInfo } from './common/MetricInfo';
+import { MetricInfo, MetricLabel } from './common/MetricInfo';
+import RatingsAsOf from './RatingsAsOf';
 import type {
+  ForecastSource,
+  PredictForecastSummary,
   PredictInningsTotal,
   PredictScorecard,
+  PredictSelectionSummary,
   PredictServedRatings,
   PredictTossSummary,
   PredictWinProbability,
+  WinProbabilitySource,
 } from '../types';
 
 type Props = {
   /** Absent for a format with no innings length: there is no total, and none is invented. */
   scorecard?: PredictScorecard;
   winProbability: PredictWinProbability;
+  /** Which model produced the per-player numbers, and why where it is not the simulator. */
+  forecast: PredictForecastSummary;
+  /**
+   * How the elevens were chosen, so the probability can say what it is a read of: a
+   * searched eleven, a rating-ordered one, or one the caller built (P1-4).
+   */
+  selection: PredictSelectionSummary;
   /** Which batting order the numbers assume, straight off the wire (P1-1). */
   toss: PredictTossSummary;
   /**
@@ -24,14 +36,6 @@ type Props = {
   team1: string;
   team2: string;
 };
-
-/**
- * The one sentence behind "ratings as of". It is UI copy about a label, not metric prose:
- * the date and the run are not numbers the L-1 glossary explains.
- */
-const RATINGS_AS_OF_TITLE =
-  'The served ratings include every match through this date and none after it; the run is the ' +
-  'model build they were loaded from. A prediction past the freshness limit is refused, never served stale.';
 
 /**
  * What the card says the toss was.
@@ -78,18 +82,53 @@ function inningsInBattingOrder(
   return toss.team1_bats_first === false ? [lines[1], lines[0]] : lines;
 }
 
-const winProbabilitySources: Record<PredictWinProbability['source'], string> = {
-  display: 'display model (monotone GBM over both elevens)',
-  simulator: 'simulator (share of simulated matches won)',
+/**
+ * Each source by the name the Lab shows it under, and the glossary key its explainer opens
+ * from. The vocabulary is the contract's (H-24); the key is `<field>_<value>`, which is how
+ * `ml/xi/glossary.py` names the entry, so a new source without an explainer is a label with
+ * no popover — visible, not silent.
+ */
+const WIN_PROBABILITY_SOURCE_LABELS: Record<WinProbabilitySource, string> = {
+  display: 'display model',
+  simulator: 'simulator win share',
 };
+const FORECAST_SOURCE_LABELS: Record<ForecastSource, string> = {
+  simulator: 'simulated match',
+  performance_quantiles: 'performance quantiles',
+};
+
+export function winProbabilitySourceKey(source: WinProbabilitySource): string {
+  return `win_probability_source_${source}`;
+}
+
+export function forecastSourceKey(source: ForecastSource): string {
+  return `forecast_source_${source}`;
+}
+
+/**
+ * What the headline probability is a read of, where no search produced it (P1-4).
+ *
+ * On a rating-ordered eleven (T20, TEST) and on one the caller built, the number is the
+ * named model's opinion of that eleven and nothing more — not the result of a search that
+ * maximised it. The notice at the XI says why; this says it beside the number.
+ */
+function readOfSentence(selection: PredictSelectionSummary, sourceLabel: string): string | null {
+  if (selection.optimised) return null;
+  const eleven =
+    selection.objective === 'fixed' ? 'the eleven you built' : 'this rating-ordered eleven';
+  return `This is the ${sourceLabel}'s read of ${eleven}, not the result of a search.`;
+}
 
 const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = ({
   label,
   innings,
 }) => (
-  <Typography variant="body2">
-    <strong>{label}:</strong> {innings.total.toFixed(0)} runs ({innings.p10.toFixed(0)}–
-    {innings.p90.toFixed(0)}), extras {innings.extras.toFixed(0)}
+  <Typography variant="body2" component="div">
+    <strong>
+      <MetricLabel metricKey="innings_total" label={`${label}:`} />
+    </strong>{' '}
+    {innings.total.toFixed(0)} runs ({innings.p10.toFixed(0)}–{innings.p90.toFixed(0)}), extras{' '}
+    {innings.extras.toFixed(0)}
     <MetricInfo
       metricKey="range_10_90"
       label={`${label} 10–90 range`}
@@ -105,16 +144,21 @@ const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = (
  * The totals and the per-player lines come from one set of draws, so they sum: nothing here
  * is rescaled toward the win probability, which is what the two estimates used to be pulled
  * together into. Where the format has no innings length there is no total at all, and the
- * card says so rather than summing eleven medians and calling it an innings.
+ * card says so in the words the response gave, rather than summing eleven medians and
+ * calling it an innings.
  */
 const MatchScorecard: React.FC<Props> = ({
   scorecard,
   winProbability,
+  forecast,
+  selection,
   toss,
   served,
   team1,
   team2,
 }) => {
+  const winSourceLabel = WIN_PROBABILITY_SOURCE_LABELS[winProbability.source];
+  const readOf = readOfSentence(selection, winSourceLabel);
   return (
     <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -135,23 +179,28 @@ const MatchScorecard: React.FC<Props> = ({
         {winProbability.simulated != null && (
           <Typography variant="body2" color="text.secondary">
             simulated: {(winProbability.simulated * 100).toFixed(1)}%
+            <MetricInfo
+              metricKey={winProbabilitySourceKey('simulator')}
+              label="Simulated win share"
+              value={`${(winProbability.simulated * 100).toFixed(1)}%`}
+            />
           </Typography>
         )}
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          title={RATINGS_AS_OF_TITLE}
-          data-testid="ratings-as-of"
-        >
-          ratings as of <strong>{served.ratings_through}</strong> · run {served.run_id}
-        </Typography>
+        <RatingsAsOf served={served} />
       </Stack>
-      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
-        <Chip
-          size="small"
-          variant="outlined"
-          label={`source: ${winProbabilitySources[winProbability.source]}`}
-        />
+      <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+        <Typography variant="body2" color="text.secondary" component="div">
+          <MetricLabel
+            metricKey={winProbabilitySourceKey(winProbability.source)}
+            label={`source: ${winSourceLabel}`}
+          />
+        </Typography>
+        <Typography variant="body2" color="text.secondary" component="div">
+          <MetricLabel
+            metricKey={forecastSourceKey(forecast.source)}
+            label={`per-player numbers: ${FORECAST_SOURCE_LABELS[forecast.source]}`}
+          />
+        </Typography>
         <Chip size="small" variant="outlined" label={tossLabel(toss, team1, team2)} />
         {scorecard && (
           <Chip
@@ -161,6 +210,17 @@ const MatchScorecard: React.FC<Props> = ({
           />
         )}
       </Stack>
+      {readOf && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          component="div"
+          sx={{ mb: 1 }}
+          data-testid="win-probability-read-of"
+        >
+          {readOf}
+        </Typography>
+      )}
       {!toss.honoured && toss.note && (
         <Typography variant="caption" color="warning.main" component="div" sx={{ mb: 1 }}>
           {toss.note}
@@ -173,13 +233,14 @@ const MatchScorecard: React.FC<Props> = ({
           ))}
           <Typography variant="caption" color="text.secondary">
             Totals and the per-player lines come from the same draws, so the lines and extras sum to
-            the total shown. Nothing is rescaled toward the win probability.
+            the total shown. Nothing is rescaled toward the win probability, and the ranges are
+            shown as drawn.
           </Typography>
         </Stack>
       ) : (
-        <Typography variant="caption" color="text.secondary">
-          This format has no fixed innings length, so there is no simulated total. The per-player
-          numbers are the performance model’s own medians and 10–90 intervals.
+        <Typography variant="caption" color="text.secondary" data-testid="forecast-note">
+          {forecast.note ??
+            'No simulated total was served for this fixture, and the answer carried no reason; none is invented here.'}
         </Typography>
       )}
     </Paper>

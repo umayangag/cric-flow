@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import TeamLabTab from './TeamLabTab';
 import { api } from '../api';
 import { ApiError } from '../lib/apiError';
-import type { PredictTeamSelectionResponse, TeamSideOption } from '../types';
+import { MetricGlossaryProvider } from '../context/MetricGlossaryContext';
+import type {
+  MetricGlossary,
+  MetricGlossaryEntry,
+  PredictTeamSelectionResponse,
+  TeamSideOption,
+} from '../types';
 
 const mockUseTeamLab = vi.fn();
 vi.mock('../hooks/useTeamLab', () => ({
@@ -125,6 +131,7 @@ function prediction(
     ],
     team2: [],
     selection: { objective: 'win', optimised: true },
+    forecast: { source: 'simulator' },
     win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
     toss: { team1_bats_first: null, honoured: true },
     team1_pool: defaultPool,
@@ -201,8 +208,8 @@ describe('TeamLabTab', () => {
 
     expect(screen.getByLabelText(/minimum bowlers/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/require a wicketkeeper/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/team 1 must-include player ids/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/team 2 must-include player ids/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/team 1 must-include ids/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/team 2 must-include ids/i)).toBeInTheDocument();
   });
 
   // Every input the Lab offers goes back to the one hook that builds the request; a control
@@ -215,8 +222,8 @@ describe('TeamLabTab', () => {
 
     await user.type(screen.getByLabelText(/minimum bowlers/i), '5');
     await user.click(screen.getByLabelText(/require a wicketkeeper/i));
-    await user.type(screen.getByLabelText(/team 1 must-include player ids/i), '4');
-    await user.type(screen.getByLabelText(/team 2 must-include player ids/i), '7');
+    await user.type(screen.getByLabelText(/team 1 must-include ids/i), '4');
+    await user.type(screen.getByLabelText(/team 2 must-include ids/i), '7');
 
     expect(setConstraints).toHaveBeenCalledTimes(4);
     // Each call is an update of the constraints already held, so nothing else is dropped.
@@ -350,7 +357,7 @@ describe('TeamLabTab', () => {
       }),
     );
 
-    expect(screen.getByText('Not optimised')).toBeInTheDocument();
+    expect(screen.getByTestId('not-optimised-notice')).toHaveTextContent('Not optimised');
     expect(screen.getByText(/no win objective that ranks/)).toBeInTheDocument();
     expect(screen.getByText('Rating-ordered 11 for each team')).toBeInTheDocument();
     expect(screen.queryByText('Marginal')).not.toBeInTheDocument();
@@ -585,6 +592,275 @@ describe('TeamLabTab', () => {
         player_id: 8,
         player_name: 'Pickable Player',
       });
+    });
+  });
+
+  // P1-4: the honesty surfaces, on every state of the Lab. Each state asserts the same four
+  // things where they apply — the notice, the ranges, the date and the explainer link — so
+  // a surface that loses one of them fails here rather than on screen.
+  describe('honesty surfaces', () => {
+    const glossaryEntry = (key: string, name: string): MetricGlossaryEntry => ({
+      key,
+      name,
+      explanation: `${name}, explained.`,
+      band: 'the measured band',
+      better: 'no good direction alone -- read it beside its pair',
+      direction: 'none',
+    });
+    const glossary: MetricGlossary = {
+      entries: Object.fromEntries(
+        [
+          ['win_probability', 'Win probability'],
+          ['range_10_90', '10-90 range'],
+          ['innings_total', 'Simulated innings total'],
+          ['marginal_value', 'Marginal value'],
+          ['win_probability_source_display', 'Display model'],
+          ['win_probability_source_simulator', 'Simulator win share'],
+          ['forecast_source_simulator', 'Simulated match'],
+          ['forecast_source_performance_quantiles', 'Performance quantiles'],
+        ].map(([key, name]) => [key, glossaryEntry(key, name)]),
+      ),
+    };
+
+    const scorecard = {
+      samples: 2000,
+      toss_marginalised: true,
+      team1_innings: { total: 171, extras: 9, p10: 130, median: 170, p90: 210 },
+      team2_innings: { total: 162, extras: 8, p10: 122, median: 161, p90: 201 },
+    };
+
+    const ratingOrdered = {
+      objective: 'ratings' as const,
+      optimised: false,
+      note: 'Rating-ordered XI: this format has no win objective that ranks (H-17).',
+    };
+
+    function renderWithGlossary(state: Partial<typeof baseState>) {
+      vi.spyOn(api, 'metricGlossary').mockResolvedValue(glossary);
+      mockUseTeamLab.mockReturnValue({ ...baseState, ...state });
+      render(
+        <MetricGlossaryProvider>
+          <TeamLabTab />
+        </MetricGlossaryProvider>,
+      );
+    }
+
+    /** The explainer button every labelled number opens (L-1), by the label's name. */
+    async function expectExplainer(label: RegExp) {
+      expect((await screen.findAllByRole('button', { name: label })).length).toBeGreaterThan(0);
+    }
+
+    it('optimised: ranges, the date, both sources and their explainers, and no notice', async () => {
+      renderWithGlossary({ result: prediction({ scorecard }) });
+
+      expect(screen.getByText('34 (8–71)')).toBeInTheDocument();
+      expect(screen.getByText(/171 runs \(130–210\)/)).toBeInTheDocument();
+      expect(screen.getByTestId('ratings-as-of')).toHaveTextContent('ratings as of 2026-09-02');
+      expect(screen.queryByTestId('not-optimised-notice')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('win-probability-read-of')).not.toBeInTheDocument();
+      expect(screen.getAllByTestId('board-order')[0]).toHaveTextContent(
+        /ordered by marginal value/i,
+      );
+      await expectExplainer(/what is win probability\?/i);
+      await expectExplainer(/what is source: display model\?/i);
+      await expectExplainer(/what is per-player numbers: simulated match\?/i);
+      await expectExplainer(/what is runs \(10–90\)\?/i);
+      await expectExplainer(/what is india \(women\) innings:\?/i);
+    });
+
+    it('rating-ordered: the served reason at the XI, the probability labelled as a read', async () => {
+      renderWithGlossary({
+        result: prediction({
+          scorecard,
+          selection: ratingOrdered,
+          team1: [{ ...prediction().team1[0], marginal_value: undefined }],
+        }),
+      });
+
+      const notice = screen.getByTestId('not-optimised-notice');
+      expect(notice).toHaveTextContent('Not optimised: picked by rating');
+      expect(notice).toHaveTextContent(ratingOrdered.note);
+      expect(screen.getByTestId('win-probability-read-of')).toHaveTextContent(
+        "display model's read of this rating-ordered eleven, not the result of a search",
+      );
+      expect(screen.getAllByTestId('board-order')[0]).toHaveTextContent(/in rating order/i);
+      expect(screen.getByText('Rating-ordered 11 for each team')).toBeInTheDocument();
+      expect(screen.queryByText('Marginal')).not.toBeInTheDocument();
+      expect(screen.getByText('34 (8–71)')).toBeInTheDocument();
+      expect(screen.getByTestId('ratings-as-of')).toHaveTextContent(
+        'run 20260906T083819Z-36689f80',
+      );
+      await expectExplainer(/what is win probability\?/i);
+    });
+
+    // The one test the gate names: a rating-ordered response never renders without the
+    // notice — even one that carried no reason, where the notice says so instead.
+    it('never renders a rating-ordered response without the notice', () => {
+      renderWithResult(prediction({ selection: { objective: 'ratings', optimised: false } }));
+
+      const notice = screen.getByTestId('not-optimised-notice');
+      expect(notice).toHaveTextContent('Not optimised');
+      expect(notice).toHaveTextContent(/carried no reason/);
+    });
+
+    it('play mode after a swap: your eleven, the swap guarantee, and the delta with explainers', async () => {
+      const fixed = {
+        objective: 'fixed' as const,
+        optimised: false,
+        note: 'Your eleven, scored as picked: nothing was searched for.',
+      };
+      renderWithGlossary({
+        result: prediction({ scorecard, selection: fixed }),
+        play: playState({
+          edited: true,
+          delta: {
+            winProbability: { previous: 0.61, current: 0.592, change: -0.018 },
+            team1Innings: {
+              total: { previous: 176, current: 171, change: -5 },
+              p10: { previous: 135, current: 130, change: -5 },
+              p90: { previous: 214, current: 210, change: -4 },
+            },
+            team2Innings: null,
+          },
+        }),
+      });
+
+      expect(screen.getByTestId('not-optimised-notice')).toHaveTextContent(
+        'Not optimised: your eleven',
+      );
+      expect(screen.getByTestId('not-optimised-notice')).toHaveTextContent(fixed.note);
+      expect(screen.getByText('Your 11 for each team')).toBeInTheDocument();
+      expect(screen.getByTestId('win-probability-read-of')).toHaveTextContent(
+        /the eleven you built/,
+      );
+      expect(screen.getByTestId('swap-guarantee')).toHaveTextContent(/on every rated axis/);
+      expect(screen.getByText('−1.8 pp')).toBeInTheDocument();
+      expect(screen.getAllByTestId('board-order')[0]).toHaveTextContent(
+        /in the order you built it/i,
+      );
+      await expectExplainer(/what is p\(india \(women\) wins\)\?/i);
+      await expectExplainer(/what is india \(women\) innings \(10-90\)\?/i);
+    });
+
+    // Each toss state is a different answer, and each carries its label, its ranges and
+    // its date off the response.
+    it.each([
+      [{ team1_bats_first: null, honoured: true }, 'toss unknown: both batting orders averaged'],
+      [{ team1_bats_first: true, honoured: true }, 'toss: India (women) bats first'],
+      [{ team1_bats_first: false, honoured: true }, 'toss: Australia (women) bats first'],
+    ])('names the toss state %j off the answer, with the ranges and the date', (toss, label) => {
+      renderWithResult(prediction({ toss, scorecard }));
+
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.getByText(/171 runs \(130–210\)/)).toBeInTheDocument();
+      expect(screen.getByTestId('ratings-as-of')).toBeInTheDocument();
+    });
+
+    // The must-include check the input's label promises, in both outcomes (P1-4).
+    it('says what became of every must-include id', () => {
+      renderWithResult(
+        prediction({
+          selection: {
+            objective: 'win',
+            optimised: true,
+            must_include: {
+              team1: { requested: 2, missing: [{ player_id: 9, player_name: 'Left Out' }] },
+              team2: { requested: 1, missing: [] },
+            },
+          },
+        }),
+      );
+
+      expect(
+        screen.getByText('Must-include for India (women): 1 of 2 in the eleven'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Left Out left out')).toBeInTheDocument();
+      expect(
+        screen.getByText('Must-include for Australia (women): 1 of 1 in the eleven'),
+      ).toBeInTheDocument();
+    });
+
+    it('stale ratings before a request: the loaded run’s date through the one component, and no number', () => {
+      mockUseTeamLab.mockReturnValue({
+        ...baseState,
+        opsStatus: {
+          timestamp: '2026-09-06T00:00:00Z',
+          artifacts: {
+            loaded_run: '20260906T083819Z-36689f80',
+            ratings: {
+              fresh: false,
+              age_days: 40,
+              max_age_days: 14,
+              ratings_through: '2026-07-28',
+            },
+          },
+        },
+      });
+      render(<TeamLabTab />);
+
+      expect(screen.getByTestId('ratings-as-of')).toHaveTextContent(
+        'ratings as of 2026-07-28 · run 20260906T083819Z-36689f80',
+      );
+      expect(screen.getByRole('alert')).toHaveTextContent('RATINGS_STALE');
+      expect(screen.queryByText(/win probability/i)).not.toBeInTheDocument();
+    });
+
+    it('nothing loaded: says so, with the loader’s reason, and shows no date and no number', () => {
+      mockUseTeamLab.mockReturnValue({
+        ...baseState,
+        opsStatus: {
+          timestamp: '2026-09-06T00:00:00Z',
+          artifacts: {
+            loaded_run: null,
+            error: 'run r1: bat_pos_sum has width 1024, expected 13427',
+          },
+        },
+      });
+      render(<TeamLabTab />);
+
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(/no training run is loaded/i);
+      expect(alert).toHaveTextContent(/no ratings date to show/i);
+      expect(alert).toHaveTextContent('expected 13427');
+      expect(screen.queryByTestId('ratings-as-of')).not.toBeInTheDocument();
+      expect(screen.queryByText(/win probability/i)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      [
+        'a cross-gender fixture',
+        new ApiError(
+          'India (men) and Australia (women) are not the same gender; no such fixture is played',
+          {
+            status: 400,
+            code: 'FIXTURE_CROSS_GENDER',
+            hint: 'both sides of a fixture are the same gender; pick two sides from one list',
+          },
+        ),
+        /pick two sides from one list/,
+      ],
+      [
+        'an unreachable model service',
+        new ApiError(
+          'ml-service did not answer /xi/optimize: dial tcp 127.0.0.1:9: connect: connection refused',
+          {
+            status: 502,
+            code: 'ML_UNREACHABLE',
+            hint: 'start ml-service (make dev-up), or check ML_SERVICE_URL; no prediction is served without it',
+          },
+        ),
+        /connection refused/,
+      ],
+    ])('refuses %s with the reason from the wire and no number', (_name, error, reason) => {
+      mockUseTeamLab.mockReturnValue({ ...baseState, result: null, error });
+      render(<TeamLabTab />);
+
+      const refusal = screen.getByRole('alert');
+      expect(refusal).toHaveTextContent(reason);
+      expect(refusal).toHaveTextContent(error.hint as string);
+      expect(refusal).toHaveTextContent(error.code as string);
+      expect(screen.queryByText(/win probability/i)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ratings-as-of')).not.toBeInTheDocument();
     });
   });
 });

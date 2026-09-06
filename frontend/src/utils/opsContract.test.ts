@@ -3,7 +3,14 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
-import { POOL_EXCLUSION_REASONS, POOL_SOURCES, SELECTION_ROLES, TEAM_GENDERS } from '../types';
+import {
+  FORECAST_SOURCES,
+  POOL_EXCLUSION_REASONS,
+  POOL_SOURCES,
+  SELECTION_ROLES,
+  TEAM_GENDERS,
+  WIN_PROBABILITY_SOURCES,
+} from '../types';
 
 /**
  * The backend/frontend contract test.
@@ -44,6 +51,9 @@ type Contract = {
   pool_exclusion_reasons: string[];
   /** The constraint state a "why this player" card may name (H-24, P1-3). */
   selection_roles: string[];
+  /** The model behind the headline probability, and behind the per-player numbers (H-24, P1-4). */
+  win_probability_sources: string[];
+  forecast_sources: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -184,6 +194,20 @@ describe('ops console contract', () => {
    */
   it('spells the selection roles the way the backend does', () => {
     expect([...SELECTION_ROLES].sort()).toEqual([...contract.selection_roles].sort());
+  });
+
+  /**
+   * The two source vocabularies are the contract's too (H-24, P1-4).
+   *
+   * The Lab names the model behind the headline probability and behind the per-player
+   * numbers, and opens each name's explainer from the glossary. A source the UI cannot spell
+   * would be a number on screen with no model named behind it.
+   */
+  it('spells the win-probability and forecast sources the way the backend does', () => {
+    expect([...WIN_PROBABILITY_SOURCES].sort()).toEqual(
+      [...contract.win_probability_sources].sort(),
+    );
+    expect([...FORECAST_SOURCES].sort()).toEqual([...contract.forecast_sources].sort());
   });
 
   /**

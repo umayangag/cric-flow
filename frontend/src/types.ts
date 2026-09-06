@@ -76,6 +76,54 @@ export type PredictSelectionSummary = {
   objective: 'win' | 'ratings' | 'fixed';
   optimised: boolean;
   note?: string;
+  /**
+   * What became of the must-include ids (P1-4): present where any were asked for on a
+   * selected eleven. They join the pool and are checked afterwards, never enforced, so the
+   * answer names the ones the selection left out.
+   */
+  must_include?: PredictMustIncludeReport;
+};
+
+/** One side's must-include ids against the eleven that was selected. */
+export type PredictMustIncludeStatus = {
+  requested: number;
+  /** Always an array: "checked, none missing" is an empty list, not an absent one. */
+  missing: PredictMissingPlayer[];
+};
+
+export type PredictMustIncludeReport = {
+  team1: PredictMustIncludeStatus;
+  team2: PredictMustIncludeStatus;
+};
+
+/**
+ * Which model produced the headline win probability, exactly as the wire spells it.
+ *
+ * Declared in contracts/ops-console.contract.json and asserted against it by
+ * `opsContract.test.ts` (H-24). The Lab names the source beside the number and opens its
+ * explainer from the name (glossary key `win_probability_source_<value>`), so a value the UI
+ * cannot spell would be a probability shown with no model behind it (P1-4).
+ */
+export const WIN_PROBABILITY_SOURCES = ['display', 'simulator'] as const;
+export type WinProbabilitySource = (typeof WIN_PROBABILITY_SOURCES)[number];
+
+/**
+ * Which model produced the per-player numbers, exactly as the wire spells it (H-24, P1-4).
+ *
+ * `simulator` is one set of drawn whole matches, so the lines and extras sum to the innings
+ * total; `performance_quantiles` is L2-B's per-player distributions reported directly, on a
+ * format with no innings length, where there is no total to sum to.
+ */
+export const FORECAST_SOURCES = ['simulator', 'performance_quantiles'] as const;
+export type ForecastSource = (typeof FORECAST_SOURCES)[number];
+
+/**
+ * Which model produced the per-player numbers, and — where that is not the simulator —
+ * why. A fallback that changes which model answered is named on the wire (§8.7).
+ */
+export type PredictForecastSummary = {
+  source: ForecastSource;
+  note?: string;
 };
 
 /**
@@ -84,7 +132,7 @@ export type PredictSelectionSummary = {
  */
 export type PredictWinProbability = {
   team1: number;
-  source: 'display' | 'simulator';
+  source: WinProbabilitySource;
   simulated?: number;
   predicted_winner: string;
 };
@@ -307,6 +355,8 @@ export type PredictTeamSelectionResponse = PredictServedRatings & {
   team1: PredictTeamSelectedPlayer[];
   team2: PredictTeamSelectedPlayer[];
   selection: PredictSelectionSummary;
+  /** Which model produced the per-player numbers, and why where it is not the simulator. */
+  forecast: PredictForecastSummary;
   win_probability: PredictWinProbability;
   /** Which batting order the numbers were produced under, and whether a named one was used. */
   toss: PredictTossSummary;

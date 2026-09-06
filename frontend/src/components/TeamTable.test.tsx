@@ -54,7 +54,8 @@ describe('TeamTable', () => {
     expect(screen.getByText('45 (12–88)')).toBeInTheDocument();
   });
 
-  it('shows the bare point when a target has no range', () => {
+  // A point the wire served with no range says so, rather than reading as a certainty (P1-4).
+  it('says a point has no range rather than showing it bare', () => {
     const noRange: PredictTeamSelectedPlayer = {
       player_id: 2,
       player_name: 'Player B',
@@ -64,7 +65,37 @@ describe('TeamTable', () => {
     };
     render(<TeamTable teamName="India" players={[noRange]} selection={ratingOrderedSelection} />);
 
-    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.getByText('18 (no range)')).toBeInTheDocument();
+  });
+
+  // B-8's other half (P1-4): a searched eleven is listed by the marginal value it carries,
+  // and every eleven says what its order is.
+  it('ranks a searched eleven by marginal value and says so', () => {
+    const lower = { ...player, player_id: 2, player_name: 'Player B', marginal_value: 0.041 };
+    render(<TeamTable teamName="India" players={[player, lower]} selection={optimised} />);
+
+    const rows = screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    expect(rows.findIndex((text) => text.includes('Player B'))).toBeLessThan(
+      rows.findIndex((text) => text.includes('Player A')),
+    );
+    expect(screen.getByTestId('board-order')).toHaveTextContent(/ordered by marginal value/i);
+  });
+
+  it('keeps a rating-ordered eleven as served and says which order that is', () => {
+    const second = { ...player, player_id: 2, player_name: 'Player B', marginal_value: undefined };
+    render(
+      <TeamTable
+        teamName="England"
+        players={[{ ...player, marginal_value: undefined }, second]}
+        selection={ratingOrderedSelection}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row').map((row) => row.textContent ?? '');
+    expect(rows.findIndex((text) => text.includes('Player A'))).toBeLessThan(
+      rows.findIndex((text) => text.includes('Player B')),
+    );
+    expect(screen.getByTestId('board-order')).toHaveTextContent(/not the win model's ranking/);
   });
 
   it('renders an empty table when no players', () => {

@@ -17,6 +17,7 @@ import {
 } from '@mui/icons-material';
 import { MetricLabel } from './common/MetricInfo';
 import WhyThisPlayer from './WhyThisPlayer';
+import { boardOrder, boardOrderSentence } from '../lib/boardOrder';
 import { pointWithRange } from '../utils/format';
 import type { PredictSelectionSummary, PredictTeamSelectedPlayer } from '../types';
 
@@ -25,7 +26,8 @@ export interface TeamTableProps {
   players: PredictTeamSelectedPlayer[];
   /**
    * How this eleven was chosen. The marginal column is hidden where nothing was maximised,
-   * and the "why this player" card renders the state that matches (P1-3).
+   * the "why this player" card renders the state that matches (P1-3), and the rows are
+   * ordered by what the surface can stand behind (P1-4, B-8).
    */
   selection: PredictSelectionSummary;
 }
@@ -44,16 +46,30 @@ function columnCount(optimised: boolean): number {
  * what the XI loses if the player is replaced by an average one — the L3 explanation of
  * why he is in it.
  *
+ * The rows are in the order {@link boardOrder} gives them — by marginal value on a searched
+ * eleven, as served everywhere else — and the caption says which, because a board that
+ * looks ranked and is not invites a swap the number then punishes (B-8).
+ *
  * Every row opens onto the "why this player" card (P1-3), which shows what the selection
  * itself read about him and nothing else.
  */
 const TeamTable: React.FC<TeamTableProps> = ({ teamName, players, selection }) => {
   const [openPlayerID, setOpenPlayerID] = useState<number | null>(null);
   const optimised = selection.optimised;
+  const ordered = boardOrder(players, selection);
   return (
     <Paper variant="outlined" sx={{ flex: 1, overflow: 'hidden' }}>
       <Typography variant="subtitle2" sx={{ px: 2, py: 1, bgcolor: 'action.hover' }}>
         {teamName}
+      </Typography>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        component="div"
+        sx={{ px: 2, py: 0.5 }}
+        data-testid="board-order"
+      >
+        {boardOrderSentence(selection)}
       </Typography>
       <TableContainer>
         <Table size="small" stickyHeader>
@@ -84,7 +100,7 @@ const TeamTable: React.FC<TeamTableProps> = ({ teamName, players, selection }) =
             </TableRow>
           </TableHead>
           <TableBody>
-            {players.map((p) => (
+            {ordered.map((p) => (
               <React.Fragment key={p.player_id}>
                 <TableRow>
                   <TableCell sx={{ borderBottom: 'none' }}>
