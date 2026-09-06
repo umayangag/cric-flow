@@ -149,11 +149,16 @@ type InningsTotal struct {
 }
 
 // Scorecard is the simulated match: present only for formats with an innings length.
+//
+// The two innings are named by *side*, not by batting position: the simulator reports
+// team1's innings and team2's innings whichever bats first. They were called `innings1` and
+// `innings2`, which was invisible while the toss was always unknown and wrong the moment it
+// could be named — "innings 1 (India)" beside "Australia bats first" (P1-1).
 type Scorecard struct {
 	Samples          int          `json:"samples"`
 	TossMarginalised bool         `json:"toss_marginalised"`
-	Innings1         InningsTotal `json:"innings1"`
-	Innings2         InningsTotal `json:"innings2"`
+	Team1Innings     InningsTotal `json:"team1_innings"`
+	Team2Innings     InningsTotal `json:"team2_innings"`
 }
 
 // ResolvedSide is the side a prediction actually scored.

@@ -78,8 +78,8 @@ export type PredictTossSummary = {
 export type PredictScorecard = {
   samples: number;
   toss_marginalised: boolean;
-  innings1: PredictInningsTotal;
-  innings2: PredictInningsTotal;
+  team1_innings: PredictInningsTotal;
+  team2_innings: PredictInningsTotal;
 };
 
 /**

@@ -103,7 +103,7 @@ func TestApplyXISimulation_WritesRangesTotalsAndSpreadFromOneSetOfDraws(t *testi
 
 	require.NotNil(t, result.Scorecard)
 	assert.Equal(t, 2000, result.Scorecard.Samples)
-	assert.Equal(t, InningsTotal{Total: 171, Extras: 9, P10: 130, Median: 170, P90: 210}, result.Scorecard.Innings1)
+	assert.Equal(t, InningsTotal{Total: 171, Extras: 9, P10: 130, Median: 170, P90: 210}, result.Scorecard.Team1Innings)
 	assert.Equal(t, 0.61, result.WinProbability.Team1)
 	assert.Equal(t, winProbabilitySourceDisplay, result.WinProbability.Source)
 	require.NotNil(t, result.WinProbability.Simulated)

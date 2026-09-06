@@ -153,8 +153,8 @@ func applyXISimulation(
 	result.Scorecard = &Scorecard{
 		Samples:          sim.Samples,
 		TossMarginalised: sim.TossMarginalised,
-		Innings1:         inningsTotal(sim.Team1),
-		Innings2:         inningsTotal(sim.Team2),
+		Team1Innings:     inningsTotal(sim.Team1),
+		Team2Innings:     inningsTotal(sim.Team2),
 	}
 	simulated := sim.SimulatedTeam1WinProbability
 	result.WinProbability = WinProbabilitySummary{
@@ -166,8 +166,8 @@ func applyXISimulation(
 	slog.InfoContext(ctx, "xi simulation applied to the scorecard",
 		slog.String("format", fix.format),
 		slog.Int("samples", sim.Samples),
-		slog.Float64("innings1", sim.Team1.TotalScorecard),
-		slog.Float64("innings2", sim.Team2.TotalScorecard),
+		slog.Float64("team1_innings", sim.Team1.TotalScorecard),
+		slog.Float64("team2_innings", sim.Team2.TotalScorecard),
 		slog.Float64("p_display", sim.DisplayTeam1WinProbability),
 		slog.Float64("p_simulated", simulated),
 		slog.String("headline", sim.HeadlineSource),

@@ -9,8 +9,8 @@ const unknownToss: PredictTossSummary = { team1_bats_first: null, honoured: true
 const scorecard: PredictScorecard = {
   samples: 2000,
   toss_marginalised: true,
-  innings1: { total: 171, extras: 9, p10: 130, median: 170, p90: 210 },
-  innings2: { total: 162, extras: 8, p10: 122, median: 161, p90: 201 },
+  team1_innings: { total: 171, extras: 9, p10: 130, median: 170, p90: 210 },
+  team2_innings: { total: 162, extras: 8, p10: 122, median: 161, p90: 201 },
 };
 
 const display: PredictWinProbability = {
@@ -50,6 +50,10 @@ describe('MatchScorecard', () => {
 
     expect(screen.getByText(/171 runs \(130–210\), extras 9/)).toBeInTheDocument();
     expect(screen.getByText(/162 runs \(122–201\), extras 8/)).toBeInTheDocument();
+    // Each innings is named by its side: the response carries team1's innings and team2's,
+    // not a first and a second.
+    expect(screen.getByText('IND innings:')).toBeInTheDocument();
+    expect(screen.getByText('AUS innings:')).toBeInTheDocument();
     expect(screen.getByText('2,000 draws')).toBeInTheDocument();
     expect(screen.getByText('toss unknown: both batting orders averaged')).toBeInTheDocument();
   });
@@ -98,6 +102,11 @@ describe('MatchScorecard', () => {
 
     expect(screen.getByText('toss: AUS bats first')).toBeInTheDocument();
     expect(screen.queryByText(/both batting orders averaged/)).not.toBeInTheDocument();
+    // Each innings is named by its side and its batting position, because the response
+    // carries team1's innings and team2's whichever bats first — "innings 1 (IND)" over a
+    // card where AUS bats first would be a label contradicting the numbers beneath it.
+    expect(screen.getByText('AUS (batting first):')).toBeInTheDocument();
+    expect(screen.getByText('IND (batting second):')).toBeInTheDocument();
   });
 
   // §8.7: an input the forecast could not use is said so on the answer, not dropped.
