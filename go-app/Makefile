@@ -135,7 +135,7 @@ deadcode:
 .PHONY: coverage coverage-html coverage-func coverage-check
 
 # Minimum coverage threshold (percentage). Can be overridden: `COV_MIN=70 make coverage-check`
-COV_MIN ?= 76
+COV_MIN ?= 77
 
 # Exclude from coverage: cmd/* (entrypoints), */mocks (generated), internal/models (data
 # structs), internal/db (DB-heavy; covered by integration tests with RUN_DB_TESTS=1),
@@ -161,7 +161,7 @@ coverage-func:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@go tool cover -func=coverage.out | tail -1
 
-# Fail if total coverage is below COV_MIN (default 76)
+# Fail if total coverage is below COV_MIN (default 77)
 coverage-check:
 	@test -f coverage.out || (echo "Run 'make coverage' first" && exit 1)
 	@total=$$(go tool cover -func=coverage.out | awk '/total:/{print $$3}' | tr -d '%'); \
