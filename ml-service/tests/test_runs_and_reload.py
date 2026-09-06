@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from app import xi_service
 from app.models.xi import XiOptimizeRequest
+from ml.xi import contract as C
 from ml.xi import runs
 from ml.xi.ratings import RatingState
 from ml.xi.runs import RunArtifactsInvalid
@@ -54,8 +55,10 @@ def _write_run(root, run_id: str = "20260902T101500Z-ab12cd34", *, last_date: da
             format_code="T20",
             objective=_ConstantModel(),
             display=_ConstantModel(),
-            objective_cols=["a"],
-            display_cols=["a"],
+            # The contract's own lists: the store refuses a win artifact fitted on any
+            # other columns (D-6), so a "complete run" has to carry the served shape.
+            objective_cols=list(C.XI_FEATURE_COLS),
+            display_cols=list(C.DISPLAY_FEATURE_COLS),
             metadata={},
         ),
         os.path.join(directory, "xi_win_T20.joblib"),
@@ -174,6 +177,26 @@ def test_an_array_narrower_than_the_players_it_names_is_refused(tmp_path):
 
     message = str(excinfo.value)
     assert "pelo has width 2, expected 5" in message
+
+
+def test_a_win_artifact_fitted_on_other_columns_is_refused_naming_them(tmp_path):
+    """D-6 for the models, not the ratings: B-7 took `t1_pelo_std` / `t2_pelo_std` out of
+    the display columns, and an artifact still carrying them loads perfectly well -- the
+    serving path builds its row from the artifact's own `display_cols` -- while answering
+    with the incoherent surface the change was made to remove."""
+    directory = _write_run(tmp_path)
+    path = os.path.join(directory, "xi_win_T20.joblib")
+    models = joblib.load(path)
+    models.display_cols = list(C.DISPLAY_FEATURE_COLS) + ["t1_pelo_std", "t2_pelo_std"]
+    joblib.dump(models, path)
+
+    with pytest.raises(RunArtifactsInvalid) as excinfo:
+        xi_service.XiStore.load(directory)
+
+    message = str(excinfo.value)
+    assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
+    assert "display_cols" in message and "t1_pelo_std" in message
+    assert "Retrain." in message
 
 
 def test_a_refused_run_is_reported_rather_than_silently_unloaded(tmp_path):

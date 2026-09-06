@@ -228,7 +228,12 @@ answer every call this needs; the work is product engineering):
   date, format; **Optimise** returns the XI with win probability, simulated totals and
   scorecard.
 - **Play mode**: add/remove/swap players on either side; every change re-scores live
-  (~10 ms) and shows the delta; constraint chips (keeper, bowlers, must-include).
+  (~10 ms) and shows the delta; constraint chips (keeper, bowlers, must-include). The
+  displayed probability is monotone under that swap **by construction**: upgrading a player
+  never lowers it, in any format, measured at 0.0000 violations per fold. It used to move
+  the wrong way 3–7 % of the time, and buying the guarantee cost display AUC in ODI and
+  TEST (`docs/BUG_BACKLOG.md` § B-7) — a deliberate trade, made because this bullet is the
+  product.
 - **The "why this player" card** (§4) on every selected player.
 - **Toss toggle** (bat first / bowl first / unknown) on the Lab and the Upcoming-match
   surfaces, wired to the `team1_bats_first` parameter the API already carries end to end;

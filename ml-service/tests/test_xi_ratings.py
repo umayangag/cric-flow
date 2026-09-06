@@ -178,6 +178,21 @@ def test_team_context_is_constrained_only_when_gate_b7s_switch_is_on() -> None:
     assert C.monotone_directions(C.XI_FEATURE_COLS, True) == C.monotone_directions(C.XI_FEATURE_COLS, False)
 
 
+def test_the_display_columns_drop_the_elo_spread_and_the_objective_keeps_it() -> None:
+    """B-7's decision. The spread of player Elo across an eleven is the only column an
+    upgrade moves that no constraint covers, and a tree's step response to it is what made
+    one swap in twenty lower the displayed probability. The objective keeps it -- it is
+    linear there, and H-4 measures under 1 % on it -- so the two contracts differ on
+    purpose and neither list may quietly drift back."""
+    assert set(C.DISPLAY_EXCLUDED_COLS) == {"t1_pelo_std", "t2_pelo_std"}
+    assert set(C.DISPLAY_EXCLUDED_COLS) <= set(C.XI_FEATURE_COLS), "the objective still reads them"
+    assert not set(C.DISPLAY_EXCLUDED_COLS) & set(C.DISPLAY_FEATURE_COLS)
+    assert set(C.XI_FEATURE_COLS) - set(C.DISPLAY_EXCLUDED_COLS) <= set(C.DISPLAY_FEATURE_COLS)
+    # Both sides' columns go, or ``swap_orientation`` would exchange a column the model
+    # reads for one it does not and the marginalisation over batting order would be lopsided.
+    assert not any(column.endswith("_pelo_std") for column in C.DISPLAY_FEATURE_COLS)
+
+
 def test_build_rejects_out_of_order_sources() -> None:
     t1, t2 = _xi("a"), _xi("b")
     d = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)

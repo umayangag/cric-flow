@@ -148,7 +148,8 @@ def render_models(root: str) -> str:
             "Match",
             len(display_in),
             [win_target],
-            "`ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns plus team and venue context",
+            "`ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns bar the Elo spread (B-7), "
+            "plus team and venue context",
         ),
         ("Performance (L2-B)", "Player", len(objective_in), perf_targets, "as-of player-match rows from `ml.xi.rows`"),
     ]
