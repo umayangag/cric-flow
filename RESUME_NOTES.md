@@ -73,6 +73,30 @@ Per-fold factor spreads (split arm): pooled 0.103–0.224, day 0.124–0.257, ni
 **0.000**–0.172 — the 2025-01 fold's night group deconvolves to exactly zero excess variance,
 i.e. no shared factor at all for its night matches.
 
-### ODI — running
+### ODI — 10 folds run (one skipped), done (14 min), reported not decided
 
-_pending_
+| arm | pop | folds scored | matches/fold | first cov | first width | dispersion | chase cov | Δ Brier |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 9 | 107 | 0.748 | 152.2 | — | 0.690 | +0.0067 |
+| control | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.689 | +0.0052 |
+| control | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+| split | day | 9 | 102 | 0.738 | 152.0 | 1.041 | 0.694 | +0.0055 |
+| split | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+| scale | day | 9 | 102 | 0.747 | 154.8 | 1.028 | 0.714 | +0.0053 |
+| scale | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+
+Night rows identical to the control in both arms (both scored night folds have 11 and 6
+night calibration matches, under either floor → pooled fallback). Paired night deltas
+exactly 0.0000.
+
+Fold 2026-03 is skipped: 24 complete first innings in the calibration fold against the 30
+the deconvolution needs, so `fit_performance` ships it with **no shared factor**. Scored the
+way X-2 scored it (verified by re-running that one fold): coverage **0.500**, width 105.2,
+dispersion **1.48**. Putting it back into the 9-fold day means reproduces X-2's ODI day
+column exactly — 0.715 / 146.3 / 1.091. That is B-12.
+
+## Outcome
+
+Both candidates are **recorded nulls**. Nothing ships. Written up in plan §8.13, with B-11
+(the calibration gap) and B-12 (factorless folds pooled unflagged) in `docs/BUG_BACKLOG.md`
+and a forward pointer added to X-2's record in `docs/EXTERNAL_DATA_PLAN.md`.

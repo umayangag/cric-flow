@@ -25,6 +25,12 @@ calibration fold and the draws the factor is fitted from, the simulator's draw c
 seeds (common random numbers), the labels. A population under an arm's floor falls back to
 the pooled factor and the fold records it.
 
+A fold whose calibration window is too thin to fit a shared factor at all is **skipped**, not
+scored: with no factor there is no pool to condition and the three arms would be the same run.
+That matters for reading X-2's ODI figures, which include one such fold (2026-03, 24 complete
+first innings against the 30 the deconvolution needs, first-innings coverage 0.500 and
+dispersion 1.48 -- the un-widened simulator, not a day/night effect).
+
 The day/night label is ``ml.weather.sessions``' inference from the documented session rules
 -- competition and format norms, which are pre-match knowledge (H-21) -- **not** an observed
 start time. A match whose actual start differed is mislabelled; the rule that placed each
@@ -501,6 +507,7 @@ def decide(paths: Sequence[str]) -> None:
         print(gates.describe(GATE_IDS[arm]))
         print()
     ships = {arm: True for arm in (SPLIT, SCALE)}
+    decided_any = False
     for path in paths:
         with open(path) as fh:
             payload = json.load(fh)
@@ -542,6 +549,7 @@ def decide(paths: Sequence[str]) -> None:
                 f"folds; pooled width {_f(v['pooled_width']['control'], '%.1f')} → {_f(v['pooled_width']['arm'], '%.1f')}"
             )
             if payload["decided_format"]:
+                decided_any = True
                 ships[arm] = ships[arm] and v["passes"]
         print()
     print(
@@ -549,6 +557,9 @@ def decide(paths: Sequence[str]) -> None:
         "the display AUC and every headline pinball are identical by construction, not measured."
     )
     print()
+    if not decided_any:
+        print(f"no verdict: none of these files is a deciding format ({', '.join(DECIDED_FORMATS)})")
+        return
     for arm in (SPLIT, SCALE):
         print(f"{arm}: {'SHIPS' if ships[arm] else 'not shipped (a recorded null)'}")
 

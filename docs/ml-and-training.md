@@ -556,6 +556,14 @@ both innings, is sampled from the **as-of residual distribution** — actual / s
 first-innings totals on the last 92 days before the cutoff, the temporal calibration fold the
 members do not train on (H-21), deconvolved of the simulator's own dispersion — never a
 hand-set CV. `simulator.SHARED_FACTOR` records the decision; §8.3 of the plan the before/after.
+The pool is **one per format**, and that is a known limitation, not an assumption: the same
+interval is too narrow for a day game and too wide for a night one (T20 first-innings
+coverage 0.734 / 0.841 at nominal 0.80, dispersion 1.099 / 0.865 — `docs/BUG_BACKLOG.md`
+B-11), and conditioning the pool on the pre-match day/night label was gated and **is a
+recorded null** in both of its arms, because one factor serves both innings and at night
+they want opposite corrections (plan §8.13). A fold whose calibration window holds fewer
+than 30 complete first innings fits no factor at all and its (much narrower) intervals are
+pooled into the walk-forward totals with nothing saying so — B-12.
 
 **Chase response (A-2, plan §8.10).** The chase is drawn as a first innings is and truncated
 at the target, so the untruncated draw does not know the target — and the data's chases do:

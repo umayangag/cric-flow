@@ -2419,6 +2419,198 @@ X-1b-cold-start in the embedded registry) and glossary pass on both.
 
 ---
 
+### 8.13 The simulator's day/night calibration gap — one dispersion, two populations (2026-09-06)
+
+Not a plan item: X-2 recorded this finding "for whichever plan next takes up the simulator"
+(`docs/EXTERNAL_DATA_PLAN.md` § X-2, last paragraph of *What the split says*), and it is
+taken up here beside the L2-C and H-22 material it belongs to. An **experiment**: the folds
+decide, a null is a complete result, and nothing ships that has not cleared its gate. As in
+§8.9–§8.12 the evidence, the design, the leakage surface and the gates' H-23 triples come
+first — both triples were registered in `ml/xi/gates.py` and printed by the script before
+anything ran — and nothing above *Results* was edited once a number existed.
+
+**The evidence it chases.** X-2 split the H-22 interval check by the inferred day/night
+label and found the *control* simulator miscalibrated in **opposite directions** on the two
+populations: T20 first-innings 10–90 coverage 0.734 by day against 0.841 at night (nominal
+0.80), width 78.4 against 96.3, dispersion ratio 1.099 against 0.865. The pooled 0.771 the
+harness reports is the average of an under- and an over-dispersed half, so the aggregate
+hides the defect. No weather family touched it, and X-2 named the cause: **the simulator
+fits one dispersion to two populations.** The shared match factor (§8.3, P-4) is one
+residual pool per format — `actual / simulated-mean` first-innings totals over the
+calibration fold, deconvolved of the simulator's own dispersion — sampled for every
+fixture, day or night alike. This is also A-1's "population mix, not venue" null and A-2's
+"the miss is chase dispersion" null with a name on the two populations.
+
+**The leakage surface (H-21).** The label is `ml.weather.sessions`' inference: the hour a
+competition or a country usually starts a match of that format, 164 documented rules, the
+rule that placed each match recorded beside it. Competition and format norms are known
+before the toss, so the label is pre-match knowledge and nothing here reads a ball of the
+match. **The limitation stated plainly: it is an inference, not a record.** Cricsheet
+carries no start times; a match whose actual start differed from its competition's norm —
+a league's one-off day game, a day/night Test — is mislabelled, and the rules know nothing
+of the actual hour of anything. That error is inspectable per match through the recorded
+rule, and a null here is a null for *this* inference, not for the day/night distinction as
+such. Over the 22,818 archive matches the labels reproduce X-2's census exactly: 35.2 % at
+night, T20 43.4 %, ODI 30.0 %, T20I 51.2 %, no first-class or domestic one-day match.
+
+**The candidates, and why only these two.** Both change the shared factor's pool and
+nothing else; neither is stacked on the other, and each has its own registered gate and its
+own fold table.
+
+* **`split` (SIM-DN-split)** — one residual pool per population, each fitted and
+  deconvolved from its own calibration matches under the same rule and the same 30-match
+  guard, the fixture drawing from the pool of the population it belongs to. Varies both the
+  location and the spread of the factor.
+* **`scale` (SIM-DN-scale)** — the pooled pool rescaled per population, each population's
+  deviations from one multiplied by `sqrt(that population's excess variance / the pooled
+  excess variance)`: one shape borrowed across both, spread varied and location left pooled.
+  A scale mixture — A-2's record named a mixture as the next candidate — and the
+  sample-efficient half of the pair, so its floor is 15 matches rather than 30, because a
+  scale is one moment rather than a distribution (at 15 a variance's own relative standard
+  error, `sqrt(2/(n-1))` = 38 %, is under half the ~60 % variance gap X-2's dispersion
+  ratios imply). A population under its arm's floor falls back to the pooled factor and the
+  fold records it.
+
+**The gate cannot be satisfied by widening everything.** Coverage must move toward nominal
+in **both** populations separately, paired per fold with one fold-level standard error as
+the floor (§8.9's lesson); the dispersion ratio must move toward 1.0 in both; the
+match-count-pooled first-innings width may not grow by more than 1 % (H-22 — coverage
+bought by inflating the interval fails); the chase coverage may not worsen by more than one
+standard error in either population; and E2 must move by no more than one standard error
+and stay inside its 0.01 tolerance. Display AUC and every headline pinball are **identical
+by construction**, not measured: one L2-B fit per fold and the control's display models are
+shared by the three arms, which is also what makes the arms' draws common random numbers.
+
+**What can decide it, settled before the run.** A feasibility probe counted both
+populations in every fold's calibration fold and evaluation window. **T20** holds 43–179
+night calibration matches and 74–200 night evaluation matches in every fold: both
+populations are always measurable. **ODI does not.** Its night side clears the harness's
+20-match floor in **2 of 11** folds and its night calibration fold clears the 30-match
+deconvolution guard in **1**, never in the same fold — so in ODI both arms fall back to the
+pooled factor at night and are the control by construction. T20 decides; ODI is reported.
+That is stated in both gates' *decides* clause, before any number existed.
+
+#### Results
+
+*T20, eleven folds, 1,000 draws per fixture, arms sharing one fit and one seed stream.*
+
+**The gap reproduces on current main to three decimals** — every control figure equal to
+X-2's, so #267 dropping `t1_pelo_std` from the display model changed nothing here.
+
+| arm | population | matches/fold | first coverage | first width | dispersion | first bias | below q10 | above q90 | chase coverage | chase width | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 399 | 0.771 | 84.7 | — | +0.5 | 0.115 | 0.114 | 0.712 | 69.9 | +0.0019 |
+| control | day | 259 | **0.734** | 78.4 | **1.099** | +1.8 | 0.126 | 0.140 | 0.689 | 64.6 | +0.0024 |
+| control | night | 139 | **0.841** | 96.3 | **0.865** | −2.1 | 0.095 | 0.064 | 0.759 | 79.8 | +0.0002 |
+| split | all | 399 | 0.756 | 82.0 | — | +0.4 | 0.125 | 0.120 | 0.692 | 67.2 | +0.0017 |
+| split | day | 259 | 0.756 | 83.9 | 1.026 | +1.0 | 0.123 | 0.121 | 0.713 | 69.2 | +0.0023 |
+| split | night | 139 | 0.759 | 78.7 | 1.082 | −0.8 | 0.126 | 0.115 | **0.659** | 63.6 | −0.0004 |
+| scale | all | 399 | 0.754 | 81.6 | — | +0.6 | 0.123 | 0.122 | 0.698 | 66.8 | +0.0015 |
+| scale | day | 259 | 0.760 | 83.6 | 1.027 | +1.7 | 0.114 | 0.125 | 0.726 | 69.2 | +0.0022 |
+| scale | night | 139 | 0.748 | 78.2 | 1.076 | −1.6 | 0.136 | 0.116 | **0.655** | 62.8 | −0.0003 |
+
+Paired per fold against the control, one fold-level standard error as the floor:
+
+| arm | first coverage \|Δ→0.80\|, day | night | dispersion \|Δ→1.0\|, day | night | chase coverage \|Δ→0.80\|, day | night | Δ E2 | pooled width |
+|---|---|---|---|---|---|---|---|---|
+| split | −0.0113 ± 0.0072 | −0.0130 ± 0.0162 | −0.021 ± 0.020 | −0.069 ± 0.044 | −0.0240 ± 0.0057 | **+0.0829 ± 0.0156** | −0.00023 ± 0.00018 | 84.7 → 82.0 |
+| scale | −0.0160 ± 0.0075 | −0.0118 ± 0.0189 | −0.020 ± 0.019 | −0.072 ± 0.043 | −0.0352 ± 0.0049 | **+0.0873 ± 0.0150** | −0.00042 ± 0.00024 | 84.7 → 81.6 |
+
+Both arms fail, on the same three clauses:
+`night_first_coverage_moves_to_nominal`, `night_chase_coverage_no_worse`, `e2_unchanged`.
+Both pass both day clauses, both dispersion clauses and — decisively for the "not bought by
+width" question — `pooled_width_not_inflated`: the pooled width **falls**, 84.7 → 82.0 and
+81.6, because day widens (78.4 → 83.9) exactly as night narrows (96.3 → 78.7). The
+correction is a reallocation, not an inflation.
+
+**Reading it. The label finds a real difference and the lever over-applies it.** The
+per-fold factor spreads say so directly: pooled 0.103–0.224, day 0.124–0.257, night
+0.000–0.172. Night's residual pool is genuinely tighter than day's in all eleven folds — the
+premise holds — but conditioning takes the night dispersion ratio from 0.865 (draws 14 %
+too wide) to 1.082 (draws 8 % too narrow) and the night coverage from 0.841 to 0.759,
+straight past nominal. In the 2025-01 fold the night group deconvolves to **exactly zero
+excess variance**: its 81 night calibration matches leave nothing after the simulator's own
+dispersion is subtracted, so those matches are simulated with no shared factor at all. The
+pooled estimate's stability is part of what it was buying, and a difference of two variance
+estimates on the smaller, tighter population is not stable.
+
+**And the shared factor is the wrong lever, which no amount of tuning fixes.** At night the
+first innings is over-covered (0.841, interval too wide) while the chase is *under*-covered
+(0.759, interval too narrow) — under one and the same factor. Narrowing it moves both down:
+the first innings toward nominal and the chase away from it, monotonically. The chase clause
+fails at five standard errors (+0.083 ± 0.016), and any partial correction that helps the
+first innings hurts the chase in proportion, so no setting of this dial passes the gate.
+That is why no third arm on this lever was run and why the next candidate is not one:
+**what the night population needs is a dispersion term the two innings do not share** —
+which is A-2's chase-dispersion finding (the fitted residual scale 0.38–0.46 against the
+simulated chase's own 0.23–0.25) arriving from the other side.
+
+*ODI, ten folds run (one skipped), reported and not decided.*
+
+| arm | population | folds scored | matches/fold | first coverage | first width | dispersion | chase coverage | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 9 | 107 | 0.748 | 152.2 | — | 0.690 | +0.0067 |
+| control | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.689 | +0.0052 |
+| control | night | **2** | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+| split | day | 9 | 102 | 0.738 | 152.0 | 1.041 | 0.694 | +0.0055 |
+| split | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+| scale | day | 9 | 102 | 0.747 | 154.8 | 1.028 | 0.714 | +0.0053 |
+| scale | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.726 | +0.0274 |
+
+The night rows are the control's **to every printed decimal in both arms**, and the paired
+night deltas are exactly 0.0000 over 2 folds: in both scored night folds the night
+calibration group holds 11 and 6 matches, under either arm's floor, so both arms fall back
+to the pooled factor and the arm *is* the control. The probe said this would happen and it
+did. The day side moves by +0.004 ± 0.003 (split, the wrong way) and −0.009 ± 0.005 (scale),
+and `scale` also inflates the pooled width by 2.4 % — ODI decides nothing either way.
+
+**Two corrections to X-2's ODI figures, measured here.** (1) X-2's ODI **night** column —
+0.932 coverage, 0.749 dispersion, 179.5 width — is the mean of **two folds**, 23 and 24
+matches, one of which reads a perfect 23 of 23. It is not eleven folds of evidence and
+should not be read as a stable −0.05 dispersion defect. (2) X-2's ODI **day** column (0.715
+coverage, 146.4 width, 1.092 dispersion) includes the 2026-03 fold, whose calibration window
+holds **24 complete first innings against the 30 the deconvolution needs**, so
+`fit_performance` logs its warning and ships that fold's simulator **with no shared factor
+at all**. Scored the way X-2 scored it, that fold reads coverage **0.500**, width 105.2,
+dispersion **1.48** — the un-widened simulator of §8.3, not a day/night effect. This run
+skips it (with no factor there is no pool to condition and the three arms would be one run),
+and the nine folds that do have a factor read **0.739 / 150.9 / 1.048**. Putting the thin
+fold back reproduces X-2's numbers exactly — (0.739·9 + 0.500)/10 = 0.715, (150.9·9 +
+105.2)/10 = 146.3, (1.048·9 + 1.482)/10 = 1.091 — which is how the cause was confirmed
+rather than argued. **So the ODI day side is much closer to nominal than X-2 reported, and
+the ODI day/night gap is 0.739 against 0.932 on two night folds, not 0.715 against 0.932.**
+That the L4 report pools a factorless fold into its walk-forward totals with nothing saying
+so is B-12 in `docs/BUG_BACKLOG.md`; the calibration gap itself is B-11.
+
+**Verdict.** Two candidates, one gate each: **both recorded nulls.** Nothing ships —
+`simulator.SHARED_FACTOR` and its fitting rule are untouched, `ml/xi/` still reads no
+weather column and no session label, no glossary entry is added, no wire literal changes
+(H-24 has nothing to record), H-8 parity is untouched because neither the rating pass nor
+the serving path is changed, and `make evaluate` is not re-run because no choice was made
+that would change one of its rows. What stays is the measurement and one small piece of
+code: `SharedFactorCalibrationSample`, the evidence the shared factor was fitted from, kept
+on the fitted factor exactly as `ChaseResponse` already keeps its own sample, so the next
+candidate can refit the factor from the same calibration draws without simulating the
+calibration fold again.
+
+**Judgment calls, recorded.** (1) The two candidates were run as **arms of one pass** rather
+than one after the other. Neither is built on the other — they are two estimators of the
+same quantity — and one pass gives them common random numbers against the same control and
+one L2-B fit per fold, which is strictly better evidence than two sequential passes for
+strictly less compute. They keep separate gates and separate fold tables. (2) The
+`e2_unchanged` clause fails on an **improvement**: −0.00023 ± 0.00018 (split) and −0.00042 ±
+0.00024 (scale) are the simulated Brier moving *toward* the display model's by a shade more
+than one standard error, and a symmetric "unchanged" clause has no way to say so. As
+registered, it fails; the null does not rest on it, and rests on the night chase clause at
+five standard errors. This is the third gate of this family to trip on a symmetric clause
+(§8.9, §8.10, § X-2) and the next one should state the sign it cares about. (3) The
+day-population dispersion clause passes at 1.1 standard errors (−0.021 ± 0.020) — inside the
+floor but not far inside; it is not what decides either arm. (4) T20I was not run: X-2 had
+already recorded that its quarterly windows hold 20–40 matches, so neither side of the split
+reaches the harness's 20-match floor per fold, and the probe here agrees.
+
+---
+
 ## 9. Database schema and pipeline steps: what changes, what does not
 
 The short answer is that the schema is not torn apart; it is *pruned by consequence*. The
