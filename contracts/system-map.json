@@ -847,7 +847,9 @@
           "X-2-daynight",
           "X-2-humidity-temperature",
           "X-2-dew",
-          "X-2-rain"
+          "X-2-rain",
+          "SIM-DN-split",
+          "SIM-DN-scale"
         ]
       },
       "documented_in": [
