@@ -80,6 +80,12 @@ type contractDoc struct {
 	// vocabulary, which is the D-9 shape unless it is declared once and checked from
 	// every side.
 	SelectionRoles []string `json:"selection_roles"`
+	// WinProbabilitySources and ForecastSources name the model behind the headline
+	// probability and behind the per-player numbers (P1-4). The Lab shows each by name
+	// and opens its explainer from the name, so a source the UI cannot spell would be a
+	// number shown with no model behind it. Two sides, not three: go-app decides both.
+	WinProbabilitySources []string `json:"win_probability_sources"`
+	ForecastSources       []string `json:"forecast_sources"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -154,13 +160,15 @@ func buildContract() contractDoc {
 			Hint:    CutoffHint,
 			Example: CutoffExample,
 		},
-		MLCalls:              contractMLCalls(),
-		FormatCodes:          formats.CanonicalCodes(),
-		TeamGenders:          TeamGenders(),
-		StopResponseField:    StopResponseField,
-		PoolSources:          availability.PoolSources(),
-		PoolExclusionReasons: availability.ExclusionReasons(),
-		SelectionRoles:       predictteam.SelectionRoles(),
+		MLCalls:               contractMLCalls(),
+		FormatCodes:           formats.CanonicalCodes(),
+		TeamGenders:           TeamGenders(),
+		StopResponseField:     StopResponseField,
+		PoolSources:           availability.PoolSources(),
+		PoolExclusionReasons:  availability.ExclusionReasons(),
+		SelectionRoles:        predictteam.SelectionRoles(),
+		WinProbabilitySources: predictteam.WinProbabilitySources(),
+		ForecastSources:       predictteam.ForecastSources(),
 	}
 }
 

@@ -87,6 +87,17 @@ const (
 	winProbabilitySourceSimulator = "simulator"
 )
 
+// WinProbabilitySources returns every value `win_probability.source` may carry (H-24).
+//
+// The Lab names the source beside the headline and opens its explainer from the name, so a
+// value the UI cannot name would be a probability shown with no model behind it. Declared
+// here, published in contracts/ops-console.contract.json, and asserted from the frontend
+// (P1-4). ml-service is not a side of this vocabulary: it answers both models and go-app
+// decides which is the headline.
+func WinProbabilitySources() []string {
+	return []string{winProbabilitySourceDisplay, winProbabilitySourceSimulator}
+}
+
 // simulatedFormats are the formats with an innings length; the simulator runs for these
 // only (TEST has no innings to draw, plan H-17). Mirrors ml.xi.simulator.SIMULATED_FORMATS.
 var simulatedFormats = map[string]bool{"T20": true, "T20I": true, "ODI": true}
@@ -96,6 +107,12 @@ const (
 	forecastSourceSimulator = "simulator"
 	forecastSourceQuantiles = "performance_quantiles"
 )
+
+// ForecastSources returns every value `forecast.source` may carry (H-24): the same
+// contract as WinProbabilitySources, for the model behind the per-player numbers.
+func ForecastSources() []string {
+	return []string{forecastSourceSimulator, forecastSourceQuantiles}
+}
 
 // formatHasInningsLength reports whether the simulator runs for the format.
 func formatHasInningsLength(format string) bool {

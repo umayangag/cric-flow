@@ -30,6 +30,15 @@ func TestSelectionRoles_AreTheVocabularyTheCardCanRender(t *testing.T) {
 	assert.Equal(t, []string{RoleKeeper, RoleBowlingOption}, SelectionRoles())
 }
 
+// The two source vocabularies the Lab names beside its numbers are the constants the
+// prediction path writes, in the order a surface should offer them (H-24, P1-4).
+func TestSourceVocabularies_AreTheValuesThePredictionWrites(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{winProbabilitySourceDisplay, winProbabilitySourceSimulator}, WinProbabilitySources())
+	assert.Equal(t, []string{forecastSourceSimulator, forecastSourceQuantiles}, ForecastSources())
+}
+
 func TestNewSelectionReason_ResolvesTheAlternativeToAPlayerTheClientCanName(t *testing.T) {
 	t.Parallel()
 	rows := namedPool(map[int64]string{1: "Player A", 2: "Player B", 3: "Player C"})

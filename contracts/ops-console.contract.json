@@ -135,5 +135,13 @@
   "selection_roles": [
     "keeper",
     "bowling_option"
+  ],
+  "win_probability_sources": [
+    "display",
+    "simulator"
+  ],
+  "forecast_sources": [
+    "simulator",
+    "performance_quantiles"
   ]
 }
