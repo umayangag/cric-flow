@@ -1,10 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import MatchScorecard from './MatchScorecard';
-import type { PredictScorecard, PredictTossSummary, PredictWinProbability } from '../types';
+import type {
+  PredictScorecard,
+  PredictServedRatings,
+  PredictTossSummary,
+  PredictWinProbability,
+} from '../types';
 
 /** The default toss: unknown, which is the simulator drawing both batting orders. */
 const unknownToss: PredictTossSummary = { team1_bats_first: null, honoured: true };
+
+/** The rating state the answer names: the run and the date its ratings run through (P1-5). */
+const served: PredictServedRatings = {
+  ratings_through: '2026-09-02',
+  run_id: '20260906T083819Z-36689f80',
+};
 
 const scorecard: PredictScorecard = {
   samples: 2000,
@@ -27,6 +38,7 @@ describe('MatchScorecard', () => {
         scorecard={scorecard}
         winProbability={display}
         toss={unknownToss}
+        served={served}
         team1="IND"
         team2="AUS"
       />,
@@ -43,6 +55,7 @@ describe('MatchScorecard', () => {
         scorecard={scorecard}
         winProbability={display}
         toss={unknownToss}
+        served={served}
         team1="IND"
         team2="AUS"
       />,
@@ -58,11 +71,31 @@ describe('MatchScorecard', () => {
     expect(screen.getByText('toss unknown: both batting orders averaged')).toBeInTheDocument();
   });
 
+  // Every served prediction carries its date beside the headline, off its own payload
+  // (P1-5): a number copied out of the Lab has the date it describes next to it.
+  it('shows the date and run the numbers were served from beside the headline', () => {
+    render(
+      <MatchScorecard
+        scorecard={scorecard}
+        winProbability={display}
+        toss={unknownToss}
+        served={served}
+        team1="IND"
+        team2="AUS"
+      />,
+    );
+
+    const asOf = screen.getByTestId('ratings-as-of');
+    expect(asOf).toHaveTextContent('ratings as of 2026-09-02 · run 20260906T083819Z-36689f80');
+    expect(asOf).toHaveAttribute('title', expect.stringMatching(/refused, never served stale/));
+  });
+
   it('says there is no total rather than inventing one', () => {
     render(
       <MatchScorecard
         winProbability={{ team1: 0.44, source: 'display', predicted_winner: 'ENG' }}
         toss={unknownToss}
+        served={served}
         team1="AUS"
         team2="ENG"
       />,
@@ -79,6 +112,7 @@ describe('MatchScorecard', () => {
         scorecard={scorecard}
         winProbability={{ ...display, source: 'simulator' }}
         toss={unknownToss}
+        served={served}
         team1="IND"
         team2="AUS"
       />,
@@ -95,6 +129,7 @@ describe('MatchScorecard', () => {
         scorecard={{ ...scorecard, toss_marginalised: false }}
         winProbability={display}
         toss={{ team1_bats_first: false, honoured: true }}
+        served={served}
         team1="IND"
         team2="AUS"
       />,
@@ -119,6 +154,7 @@ describe('MatchScorecard', () => {
           honoured: false,
           note: 'This format has no innings length, so the toss you named was not used.',
         }}
+        served={served}
         team1="IND"
         team2="AUS"
       />,

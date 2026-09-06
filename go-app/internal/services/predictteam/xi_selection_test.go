@@ -105,7 +105,12 @@ func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing
 	assert.Equal(t, []string{"k4", "k5"}, selection.Team2Keys)
 	assert.Equal(t, SelectionObjectiveRatings, selection.Summary.Objective)
 	assert.False(t, selection.Summary.Optimised)
-	assert.Equal(t, notOptimisedReasons["TEST"], selection.Summary.Note, "a rating-ordered XI carries its format's reason")
+	assert.Equal(
+		t,
+		notOptimisedReasons["TEST"],
+		selection.Summary.Note,
+		"a rating-ordered XI carries its format's reason",
+	)
 	assert.Contains(t, selection.Summary.Note, "H-17")
 	assert.Nil(t, selection.Marginals, "nothing was maximised, so no player has a margin")
 	assert.Equal(t, servedFromRunA, selection.Served, "the rating-ordered pick names the state it was read from")

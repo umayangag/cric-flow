@@ -65,7 +65,12 @@ func seedPredictFixture(t *testing.T) predictFixture {
 			   (match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id)
 			 VALUES ($1, $2, $3, $4)`, matchID, inning+1, side.bats, side.bowls))
 		for i := 0; i < 11; i++ {
-			playerID := insertPlayerRow(ctx, t, fmt.Sprintf("%d%02x", inning+1, i), fmt.Sprintf("Player %d-%d", inning+1, i))
+			playerID := insertPlayerRow(
+				ctx,
+				t,
+				fmt.Sprintf("%d%02x", inning+1, i),
+				fmt.Sprintf("Player %d-%d", inning+1, i),
+			)
 			require.NoError(t, db.Exec(ctx,
 				`INSERT INTO batting_data (match_id, inning_number, player_id) VALUES ($1, $2, $3)`,
 				matchID, inning+1, playerID))

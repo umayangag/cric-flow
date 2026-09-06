@@ -210,7 +210,18 @@ export type PoolRequest = {
   players?: number[];
 };
 
-export type PredictTeamSelectionResponse = {
+/**
+ * Which rating state a prediction was served from (P1-5): the run its models and ratings
+ * were loaded from, and the last match date those ratings include. Both are always
+ * present — a prediction without its date is refused by go-app, never served blank.
+ */
+export type PredictServedRatings = {
+  /** YYYY-MM-DD: the served ratings include every match through this date and none after. */
+  ratings_through: string;
+  run_id: string;
+};
+
+export type PredictTeamSelectionResponse = PredictServedRatings & {
   /** The sides that were actually scored, echoed back whether or not the request was clear. */
   team1_side: TeamSideOption;
   team2_side: TeamSideOption;
