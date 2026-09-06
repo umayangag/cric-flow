@@ -43,6 +43,8 @@ type XIPerformancePlayer struct {
 type XIPerformanceResult struct {
 	InningsMarginalised bool
 	Players             []XIPerformancePlayer
+	// Served is the rating state the forecasts were made from.
+	Served ServedRatings
 }
 
 // applyPerformanceForecast writes each selected player's median and 10-90 range straight
@@ -65,6 +67,9 @@ func applyPerformanceForecast(
 		AsOf:            fix.asOf,
 	})
 	if err != nil {
+		return fmt.Errorf("performance forecast: %w", err)
+	}
+	if err := result.adopt(forecast.Served); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
 	byKey := make(map[string]XIPerformancePlayer, len(forecast.Players))

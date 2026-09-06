@@ -58,9 +58,10 @@ func TestPredictMatchWinXI_SendsAsOfOnlyWhenSet(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			client, captured := xiCaptureServer(t, `{"team1_win_probability":0.6,"objective_probability":0.55}`)
+			client, captured := xiCaptureServer(t, `{"team1_win_probability":0.6,"objective_probability":0.55,`+
+				`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`)
 
-			p, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+			win, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
 				Format:          "T20",
 				Team1PlayerKeys: []string{"a1"},
 				Team2PlayerKeys: []string{"b1"},
@@ -68,7 +69,8 @@ func TestPredictMatchWinXI_SendsAsOfOnlyWhenSet(t *testing.T) {
 			})
 
 			require.NoError(t, err)
-			assert.InDelta(t, 0.6, p, 1e-9)
+			assert.InDelta(t, 0.6, win.Team1WinProbability, 1e-9)
+			assert.Equal(t, servedFromTheDevRun, win.Served, "the answer names the state it was read from")
 			value, present := (*captured)["as_of"]
 			assert.Equal(t, tc.wantField, present)
 			if tc.wantField {
@@ -82,10 +84,11 @@ func TestOptimizeXI_SendsAsOf(t *testing.T) {
 	t.Parallel()
 
 	client, captured := xiCaptureServer(
-		t, `{"selected_player_ids":["a1"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0}`,
+		t, `{"selected_player_ids":["a1"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0,`+
+			`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
 	)
 
-	_, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
+	result, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
 		Format:             "T20",
 		PoolPlayerKeys:     []string{"a1", "a2"},
 		OpponentPlayerKeys: []string{"b1"},
@@ -94,6 +97,14 @@ func TestOptimizeXI_SendsAsOf(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "2025-03-01", (*captured)["as_of"])
+	assert.Equal(t, servedFromTheDevRun, result.Served)
+}
+
+// servedFromTheDevRun is the stamp the wire fixtures in this file carry: the run the dev
+// stack was serving when P1-5 shipped, with its ratings through the date they ran through.
+var servedFromTheDevRun = predictteam.ServedRatings{
+	RunID:          "20260906T083819Z-36689f80",
+	RatingsThrough: "2026-09-02",
 }
 
 func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
@@ -112,7 +123,8 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	            "extras_scorecard": 7.1, "extras_spread_share": 0.02, "wickets_lost": {"q10": 3, "median": 6, "q90": 9}, "players": []},
 	  "win_probability": {"simulated": 0.57, "p_tie": 0.01, "display": 0.6, "headline": 0.6, "headline_source": "display"},
 	  "margin": {"p_bat_first_wins": 0.5, "p_chaser_wins": 0.49, "p_tie": 0.01},
-	  "unknown_player_ids": []
+	  "unknown_player_ids": [],
+	  "served_ratings": {"run_id": "20260906T083819Z-36689f80", "ratings_through": "2026-09-02"}
 	}`
 	client, captured := xiCaptureServer(t, response)
 	batsFirst := true
@@ -147,4 +159,5 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	assert.InDelta(t, 0.57, result.SimulatedTeam1WinProbability, 1e-9)
 	assert.InDelta(t, 0.6, result.HeadlineTeam1WinProbability, 1e-9)
 	assert.Equal(t, "display", result.HeadlineSource)
+	assert.Equal(t, servedFromTheDevRun, result.Served)
 }

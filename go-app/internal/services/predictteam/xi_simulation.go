@@ -76,6 +76,8 @@ type XISimulationResult struct {
 	// which model it came from ("display" or "simulator").
 	HeadlineTeam1WinProbability float64
 	HeadlineSource              string
+	// Served is the rating state the draws were made from.
+	Served ServedRatings
 }
 
 // Where a displayed win probability can come from. E2 chose per format on the folds; the
@@ -140,6 +142,11 @@ func applyXISimulation(
 	// unrecognised source would put a number on screen with no honest label for it.
 	if sim.HeadlineSource != winProbabilitySourceDisplay && sim.HeadlineSource != winProbabilitySourceSimulator {
 		return fmt.Errorf("simulate match: unknown win-probability source %q", sim.HeadlineSource)
+	}
+	// The draws have to come from the rating state the XIs were chosen from, or the
+	// scorecard describes a different run than the selection beside it (P1-5).
+	if err := result.adopt(sim.Served); err != nil {
+		return fmt.Errorf("simulate match: %w", err)
 	}
 
 	if err := applySimulatedSide(result.Team1, sim.Team1); err != nil {

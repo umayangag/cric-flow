@@ -73,6 +73,7 @@ func simulationResult(headlineSource string) *XISimulationResult {
 		DisplayTeam1WinProbability:   0.61,
 		HeadlineTeam1WinProbability:  0.61,
 		HeadlineSource:               headlineSource,
+		Served:                       servedFromRunA,
 	}
 }
 
@@ -102,6 +103,7 @@ func TestApplyXISimulation_WritesRangesTotalsAndSpreadFromOneSetOfDraws(t *testi
 	assert.InDelta(t, 0.12, *player.SpreadShare, 1e-9)
 
 	require.NotNil(t, result.Scorecard)
+	assert.Equal(t, servedFromRunA, result.ServedRatings, "the draws stamp the prediction they fill")
 	assert.Equal(t, 2000, result.Scorecard.Samples)
 	assert.Equal(t, InningsTotal{Total: 171, Extras: 9, P10: 130, Median: 170, P90: 210}, result.Scorecard.Team1Innings)
 	assert.Equal(t, 0.61, result.WinProbability.Team1)
@@ -157,6 +159,7 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
 		InningsMarginalised: true,
+		Served:              servedFromRunA,
 		Players: []XIPerformancePlayer{
 			{
 				PlayerKey:    "a1",
@@ -183,6 +186,55 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 	// §8.7: the substitution is on the wire, not only in a log line.
 	assert.Equal(t, "performance_quantiles", result.Forecast.Source)
 	assert.Contains(t, result.Forecast.Note, "no innings length")
+	assert.Equal(t, servedFromRunA, result.ServedRatings, "the forecast stamps the prediction it fills")
+}
+
+// The forecast has to come from the rating state the XIs were chosen from: a result already
+// stamped by the selection refuses draws or quantiles from another run (P1-5).
+func TestApplyMatchForecast_RefusesAForecastFromAnotherRunThanTheSelection(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name  string
+		apply func(result *Result) error
+	}{
+		{
+			name: "the simulator answered from a new run",
+			apply: func(result *Result) error {
+				sim := simulationResult(winProbabilitySourceDisplay)
+				sim.Served = servedFromRunB
+				return applyXISimulation(context.Background(), &fakeSimulator{result: sim},
+					twoSidedFixture("T20"), []string{"a1"}, []string{"b1"}, result)
+			},
+		},
+		{
+			name: "the performance model answered from a new run",
+			apply: func(result *Result) error {
+				forecast := &XIPerformanceResult{
+					Served:  servedFromRunB,
+					Players: []XIPerformancePlayer{{PlayerKey: "a1"}, {PlayerKey: "b1"}},
+				}
+				return applyPerformanceForecast(context.Background(), &fakePerformance{result: forecast},
+					twoSidedFixture("TEST"), []string{"a1"}, []string{"b1"}, result)
+			},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := resultWithOnePlayerEachSide()
+			result.ServedRatings = servedFromRunA
+
+			err := tc.apply(result)
+
+			var changed *ServedRunChangedError
+			require.ErrorAs(t, err, &changed)
+			assert.Equal(t, servedFromRunA, changed.Was)
+			assert.Equal(t, servedFromRunB, changed.Now)
+			assert.Equal(t, servedFromRunA, result.ServedRatings, "the stamp is not overwritten by the refused answer")
+		})
+	}
 }
 
 // TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor: a row left at zeros reads
@@ -190,6 +242,7 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T) {
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
+		Served:  servedFromRunA,
 		Players: []XIPerformancePlayer{{PlayerKey: "a1", Runs: XISimulatedRange{Median: 26}}},
 	}}
 
