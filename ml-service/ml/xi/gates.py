@@ -389,6 +389,61 @@ GATES: Tuple[Gate, ...] = (
         "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
         report_path=None,
     ),
+    Gate(
+        id="SIM-DN-split",
+        name="Day/night-conditional shared factor: one residual pool per population",
+        varies="which residual pool the simulator's shared match factor is sampled from -- one pool fitted from "
+        "every calibration match (the control, today's simulator) or one pool per pre-match day/night population, "
+        "each fitted and deconvolved from its own calibration matches under the same rule and the same 30-match "
+        "guard, the fixture drawing from the pool of the population it belongs to; a population under the guard "
+        "falls back to the pooled factor and the fold records it",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws the factor is fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels",
+        decides="in T20, paired per fold against the control with one fold-level standard error as the floor: the "
+        "first-innings 10-90 coverage's distance from 0.80 shrinks on the day matches and on the night matches "
+        "separately, the first-innings dispersion ratio's distance from 1.0 shrinks in both populations, the "
+        "match-count-pooled first-innings width does not grow by more than 1 % (H-22: coverage bought by inflating "
+        "the interval fails), the chase coverage's distance from 0.80 is no worse by more than one standard error "
+        "in either population, and E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level "
+        "standard error and stays within its 0.01 tolerance. ODI cannot decide it (its night side clears the "
+        "simulator's 20-match floor in 2 of 11 folds and its night calibration fold clears the 30-match guard in "
+        "1) and is reported. A recorded null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="SIM-DN-scale",
+        name="Day/night-scaled shared factor: a scale mixture of one pooled shape",
+        varies="which residual pool the simulator's shared match factor is sampled from -- one pool fitted from "
+        "every calibration match (the control, today's simulator) or that same pool rescaled per pre-match "
+        "day/night population, each population's deviations from one multiplied by sqrt(that population's excess "
+        "variance / the pooled excess variance): the same shape and the same matches, spread varied and location "
+        "left pooled, under a 15-match floor per population because a scale is one moment rather than a "
+        "distribution (at 15 matches a variance's own relative standard error, sqrt(2/(n-1)) = 38 %, is under half "
+        "the ~60 % variance gap between the two populations that X-2's dispersion ratios imply); a population "
+        "under the floor falls back to the pooled factor and the fold records it",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws the factor is fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels",
+        decides="in T20, paired per fold against the control with one fold-level standard error as the floor: the "
+        "first-innings 10-90 coverage's distance from 0.80 shrinks on the day matches and on the night matches "
+        "separately, the first-innings dispersion ratio's distance from 1.0 shrinks in both populations, the "
+        "match-count-pooled first-innings width does not grow by more than 1 % (H-22: coverage bought by inflating "
+        "the interval fails), the chase coverage's distance from 0.80 is no worse by more than one standard error "
+        "in either population, and E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level "
+        "standard error and stays within its 0.01 tolerance. ODI cannot decide it (its night side clears the "
+        "simulator's 20-match floor in 2 of 11 folds and its night calibration fold clears the 15-match floor in "
+        "3, never in the same fold) and is reported. A recorded null ships nothing",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}
