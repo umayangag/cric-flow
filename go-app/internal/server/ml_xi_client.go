@@ -44,12 +44,55 @@ type mlXIOptimizeRequest struct {
 }
 
 type mlXIOptimizeResponse struct {
-	SelectedPlayerIDs []string           `json:"selected_player_ids"`
-	Objective         string             `json:"objective"`
-	Optimised         bool               `json:"optimised"`
-	UnknownPlayerIDs  []string           `json:"unknown_player_ids"`
-	MarginalValues    map[string]float64 `json:"marginal_values"`
-	ServedRatings     mlServedRatings    `json:"served_ratings"`
+	SelectedPlayerIDs []string                           `json:"selected_player_ids"`
+	Objective         string                             `json:"objective"`
+	Optimised         bool                               `json:"optimised"`
+	UnknownPlayerIDs  []string                           `json:"unknown_player_ids"`
+	MarginalValues    map[string]float64                 `json:"marginal_values"`
+	SelectionReasons  map[string]mlPlayerSelectionReason `json:"selection_reasons"`
+	ServedRatings     mlServedRatings                    `json:"served_ratings"`
+}
+
+// mlBestAlternative and mlPlayerSelectionReason are the "why this player" state
+// (app/models/xi.py BestAlternativeModel / PlayerSelectionReasonModel, P1-3). The
+// alternative is a registry id here; go-app resolves it to a player id and name against
+// the pool the selection was made from.
+type mlBestAlternative struct {
+	PlayerID          string  `json:"player_id"`
+	WinProbabilityGap float64 `json:"win_probability_gap"`
+}
+
+type mlPlayerSelectionReason struct {
+	Roles               []string           `json:"roles"`
+	SelectionRating     float64            `json:"selection_rating"`
+	RatingPercentile    float64            `json:"rating_percentile"`
+	PoolSize            int                `json:"pool_size"`
+	BestAlternative     *mlBestAlternative `json:"best_alternative"`
+	BestAlternativeNote string             `json:"best_alternative_note"`
+}
+
+// selectionReasons maps ml-service's reasons onto the service types. An absent block stays
+// absent: a player with no reason gets no card rather than a card of zeroes.
+func selectionReasons(reasons map[string]mlPlayerSelectionReason) map[string]predictteam.XISelectionReason {
+	if len(reasons) == 0 {
+		return nil
+	}
+	out := make(map[string]predictteam.XISelectionReason, len(reasons))
+	for key, reason := range reasons {
+		mapped := predictteam.XISelectionReason{
+			Roles:               reason.Roles,
+			SelectionRating:     reason.SelectionRating,
+			RatingPercentile:    reason.RatingPercentile,
+			PoolSize:            reason.PoolSize,
+			BestAlternativeNote: reason.BestAlternativeNote,
+		}
+		if reason.BestAlternative != nil {
+			mapped.BestAlternativeKey = reason.BestAlternative.PlayerID
+			mapped.BestAlternativeGap = reason.BestAlternative.WinProbabilityGap
+		}
+		out[key] = mapped
+	}
+	return out
 }
 
 type mlXIWinRequest struct {
@@ -165,6 +208,7 @@ func (c *MLClient) OptimizeXI(
 		Optimised:          out.Optimised,
 		UnknownPlayerKeys:  out.UnknownPlayerIDs,
 		MarginalValues:     out.MarginalValues,
+		SelectionReasons:   selectionReasons(out.SelectionReasons),
 		Served:             out.ServedRatings.served(),
 	}, nil
 }

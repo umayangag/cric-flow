@@ -27,6 +27,7 @@ from fastapi.testclient import TestClient
 from app import training_orchestrator
 from ml.xi import contract as C
 from ml.xi import retrain
+from ml.xi.optimizer import SELECTION_ROLES
 from ml.xi.ratings import RatingState
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "ops-console.contract.json"
@@ -153,6 +154,16 @@ def test_the_context_group_split_keys_on_a_gender_the_contract_publishes() -> No
     assert C.GENDER_FEMALE in C.TEAM_GENDERS
     assert state._ctx_group(C.GENDER_FEMALE) == 1
     assert state._ctx_group(C.GENDER_MALE) == 0
+
+
+# --- the selection-role vocabulary (P1-3) -------------------------------------------
+
+
+def test_both_services_match_on_the_same_selection_roles(contract) -> None:
+    """This service computes the roles a "why this player" card names, go-app carries them
+    and the card turns each into a chip. A role spelled differently on one side is a chip
+    the UI cannot render for a constraint the objective really did read."""
+    assert set(contract["selection_roles"]) == set(SELECTION_ROLES)
 
 
 # --- the regression seam D-9 needed -------------------------------------------------

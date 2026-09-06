@@ -104,6 +104,11 @@ type SelectedPlayer struct {
 	MarginalValue *float64 `json:"marginal_value,omitempty"`
 	// SpreadShare is the player's share of the side total's variance, from the simulator.
 	SpreadShare *float64 `json:"spread_share,omitempty"`
+	// SelectionReason is what the selection read about this player — his role, his rating
+	// standing in the pool he was picked out of, and the best alternative left in it
+	// (P1-3, selection_reason.go). Absent in Play mode: the caller built the eleven, so
+	// there is no selection to explain.
+	SelectionReason *PlayerSelectionReason `json:"selection_reason,omitempty"`
 }
 
 // SelectionSummary says how the XIs were chosen.
@@ -285,8 +290,8 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		ServedRatings:    selection.Served,
 		Team1Side:        newResolvedSide(fix.team1),
 		Team2Side:        newResolvedSide(fix.team2),
-		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Marginals),
-		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Marginals),
+		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Marginals, selection.Reasons),
+		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Marginals, selection.Reasons),
 		Selection:        selection.Summary,
 		Team1PoolSummary: fix.summary1,
 		Team2PoolSummary: fix.summary2,
@@ -508,7 +513,12 @@ func resolveConstraints(input Input) Constraints {
 //
 // A key the pool cannot resolve is dropped rather than returned as a nameless row with a
 // zero id: it would mean ml-service answered with a player nobody asked about.
-func newSelectedPlayers(keys []string, pool []db.PlayerPoolRow, marginals map[string]float64) []SelectedPlayer {
+func newSelectedPlayers(
+	keys []string,
+	pool []db.PlayerPoolRow,
+	marginals map[string]float64,
+	reasons map[string]XISelectionReason,
+) []SelectedPlayer {
 	byKey := make(map[string]db.PlayerPoolRow, len(pool))
 	for _, p := range pool {
 		byKey[p.ExternalID] = p
@@ -524,6 +534,10 @@ func newSelectedPlayers(keys []string, pool []db.PlayerPoolRow, marginals map[st
 		if v, ok := marginals[key]; ok {
 			value := v
 			player.MarginalValue = &value
+		}
+		if reason, ok := reasons[key]; ok {
+			resolved := newSelectionReason(reason, byKey)
+			player.SelectionReason = &resolved
 		}
 		out = append(out, player)
 	}

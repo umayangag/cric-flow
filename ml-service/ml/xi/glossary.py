@@ -774,6 +774,61 @@ METRICS: Tuple[Metric, ...] = (
         band="A few points of win probability across a typical XI. It is a ranking aid, not a promise.",
         better=HIGHER,
     ),
+    # --- P1-3: the "why this player" card. Only what the selection consumed ---
+    Metric(
+        key="xi_role",
+        name="Role in the eleven",
+        explanation=(
+            "Which requirement of the selection this player answers, read off the same as-of vectors "
+            "the objective reads. 'Keeper' means the state has credited him with a stumping, which is "
+            "the flag the keeper constraint counts and the objective's has_keeper feature reads; "
+            "'bowling option' means his expected balls bowled clear the format's threshold, which is "
+            "what the minimum-bowlers constraint counts and the n_bowlers feature reads. A player can "
+            "answer both, or neither and be picked on his rating alone."
+        ),
+        band="A label, not a measurement: it says what the selection counted him as, not how good he is.",
+        better=PAIRED,
+    ),
+    Metric(
+        key="selection_rating",
+        name="Selection rating",
+        explanation=(
+            "The one composite the selection orders a pool by: decayed batting impact per innings, plus "
+            "decayed bowling impact per innings, plus Elo above 1500 in units of 400 points. It fills the "
+            "constraints and then the rest of the eleven, so it is the seed every search starts from and "
+            "the whole answer where a format is not searched at all."
+        ),
+        band=(
+            "Unitless and pool-relative -- read the percentile beside it, not this number. It is not the "
+            "win model's opinion: the two disagree about who is better (docs/BUG_BACKLOG.md B-8)."
+        ),
+        better=HIGHER,
+    ),
+    Metric(
+        key="rating_percentile",
+        name="Rating percentile in the pool",
+        explanation=(
+            "Where the selection rating stands among the candidates this eleven was actually chosen out "
+            "of: the share of that pool the player outranks, so the pool's best reads 100 and its worst 0. "
+            "It says nothing about cricketers outside the pool."
+        ),
+        band="0-100 within one pool. A small pool makes every percentile coarse; the pool size is shown beside it.",
+        better=HIGHER,
+    ),
+    Metric(
+        key="next_best_gap",
+        name="Gap to the next best",
+        explanation=(
+            "How much win probability the eleven would lose if this player were swapped for the best "
+            "available replacement left in the pool -- the same one-for-one swaps the search itself scores, "
+            "under the same constraints and against the same opposing eleven."
+        ),
+        band=(
+            "A point estimate: this computation yields no interval, so none is shown. At or below zero it "
+            "means the search stopped on its evaluation budget rather than at a local optimum."
+        ),
+        better=HIGHER,
+    ),
     Metric(
         key="spread_share",
         name="Spread share",

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import TeamTable from './TeamTable';
-import type { PredictTeamSelectedPlayer } from '../types';
+import type { PredictSelectionSummary, PredictTeamSelectedPlayer } from '../types';
 
 const player: PredictTeamSelectedPlayer = {
   player_id: 1,
@@ -18,9 +18,16 @@ const player: PredictTeamSelectedPlayer = {
   marginal_value: 0.023,
 };
 
+const optimised: PredictSelectionSummary = { objective: 'win', optimised: true };
+const ratingOrderedSelection: PredictSelectionSummary = {
+  objective: 'ratings',
+  optimised: false,
+  note: 'Rating-ordered XI.',
+};
+
 describe('TeamTable', () => {
   it('shows the 10-90 range beside every point', () => {
-    render(<TeamTable teamName="India" players={[player]} optimised />);
+    render(<TeamTable teamName="India" players={[player]} selection={optimised} />);
 
     expect(screen.getByText('India')).toBeInTheDocument();
     expect(screen.getByText('Player A')).toBeInTheDocument();
@@ -31,7 +38,7 @@ describe('TeamTable', () => {
   });
 
   it('shows the marginal value beside a player of an optimised XI', () => {
-    render(<TeamTable teamName="India" players={[player]} optimised />);
+    render(<TeamTable teamName="India" players={[player]} selection={optimised} />);
 
     expect(screen.getByText('Marginal')).toBeInTheDocument();
     expect(screen.getByText('2.3 pp')).toBeInTheDocument();
@@ -39,7 +46,9 @@ describe('TeamTable', () => {
 
   it('hides the marginal column when nothing was maximised', () => {
     const ratingOrdered = { ...player, marginal_value: undefined };
-    render(<TeamTable teamName="England" players={[ratingOrdered]} optimised={false} />);
+    render(
+      <TeamTable teamName="England" players={[ratingOrdered]} selection={ratingOrderedSelection} />,
+    );
 
     expect(screen.queryByText('Marginal')).not.toBeInTheDocument();
     expect(screen.getByText('45 (12–88)')).toBeInTheDocument();
@@ -53,14 +62,27 @@ describe('TeamTable', () => {
       wickets: 1,
       runs_conceded: 24,
     };
-    render(<TeamTable teamName="India" players={[noRange]} optimised={false} />);
+    render(<TeamTable teamName="India" players={[noRange]} selection={ratingOrderedSelection} />);
 
     expect(screen.getByText('18')).toBeInTheDocument();
   });
 
   it('renders an empty table when no players', () => {
-    render(<TeamTable teamName="Australia" players={[]} optimised />);
+    render(<TeamTable teamName="Australia" players={[]} selection={optimised} />);
     expect(screen.getByText('Australia')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  /**
+   * The card is reachable from every selected player, which is the P1-3 gate's first
+   * clause. The row's control names the player so a reader (and a screen reader) can tell
+   * which eleven's row they are opening.
+   */
+  it('offers a why-this-player control on every row', () => {
+    const second = { ...player, player_id: 2, player_name: 'Player B' };
+    render(<TeamTable teamName="India" players={[player, second]} selection={optimised} />);
+
+    expect(screen.getByRole('button', { name: 'Why Player A?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Why Player B?' })).toBeInTheDocument();
   });
 });

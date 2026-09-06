@@ -310,7 +310,7 @@ func TestWinnerFrom_NamesTheResolvedSideNotTheTypedName(t *testing.T) {
 
 func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), map[string]float64{"k2": 0.03})
+	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), map[string]float64{"k2": 0.03}, nil)
 
 	require.Len(t, players, 2)
 	assert.Equal(t, int64(2), players[0].PlayerID)
@@ -321,7 +321,7 @@ func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) 
 
 func TestNewSelectedPlayers_DropsAKeyNoPoolRowClaims(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), nil)
+	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), nil, nil)
 
 	require.Len(t, players, 1, "a key with no pool row names nobody and is not invented")
 	assert.Equal(t, int64(1), players[0].PlayerID)

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
-import { POOL_EXCLUSION_REASONS, POOL_SOURCES, TEAM_GENDERS } from '../types';
+import { POOL_EXCLUSION_REASONS, POOL_SOURCES, SELECTION_ROLES, TEAM_GENDERS } from '../types';
 
 /**
  * The backend/frontend contract test.
@@ -42,6 +42,8 @@ type Contract = {
   /** How a candidate pool was chosen, and why the ledger excluded a player (H-24, D-12). */
   pool_sources: string[];
   pool_exclusion_reasons: string[];
+  /** The constraint state a "why this player" card may name (H-24, P1-3). */
+  selection_roles: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -170,6 +172,44 @@ describe('ops console contract', () => {
   it('spells the pool sources and exclusion reasons the way the backend does', () => {
     expect([...POOL_SOURCES].sort()).toEqual([...contract.pool_sources].sort());
     expect([...POOL_EXCLUSION_REASONS].sort()).toEqual([...contract.pool_exclusion_reasons].sort());
+  });
+
+  /**
+   * The selection roles are the contract's too (H-24, P1-3).
+   *
+   * ml-service computes them from the constraint predicates its optimiser evaluates and
+   * go-app carries them onto the prediction; the "why this player" card turns each into a
+   * chip. A role the UI does not recognise would be a constraint the objective really did
+   * read and the card silently dropped.
+   */
+  it('spells the selection roles the way the backend does', () => {
+    expect([...SELECTION_ROLES].sort()).toEqual([...contract.selection_roles].sort());
+  });
+
+  /**
+   * L-1's completeness gate, from the UI's side (P1-3 clause 4).
+   *
+   * `MetricInfo` renders *nothing at all* for a key the served glossary does not carry, so
+   * a mistyped or invented key is a labelled number with no explainer and no error — the
+   * silent failure the explainers exist to prevent. Every `metricKey` a production
+   * component names must therefore have an entry in `ml-service/ml/xi/glossary.py`, which
+   * is the one place that prose lives (H-24: the frontend holds no metric copy of its own).
+   */
+  it('names only metric keys the service glossary can explain', () => {
+    const glossary = readFileSync(join(repoRoot, 'ml-service', 'ml', 'xi', 'glossary.py'), 'utf8');
+    const explained = new Set(
+      [...glossary.matchAll(/\bkey="([a-z0-9_]+)"/g)].map((match) => match[1]),
+    );
+    expect(explained.size).toBeGreaterThan(20);
+
+    const missing: string[] = [];
+    for (const file of productionSources(frontendSrc)) {
+      const source = readFileSync(file, 'utf8');
+      for (const match of source.matchAll(/metricKey="([a-z0-9_]+)"/g)) {
+        if (!explained.has(match[1])) missing.push(`${file}: ${match[1]}`);
+      }
+    }
+    expect(missing, 'every labelled number needs an L-1 entry').toEqual([]);
   });
 
   /**

@@ -64,8 +64,40 @@ func (f *fakeOptimizer) OptimizeXI(
 		Objective:          req.Objective,
 		Optimised:          req.Objective == SelectionObjectiveWin,
 		MarginalValues:     marginals,
+		SelectionReasons:   scriptedReasons(req, selected),
 		Served:             servedOnCall(f.served, len(f.calls)-1),
 	}, nil
+}
+
+// scriptedReasons answers the way ml-service does: a reason per selected player, with a
+// best alternative only where an objective was maximised (P1-3).
+func scriptedReasons(req XIOptimizationRequest, selected []string) map[string]XISelectionReason {
+	chosen := map[string]bool{}
+	for _, key := range selected {
+		chosen[key] = true
+	}
+	alternative := ""
+	for _, key := range req.PoolPlayerKeys {
+		if !chosen[key] {
+			alternative = key
+			break
+		}
+	}
+	reasons := map[string]XISelectionReason{}
+	for i, key := range selected {
+		reason := XISelectionReason{
+			Roles:            []string{RoleBowlingOption},
+			SelectionRating:  float64(i),
+			RatingPercentile: 100 - float64(i)*10,
+			PoolSize:         len(req.PoolPlayerKeys),
+		}
+		if req.Objective == SelectionObjectiveWin {
+			reason.BestAlternativeKey = alternative
+			reason.BestAlternativeGap = 0.005
+		}
+		reasons[key] = reason
+	}
+	return reasons
 }
 
 func pool(ids ...int64) []db.PlayerPoolRow {

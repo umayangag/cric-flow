@@ -16,10 +16,12 @@ import pandas as pd
 from app.errors import error_payload
 from app.logging import get_struct_logger
 from app.models.xi import (
+    BestAlternativeModel,
     PerformancePredictRequest,
     PerformancePredictResponse,
     PerformanceRange,
     PlayerPerformance,
+    PlayerSelectionReasonModel,
     RatingsFreshness,
     ServedRatings,
     SimulatedMargin,
@@ -48,9 +50,11 @@ from ml.xi.optimizer import (
     NOT_OPTIMISED_REASONS,
     OPTIMISED_SELECTION_FORMATS,
     Constraints,
+    SelectionReason,
     marginal_values,
     select_xi,
     select_xi_by_ratings,
+    selection_reasons,
 )
 from ml.xi.rows import player_feature_rows, serving_match
 from ml.xi.runs import RunArtifactsInvalid
@@ -300,6 +304,29 @@ def _served_ratings(store: XiStore) -> ServedRatings:
     return ServedRatings(run_id=run_id, ratings_through=through.isoformat())
 
 
+def _selection_reason_models(reasons: Dict[str, SelectionReason]) -> Dict[str, PlayerSelectionReasonModel]:
+    """The optimiser's own reason objects as wire models (P1-3). A mapping, not a
+    recomputation: nothing is derived here that the selection did not already read."""
+    return {
+        key: PlayerSelectionReasonModel(
+            roles=list(reason.roles),
+            selection_rating=reason.selection_rating,
+            rating_percentile=reason.rating_percentile,
+            pool_size=reason.pool_size,
+            best_alternative=(
+                None
+                if reason.best_alternative is None
+                else BestAlternativeModel(
+                    player_id=reason.best_alternative.player_key,
+                    win_probability_gap=reason.best_alternative.win_probability_gap,
+                )
+            ),
+            best_alternative_note=reason.best_alternative_note,
+        )
+        for key, reason in reasons.items()
+    }
+
+
 def _constraints(c: XiConstraints) -> Constraints:
     return Constraints(
         team_size=c.team_size,
@@ -338,6 +365,15 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
         max_evaluations=req.max_evaluations,
     )
     mv = marginal_values(store, req.format, result.selected, opponent, team_is_team1=req.team_is_team1)
+    reasons = selection_reasons(
+        store,
+        req.format,
+        result.selected,
+        pool,
+        opponent,
+        constraints=_constraints(req.constraints),
+        team_is_team1=req.team_is_team1,
+    )
     logger.info(
         "xi.optimize.done",
         format=req.format,
@@ -354,6 +390,7 @@ def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptim
         improved_over_seed=result.improved_over_seed,
         unknown_player_ids=unknown,
         marginal_values=dict(mv),
+        selection_reasons=_selection_reason_models(reasons),
         served_ratings=_served_ratings(store),
     )
 
@@ -363,6 +400,11 @@ def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unk
     same constraints, no model evaluated, and marked as not optimised so the API and the
     UI can say so."""
     selected = select_xi_by_ratings(store, req.format, pool, constraints=_constraints(req.constraints))
+    # No opponent, so no alternative is scored: this path maximises nothing and the card
+    # must not be handed a win-model number for a format the policy scoped off (P1-3 § 3).
+    reasons = selection_reasons(
+        store, req.format, selected, pool, constraints=_constraints(req.constraints), team_is_team1=True
+    )
     logger.info("xi.optimize.rating_ordered", format=req.format, pool=len(pool), selected=len(selected))
     return XiOptimizeResponse(
         selected_player_ids=list(selected),
@@ -373,6 +415,7 @@ def _rating_ordered(req: XiOptimizeRequest, store: XiStore, pool: List[str], unk
         improved_over_seed=0.0,
         unknown_player_ids=unknown,
         marginal_values={},
+        selection_reasons=_selection_reason_models(reasons),
         served_ratings=_served_ratings(store),
     )
 

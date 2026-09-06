@@ -74,6 +74,36 @@ export function formatPercent(fraction: number | null | undefined, decimals = 1)
  * server sent *something*, and showing it is more useful than hiding it behind a dash
  * that reads as "nothing was sent".
  */
+/**
+ * A probability in percentage points, which is how the selection surfaces show a marginal
+ * value or a gap between two elevens: `0.023` → `2.3 pp`.
+ *
+ * Unsigned, unlike `formatProbabilityChange`: these are magnitudes of an explanation, not
+ * a movement between two answers, and a `+` in front of one would read as a change.
+ */
+export function formatProbabilityPoints(fraction: number | null | undefined, decimals = 1): string {
+  if (!isReal(fraction)) return MISSING;
+  return `${(fraction * 100).toFixed(decimals)} pp`;
+}
+
+/**
+ * A point with the band the model gave it: `23 (4–55)`.
+ *
+ * The range is never optional presentation. A median printed alone reads as a promise the
+ * model never made, so where a range exists it is shown, and where none does the bare
+ * point is shown rather than an invented interval.
+ */
+export function pointWithRange(
+  value: number | null | undefined,
+  range: { p10: number; p90: number } | null | undefined,
+  digits = 0,
+): string {
+  if (!isReal(value)) return MISSING;
+  const point = value.toFixed(digits);
+  if (!range) return point;
+  return `${point} (${range.p10.toFixed(digits)}–${range.p90.toFixed(digits)})`;
+}
+
 export function formatWhen(value: string | null | undefined): string {
   if (!value) return MISSING;
   const d = new Date(value);

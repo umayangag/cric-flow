@@ -14,6 +14,38 @@ export type PredictValueRange = {
  * loses without this player, absent when nothing was maximised; `spread_share` is his share
  * of the innings total's variance, present only where the simulator ran.
  */
+/**
+ * The pool player the objective would most like instead of a selected one, and the win
+ * probability that swap would cost (P1-3).
+ *
+ * A point estimate with no interval, because the computation behind it produces none. At or
+ * below zero it means the search stopped on its evaluation budget, not at a local optimum.
+ */
+export type PredictBestAlternative = {
+  player_id: number;
+  player_name: string;
+  win_probability_gap: number;
+};
+
+/**
+ * Why one selected player is in the eleven, in the terms the selection itself used (P1-3).
+ *
+ * Every field is a value the selection consumed: the constraint predicates it evaluated
+ * (`roles`), the composite it ordered the pool by (`selection_rating` and its standing in
+ * that pool), and the swap candidates it scored (`best_alternative`). Absent entirely in
+ * Play mode, where the caller built the eleven and nothing selected it; `best_alternative`
+ * is absent on a rating-ordered XI, where nothing was maximised.
+ */
+export type PredictSelectionReason = {
+  roles: SelectionRole[];
+  selection_rating: number;
+  rating_percentile: number;
+  pool_size: number;
+  best_alternative?: PredictBestAlternative;
+  /** Why the objective could name no alternative, where it was asked and could not. */
+  best_alternative_note?: string;
+};
+
 export type PredictTeamSelectedPlayer = {
   player_id: number;
   player_name: string;
@@ -28,6 +60,8 @@ export type PredictTeamSelectedPlayer = {
   economy?: number;
   marginal_value?: number;
   spread_share?: number;
+  /** What the selection read about this player (P1-3); absent where nothing selected him. */
+  selection_reason?: PredictSelectionReason;
 };
 
 /**
@@ -142,6 +176,17 @@ export type PoolSource = (typeof POOL_SOURCES)[number];
 /** Why the retirement ledger left a candidate out of the pool. */
 export const POOL_EXCLUSION_REASONS = ['user_flagged', 'retired'] as const;
 export type PoolExclusionReason = (typeof POOL_EXCLUSION_REASONS)[number];
+
+/**
+ * The constraint state a "why this player" card may name, exactly as the wire spells it.
+ *
+ * Declared in contracts/ops-console.contract.json and asserted against it by
+ * `opsContract.test.ts` (H-24). ml-service computes these from the predicates its optimiser
+ * evaluates; a role the UI cannot name would be a constraint the objective really did read
+ * and the card silently dropped (P1-3).
+ */
+export const SELECTION_ROLES = ['keeper', 'bowling_option'] as const;
+export type SelectionRole = (typeof SELECTION_ROLES)[number];
 
 /** One candidate the ledger kept out of the pool, with the reason a user can undo. */
 export type PoolExcludedCandidate = {

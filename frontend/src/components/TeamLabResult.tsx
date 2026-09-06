@@ -50,7 +50,7 @@ const TeamLabResult: React.FC<TeamLabResultProps> = ({ result, onWiden }) => (
         <TeamTable
           teamName={result.team1_side.display_name}
           players={result.team1}
-          optimised={result.selection.optimised}
+          selection={result.selection}
         />
       </Box>
       <Box sx={{ flex: 1 }}>
@@ -62,7 +62,7 @@ const TeamLabResult: React.FC<TeamLabResultProps> = ({ result, onWiden }) => (
         <TeamTable
           teamName={result.team2_side.display_name}
           players={result.team2}
-          optimised={result.selection.optimised}
+          selection={result.selection}
         />
       </Box>
     </Stack>

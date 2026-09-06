@@ -126,9 +126,12 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 		case "/xi/optimize":
 			selected, err := json.Marshal(body.PoolPlayerIDs[:11])
 			require.NoError(t, err)
+			reasons, err := json.Marshal(ratingOrderedReasons(body.PoolPlayerIDs))
+			require.NoError(t, err)
 			_, _ = fmt.Fprintf(w, `{"selected_player_ids": %s, "objective": "ratings", "optimised": false,
-				"evaluations": 0, "improved_over_seed": 0, "unknown_player_ids": [], "marginal_values": {}, %s}`,
-				selected, stamp)
+				"evaluations": 0, "improved_over_seed": 0, "unknown_player_ids": [], "marginal_values": {},
+				"selection_reasons": %s, %s}`,
+				selected, reasons, stamp)
 		case "/xi/predict-win":
 			// Play mode: the eleven that was sent is checked against the constraints
 			// that came with it, and the check rides back on the same answer (P1-2).
@@ -165,6 +168,22 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 	return &MLClient{BaseURL: srv.URL, HTTP: srv.Client()}
 }
 
+// ratingOrderedReasons is what ml-service sends back for the rating-ordered pick a TEST
+// fixture gets (P1-3): a reason per selected player, and no best alternative anywhere,
+// because nothing was maximised.
+func ratingOrderedReasons(poolIDs []string) map[string]map[string]any {
+	reasons := map[string]map[string]any{}
+	for i, id := range poolIDs[:11] {
+		reasons[id] = map[string]any{
+			"roles":             []string{"bowling_option"},
+			"selection_rating":  1.5 - float64(i)*0.1,
+			"rating_percentile": 100 - float64(i)*5,
+			"pool_size":         len(poolIDs),
+		}
+	}
+	return reasons
+}
+
 func predictRequestFor(fixture predictFixture) *http.Request {
 	return jsonPredictRequest(fmt.Sprintf(
 		`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q}`,
@@ -195,6 +214,51 @@ func TestPredictTeamSelectionHandler_AServedPredictionCarriesItsDateAndRun_Integ
 	assert.Equal(t, "20260906T083819Z-36689f80", payload.RunID)
 	assert.Len(t, payload.Team1, 11)
 	assert.InDelta(t, 0.6, payload.WinProbability.Team1, 1e-9)
+}
+
+// P1-3 end to end: a rating-ordered prediction carries a "why this player" block for every
+// selected player, naming the pool the percentile is taken over, and no best alternative —
+// nothing was maximised, so the card gets no win-model comparison to print.
+func TestPredictTeamSelectionHandler_ARatingOrderedPredictionCarriesItsSelectionReasons_Integration(
+	t *testing.T,
+) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	app := &App{mlClient: scriptedMLService(t, nil)}
+	rec := httptest.NewRecorder()
+
+	app.predictTeamSelectionHandler(rec, predictRequestFor(fixture))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var payload struct {
+		Selection struct {
+			Optimised bool `json:"optimised"`
+		} `json:"selection"`
+		Team1 []struct {
+			MarginalValue   *float64 `json:"marginal_value"`
+			SelectionReason *struct {
+				Roles            []string `json:"roles"`
+				SelectionRating  float64  `json:"selection_rating"`
+				RatingPercentile float64  `json:"rating_percentile"`
+				PoolSize         int      `json:"pool_size"`
+				BestAlternative  *struct {
+					PlayerName string `json:"player_name"`
+				} `json:"best_alternative"`
+			} `json:"selection_reason"`
+		} `json:"team1"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	assert.False(t, payload.Selection.Optimised)
+	require.Len(t, payload.Team1, 11)
+	for i := range payload.Team1 {
+		player := payload.Team1[i]
+		require.NotNil(t, player.SelectionReason, "every selected player carries his card's state")
+		assert.Equal(t, []string{"bowling_option"}, player.SelectionReason.Roles)
+		assert.Equal(t, 11, player.SelectionReason.PoolSize)
+		assert.GreaterOrEqual(t, player.SelectionReason.RatingPercentile, 0.0)
+		assert.Nil(t, player.SelectionReason.BestAlternative, "nothing was maximised, so nothing was compared")
+		assert.Nil(t, player.MarginalValue)
+	}
 }
 
 // seededPlayerIDs returns one side's player ids in a stable order: the fixture gives each
@@ -250,8 +314,11 @@ func TestPredictTeamSelectionHandler_APinnedElevenIsScoredAsSent_Integration(t *
 			Note      string `json:"note"`
 		} `json:"selection"`
 		Team1 []struct {
-			PlayerID      int64    `json:"player_id"`
-			MarginalValue *float64 `json:"marginal_value"`
+			PlayerID        int64    `json:"player_id"`
+			MarginalValue   *float64 `json:"marginal_value"`
+			SelectionReason *struct {
+				PoolSize int `json:"pool_size"`
+			} `json:"selection_reason"`
 		} `json:"team1"`
 		Constraints *struct {
 			MinBowlers int `json:"min_bowlers"`
@@ -277,6 +344,7 @@ func TestPredictTeamSelectionHandler_APinnedElevenIsScoredAsSent_Integration(t *
 	for _, player := range payload.Team1 {
 		scored = append(scored, player.PlayerID)
 		assert.Nil(t, player.MarginalValue, "nothing was maximised, so no player has a margin")
+		assert.Nil(t, player.SelectionReason, "the caller built this eleven, so there is no selection to explain")
 	}
 	assert.Equal(t, pinned, scored, "the eleven that was sent is the eleven that came back, in order")
 	require.NotNil(t, payload.Constraints)
