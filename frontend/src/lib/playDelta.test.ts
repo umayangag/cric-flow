@@ -21,7 +21,9 @@ const pool = {
   retired_excluded: 0,
 };
 
-function answer(overrides: Partial<PredictTeamSelectionResponse> = {}): PredictTeamSelectionResponse {
+function answer(
+  overrides: Partial<PredictTeamSelectionResponse> = {},
+): PredictTeamSelectionResponse {
   return {
     ratings_through: '2026-09-02',
     run_id: '20260906T083819Z-36689f80',
@@ -90,7 +92,12 @@ describe('playDelta', () => {
       playDelta(
         previous,
         answer({
-          team2_side: { club_id: 9, name: 'England', gender: 'male', display_name: 'England (men)' },
+          team2_side: {
+            club_id: 9,
+            name: 'England',
+            gender: 'male',
+            display_name: 'England (men)',
+          },
         }),
       ),
     ).toBeNull();

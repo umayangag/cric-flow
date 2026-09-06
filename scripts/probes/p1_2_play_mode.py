@@ -134,9 +134,7 @@ def registry_ids(player_ids: Sequence[int]) -> Dict[int, str]:
         return {row[0]: row[1] for row in cursor.fetchall()}
 
 
-def predict(
-    stack: Stack, fixture: dict, pinned: Optional[Tuple[List[int], List[int]]] = None
-) -> Tuple[dict, float]:
+def predict(stack: Stack, fixture: dict, pinned: Optional[Tuple[List[int], List[int]]] = None) -> Tuple[dict, float]:
     """One prediction: Optimise, or — with ``pinned`` — one Play-mode re-score."""
     payload = {
         "format": fixture["format"],
@@ -299,9 +297,7 @@ class UpgradePairs:
     ranked_only: List[SwapPair] = field(default_factory=list)
 
 
-def upgrade_pairs(
-    store: XiStore, fmt: str, xi: List[int], pool: Dict[int, str], names: Dict[int, str]
-) -> UpgradePairs:
+def upgrade_pairs(store: XiStore, fmt: str, xi: List[int], pool: Dict[int, str], names: Dict[int, str]) -> UpgradePairs:
     """Every swap worth scoring, in both directions.
 
     A dominating pair is an upgrade in the sense H-4's probe uses. It is looked for both ways
@@ -329,9 +325,7 @@ def upgrade_pairs(
                 found.pairs.append(SwapPair(member, other, names[member], names[other], degrade_first=False))
             elif dominates(vectors, insider, outsider):
                 found.pairs.append(SwapPair(other, member, names[other], names[member], degrade_first=True))
-            elif rank_only_for_member is None and rank.get(keys[member], len(rank)) < rank.get(
-                keys[other], len(rank)
-            ):
+            elif rank_only_for_member is None and rank.get(keys[member], len(rank)) < rank.get(keys[other], len(rank)):
                 # Ranked above him, but not better on every axis: the diagnostic's case.
                 rank_only_for_member = SwapPair(other, member, names[other], names[member], degrade_first=True)
         # One rank-only swap per player in the eleven, so the diagnostic spreads over the side
@@ -452,8 +446,7 @@ def render(reports: Sequence[FormatReport]) -> str:
 
     lines += ["", "PLAY-MODE RE-SCORE LATENCY, END TO END", ""]
     lines.append(
-        f"{'format':6} {'n':>4} {'median':>8} {'p95':>8} {'min':>8} {'predict-win':>12} "
-        f"{'forecast':>10} {'draws':>6}"
+        f"{'format':6} {'n':>4} {'median':>8} {'p95':>8} {'min':>8} {'predict-win':>12} {'forecast':>10} {'draws':>6}"
     )
     for report in reports:
         lines.append(

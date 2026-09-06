@@ -567,7 +567,12 @@ describe('TeamLabTab', () => {
           retired_excluded: 0,
         },
         candidates: [
-          { player_id: 8, player_name: 'Pickable Player', is_wicket_keeper: false, excluded: false },
+          {
+            player_id: 8,
+            player_name: 'Pickable Player',
+            is_wicket_keeper: false,
+            excluded: false,
+          },
         ],
       });
       renderPlay({ swapPlayer });
