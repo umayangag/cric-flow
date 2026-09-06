@@ -22,6 +22,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   comes back unrated (D-7a). A player whose row has no `external_id` cannot be sent.
 - **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format that is not offered an optimised selection — the message carries the format's reason from `ml.xi.optimizer.NOT_OPTIMISED_REASONS` (H-17: the objective does not rank, TEST; or E5: the objective has not shown it selects, plan §8.8) and the hint names `"ratings"`.
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`. Response: `team1_win_probability` (the displayed probability) and `objective_probability`.
+- **Every prediction response** (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict`) carries `served_ratings: {run_id, ratings_through}` — the run the answering store was loaded from and the last match date its ratings include, read off that store (P1-5). A live request against ratings older than `ml.ratings_max_age_days` is **503 `RATINGS_STALE`**, the message naming the date, the age and the limit and the hint the step that fixes it (H-11).
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
 - **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
 - **GET /xi/status** — Loaded formats, `ratings_through`, player count, the run's own training
@@ -128,6 +129,7 @@ returns the sides that club has played, in the same shape.
 
 | Field | Meaning |
 |-------|---------|
+| `ratings_through`, `run_id` | Which rating state every number was computed from: the last match date the served ratings include (`YYYY-MM-DD`) and the run they were loaded from. Both required, never omitted (P1-5) — they are ml-service's `served_ratings` stamp, which every call the prediction made must agree on |
 | `team1_side`, `team2_side` | The sides that were actually scored — `club_id`, `name`, `gender`, `display_name` — echoed on every prediction, not only an ambiguous one |
 | `team1`, `team2` | The selected XIs. Each player carries `runs`, `balls`, `wickets`, `runs_conceded` with a `*_range` (10-90) beside each, `economy` where balls bowled are known, `marginal_value` on an optimised XI and `spread_share` where the simulator ran |
 | `selection` | `objective` (`win` / `ratings`), `optimised`, and a `note` explaining a rating-ordered XI — the format's reason (H-17 where the objective does not rank; E5 where it has not shown it selects) |
@@ -152,6 +154,14 @@ go-app silently falling back from a refused `/xi/optimize` to another optimiser 
 broken arm report a number for months (§8.5). Where a substitution *cannot* be labelled — a
 player the simulator or the performance model returned no line for — the request fails instead
 of leaving that player's row at zeros, which would read as a forecast of nothing.
+
+**A prediction is dated or refused, never served stale (P1-5, H-11).** A live prediction
+against ratings older than `ml.ratings_max_age_days` is **`503 RATINGS_STALE`**, relayed from
+ml-service with its code, its message (the date, the age, the limit) and its hint intact —
+go-app passes an upstream 503 through rather than rewriting it as 502, because a named
+refusal is not a broken gateway. A prediction whose ml-service calls were answered from two
+different runs — a reload landed mid-request — is **`409 SERVED_RUN_CHANGED`** naming both,
+and the remedy is to run it again.
 
 **Retired fields are refused, not ignored:** `weather`, `simulate`, `use_reconciled_scorecard`
 and `include_both_scorecards` each return 400 with a code and a hint. A caller still sending one

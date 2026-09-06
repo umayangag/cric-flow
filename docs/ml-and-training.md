@@ -162,6 +162,19 @@ harness for a reason that does not describe it. Setting the limit to zero turns 
 — a decision visible in config rather than a state the code can drift into. The verdict, not
 just the date, is on `/xi/status` (`ratings.fresh`, `age_days`, `max_age_days`, `code`).
 
+**Every prediction names the state it was served from (P1-5).** `/xi/optimize`,
+`/xi/predict-win`, `/simulate` and `/performance/predict` each answer with
+`served_ratings: {run_id, ratings_through}`, read off the store that computed the answer —
+the same manifest and `state.last_date` `/xi/status` reports, so the two cannot disagree
+about a store. It rides on the answer rather than being read from `/xi/status` afterwards
+because a status read describes whatever is loaded *now*, and a reload can land between a
+prediction and the read. go-app requires every answer a prediction is assembled from to
+carry the same stamp and puts it on `POST /api/predict/team-selection` as `ratings_through`
+and `run_id` (both required); a prediction whose calls straddled a reload is refused with
+`409 SERVED_RUN_CHANGED`, and a store that cannot name its run is refused rather than
+stamped blank. A backtest's answer (`as_of` named) is dated by the as-of state it was served
+from, not by the through-today state.
+
 ---
 
 ## Test coverage and CI gates (ML service)
