@@ -12,6 +12,17 @@ import (
 
 // Wire shapes for the ml-service /xi/* endpoints (app/models/xi.py).
 
+// mlServedRatings is the stamp every prediction response carries (ServedRatings in
+// app/models/xi.py): which run answered and the date its ratings run through.
+type mlServedRatings struct {
+	RunID          string `json:"run_id"`
+	RatingsThrough string `json:"ratings_through"`
+}
+
+func (s mlServedRatings) served() predictteam.ServedRatings {
+	return predictteam.ServedRatings{RunID: s.RunID, RatingsThrough: s.RatingsThrough}
+}
+
 type mlXIConstraints struct {
 	TeamSize      int      `json:"team_size"`
 	MinBowlers    int      `json:"min_bowlers"`
@@ -38,6 +49,7 @@ type mlXIOptimizeResponse struct {
 	Optimised         bool               `json:"optimised"`
 	UnknownPlayerIDs  []string           `json:"unknown_player_ids"`
 	MarginalValues    map[string]float64 `json:"marginal_values"`
+	ServedRatings     mlServedRatings    `json:"served_ratings"`
 }
 
 type mlXIWinRequest struct {
@@ -52,8 +64,9 @@ type mlXIWinRequest struct {
 }
 
 type mlXIWinResponse struct {
-	Team1WinProbability  float64 `json:"team1_win_probability"`
-	ObjectiveProbability float64 `json:"objective_probability"`
+	Team1WinProbability  float64         `json:"team1_win_probability"`
+	ObjectiveProbability float64         `json:"objective_probability"`
+	ServedRatings        mlServedRatings `json:"served_ratings"`
 }
 
 // OptimizeXI calls POST /xi/optimize: server-side selection over player ids against the
@@ -99,11 +112,16 @@ func (c *MLClient) OptimizeXI(
 		Optimised:          out.Optimised,
 		UnknownPlayerKeys:  out.UnknownPlayerIDs,
 		MarginalValues:     out.MarginalValues,
+		Served:             out.ServedRatings.served(),
 	}, nil
 }
 
-// PredictMatchWinXI calls POST /xi/predict-win and returns the displayed P(team1 wins).
-func (c *MLClient) PredictMatchWinXI(ctx context.Context, req predictteam.XIWinRequest) (float64, error) {
+// PredictMatchWinXI calls POST /xi/predict-win and returns the displayed P(team1 wins)
+// with the rating state it was read from.
+func (c *MLClient) PredictMatchWinXI(
+	ctx context.Context,
+	req predictteam.XIWinRequest,
+) (*predictteam.XIWinResult, error) {
 	payload, err := json.Marshal(mlXIWinRequest{
 		Format:         req.Format,
 		Team1PlayerIDs: req.Team1PlayerKeys,
@@ -114,13 +132,16 @@ func (c *MLClient) PredictMatchWinXI(ctx context.Context, req predictteam.XIWinR
 		AsOf:           asOfParam(req.AsOf),
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	var out mlXIWinResponse
 	if err := c.postJSON(ctx, "/xi/predict-win", payload, &out); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return out.Team1WinProbability, nil
+	return &predictteam.XIWinResult{
+		Team1WinProbability: out.Team1WinProbability,
+		Served:              out.ServedRatings.served(),
+	}, nil
 }
 
 // asOfParam renders an as-of date for the wire; the zero time means "through today"
@@ -222,6 +243,7 @@ type mlSimulateResponse struct {
 	Team1            mlSimulatedSide           `json:"team1"`
 	Team2            mlSimulatedSide           `json:"team2"`
 	WinProbability   mlSimulatedWinProbability `json:"win_probability"`
+	ServedRatings    mlServedRatings           `json:"served_ratings"`
 }
 
 // SimulateMatchXI calls POST /simulate: the match drawn from the performance model's
@@ -259,6 +281,7 @@ func (c *MLClient) SimulateMatchXI(
 		DisplayTeam1WinProbability:   out.WinProbability.Display,
 		HeadlineTeam1WinProbability:  out.WinProbability.Headline,
 		HeadlineSource:               out.WinProbability.HeadlineSource,
+		Served:                       out.ServedRatings.served(),
 	}, nil
 }
 
@@ -318,6 +341,7 @@ type mlPerformancePlayer struct {
 type mlPerformanceResponse struct {
 	Players             []mlPerformancePlayer `json:"players"`
 	InningsMarginalised bool                  `json:"innings_marginalised"`
+	ServedRatings       mlServedRatings       `json:"served_ratings"`
 }
 
 // PredictPerformance calls POST /performance/predict: L2-B's per-player distributions for
@@ -356,5 +380,6 @@ func (c *MLClient) PredictPerformance(
 	return &predictteam.XIPerformanceResult{
 		InningsMarginalised: out.InningsMarginalised,
 		Players:             players,
+		Served:              out.ServedRatings.served(),
 	}, nil
 }

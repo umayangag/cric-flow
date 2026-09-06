@@ -19,6 +19,27 @@ type fakeOptimizer struct {
 	calls   []XIOptimizationRequest
 	answers [][]string // one per call, cycling on the last
 	err     error
+	// served is the stamp each call answers with, one per call cycling on the last;
+	// empty means every call answers from run A.
+	served []ServedRatings
+}
+
+// The two rating states a test can be answered from: a prediction is stamped with one, and
+// refused when its calls straddle both (P1-5).
+var (
+	servedFromRunA = ServedRatings{RunID: "20260906T083819Z-36689f80", RatingsThrough: "2026-09-02"}
+	servedFromRunB = ServedRatings{RunID: "20260913T083819Z-0e1e39c2", RatingsThrough: "2026-09-09"}
+)
+
+// servedOnCall is the stamp for the n-th call of a scripted plan, cycling on the last entry.
+func servedOnCall(plan []ServedRatings, call int) ServedRatings {
+	if len(plan) == 0 {
+		return servedFromRunA
+	}
+	if call >= len(plan) {
+		call = len(plan) - 1
+	}
+	return plan[call]
 }
 
 func (f *fakeOptimizer) OptimizeXI(
@@ -43,6 +64,7 @@ func (f *fakeOptimizer) OptimizeXI(
 		Objective:          req.Objective,
 		Optimised:          req.Objective == SelectionObjectiveWin,
 		MarginalValues:     marginals,
+		Served:             servedOnCall(f.served, len(f.calls)-1),
 	}, nil
 }
 
@@ -76,16 +98,22 @@ func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing
 	t.Parallel()
 	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}, {"k4", "k5"}}}
 
-	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("TEST"))
+	selection, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("TEST"))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"k1", "k2"}, xi1)
-	assert.Equal(t, []string{"k4", "k5"}, xi2)
-	assert.Equal(t, SelectionObjectiveRatings, summary.Objective)
-	assert.False(t, summary.Optimised)
-	assert.Equal(t, notOptimisedReasons["TEST"], summary.Note, "a rating-ordered XI carries its format's reason")
-	assert.Contains(t, summary.Note, "H-17")
-	assert.Nil(t, marginals, "nothing was maximised, so no player has a margin")
+	assert.Equal(t, []string{"k1", "k2"}, selection.Team1Keys)
+	assert.Equal(t, []string{"k4", "k5"}, selection.Team2Keys)
+	assert.Equal(t, SelectionObjectiveRatings, selection.Summary.Objective)
+	assert.False(t, selection.Summary.Optimised)
+	assert.Equal(
+		t,
+		notOptimisedReasons["TEST"],
+		selection.Summary.Note,
+		"a rating-ordered XI carries its format's reason",
+	)
+	assert.Contains(t, selection.Summary.Note, "H-17")
+	assert.Nil(t, selection.Marginals, "nothing was maximised, so no player has a margin")
+	assert.Equal(t, servedFromRunA, selection.Served, "the rating-ordered pick names the state it was read from")
 	require.Len(t, optimizer.calls, 2, "rating order does not depend on the opponent: one call per side")
 	for _, call := range optimizer.calls {
 		assert.Equal(t, SelectionObjectiveRatings, call.Objective)
@@ -131,16 +159,17 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 		answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k3"}, {"k4", "k6"}, {"k1", "k3"}, {"k4", "k6"}},
 	}
 
-	xi1, xi2, summary, marginals, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
+	selection, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{"k1", "k3"}, xi1)
-	assert.Equal(t, []string{"k4", "k6"}, xi2)
-	assert.Equal(t, SelectionObjectiveWin, summary.Objective)
-	assert.True(t, summary.Optimised)
-	assert.Empty(t, summary.Note)
-	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01, "k4": 0, "k6": 0.01}, marginals,
+	assert.Equal(t, []string{"k1", "k3"}, selection.Team1Keys)
+	assert.Equal(t, []string{"k4", "k6"}, selection.Team2Keys)
+	assert.Equal(t, SelectionObjectiveWin, selection.Summary.Objective)
+	assert.True(t, selection.Summary.Optimised)
+	assert.Empty(t, selection.Summary.Note)
+	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01, "k4": 0, "k6": 0.01}, selection.Marginals,
 		"both sides' marginal values reach the response")
+	assert.Equal(t, servedFromRunA, selection.Served)
 
 	seeds := optimizer.calls[:2]
 	for _, call := range seeds {
@@ -158,17 +187,69 @@ func TestSelectBothXIs_StopsAtAFixedPointRatherThanRunningEveryRound(t *testing.
 	// Every call returns the seed, so round one settles.
 	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k2"}, {"k4", "k5"}}}
 
-	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("ODI"))
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("ODI"))
 
 	require.NoError(t, err)
 	assert.Len(t, optimizer.calls, 4, "two seeds and one settled round")
+}
+
+// A selection whose optimiser calls were answered from two different runs is refused: the
+// XI from one state beside marginals from another has no single date to carry (P1-5).
+func TestSelectBothXIs_RefusesASelectionAssembledAcrossAReload(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name   string
+		format string
+		served []ServedRatings
+	}{
+		{
+			name:   "the rating-ordered path sees the second side answered from a new run",
+			format: "TEST",
+			served: []ServedRatings{servedFromRunA, servedFromRunB},
+		},
+		{
+			name:   "the optimised path sees a round answered from a new run",
+			format: "T20I",
+			served: []ServedRatings{servedFromRunA, servedFromRunA, servedFromRunA, servedFromRunB},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			optimizer := &fakeOptimizer{
+				answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k2"}, {"k4", "k5"}},
+				served:  tc.served,
+			}
+
+			_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture(tc.format))
+
+			var changed *ServedRunChangedError
+			require.ErrorAs(t, err, &changed)
+			assert.Equal(t, servedFromRunA, changed.Was)
+			assert.Equal(t, servedFromRunB, changed.Now)
+		})
+	}
+}
+
+// An optimiser answer that names no run is not an unknown date; it is a dateless
+// prediction with a different spelling, and is refused the same way.
+func TestSelectBothXIs_RefusesAnAnswerWithNoStamp(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}, {"k4", "k5"}}, served: []ServedRatings{{}}}
+
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("TEST"))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "without naming the run")
 }
 
 func TestSelectBothXIs_PropagatesTheOptimiserFailure(t *testing.T) {
 	t.Parallel()
 	optimizer := &fakeOptimizer{answers: [][]string{{"k1", "k2"}}, err: errors.New("model not loaded")}
 
-	_, _, _, _, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "model not loaded")

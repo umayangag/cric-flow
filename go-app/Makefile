@@ -68,10 +68,15 @@ test:
 # database and never against POSTGRES_DB above, which is the working one. Create it once
 # with `createdb -h $(POSTGRES_HOST) -U $(POSTGRES_USER) $(TEST_POSTGRES_DB)`; the tests
 # migrate it themselves and refuse to run if this is not overridden.
+#
+# Packages run one at a time (-p 1): more than one package now truncates the same tables
+# (internal/db and internal/server both seed player, match and batting_data), and `go test`
+# runs packages as parallel processes by default, so one fixture's TRUNCATE landed between
+# another's INSERTs -- a foreign-key violation that came and went with the scheduling.
 TEST_POSTGRES_DB ?= cricket_flow_test
 .PHONY: test-db
 test-db:
-	POSTGRES_DB=$(TEST_POSTGRES_DB) RUN_DB_TESTS=1 go test ./...
+	POSTGRES_DB=$(TEST_POSTGRES_DB) RUN_DB_TESTS=1 go test -p 1 ./...
 
 # Initialize local Go development environment (tools + modules)
 init:

@@ -112,6 +112,7 @@ def test_predict_performance_returns_distributions_for_both_elevens(registry, ar
     assert first.player_id == squad_a[0]
     assert 0.0 <= first.p_bats <= 1.0 and first.runs.q10 <= first.runs.median <= first.runs.q90
     assert first.wickets.p0 + first.wickets.p1 + first.wickets.p2_plus == pytest.approx(1.0)
+    assert res.served_ratings.run_id == registry.status().run_id
 
 
 def test_predict_performance_marginalises_unless_the_toss_is_known(registry, artifacts_dir) -> None:
@@ -591,6 +592,11 @@ def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
     early = xi_service.predict_win(XiWinRequest(**request, as_of=matches[30].match_date), registry=reg)
 
     assert today.team1_win_probability != pytest.approx(early.team1_win_probability, abs=1e-12)
+    # The stamp is read off the state that answered: a backtest's answer is dated by the
+    # as-of state it was served from, not by the through-today state (P1-5).
+    assert today.served_ratings.ratings_through == reg.status().ratings_through
+    assert early.served_ratings.ratings_through < matches[30].match_date.isoformat()
+    assert early.served_ratings.run_id == today.served_ratings.run_id
 
 
 def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, artifacts_dir) -> None:
@@ -609,6 +615,9 @@ def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, 
     assert res.win_probability.headline_source == "display"  # E2's rule: the display model stays the headline
     assert res.win_probability.headline == res.win_probability.display
     assert res.margin.p_bat_first_wins + res.margin.p_chaser_wins + res.margin.p_tie == pytest.approx(1.0)
+    status = registry.status()
+    assert res.served_ratings.run_id == status.run_id
+    assert res.served_ratings.ratings_through == status.ratings_through
 
 
 def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry, artifacts_dir) -> None:

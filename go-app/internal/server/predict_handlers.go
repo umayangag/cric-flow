@@ -332,6 +332,18 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// A prediction assembled across a reload has no single date to carry, so it is not
+	// carried at all: the state changed under the request, and running it again is the
+	// whole remedy (P1-5).
+	var runChanged *predictteam.ServedRunChangedError
+	if errors.As(err, &runChanged) {
+		writeJSON(w, http.StatusConflict, apiError{
+			Code:    "SERVED_RUN_CHANGED",
+			Message: runChanged.Error(),
+			Hint:    "a reload landed while this prediction was being assembled; run it again",
+		})
+		return
+	}
 	respondErr(w, err)
 }
 

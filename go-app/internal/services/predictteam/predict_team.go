@@ -191,7 +191,12 @@ func newResolvedSide(side db.TeamSide) ResolvedSide {
 // (H-17), `forecast` says which model produced the per-player numbers, `toss` says which
 // batting order they were produced under, and `win_probability.source` says which model
 // produced the headline probability. Nothing here falls back silently (§8.7).
+//
+// `run_id` and `ratings_through` (the embedded ServedRatings) say which rating state every
+// number was computed from; they are the same on every ml-service call the prediction made,
+// or the prediction is refused (P1-5).
 type Result struct {
+	ServedRatings
 	Team1Side      ResolvedSide          `json:"team1_side"`
 	Team2Side      ResolvedSide          `json:"team2_side"`
 	Team1          []SelectedPlayer      `json:"team1"`
@@ -230,7 +235,7 @@ func (e *CrossGenderFixtureError) Error() string {
 // same as-of rating state, keyed by player id. Nothing here takes a feature map.
 type XIService interface {
 	OptimizeXI(ctx context.Context, req XIOptimizationRequest) (*XIOptimizationResult, error)
-	PredictMatchWinXI(ctx context.Context, req XIWinRequest) (float64, error)
+	PredictMatchWinXI(ctx context.Context, req XIWinRequest) (*XIWinResult, error)
 	SimulateMatchXI(ctx context.Context, req XISimulationRequest) (*XISimulationResult, error)
 	PredictPerformance(ctx context.Context, req XIPerformanceRequest) (*XIPerformanceResult, error)
 }
@@ -257,25 +262,26 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		return nil, err
 	}
 
-	xi1, xi2, selection, marginals, err := selectBothXIs(ctx, service, fix)
+	selection, err := selectBothXIs(ctx, service, fix)
 	if err != nil {
 		return nil, err
 	}
 
 	result := &Result{
+		ServedRatings:    selection.Served,
 		Team1Side:        newResolvedSide(fix.team1),
 		Team2Side:        newResolvedSide(fix.team2),
-		Team1:            newSelectedPlayers(xi1, fix.pool1, marginals),
-		Team2:            newSelectedPlayers(xi2, fix.pool2, marginals),
-		Selection:        selection,
+		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Marginals),
+		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Marginals),
+		Selection:        selection.Summary,
 		Team1PoolSummary: fix.summary1,
 		Team2PoolSummary: fix.summary2,
 	}
 
-	display, err := service.PredictMatchWinXI(ctx, XIWinRequest{
+	win, err := service.PredictMatchWinXI(ctx, XIWinRequest{
 		Format:          fix.format,
-		Team1PlayerKeys: xi1,
-		Team2PlayerKeys: xi2,
+		Team1PlayerKeys: selection.Team1Keys,
+		Team2PlayerKeys: selection.Team2Keys,
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
@@ -284,15 +290,22 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
 	}
+	if err := result.adopt(win.Served); err != nil {
+		return nil, fmt.Errorf("win probability: %w", err)
+	}
 	result.WinProbability = WinProbabilitySummary{
-		Team1:           display,
+		Team1:           win.Team1WinProbability,
 		Source:          winProbabilitySourceDisplay,
-		PredictedWinner: winnerFrom(display, fix.team1, fix.team2),
+		PredictedWinner: winnerFrom(win.Team1WinProbability, fix.team1, fix.team2),
 	}
 
-	if err := applyMatchForecast(ctx, service, fix, xi1, xi2, result); err != nil {
+	if err := applyMatchForecast(ctx, service, fix, selection.Team1Keys, selection.Team2Keys, result); err != nil {
 		return nil, err
 	}
+	slog.InfoContext(ctx, "prediction served",
+		slog.String("format", fix.format),
+		slog.String("run_id", result.RunID),
+		slog.String("ratings_through", result.RatingsThrough))
 	return result, nil
 }
 

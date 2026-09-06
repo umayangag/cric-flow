@@ -68,11 +68,14 @@ func respondErr(w http.ResponseWriter, err error) {
 // relayStatus maps an upstream status onto one this API may answer with.
 //
 // 4xx passes through: "you asked for a format with no model" is the caller's problem
-// whichever service noticed it. Anything else becomes 502 — ml-service failing is this
-// service's dependency failing, not this request being malformed, and saying 500 would
-// blame the wrong side.
+// whichever service noticed it. 503 passes through too: ml-service's "not now" — nothing
+// loaded, or ratings past the limit (`RATINGS_STALE`, H-11) — is a deliberate refusal
+// that is just as true of this service, which cannot predict without it, and rewriting
+// it as 502 made a named refusal read as a broken gateway (P1-5). Anything else becomes
+// 502 — ml-service failing is this service's dependency failing, not this request being
+// malformed, and saying 500 would blame the wrong side.
 func relayStatus(upstream int) int {
-	if upstream >= 400 && upstream < 500 {
+	if (upstream >= 400 && upstream < 500) || upstream == http.StatusServiceUnavailable {
 		return upstream
 	}
 	return http.StatusBadGateway

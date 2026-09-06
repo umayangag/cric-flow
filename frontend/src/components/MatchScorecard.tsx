@@ -4,6 +4,7 @@ import { MetricInfo } from './common/MetricInfo';
 import type {
   PredictInningsTotal,
   PredictScorecard,
+  PredictServedRatings,
   PredictTossSummary,
   PredictWinProbability,
 } from '../types';
@@ -14,9 +15,23 @@ type Props = {
   winProbability: PredictWinProbability;
   /** Which batting order the numbers assume, straight off the wire (P1-1). */
   toss: PredictTossSummary;
+  /**
+   * Which rating state every number here was computed from, off the same payload (P1-5).
+   * Never read from a status poll: that describes whatever is loaded now, which may be a
+   * different run than the one that answered.
+   */
+  served: PredictServedRatings;
   team1: string;
   team2: string;
 };
+
+/**
+ * The one sentence behind "ratings as of". It is UI copy about a label, not metric prose:
+ * the date and the run are not numbers the L-1 glossary explains.
+ */
+const RATINGS_AS_OF_TITLE =
+  'The served ratings include every match through this date and none after it; the run is the ' +
+  'model build they were loaded from. A prediction past the freshness limit is refused, never served stale.';
 
 /**
  * What the card says the toss was.
@@ -92,7 +107,14 @@ const InningsLine: React.FC<{ label: string; innings: PredictInningsTotal }> = (
  * together into. Where the format has no innings length there is no total at all, and the
  * card says so rather than summing eleven medians and calling it an innings.
  */
-const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, toss, team1, team2 }) => {
+const MatchScorecard: React.FC<Props> = ({
+  scorecard,
+  winProbability,
+  toss,
+  served,
+  team1,
+  team2,
+}) => {
   return (
     <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -115,6 +137,14 @@ const MatchScorecard: React.FC<Props> = ({ scorecard, winProbability, toss, team
             simulated: {(winProbability.simulated * 100).toFixed(1)}%
           </Typography>
         )}
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          title={RATINGS_AS_OF_TITLE}
+          data-testid="ratings-as-of"
+        >
+          ratings as of <strong>{served.ratings_through}</strong> · run {served.run_id}
+        </Typography>
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 1 }}>
         <Chip

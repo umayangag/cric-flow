@@ -64,7 +64,14 @@ type XISelectionOptimizer interface {
 
 // XIWinPredictor is the ml-service /xi/predict-win contract: P(team1 wins) for two elevens.
 type XIWinPredictor interface {
-	PredictMatchWinXI(ctx context.Context, req XIWinRequest) (float64, error)
+	PredictMatchWinXI(ctx context.Context, req XIWinRequest) (*XIWinResult, error)
+}
+
+// XIWinResult is the Go-side response from POST /xi/predict-win: the displayed
+// probability, and the rating state it was read from.
+type XIWinResult struct {
+	Team1WinProbability float64
+	Served              ServedRatings
 }
 
 // XIOptimizationRequest is the Go-side payload for POST /xi/optimize.
@@ -90,6 +97,18 @@ type XIOptimizationResult struct {
 	Optimised          bool
 	UnknownPlayerKeys  []string
 	MarginalValues     map[string]float64
+	// Served is the rating state the selection was made from.
+	Served ServedRatings
+}
+
+// xiSelection is both chosen elevens, how they were chosen, and the rating state every
+// optimiser call that chose them was answered from.
+type xiSelection struct {
+	Team1Keys []string
+	Team2Keys []string
+	Summary   SelectionSummary
+	Marginals map[string]float64
+	Served    ServedRatings
 }
 
 // XIWinRequest is the Go-side payload for POST /xi/predict-win.
@@ -111,11 +130,7 @@ type XIWinRequest struct {
 // scoring an eleven against an eighteen-man squad evaluates a match that cannot happen.
 // Where it does not rank, rating order does not depend on the opponent at all, so one call
 // per side is the whole selection.
-func selectBothXIs(
-	ctx context.Context,
-	optimizer XISelectionOptimizer,
-	fix fixture,
-) (xi1, xi2 []string, summary SelectionSummary, marginals map[string]float64, err error) {
+func selectBothXIs(ctx context.Context, optimizer XISelectionOptimizer, fix fixture) (xiSelection, error) {
 	if !isOptimisedSelectionFormat(fix.format) {
 		return selectByRatings(ctx, optimizer, fix)
 	}
@@ -123,26 +138,28 @@ func selectBothXIs(
 }
 
 // selectByRatings is the H-17 path: a selection, but not an optimised one.
-func selectByRatings(
-	ctx context.Context,
-	optimizer XISelectionOptimizer,
-	fix fixture,
-) ([]string, []string, SelectionSummary, map[string]float64, error) {
-	summary := SelectionSummary{
+func selectByRatings(ctx context.Context, optimizer XISelectionOptimizer, fix fixture) (xiSelection, error) {
+	selection := xiSelection{Summary: SelectionSummary{
 		Objective: SelectionObjectiveRatings,
 		Optimised: false,
 		Note:      notOptimisedReasons[fix.format],
-	}
+	}}
 	xi1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team1.Label(), err)
+		return selection, fmt.Errorf("select %s: %w", fix.team1.Label(), err)
 	}
 	xi2, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool2, nil, false)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("select %s: %w", fix.team2.Label(), err)
+		return selection, fmt.Errorf("select %s: %w", fix.team2.Label(), err)
 	}
+	for _, answer := range []*XIOptimizationResult{xi1, xi2} {
+		if err := selection.Served.adopt(answer.Served); err != nil {
+			return selection, fmt.Errorf("select: %w", err)
+		}
+	}
+	selection.Team1Keys, selection.Team2Keys = xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys
 	slog.InfoContext(ctx, "rating-ordered XIs selected", slog.String("format", fix.format))
-	return xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys, summary, nil, nil
+	return selection, nil
 }
 
 // selectByWinProbability alternates: optimise team1 against team2's XI, then team2 against
@@ -153,27 +170,30 @@ func selectByRatings(
 // rather than converge; the last completed round is returned, and no claim of equilibrium
 // is made about it. Each side is seeded with its own rating-ordered XI, so the very first
 // optimisation already plays against an eleven.
-func selectByWinProbability(
-	ctx context.Context,
-	optimizer XISelectionOptimizer,
-	fix fixture,
-) ([]string, []string, SelectionSummary, map[string]float64, error) {
-	summary := SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true}
+func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer, fix fixture) (xiSelection, error) {
+	selection := xiSelection{
+		Summary:   SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true},
+		Marginals: map[string]float64{},
+	}
 	seed1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team1.Label(), err)
+		return selection, fmt.Errorf("seed %s: %w", fix.team1.Label(), err)
 	}
 	seed2, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool2, nil, false)
 	if err != nil {
-		return nil, nil, summary, nil, fmt.Errorf("seed %s: %w", fix.team2.Label(), err)
+		return selection, fmt.Errorf("seed %s: %w", fix.team2.Label(), err)
 	}
-	xi1, xi2 := seed1.SelectedPlayerKeys, seed2.SelectedPlayerKeys
-	marginals := map[string]float64{}
+	for _, answer := range []*XIOptimizationResult{seed1, seed2} {
+		if err := selection.Served.adopt(answer.Served); err != nil {
+			return selection, fmt.Errorf("seed: %w", err)
+		}
+	}
+	selection.Team1Keys, selection.Team2Keys = seed1.SelectedPlayerKeys, seed2.SelectedPlayerKeys
 
 	for round := 1; round <= config.SelectionBestResponseRounds(config.Load()); round++ {
-		next1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveWin, fix.pool1, xi2, true)
+		next1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveWin, fix.pool1, selection.Team2Keys, true)
 		if err != nil {
-			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team1.Label(), round, err)
+			return selection, fmt.Errorf("optimize %s (round %d): %w", fix.team1.Label(), round, err)
 		}
 		next2, err := optimizeSide(
 			ctx,
@@ -185,18 +205,24 @@ func selectByWinProbability(
 			false,
 		)
 		if err != nil {
-			return nil, nil, summary, nil, fmt.Errorf("optimize %s (round %d): %w", fix.team2.Label(), round, err)
+			return selection, fmt.Errorf("optimize %s (round %d): %w", fix.team2.Label(), round, err)
 		}
-		settled := sameXI(xi1, next1.SelectedPlayerKeys) && sameXI(xi2, next2.SelectedPlayerKeys)
-		xi1, xi2 = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys
-		marginals = mergeMarginals(next1.MarginalValues, next2.MarginalValues)
+		for _, answer := range []*XIOptimizationResult{next1, next2} {
+			if err := selection.Served.adopt(answer.Served); err != nil {
+				return selection, fmt.Errorf("optimize (round %d): %w", round, err)
+			}
+		}
+		settled := sameXI(selection.Team1Keys, next1.SelectedPlayerKeys) &&
+			sameXI(selection.Team2Keys, next2.SelectedPlayerKeys)
+		selection.Team1Keys, selection.Team2Keys = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys
+		selection.Marginals = mergeMarginals(next1.MarginalValues, next2.MarginalValues)
 		if settled {
 			slog.InfoContext(ctx, "win-probability selection settled",
 				slog.String("format", fix.format), slog.Int("rounds", round))
 			break
 		}
 	}
-	return xi1, xi2, summary, marginals, nil
+	return selection, nil
 }
 
 // optimizeSide is one call to /xi/optimize for one side.

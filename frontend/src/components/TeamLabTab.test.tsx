@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TeamLabTab from './TeamLabTab';
 import { api } from '../api';
+import { ApiError } from '../lib/apiError';
 import type { PredictTeamSelectionResponse, TeamSideOption } from '../types';
 
 const mockUseTeamLab = vi.fn();
@@ -81,6 +82,8 @@ function prediction(
   overrides: Partial<PredictTeamSelectionResponse> = {},
 ): PredictTeamSelectionResponse {
   return {
+    ratings_through: '2026-09-02',
+    run_id: '20260906T083819Z-36689f80',
     team1_side: indiaWomen,
     team2_side: australiaWomen,
     team1: [
@@ -255,6 +258,40 @@ describe('TeamLabTab', () => {
     expect(screen.getByText('1.8 pp')).toBeInTheDocument();
     expect(screen.getByText('Best 11 for each team')).toBeInTheDocument();
     expect(screen.queryByText('Not optimised')).not.toBeInTheDocument();
+  });
+
+  // P1-5: the date and run beside the headline come from the prediction's own payload, so
+  // they describe the run that answered and not whatever a status poll sees loaded now.
+  it('shows the date and run every served prediction carries', () => {
+    renderWithResult(prediction());
+
+    expect(screen.getByTestId('ratings-as-of')).toHaveTextContent(
+      'ratings as of 2026-09-02 · run 20260906T083819Z-36689f80',
+    );
+  });
+
+  // H-11 on the surface: a stale registry's refusal is shown with the date, the age against
+  // the limit and the step that fixes it -- and no number, because none was served.
+  it('shows a RATINGS_STALE refusal with its date and no stale number', () => {
+    mockUseTeamLab.mockReturnValue({
+      ...baseState,
+      result: null,
+      error: new ApiError('ratings run through 2026-08-20 (17 days old, limit 14)', {
+        status: 503,
+        code: 'RATINGS_STALE',
+        hint: 'run the retrain step, then reload -- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate',
+      }),
+    });
+    render(<TeamLabTab />);
+
+    const refusal = screen.getByRole('alert');
+    expect(refusal).toHaveTextContent('Prediction failed');
+    expect(refusal).toHaveTextContent('2026-08-20 (17 days old, limit 14)');
+    expect(refusal).toHaveTextContent('run the retrain step, then reload');
+    expect(refusal).toHaveTextContent('Ops → Pipeline: run Retrain, then Reload');
+    expect(refusal).toHaveTextContent('RATINGS_STALE');
+    expect(screen.queryByText(/win probability/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ratings-as-of')).not.toBeInTheDocument();
   });
 
   // The surface says which toss the numbers assume, read off the response rather than off

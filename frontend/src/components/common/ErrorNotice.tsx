@@ -22,6 +22,8 @@ const REMEDIES: Record<string, string> = {
     'No matches have been imported for this format. Ops → Import, then Precompute, then Export.',
   NO_SQUAD:
     'No player pool for this team in this format — the teams are derived from imported matches, so a team with no history here cannot be picked from.',
+  RATINGS_STALE:
+    'Ops → Pipeline: run Retrain, then Reload. The Lab answers again once the loaded run’s ratings are inside the limit; until then no prediction is served from the old ones.',
 };
 
 export type ErrorNoticeProps = {

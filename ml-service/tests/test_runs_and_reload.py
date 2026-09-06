@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import xi_service
-from app.models.xi import XiOptimizeRequest
+from app.models.xi import XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi import contract as C
 from ml.xi import runs
 from ml.xi.ratings import RatingState
@@ -308,6 +308,61 @@ def test_the_check_is_off_when_the_limit_is_zero(tmp_path, monkeypatch):
     assert registry.freshness().fresh is True
 
 
+# --- P1-5: every prediction names the run and the date it was served from ------------
+
+
+def _live_win_request() -> XiWinRequest:
+    return XiWinRequest(format="T20", team1_player_ids=["player0"], team2_player_ids=["player1"])
+
+
+def test_a_prediction_carries_the_same_run_and_date_the_status_reports(tmp_path, monkeypatch):
+    """The stamp and ``/xi/status`` read the same manifest and the same ``last_date``, so a
+    payload copied out of the product carries exactly the date the status would show."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    win = xi_service.predict_win(_live_win_request(), registry)
+    status = registry.status()
+
+    assert win.served_ratings.run_id == status.run_id == "20260902T101500Z-ab12cd34"
+    assert win.served_ratings.ratings_through == status.ratings_through == "2026-08-30"
+
+
+def test_optimize_carries_the_stamp_on_the_rating_ordered_path_too(tmp_path, monkeypatch):
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    res = xi_service.optimize(
+        XiOptimizeRequest(
+            format="T20",
+            pool_player_ids=[f"player{i}" for i in range(3)],
+            objective="ratings",
+            constraints=XiConstraints(team_size=3, min_bowlers=0, require_keeper=False),
+        ),
+        registry,
+    )
+
+    assert res.served_ratings.model_dump() == {"run_id": "20260902T101500Z-ab12cd34", "ratings_through": "2026-08-30"}
+
+
+def test_a_store_that_cannot_name_its_run_is_refused_rather_than_stamped_blank(tmp_path, monkeypatch):
+    """A prediction without its date is the defect the stamp closes, so a store that cannot
+    say which run it is -- one assembled without a manifest -- is refused, not answered
+    with an empty field. (A state with no date never gets this far: H-11 refuses it first.)"""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    _write_run(tmp_path)
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+    registry._store.manifest = None
+
+    with pytest.raises(xi_service.XiUnavailable, match="cannot name its run or the date"):
+        xi_service.predict_win(_live_win_request(), registry)
+
+
 def test_optimize_refuses_a_live_request_against_stale_ratings(tmp_path, monkeypatch):
     """The refusal reaches the endpoint layer, not only the registry."""
     monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
@@ -365,6 +420,35 @@ def test_health_reports_the_run_and_the_freshness_verdict(client, tmp_path, monk
     assert data["status"] == "ok", "an unservable model is not a dead process"
     assert data["run_id"] == "20260902T101500Z-ab12cd34"
     assert data["ratings"]["code"] == "RATINGS_STALE"
+
+
+def test_a_live_prediction_against_stale_ratings_is_a_503_with_the_code_on_the_wire(client, tmp_path, monkeypatch):
+    """H-11 end to end at this service's boundary: the refusal a caller sees carries the
+    code, the date, the age against the limit and the step that fixes it (P1-5)."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    stale_through = date.today() - timedelta(days=40)
+    _write_run(tmp_path, last_date=stale_through)
+    client.post("/admin/reload")
+
+    resp = client.post("/xi/predict-win", json=_live_win_request().model_dump(mode="json", exclude_none=True))
+
+    assert resp.status_code == 503
+    detail = resp.json()["detail"]
+    assert detail["code"] == "RATINGS_STALE"
+    assert stale_through.isoformat() in detail["message"]
+    assert "40 days old, limit 14" in detail["message"]
+    assert "retrain" in detail["hint"]
+
+
+def test_a_served_prediction_names_its_run_and_date_on_the_wire(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    client.post("/admin/reload")
+
+    resp = client.post("/xi/predict-win", json=_live_win_request().model_dump(mode="json", exclude_none=True))
+
+    assert resp.status_code == 200
+    assert resp.json()["served_ratings"] == {"run_id": "20260902T101500Z-ab12cd34", "ratings_through": "2026-08-30"}
 
 
 def test_reload_with_no_run_publishes_the_newest_one(client, tmp_path):

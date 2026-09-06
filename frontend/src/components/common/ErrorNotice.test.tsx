@@ -39,6 +39,15 @@ describe('ErrorNotice', () => {
     expect(screen.getByText(/Evaluate → Export contributions/)).toBeInTheDocument();
   });
 
+  it('tells the operator where in this UI to fix stale ratings', () => {
+    render(
+      <ErrorNotice
+        error={new ApiError('ratings run through 2026-08-20', { code: 'RATINGS_STALE' })}
+      />,
+    );
+    expect(screen.getByText(/Ops → Pipeline: run Retrain, then Reload/)).toBeInTheDocument();
+  });
+
   it('accepts a plain string, for surfaces not yet on the structured error', () => {
     render(<ErrorNotice error="something broke" />);
     expect(screen.getByText('something broke')).toBeInTheDocument();
