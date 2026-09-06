@@ -81,6 +81,12 @@ def elo_expected(rating_a: float, rating_b: float) -> float:
 _N_PHASES = len(C.PHASE_NAMES)
 #: What a fixture-context key the state has never seen reads: no runs, no dismissals, no balls.
 _NO_SCORING = (0.0, 0.0, 0.0)
+#: What a team-level key the state has never seen reads (B-1). Tuples, not the empty list
+#: and pair a ``defaultdict`` would have manufactured, so a read cannot hand a caller a
+#: container that is then mutated into a state entry by the back door.
+_NO_RESULTS: tuple = ()
+_NO_VENUE_BAT_FIRST = (0.0, 0.0)
+_NO_VENUE_MATCHES = 0
 #: The debut accumulators' last axis (X-1b family 3): the sums a debutant's band pools over
 #: every debut match before this one -- the impact numerator, the balls, the wicket
 #: numerator and the matches with at least one ball -- exactly the four quantities a
@@ -281,13 +287,24 @@ class RatingState:
         return 1 if self.gender_split_context and gender == C.GENDER_FEMALE else 0
 
     def team_context(self, match: MatchRecord) -> Dict[str, float]:
-        """Team-level features (constant w.r.t. the XI)."""
+        """Team-level features (constant w.r.t. the XI).
+
+        ``get``, not indexing: a read must not write a key into the state (the D-7 class,
+        B-1). Indexing these ``defaultdict``s meant a request naming a team, a venue or a
+        head-to-head pair the state has never seen -- an unknown opposition id, or a
+        fixture that names no venue -- grew all five tables by one entry per read, so a
+        long-lived store drifted with the traffic it served and an H-8 comparison after
+        serving depended on what had been asked for. The defaults below are exactly the
+        entries the ``defaultdict``s would have created, so the numbers are unchanged.
+        ``update`` keeps its indexing: writing on write is the point there.
+        """
         fmt, t1, t2, v = match.format_code, match.team1, match.team2, match.venue
-        e1, e2 = self.team_elo[(fmt, t1)], self.team_elo[(fmt, t2)]
-        r1 = self.team_results[(fmt, t1)][-C.TEAM_FORM_WINDOW :]
-        r2 = self.team_results[(fmt, t2)][-C.TEAM_FORM_WINDOW :]
-        hh = self.head_to_head[(fmt, t1, t2)][-C.HEAD_TO_HEAD_WINDOW :]
-        vb = self.venue_bat_first[(fmt, v)]
+        e1 = self.team_elo.get((fmt, t1), C.ELO_INITIAL)
+        e2 = self.team_elo.get((fmt, t2), C.ELO_INITIAL)
+        r1 = self.team_results.get((fmt, t1), _NO_RESULTS)[-C.TEAM_FORM_WINDOW :]
+        r2 = self.team_results.get((fmt, t2), _NO_RESULTS)[-C.TEAM_FORM_WINDOW :]
+        hh = self.head_to_head.get((fmt, t1, t2), _NO_RESULTS)[-C.HEAD_TO_HEAD_WINDOW :]
+        vb = self.venue_bat_first.get((fmt, v), _NO_VENUE_BAT_FIRST)
         return {
             "team_elo_diff": e1 - e2,
             "team_form_diff": (float(np.mean(r1)) if r1 else 0.5) - (float(np.mean(r2)) if r2 else 0.5),
@@ -295,8 +312,8 @@ class RatingState:
             "team_h2h_n": float(len(hh)),
             "venue_bf_rate": (vb[0] + 0.5 * C.VENUE_PRIOR_MATCHES) / (vb[1] + C.VENUE_PRIOR_MATCHES),
             "venue_n": vb[1],
-            "venue_fam_diff": math.log1p(self.team_venue_matches[(t1, v)])
-            - math.log1p(self.team_venue_matches[(t2, v)]),
+            "venue_fam_diff": math.log1p(self.team_venue_matches.get((t1, v), _NO_VENUE_MATCHES))
+            - math.log1p(self.team_venue_matches.get((t2, v), _NO_VENUE_MATCHES)),
         }
 
     def fixture_context(self, match: MatchRecord) -> Dict[str, float]:

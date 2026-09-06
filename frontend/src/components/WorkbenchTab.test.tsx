@@ -67,6 +67,26 @@ describe('WorkbenchTab', () => {
     expect(screen.getByText('0.6980')).toBeInTheDocument();
   });
 
+  /** B-3: a run with no holdout still trained its formats, and the manifest says why the
+   * discrimination numbers are missing rather than rendering an empty table. */
+  it('says why a format carries no headline metrics', async () => {
+    mockXiStatus.mockResolvedValue({
+      ...LOADED,
+      manifest: {
+        ...LOADED.manifest,
+        metrics: { T20: { n_train: 21096, n_holdout: 0 } },
+        format_notes: {
+          T20: 'trained on 21096 rows but not scored: holdout too small or single-class; no discrimination numbers (0 rows at or after the cutoff)',
+        },
+      },
+    });
+    render(<WorkbenchTab />);
+    await waitFor(() => expect(mockXiStatus).toHaveBeenCalled());
+
+    expect(await screen.findByText(/0 rows at or after the cutoff/)).toBeInTheDocument();
+    expect(screen.getByText('n_holdout')).toBeInTheDocument();
+  });
+
   /** D-6: a refused artifact set has to read as refused, not as "nothing trained yet". */
   it('says why nothing is loaded when the artifacts were refused', async () => {
     mockXiStatus.mockResolvedValue({

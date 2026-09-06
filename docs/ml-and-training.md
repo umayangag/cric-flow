@@ -142,6 +142,17 @@ written **last**, so a directory only becomes a run once everything it names is 
 retrain that dies half-way leaves wreckage the loader never selects and `/artifacts/status`
 lists as "no manifest".
 
+**`formats` is what the run trained, not what it managed to score** (B-3). Rows at or after
+the cutoff are the holdout, so a retrain at today's cutoff — which is what a scheduled run
+does, `DefaultCutoff` being today UTC — has no holdout at all and reports no AUCs. The
+formats it trained are still listed, with their row counts, and `format_notes` says per
+format *why* the discrimination numbers are missing: `trained on N rows but not scored: …
+(0 rows at or after the cutoff)`, or `not trained: insufficient training rows (…)` for a
+format that fitted nothing. An empty `formats` therefore means nothing was trained and
+nothing can be served; a populated one with notes means the models exist and this run
+measured nothing about them — use `make evaluate`, or a cutoff that leaves a holdout, to
+judge them.
+
 **The loader refuses what it cannot serve.** `XiStore.load` reads the manifest first and
 raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when an array this
 code reads is absent, when a player array is narrower than the number of players the

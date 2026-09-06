@@ -420,7 +420,13 @@ export type RunManifestSummary = {
   cutoff?: string;
   dataset_sha?: string;
   git_sha?: string;
+  /** The formats the run trained — not the formats it managed to score (B-3). */
   formats?: string[];
+  /**
+   * Why a format carries no headline metrics: it was trained and there was no holdout to
+   * score it on, or it was not trained at all. Absent for a run that scored everything.
+   */
+  format_notes?: Record<string, string>;
   hyperparameters?: Record<string, unknown>;
   /**
    * The run's headline metrics per format, keyed by the metric key the service reports

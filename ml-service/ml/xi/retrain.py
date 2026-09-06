@@ -44,10 +44,17 @@ logger = logging.getLogger(__name__)
 def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
     """The numbers the manifest carries per format, from the run's own report.
 
-    Held to the two that answer "is this run usable?": the objective's holdout AUC, which
-    H-17 scopes selection by, and the display model's, which is what a user is shown. The
-    rest of the report stays in the report -- a manifest that copies everything is a
-    second copy to fall out of step with the first.
+    One entry per format the run *trained*, whether or not it had a holdout to score on.
+    That is B-3: a retrain at today's cutoff has no rows at or after it, so no format
+    reported an ``objective`` block, and skipping those left ``formats: []`` and
+    ``metrics: {}`` -- a manifest indistinguishable from one whose run trained nothing,
+    for a run that had in fact written and served four formats' models.
+
+    The scored numbers are held to the two that answer "is this run usable?": the
+    objective's holdout AUC, which H-17 scopes selection by, and the display model's,
+    which is what a user is shown. A format with no holdout carries its row counts alone,
+    and ``format_notes`` says why the rest is missing. The rest of the report stays in the
+    report -- a manifest that copies everything is a second copy to fall out of step.
 
     The names are glossary keys (``ml.xi.glossary``), because the Workbench renders these
     metrics by key and looks their explanation up: a headline metric named anything else
@@ -55,15 +62,41 @@ def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
     """
     out: Dict[str, Dict[str, float]] = {}
     for report in summary.get("formats", []):
-        if "objective" not in report:
-            continue
-        out[report["format_code"]] = {
-            "objective_auc": report["objective"]["auc"],
-            "display_auc_mean": report["display"]["auc_mean"],
-            "n_train": report["n_train"],
-            "n_holdout": report["n_holdout"],
-        }
+        if "skipped_reason" in report:
+            continue  # no model was fitted, so there is nothing for this format to be usable as
+        entry: Dict[str, float] = {"n_train": report["n_train"], "n_holdout": report["n_holdout"]}
+        if "objective" in report:
+            entry["objective_auc"] = report["objective"]["auc"]
+            entry["display_auc_mean"] = report["display"]["auc_mean"]
+        out[report["format_code"]] = entry
     return out
+
+
+def format_notes(summary: Dict) -> Dict[str, str]:
+    """Why a format carries no holdout metrics, per format, in the run's own words (B-3).
+
+    An absence in ``metrics`` has two very different causes -- nothing was trained, or
+    something was trained and there was nothing to score it on -- and a manifest that
+    renders the same either way cannot answer "is this run usable?". §8.7: the reason is
+    recorded where the answer is read, not only in the training log.
+
+    The wording is the report's own (``skipped_reason`` / ``holdout_note``) plus the row
+    counts, so there is one place that decides why a format was skipped and this only
+    quotes it. A format that trained and scored gets no note: there is nothing missing.
+    """
+    notes: Dict[str, str] = {}
+    for report in summary.get("formats", []):
+        if "skipped_reason" in report:
+            notes[report["format_code"]] = (
+                f"not trained: {report['skipped_reason']} ({report['n_train']} rows before the cutoff)"
+            )
+        elif "objective" not in report:
+            notes[report["format_code"]] = (
+                f"trained on {report['n_train']} rows but not scored: "
+                f"{report.get('holdout_note', 'no holdout metrics were reported')} "
+                f"({report['n_holdout']} rows at or after the cutoff)"
+            )
+    return notes
 
 
 def chosen_hyperparameters(summary: Dict) -> Dict[str, Dict]:
@@ -90,6 +123,7 @@ def retrain(
 
     summary = train_all(result, directory, cutoff, formats, baseline_dir=artifacts_dir)
     metrics = headline_metrics(summary)
+    notes = format_notes(summary)
     # L-1: the Workbench renders these by key and looks each one up, so a headline metric
     # the glossary does not carry would reach a surface with nothing to say about itself.
     unexplained = glossary.check_metric_names(
@@ -115,7 +149,10 @@ def retrain(
         hyperparameters=chosen_hyperparameters(summary),
         metrics=metrics,
         state_shape=state_shape(result.state),
+        # The formats this run trained -- not the formats it managed to score. A run whose
+        # cutoff leaves no holdout still wrote and can still serve these models (B-3).
         formats=sorted(metrics),
+        format_notes=notes,
         report=REPORT_NAME,
     )
     runs.write_manifest(directory, manifest)
@@ -126,6 +163,8 @@ def retrain(
         manifest.formats,
         manifest.dataset_sha[:12],
     )
+    for format_code, note in sorted(notes.items()):
+        logger.warning("retrain: run %s has no headline metrics for %s -- %s", run_id, format_code, note)
     return {"run_id": run_id, "run_dir": directory, "manifest": manifest.as_dict(), "summary": summary}
 
 
