@@ -100,6 +100,63 @@ func TestOptimizeXI_SendsAsOf(t *testing.T) {
 	assert.Equal(t, servedFromTheDevRun, result.Served)
 }
 
+// The "why this player" state crosses the boundary as a registry id plus numbers; go-app
+// resolves the id against the pool, so the client's whole job is to carry it intact (P1-3).
+func TestOptimizeXI_MapsTheSelectionReasonsIncludingTheAlternativesRegistryID(t *testing.T) {
+	t.Parallel()
+
+	client, _ := xiCaptureServer(
+		t, `{"selected_player_ids":["a1"],"win_probability":0.5,"evaluations":1,"improved_over_seed":0,`+
+			`"selection_reasons":{"a1":{"roles":["keeper","bowling_option"],"selection_rating":1.25,`+
+			`"rating_percentile":92.5,"pool_size":24,`+
+			`"best_alternative":{"player_id":"a9","win_probability_gap":0.0131},`+
+			`"best_alternative_note":null}},`+
+			`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
+	)
+
+	result, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
+		Format:             "T20I",
+		PoolPlayerKeys:     []string{"a1", "a9"},
+		OpponentPlayerKeys: []string{"b1"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.SelectionReasons, 1)
+	reason := result.SelectionReasons["a1"]
+	assert.Equal(t, []string{predictteam.RoleKeeper, predictteam.RoleBowlingOption}, reason.Roles)
+	assert.InDelta(t, 1.25, reason.SelectionRating, 1e-9)
+	assert.InDelta(t, 92.5, reason.RatingPercentile, 1e-9)
+	assert.Equal(t, 24, reason.PoolSize)
+	assert.Equal(t, "a9", reason.BestAlternativeKey)
+	assert.InDelta(t, 0.0131, reason.BestAlternativeGap, 1e-9)
+	assert.Empty(t, reason.BestAlternativeNote)
+}
+
+// A rating-ordered answer maximised nothing, so it names no alternative and go-app must
+// not manufacture one.
+func TestOptimizeXI_KeepsARatingOrderedReasonFreeOfAnAlternative(t *testing.T) {
+	t.Parallel()
+
+	client, _ := xiCaptureServer(
+		t, `{"selected_player_ids":["a1"],"objective":"ratings","optimised":false,"evaluations":0,`+
+			`"improved_over_seed":0,`+
+			`"selection_reasons":{"a1":{"roles":[],"selection_rating":0.4,"rating_percentile":10,`+
+			`"pool_size":18,"best_alternative":null,"best_alternative_note":null}},`+
+			`"served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
+	)
+
+	result, err := client.OptimizeXI(context.Background(), predictteam.XIOptimizationRequest{
+		Format:         "TEST",
+		Objective:      predictteam.SelectionObjectiveRatings,
+		PoolPlayerKeys: []string{"a1", "a9"},
+	})
+
+	require.NoError(t, err)
+	assert.Empty(t, result.SelectionReasons["a1"].BestAlternativeKey)
+	assert.Empty(t, result.SelectionReasons["a1"].BestAlternativeNote)
+	assert.Equal(t, 18, result.SelectionReasons["a1"].PoolSize)
+}
+
 // servedFromTheDevRun is the stamp the wire fixtures in this file carry: the run the dev
 // stack was serving when P1-5 shipped, with its ratings through the date they ran through.
 var servedFromTheDevRun = predictteam.ServedRatings{

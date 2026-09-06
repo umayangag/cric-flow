@@ -121,6 +121,10 @@ type XIOptimizationResult struct {
 	Optimised          bool
 	UnknownPlayerKeys  []string
 	MarginalValues     map[string]float64
+	// SelectionReasons is what the selection read about each player it picked, keyed by
+	// registry id (P1-3). Present on both objectives; a rating-ordered one carries no
+	// best alternative, because nothing was maximised.
+	SelectionReasons map[string]XISelectionReason
 	// Served is the rating state the selection was made from.
 	Served ServedRatings
 }
@@ -132,7 +136,9 @@ type xiSelection struct {
 	Team2Keys []string
 	Summary   SelectionSummary
 	Marginals map[string]float64
-	Served    ServedRatings
+	// Reasons is the "why this player" state for both elevens, keyed by registry id.
+	Reasons map[string]XISelectionReason
+	Served  ServedRatings
 }
 
 // XIWinRequest is the Go-side payload for POST /xi/predict-win.
@@ -201,6 +207,7 @@ func selectByRatings(ctx context.Context, optimizer XISelectionOptimizer, fix fi
 		}
 	}
 	selection.Team1Keys, selection.Team2Keys = xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys
+	selection.Reasons = mergeSelectionReasons(xi1.SelectionReasons, xi2.SelectionReasons)
 	slog.InfoContext(ctx, "rating-ordered XIs selected", slog.String("format", fix.format))
 	return selection, nil
 }
@@ -217,6 +224,7 @@ func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer,
 	selection := xiSelection{
 		Summary:   SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true},
 		Marginals: map[string]float64{},
+		Reasons:   map[string]XISelectionReason{},
 	}
 	seed1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
@@ -259,6 +267,9 @@ func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer,
 			sameXI(selection.Team2Keys, next2.SelectedPlayerKeys)
 		selection.Team1Keys, selection.Team2Keys = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys
 		selection.Marginals = mergeMarginals(next1.MarginalValues, next2.MarginalValues)
+		// The reasons come from the same round as the marginal values beside them, so the
+		// card and the headline describe one search against one opposing eleven.
+		selection.Reasons = mergeSelectionReasons(next1.SelectionReasons, next2.SelectionReasons)
 		if settled {
 			slog.InfoContext(ctx, "win-probability selection settled",
 				slog.String("format", fix.format), slog.Int("rounds", round))

@@ -13,6 +13,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
+	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
 // updateContract regenerates contracts/ops-console.contract.json instead of asserting
@@ -73,6 +74,12 @@ type contractDoc struct {
 	// wire. H-24: declared once in internal/availability, asserted from both sides.
 	PoolSources          []string `json:"pool_sources"`
 	PoolExclusionReasons []string `json:"pool_exclusion_reasons"`
+	// SelectionRoles is the constraint state a "why this player" card may name (P1-3).
+	// ml-service computes it from the predicates its optimiser evaluates, go-app puts it
+	// on the prediction, and the card turns each value into a chip — three copies of one
+	// vocabulary, which is the D-9 shape unless it is declared once and checked from
+	// every side.
+	SelectionRoles []string `json:"selection_roles"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -153,6 +160,7 @@ func buildContract() contractDoc {
 		StopResponseField:    StopResponseField,
 		PoolSources:          availability.PoolSources(),
 		PoolExclusionReasons: availability.ExclusionReasons(),
+		SelectionRoles:       predictteam.SelectionRoles(),
 	}
 }
 
