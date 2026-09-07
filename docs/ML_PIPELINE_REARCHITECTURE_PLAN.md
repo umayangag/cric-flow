@@ -2875,7 +2875,9 @@ under `SIM-DN-scale`'s 15-match floor and the shared factor falls back to the po
 probe said so before the run, and the arm is the control on that half by construction. **(3)
 `both` inflates ODI's pooled first-innings width by 2.4 %** (152.2 → 155.8) and fails
 `pooled_first_width_not_inflated`, which is the same 2.4 % §8.13 measured for `scale` in ODI,
-reproduced. E2 in ODI moves by less than one fold-level standard error in both arms
+reproduced — and `both`'s ODI day **first-innings** row (0.747 / 154.8 / 1.028) is §8.13's
+`scale` row to every decimal, which is the imported rule checked rather than assumed, since
+the chase term cannot touch the first innings. E2 in ODI moves by less than one fold-level standard error in both arms
 (+0.0026 ± 0.0029, +0.0024 ± 0.0030), so `e2_not_degraded` *passes* here: the T20 degradation
 is a three-standard-error reading on 399 matches a fold, and nine ODI folds of 107 cannot
 resolve it either way. Neither arm ships on ODI, which was never able to decide.
