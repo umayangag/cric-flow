@@ -493,7 +493,7 @@
         {
           "id": "frame-stakes",
           "label": "What the match was worth",
-          "summary": "Whether a fixture was a knockout or a final, and whether the archive placed it in its competition at all \u2014 read from the round and the pool Cricsheet states in its event fields (X-3), which the importer had been discarding. It reaches 96.5 % of matches; a match the archive does not place is its own category rather than an assumed league game. Whether the displayed win probability reads the two columns was decided on the walk-forward folds (gate X-3-stakes). The dead-rubber flag the same derivation produces is not here on purpose: it needs the season's fixture list, which makes it fit to clean a measurement and unfit to be a feature.",
+          "summary": "Whether a fixture was a knockout or a final, and whether the archive placed it in its competition at all — read from the round and the pool Cricsheet states in its event fields (X-3), which the importer had been discarding. It reaches 96.5 % of matches; a match the archive does not place is its own category rather than an assumed league game. Whether the displayed win probability reads the two columns was decided on the walk-forward folds (gate X-3-stakes). The dead-rubber flag the same derivation produces is not here on purpose: it needs the season's fixture list, which makes it fit to clean a measurement and unfit to be a feature.",
           "anchors": {
             "feature_groups": [
               "STAKES_COLS"
@@ -1279,7 +1279,7 @@
       "lane": "serve",
       "column": 3,
       "kind": "data",
-      "summary": "Every answer the API has issued, kept as it was served. A prediction is assembled from four ml-service calls and returned, and until P2-3 that was the end of it: nothing held what was claimed, so when the match was finally imported there was nothing to score against the result. Each successful answer is now written here before it is served \u2014 the payload whole, the request beside it, the run and the date it was served from, and the columns a resolver joins on \u2014 and the answer names the row that holds it. A refusal writes nothing, because a refusal is not a prediction; a write that fails is named on the answer's `record` block and never costs the caller the prediction. It is not a cache: a row names a rating state the next retrain replaces, so nothing here can be recomputed once it has.",
+      "summary": "Every answer the API has issued, kept as it was served. A prediction is assembled from four ml-service calls and returned, and until P2-3 that was the end of it: nothing held what was claimed, so when the match was finally imported there was nothing to score against the result. Each successful answer is now written here before it is served — the payload whole, the request beside it, the run and the date it was served from, and the columns a resolver joins on — and the answer names the row that holds it. A refusal writes nothing, because a refusal is not a prediction; a write that fails is named on the answer's `record` block and never costs the caller the prediction. It is not a cache: a row names a rating state the next retrain replaces, so nothing here can be recomputed once it has.",
       "anchors": {
         "packages": [
           "go-app/internal/predictions"
@@ -1305,6 +1305,39 @@
         {
           "doc": "docs/config-and-data.md",
           "section": "## Database migrations"
+        }
+      ],
+      "bindings": []
+    },
+    {
+      "id": "track-record",
+      "label": "Track record",
+      "lane": "serve",
+      "column": 4,
+      "kind": "surface",
+      "summary": "The prediction record scored against what happened, computed on every read from the store and the match tables -- no column, no pipeline step, no scheduler, so an import that brings a predicted match moves it to scored by itself. Every stored prediction is in exactly one state (scenario, superseded, unresolved, no result, scored); the scored ones carry Brier and the reliability curve with the base rate beside them, the served 10-90 totals' coverage per innings, and the eleven overlap, every figure with its n. Factored and factorless simulator predictions are never pooled (B-12), the ranges are as served with no day/night adjustment (B-11 is open and the record shows it), and nothing is filtered by outcome: a miss on the record is the record working. It is a diagnostic over tens of predictions, not evidence; the harness's figure sits beside each of its own so a reader sees the record against the number the model was accepted on.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/trackrecord"
+        ],
+        "endpoints": [
+          "GET /api/track-record"
+        ],
+        "files": [
+          "go-app/migrations/0014_issued_prediction_shared_factor.sql",
+          "go-app/internal/db/repo_track_record.go",
+          "go-app/internal/server/track_record_handler.go",
+          "frontend/src/components/TrackRecordTab.tsx"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/apis-backtest-and-ops.md",
+          "section": "## The track record"
+        },
+        {
+          "doc": "docs/ml-and-training.md",
+          "section": "### The track record beside the harness"
         }
       ],
       "bindings": []
@@ -1430,6 +1463,16 @@
       "from": "go-api",
       "to": "prediction-record",
       "label": "every issued answer, as served"
+    },
+    {
+      "from": "prediction-record",
+      "to": "track-record",
+      "label": "scored on read, misses included"
+    },
+    {
+      "from": "event-store",
+      "to": "track-record",
+      "label": "the match, once imported"
     }
   ]
 }
