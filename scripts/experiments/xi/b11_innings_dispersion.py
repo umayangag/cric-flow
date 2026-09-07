@@ -357,18 +357,14 @@ def verdict(
         ("chase", "dispersion"): (NOMINAL_DISPERSION, "chase_dispersion_ratio"),
     }
     paired = {
-        f"{innings}_{quantity}": {
-            p: dn._paired(folds, arm, dn._distance_to(target, p, key)) for p in POPULATIONS
-        }
+        f"{innings}_{quantity}": {p: dn._paired(folds, arm, dn._distance_to(target, p, key)) for p in POPULATIONS}
         for (innings, quantity), (target, key) in distances.items()
     }
     brier = dn._paired(folds, arm, lambda f, a: dn._value(f, a, "all", "delta_brier"))
     control_width = means[CONTROL]["all"].get("first_width_80")
     arm_width = means[arm]["all"].get("first_width_80")
     checks = {
-        f"{p}_{name}_moves_to_nominal": dn._shrinks(node[p])
-        for name, node in paired.items()
-        for p in POPULATIONS
+        f"{p}_{name}_moves_to_nominal": dn._shrinks(node[p]) for name, node in paired.items() for p in POPULATIONS
     }
     checks["pooled_first_width_not_inflated"] = (
         control_width is not None

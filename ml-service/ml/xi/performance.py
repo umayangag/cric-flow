@@ -559,9 +559,7 @@ def fit_performance(
         raw = model.predict_marginalised(calibration_rows)[target]["quantiles"]
         model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
     fold = (
-        _fit_simulator_calibration(
-            model, calibration_rows, match_frame, spec.chase_response, spec.chase_dispersion
-        )
+        _fit_simulator_calibration(model, calibration_rows, match_frame, spec.chase_response, spec.chase_dispersion)
         if spec.shared_factor and hold_out
         else FoldCalibration()
     )
