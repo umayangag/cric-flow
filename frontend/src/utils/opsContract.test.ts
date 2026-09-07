@@ -9,10 +9,13 @@ import {
   POOL_EXCLUSION_REASONS,
   POOL_SOURCES,
   RATINGS_STALE_CODE,
+  PREDICTION_STATES,
   RETRAIN_STATUSES,
   SELECTION_OBJECTIVES,
   SELECTION_ROLES,
+  SIMULATOR_POPULATIONS,
   TEAM_GENDERS,
+  TRACK_RECORD_METRIC_KEYS,
   WIN_PROBABILITY_SOURCES,
 } from '../types';
 
@@ -64,6 +67,10 @@ type Contract = {
   freshness_statuses: string[];
   retrain_statuses: string[];
   ratings_stale_code: string;
+  /** The track record's states and simulator populations, and its L-1 keys (H-24, P2-4). */
+  prediction_states: string[];
+  simulator_populations: string[];
+  track_record_metric_keys: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -290,5 +297,28 @@ describe('ops console contract', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("spells the track record's states and simulator populations the way the backend does", () => {
+    expect([...PREDICTION_STATES]).toEqual(contract.prediction_states);
+    expect([...SIMULATOR_POPULATIONS]).toEqual(contract.simulator_populations);
+  });
+
+  it("labels the track record's numbers under exactly the glossary keys the contract declares", () => {
+    // ml-service's completeness gate asserts every key here has a glossary entry; this
+    // side asserts the tab renders no key outside the list, so a number cannot reach the
+    // surface without an explainer behind it (L-1).
+    expect([...TRACK_RECORD_METRIC_KEYS]).toEqual(contract.track_record_metric_keys);
+    const tabSources = productionSources(join(frontendSrc, 'components')).filter((file) =>
+      file.includes('TrackRecord'),
+    );
+    expect(tabSources.length).toBeGreaterThan(0);
+    const used = new Set<string>();
+    for (const file of tabSources) {
+      for (const match of readFileSync(file, 'utf8').matchAll(/metricKey="([a-z0-9_]+)"/g)) {
+        used.add(match[1]);
+      }
+    }
+    expect([...used].sort()).toEqual([...contract.track_record_metric_keys].sort());
   });
 });
