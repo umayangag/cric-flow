@@ -134,13 +134,25 @@ output/ml-service/
     xi_win_report.json
 ```
 
-`manifest.json` carries the run id, when it was created, the cutoff, the dataset sha (a digest
-of the matches the pass consumed — computed from what was read, because ml-service does not
-mount the dataset directory), the git sha, the rating params, the hyperparameters the grid
-chose *and why*, the run's headline metrics per format, and the rating state's shape. It is
-written **last**, so a directory only becomes a run once everything it names is on disk: a
-retrain that dies half-way leaves wreckage the loader never selects and `/artifacts/status`
-lists as "no manifest".
+`manifest.json` carries the run id, when it was created, the cutoff, **`ratings_through`**,
+the dataset sha (a digest of the matches the pass consumed — computed from what was read,
+because ml-service does not mount the dataset directory), the git sha, the rating params, the
+hyperparameters the grid chose *and why*, the run's headline metrics per format, and the
+rating state's shape. It is written **last**, so a directory only becomes a run once
+everything it names is on disk: a retrain that dies half-way leaves wreckage the loader never
+selects and `/artifacts/status` lists as "no manifest".
+
+**`cutoff` and `ratings_through` are two dates** (P2-2). The cutoff is the training boundary
+the operator asked for — today, for a refresh — and rows at or after it are the holdout.
+`ratings_through` is the last match date the rating pass actually consumed, the state's own
+`last_date`, and it is the date every served prediction is "as of". On the dev box they
+differed by a day on the served run (cutoff `2026-09-03`, ratings through `2026-09-02`),
+because the archive lags the calendar. Retrain writes `ratings_through` from the state it just
+built, so "what date is this run's data?" is answered from the manifest — and from
+`/artifacts/status`, which lists it per run — without loading anything. The field is
+**required**: a manifest written before it existed is refused by name (below), listed with
+that reason, and never served with a date read off its joblib instead (§8.7). Nothing is
+backfilled; an older run is retrained, not patched.
 
 **`formats` is what the run trained, not what it managed to score** (B-3). Rows at or after
 the cutoff are the holdout, so a retrain at today's cutoff — which is what a scheduled run
@@ -154,16 +166,25 @@ measured nothing about them — use `make evaluate`, or a cutoff that leaves a h
 judge them.
 
 **The loader refuses what it cannot serve.** `XiStore.load` reads the manifest first and
-raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when an array this
+raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when the manifest
+carries no `ratings_through`, when the manifest's `ratings_through` disagrees with the
+state's `last_date` (the refusal names both dates — the two were written by one retrain and
+cannot differ unless the directory is not the run its manifest describes), when an array this
 code reads is absent, when a player array is narrower than the number of players the
 payload registers, or when a win artifact was fitted on `objective_cols` / `display_cols`
-that are not the contract's. That last one is B-7's: the serving path builds its row from
+that are not the contract's. The date assertion is what makes the manifest's date *the*
+date: `/xi/status`, the served-ratings stamp and `/artifacts/status` keep reading it off the
+state that computed the answer, and the manifest agrees with them by construction rather
+than by a second read. That last refusal is B-7's: the serving path builds its row from
 the artifact's *own* column list, so a run predating the display change loads perfectly and
 answers with the surface the change removed. That is D-6: a rating artifact written before P-2 loaded without complaint
 and then raised `IndexError` on the first request past slot 1024, while `/xi/status` reported
 `loaded: true`. An artifact was trusted because it loaded; now it has to say which run it is
 from and what shape it is in. The refusal reaches `/xi/status`, `/health`, `/ops/status`, a
-409 `RUN_ARTIFACTS_INVALID` from `POST /admin/reload`, and the prediction tab.
+409 `RUN_ARTIFACTS_INVALID` from `POST /admin/reload`, and the prediction tab. A run on disk
+that the manifest reader refuses is still listed by `/artifacts/status`, with `refused` set
+to the reason and `null` on every loadable run, and is never picked as "the newest run" by a
+reload with no run named; the Ops runs panel shows the reason under the run.
 
 **Staleness (H-11).** A live prediction against ratings older than
 `ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
