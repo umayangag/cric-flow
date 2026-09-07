@@ -2750,6 +2750,107 @@ the match and B-12's fold. T20I is thinner still: its quarterly windows hold 3�
 side and two of its folds fit no factor. That is stated before any arm ran, and it is why
 this section reports ODI rather than deciding on it.
 
+#### Results
+
+*T20, eleven folds, 1,000 draws per fixture, three arms sharing one fit and one seed stream.*
+
+**The control reproduces §8.13 to three decimals, in every cell** — coverage, width,
+dispersion, chase and Δ Brier alike — so the four PRs that landed between them (#281's reload
+fix, #282's `shared_factor` on `/simulate`, #283's prediction store, #284) moved nothing here,
+and neither did B-12's summary change, which this runner does not go through. One figure is
+new: the **chase's** dispersion ratio, which §8.13 did not carry. It reads **1.180 by day and
+1.037 at night** — the chase is genuinely under-dispersed, and by more in the day population,
+which is what makes a chase-side dispersion term the right shape of answer.
+
+| arm | population | matches/fold | first coverage | first width | first dispersion | chase coverage | chase width | chase dispersion | chase below q10 | chase above q90 | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 399 | 0.771 | 84.7 | — | 0.712 | 69.9 | — | 0.191 | 0.096 | +0.0019 |
+| control | day | 259 | **0.734** | 78.4 | **1.099** | **0.689** | 64.6 | **1.180** | 0.210 | 0.101 | +0.0024 |
+| control | night | 139 | **0.841** | 96.3 | **0.865** | **0.759** | 79.8 | **1.037** | 0.154 | 0.087 | +0.0002 |
+| chase | all | 399 | 0.771 | 84.7 | — | 0.820 | 92.3 | — | 0.084 | 0.097 | +0.0058 |
+| chase | day | 259 | 0.734 | 78.4 | 1.099 | 0.798 | 84.5 | 0.944 | 0.102 | 0.101 | +0.0085 |
+| chase | night | 139 | 0.841 | 96.3 | 0.865 | 0.859 | 106.3 | 0.815 | 0.052 | 0.089 | +0.0006 |
+| both | all | 399 | 0.754 | 81.6 | — | 0.814 | 90.9 | — | 0.084 | 0.102 | +0.0062 |
+| both | day | 259 | 0.760 | 83.6 | 1.027 | 0.811 | 87.7 | 0.904 | 0.098 | 0.092 | +0.0085 |
+| both | night | 139 | 0.748 | 78.2 | 1.076 | 0.819 | 96.5 | 0.914 | 0.059 | 0.122 | +0.0016 |
+
+Paired per fold against the control, one fold-level standard error as the floor (a clause
+passes only where the distance shrinks by more than its own standard error):
+
+| arm | first coverage \|Δ→0.80\|, day | night | first dispersion \|Δ→1.0\|, day | night | chase coverage \|Δ→0.80\|, day | night | chase dispersion \|Δ→1.0\|, day | night | Δ E2 | pooled first width |
+|---|---|---|---|---|---|---|---|---|---|---|
+| chase | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | **−0.0604 ± 0.0148** | +0.0260 ± 0.0273 | **−0.0795 ± 0.0504** | +0.0646 ± 0.0623 | **+0.0039 ± 0.0013** | 84.7 → 84.7 |
+| both | **−0.0160 ± 0.0075** | −0.0118 ± 0.0189 | **−0.0203 ± 0.0190** | **−0.0721 ± 0.0433** | **−0.0589 ± 0.0176** | +0.0121 ± 0.0205 | −0.0560 ± 0.0561 | −0.0006 ± 0.0475 | **+0.0043 ± 0.0013** | 84.7 → 81.6 |
+
+**`chase` fails, as its registration said it would on the first innings, and on three more
+clauses.** Its first-innings columns are **+0.0000 ± 0.0000 in both populations** — not
+"unchanged within noise" but bit-identical, fold for fold, which is the common-random-numbers
+claim checked rather than asserted. What it does to the chase is large and one-sided: the day
+chase moves 0.689 → 0.798 (−0.0604 ± 0.0148, four standard errors) and its dispersion 1.180 →
+0.944, but the night chase, which starts closer to nominal, goes straight past it to 0.859.
+`night_chase_coverage_moves_to_nominal`, `night_chase_dispersion_moves_to_nominal`,
+`e2_not_degraded` and the four first-innings clauses fail.
+
+**`both` passes five of its nine clauses and fails four.** It passes
+`day_first_coverage_moves_to_nominal` (−0.0160 ± 0.0075), both first-innings dispersion
+clauses, `day_chase_coverage_moves_to_nominal` (−0.0589 ± 0.0176) and —
+decisively for the "not bought by width" question — `pooled_first_width_not_inflated`, where
+the pooled first-innings width **falls**, 84.7 → 81.6, exactly as §8.13's reallocation did. It
+fails `night_first_coverage_moves_to_nominal` (−0.0118 ± 0.0189: the right direction, 0.6 of a
+standard error), `night_chase_coverage_moves_to_nominal` (+0.0121 ± 0.0205), both chase
+dispersion clauses — `day_chase_dispersion` at −0.0560 ± 0.0561, 0.998 of a standard error and
+so under the floor by a hair — and `e2_not_degraded`.
+
+**Reading it. The design's own claim is confirmed and two other things stop it.** Seven of
+`both`'s eight cells move toward nominal in the mean, and the one that does not (night chase,
++0.0121) misses by *half a standard error*. Set that against §8.13, where the same night chase
+clause failed at **+0.0829 ± 0.0156 and +0.0873 ± 0.0150** — five standard errors, and the
+reason those candidates were nulled. **The chase no longer pays for the first innings.** That
+was the whole point of a term the two innings do not share, and on the folds it is what
+happened: `both` takes the day first innings from 0.734 to 0.760 and the night first innings
+from 0.841 to 0.748 while the chase moves *up* in both populations rather than down. The
+interval's shape moves with it: the chase's tails, 0.191 below the 10th percentile against
+0.096 above it in the control — the asymmetry A-2 named and could not fix, because its level
+moved mass from one tail into the other — read **0.084 / 0.097** under the chase term, both at
+nominal, in one step and with no level fitted at all.
+
+What blocks it is two things, and neither is the lever.
+
+1. **The night side cannot be resolved on eleven folds of 139 matches.** `both`'s night
+   first-innings coverage moves 0.093 (0.841 → 0.748) and its paired distance shrinks by only
+   0.0118 ± 0.0189, because 0.748 is almost exactly as far from 0.80 as 0.841 was — the same
+   overshoot §8.13 measured on this lever, unchanged by composing the chase term with it. This
+   is the effect-size floor doing its job on a population the folds hold too little of, not a
+   sign that the correction is wrong.
+2. **E2 genuinely degrades, and the signed clause is what says so.** +0.0039 ± 0.0013 (`chase`)
+   and +0.0043 ± 0.0013 (`both`) are *growths* of three standard errors in
+   Brier(simulated) − Brier(display) — the pooled figure still inside E2's 0.01 tolerance
+   (+0.0058 and +0.0062), but moving the wrong way. This is a mechanism, not noise, and it is
+   the price of the design: an **independent** chase term adds variance to the chase alone, so
+   it widens the *difference* between the innings, which is what decides the match, and pushes
+   the simulated P(win) toward 0.5. The shared factor never had this cost, because a factor
+   common to both innings largely cancels in the margin. Interval calibration is being bought
+   with probability calibration.
+
+   §8.13's judgment call (2) recorded that `e2_unchanged` had failed three times on an
+   *improvement* and asked the next gate of this family to state the sign it cares about. This
+   gate stated it, and the sign turned out to matter in the other direction: here the movement
+   is a real degradation, and `e2_not_degraded` says so without ambiguity where a symmetric
+   clause would have failed identically on the two opposite meanings.
+
+**And the term's magnitude is over-estimated, which is why the night side overshoots.** The
+fitted residual scale runs 0.351–0.561 on the log scale across the folds against the draws'
+own 0.167–0.190, leaving an excess of **0.306–0.528** — a very large multiplicative widening.
+Two mechanisms inflate it, both visible in the estimator rather than in the folds. The
+residual takes the pitch out through the shared factor's **shrunk** per-match value, so
+whatever the shrinkage leaves behind (the fitted `shrink` is well under one) stays in the
+residual and is charged to the chase; and the shared factor is fitted on the *first* innings,
+so dividing the chase by it removes the pitch only to the extent that both innings respond to
+a pitch identically — which is the very assumption B-11 exists to question. A term fitted to
+the chase's own residual about its own expectation would not carry either.
+
+*ODI and T20I are reported, not decided — see the probe above.*
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not
