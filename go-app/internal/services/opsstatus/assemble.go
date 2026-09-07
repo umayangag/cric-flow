@@ -15,9 +15,9 @@ func AssembleResponse(ctx context.Context, dbProbe DBProbe) Response {
 		Dataset:        BuildDatasetSection(),
 		Artifacts:      map[string]any{"root": ArtifactsFallbackRoot(), "runs": []map[string]any{}},
 		Fielding:       map[string]any{},
-		DBFreshness:    map[string]any{},
 		DBCompleteness: map[string]any{},
 	}
+	insights := NewProductionInsightsProbe()
 
 	// DB
 	if dbProbe != nil {
@@ -27,14 +27,16 @@ func AssembleResponse(ctx context.Context, dbProbe DBProbe) Response {
 		resp.Services["api_readiness"] = connected
 	}
 	resp.Fielding = BuildFieldingSection(ctx, dbProbe)
-	// DB insights
-	resp.DBFreshness = BuildDBFreshnessSection(ctx, NewProductionInsightsProbe(), now)
-	resp.DBCompleteness = BuildDBCompletenessSection(ctx, NewProductionInsightsProbe(), now)
+	resp.DBCompleteness = BuildDBCompletenessSection(ctx, insights, now)
 	// Artifacts + ML health
 	if sec, mlOK := BuildArtifactsSection(nil, ArtifactsFallbackRoot()); sec != nil {
 		resp.Artifacts = sec
 		resp.Services["ml_health"] = mlOK
 	}
+	// Freshness is assembled after the artifacts because it copies H-11's verdict out of
+	// them: go-app sees both the database and ml-service, and this is the one place the
+	// two are put side by side (P2-1).
+	resp.Freshness = BuildFreshnessSection(ctx, insights, resp.Artifacts, now)
 	resp.Pipeline = BuildPipelineSection(ctx)
 	return resp
 }

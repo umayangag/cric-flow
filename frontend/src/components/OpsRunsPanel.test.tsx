@@ -1,14 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import OpsRunsPanel from './OpsRunsPanel';
-import type { OpsStatus } from '../utils/opsStatusHelpers';
+import type { OpsStatus, ServedFreshness } from '../utils/opsStatusHelpers';
+import { UNKNOWN_FRESHNESS } from '../utils/opsStatusHelpers';
 
-function statusWith(artifacts: Record<string, unknown>): OpsStatus {
-  return { timestamp: '2026-09-02T10:00:00Z', artifacts } as unknown as OpsStatus;
+/** An /ops/status payload: the runs section, and the one freshness object beside it. */
+function statusWith(artifacts: Record<string, unknown>, served?: ServedFreshness): OpsStatus {
+  return {
+    timestamp: '2026-09-02T10:00:00Z',
+    artifacts,
+    freshness: { ...UNKNOWN_FRESHNESS, served: served ?? UNKNOWN_FRESHNESS.served },
+  } as unknown as OpsStatus;
 }
 
-const FRESH = { fresh: true, age_days: 2, max_age_days: 14 };
-const STALE = { fresh: false, age_days: 40, max_age_days: 14 };
+const FRESH: ServedFreshness = {
+  status: 'fresh',
+  fresh: true,
+  age_days: 2,
+  max_age_days: 14,
+  ratings_through: '2026-08-30',
+  code: null,
+};
+const STALE: ServedFreshness = {
+  status: 'stale',
+  fresh: false,
+  age_days: 40,
+  max_age_days: 14,
+  ratings_through: '2026-07-19',
+  code: 'RATINGS_STALE',
+};
 
 describe('OpsRunsPanel', () => {
   it('says nothing has been trained rather than showing an empty table', () => {
@@ -20,16 +40,17 @@ describe('OpsRunsPanel', () => {
   it('names the loaded run and marks it in the list', () => {
     render(
       <OpsRunsPanel
-        data={statusWith({
-          loaded_run: 'r2',
-          current_run: 'r2',
-          ratings_through: '2026-08-30',
-          ratings: FRESH,
-          runs: [
-            { run_id: 'r2', cutoff: '2025-09-01', git_sha: 'deadbeefcafe', has_manifest: true },
-            { run_id: 'r1', cutoff: '2025-09-01', has_manifest: true },
-          ],
-        })}
+        data={statusWith(
+          {
+            loaded_run: 'r2',
+            current_run: 'r2',
+            runs: [
+              { run_id: 'r2', cutoff: '2025-09-01', git_sha: 'deadbeefcafe', has_manifest: true },
+              { run_id: 'r1', cutoff: '2025-09-01', has_manifest: true },
+            ],
+          },
+          FRESH,
+        )}
       />,
     );
     expect(screen.getByText('r2')).toBeInTheDocument();
@@ -44,16 +65,12 @@ describe('OpsRunsPanel', () => {
   it('says live predictions are refused when the ratings are stale', () => {
     render(
       <OpsRunsPanel
-        data={statusWith({
-          loaded_run: 'r1',
-          ratings_through: '2026-07-19',
-          ratings: STALE,
-          runs: [{ run_id: 'r1', has_manifest: true }],
-        })}
+        data={statusWith({ loaded_run: 'r1', runs: [{ run_id: 'r1', has_manifest: true }] }, STALE)}
       />,
     );
-    expect(screen.getByText(/40 days old, limit 14/)).toBeInTheDocument();
-    expect(screen.getByText(/RATINGS_STALE/)).toBeInTheDocument();
+    expect(screen.getByText(/40 days old, past the limit of 14/)).toBeInTheDocument();
+    // The badge names the code and so does the sentence under it; both are the verdict's.
+    expect(screen.getAllByText(/RATINGS_STALE/).length).toBeGreaterThan(0);
   });
 
   /** D-6: a refused artifact set has to be visible as refused. */

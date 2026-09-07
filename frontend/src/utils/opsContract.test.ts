@@ -5,8 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
 import {
   FORECAST_SOURCES,
+  FRESHNESS_STATUSES,
   POOL_EXCLUSION_REASONS,
   POOL_SOURCES,
+  RATINGS_STALE_CODE,
+  RETRAIN_STATUSES,
   SELECTION_ROLES,
   TEAM_GENDERS,
   WIN_PROBABILITY_SOURCES,
@@ -54,6 +57,10 @@ type Contract = {
   /** The model behind the headline probability, and behind the per-player numbers (H-24, P1-4). */
   win_probability_sources: string[];
   forecast_sources: string[];
+  /** The one freshness vocabulary, and the code a refused prediction carries (H-24, P2-1). */
+  freshness_statuses: string[];
+  retrain_statuses: string[];
+  ratings_stale_code: string;
 };
 
 const contract: Contract = JSON.parse(
@@ -208,6 +215,21 @@ describe('ops console contract', () => {
       [...contract.win_probability_sources].sort(),
     );
     expect([...FORECAST_SOURCES].sort()).toEqual([...contract.forecast_sources].sort());
+  });
+
+  /**
+   * The freshness vocabulary is the contract's too (H-24, P2-1).
+   *
+   * There is one verdict in this system — H-11's — and the console renders it as a badge,
+   * the Lab's readiness notice as a warning, and `ErrorNotice` keys its remedy off the
+   * refusal's code. A status word or a code the UI spells differently is a verdict shown
+   * as `unknown` over a service that answered perfectly clearly, which is the shape of the
+   * disagreement P2-1 closed.
+   */
+  it('spells the freshness verdict the way the backend does', () => {
+    expect([...FRESHNESS_STATUSES].sort()).toEqual([...contract.freshness_statuses].sort());
+    expect([...RETRAIN_STATUSES].sort()).toEqual([...contract.retrain_statuses].sort());
+    expect(RATINGS_STALE_CODE).toEqual(contract.ratings_stale_code);
   });
 
   /**

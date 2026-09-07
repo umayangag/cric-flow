@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, AlertTitle, Box, Typography } from '@mui/material';
 import { ApiError } from '../../lib/apiError';
+import { RATINGS_STALE_CODE } from '../../types';
 
 /**
  * A remedy for a failure the app knows by name.
@@ -22,7 +23,9 @@ const REMEDIES: Record<string, string> = {
     'No matches have been imported for this format. Ops → Import, then Precompute, then Export.',
   NO_SQUAD:
     'No player pool for this team in this format — the teams are derived from imported matches, so a team with no history here cannot be picked from.',
-  RATINGS_STALE:
+  // The refusal's code is the contract's, not a string typed here: the Lab, the Ops badge
+  // and ml-service all have to spell it the same way for this remedy to be found (H-24).
+  [RATINGS_STALE_CODE]:
     'Ops → Pipeline: run Retrain, then Reload. The Lab answers again once the loaded run’s ratings are inside the limit; until then no prediction is served from the old ones.',
   FIXTURE_CROSS_GENDER:
     'Pick both sides from the same list: the opposition picker offers only sides of the team you chose first, so this arrives from a request built elsewhere.',

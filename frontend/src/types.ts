@@ -388,6 +388,26 @@ export type HealthResponse = {
   error?: string | null;
 };
 
+/**
+ * How the one freshness verdict is spelled, exactly as the wire spells it (H-24, P2-1).
+ *
+ * Declared in contracts/ops-console.contract.json and asserted against it by
+ * `opsContract.test.ts`. There is one verdict in this system — H-11's, computed by
+ * ml-service against `ml.ratings_max_age_days` — and these words are how go-app's
+ * assembled `freshness` object reports it. The UI holds no threshold and no second rule:
+ * `db_freshness` reading *stale* while H-11 read *fresh* on the same box is what a private
+ * vocabulary cost (§ 2.1 gap (4)).
+ */
+export const FRESHNESS_STATUSES = ['fresh', 'stale', 'not_loaded', 'unknown'] as const;
+export type FreshnessStatus = (typeof FRESHNESS_STATUSES)[number];
+
+/** Whether the database holds matches the served run never saw (the B-2 state). */
+export const RETRAIN_STATUSES = ['up_to_date', 'retrain_due', 'unknown'] as const;
+export type RetrainStatus = (typeof RETRAIN_STATUSES)[number];
+
+/** The code a live prediction past the limit is refused with (H-11), as ml-service raises it. */
+export const RATINGS_STALE_CODE = 'RATINGS_STALE';
+
 /** How old the loaded rating state is, and whether that is old enough to refuse with. */
 export type RatingsFreshness = {
   fresh: boolean;

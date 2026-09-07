@@ -6,65 +6,12 @@ import (
 	"time"
 )
 
-// BuildDBFreshnessSection computes latest per-format match date, days since, and status.
-func BuildDBFreshnessSection(ctx context.Context, probe InsightsProbe, now time.Time) map[string]any {
-	formats := CricketFormatCodes
-	section := map[string]any{
-		"formats": map[string]any{},
-		"overall": map[string]any{"status": "unknown"},
-	}
-	fm := map[string]any{}
-	worst := "ok"
-
-	var totalMatches int64
-	for _, f := range formats {
-		st := map[string]any{"status": "missing"}
-		if probe == nil {
-			st["status"] = "unknown"
-			fm[f] = st
-			worst = worseStatus(worst, "unknown")
-			continue
-		}
-		if count, err := probe.CountMatchesByFormat(ctx, f); err == nil {
-			st["match_count"] = count
-			totalMatches += count
-		}
-		t, err := probe.LatestMatchDateByFormat(ctx, f)
-		if err != nil {
-			slog.Error("failed to get latest match date", "format", f, "err", err)
-			st["status"] = "unknown"
-			fm[f] = st
-			worst = worseStatus(worst, "unknown")
-			continue
-		}
-		if t.IsZero() {
-			st["status"] = "missing"
-			fm[f] = st
-			worst = worseStatus(worst, "missing")
-			continue
-		}
-		days := int(now.Sub(t.UTC()).Hours() / 24)
-		st["latest_match_date"] = t.UTC().Format("2006-01-02")
-		st["days_since"] = days
-		var status string
-		switch {
-		case days <= 7:
-			status = "ok"
-		case days <= 30:
-			status = "stale"
-		default:
-			status = "missing"
-		}
-		st["status"] = status
-		fm[f] = st
-		worst = worseStatus(worst, status)
-	}
-	section["formats"] = fm
-	section["overall"] = map[string]any{"status": worst, "match_count": totalMatches}
-	return section
-}
-
 // BuildDBCompletenessSection counts matches over the last 30 days and classifies status.
+//
+// It asks a different question from the freshness object beside it — "is the import
+// empty?", not "how old is what we serve?" — which is why P2-1 left it alone when it
+// deleted `db_freshness`'s buckets. Its `ok | missing | unknown` says whether a format
+// has any recent rows at all; nothing here decides whether a prediction is served.
 func BuildDBCompletenessSection(ctx context.Context, probe InsightsProbe, now time.Time) map[string]any {
 	formats := CricketFormatCodes
 	section := map[string]any{

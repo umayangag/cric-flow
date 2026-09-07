@@ -1,8 +1,14 @@
 import React from 'react';
 import { Chip, Stack, Typography } from '@mui/material';
+import { RATINGS_STALE_CODE } from '../types';
 import SectionCard from './common/SectionCard';
 import StatusPill from './common/StatusPill';
-import { asObj } from '../utils/opsStatusHelpers';
+import {
+  asObj,
+  freshnessPillState,
+  readFreshness,
+  servedFreshnessLabel,
+} from '../utils/opsStatusHelpers';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 
 /** One run directory, as go-app /ops/status copies it through from ml-service. */
@@ -37,11 +43,9 @@ const OpsRunsPanel: React.FC<{ data: OpsStatus }> = ({ data }) => {
   const loadedRun = typeof artifacts.loaded_run === 'string' ? artifacts.loaded_run : null;
   const currentRun = typeof artifacts.current_run === 'string' ? artifacts.current_run : null;
   const error = typeof artifacts.error === 'string' ? artifacts.error : '';
-  const ratings = asObj(artifacts.ratings);
-  const fresh = ratings.fresh === true;
-  const ageDays = typeof ratings.age_days === 'number' ? ratings.age_days : null;
-  const maxAge = typeof ratings.max_age_days === 'number' ? ratings.max_age_days : null;
-  const through = typeof artifacts.ratings_through === 'string' ? artifacts.ratings_through : null;
+  // The verdict comes off the one freshness object, never off this section's own copy of
+  // ml-service's answer: one badge, one rule, one date (P2-1).
+  const served = readFreshness(data).served;
 
   return (
     <SectionCard
@@ -52,21 +56,15 @@ const OpsRunsPanel: React.FC<{ data: OpsStatus }> = ({ data }) => {
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Typography variant="body2">Serving:</Typography>
           <StatusPill state={loadedRun ? 'ok' : 'missing'} label={loadedRun ?? 'nothing loaded'} />
-          {through && (
-            <StatusPill
-              state={fresh ? 'ok' : 'stale'}
-              label={
-                fresh
-                  ? `ratings through ${through}`
-                  : `ratings through ${through} — ${ageDays ?? '?'} days old, limit ${maxAge ?? '?'}`
-              }
-            />
-          )}
+          <StatusPill
+            state={freshnessPillState(served.status)}
+            label={servedFreshnessLabel(served)}
+          />
         </Stack>
-        {!fresh && through && (
+        {served.status === 'stale' && (
           <Typography variant="body2" color="warning.dark">
-            Live predictions are refused with <strong>RATINGS_STALE</strong> until a retrain and a
-            reload (H-11).
+            Live predictions are refused with <strong>{served.code ?? RATINGS_STALE_CODE}</strong>{' '}
+            until a retrain and a reload (H-11).
           </Typography>
         )}
         {error && (

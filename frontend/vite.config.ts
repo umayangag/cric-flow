@@ -81,9 +81,9 @@ export default defineConfig({
       // new measurement rounded down, and the ratchet resumes from them.
       thresholds: {
         lines: 81,
-        functions: 80,
+        functions: 81,
         statements: 79,
-        branches: 71,
+        branches: 73,
       },
     },
   },

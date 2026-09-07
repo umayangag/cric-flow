@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { api } from '../api';
 import type { HealthResponse } from '../types';
+import { readFreshness, servedFreshnessLabel, UNKNOWN_FRESHNESS } from '../utils/opsStatusHelpers';
+import type { OpsFreshness } from '../utils/opsStatusHelpers';
 import { Button, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
@@ -12,6 +14,7 @@ const HEALTH_REFRESH_MS = Number(import.meta.env.VITE_HEALTH_REFRESH_MS ?? 60000
 
 const HealthTab: React.FC = () => {
   const [mlData, setMlData] = useState<HealthResponse | null>(null);
+  const [freshness, setFreshness] = useState<OpsFreshness>(UNKNOWN_FRESHNESS);
   const [apiHealth, setApiHealth] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,9 +37,21 @@ const HealthTab: React.FC = () => {
         return res;
       });
 
-      const [apiResp, mlResp] = await Promise.allSettled([apiPromise, mlPromise]);
+      // The Ratings line is not read off this tab's own health poll: freshness is one
+      // object, assembled once by go-app, and every surface that shows it reads that one
+      // (P2-1). An unreachable go-app leaves it `unknown`, which is what it is.
+      const opsPromise = api.opsStatus();
+
+      const [apiResp, mlResp, opsResp] = await Promise.allSettled([
+        apiPromise,
+        mlPromise,
+        opsPromise,
+      ]);
       if (apiResp.status === 'fulfilled') setApiHealth(apiResp.value.status);
       if (mlResp.status === 'fulfilled') setMlData(mlResp.value);
+      setFreshness(
+        opsResp.status === 'fulfilled' ? readFreshness(opsResp.value) : UNKNOWN_FRESHNESS,
+      );
       if (apiResp.status === 'rejected' && mlResp.status === 'rejected') {
         throw new Error('Both API and ML health checks failed');
       }
@@ -70,30 +85,20 @@ const HealthTab: React.FC = () => {
   // process; these three are about whether it can answer -- which run is loaded, how far
   // its ratings go, and whether that is recent enough that a live request is not refused.
   const runItems = useMemo(() => {
+    const ratingsItem = { label: 'Ratings', value: servedFreshnessLabel(freshness.served) };
     if (!mlData) {
-      return [
-        { label: 'Loaded run', value: '—' },
-        { label: 'Formats', value: '—' },
-        { label: 'Ratings', value: '—' },
-      ];
+      return [{ label: 'Loaded run', value: '—' }, { label: 'Formats', value: '—' }, ratingsItem];
     }
-    const ratings = mlData.ratings;
-    const ratingsValue = !ratings?.ratings_through
-      ? 'none loaded'
-      : ratings.fresh
-        ? `through ${ratings.ratings_through} (${ratings.age_days} days old)`
-        : `through ${ratings.ratings_through} — ${ratings.age_days} days old, ` +
-          `limit ${ratings.max_age_days}: ${ratings.code}`;
     return [
       { label: 'Loaded run', value: mlData.run_id || (mlData.error ? 'refused' : 'none') },
       {
         label: 'Formats',
         value: mlData.loaded_xi_formats?.length ? mlData.loaded_xi_formats.join(', ') : 'None',
       },
-      { label: 'Ratings', value: ratingsValue },
+      ratingsItem,
       ...(mlData.error ? [{ label: 'Refused', value: mlData.error }] : []),
     ];
-  }, [mlData]);
+  }, [mlData, freshness]);
 
   return (
     <Stack spacing={2}>
@@ -171,7 +176,7 @@ const HealthTab: React.FC = () => {
       </Grid>
 
       {(mlData || apiHealth) && (
-        <JsonCollapse data={{ api: apiHealth, ml: mlData }} summary="Show raw JSON" />
+        <JsonCollapse data={{ api: apiHealth, ml: mlData, freshness }} summary="Show raw JSON" />
       )}
     </Stack>
   );

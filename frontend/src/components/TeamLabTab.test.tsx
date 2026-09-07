@@ -786,14 +786,18 @@ describe('TeamLabTab', () => {
         ...baseState,
         opsStatus: {
           timestamp: '2026-09-06T00:00:00Z',
-          artifacts: {
-            loaded_run: '20260906T083819Z-36689f80',
-            ratings: {
+          artifacts: { loaded_run: '20260906T083819Z-36689f80' },
+          freshness: {
+            served: {
+              status: 'stale',
               fresh: false,
               age_days: 40,
               max_age_days: 14,
               ratings_through: '2026-07-28',
+              code: 'RATINGS_STALE',
             },
+            database: {},
+            retrain_due: { status: 'unknown', days_behind: null, latest_match_date: null },
           },
         },
       });
@@ -814,6 +818,18 @@ describe('TeamLabTab', () => {
           artifacts: {
             loaded_run: null,
             error: 'run r1: bat_pos_sum has width 1024, expected 13427',
+          },
+          freshness: {
+            served: {
+              status: 'not_loaded',
+              fresh: false,
+              age_days: null,
+              max_age_days: 14,
+              ratings_through: null,
+              code: null,
+            },
+            database: {},
+            retrain_due: { status: 'unknown', days_behind: null, latest_match_date: null },
           },
         },
       });

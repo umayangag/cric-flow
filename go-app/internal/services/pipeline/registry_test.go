@@ -12,6 +12,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
+	"github.com/umayangag/cric-flow/go-app/internal/freshness"
 	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
@@ -86,6 +87,16 @@ type contractDoc struct {
 	// number shown with no model behind it. Two sides, not three: go-app decides both.
 	WinProbabilitySources []string `json:"win_probability_sources"`
 	ForecastSources       []string `json:"forecast_sources"`
+	// FreshnessStatuses, RetrainStatuses and RatingsStaleCode are the one freshness
+	// vocabulary (H-24, P2-1). There is a single verdict in this system — H-11's, computed
+	// by ml-service — and these are how it is spelled on the wire: go-app assembles the
+	// object, the console renders the badge and the Lab's readiness notice off it, and
+	// ml-service raises the refusal the code names. Two components each holding their own
+	// words for freshness is how `db_freshness` came to read *stale* while H-11 read
+	// *fresh* on the same box (§ 2.1 gap (4)).
+	FreshnessStatuses []string `json:"freshness_statuses"`
+	RetrainStatuses   []string `json:"retrain_statuses"`
+	RatingsStaleCode  string   `json:"ratings_stale_code"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -169,6 +180,9 @@ func buildContract() contractDoc {
 		SelectionRoles:        predictteam.SelectionRoles(),
 		WinProbabilitySources: predictteam.WinProbabilitySources(),
 		ForecastSources:       predictteam.ForecastSources(),
+		FreshnessStatuses:     freshness.Statuses(),
+		RetrainStatuses:       freshness.RetrainStatuses(),
+		RatingsStaleCode:      freshness.RatingsStaleCode,
 	}
 }
 
