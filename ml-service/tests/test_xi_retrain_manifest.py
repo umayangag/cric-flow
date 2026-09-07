@@ -130,3 +130,14 @@ def test_headline_metrics_and_notes_read_the_report_not_the_models() -> None:
         "no discrimination numbers (0 rows at or after the cutoff)"
     )
     assert notes["TEST"] == "not trained: insufficient training rows (12 rows before the cutoff)"
+
+
+def test_the_manifest_records_the_date_the_pass_consumed_through_beside_the_cutoff(built, tmp_path) -> None:
+    """P2-2: ``ratings_through`` is the last match the pass consumed -- the state's own
+    ``last_date`` -- and ``cutoff`` is the boundary the operator asked for. They are two
+    dates, and a manifest that records only the second cannot say what its data is."""
+    manifest = _written_manifest(built, tmp_path, "2024-06-01")
+
+    assert manifest["ratings_through"] == built.state.last_date.isoformat()
+    assert manifest["cutoff"] == "2024-06-01"
+    assert manifest["ratings_through"] != manifest["cutoff"]

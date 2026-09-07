@@ -35,8 +35,9 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
       rule that read *stale* while H-11 read *fresh* on the same box.
     - `artifacts.error` — why a run on disk was refused (D-6). An empty panel and a refused
       artifact set look the same otherwise, and only one is something to act on.
-    - `artifacts.runs[]` — every run directory, newest first, with its manifest summary and
-      `has_manifest` for the ones that are not runs.
+    - `artifacts.runs[]` — every run directory, newest first, with its manifest summary
+      (including `ratings_through`, the date the run's data runs through, P2-2), `has_manifest`
+      for the ones that are not runs, and `refused` — `null`, or why the run cannot be loaded.
     - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
     - `dataset.path|exists|match_files|bytes|newest_file|newest_modified` — the Cricsheet directory Import reads from, resolved by `GO_APP_CRICSHEET_DIR` → `inputs.cricsheet_dir` → built-in default.
     - Optional: `fielding`, `db_completeness` (a different question — is the import

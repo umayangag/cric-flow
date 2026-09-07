@@ -103,10 +103,10 @@ func TestBuildArtifactsSection_FallsBackToTheRunsOnDisk(t *testing.T) {
 		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
 	root := t.TempDir()
 	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
-		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "git_sha": "abc1234",
+		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "ratings_through": "2025-08-31", "git_sha": "abc1234",
 	})
 	writeRun(t, root, "20260902T090000Z-22222222", map[string]any{
-		"run_id": "20260902T090000Z-22222222", "cutoff": "2025-09-01", "git_sha": "def5678",
+		"run_id": "20260902T090000Z-22222222", "cutoff": "2025-09-01", "ratings_through": "2025-08-31", "git_sha": "def5678",
 	})
 
 	section, mlOK := opsstatus.BuildArtifactsSection(client, root)
@@ -117,6 +117,31 @@ func TestBuildArtifactsSection_FallsBackToTheRunsOnDisk(t *testing.T) {
 	require.Len(t, runs, 2)
 	assert.Equal(t, "20260902T090000Z-22222222", runs[0]["run_id"], "newest first")
 	assert.Equal(t, true, runs[0]["has_manifest"])
+	assert.Equal(t, "2025-08-31", runs[0]["ratings_through"], "the run's data date is read off the listing (P2-2)")
+	assert.Nil(t, runs[0]["refused"])
+}
+
+// TestBuildArtifactsSection_AManifestWithoutRatingsThroughIsListedAsRefused: a run written
+// before the manifest recorded its date is listed with the reason it cannot be loaded,
+// not with a blank where the date would be (P2-2, §8.7). The scan reports what
+// ml-service will refuse; it does not read the date from anywhere else.
+func TestBuildArtifactsSection_AManifestWithoutRatingsThroughIsListedAsRefused(t *testing.T) {
+	client := mlServiceStub(t,
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
+	root := t.TempDir()
+	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
+		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "git_sha": "abc1234",
+	})
+
+	section, _ := opsstatus.BuildArtifactsSection(client, root)
+
+	runs := section["runs"].([]map[string]any)
+	require.Len(t, runs, 1)
+	assert.Equal(t, true, runs[0]["has_manifest"])
+	assert.NotContains(t, runs[0], "ratings_through")
+	assert.Contains(t, runs[0]["refused"], "20260901T090000Z-11111111")
+	assert.Contains(t, runs[0]["refused"], "ratings_through")
 }
 
 // TestBuildArtifactsSection_ADirectoryWithNoManifestIsNotARun: H-16's question in its
@@ -133,6 +158,7 @@ func TestBuildArtifactsSection_ADirectoryWithNoManifestIsNotARun(t *testing.T) {
 	runs := section["runs"].([]map[string]any)
 	require.Len(t, runs, 1)
 	assert.Equal(t, false, runs[0]["has_manifest"])
+	assert.Contains(t, runs[0]["refused"], "manifest.json", "the reason is on the wire, not only a flag")
 }
 
 // TestBuildArtifactsSection_NoRunsDirectoryIsAnEmptyList, not an error: a box that has

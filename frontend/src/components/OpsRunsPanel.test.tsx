@@ -45,8 +45,21 @@ describe('OpsRunsPanel', () => {
             loaded_run: 'r2',
             current_run: 'r2',
             runs: [
-              { run_id: 'r2', cutoff: '2025-09-01', git_sha: 'deadbeefcafe', has_manifest: true },
-              { run_id: 'r1', cutoff: '2025-09-01', has_manifest: true },
+              {
+                run_id: 'r2',
+                cutoff: '2025-09-01',
+                ratings_through: '2026-08-30',
+                git_sha: 'deadbeefcafe',
+                has_manifest: true,
+                refused: null,
+              },
+              {
+                run_id: 'r1',
+                cutoff: '2025-09-01',
+                ratings_through: '2026-08-23',
+                has_manifest: true,
+                refused: null,
+              },
             ],
           },
           FRESH,
@@ -58,7 +71,39 @@ describe('OpsRunsPanel', () => {
     expect(screen.getByText(/current$/)).toBeInTheDocument();
     expect(screen.getByText(/loaded$/)).toBeInTheDocument();
     expect(screen.getByText('deadbee')).toBeInTheDocument();
-    expect(screen.getByText(/ratings through 2026-08-30/)).toBeInTheDocument();
+    // The verdict's date and the loaded run's manifest date are one date (P2-2): the
+    // badge and the loaded row's chip both read it, and the older run reads its own.
+    expect(screen.getAllByText(/ratings through 2026-08-30/)).toHaveLength(2);
+    expect(screen.getByText('ratings through 2026-08-23')).toBeInTheDocument();
+  });
+
+  /** P2-2, §8.7: a run whose manifest predates `ratings_through` shows why it cannot be
+   * loaded, not a blank where the date would be. */
+  it('shows the reason a run on disk cannot be loaded', () => {
+    render(
+      <OpsRunsPanel
+        data={statusWith(
+          {
+            loaded_run: 'r2',
+            runs: [
+              { run_id: 'r2', ratings_through: '2026-08-30', has_manifest: true, refused: null },
+              {
+                run_id: 'r0',
+                has_manifest: true,
+                refused:
+                  'run r0: manifest.json carries no ratings_through, so the date its data runs through is not written down',
+              },
+            ],
+          },
+          FRESH,
+        )}
+      />,
+    );
+    expect(screen.getByText(/cannot be loaded/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/run r0: manifest.json carries no ratings_through/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/no manifest/)).not.toBeInTheDocument();
   });
 
   /** H-11: the verdict and the code, not a date the reader has to judge. */

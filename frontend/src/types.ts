@@ -437,7 +437,14 @@ export type XiStatusResponse = {
 export type RunManifestSummary = {
   run_id: string;
   created_at?: string;
+  /** The training boundary the operator asked for; rows at or after it are the holdout. */
   cutoff?: string;
+  /**
+   * The last match the rating pass consumed — the date every prediction from this run
+   * is "as of". Recorded by retrain and asserted against the state at load (P2-2), so
+   * it is the same date the served-ratings stamp carries.
+   */
+  ratings_through?: string;
   dataset_sha?: string;
   git_sha?: string;
   /** The formats the run trained — not the formats it managed to score (B-3). */
@@ -839,10 +846,14 @@ export type OpsStatusDTO = {
       run_id?: string;
       created_at?: string;
       cutoff?: string;
+      /** The run's data date, off its manifest — answered for every run on disk (P2-2). */
+      ratings_through?: string | null;
       git_sha?: string;
       dataset_sha?: string;
       formats?: string[];
       has_manifest?: boolean;
+      /** Why this run cannot be loaded, when it cannot; null on a loadable run (§8.7). */
+      refused?: string | null;
       current?: boolean;
       loaded?: boolean;
     }>;

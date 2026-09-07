@@ -32,9 +32,12 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 - **GET /xi/evaluate-report** — L4's `xi_evaluate_report.json`. **503** with a hint to run `make evaluate` when the harness has not run.
 - **GET /xi/metric-glossary** — What every reported metric means (L-1): `{"entries": {<metric key>: {key, name, explanation, band, better, direction, scale}}}`, from `ml/xi/glossary.py`. `scale` is the band as two numbers — `{bad, good}`, read through `direction` — for a surface that paints a value red-to-green instead of printing the sentence; it is `null` for a metric with no defensible anchor, which is why an interval width shows uncoloured. Always 200 — it is served from the code, so a surface can explain its numbers before any run exists.
 - **GET /artifacts/status** — Every run on disk, newest first, with `current_run`, `loaded_run`,
-  the ratings verdict and the loader's refusal. A run directory with no manifest is listed as
-  `has_manifest: false` rather than hidden: it is exactly what an operator is looking for when
-  nothing loads.
+  the ratings verdict and the loader's refusal. Each run carries its manifest summary, including
+  `ratings_through` — the date its data runs through, answered without loading it (P2-2) — and
+  `refused`: `null` on a loadable run, the reason on one that cannot be loaded (§8.7). A run
+  directory with no manifest is listed as `has_manifest: false` rather than hidden, and a
+  manifest written before `ratings_through` existed is listed with that as its `refused` reason:
+  both are exactly what an operator is looking for when nothing loads.
 - **POST /admin/reload?run=<id>** — Point `current` at a run and load it. Without `run`: the
   newest run on disk, which is the one the retrain before it built; naming a run is how you roll
   back to an earlier one. **409 `RUN_ARTIFACTS_INVALID`** when the run is
@@ -284,8 +287,11 @@ The status words and the refusal code are declared once in
 copies the answer through whole: `current_run`, `loaded_run`, `ratings_through`, `ratings`
 (ml-service's own verdict, which is where `freshness.served` is read from — no surface reads it
 from here), `error` (the loader's refusal, D-6) and `runs[]` — each with `run_id`,
-`created_at`, `cutoff`, `git_sha`, `dataset_sha`, `formats`, `has_manifest`, `current` and
-`loaded`. It reports runs because a run is what an artifact belongs to now (H-16): "is the model
+`created_at`, `cutoff`, `ratings_through` (the run's data date, off its manifest, P2-2),
+`git_sha`, `dataset_sha`, `formats`, `has_manifest`, `refused` (`null`, or why the run cannot be
+loaded), `current` and `loaded`. For the loaded run, `ratings_through` in its row equals the
+top-level `ratings_through` and the stamp on every served prediction — the loader asserted it.
+It reports runs because a run is what an artifact belongs to now (H-16): "is the model
 current?" is answered by which run `current` points at and whether that is the run the process
 loaded, not by six per-format files that could each have come from a different session. When
 ml-service cannot be reached, go-app scans `<root>/runs/*/manifest.json` itself and reports
@@ -301,7 +307,9 @@ to do three things in an order the message does not name is how the old list was
 
 **Force gaps to test:** point `GO_APP_ARTIFACTS_ROOT` at an empty directory and recheck
 `artifacts` and `suggestions`; remove a run's `manifest.json` and recheck that it is listed as
-`has_manifest: false` and that a reload of it answers 409.
+`has_manifest: false` and that a reload of it answers 409; copy a run and delete
+`ratings_through` from the copy's manifest and recheck that it is listed with `refused` naming
+the field and that a reload of it answers 409 naming the run.
 
 ---
 

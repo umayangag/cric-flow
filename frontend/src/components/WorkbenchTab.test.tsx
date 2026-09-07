@@ -37,6 +37,7 @@ const LOADED = {
   manifest: {
     run_id: '20260902T101500Z-ab12cd34',
     cutoff: '2025-09-01',
+    ratings_through: '2026-08-30',
     dataset_sha: 'abc123def4567890',
     git_sha: 'deadbeefcafe',
     formats: ['T20', 'ODI'],
@@ -74,6 +75,10 @@ describe('WorkbenchTab', () => {
     expect(await screen.findByText('20260902T101500Z-ab12cd34')).toBeInTheDocument();
     expect(screen.getByText('2025-09-01')).toBeInTheDocument();
     expect(screen.getByText('deadbee')).toBeInTheDocument();
+    // The manifest's own date beside the cutoff (P2-2), and the verdict reads the same one.
+    expect(screen.getByText('Ratings through (manifest)')).toBeInTheDocument();
+    expect(screen.getByText('2026-08-30')).toBeInTheDocument();
+    expect(screen.getByText(/ratings through 2026-08-30 \(3 days old/)).toBeInTheDocument();
   });
 
   /** L-1: the run's headline metrics are a table keyed by metric, not a JSON dump. */
