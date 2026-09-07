@@ -293,13 +293,16 @@ def test_fixtures_from_rows_build_both_orientations_per_side() -> None:
 # --- the chase response (plan §8.10, gate A-2) -----------------------------------------
 
 
-def _chase_sample(n: int, level: float, slope: float, sigma: float, seed: int = 0) -> S.ChaseCalibrationSample:
+def _chase_sample(
+    n: int, level: float, slope: float, sigma: float, seed: int = 0, simulated_log_sd: float = 0.0
+) -> S.ChaseCalibrationSample:
     """Calibration chases drawn from the response's own model: a log difficulty, a log
-    response around level + slope * x, and a win wherever the response reached it."""
+    response around level + slope * x, and a win wherever the response reached it.
+    ``simulated_log_sd`` is what the draws' own spread was on those matches."""
     rng = np.random.default_rng(seed)
     difficulty = rng.normal(0.0, 0.2, n)
     response = level + slope * difficulty + rng.normal(0.0, sigma, n)
-    return S.ChaseCalibrationSample(difficulty, response, response >= difficulty)
+    return S.ChaseCalibrationSample(difficulty, response, response >= difficulty, np.full(n, simulated_log_sd))
 
 
 def test_fit_chase_response_recovers_the_coefficients_under_censoring() -> None:
@@ -324,7 +327,9 @@ def test_fit_chase_response_none_fits_nothing_and_guards_thin_folds() -> None:
     with pytest.raises(ValueError, match="calibration chases"):
         S.fit_chase_response(_chase_sample(10, 0.0, -0.3, 0.1), "both")
     with pytest.raises(ValueError, match="lost chases"):
-        S.fit_chase_response(S.ChaseCalibrationSample(sample.difficulty, sample.response, np.ones(40, bool)), "both")
+        S.fit_chase_response(
+            S.ChaseCalibrationSample(sample.difficulty, sample.response, np.ones(40, bool), np.zeros(40)), "both"
+        )
     with pytest.raises(ValueError, match="unknown chase response arm"):
         S.fit_chase_response(sample, "collapse")
 
@@ -335,11 +340,14 @@ def test_chase_calibration_sample_takes_the_pitch_out_of_the_difficulty() -> Non
     factors = np.array([1.2, 0.8])
     chase_expected = np.array([150.0, 150.0])
 
-    sample = S.chase_calibration_sample(actual_first, actual_chase, np.array([True, False]), chase_expected, factors)
+    sample = S.chase_calibration_sample(
+        actual_first, actual_chase, np.array([True, False]), chase_expected, np.array([0.2, 0.3]), factors
+    )
 
     np.testing.assert_allclose(sample.difficulty, np.log([181.0 / 180.0, 121.0 / 120.0]))
     np.testing.assert_allclose(sample.response, np.log([181.0 / 180.0, 90.0 / 120.0]))
     assert sample.censored.tolist() == [True, False]
+    np.testing.assert_allclose(sample.simulated_log_sd, [0.2, 0.3])
 
 
 def test_a_negative_slope_lowers_hard_chases_and_raises_easy_ones() -> None:
@@ -383,3 +391,78 @@ def test_calibration_draws_carry_the_chases_expected_untruncated_total() -> None
     reference = S.simulate_match(team1, team2, CONTEXT, 300, 0, True, S.SimulatorCalibration(0.9))
     assert draws.chase_expected[0] == pytest.approx(reference.team2.untruncated_total.mean())
     assert draws.chase_expected[0] > reference.team2.total.mean()
+
+
+# --- the chase's own dispersion (plan §8.14, gate B-11) ---------------------------------
+
+
+def test_fit_chase_dispersion_deconvolves_the_draws_own_spread() -> None:
+    sample = _chase_sample(4000, level=0.0, slope=0.0, sigma=0.30, simulated_log_sd=0.18)
+
+    fitted = S.fit_chase_dispersion(sample)
+
+    assert fitted.fitted_log_sd == pytest.approx(0.30, abs=0.02)
+    assert fitted.simulated_log_sd == pytest.approx(0.18, abs=1e-12)
+    assert fitted.excess_log_sd == pytest.approx(np.sqrt(fitted.fitted_log_sd**2 - 0.18**2), abs=1e-9)
+    assert fitted.n_matches == 4000 and fitted.n_won == int(sample.censored.sum())
+
+
+def test_a_chase_already_as_wide_as_the_data_gets_no_extra_dispersion() -> None:
+    sample = _chase_sample(2000, level=0.0, slope=0.0, sigma=0.15, simulated_log_sd=0.6)
+
+    fitted = S.fit_chase_dispersion(sample)
+
+    assert fitted.excess_log_sd == 0.0
+    np.testing.assert_array_equal(fitted.sample(np.random.default_rng(0), 100), np.ones(100))
+
+
+def test_the_dispersion_term_is_mean_one_so_it_adds_spread_and_no_level() -> None:
+    fitted = S.ChaseDispersion(0.40, 0.20, 0.3464, 500, 240)
+
+    factors = fitted.sample(np.random.default_rng(0), 200_000)
+
+    assert factors.mean() == pytest.approx(1.0, abs=0.005)
+    assert np.log(factors).std() == pytest.approx(0.3464, abs=0.005)
+
+
+def test_the_chase_widens_and_the_first_innings_does_not_move() -> None:
+    team1, team2 = _teams()
+    pool = S.SharedFactor(np.linspace(0.8, 1.2, 60), 60, 0.02, 0.01, 0.7, _calibration_sample(60))
+    control = S.SimulatorCalibration(0.9, pool)
+    widened = S.SimulatorCalibration(0.9, pool, None, S.ChaseDispersion(0.40, 0.20, 0.3464, 500, 240))
+
+    without = S.simulate_match(team1, team2, CONTEXT, 4000, 0, True, control)
+    with_term = S.simulate_match(team1, team2, CONTEXT, 4000, 0, True, widened)
+
+    # The first innings is drawn before the chase, from the same stream: bit-identical.
+    np.testing.assert_array_equal(without.team1.total, with_term.team1.total)
+    assert with_term.team2.untruncated_total.std() > without.team2.untruncated_total.std() * 1.2
+    # The chase still ends at the target and never beyond it.
+    chaser_won = with_term.team2.total > with_term.team1.total
+    np.testing.assert_array_equal(with_term.team2.total[chaser_won], with_term.team1.total[chaser_won] + 1)
+
+
+def test_the_dispersion_term_is_reported_beside_the_shared_factor() -> None:
+    fitted = S.ChaseDispersion(0.40, 0.20, 0.3464, 500, 240)
+
+    reported = S.SimulatorCalibration(0.9, None, None, fitted).as_dict()
+
+    assert reported["chase_dispersion"] == {
+        "fitted_log_sd": 0.40,
+        "simulated_log_sd": 0.20,
+        "excess_log_sd": 0.3464,
+        "n_matches": 500,
+        "n_won": 240,
+    }
+    assert S.SimulatorCalibration(0.9).as_dict()["chase_dispersion"] is None
+
+
+def test_calibration_draws_carry_the_chases_own_log_spread() -> None:
+    team1, team2 = _teams()
+    fixture = S.Fixture("m1", team1, team2, CONTEXT)
+
+    draws = S.simulate_calibration_fixtures([fixture], 0.9, 300, seed=0)
+
+    reference = S.simulate_match(team1, team2, CONTEXT, 300, 0, True, S.SimulatorCalibration(0.9))
+    expected = np.log(np.maximum(reference.team2.untruncated_total, 1.0)).std()
+    assert draws.chase_log_sd[0] == pytest.approx(expected)
