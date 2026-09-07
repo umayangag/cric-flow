@@ -130,7 +130,7 @@ def test_predict_performance_marginalises_unless_the_toss_is_known(registry, art
 
 
 def test_predict_performance_without_an_artifact_is_unavailable(registry) -> None:
-    registry._store.performance = {}
+    registry._served.store.performance = {}
 
     with pytest.raises(xi_service.XiUnavailable, match="no performance model"):
         xi_service.predict_performance(

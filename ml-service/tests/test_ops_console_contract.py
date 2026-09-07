@@ -200,7 +200,11 @@ def test_the_status_verdict_reports_the_same_published_code(contract, monkeypatc
     registry = xi_service.XiRegistry()
     # The verdict reads one thing off the loaded store: how far its ratings run. A stub
     # store is the smallest arrangement that puts a date there without a run on disk.
-    registry._store = SimpleNamespace(state=SimpleNamespace(last_date=date.today() - timedelta(days=40)))
+    registry._served = xi_service.ServedRun(
+        store=SimpleNamespace(state=SimpleNamespace(last_date=date.today() - timedelta(days=40))),
+        report=None,
+        directory="",
+    )
 
     verdict = registry.freshness()
 

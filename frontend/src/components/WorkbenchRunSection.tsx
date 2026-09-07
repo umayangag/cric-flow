@@ -121,6 +121,13 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, freshness, loading, erro
     )}
     {!loading && !error && status?.loaded && (
       <Stack spacing={1.5}>
+        {status.error && (
+          // The two fields describe two runs (B-13): the one refused, named in the
+          // message, and the one that went on serving.
+          <Alert severity="warning">
+            {`The last reload was refused and ${status.run_id ?? 'the previous run'} is still serving: ${status.error}`}
+          </Alert>
+        )}
         <KeyValueList
           items={[
             { label: 'Run id', value: status.run_id ?? '—' },

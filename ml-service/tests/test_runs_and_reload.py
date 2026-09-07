@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import threading
 from datetime import date, timedelta
 
 import joblib
@@ -352,6 +353,108 @@ def test_reload_can_swap_between_two_runs(tmp_path):
     assert runs.read_current(str(tmp_path)) == "20260901T090000Z-11111111"
 
 
+# --- B-13: a refused reload leaves the run that was serving --------------------------
+
+SERVING_RUN = "20260901T090000Z-11111111"
+REFUSED_RUN = "20260903T154222Z-4e009a52"
+
+
+def _registry_serving(tmp_path) -> xi_service.XiRegistry:
+    """A registry serving ``SERVING_RUN``, ratings through 2026-08-28."""
+    _write_run(tmp_path, SERVING_RUN, last_date=date(2026, 8, 28))
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path), SERVING_RUN)
+    return registry
+
+
+def _write_refused_run(tmp_path) -> str:
+    """``REFUSED_RUN`` on disk in a shape the loader refuses: no ``ratings_through``."""
+    directory = _write_run(tmp_path, REFUSED_RUN, last_date=date(2026, 8, 30))
+    _rewrite_manifest_without(directory, "ratings_through")
+    return directory
+
+
+def test_a_refused_reload_leaves_the_run_that_was_serving_unchanged(tmp_path, monkeypatch):
+    """Naming an unloadable run is answered with a refusal, not an outage (B-13): the
+    registry still serves the run it had -- same id, same date -- keeps answering
+    predictions from it, reports the refusal beside it, and publishes nothing."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    registry = _registry_serving(tmp_path)
+    before = registry.status().model_dump()
+    _write_refused_run(tmp_path)
+
+    status = registry.reload(str(tmp_path), REFUSED_RUN)
+
+    assert status["loaded"] is True
+    assert status["run_id"] == before["run_id"] == SERVING_RUN
+    assert status["ratings_through"] == before["ratings_through"] == "2026-08-28"
+    assert REFUSED_RUN in status["error"]
+    assert "ratings_through" in status["error"]
+    assert registry.store("T20").manifest.run_id == SERVING_RUN
+    assert runs.read_current(str(tmp_path)) == SERVING_RUN, "a refused run is not published"
+
+
+def test_a_load_that_raises_anything_else_also_leaves_the_served_run(tmp_path, monkeypatch):
+    """The generic failure path -- a corrupt joblib, a report that is not JSON -- is the
+    same shape: nothing is swapped in, so nothing is taken away."""
+    registry = _registry_serving(tmp_path)
+    _write_run(tmp_path, REFUSED_RUN)
+
+    def corrupt_load(directory):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(xi_service.XiStore, "load", corrupt_load)
+
+    status = registry.reload(str(tmp_path), REFUSED_RUN)
+
+    assert status["run_id"] == SERVING_RUN
+    assert status["error"] == f"run {REFUSED_RUN}: boom"
+
+
+def test_the_next_successful_reload_clears_the_refusal(tmp_path):
+    """``error`` describes the last reload, so a reload that succeeds after one that was
+    refused reports no refusal -- the two would otherwise read as one run's status."""
+    registry = _registry_serving(tmp_path)
+    _write_refused_run(tmp_path)
+    registry.reload(str(tmp_path), REFUSED_RUN)
+    _write_run(tmp_path, "20260904T090000Z-22222222")
+
+    status = registry.reload(str(tmp_path), "20260904T090000Z-22222222")
+
+    assert status["run_id"] == "20260904T090000Z-22222222"
+    assert status["error"] is None
+
+
+def test_a_reader_arriving_mid_reload_is_answered_by_the_run_that_was_serving(tmp_path):
+    """The swap is one reference assignment after the load: a request that lands while
+    the new run is still loading reads the old run, never nothing and never a half-built
+    store. Pinned by holding the load open and reading through it."""
+    registry = _registry_serving(tmp_path)
+    _write_run(tmp_path, REFUSED_RUN, last_date=date(2026, 8, 30))
+    load_started, load_may_finish = threading.Event(), threading.Event()
+    real_load = xi_service._load_served_run
+
+    def held_open_load(directory):
+        load_started.set()
+        load_may_finish.wait(5)
+        return real_load(directory)
+
+    xi_service._load_served_run = held_open_load
+    reload_thread = threading.Thread(target=registry.reload, args=(str(tmp_path), REFUSED_RUN))
+    try:
+        reload_thread.start()
+        assert load_started.wait(5), "the reload never reached the load"
+        mid_reload = registry.status().model_dump()
+        served_mid_reload = registry.store("T20").manifest.run_id
+    finally:
+        load_may_finish.set()
+        reload_thread.join(5)
+        xi_service._load_served_run = real_load
+
+    assert (mid_reload["loaded"], mid_reload["run_id"], served_mid_reload) == (True, SERVING_RUN, SERVING_RUN)
+    assert registry.status().run_id == REFUSED_RUN, "and once loaded, the new run serves"
+
+
 # --- H-11: ratings older than the limit refuse rather than answer --------------------
 
 
@@ -454,7 +557,7 @@ def test_a_store_that_cannot_name_its_run_is_refused_rather_than_stamped_blank(t
     _write_run(tmp_path)
     registry = xi_service.XiRegistry()
     registry.reload(str(tmp_path))
-    registry._store.manifest = None
+    registry._served.store.manifest = None
 
     with pytest.raises(xi_service.XiUnavailable, match="cannot name its run or the date"):
         xi_service.predict_win(_live_win_request(), registry)
@@ -534,6 +637,27 @@ def test_reload_of_a_run_without_ratings_through_answers_409_naming_it(client, t
     assert resp.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
     assert "20260902T101500Z-ab12cd34" in resp.json()["detail"]["message"]
     assert "ratings_through" in resp.json()["detail"]["message"]
+
+
+def test_a_refused_reload_still_answers_409_and_the_served_run_stays_on_the_wire(client, tmp_path):
+    """B-13 end to end: the refusal is the same 409 with the same code and message (D-6 is
+    not weakened), the hint names the run still serving, and every status surface goes on
+    reporting that run with the refusal beside it."""
+    _write_run(tmp_path, SERVING_RUN, last_date=date(2026, 8, 28))
+    client.post(f"/admin/reload?run={SERVING_RUN}")
+    _write_refused_run(tmp_path)
+
+    resp = client.post(f"/admin/reload?run={REFUSED_RUN}")
+    xi_status = client.get("/xi/status").json()
+    artifacts = client.get("/artifacts/status").json()
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
+    assert REFUSED_RUN in resp.json()["detail"]["message"]
+    assert f"{SERVING_RUN} is still serving" in resp.json()["detail"]["hint"]
+    assert (xi_status["loaded"], xi_status["run_id"], xi_status["ratings_through"]) == (True, SERVING_RUN, "2026-08-28")
+    assert REFUSED_RUN in xi_status["error"]
+    assert (artifacts["loaded_run"], artifacts["current_run"]) == (SERVING_RUN, SERVING_RUN)
 
 
 def test_health_reports_the_run_and_the_freshness_verdict(client, tmp_path, monkeypatch):
