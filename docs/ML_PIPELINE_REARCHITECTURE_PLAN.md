@@ -2849,7 +2849,79 @@ so dividing the chase by it removes the pitch only to the extent that both innin
 a pitch identically — which is the very assumption B-11 exists to question. A term fitted to
 the chase's own residual about its own expectation would not carry either.
 
-*ODI and T20I are reported, not decided — see the probe above.*
+*ODI, ten folds run (the 2026-03 fold, which fits no shared factor, is skipped), reported and
+not decided.*
+
+**The ODI control reproduces §8.13's ODI table to every printed decimal too**, including its
+two corrections to X-2: the nine folds that have a factor read 0.739 / 150.9 / 1.048 by day,
+and the night column is still the mean of **two** folds of 23 and 24 matches.
+
+| arm | population | folds scored | matches/fold | first coverage | first width | first dispersion | chase coverage | chase width | chase dispersion | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 9 | 107 | 0.748 | 152.2 | — | 0.690 | 132.0 | — | +0.0067 |
+| control | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.689 | 130.9 | **1.139** | +0.0052 |
+| control | night | **2** | 24 | 0.932 | 179.5 | 0.749 | 0.726 | 157.4 | 1.078 | +0.0274 |
+| chase | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.789 | 156.3 | 0.974 | +0.0074 |
+| chase | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.788 | 190.1 | 0.899 | +0.0404 |
+| both | day | 9 | 102 | 0.747 | 154.8 | 1.028 | 0.796 | 158.4 | 0.962 | +0.0073 |
+| both | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.788 | 190.1 | 0.899 | +0.0404 |
+
+Three things are worth having from a format that decides nothing. **(1) The chase term does
+the same thing to ODI that it does to T20**, on an independent population and a different
+scale of total: the day chase moves 0.689 → 0.789 (−0.0728 ± 0.0185) and its dispersion 1.139
+→ 0.974, and the day chase tails go 0.203 / 0.108 → 0.100 / 0.111. **(2) `both`'s night rows
+are `chase`'s to every decimal**, because in every scored fold the night calibration group is
+under `SIM-DN-scale`'s 15-match floor and the shared factor falls back to the pooled one — the
+probe said so before the run, and the arm is the control on that half by construction. **(3)
+`both` inflates ODI's pooled first-innings width by 2.4 %** (152.2 → 155.8) and fails
+`pooled_first_width_not_inflated`, which is the same 2.4 % §8.13 measured for `scale` in ODI,
+reproduced. E2 in ODI moves by less than one fold-level standard error in both arms
+(+0.0026 ± 0.0029, +0.0024 ± 0.0030), so `e2_not_degraded` *passes* here: the T20 degradation
+is a three-standard-error reading on 399 matches a fold, and nine ODI folds of 107 cannot
+resolve it either way. Neither arm ships on ODI, which was never able to decide.
+
+**Verdict.** Two candidates, one gate each: **both recorded nulls.** Nothing ships —
+`simulator.CHASE_DISPERSION` is `False`, `SHARED_FACTOR` and its fitting rule are untouched,
+no served number and no surface changes, no wire literal changes (H-24 has nothing to record),
+H-8 parity is untouched because neither the rating pass nor the serving path is changed, and
+`make evaluate` is not re-run because no choice was made that would change one of its rows
+(§8.13's precedent; `test_carrying_the_calibration_sample_changes_no_draw` pins that the one
+thing the fit now keeps unconditionally is evidence and not behaviour). What stays is the
+measurement and the mechanism, switched off: `ChaseDispersion`, `fit_chase_dispersion` and the
+chase calibration sample on every fitted calibration, so the next candidate can be fitted from
+the same draws without simulating the calibration fold again — the shape A-2 and §8.13 both
+left behind them.
+
+**What B-11 carries forward, sharper than it arrived.** The lever is right and the obstacle
+has moved. The next candidate is a chase dispersion **correlated with the first innings' own
+realised residual** — or, equivalently, applied to the *margin* rather than to the chase alone
+— so that it widens the chase's interval without widening the difference that decides the
+match, and fitted against the chase's **own** expectation rather than through the first
+innings' shrunk factor, which is what over-states its magnitude here. That is one sentence, it
+follows from two measured numbers (+0.0043 ± 0.0013 on E2 and an excess of 0.31–0.53 against
+draws of 0.17–0.19), and B-11 did not have it before.
+
+**Judgment calls, recorded.** (1) The two arms were run as **arms of one pass** against one
+control, following §8.13's own recorded call: they are two settings of one design, and one
+pass gives them common random numbers and one L2-B fit per fold. They keep separate gates and
+separate fold tables. (2) The term is centred to be **mean one**, not median one. Neither is
+neutral in both moments — mean-one lowers the median by exp(−s²/2), median-one raises the mean
+by exp(+s²/2) — and mean-one was chosen because the reported chase *bias* is a mean and A-2
+had already gated and nulled the chase level, so a term that moved the mean would have made
+this gate unreadable. (3) The `chase` arm was registered as an **isolating arm** whose
+first-innings clauses cannot pass, rather than being left out or scored on a reduced clause
+set. It costs one arm of compute in a pass that was being run anyway and it is what makes
+`both`'s reading decomposable — and it turned the common-random-numbers claim into a checked
+one (+0.0000 ± 0.0000, eleven folds, both populations). (4) The gate's E2 clause was written
+**signed** because §8.13 asked the next gate of this family to state its sign. The sign
+mattered, in the opposite direction from the one that prompted it: three earlier gates tripped
+on an improvement, and this one caught a real degradation. A symmetric clause would have
+failed identically on the two opposite meanings and the null would have read as noise.
+(5) `make evaluate` was **not** re-run. The choice was to ship nothing, the term is off, and
+the only production paths that changed consume no randomness — so every row of the report is
+unchanged by construction rather than by comparison. §8.13 made the same call for the same
+reason; B-7, which did re-run it twice and compare field by field, had changed a *reported*
+number.
 
 ---
 
