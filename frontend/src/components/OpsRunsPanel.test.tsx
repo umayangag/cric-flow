@@ -65,10 +65,7 @@ describe('OpsRunsPanel', () => {
   it('says live predictions are refused when the ratings are stale', () => {
     render(
       <OpsRunsPanel
-        data={statusWith(
-          { loaded_run: 'r1', runs: [{ run_id: 'r1', has_manifest: true }] },
-          STALE,
-        )}
+        data={statusWith({ loaded_run: 'r1', runs: [{ run_id: 'r1', has_manifest: true }] }, STALE)}
       />,
     );
     expect(screen.getByText(/40 days old, past the limit of 14/)).toBeInTheDocument();

@@ -62,7 +62,9 @@ describe('FreshnessCard', () => {
   it('shows the served verdict as the only badge, with each format’s lag as a fact', () => {
     render(<FreshnessCard freshness={readFreshness(P0_4_STATE)} formats={FORMATS} />);
 
-    expect(screen.getByText(/ratings through 2026-09-02 \(2 days old, limit 14\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ratings through 2026-09-02 \(2 days old, limit 14\)/),
+    ).toBeInTheDocument();
     expect(screen.getByText(/2026-08-27 · 8d ago · 2,857 matches/)).toBeInTheDocument();
     expect(screen.queryByText(/🕒 stale/)).not.toBeInTheDocument();
   });

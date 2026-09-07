@@ -92,7 +92,9 @@ describe('HealthTab', () => {
     mockHealth.mockResolvedValue({ status: 'ok', run_id: 'r1', loaded_xi_formats: ['T20'] });
     render(<HealthTab />);
     await waitFor(() => {
-      expect(screen.getByText(/ratings through 2026-09-05 \(2 days old, limit 14\)/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/ratings through 2026-09-05 \(2 days old, limit 14\)/),
+      ).toBeInTheDocument();
     });
   });
 
