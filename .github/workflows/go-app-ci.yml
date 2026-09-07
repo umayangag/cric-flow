@@ -112,7 +112,7 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
-          # Keep aligned with go-app/Makefile COV_MIN (currently 77). Raise together once coverage improves.
+          # Keep aligned with go-app/Makefile COV_MIN (currently 78). Raise together once coverage improves.
           #
           # Raised 76 -> 77 once B-9 was fixed. The total used to sit on the 76.95 boundary
           # with one statement deciding which side of it landed -- `ctxReader.Read`'s
@@ -120,7 +120,10 @@ jobs:
           # same commit measured 77.0 locally and 76.9 here. That branch is asserted
           # deterministically now, and **this runner** measured 77.0 before the threshold
           # moved. The figure the gate applies is the figure the gate measured.
-          COV_MIN: "77"
+          #
+          # Raised 77 -> 78 with P2-4 (the track record): this runner measured 78.6 on
+          # PR #283's run 34145895838, the same figure as the local run.
+          COV_MIN: "78"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact

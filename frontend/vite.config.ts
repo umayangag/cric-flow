@@ -79,8 +79,11 @@ export default defineConfig({
       // lines, which were one number under the old provider and are now two.
       // A change of ruler, not of test quality -- so the figures below are the
       // new measurement rounded down, and the ratchet resumes from them.
+      //
+      // Lines 81 -> 82 with P2-4 (the track record): CI run 34145895909 measured
+      // 82.31 lines, the same figure as the local run.
       thresholds: {
-        lines: 81,
+        lines: 82,
         functions: 81,
         statements: 80,
         branches: 73,
