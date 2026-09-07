@@ -17,14 +17,15 @@ from __future__ import annotations
 import importlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import training_orchestrator
+from app import training_orchestrator, xi_service
 from ml.xi import contract as C
 from ml.xi import retrain
 from ml.xi.optimizer import SELECTION_ROLES
@@ -164,6 +165,59 @@ def test_both_services_match_on_the_same_selection_roles(contract) -> None:
     and the card turns each into a chip. A role spelled differently on one side is a chip
     the UI cannot render for a constraint the objective really did read."""
     assert set(contract["selection_roles"]) == set(SELECTION_ROLES)
+
+
+# --- the freshness vocabulary (P2-1) ------------------------------------------------
+
+
+def _stale_verdict(days_old: int) -> Any:
+    """A verdict on a state that is `days_old` days behind, as ``freshness()`` builds one."""
+    through = date.today() - timedelta(days=days_old)
+    return xi_service.RatingsFreshness(
+        fresh=False,
+        age_days=days_old,
+        max_age_days=14,
+        ratings_through=through.isoformat(),
+        code="RATINGS_STALE",
+    )
+
+
+def test_the_live_refusal_raises_the_code_the_contract_publishes(contract) -> None:
+    """H-11's code originates here: this service computes the verdict and refuses the
+    request. go-app copies the verdict onto /ops/status and the console keys its remedy
+    off the literal, so a code spelled differently here is a refusal no surface explains."""
+    refusal = xi_service.RatingsStale(_stale_verdict(40))
+
+    assert refusal.payload["code"] == contract["ratings_stale_code"]
+    assert "retrain" in refusal.payload["hint"]
+
+
+def test_the_status_verdict_reports_the_same_published_code(contract, monkeypatch) -> None:
+    """The refusal and the reported verdict are one computation (H-11), so the code on
+    ``/xi/status`` is the code the request would be refused with -- and both are the
+    contract's."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    registry = xi_service.XiRegistry()
+    # The verdict reads one thing off the loaded store: how far its ratings run. A stub
+    # store is the smallest arrangement that puts a date there without a run on disk.
+    registry._store = SimpleNamespace(state=SimpleNamespace(last_date=date.today() - timedelta(days=40)))
+
+    verdict = registry.freshness()
+
+    assert verdict.fresh is False
+    assert verdict.code == contract["ratings_stale_code"]
+
+
+def test_nothing_loaded_carries_no_code_and_no_invented_date(monkeypatch) -> None:
+    """With nothing loaded there is no state to be stale: the request is refused for the
+    other reason, and go-app spells that state `not_loaded` rather than `stale`."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+
+    verdict = xi_service.XiRegistry().freshness()
+
+    assert verdict.fresh is False
+    assert verdict.ratings_through is None
+    assert verdict.code is None
 
 
 # --- the regression seam D-9 needed -------------------------------------------------

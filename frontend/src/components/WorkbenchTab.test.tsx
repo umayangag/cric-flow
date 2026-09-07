@@ -3,11 +3,30 @@ import { render, screen, waitFor } from '@testing-library/react';
 import WorkbenchTab from './WorkbenchTab';
 
 const mockXiStatus = vi.fn();
+const mockOpsStatus = vi.fn();
 vi.mock('../api', () => ({
   api: {
     xiStatus: (...args: unknown[]) => mockXiStatus(...args),
+    opsStatus: (...args: unknown[]) => mockOpsStatus(...args),
   },
 }));
+
+/** /ops/status with the one freshness object the loaded-run card reads (P2-1). */
+const OPS_STATUS_FRESH = {
+  timestamp: '2026-09-02T10:00:00Z',
+  freshness: {
+    served: {
+      status: 'fresh',
+      fresh: true,
+      age_days: 3,
+      max_age_days: 14,
+      ratings_through: '2026-08-30',
+      code: null,
+    },
+    database: {},
+    retrain_due: { status: 'up_to_date', days_behind: 0, latest_match_date: '2026-08-30' },
+  },
+};
 
 const LOADED = {
   loaded: true,
@@ -31,6 +50,8 @@ const LOADED = {
 describe('WorkbenchTab', () => {
   beforeEach(() => {
     mockXiStatus.mockReset();
+    mockOpsStatus.mockReset();
+    mockOpsStatus.mockResolvedValue(OPS_STATUS_FRESH);
     mockXiStatus.mockResolvedValue({
       loaded: false,
       formats: [],
@@ -106,5 +127,18 @@ describe('WorkbenchTab', () => {
     render(<WorkbenchTab />);
     await waitFor(() => expect(mockXiStatus).toHaveBeenCalled());
     expect(await screen.findByText(/Connection refused/i)).toBeInTheDocument();
+  });
+
+  /**
+   * P2-1: the card's ratings line is the one freshness object's verdict, in the same
+   * words the Health tab and the Ops badge use — not a date this card reads for itself
+   * off the run status beside it.
+   */
+  it('shows the served verdict from the one freshness object', async () => {
+    mockXiStatus.mockResolvedValue(LOADED);
+    render(<WorkbenchTab />);
+    expect(
+      await screen.findByText(/ratings through 2026-08-30 \(3 days old, limit 14\)/),
+    ).toBeInTheDocument();
   });
 });

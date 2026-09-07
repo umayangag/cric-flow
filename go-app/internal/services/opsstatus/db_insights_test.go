@@ -7,19 +7,18 @@ import (
 )
 
 func TestWorseStatus(t *testing.T) {
+	// The completeness vocabulary only: `stale` went with the freshness buckets P2-1
+	// deleted, and nothing rolls a staleness up any more.
 	testCases := []struct {
 		a, b string
 		want string
 	}{
 		{"ok", "ok", "ok"},
-		{"ok", "stale", "stale"},
 		{"ok", "missing", "missing"},
 		{"ok", "unknown", "unknown"},
-		{"stale", "ok", "stale"},
-		{"stale", "stale", "stale"},
-		{"stale", "missing", "missing"},
-		{"stale", "unknown", "unknown"},
 		{"missing", "ok", "missing"},
+		{"missing", "missing", "missing"},
+		{"missing", "unknown", "unknown"},
 		{"unknown", "missing", "unknown"},
 		{"unknown", "unknown", "unknown"},
 	}

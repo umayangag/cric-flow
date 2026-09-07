@@ -18,14 +18,29 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `db.counts` (e.g. `players`, `matches`) and `db.last_match_import_at`.
     - `artifacts.current_run` / `artifacts.loaded_run` — the run `current` points at, and the
       run the ML service actually loaded. They differ when a reload has not happened yet.
-    - `artifacts.ratings` — H-11's verdict (`fresh`, `age_days`, `max_age_days`), not just a date.
+    - `freshness` — **the one freshness verdict, assembled once and read by every surface**
+      (P2-1). Three named facts and nothing else: `freshness.served` is H-11's verdict copied
+      through from ml-service (`status` — `fresh` | `stale` | `not_loaded` | `unknown` —
+      `fresh`, `age_days`, `max_age_days`, `ratings_through`, `code`), and it is the only badge
+      and the only thing that says whether a prediction would be refused;
+      `freshness.database[FORMAT]` is the import's lag as facts (`latest_match_date`,
+      `age_days`, `match_count`, and a `note` when there is no date) with no status of its own;
+      `freshness.retrain_due` is whether the database holds matches the served run never saw
+      (`status` — `up_to_date` | `retrain_due` | `unknown` — `days_behind`,
+      `latest_match_date`, `format`). **One threshold in the whole system**:
+      `ml.ratings_max_age_days`, applied by ml-service and read off the verdict — go-app holds
+      no copy of it. The vocabulary is declared in `contracts/ops-console.contract.json`
+      (`freshness_statuses`, `retrain_statuses`, `ratings_stale_code`) and asserted from all
+      three components (H-24). It replaced `db_freshness`, whose 7/30-day buckets were a second
+      rule that read *stale* while H-11 read *fresh* on the same box.
     - `artifacts.error` — why a run on disk was refused (D-6). An empty panel and a refused
       artifact set look the same otherwise, and only one is something to act on.
     - `artifacts.runs[]` — every run directory, newest first, with its manifest summary and
       `has_manifest` for the ones that are not runs.
     - `pipeline.steps[step_id].running|runnable|completed|optional` and `pipeline.order` (derived from `data_migrations` and the step registry).
     - `dataset.path|exists|match_files|bytes|newest_file|newest_modified` — the Cricsheet directory Import reads from, resolved by `GO_APP_CRICSHEET_DIR` → `inputs.cricsheet_dir` → built-in default.
-    - Optional: `fielding`, `db_freshness`, `db_completeness`, `suggestions`.
+    - Optional: `fielding`, `db_completeness` (a different question — is the import
+      empty? — and not a freshness verdict), `suggestions`.
   - **Consumers**:
     - Frontend `OpsStatusTab` (auto-refreshing).
     - CLI / scripts (for quick readiness checks).

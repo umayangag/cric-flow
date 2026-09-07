@@ -5,7 +5,7 @@ import WorkbenchRunSection from './WorkbenchRunSection';
 import { useWorkbench } from '../hooks/useWorkbench';
 
 const WorkbenchTab: React.FC = () => {
-  const { runStatus, runStatusLoading, runStatusError } = useWorkbench();
+  const { runStatus, runStatusLoading, runStatusError, freshness } = useWorkbench();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -26,7 +26,12 @@ const WorkbenchTab: React.FC = () => {
         </Typography>
       </Alert>
 
-      <WorkbenchRunSection status={runStatus} loading={runStatusLoading} error={runStatusError} />
+      <WorkbenchRunSection
+        status={runStatus}
+        freshness={freshness}
+        loading={runStatusLoading}
+        error={runStatusError}
+      />
 
       <SectionCard
         title="Commands & docs"

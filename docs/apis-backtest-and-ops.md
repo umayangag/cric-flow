@@ -247,18 +247,43 @@ freshness verdict.
 
 **Endpoint:** `GET /ops/status` (no query params). Aggregates: services (API + ML health), DB
 (connectivity, migration, counts), the runs on disk and which one is serving, fielding row
-counts, DB freshness and completeness per format, the pipeline's per-step state, and an ordered
-list of **suggestions** (the next make command the run history says is missing).
+counts, one freshness verdict and DB completeness per format, the pipeline's per-step state,
+and an ordered list of **suggestions** (the next make command the run history says is missing).
 
 **Response sections:** `timestamp`, `services` (api_health, api_readiness, ml_health), `db`
 (connected, migration status/current/expected, counts), `dataset` (the directory Import reads,
-its manifest and match-file count), `artifacts`, `fielding` (available, rows), `db_freshness`,
+its manifest and match-file count), `artifacts`, `fielding` (available, rows), `freshness`,
 `db_completeness`, `pipeline` (per step: running, completed, runnable, optional),
 `suggestions[]`.
 
+**`freshness` is one verdict, assembled once (P2-1).** Every surface that shows freshness — the
+Health tab, the Ops badge, the Workbench's loaded-run card, the system map, and the Lab's
+readiness notice — reads this object and nothing else:
+
+- `freshness.served` — **H-11's verdict, exactly as ml-service reports it**, copied through and
+  never recomputed: `fresh`, `age_days`, `max_age_days`, `ratings_through`, `code`
+  (`RATINGS_STALE` when a live prediction would be refused), plus `status`, the word that
+  spells it: `fresh`, `stale`, `not_loaded` (nothing is loaded, so there is no age and the
+  remedy is a reload) or `unknown` (ml-service did not answer, so there is no verdict to
+  report). This is the only badge and the only thing that decides whether a prediction would be
+  refused. **`ml.ratings_max_age_days` is the only threshold in the system**; go-app holds no
+  copy of it and reads the limit off the verdict.
+- `freshness.database[FORMAT]` — the import's lag as facts: `latest_match_date`, `age_days`,
+  `match_count`, and a `note` when there is no date (no matches imported, or the database could
+  not be read). No bucket and no status: a Test played a fortnight apart is not a fault, which
+  is what the deleted `db_freshness` buckets called *stale*.
+- `freshness.retrain_due` — whether the database holds matches the served run never saw (B-2):
+  `status` (`up_to_date` | `retrain_due` | `unknown`), `days_behind`, `latest_match_date` and
+  the `format` that holds it.
+
+The status words and the refusal code are declared once in
+`contracts/ops-console.contract.json` (`freshness_statuses`, `retrain_statuses`,
+`ratings_stale_code`) and asserted from go-app, the frontend and ml-service (H-24).
+
 **`artifacts` reports runs, not a matrix.** It probes ml-service `GET /artifacts/status` and
 copies the answer through whole: `current_run`, `loaded_run`, `ratings_through`, `ratings`
-(H-11's verdict), `error` (the loader's refusal, D-6) and `runs[]` — each with `run_id`,
+(ml-service's own verdict, which is where `freshness.served` is read from — no surface reads it
+from here), `error` (the loader's refusal, D-6) and `runs[]` — each with `run_id`,
 `created_at`, `cutoff`, `git_sha`, `dataset_sha`, `formats`, `has_manifest`, `current` and
 `loaded`. It reports runs because a run is what an artifact belongs to now (H-16): "is the model
 current?" is answered by which run `current` points at and whether that is the run the process

@@ -17,9 +17,13 @@ import { MetricLabel } from './common/MetricInfo';
 import { formatMetricValue } from '../utils/format';
 import type { ApiError } from '../lib/apiError';
 import type { XiStatusResponse } from '../types';
+import { servedFreshnessLabel } from '../utils/opsStatusHelpers';
+import type { OpsFreshness } from '../utils/opsStatusHelpers';
 
 type Props = {
   status: XiStatusResponse | null;
+  /** The one freshness object (P2-1): where "Ratings through" comes from on this card. */
+  freshness: OpsFreshness;
   loading: boolean;
   error: ApiError | null;
 };
@@ -101,7 +105,7 @@ const FormatNotes: React.FC<{ notes: Record<string, string> }> = ({ notes }) => 
  * commit, the hyperparameters the grid chose and the run's own headline metrics, written
  * beside the artifacts they describe.
  */
-const WorkbenchRunSection: React.FC<Props> = ({ status, loading, error }) => (
+const WorkbenchRunSection: React.FC<Props> = ({ status, freshness, loading, error }) => (
   <SectionCard
     title="Loaded run"
     subtitle="The run `current` points at, and what its manifest records (H-16)."
@@ -121,7 +125,7 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, loading, error }) => (
           items={[
             { label: 'Run id', value: status.run_id ?? '—' },
             { label: 'Trained through (cutoff)', value: status.manifest?.cutoff ?? '—' },
-            { label: 'Ratings through', value: status.ratings_through ?? '—' },
+            { label: 'Ratings', value: servedFreshnessLabel(freshness.served) },
             { label: 'Dataset sha', value: status.manifest?.dataset_sha?.slice(0, 16) ?? '—' },
             { label: 'Commit', value: status.manifest?.git_sha?.slice(0, 7) ?? '—' },
             { label: 'Players rated', value: String(status.players) },

@@ -143,5 +143,17 @@
   "forecast_sources": [
     "simulator",
     "performance_quantiles"
-  ]
+  ],
+  "freshness_statuses": [
+    "fresh",
+    "stale",
+    "not_loaded",
+    "unknown"
+  ],
+  "retrain_statuses": [
+    "up_to_date",
+    "retrain_due",
+    "unknown"
+  ],
+  "ratings_stale_code": "RATINGS_STALE"
 }

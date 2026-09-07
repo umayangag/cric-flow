@@ -344,16 +344,30 @@
         {
           "key": "ratings_through",
           "label": "Ratings through",
-          "source": "xi_status",
-          "path": "ratings_through",
+          "source": "ops_status",
+          "path": "freshness.served.ratings_through",
           "value_kind": "date"
         },
         {
           "key": "ratings_age",
           "label": "Age of the ratings (days)",
           "source": "ops_status",
-          "path": "artifacts.ratings.age_days",
+          "path": "freshness.served.age_days",
           "value_kind": "integer"
+        },
+        {
+          "key": "ratings_freshness",
+          "label": "Freshness verdict (H-11)",
+          "source": "ops_status",
+          "path": "freshness.served.status",
+          "value_kind": "text"
+        },
+        {
+          "key": "retrain_due",
+          "label": "Retrain due (imports the served run never saw)",
+          "source": "ops_status",
+          "path": "freshness.retrain_due.status",
+          "value_kind": "text"
         }
       ],
       "children": [

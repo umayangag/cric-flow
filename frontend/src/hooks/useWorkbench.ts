@@ -2,12 +2,20 @@ import { api } from '../api';
 import { useAsync } from './useAsync';
 import type { ApiError } from '../lib/apiError';
 import type { XiStatusResponse } from '../types';
+import { readFreshness, UNKNOWN_FRESHNESS } from '../utils/opsStatusHelpers';
+import type { OpsFreshness } from '../utils/opsStatusHelpers';
 
 export interface UseWorkbenchReturn {
   /** The loaded run and its manifest, from GET /api/ml/xi-status. Null until loaded or on error. */
   runStatus: XiStatusResponse | null;
   runStatusLoading: boolean;
   runStatusError: ApiError | null;
+  /**
+   * The one freshness object (P2-1). The loaded-run card shows the date its ratings run
+   * through, and that date is the verdict's — read off /ops/status like every other
+   * freshness surface, not worked out again from the run status beside it.
+   */
+  freshness: OpsFreshness;
 }
 
 /**
@@ -28,10 +36,15 @@ export function useWorkbench(): UseWorkbenchReturn {
     runOnMount: [],
     errorMessage: 'Failed to load the run status',
   });
+  const opsStatus = useAsync(api.opsStatus, {
+    runOnMount: [],
+    errorMessage: 'Failed to load the ops status',
+  });
 
   return {
     runStatus: runStatus.data,
     runStatusLoading: runStatus.loading,
     runStatusError: runStatus.error,
+    freshness: opsStatus.data ? readFreshness(opsStatus.data) : UNKNOWN_FRESHNESS,
   };
 }

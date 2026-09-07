@@ -1,7 +1,8 @@
 import React from 'react';
 import { Alert, AlertTitle, Typography } from '@mui/material';
 import RatingsAsOf from './RatingsAsOf';
-import { asObj } from '../utils/opsStatusHelpers';
+import { asObj, readFreshness } from '../utils/opsStatusHelpers';
+import { RATINGS_STALE_CODE } from '../types';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 
 type Props = { status: OpsStatus | null };
@@ -17,27 +18,38 @@ type Props = { status: OpsStatus | null };
  * What is left are the two states where a prediction is refused rather than wrong, and
  * an operator should know which before clicking: nothing is loaded (no run, or one the
  * loader refused — D-6), and the loaded run's ratings are older than the configured
- * limit (H-11, `RATINGS_STALE`). Both come from the artifacts section the Ops tab
- * already renders, so this cannot say the box is ready while that says it is not. The
- * stale state carries its date through the same component every served prediction uses,
- * so the surface is dateless in no state (P1-4); the nothing-loaded state has no run and
- * so no date, and says that rather than showing one.
+ * limit (H-11, `RATINGS_STALE`). Both are read off the one freshness object go-app
+ * assembles (P2-1), which carries ml-service's verdict copied through — the same
+ * computation the prediction itself is refused on, so this notice cannot say the box is
+ * ready while the request would be refused, nor differ from the Ops badge. The stale
+ * state carries its date through the same component every served prediction uses, so the
+ * surface is dateless in no state (P1-4); the nothing-loaded state has no run and so no
+ * date, and says that rather than showing one.
  */
 const PredictionReadiness: React.FC<Props> = ({ status }) => {
   if (!status) return null;
 
+  const served = readFreshness(status).served;
   const artifacts = asObj(status.artifacts);
   const loadedRun = typeof artifacts.loaded_run === 'string' ? artifacts.loaded_run : '';
   const error = typeof artifacts.error === 'string' ? artifacts.error : '';
-  const ratings = asObj(artifacts.ratings);
-  const stale = loadedRun !== '' && ratings.fresh === false;
 
-  if (loadedRun !== '' && !stale) return null;
+  if (served.status === 'fresh') return null;
+  const stale = served.status === 'stale';
+  const unknown = served.status === 'unknown';
 
   return (
     <Alert severity="warning" sx={{ mb: 2 }}>
-      <AlertTitle>This prediction will not be answered</AlertTitle>
-      {loadedRun === '' && (
+      <AlertTitle>
+        {unknown ? 'This prediction may not be answered' : 'This prediction will not be answered'}
+      </AlertTitle>
+      {unknown && (
+        <Typography variant="body2">
+          The ML service did not answer, so there is no verdict on the ratings and no date to show.
+          Whether a prediction would be served is unknown.
+        </Typography>
+      )}
+      {served.status === 'not_loaded' && (
         <Typography variant="body2">
           No training run is loaded, so there is no model to predict with and no ratings date to
           show.
@@ -49,19 +61,22 @@ const PredictionReadiness: React.FC<Props> = ({ status }) => {
           The loaded run&apos;s ratings are older than the limit —{' '}
           <RatingsAsOf
             served={{
-              ratings_through: String(ratings.ratings_through ?? 'an unknown date'),
+              ratings_through: served.ratings_through ?? 'an unknown date',
               run_id: loadedRun,
             }}
           />{' '}
-          — which is {String(ratings.age_days ?? '?')} days old against a limit of{' '}
-          {String(ratings.max_age_days ?? '?')}. A live prediction is refused with{' '}
-          <strong>RATINGS_STALE</strong> rather than answered from a squad that has moved on.
+          — which is {served.age_days ?? '?'} days old against a limit of{' '}
+          {served.max_age_days ?? '?'}. A live prediction is refused with{' '}
+          <strong>{served.code ?? RATINGS_STALE_CODE}</strong> rather than answered from a squad
+          that has moved on.
         </Typography>
       )}
-      <Typography variant="body2" sx={{ mt: 1 }}>
-        Run <strong>Retrain</strong> and then <strong>Reload</strong> from{' '}
-        <strong>Ops → Pipeline</strong>.
-      </Typography>
+      {!unknown && (
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          Run <strong>Retrain</strong> and then <strong>Reload</strong> from{' '}
+          <strong>Ops → Pipeline</strong>.
+        </Typography>
+      )}
     </Alert>
   );
 };

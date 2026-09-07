@@ -40,8 +40,25 @@ const opsStatus: OpsStatusDTO = {
   artifacts: {
     current_run: '20260901T120000Z-abc1234',
     loaded_run: '20260901T120000Z-abc1234',
-    ratings_through: '2026-09-01',
-    ratings: { fresh: true, age_days: 1, max_age_days: 30 },
+  },
+  // The map's ratings bindings read the one freshness object, like every other surface
+  // (P2-1) — not ml-service's verdict copied inside the artifacts section.
+  freshness: {
+    served: {
+      status: 'fresh',
+      fresh: true,
+      age_days: 1,
+      max_age_days: 14,
+      ratings_through: '2026-09-01',
+      code: null,
+    },
+    database: { T20: { latest_match_date: '2026-09-01', age_days: 1, match_count: 11724 } },
+    retrain_due: {
+      status: 'up_to_date',
+      days_behind: 0,
+      latest_match_date: '2026-09-01',
+      format: 'T20',
+    },
   },
 };
 
