@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+from dataclasses import dataclass
 from datetime import date
 from typing import Dict, List, Optional
 
@@ -104,15 +105,46 @@ class RatingsStale(XiUnavailable):
         )
 
 
+@dataclass(frozen=True)
+class ServedRun:
+    """One loaded run: its store, its training report and the directory both came from.
+
+    The registry swaps a whole ``ServedRun`` in one reference assignment, so a reader that
+    never takes the lock still sees a store beside its own report and directory -- never
+    the store of one run with the report of another, and never a store that is half built.
+    """
+
+    store: XiStore
+    report: Optional[dict]
+    directory: str
+
+    @property
+    def run_id(self) -> Optional[str]:
+        return None if self.store.manifest is None else self.store.manifest.run_id
+
+
+def _load_served_run(directory: str) -> ServedRun:
+    """Everything a run needs before it can serve, built without touching the registry."""
+    store = XiStore.load(directory)
+    report = None
+    report_path = os.path.join(directory, REPORT_NAME)
+    if os.path.exists(report_path):
+        with open(report_path) as fh:
+            report = json.load(fh)
+    return ServedRun(store=store, report=report, directory=directory)
+
+
 class XiRegistry:
-    """Holds the loaded store. ``reload`` is idempotent and tolerant of missing artifacts."""
+    """Holds the run being served. ``reload`` is idempotent and tolerant of missing artifacts."""
 
     def __init__(self) -> None:
-        self._store: Optional[XiStore] = None
-        self._report: Optional[dict] = None
+        self._served: Optional[ServedRun] = None
         self._models_dir: Optional[str] = None
-        self._run_dir: Optional[str] = None
+        # The last reload's refusal (D-6), kept beside whatever is serving. It names the
+        # run that was refused, which is not the run ``status`` reports as loaded.
         self._error: Optional[str] = None
+        # Serialises reloads against each other and against the as-of pass. The live path
+        # (``store``, ``status``, ``freshness``) never takes it: each reads ``_served`` once.
         self._lock = threading.Lock()
         self._as_of_server: Optional[AsOfServer] = None
         # A seam, so tests can serve the as-of pass from an in-memory source.
@@ -131,53 +163,75 @@ class XiRegistry:
         A run that cannot be served is *refused*, and the reason is kept and reported
         (D-6): loading is where an operator can still be told to retrain, and an
         exception swallowed here becomes an IndexError in a prediction an hour later.
+
+        A refusal leaves the run that was serving exactly as it was (B-13): the new run
+        is built first and swapped in only once it has loaded. (A root with no run at
+        all is the one case that unloads -- see below.) The lock is held for the
+        whole reload, load included. Nothing on the live path waits for it -- a
+        prediction reads ``_served`` once and never locks -- so a slow load blocks no
+        request; what it holds off is a second reload, which could otherwise interleave
+        its swap and its ``set_current`` with this one's and leave `current` naming a run
+        the registry is not serving, and the as-of pass, which must not be built against
+        a store that is about to be replaced.
         """
         with self._lock:
-            self._store, self._report, self._error = None, None, None
-            self._as_of_server = None
             # Remembered even when there is nothing to load: L4's report lives under the
             # same root, and reading it from anywhere else is how the two drift.
             self._models_dir = models_dir
-            self._run_dir = None
+            serving = self.run_id
 
             target = run_id or runs.read_current(models_dir) or runs.newest_run_id(models_dir)
             if target is None:
-                logger.info("xi.runs.absent", models_dir=models_dir)
+                # Not a refusal: the root holds no run at all, so nothing is what the disk
+                # says to serve, and what a restart would serve. Serving a run the disk no
+                # longer has would put `/xi/status` and `/artifacts/status` at odds.
+                self._served, self._as_of_server, self._error = None, None, None
+                logger.info("xi.runs.absent", models_dir=models_dir, unloaded=serving)
                 return self.status().model_dump()
             directory = runs.run_dir(models_dir, target)
             try:
-                store = XiStore.load(directory)
+                loaded = _load_served_run(directory)
                 runs.set_current(models_dir, target)
             except RunArtifactsInvalid as e:
-                # The refusal is the answer, not a failure to report one.
+                # The refusal is the answer, not a failure to report one -- and not an
+                # outage: whatever was serving goes on serving.
                 self._error = str(e)
-                logger.error("xi.artifacts.refused", run_id=target, models_dir=models_dir, error=str(e))
+                logger.error(
+                    "xi.artifacts.refused", run_id=target, models_dir=models_dir, error=str(e), serving=serving
+                )
                 return self.status().model_dump()
             except Exception as e:  # a corrupt artifact must not take the service down
                 self._error = f"run {target}: {e}"
                 logger.error(
-                    "xi.artifacts.load_failed", run_id=target, directory=directory, error=str(e), exc_info=True
+                    "xi.artifacts.load_failed",
+                    run_id=target,
+                    directory=directory,
+                    error=str(e),
+                    serving=serving,
+                    exc_info=True,
                 )
                 return self.status().model_dump()
 
-            self._store = store
-            self._run_dir = directory
-            report_path = os.path.join(directory, REPORT_NAME)
-            if os.path.exists(report_path):
-                with open(report_path) as fh:
-                    self._report = json.load(fh)
+            # The swap. One reference, so a concurrent reader sees the old run or the new
+            # one and nothing in between; the as-of pass was built for the old store's
+            # context and goes with it.
+            self._served = loaded
+            self._as_of_server = None
+            self._error = None
             logger.info(
                 "xi.artifacts.loaded",
                 run_id=target,
-                formats=sorted(store.models),
-                players=len(store.state.players),
+                formats=sorted(loaded.store.models),
+                players=len(loaded.store.state.players),
+                replaced=serving,
             )
             return self.status().model_dump()
 
     def store(self, format_code: str) -> XiStore:
-        s = self._store
-        if s is None:
+        served = self._served
+        if served is None:
             raise XiUnavailable("XI win model artifacts are not loaded")
+        s = served.store
         if not s.has_format(format_code):
             raise XiUnavailable(f"no XI win model for format {format_code!r}; loaded: {sorted(s.models)}")
         return s
@@ -224,7 +278,14 @@ class XiRegistry:
     @property
     def run_dir(self) -> Optional[str]:
         """The loaded run's directory -- where its report lives. ``None`` when nothing loaded."""
-        return self._run_dir
+        served = self._served
+        return None if served is None else served.directory
+
+    @property
+    def run_id(self) -> Optional[str]:
+        """The run being served. ``None`` when nothing loaded."""
+        served = self._served
+        return None if served is None else served.run_id
 
     def freshness(self, today: Optional[date] = None) -> RatingsFreshness:
         """H-11's verdict on the loaded state.
@@ -234,7 +295,8 @@ class XiRegistry:
         age would be inventing a fact.
         """
         limit = get_ratings_max_age_days()
-        through = self._store.state.last_date if self._store is not None else None
+        served = self._served
+        through = served.store.state.last_date if served is not None else None
         if through is None:
             return RatingsFreshness(fresh=False, age_days=None, max_age_days=limit, ratings_through=None)
         age = ((today or date.today()) - through).days
@@ -248,8 +310,14 @@ class XiRegistry:
         )
 
     def status(self) -> XiStatusResponse:
-        s = self._store
-        if s is None:
+        """What is serving, and -- separately -- whether the last reload was refused.
+
+        ``error`` describes the last reload, not the loaded run: with ``loaded`` false it
+        is why nothing serves, with ``loaded`` true it is a run that was refused while
+        ``run_id`` went on serving (B-13). The message names the run it refused.
+        """
+        served = self._served
+        if served is None:
             return XiStatusResponse(
                 loaded=False,
                 formats=[],
@@ -259,6 +327,7 @@ class XiRegistry:
                 error=self._error,
                 ratings=self.freshness(),
             )
+        s = served.store
         manifest = s.manifest
         return XiStatusResponse(
             loaded=True,
@@ -266,9 +335,10 @@ class XiRegistry:
             performance_formats=sorted(s.performance),
             players=len(s.state.players),
             ratings_through=s.state.last_date.isoformat() if s.state.last_date else None,
-            report=self._report,
-            run_id=None if manifest is None else manifest.run_id,
+            report=served.report,
+            run_id=served.run_id,
             manifest=None if manifest is None else manifest.summary(),
+            error=self._error,
             ratings=self.freshness(),
         )
 

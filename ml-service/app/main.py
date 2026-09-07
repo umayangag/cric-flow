@@ -373,15 +373,16 @@ async def admin_reload(request: Request, run: str = ""):
             detail=_error_payload(code="RELOAD_FAILED", message="Artifact reload failed", hint=str(e)),
         ) from e
     if summary.get("error"):
-        # The run was refused on load rather than by a raised exception: the registry
-        # keeps serving whatever it had, and the refusal is the answer.
+        # Refused on load (D-6). The registry builds the new run before it touches the
+        # old one, so the run that was serving still is (B-13) -- `summary["run_id"]`
+        # names it -- and the refusal is the answer, not an outage.
+        still_serving = summary.get("run_id")
+        hint = "run the retrain step to produce a run this code wrote, then reload"
+        if still_serving:
+            hint = f"{still_serving} is still serving; {hint}"
         raise HTTPException(
             status_code=409,
-            detail=_error_payload(
-                code="RUN_ARTIFACTS_INVALID",
-                message=summary["error"],
-                hint="run the retrain step to produce a run this code wrote, then reload",
-            ),
+            detail=_error_payload(code="RUN_ARTIFACTS_INVALID", message=summary["error"], hint=hint),
         )
     logger.info("admin.reload.success", models_dir=MODELS_DIR, run_id=summary.get("run_id"))
     return {"status": "reloaded", **summary}

@@ -427,7 +427,11 @@ export type XiStatusResponse = {
   ratings_through: string | null;
   run_id?: string | null;
   manifest?: RunManifestSummary | null;
-  /** Why nothing is loaded, when a run on disk was refused (D-6). */
+  /**
+   * The last reload's refusal (D-6), naming the run it refused. With `loaded` false, why
+   * nothing is serving; with `loaded` true, a reload named a run that could not be served
+   * and `run_id` went on serving (B-13) -- the two fields describe two different runs.
+   */
   error?: string | null;
   ratings?: RatingsFreshness | null;
   report?: Record<string, unknown> | null;

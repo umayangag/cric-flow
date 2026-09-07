@@ -241,9 +241,11 @@ class XiStatusResponse(BaseModel):
     # None when nothing is loaded, or when what is on disk was refused.
     run_id: Optional[str] = None
     manifest: Optional[dict] = None
-    # Why nothing is loaded, when something is on disk but could not be served (D-6).
-    # An empty panel and a refused artifact set look the same otherwise, and only one of
-    # them is something an operator has to act on.
+    # The last reload's refusal (D-6), naming the run it refused. With ``loaded`` false it
+    # is why nothing is serving -- an empty panel and a refused artifact set look the same
+    # otherwise, and only one of them is something an operator has to act on. With
+    # ``loaded`` true, a reload named a run that could not be served and ``run_id`` went
+    # on serving (B-13): the two fields describe two different runs.
     error: Optional[str] = None
     ratings: Optional[RatingsFreshness] = None
 

@@ -96,7 +96,7 @@ const HealthTab: React.FC = () => {
         value: mlData.loaded_xi_formats?.length ? mlData.loaded_xi_formats.join(', ') : 'None',
       },
       ratingsItem,
-      ...(mlData.error ? [{ label: 'Refused', value: mlData.error }] : []),
+      ...(mlData.error ? [{ label: 'Last reload refused', value: mlData.error }] : []),
     ];
   }, [mlData, freshness]);
 
