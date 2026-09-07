@@ -39,10 +39,10 @@ func (l *MatchLookup) FindMatches(ctx context.Context, fixture trackrecord.Fixtu
 		WHERE m.match_date = $1
 		  AND f.code = $2
 		  AND m.gender = $3
-		  AND $4 <> $5
-		  AND $4 IN (SELECT batting_team_opposition_id FROM match_inning WHERE match_id = m.match_id
+		  AND $4::bigint <> $5::bigint
+		  AND $4::bigint IN (SELECT batting_team_opposition_id FROM match_inning WHERE match_id = m.match_id
 		             UNION SELECT opposition_id FROM match_player WHERE match_id = m.match_id)
-		  AND $5 IN (SELECT batting_team_opposition_id FROM match_inning WHERE match_id = m.match_id
+		  AND $5::bigint IN (SELECT batting_team_opposition_id FROM match_inning WHERE match_id = m.match_id
 		             UNION SELECT opposition_id FROM match_player WHERE match_id = m.match_id)
 		ORDER BY m.match_id`,
 		fixture.MatchDate, fixture.Format, fixture.Gender, fixture.Team1, fixture.Team2)
