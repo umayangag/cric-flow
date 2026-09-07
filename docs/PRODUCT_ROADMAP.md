@@ -1,6 +1,7 @@
 # Product roadmap: from an honest prediction system to something people pay for
 
-**Status: Phase 0 closed on route (a), Phase 1 open as the Team Lab (2026-09-06).**
+**Status: Phase 0 closed on route (a), Phase 1 closed on functional acceptance, Phase 2 open
+(2026-09-07).**
 Written 2026-09-03. This is a business document kept to the repo's
 evidentiary standard: every capability claim below is either in the measured record
 ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md),
@@ -93,7 +94,7 @@ Accuracy-as-superiority is not the pitch; *verified honesty and interactivity* a
 | P0-1 | **Market benchmark.** ✅ **Run, on free sources only** ([EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4). The one free, licence-clean cricket closing-odds series found is Betfair's published Big Bash / Women's Big Bash summaries; every candidate with international coverage was paid or behind a gambling account and was rejected. 588 of 592 markets joined with zero winner disagreements; 185 fall in the harness's scored windows — 4.2 % of T20, 0 % of T20I/ODI/TEST | **Answered for the hardest T20 subset only, and inconclusively.** Market AUC 0.608 vs display 0.556 (Brier 0.2387 vs 0.2488), but the gap's 95 % interval is −0.020 to +0.128. The honest sentence: *"we are not benchmarked against the market on internationals — no free source of those odds exists — and on the Big Bash matches we could price, neither we nor the market is far from a coin flip."* The limit is coverage, and under a no-paid-data rule it stays there until a freely licensed international series appears |
 | P0-2 | **Legal scan** — ⏸ **deferred, not deleted** (standing constraint). Done properly it needs paid legal counsel, and the prototype pays for nothing. The scope stands as written for the day it runs: fantasy-adjacency and prediction-tool rules in target jurisdictions (India foremost), stats/name usage (facts are generally fair; images/logos are not — budget for licensing or ship without), terms for "not betting advice". It becomes a prerequisite again before anything ships publicly or takes payment | **Not answered, and known not to be.** The prototype carries **no verified disclaimer architecture and no jurisdictional clearance**. That is an accepted gap, not an answered question: which wedges are open at all is unknown, and nothing here may be presented publicly or built fantasy-facing (3c) until this runs |
 | P0-3 | **Wedge interviews** — ✗ **skipped** (standing constraint: human-subject research). The 10–15 conversations — serious fantasy players, one associate-nation or women's-team analyst, one emerging-league operator — are interviews, and interviews are out of scope | **Cannot be answered.** The Phase 3 wedge cannot be chosen on evidence. Any wedge chosen later is a judgment call with no validation behind it, and has to be recorded as exactly that — the gate below says how |
-| P0-4 | **Freshness decision** — ✅ **answered as a decision** (2026-09-04; the write-up is § 2.1 below). With paid feeds out of scope there was no licensed feed to quote against, so the comparison collapsed and the answer was forced: the system ships **"as of last import", with the as-of date visible**, and refuses a live prediction against ratings past H-11's limit rather than answering from a squad that has moved on. The write-up records the decision, audits the freshness machinery that actually exists (and names what does not), measures the staleness this box lives with, and puts the **Cricsheet licence question beside the cost line**, where it belongs. X-2 later put a second thing there: the weather source is free **non-commercially only**, so the zero is conditional on the use staying non-commercial (§ 2.1) | **The recurring data cost is zero, and what is paid instead is staleness.** Measured 2026-09-04 on this box: served ratings run through 2026-09-02, 2 days against the 14-day limit, and the weekly cadence bounds that at eight or nine days in normal operation. The decision is made; the *surfacing* it implies is split: the as-of date on the prediction itself, not only on the operator tabs, is **Phase 1 work (§ 3.2, P1-5)** — a Lab whose pitch is honest uncertainty cannot serve a dateless number — while the manifest and the two-rules reconciliation stay Phase 2 (§ 5); § 2.1 names all four gaps without closing them |
+| P0-4 | **Freshness decision** — ✅ **answered as a decision** (2026-09-04; the write-up is § 2.1 below). With paid feeds out of scope there was no licensed feed to quote against, so the comparison collapsed and the answer was forced: the system ships **"as of last import", with the as-of date visible**, and refuses a live prediction against ratings past H-11's limit rather than answering from a squad that has moved on. The write-up records the decision, audits the freshness machinery that actually exists (and names what does not), measures the staleness this box lives with, and puts the **Cricsheet licence question beside the cost line**, where it belongs. X-2 later put a second thing there: the weather source is free **non-commercially only**, so the zero is conditional on the use staying non-commercial (§ 2.1) | **The recurring data cost is zero, and what is paid instead is staleness.** Measured 2026-09-04 on this box: served ratings run through 2026-09-02, 2 days against the 14-day limit, and the weekly cadence bounds that at eight or nine days in normal operation. The decision is made; the *surfacing* it implies is split: the as-of date on the prediction itself, not only on the operator tabs, is **Phase 1 work (§ 3.2, P1-5)** — a Lab whose pitch is honest uncertainty cannot serve a dateless number — while the manifest and the two-rules reconciliation are Phase 2's P2-2 and P2-1 (§ 5.2); § 2.1 names all four gaps without closing them |
 
 Exit gate: a one-page positioning statement whose every claim the harness supports, a
 chosen first wedge, and a cost line. If P0-1 lands far below market and P0-3 finds no
@@ -194,8 +195,9 @@ H-11 reads **fresh** (2 days of 14). Neither is wrong; they measure different th
 nothing reconciles them or says which one a badge would mean. None belong to this item,
 which is a decision and an audit. Gaps (1) and (2) — the dateless payload and the dateless
 successful prediction — were **Phase 1's P1-5** (§ 3.2, re-homed 2026-09-06, shipped in
-PR #270): the Lab cannot honestly show a number without its date. Gaps (3) and (4) stay
-Phase 2's freshness badge (§ 5).
+PR #270): the Lab cannot honestly show a number without its date. Gaps (3) and (4) are
+Phase 2's **P2-2** (the manifest) and **P2-1** (the reconciliation, the phase's priority
+item), both with prompts in § 5.2.
 
 **The staleness the prototype actually lives with** — measured on this machine on
 2026-09-04, from the `cricket_data` database and the running service, not estimated. The
@@ -901,20 +903,651 @@ In Play mode there is no card state at all — no `selection_reason` on any play
 the caller built the eleven and nothing selected it; the card says that and shows only the
 expected contribution.
 
-## 5. Phase 2 — data operations as a product
+## 5. Phase 2 — data operations for an internal prototype
 
-Scheduled ingest (A-5's cadence, in production), squad/availability data as **maintained
-lists, not a licensed feed** — a feed is a paid source and the standing constraint rules it
-out, so availability is what operators and users record, and D-12's retirement ledger
-(a user's flag, promoted to a fact only when held data corroborates it) is the first piece
-of that list; the pool-accuracy problem is a product problem now — the freshness badge
-everywhere (P0-4's decision, on every surface, closing the two gaps § 2.1 leaves once
-Phase 1's P1-5 has dated the payload and the prediction: the manifest's missing
-`ratings_through`, and `db_freshness` reconciled with H-11), and the **public track
-record page**: every published prediction scored after the match, cumulative calibration
-plotted, misses included. This page is
-the moat seed: it compounds, and a competitor who won't publish theirs loses the
-comparison by refusing it.
+**Opened 2026-09-07, written for route (a).** Phase 1 closed on functional acceptance
+(§ 3): the Lab exists, and every number it serves carries its date and its run. Phase 2 is
+the operating layer around it — what keeps the ratings honest between retrains, and what
+scores the answers the Lab gives once the matches they were about have been played. The
+section as first drafted (2026-09-03) was written for a business: scheduled ingest in
+production, a *public* track-record page called "the moat seed", a freshness badge for a
+customer's benefit. Route (a) chose an internal prototype with one user (§ 2), and this
+section is rewritten for that, not softened: the machinery is kept where it is valuable on
+its own terms, and the parts that only a public or a market would pay for are dropped with
+the reason recorded. The item-by-item prompts are in § 5.2; the ground truth they build on
+is in § 5.1.
+
+**What Phase 2 builds** — the four items of § 5.2, in run order:
+
+- **One freshness verdict** (P2-1, **the priority item**). P0-4's audit (§ 2.1, gap (4))
+  found two freshness rules with different inputs and different thresholds coexisting, and
+  disagreeing on the day it was written: go-app's `db_freshness` buckets the database's
+  latest match per format (`ok` ≤ 7 days, `stale` ≤ 30, `missing` beyond) and read
+  **stale** overall because TEST's latest match was 8 days old, while H-11 — 14 days on the
+  loaded rating state's `last_date`, the rule a prediction is actually refused on — read
+  **fresh** at 2 of 14. Neither number is wrong; they measure different things, and nothing
+  says which one a badge means. A system that reports fresh and stale at once will
+  eventually be believed at the wrong moment, which is why this runs first. The item is one
+  object, assembled once, that every surface reads, with H-11's limit as the only threshold
+  and the database's own lag reported as a fact beside it rather than as a second verdict.
+- **The run manifest records `ratings_through`** (P2-2). Gap (3) of the same audit: the
+  manifest records `cutoff` — the retrain's wall clock, `2026-09-03` on the box — and not
+  the date the ratings actually run through (`2026-09-02`), which is read off the loaded
+  state at serve time. A run's data date therefore cannot be read from its manifest alone,
+  and the listing of runs on disk cannot say which of them is worth loading. Small and
+  mechanical, and it removes the one place the as-of date is still not written down.
+- **The prediction store** (P2-3). **Issued predictions are not stored today.** A
+  prediction is assembled by go-app from four ml-service answers, returned to the Lab, and
+  gone: nothing holds what it claimed, so nothing can be scored against the result when
+  the match is played. Every successful answer of `POST /api/predict/team-selection` —
+  Optimise and Play mode alike — is persisted with what it claimed and the run that served
+  it, verbatim. This is the substantive piece of Phase 2 and the prerequisite for the next
+  item; it is feasible now, and not before, because P1-5 put `ratings_through` and
+  `run_id` on every served prediction.
+- **The internal track record** (P2-4). Every stored prediction whose match has since been
+  imported is scored against what happened — the win probability by Brier and reliability,
+  the served 10–90 totals by coverage — and the cumulative calibration is plotted, **misses
+  included**. That honesty is the point of the thing, not a nicety: a record that showed
+  only the hits would be the tipster's page § 1 says the harness is the antidote to. It is
+  the harness's discipline applied continuously, on the served run, against new data as it
+  arrives, rather than once per retrain on folds. It is *internal*: there is no public
+  and no moat to seed, and the section says so below.
+
+**What Phase 2 does not build, with the reason recorded.** Kept visible so nothing is lost
+silently; none of it is being built:
+
+| dropped or not written | why |
+|---|---|
+| **The public track-record page** ("the moat seed") | An internal prototype has no public and no moat to seed. What is kept is the machinery — score every issued prediction once its match resolves, plot whether calibration holds on new data — which is valuable to the one user on its own terms. § 1 and § 7 still name a public accuracy record as an asset a business would accumulate; that is what route (b) would build and it stays there as the business case, not as Phase 2 work |
+| **Scheduled ingest** (A-5's cadence, in production) | **Ingest stays manual, by the user's choice.** A-5 measured `make cadence` — the `refresh` plan, fetch → extract → import → retrain → reload — at **11 min 22 s** end to end, and `deploy/cadence/` holds a systemd timer and a crontab as documentation, enabled by nothing. The user has chosen to run it by hand, and no scheduling item is written. **The accepted consequence, stated plainly:** H-11 refuses a live prediction against ratings older than `ml.ratings_max_age_days` (14), so the Lab will periodically stop answering until an import → retrain → reload is run. Under the weekly cadence § 2.1 bounded the age at eight or nine days; by hand there is no bound, and the refusal is the mechanism. It is visible rather than silent — P1-5's refusal names the date, the age against the limit and the remedy (`503 RATINGS_STALE`, "ratings run through *date* (*n* days old, limit 14)", the hint naming retrain then reload, and the Lab showing all of it and no number) — so the system fails honestly, and this section says so rather than implying continuous freshness. Nothing here is a claim that the ratings are current; the claim is that they are dated, and refused when the date is too old |
+| **A licensed squad/availability feed** | A feed is a paid, account-gated source and the standing constraint rules it out. Availability is **maintained lists**: what the user records, corroborated where held data can corroborate it |
+| **A further availability item** | Judged from the code on 2026-09-07 and found **already covered** for one user: D-12 shipped the recency-bounded default pool (`pool.recency_months`, measured per format), the optional manual pool picker (`GET /api/options/candidates`, tick a subset), the retirement ledger (`player_status`, a user's flag promoted to `player.is_retired` only when a criterion corroborates it — inactivity, and since X-1a the Wikidata career-end date and age-with-inactivity, read from `player_biography`), must-include ids that bypass every filter, and every exclusion visible and reversible on the surface; P1-2 added the hand-built eleven. What that leaves uncovered is a durable per-player "unavailable until *date*" note — an injury list — whose only writer and only reader would be the same person, who already has the picker and Play mode for the request in front of them. That is a maintained list with no second maintainer, and it is not written. It becomes an item the day there is a second user, and is recorded here so it is not rediscovered |
+
+**Exit gate — functional acceptance.** These are product and operations items for an
+internal prototype, so the gate is functional acceptance in the sense § 3 uses — every
+clause is a thing a worker can demonstrate on the dev stack — and not a measured null.
+Phase 2 is done when all six hold, and § 10 records it:
+
+1. **One freshness verdict, everywhere.** Every surface that shows freshness — the Health
+   tab, Ops Status, the Workbench's loaded-run card, the system map, the Lab's readiness
+   notice and its `RATINGS_STALE` refusal — reads one object assembled once, with H-11's
+   `ml.ratings_max_age_days` as the only threshold; the database's per-format lag is on
+   the same object as a fact, not as a second verdict. P0-4's disagreement is reproduced on
+   the dev stack (a sparse format days past the old 7-day bucket while the served ratings
+   are inside the limit) and the reconciled surfaces all read *fresh*, with the format's
+   lag stated beside it; with the limit lowered under the served age, the badge, the
+   readiness notice and the prediction refuse together, naming the same date.
+2. **A run's data date is readable without loading it.** Every manifest written by
+   `make retrain` carries `ratings_through` beside `cutoff`; the runs listing shows it for
+   every run on disk; the loaded run's manifest date equals the `ratings_through` every
+   served prediction carries, and a run whose manifest and state disagree — or whose
+   manifest lacks the field — is refused by name rather than served.
+3. **Every issued prediction is stored, verbatim.** Each successful
+   `POST /api/predict/team-selection` answer is persisted with the payload the Lab
+   received, byte-for-byte as JSON, the request it answered, and the `run_id` and
+   `ratings_through` it was served from; reading a stored prediction back reproduces the
+   served payload exactly. A store failure is on the wire of the answer it failed to
+   record, never only in a log, and never refuses the prediction.
+4. **Resolution needs no operator step.** After an import brings the match a stored
+   prediction was about, the record shows it resolved and scored — computed on read from
+   the store and the `match` tables, with no new pipeline step and no scheduler.
+5. **Misses are on the record.** The record shows Brier and the reliability curve over
+   *every* scored prediction with the base-rate Brier beside them, the served 10–90
+   coverage per innings, and — visibly counted, never dropped — the predictions that are
+   unresolved, no-result, superseded by a later forecast of the same fixture, or scenarios
+   (hand-built elevens) that are listed and not scored. Predictions served by a simulator
+   without a shared factor are reported as their own population, never pooled (B-12).
+   Nothing on the surface is filtered by outcome.
+6. **Manual ingest fails honestly.** With the ratings past the limit, the Lab refuses
+   with the date, the age against the limit and the remedy; the freshness verdict and the
+   track record show the same `ratings_through`; and after an import → retrain → reload
+   run by hand, the new run is served, the verdict is fresh, and the record scores under
+   the new run without losing what the old one issued.
+
+What this gate does not measure, said so nobody reads it as more: **whether calibration
+holds.** The record will hold tens of predictions over the weeks one user issues them, and
+a Brier or a reliability bin over tens is a diagnostic, not evidence — every number on it
+is shown with its *n*, no threshold is set on it, and `make evaluate` remains where a
+choice-facing number comes from. A record that disagrees with the harness is a thing to
+investigate and write into `docs/BUG_BACKLOG.md`, not a verdict on the model. And, as
+Phase 1's gate said of itself: nothing here is a claim about users or a market — retention,
+pull and cost per user stay unmeasured under route (a).
+
+### 5.1 What Phase 2 inherits
+
+Ground truth the four items build on, recorded here so no worker rediscovers it:
+
+- **The Lab exists, and every served prediction is dated and attributed** (P1-5, PR #270).
+  `predictteam.Result` embeds `ServedRatings {run_id, ratings_through}`, required fields,
+  stamped by ml-service on each of the answers a prediction is assembled from
+  (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict` each carry
+  `served_ratings`, read off the store that computed the answer — `manifest.run_id` and
+  `state.last_date`); go-app requires every stamp to agree and refuses a prediction that
+  straddled a reload with `409 SERVED_RUN_CHANGED`. **This is what makes a prediction store
+  feasible:** a stored answer can name the run that produced it without a status read that
+  might describe a different run. The payload also names every substitution it made —
+  `selection.objective` (`win`, `ratings` or `fixed`), `optimised` and `note`,
+  `forecast.source`, `win_probability.source`, `toss`, both pool summaries — so a stored
+  prediction is self-describing (§8.7).
+- **A prediction store existed once and was dropped, and this is not its revival.**
+  Migration `0007` dropped `match_prediction_aggregates`, a cache the per-match backtest
+  flow wrote for a played match and read back for an accuracy trend, together with the
+  five models that filled it. P2-3 stores *issued* answers about *upcoming* fixtures, with
+  the run that served them; the thing it records cannot be reproduced from the artifacts
+  after the run is replaced, which is the opposite of a cache.
+- **The freshness machinery, as it stands** (read from the code 2026-09-07; § 2.1 has the
+  full audit). ml-service: `XiRegistry.freshness()` (`app/xi_service.py`) is H-11's verdict
+  — `RatingsFreshness {fresh, age_days, max_age_days, ratings_through, code}` against
+  `ml.ratings_max_age_days` — and the same computation refuses a live request past the
+  limit; `/xi/status` and `/health` carry it. go-app: `BuildDBFreshnessSection`
+  (`internal/services/opsstatus/db_insights.go`) buckets the latest match per format at
+  7 and 30 days and rolls a worst-of `overall` onto `/ops/status` as `db_freshness`, beside
+  `artifacts` (ml-service's `/artifacts/status` copied through whole) and a separate
+  `db_completeness` (matches in the last 30 days per format — a different question, "is
+  the import empty?", and not part of the disagreement). Frontend: `HealthTab.tsx`
+  renders the H-11 line ("through *date* (*n* days old)"), `OpsStatusDetailsGrid.tsx`
+  renders the `db_freshness` grid through `opsStatusHelpers.readStatus`'s
+  `ok | stale | missing | unknown`, `WorkbenchRunSection.tsx` the loaded run,
+  `PredictionReadiness.tsx` and `RatingsAsOf.tsx` the Lab's states, and
+  `systemMap/bindings` the `ratings_through` / `ratings_age` bindings. Two thresholds,
+  three surfaces of vocabulary, one rule that refuses.
+- **The manifest and the state.** `RunManifest` (`ml/xi/runs.py`) carries `run_id`,
+  `created_at`, `cutoff`, `dataset_sha`, `git_sha`, `rating_params`, `hyperparameters`,
+  `metrics`, `state_shape`, `formats`, `format_notes`, `report` — and no date the ratings
+  run through. `retrain.py` builds it with `result.state.last_date` in hand (it already
+  reads the state for `state_shape`), and `store.py` saves `last_date` inside the
+  `xi_ratings.joblib` payload, which is the only place it is written. The loader
+  (`XiStore.load`) refuses a run with no manifest or the wrong arrays as
+  `RunArtifactsInvalid`, naming the run (D-6); `/artifacts/status` lists every run on disk
+  from `runs.list_runs` with `current` and `loaded` flags, and go-app copies the listing
+  through. The manifest is written last, so a directory is a run only once it exists.
+- **What the database holds for scoring.** `match` carries `match_date`, `format_id`,
+  `gender`, `venue_id`, `outcome_winner_opposition_id` (NULL for a no-result),
+  `outcome_by_runs` / `outcome_by_wickets`; `match_inning` carries `runs_scored` and
+  `winner_opposition_id` per innings; `match_player` carries the fielded elevens, which
+  are what the harness and E5 build sides from. A prediction names its fixture by the two
+  opposition ids, the format, the gender and `match_date`; the import that brings the
+  played match brings the join key with it.
+- **The harness's scoring functions are reusable as they are.** `ml/xi/sim_harness.py`
+  has `reliability()` (mean predicted against observed per equal-width bin,
+  `RELIABILITY_BINS` = 10, with `n` per bin) and the Brier; the glossary already carries a
+  `reliability` entry (L-1). Coverage of a 10–90 range is a comparison, not a model. What
+  is *not* on the serving wire: whether the served simulator for a format carries a shared
+  factor — the fitted calibration knows (`SimulatorCalibration.as_dict` reports
+  `shared_factor: null` when the calibration fold was too thin to fit one), and
+  `SimulateResponse` does not say.
+- **D-12's ledger is the first piece of maintained availability, and it is wired to
+  X-1a.** `internal/availability` evaluates three pluggable criteria at promotion time —
+  inactivity (5 years, measured), the Wikidata career-end date and age with inactivity,
+  the last two reading `player_biography` and reporting *unavailable* for a player it
+  holds no facts about. A flag alone excludes the player from that user's default pools;
+  only a corroborated flag becomes `player.is_retired`. See the table above for why no
+  further availability item is written.
+- **B-11 is open** (`docs/BUG_BACKLOG.md`; plan §8.13): the simulator fits one dispersion
+  to two populations, and its 10–90 interval is wrong in opposite directions on each —
+  T20 first-innings coverage **0.734 by day against 0.841 at night** at a nominal 0.80.
+  Both gated candidates (`SIM-DN-split`, `SIM-DN-scale`) recorded nulls: each fixes the
+  day side, overshoots the night side, and makes the night chase worse by five standard
+  errors, because the factor is shared by the two innings and at night they want opposite
+  corrections. The next candidate is a dispersion term the two innings do not share. For
+  Phase 2 this means the track record's coverage numbers will show the miss, and must:
+  no client-side widening, no day/night adjustment, no hiding of a range (§ 3.1's rule
+  for the Lab holds for the record).
+- **B-12 is fixed, and it changes how a record may pool.** A fold whose calibration
+  window was too thin to fit a shared factor used to be averaged into the harness's
+  simulator totals with nothing saying so; `sim_harness.summarize_folds` now reports
+  `shared_factor_folds` — how many folds had a factor, which windows did not, and the
+  same totals over the calibrated folds alone — and the Evaluation tab carries it. The
+  served run is subject to the same thinness: `fit_performance` ships a format's
+  simulator without a factor when its calibration fold is short, with a warning. **A
+  track record must not re-pool them**: a prediction served by a factorless simulator is a
+  different population from one served with a factor, and the record reports the two
+  separately with both denominators visible, as the harness now does.
+
+### 5.2 Phase 2 kickoff prompts
+
+One prompt per item, in the [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) style: run each
+in a fresh chat with the model noted, and each ends by handing over the push and PR
+commands. Run order: **P2-1 → P2-2 → P2-3 → P2-4** — the freshness verdict first because
+it is the priority and depends on nothing, the manifest next because it is small and
+every later surface can then read a run's date off disk, then the store, and last the
+record that reads it. These are product and operations items, so each gate is functional
+acceptance, not a measured null. Every prompt carries the same rules in its own words —
+branch off `main` as a named feature branch and never commit to `main`; conventional
+commits with scope; anchored edits; `make check-all` green and coverage gates never moving
+down (go-app `COV_MIN` is **77**, ml-service **93**, frontend as set in
+`frontend/vite.config.ts`; a ratchet is verified against the CI run's own figure, per
+B-9); H-24 for any new wire literal; §8.7; the database rule; the checkpoint drill; and
+one operational trap — `make evaluate` takes 54–70 minutes and a foreground run was killed
+at ~55 minutes by a background-task reaper, minutes before the harness writes its JSON,
+losing the whole run, so any harness run is launched detached and waited on — so that a
+fresh worker needs nothing but the prompt.
+
+#### P2-1 — One freshness verdict: `db_freshness` reconciled with H-11 (model: Opus) — **priority**
+
+**What.** Close gap (4) of P0-4's audit (§ 2.1). Two freshness rules coexist with different
+inputs and thresholds — go-app's `db_freshness` (the database's latest match per format,
+bucketed at 7 and 30 days, worst-of overall) and H-11 (14 days on the loaded rating
+state, the rule that refuses) — and on 2026-09-04 they disagreed: *stale* because TEST's
+latest match was 8 days old, *fresh* at 2 of 14. The item replaces them with **one
+freshness object, assembled once in go-app, that every surface reads**: H-11's verdict as
+ml-service gives it (the only threshold and the only badge), the database's per-format lag
+as a dated fact beside it, and whether the database holds matches the served run never
+saw (the B-2 state, "retrain due") as a third fact. The 7/30 buckets go. **Gate:** every
+freshness surface reads the one object; H-11's limit is the only threshold in the system;
+P0-4's disagreement, reproduced on the dev stack, reads as one verdict with the format's
+lag stated beside it; lowering the limit makes the badge, the readiness notice and the
+prediction refuse together, naming the same date.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 2.1 (P0-4's audit — gap (4) is this item's; the machinery
+list is the inventory of what you are reconciling), § 5 (Phase 2's gate, clause 1 and 6),
+§ 5.1 (the freshness machinery as it stands) and § 5.2's P2-1 entry. Read the code:
+ml-service/app/xi_service.py (XiRegistry.freshness — H-11's verdict; RatingsStale -> 503
+RATINGS_STALE), ml-service/app/models/xi.py (RatingsFreshness), ml-service/config.default.json
+(ml.ratings_max_age_days, 14; XI_RATINGS_MAX_AGE_DAYS overrides; 0 turns it off);
+go-app/internal/services/opsstatus/db_insights.go (BuildDBFreshnessSection: the 7/30
+buckets and the worst-of overall; BuildDBCompletenessSection beside it, a different
+question), assemble.go and types.go (db_freshness and artifacts on /ops/status),
+artifacts.go (ml-service's /artifacts/status copied through); frontend/src/components/
+HealthTab.tsx (the Ratings line), OpsStatusDetailsGrid.tsx and
+utils/opsStatusHelpers.ts (readStatus: ok | stale | missing | unknown),
+WorkbenchRunSection.tsx, PredictionReadiness.tsx, RatingsAsOf.tsx,
+systemMap/bindings.ts; contracts/ops-console.contract.json (H-24 vocabularies) and
+contracts/system-map.json with scripts/check-system-map.py (in make check-all). Branch
+off main as feat/p2-1-one-freshness-verdict.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 77, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9: the same commit has
+measured 77.0 locally and 76.9 in CI); H-24 for any new wire literal — a freshness code
+or status word either side matches on is declared once in
+contracts/ops-console.contract.json and asserted from both sides; §8.7 — every
+substitution or fallback is visible on the wire, never only in a log. Database rule:
+cricket_data holds 22,818 matches, 11,539,808 ball events and 13,662 player_biography
+rows — read it freely, run nothing destructive against it; anything destructive goes to
+the scratch database cricket_flow_test (make -C go-app test-db, which runs -p 1
+deliberately; dbtest.SkipUnlessScratchDatabase), and you verify those three counts
+unchanged before you hand over. Checkpoint drill: if usage nears the cap, commit, write
+RESUME_NOTES.md in the worktree with every number already measured (do not commit it),
+push early, and keep going; never report a partial item as complete. Harness trap: this
+item should not need make evaluate; if you do run it, it takes 54-70 minutes and a
+foreground run was killed at ~55 minutes by a background-task reaper before the report
+was written — launch it detached (nohup, output to a file) and poll for the JSON.
+
+Do P2-1: one freshness verdict, assembled once, read everywhere.
+1. THE OBJECT. go-app is the one component that sees both the database and ml-service,
+   so it assembles a single `freshness` object for /ops/status with three named facts
+   and nothing else: (a) `served` — H-11's verdict exactly as ml-service reports it
+   (ratings_through, age_days, max_age_days, fresh, code), copied through and never
+   recomputed with a second threshold — this is the only thing that decides "a
+   prediction would be refused" and the only overall badge; (b) `database` — per
+   format, the latest match date and its age in days, as facts with no bucket of their
+   own: the 7/30 buckets answered a question nobody had defined, and `stale` at 8 days
+   on a format that plays a Test a fortnight apart is not a fault; (c) `retrain_due` —
+   whether the database's latest match date is after `served.ratings_through`, with the
+   number of days, because matches imported that the served run never saw is exactly the
+   B-2 state a green pipeline once hid. `db_freshness` and its `overall` are deleted, not
+   kept beside the new object (the project is not live; two objects is the defect).
+   `db_completeness` asks a different question (is the import empty?) and is left as it
+   is unless you can say why it belongs in the object. One threshold in the whole
+   system: ml.ratings_max_age_days, read from ml-service's verdict. If go-app must know
+   the limit for any reason, it reads it off the verdict, never from its own config.
+2. THE VOCABULARY. The status words and codes the surfaces render (fresh, stale, not
+   loaded, retrain due, and whatever else you find you need) are one vocabulary declared
+   in contracts/ops-console.contract.json under H-24, asserted from go-app and the
+   frontend (and ml-service, where RATINGS_STALE originates); readStatus's private
+   ok | stale | missing | unknown goes with the buckets it read.
+3. EVERY SURFACE READS IT. The Health tab's Ratings line, the Ops Status grid (the
+   per-format lag as dates and days, the served verdict as the badge, retrain-due as its
+   own line), the Workbench's loaded-run card and the system map's ratings bindings all
+   read the one object. The Lab's PredictionReadiness and its RATINGS_STALE refusal read
+   ml-service's verdict through /api/ml/xi-status and the prediction itself — that is the
+   same computation, and it must stay so: add a test that the verdict on /ops/status and
+   the verdict on /api/ml/xi-status describe the same store identically. Update
+   contracts/system-map.json for anything the map binds.
+4. REPRODUCE THE DISAGREEMENT, THEN SHOW IT GONE. On the dev stack, produce the P0-4
+   state — a sparse format whose latest match is past 7 days while the served ratings are
+   inside 14 (TEST usually is; if not, name the format you used) — and record what the
+   old surfaces read (stale / fresh) and what the new ones read (one verdict, the lag as
+   a fact). Then, with XI_RATINGS_MAX_AGE_DAYS lowered under the served age as an env
+   override on a branch ml-service (the served config untouched), show the badge, the
+   readiness notice and POST /api/predict/team-selection refusing together and naming the
+   same date. Record both observations in the PR with the run id and the dates.
+5. TESTS AND DOCS. Go: the object's three facts from a fake probe and a fake ml-service
+   status (httptest), retrain-due true and false, a nothing-loaded state, and the
+   contract vocabulary asserted; frontend: each surface renders the one object, the
+   readiness notice and the Ops badge agree for the same input, and the contract
+   vocabulary asserted; ml-service: RATINGS_STALE asserted against the contract. Docs:
+   docs/PRODUCT_ROADMAP.md § 2.1 marks gap (4) closed with the PR number; docs/
+   observability.md and docs/apis-backtest-and-ops.md describe the object; README's
+   RATINGS_STALE line still true; make gen-architecture-map if a contract moved.
+
+Acceptance (the P2-1 gate): every freshness surface reads one object assembled once;
+H-11's limit is the only threshold in the system and go-app holds no copy of it;
+P0-4's disagreement reproduced on the dev stack reads as one verdict with the format's
+lag stated beside it; lowering the limit makes the badge, the readiness notice and the
+prediction refuse together naming the same date; make check-all green; coverage gates
+never move down; cricket_data's three counts unchanged. Record what shipped and both
+observations in docs/PRODUCT_ROADMAP.md § 10 (the P2-1 row). Then stop and hand over the
+push and PR commands.
+```
+
+#### P2-2 — The run manifest records `ratings_through` (model: Fable)
+
+**What.** Close gap (3) of P0-4's audit (§ 2.1). `RunManifest` records `cutoff` — the
+retrain's wall clock — and not the date the ratings run through, which lives only inside
+`xi_ratings.joblib` as `state.last_date` and is read at serve time. So "what date is this
+run's data?" cannot be answered from the manifest, and the listing of runs on disk cannot
+say which run is worth loading. The manifest gains `ratings_through`, written by retrain
+from the state it just built; the loader asserts the manifest and the state agree and
+refuses a run that does not carry the field or disagrees with itself; the runs listing and
+the surfaces that show runs carry the date for every run, not only the loaded one.
+**Gate:** every manifest `make retrain` writes carries `ratings_through` beside `cutoff`;
+the runs listing shows it per run; the loaded run's manifest date equals the
+`ratings_through` on every served prediction; a manifest without the field, or one whose
+date disagrees with its state, is refused by name.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 2.1 (P0-4's audit — gap (3) is this item's), § 5 (Phase 2's
+gate, clause 2), § 5.1 (the manifest and the state) and § 5.2's P2-2 entry;
+docs/ml-and-training.md § Runs, manifests and staleness. Read the code:
+ml-service/ml/xi/runs.py (RunManifest, summary(), write_manifest, list_runs),
+ml-service/ml/xi/retrain.py (where the manifest is built — result.state.last_date is
+already in hand for state_shape), ml-service/ml/xi/store.py (last_date saved in the
+joblib payload; XiStore.load and RunArtifactsInvalid, D-6), ml-service/app/xi_service.py
+(XiRegistry.status and _served_ratings — the two places ratings_through is read off the
+state today), ml-service/app/main.py (/artifacts/status: runs.list_runs with current and
+loaded flags), go-app/internal/services/opsstatus/artifacts.go (the listing copied
+through), frontend/src/components/OpsRunsPanel.tsx and WorkbenchRunSection.tsx. Branch
+off main as feat/p2-2-manifest-ratings-through.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 77, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal; §8.7 — every substitution or fallback is visible on the wire, never only in a
+log: a manifest without the date is refused with the reason, never served with a date
+read from somewhere else. Database rule: cricket_data holds 22,818 matches, 11,539,808
+ball events and 13,662 player_biography rows — read it freely, run nothing destructive
+against it; anything destructive goes to the scratch database cricket_flow_test (make -C
+go-app test-db, -p 1 deliberately; dbtest.SkipUnlessScratchDatabase), and you verify
+those three counts unchanged before you hand over. Checkpoint drill: if usage nears the
+cap, commit, write RESUME_NOTES.md in the worktree with every number already measured
+(do not commit it), push early, and keep going; never report a partial item as complete.
+Harness trap: this item is verified by a retrain (~12 minutes), not by make evaluate; if
+you do run the harness, it takes 54-70 minutes and a foreground run was killed at ~55
+minutes by a background-task reaper before it wrote its JSON — launch it detached
+(nohup, output to a file) and poll for the report.
+
+Do P2-2: the manifest says what date its data runs through.
+1. THE FIELD. RunManifest gains ratings_through (YYYY-MM-DD, the rating state's
+   last_date), required; retrain writes it from result.state.last_date beside cutoff,
+   and summary() carries it so /xi/status reports the manifest's value. Say in the
+   manifest's docstring why cutoff and ratings_through are different dates (the cutoff is
+   the training boundary the operator asked for — today, for a refresh — and
+   ratings_through is the last match the pass actually consumed; on the dev box they
+   differed by a day on the served run).
+2. ONE DATE, ASSERTED. The loader (XiStore.load) refuses, as RunArtifactsInvalid naming
+   the run and both dates, a run whose manifest ratings_through disagrees with the
+   state's last_date, and refuses one whose manifest lacks the field: the project is not
+   live and nothing is backfilled — an older run is retrained, not patched. _served_ratings
+   and status() keep reading the state (that is the store that computed the answer) and
+   the assertion at load is what makes the manifest's date the same date; add a test
+   for each refusal and one that a loaded run's status, its served_ratings stamp and its
+   manifest agree.
+3. THE LISTING. /artifacts/status carries ratings_through per run from list_runs, so
+   the question "what date is this run's data?" is answered off the listing for every
+   run on disk; go-app copies it through; OpsRunsPanel and the Workbench's run section
+   show "ratings through <date>" beside the cutoff for every run, and the loaded one
+   reads the same date the Lab shows on a prediction. A run on disk whose manifest
+   predates this field is listed with the reason it cannot be loaded (§8.7), not with a
+   blank.
+4. VERIFY on the database: make retrain (record the run id and the ~12 minutes), make
+   reload, then read the manifest, /artifacts/status, /xi/status and one
+   POST /api/predict/team-selection and record the four dates in the PR — they are one
+   date. Then show the refusal: copy the run, remove ratings_through from the copy's
+   manifest, POST /admin/reload?run=<copy> and record the 409 naming the run. The
+   previously served run, written before this field, will be refused after this lands —
+   say so in the PR and leave the new run serving.
+5. DOCS. docs/ml-and-training.md § Runs, manifests and staleness (the manifest's field
+   list and the load-time assertion); docs/PRODUCT_ROADMAP.md § 2.1 marks gap (3) closed
+   with the PR number; make gen-architecture-map if the status contract moved.
+
+Acceptance (the P2-2 gate): every manifest make retrain writes carries ratings_through
+beside cutoff; the runs listing shows it per run; the loaded run's manifest date equals
+the ratings_through on a served prediction; a manifest without the field, or one whose
+date disagrees with its state, is refused by name; make check-all green; coverage gates
+never move down; cricket_data's three counts unchanged. Record in
+docs/PRODUCT_ROADMAP.md § 10 (the P2-2 row). Then stop and hand over the push and PR
+commands.
+```
+
+#### P2-3 — The prediction store: every issued prediction persisted, verbatim (model: Opus)
+
+**What.** Issued predictions are not stored today: a `POST /api/predict/team-selection`
+answer is assembled, returned and gone, so nothing can be scored against a result later.
+Every successful answer — Optimise and Play mode, searched, rating-ordered and hand-built
+alike — is persisted in go-app with the payload the Lab received (verbatim JSON), the
+request it answered, when it was issued, and the `run_id` and `ratings_through` it was
+served from, plus the columns a resolver will join on. A store failure is on the wire of
+the answer it failed to record and never refuses the prediction. This is the prerequisite
+for P2-4 and the substantive piece of the phase. **Gate:** every successful prediction on
+the dev stack is stored and reads back byte-equal to what was served, with its run and
+date; a refused prediction stores nothing; a store failure is named on the wire; the
+harness and the pipeline are untouched.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 5 (what Phase 2 builds; the gate's clause 3), § 5.1 (what
+every served prediction already carries; the dropped table this is not; what the
+database holds for scoring) and § 5.2's P2-3 entry; docs/EXTERNAL_DATA_PLAN.md § D-12
+and its record (the ledger's migration 0009_player_status.sql is the precedent for a
+go-app store with a forward migration and a history). Read the code:
+go-app/internal/server/predict_handlers.go (predictTeamRequest and the handler; the
+fixture is team1_id/team2_id, the genders, venue, match_date; team1_xi/team2_xi pin an
+eleven; team1_bats_first), go-app/internal/services/predictteam/predict_team.go
+(Result: ServedRatings, both sides, selection, forecast, win_probability, toss,
+scorecard, pools, constraints), served_ratings.go, play_mode.go; go-app/migrations/
+(0012 is the latest; 0007 dropped match_prediction_aggregates and says why);
+go-app/internal/db/repo_player_status.go (a store the way this repo writes one) and
+dbtest/; go-app/internal/mocks (mockery from contract.go). Branch off main as
+feat/p2-3-prediction-store.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 77, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — a record status either side matches on is declared in
+contracts/ops-console.contract.json and asserted from both; §8.7 — every substitution
+or fallback is visible on the wire, never only in a log: a store failure is reported on
+the prediction it failed to record. Database rule: cricket_data holds 22,818 matches,
+11,539,808 ball events and 13,662 player_biography rows — read it freely, run nothing
+destructive against it; the new table is a forward migration and the only thing this
+item writes there; anything destructive goes to the scratch database cricket_flow_test
+(make -C go-app test-db, -p 1 deliberately; dbtest.SkipUnlessScratchDatabase), and you
+verify those three counts unchanged before you hand over. Checkpoint drill: if usage
+nears the cap, commit, write RESUME_NOTES.md in the worktree with every number already
+measured (do not commit it), push early, and keep going; never report a partial item as
+complete. Harness trap: this item must not need make evaluate; if you run it to prove
+blast radius, it takes 54-70 minutes and a foreground run was killed at ~55 minutes by
+a background-task reaper before it wrote its JSON — launch it detached (nohup, output
+to a file) and poll for the report.
+
+Do P2-3: the prediction store — every issued answer, kept as it was served.
+1. THE TABLE. A forward migration (0013) creates the store in go-app's database: one row
+   per successful answer, holding the served payload verbatim as jsonb (so a later scorer
+   never lacks a field and the record can show exactly what was claimed), the request
+   as jsonb, issued_at, run_id and ratings_through as columns, and the columns a resolver
+   joins on and a record sorts by — format code, both opposition ids, gender,
+   match_date, the selection objective (win | ratings | fixed), and the headline
+   win probability with its source. Nothing derived is stored that the payload does not
+   already say. Say in the migration's comment what this is and what 0007's dropped
+   table was, so nobody reads it as a revival of a cache.
+2. THE WRITE. After predictteam.Predict succeeds and before the handler answers, the
+   answer is recorded through a small interface (one method; mockery mock in
+   internal/mocks) the handler depends on. Every successful answer is recorded — Play
+   mode re-scores included, because the record is what makes P2-4's counting honest —
+   and a refused one is not: a refusal is not a prediction. The response gains a
+   `record` block naming the stored row's id and issued_at; when the store fails, the
+   block says `stored: false` with the reason and the prediction is still served —
+   decide that rule from the product (the Lab is the product; the record is the record)
+   and say why in the commit. Never only a log line.
+3. THE READ. GET /api/predictions/{id} returns a stored answer; GET /api/predictions
+   lists them newest first with the join columns, paged. Reading a row back yields the
+   served payload byte-equal as JSON — assert it through the real handler against the
+   scratch database, not by comparing structs.
+4. BLAST RADIUS. Nothing under ml-service/ changes; the harness, the run plans and the
+   three pipeline steps are untouched (grep for readers of the new table: there must be
+   only this item's). The write is one insert per prediction; measure what it adds to
+   P1-2's 355-399 ms re-score on the dev stack and record it in the PR.
+5. VERIFY the D-6 way on the dev stack: an Optimise in T20I, a rating-ordered T20, a
+   Play-mode re-score, and a refused prediction (XI_RATINGS_MAX_AGE_DAYS lowered on a
+   branch ml-service); read the three rows back and diff them against the served
+   bodies; confirm the refusal wrote nothing; then point the store at an unreachable
+   database for one request and record the `record.stored: false` block on the wire.
+6. TESTS AND DOCS. Go: the handler records on success and not on refusal (mock), the
+   failure block on the wire, the read endpoints (httptest), and scratch-database
+   integration tests for the round trip and the byte-equality; frontend: if the Lab
+   shows the record id beside the date chip, a component test for it. Docs:
+   docs/apis-backtest-and-ops.md (the two endpoints), docs/config-and-data.md (the
+   table), make gen-architecture-map if a contract moved.
+
+Acceptance (the P2-3 gate): every successful prediction on the dev stack is stored and
+reads back byte-equal to what was served, with its run and date; a refused prediction
+stores nothing; a store failure is named on the wire and does not refuse the prediction;
+nothing in ml-service, the harness or the pipeline changed; make check-all green;
+coverage gates never move down; cricket_data's three counts unchanged. Record in
+docs/PRODUCT_ROADMAP.md § 10 (the P2-3 row). Then stop and hand over the push and PR
+commands.
+```
+
+#### P2-4 — The internal track record: resolved predictions scored, misses included (model: Fable)
+
+**What.** The stored predictions (P2-3) scored against what happened, computed on read
+from the store and the `match` tables — no new pipeline step, no scheduler. Per fixture
+one forecast is scored, the rest are counted; the win probability is scored by Brier and
+reliability with the base rate beside it, the served 10–90 totals by coverage per innings;
+predictions served by a factorless simulator are their own population (B-12); the
+predicted elevens are compared with the fielded ones and the overlap shown. Every state a
+prediction can be in — scored, unresolved, no-result, superseded, scenario — is counted on
+the surface, and nothing is filtered by outcome. It is internal, and it is not a gate: *n*
+is shown on every number and no threshold is set. **Gate:** the record on the dev stack
+shows every stored prediction in exactly one named state; the scored ones carry Brier,
+reliability and coverage with their *n*; an import that brings a predicted match moves it
+to scored with no operator step; a miss is on the record; the two simulator populations
+are never pooled.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 5 (what the record is and is not; the gate's clauses 4, 5
+and 6; what the gate does not measure), § 5.1 (what the database holds for scoring; the
+harness's reusable scoring; B-11 open; B-12 and why a record must not re-pool) and
+§ 5.2's P2-4 entry; docs/BUG_BACKLOG.md § B-11 and § B-12; docs/ml-and-training.md
+§ Evaluation harness. Read the code: the store P2-3 shipped (its migration, repo and
+endpoints); go-app/internal/db/repo_match.go and migrations/0001_baseline.sql (match:
+match_date, format_id, gender, outcome_winner_opposition_id NULL for a no-result,
+outcome_by_runs/wickets; match_inning: runs_scored; match_player: the fielded elevens);
+ml-service/ml/xi/sim_harness.py (reliability(), RELIABILITY_BINS = 10, _brier;
+summarize_folds and shared_factor_folds), ml-service/ml/xi/simulator.py
+(SimulatorCalibration.as_dict: shared_factor null when none was fitted),
+ml-service/app/models/xi.py (SimulateResponse — carries no calibration flag today),
+ml-service/ml/xi/glossary.py (L-1; `reliability` exists; the completeness gate);
+frontend/src/components/EvaluationReportTab.tsx and its sections (how the harness's
+numbers are shown, and the B-12 chip), App.tsx (the tabs). Branch off main as
+feat/p2-4-internal-track-record.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 77, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — the prediction states are a vocabulary declared in
+contracts/ops-console.contract.json and asserted from go-app and the frontend; §8.7 —
+every substitution or fallback is visible on the wire, never only in a log. Database
+rule: cricket_data holds 22,818 matches, 11,539,808 ball events and 13,662
+player_biography rows — read it freely, run nothing destructive against it; anything
+destructive goes to the scratch database cricket_flow_test (make -C go-app test-db, -p 1
+deliberately; dbtest.SkipUnlessScratchDatabase), and you verify those three counts
+unchanged before you hand over. Checkpoint drill: if usage nears the cap, commit, write
+RESUME_NOTES.md in the worktree with every number already measured (do not commit it),
+push early, and keep going; never report a partial item as complete. Harness trap: the
+record reads the existing xi_evaluate_report.json for comparison and should not need a
+new one; if you do run make evaluate, it takes 54-70 minutes and a foreground run was
+killed at ~55 minutes by a background-task reaper minutes before it wrote its JSON,
+losing the run — launch it detached (nohup, output to a file) and poll for the report.
+
+Do P2-4: the internal track record, computed on read, misses included.
+1. THE STATES. Every stored prediction is in exactly one state, and the vocabulary is on
+   the wire (H-24): SCENARIO — a hand-built eleven (selection.objective fixed), listed and
+   never scored, because the caller built a side that may not have played; SUPERSEDED —
+   an Optimise forecast of a fixture that a later Optimise of the same fixture (same
+   format, opposition pair, gender, match_date) issued before the match date replaced,
+   so one forecast is scored per fixture and it is the last one issued; UNRESOLVED — the
+   database holds no match for the fixture yet (Cricsheet lag; an unrun import), shown
+   with how many days past match_date it is; NO_RESULT — a match with no
+   outcome_winner_opposition_id, counted and not scored; SCORED. State is computed on
+   read from the store and the match tables — no column, no step, no scheduler — so an
+   import moves a prediction to SCORED by itself. A fixture is resolved by exact
+   match_date, both opposition ids in either order, format and gender; a match on a
+   neighbouring date is not it, and say so in the code.
+2. THE SCORES, reusing the harness's arithmetic rather than re-deriving it: the headline
+   win probability against the outcome — Brier over every SCORED prediction with the
+   base-rate Brier beside it (the base rate from the same rows), and the reliability
+   curve in the harness's ten equal-width bins with n per bin; the served 10-90 totals —
+   whether each actual innings total fell inside its served range, per innings, with n;
+   and the elevens — how many of the predicted 22 appear in match_player for that match,
+   shown per prediction and summarised, because a forecast for a side that did not play
+   is a forecast of a different match; it is reported, never used to exclude. Where the
+   arithmetic lives (go-app in Go, or ml-service behind an endpoint that takes the rows)
+   is your call — say why in the PR; the harness's functions are the reference either
+   way and a test pins one bin against them.
+3. TWO POPULATIONS, NEVER POOLED. Put on the wire whether the served simulator for the
+   format carried a shared factor (SimulateResponse gains it from the calibration; go-app
+   carries it onto the prediction; the store keeps it as a column from this item on) and
+   report coverage over the factored and factorless predictions separately with both
+   denominators visible, the way summarize_folds does. A prediction stored before this
+   field existed is in a third population, "unknown", shown as such.
+4. THE SURFACE. A Track record tab: the summary numbers with their n, the reliability
+   plot, the coverage per innings and per population, the state counts, and the list
+   of predictions newest first with state, what was claimed, what happened, and the
+   eleven overlap. Beside the served numbers, the harness's locked-window figures for
+   the same run from xi_evaluate_report.json, labelled as the harness's, so a reader
+   sees the record against the number the model was accepted on. No number is a
+   verdict: nothing turns red at a threshold, and every figure carries its n. The
+   ranges are the simulator's as served — no widening, no day/night adjustment (B-11 is
+   open and the record will show it). Every labelled number is an L-1 key with its
+   explainer reachable; add entries to ml/xi/glossary.py (the completeness gate names
+   the missing ones).
+5. VERIFY on the dev stack against the scratch database with a seeded history: store
+   predictions for fixtures the scratch database already holds as played matches (a scenario, two
+   forecasts of one fixture, one no-result, one unresolved) and show each lands in its
+   state; then, on cricket_data, issue predictions through the Lab for real upcoming
+   fixtures, run make import by hand when Cricsheet has them (or, if none has resolved
+   by the time you finish, say so and show the UNRESOLVED count and days instead of
+   inventing a result), and record what the tab showed. A miss on the record is the
+   demonstration, not a problem.
+6. TESTS AND DOCS. Go: each state from a fixture (table-driven), the superseding rule,
+   the exact-date resolution, the scores against hand-computed values and one bin against
+   the harness's function, the two populations kept apart, and a scratch-database
+   integration test through the real handler; frontend: the tab per state, the n on
+   every number, and the plot rendering an empty record without inventing a curve. Docs:
+   README's tab list, docs/apis-backtest-and-ops.md (the endpoint and the states),
+   docs/ml-and-training.md (the record beside the harness: what each is evidence of),
+   make gen-architecture-map if a contract moved.
+
+Acceptance (the P2-4 gate): the record on the dev stack shows every stored prediction in
+exactly one named state; the scored ones carry Brier, reliability and coverage with their
+n and the base rate beside them; an import that brings a predicted match moves it to
+scored with no operator step; a miss is on the record; the factored and factorless
+populations are never pooled; nothing on the surface is filtered by outcome; make
+check-all green; coverage gates never move down; cricket_data's three counts unchanged.
+Record in docs/PRODUCT_ROADMAP.md § 10 (the P2-4 row) and, if the record showed something
+the harness did not, write it into docs/BUG_BACKLOG.md rather than into a claim. Then
+stop and hand over the push and PR commands.
+```
 
 ## 6. Phase 3 — one wedge, chosen by Phase 0 (not all three)
 
@@ -956,15 +1589,15 @@ P0 (weeks, mostly not code — P0-1 is one harness PR) → P1 (the big build: mo
 product engineering; the model layer is done) → P2 (ongoing ops, starts during P1) →
 one wedge of P3 (months) → P4 (earned, not scheduled). Each phase gets item-by-item
 kickoff prompts in the [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) style when it
-starts; Phase 1's are in § 3.2 (2026-09-06).
+starts; Phase 1's are in § 3.2 (2026-09-06), Phase 2's in § 5.2 (2026-09-07).
 
 Under the standing constraint the sequence reads differently. P0 is mostly not runnable
 (§ 2: one item measured, one deferred, one skipped, one forced), and its exit gate closed
 on route (a). P1 is a **locally-run prototype**, not a hosted product — the Team Lab
 only: its months of product engineering exclude the SaaS plumbing, whose hosting, accounts and metering are a
 running cost, and its "infra cost per active user" has no number to take until hosting is
-in scope. P2's availability data is maintained lists. P3's wedge, if one is chosen, is
-chosen by judgment. None of this shortens the model-layer work, which is done; it removes
+in scope. P2 is four items on the existing stack, ingest stays manual and its availability
+data is maintained lists (§ 5). P3's wedge, if one is chosen, is chosen by judgment. None of this shortens the model-layer work, which is done; it removes
 the parts that cost money or need people, and says so.
 
 ## 10. Record of outcomes
@@ -974,7 +1607,7 @@ the parts that cost money or need people, and says so.
 | P0-1 | **measured, on free sources only** — the one licence-clean free series covers BBL/WBBL; 4.2 % of T20 joined, 0 % elsewhere; market ahead by 0.052 AUC with a 95 % interval spanning zero, so it does not resolve the market question (§ 2; [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) § X-4) |
 | P0-2 | ⏸ **deferred** (2026-09-04, standing constraint: needs paid counsel) — a prerequisite again before anything ships publicly or takes payment; until then the prototype has no verified disclaimer architecture and no jurisdictional clearance, an accepted gap (§ 2) |
 | P0-3 | ✗ **skipped** (2026-09-04, standing constraint: interviews are human-subject research) — the Phase 3 wedge cannot be chosen on evidence; any later choice is a judgment call recorded as unevidenced (§ 2) |
-| P0-4 | ✅ **answered as a decision** (2026-09-04; write-up in § 2.1). The system ships **"as of last import" with the as-of date visible**, and refuses a live prediction past H-11's limit rather than answering from stale ratings; paid feeds were out of scope, so there was no feed to quote and the answer was forced. **Recurring data cost: zero. What is paid instead: staleness** — measured on this box, served ratings through 2026-09-02, **2 days** against the 14-day limit, with the database's own latest match on the same date (nothing lost between import and serving), and the weekly cadence bounding the age at eight or nine days. **Recorded beside the cost line: the Cricsheet licence is unresolved** — no licence is stated for the match archive, only the author's criteria (free, derivatives allowed, corrections reported, not resold), which this prototype's use sits inside; it must be settled with the project directly before anything ships or is sold ([config-and-data.md](config-and-data.md) § Data-source licence register). **The decision is answered; the surfacing it implies is not** — § 2.1's audit names four gaps (the prediction payload carries no as-of date or run id; the Upcoming-match tab shows the date only when the prediction would be refused; the run manifest records `cutoff` but not `ratings_through`; go-app's `db_freshness` buckets and H-11 are two unreconciled rules, disagreeing today) and fixes none: the first two are Phase 1's P1-5 (§ 3.2), the last two Phase 2's freshness badge (§ 5) |
+| P0-4 | ✅ **answered as a decision** (2026-09-04; write-up in § 2.1). The system ships **"as of last import" with the as-of date visible**, and refuses a live prediction past H-11's limit rather than answering from stale ratings; paid feeds were out of scope, so there was no feed to quote and the answer was forced. **Recurring data cost: zero. What is paid instead: staleness** — measured on this box, served ratings through 2026-09-02, **2 days** against the 14-day limit, with the database's own latest match on the same date (nothing lost between import and serving), and the weekly cadence bounding the age at eight or nine days. **Recorded beside the cost line: the Cricsheet licence is unresolved** — no licence is stated for the match archive, only the author's criteria (free, derivatives allowed, corrections reported, not resold), which this prototype's use sits inside; it must be settled with the project directly before anything ships or is sold ([config-and-data.md](config-and-data.md) § Data-source licence register). **The decision is answered; the surfacing it implies is not** — § 2.1's audit names four gaps (the prediction payload carries no as-of date or run id; the Upcoming-match tab shows the date only when the prediction would be refused; the run manifest records `cutoff` but not `ratings_through`; go-app's `db_freshness` buckets and H-11 are two unreconciled rules, disagreeing today) and fixes none: the first two were Phase 1's P1-5 (§ 3.2, shipped), the last two are Phase 2's P2-1 and P2-2 (§ 5.2) |
 | P0 exit gate | ✅ **closed — route (a), recorded 2026-09-06**: *"internal tool / prototype, no wedge chosen"*. Route (b) was declined. No Phase 3 wedge is chosen; no evidence for choosing one exists (P0-3 skipped); any later choice is recorded as an unevidenced judgment call (§ 2) |
 | P1 | ✅ **closed — functional acceptance, recorded 2026-09-06.** All five items shipped (P1-1 #269, P1-5 #270, P1-2 #271, P1-3 #272, P1-4 #273), run in the order P1-1 → P1-5 → P1-2 → P1-3 → P1-4, and each of § 3's six functional-acceptance clauses is marked with the item that demonstrated it on the dev stack. **What was accepted, at its actual size: an internal prototype whose surfaces do what § 3 says they do**, checked against P1-4's inventory of every served and refused state. **What was not:** retention, pull and cost per active user were never measured — route (a) put all three out of scope (§ 2), along with the user study the gate as first written rested on — so this closes the build, not the market question, and P0-1's unresolved benchmark and P0-3's skipped interviews stand exactly where they stood. Two findings were recorded rather than folded in: B-8 (the selection's rating order can disagree with the display model) and B-10 (must-include reached the search as an empty lock), both in `docs/BUG_BACKLOG.md`; B-10 is fixed on the branch carrying this row. The SaaS half — accounts, saved scenarios, rate limits and metering, hosting, freemium tiers — is deferred with its reason recorded in § 3, and returns the day route (a) is revisited |
 | P1-1 | ✅ **shipped** (2026-09-06) — one Lab surface, the toss toggle, the pools visible. The Upcoming-match tab **became** the Team Lab (`/lab`, `TeamLabTab` + `useTeamLab`) rather than gaining a sibling, so there is one surface on `POST /api/predict/team-selection`. New inputs: the **toss** (bat first / bowl first / unknown), and the constraints the endpoint always accepted but the UI never sent — minimum bowlers, the keeper, and must-include ids that join the pool whatever the window or the ledger says (an unreadable id stops the prediction rather than being dropped). **The toss reached the simulator for the first time**: `team1_bats_first` ran from `predictteam`'s simulation input through to `/simulate`, but `predictTeamRequest` had no field and the UI had no control, so nothing could set it; the field is nullable at every hop (absent = unknown = today's marginalised behaviour) and the response now carries `toss` — which batting order the numbers assume, and whether a named one could be used at all. Two §8.7 consequences: a named toss on a format with no innings length is reported *not honoured* with the reason instead of being ignored, and draws that disagree with the toss asked for (`toss_marginalised` against the request) are refused rather than served. One defect the toggle exposed and this fixes: `scorecard.innings1/innings2` were team1's and team2's innings whichever batted first, so "Innings 1 (India)" could sit beside "Australia bats first" — renamed `team1_innings`/`team2_innings` and labelled by side and batting position. **Verified on the dev stack** (run `20260906T083819Z-36689f80`, ratings through 2026-09-02, 4 days old): T20I India v Australia and ODI England v India come back `optimised true` with marginal values; T20 Mumbai Indians v Chennai Super Kings and TEST Australia v England come back `optimised false` with the H-17 / E5 note on screen and no marginal column; the three toss states give three different answers on the same fixture (unknown 73.1 % with innings 176/175 both orders averaged; team1 first 72.6 % with 189/170; team2 first 73.6 % with 168/183), each named on the surface; both pools render with window, size and the all-time pool one click away. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662. Frontend coverage ratcheted to 79/79/77/70 |
@@ -982,5 +1615,9 @@ the parts that cost money or need people, and says so.
 | P1-2 | ✅ **shipped** (2026-09-06) — Play mode, on one code path, with two of this document's claims corrected. **The path:** a hand-built eleven takes the *existing* predict path with the selection step replaced by the caller's answer — `team1_xi` / `team2_xi` on `POST /api/predict/team-selection` — because the numbers never came from `/xi/optimize` in the first place: the displayed probability is `/xi/predict-win`'s display model and the totals, ranges and scorecard are `/simulate`'s draws, both of which read the eleven they are given. `selection.objective` is `fixed`, `optimised` is false and no player carries a marginal value, because nothing was maximised; **Optimise again** returns to the searched eleven, which is the win-model search in T20I and ODI and the rating-ordered pick with its notice in T20 and TEST. Refused rather than repaired: an eleven that is not an eleven (`400 XI_INCOMPLETE` — a ten-man side would be a prediction for a match nobody plays), a player id that names nobody (`400 XI_PLAYER_UNKNOWN`), one side pinned and the other searched, and the same player twice. **Constraints are checked, never applied:** ml-service's `/xi/predict-win` optionally checks the eleven it is scoring against the constraints it was sent with and reports the counts — the bowler count from `contract.is_bowling_option` and the keeper flag from the served vectors, so "five bowlers" means in the chip what it means inside the search — and go-app assembles them into a `constraints` block naming the missing must-include players. A pinned prediction whose answer carries no check is refused rather than shown as met. **Verified on the dev stack** (run `20260906T083819Z-36689f80`, ratings through 2026-09-02): on T20I India v Australia the searched eleven reads 73.1 %, one swap re-scores to 71.2 % with the delta shown as **−1.9 pp** beside **+2.2 runs (+1.0 / +2.0)** on India's innings; removing a player leaves "this eleven is not scored yet" over the previous answer rather than scoring ten; adding one back with `min_bowlers` 8 re-scores to 69.8 % and shows **Bowlers 5 of 8 — broken** and **Bowlers 7 of 8 — broken** with "scored as you built it; nothing was substituted"; Optimise again returns a searched eleven under the new constraint. **Clause 3, demonstrated:** `scripts/probes/p1_2_play_mode.py` through the real stack — pinning the searched eleven reproduces Optimise's probability with a gap of **0.0000000000** in all four formats (one code path, asserted rather than argued), and **0 falls in 20 dominating upgrades** (T20I 2, ODI 2, T20 8, TEST 8), where an upgrade is a swap for a player at least as good on every one of `contract.PLAYER_VECTOR_KEYS`. **Clause 2, corrected:** 30 timed re-scores per format, client to client, at the served 2,000 draws — T20I median **370.5 ms** / p95 738.6, ODI **388.0** / 532.8, T20 **399.0** / 516.4, TEST **354.9** / 471.0. Where it goes, timed in-process on one T20I `/simulate`: the performance model's per-player forecasts **295.6 ms**, `simulate_match` at 2,000 draws **9.4 ms**, summarising the draws 5.5 ms, the display probability 6.8 ms, assembling the rows 0.8 ms; `/xi/predict-win` is 6–8 ms of the total and go-app's own work (two pool queries, the fixture resolution, two hops) about 40 ms. **So the ~10 ms this document claimed was the draw loop alone** — the harness's `ms_per_fixture_at_default_samples`, 9.5–9.8 there — for a fixture whose forecasts were already computed, and § 1 and § 3 now say what a user waits for instead. Measured with the branch running as host processes against the shared Postgres and the shared containers' own run; the same `/simulate` payload against the containerised ml-service is 145.4 ms median against the host process's 317.2, so inside the dev stack's containers the re-score would land near 200 ms — the claim is out by a factor of 20–40 either way, which is why no draw count was lowered and no cache added to chase it. **One finding recorded rather than fixed:** the same probe's diagnostic arm swaps for a player the *rating order* ranks higher without dominating him, and the displayed probability falls in 0/8 T20I, 1/8 ODI, 4/8 T20 and 6/8 TEST cases (worst −0.0805) — `docs/BUG_BACKLOG.md` § B-8. **Tests:** Go — the pinned selection path, every refusal, the constraint report, the client sending constraints only for a pinned eleven, and three scratch-database integration tests through the real handler; ml-service — the check reports the counts, a broken constraint comes back broken and unrepaired, and checking moves no probability; frontend — the delta arithmetic as pure functions, the Play-mode state machine (an edit that leaves ten players does not re-score; the delta is measured against the answer the change was made from), and the board, chips and delta rendering. `make check-all` green; **frontend coverage ratcheted to 80/80/78/71**, go-app 76.8 % and ml-service 93.62 % each rounding down to the existing threshold. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
 | P1-3 | ✅ **shipped** (2026-09-06) — the "why this player" card, on every selected player, showing what the selection consumed and nothing else. **The rule was applied, not asserted:** § 4 now carries the field-by-field map from each number on the card to the code that produced it, and the four fields it first sketched that are **omitted with their reasons** — a *trajectory* (the served state holds decayed accumulators as of one date, not a history, so the objective consumed no earlier value; form appears only as the decayed rates inside the selection rating and its standing), a *must-include* role (go-app puts a required id into the pool and sends ml-service an empty `must_include`, so the search never treats anyone as required and may leave him out — a "required" chip would name a constraint nothing applied), a *top-order anchor* role (`exp_bat_position` is read by the performance model, never by the objective), and an *interval on the beats-whom gap* (one objective evaluation per candidate swap yields a point estimate; the card says so instead of inventing one). The same list is the card component's doc-comment, so the rule travels with the code. **New on the wire:** `/xi/optimize` gains `selection_reasons` per selected player — `roles` (from `_Pool.is_keeper` / `is_bowler`, the same predicates the constraints and the `has_keeper` / `n_bowlers` features read), `selection_rating` (`rating_order_score`, extracted so `_greedy_seed` and the card cannot compute different composites), `rating_percentile` and `pool_size` (standing within the pool *as served*), and `best_alternative` (the best excluded pool player over exactly `_best_neighbour`'s single-swap neighbourhood, with the P(win) that swap costs) — and go-app carries it onto each `SelectedPlayer` as `selection_reason`, resolving the alternative's registry id to a player id and name. An alternative the pool cannot resolve is reported on the wire with its reason, never dropped (§8.7). `selection_roles` joins the H-24 contract, asserted from all three components. **Verified on the dev stack** (branch ml-service and go-api as host processes against the shared Postgres and run `20260906T083819Z-36689f80`, ratings through 2026-09-02): T20I India v Australia comes back `optimised true`, P(India) 0.7312, with a reason on all 22 players — pools of 26 and 24, percentiles 12 to 100, and every beats-whom gap positive (0.0011 to 0.1403), which is what a converged single-swap search should give; TEST Australia v England comes back `optimised false` with a reason on all 22, **no marginal value and no alternative anywhere**, percentiles 40.9 to 100 over pools of 18 and 23. **B-8's honest half:** the rating-ordered card says the ordering it shows is the selection's own composite and not the win model's ranking, and that swapping in a higher-rated player can move the displayed probability down — the sentence a user needs before acting on the order; P1-4 carries the other half. **Cost, measured rather than assumed:** the best-alternative sweep is **11.4 ms median** in-process on a 26-player T20I pool, beside the search's 383.8 ms and the marginal values' 1.7 ms, so about 46 ms on an Optimise (four win-objective calls); **Play mode's re-score is untouched**, because it makes no `/xi/optimize` call at all, and P1-2's 355–399 ms stands. **Glossary:** four new L-1 entries — `xi_role`, `selection_rating`, `rating_percentile`, `next_best_gap` — reachable from every labelled number on the card. **Tests:** ml-service — the composite is the order the rating-ordered pick uses, percentiles run 0 to 100 over the pool, roles agree with `is_bowling_option` and the keeper flag, the rating-ordered path scores no alternative, the best alternative equals a swap re-scored through the objective, no gap is negative on a converged search, an unpooled player gets no entry, and both `/xi/optimize` paths carry the block; go-app — the alternative resolves to a player id and name, an unresolvable one says so on the wire, the reasons come from the same round as the marginal values, Play mode carries none, the client maps the block on both objectives, and a scratch-database integration test through the real handler shows a rating-ordered payload carrying a reason per player with no alternative; frontend — the two card states, the rating-ordered one asserted to carry no marginal value and no beats-whom line even when handed one, the point-estimate sentence, the negative-marginal reading, and a control on every row. `make check-all` green; coverage gates never moved down — the frontend's statements gate ratcheted 78 -> 79, and **go-app's did not move, for a reason worth recording**: it measured 77.0 % locally and 76.9 % in CI, and the difference is exactly one statement in an unrelated package. `ctxReader.Read`'s cancellation branch is covered on a fast machine and not on the CI runner, because the test asserting it only asserts that `Fetch` errors, which it does whether or not the cancellation reaches that reader. The total sits on the 76.95 boundary, so that one statement decides the rounded figure. Diagnosed by diffing the CI run's own `coverage.out` artifact against a local profile — they differ in that one function and nothing else — and recorded as `docs/BUG_BACKLOG.md` § B-9; the threshold stays at main's 76, which is 76.9 rounded down. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
 | P1-4 | ✅ **shipped** (2026-09-06) — the sweep: every honesty surface, on every state of the Lab, checked against an inventory rather than a feeling. **The inventory** (in the PR, one row per number: what stands beside it, its range, its explainer key, its date) walked eight served states — T20I and ODI optimised, T20 and TEST rating-ordered, the three toss states, a must-include request, Play mode after a swap — and four refused ones. **What it changed on the surface:** (1) *ranges* — every point with a 10–90 range on the wire shows it in every state; the one point the stack serves without a range (wickets on the performance-quantiles path, an expectation with P(0/1/2+) and no quantiles) reads "(no range)" and no interval is derived from the pmf; the ranges are the simulator's as served, X-2's day/night gap recorded in the `innings_total` explainer's band rather than adjusted for; (2) *the not-optimised notice* — an `Alert` at the XI from `selection.note`, titled for the state it is in ("picked by rating" / "your eleven"), and a response with no note says so instead of inventing a reason; the win probability beside it is labelled "the display model's read of this rating-ordered eleven / the eleven you built, not the result of a search"; (3) *the date* — one `RatingsAsOf` component renders "ratings as of *date* · run *id*" on every served prediction and in the stale readiness notice; the nothing-loaded notice says there is no date to show; (4) *the explainers* — every labelled number opens an L-1 entry, including the delta's labels in Play mode, and the win probability's source and the forecast's source are shown **by name** with an entry each: five new glossary keys, `innings_total`, `win_probability_source_display`, `win_probability_source_simulator`, `forecast_source_simulator`, `forecast_source_performance_quantiles`, keyed `<field>_<value>` off the two source vocabularies that now sit in the H-24 contract (`win_probability_sources`, `forecast_sources`; two sides, go-app and the frontend, because go-app decides both); `forecast` reaches the frontend for the first time — `predictteam.Result` always carried it and the Lab never read it, so the TEST card's "no innings length" sentence was the surface's own and is now the wire's. **B-8's other half, on the surface only:** a searched board is ordered by the marginal value the response already carries and says so ("the objective's own ranking of this eleven, which is what a swap here is measured against"); the rating-ordered board says it is in rating order and not the win model's ranking; the hand-built board says nothing ranks it; and Play mode carries the sentence about which ordering the swap guarantee holds under — dominance on every rated axis, not the rating order the T20/TEST eleven is listed in. No model and no selection policy changed. **The must-include label is now true, and the check it names now exists on the Optimise path:** the input reads "added to the pool, checked after"; go-app's `selection.must_include` names, per side, how many were asked for and each one the selection left out (an id the pool cannot resolve still stops the prediction), so "0 of 1 in the eleven · Ashok Sharma left out" is on screen where before nothing was; the real fix — a lock the optimiser honours — is `docs/BUG_BACKLOG.md` § B-10, not this item. **One wire change beyond the surface:** a transport failure to ml-service was `500 INTERNAL` with a dial string for a message; it is now `502 ML_UNREACHABLE` with the endpoint, the reason and a hint (§8.7 — the dependency that is down is named, not this service blamed). **Two states the gate did not anticipate, added to § 3's clauses 4 and 6:** Play mode's `fixed` selection is a third selection state and the Lab was titling it "Rating-ordered 11"; and the range-less wickets point above. **Demonstrated on the dev stack** with branch go-api and ml-service host processes beside the shared containers (which were not restarted — and the shared ml-service image, built 16:52Z, predates P1-3's 17:55Z merge, so it serves no `selection_reasons`; the success states went through a branch ml-service on the shared run instead): every served state through `POST /api/predict/team-selection` on run `20260906T083819Z-36689f80`, ratings through 2026-09-02 — T20I India v Australia 73.1 % display / 53.5 % simulated, innings 176 (142–220) and 175 (141–215); ODI 63.9 %; T20 MI v CSK rating-ordered 58.0 % with the E5 note; TEST Australia v England rating-ordered 51.3 % with the H-17 note, `forecast.source performance_quantiles` and its note, no scorecard, 22 wickets points with no range; the three toss states 73.1 / 72.6 / 73.6 % naming their order; a TEST toss reported not honoured; must-include `[11877, 395]` reporting Ashok Sharma left out and Bumrah in; Play mode swapping AR Patel (marginal −2.9 pp) for Ashok Sharma re-scoring 70.0 % (−3.1 pp) with both constraint blocks met — and each of these on the branch frontend on `localhost:5174` against that go-api, with the explainer popover opened from "source: display model". **The four refusals, each on the wire and on screen:** `503 RATINGS_STALE` ("ratings run through 2026-09-02 (4 days old, limit 1)") from a branch ml-service with `XI_RATINGS_MAX_AGE_DAYS=1`, and the readiness notice before a request showing the same date through the same component; `503 XI_MODEL_UNAVAILABLE` from a branch ml-service with an empty `MODELS_DIR`, and the readiness notice saying no run is loaded and no date can be shown; `502 ML_UNREACHABLE` from a go-api pointed at a closed port; `400 FIXTURE_CROSS_GENDER` on the wire only — the picker cannot build one, which is the point. In every refusal the Lab shows the message, the hint, the remedy and the code, and neither a number nor a date. **Tests:** frontend — an "honesty surfaces" suite per state (optimised, rating-ordered, rating-ordered with no reason served, Play mode after a swap, the three toss states, the must-include outcomes, stale before a request, nothing loaded, cross-gender, unreachable) asserting the notice, the ranges, the date and the explainer links; `boardOrder` and `RatingsAsOf` unit tests; the source vocabularies asserted against the contract; go-app — the must-include report in both outcomes and its absence in Play mode, the unreachable client error, the source vocabularies; ml-service — the five entries pass the completeness gate. `make check-all` green; **frontend lines gate ratcheted 80 → 81** (measured 81.29 / 80.92 / 79.39 / 71.61); go-app measured 77.0 % locally and stays at 76 (B-9: CI reads 76.9); ml-service 93.64 % rounds to its 93. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
-| P2 | open — availability as **maintained lists, not a licensed feed**; D-12's retirement ledger is the first piece (§ 5); the freshness badge takes § 2.1's gaps (3) and (4) after P1-5 closes (1) and (2) |
+| P2 | **open — 2026-09-07, written for route (a)** (§ 5): four items on the existing stack — one freshness verdict (P2-1, the priority), the manifest's `ratings_through` (P2-2), the prediction store (P2-3) and the internal track record (P2-4) — with a functional-acceptance exit gate. Dropped with the reason recorded: the public track-record page (no public, no moat), scheduled ingest (the user runs `make cadence` by hand; H-11 will refuse until it is run, visibly), a licensed availability feed (standing constraint), and a further availability item (judged covered by D-12's pool, picker and ledger for one user) |
+| P2-1 | open — not started. One freshness verdict: `db_freshness`'s 7/30 buckets reconciled with H-11 into one object every surface reads (§ 2.1 gap (4); prompt in § 5.2) |
+| P2-2 | open — not started. The run manifest records `ratings_through` beside `cutoff`, asserted against the state at load (§ 2.1 gap (3); prompt in § 5.2) |
+| P2-3 | open — not started. The prediction store: every issued answer persisted verbatim with its run and date (prompt in § 5.2) |
+| P2-4 | open — not started. The internal track record: stored predictions scored on read, misses included, factorless simulator predictions never pooled (prompt in § 5.2) |
 | P3 | open — **no wedge chosen** (route (a), § 2): P0-3 was skipped, so no evidence for a choice exists; if one is ever made it is recorded as an unevidenced judgment call, never as validated |
