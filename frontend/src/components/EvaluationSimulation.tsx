@@ -11,7 +11,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import type { EvaluationFormatReport } from '../types';
+import type { EvaluationFormatReport, EvaluationTotals } from '../types';
 import { MetricLabel } from './common/MetricInfo';
 import MetricValue from './common/MetricValue';
 import { formatStat } from '../utils/evaluationReport';
@@ -20,6 +20,32 @@ const totalLabels: Record<string, string> = {
   first_innings: 'First innings',
   chase: 'Chase',
 };
+
+type TotalsRow = { key: string; label: string; entry: EvaluationTotals };
+
+/**
+ * The rows of the totals table: each total as the summary pooled it and, where some fold
+ * shipped without a shared match factor, the same total over the folds that had one (B-12).
+ * Both are shown because they are different populations, not a figure and its correction.
+ */
+function totalsRows(
+  pooled: Record<string, EvaluationTotals>,
+  calibrated?: Record<string, EvaluationTotals> | null,
+): TotalsRow[] {
+  return Object.entries(pooled).flatMap(([name, entry]) => {
+    const label = totalLabels[name] ?? name;
+    const rows: TotalsRow[] = [{ key: name, label, entry }];
+    const withFactor = calibrated?.[name];
+    if (withFactor) {
+      rows.push({
+        key: `${name}_with_shared_factor`,
+        label: `${label}, folds with a shared match factor`,
+        entry: withFactor,
+      });
+    }
+    return rows;
+  });
+}
 
 /**
  * E2: is the simulated P(win) a probability, or a description of the draws?
@@ -48,6 +74,16 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
   }
 
   const totals = locked?.totals ?? folds?.totals ?? {};
+  // The split is a property of the folds, so the calibrated-only rows belong to the table
+  // only while it is the fold means it is showing.
+  const split = folds?.shared_factor_folds;
+  const factorless = split?.without_shared_factor ?? 0;
+  const calibratedTotals =
+    locked?.totals || factorless === 0 ? null : split?.totals_with_shared_factor;
+  // The same question of the locked window, which has no fold to be held out of: its
+  // totals are the un-widened simulator's whenever its own calibration fitted no factor.
+  const lockedWithoutFactor =
+    !!locked?.totals && !!locked.calibration && locked.calibration.shared_factor == null;
 
   return (
     <Paper variant="outlined" sx={{ mb: 3 }}>
@@ -78,6 +114,28 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
         {decision.shared_factor && (
           <Chip size="small" variant="outlined" label="shared match factor on" />
         )}
+        {lockedWithoutFactor && (
+          <Chip
+            size="small"
+            color="warning"
+            variant="outlined"
+            label="locked window simulated without a shared factor"
+          />
+        )}
+        {split && factorless > 0 && (
+          <Chip
+            size="small"
+            color="warning"
+            variant="outlined"
+            label={
+              <MetricLabel
+                metricKey="shared_factor_folds"
+                label={`${factorless} of ${split.folds_scored} folds without a shared factor`}
+                value={`${split.with_shared_factor} of ${split.folds_scored} folds had one`}
+              />
+            }
+          />
+        )}
       </Stack>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, pb: 1 }}>
         {decision.reason}
@@ -102,9 +160,9 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
             </TableRow>
           </TableHead>
           <TableBody>
-            {Object.entries(totals).map(([name, entry]) => (
-              <TableRow key={name} hover>
-                <TableCell>{totalLabels[name] ?? name}</TableCell>
+            {totalsRows(totals, calibratedTotals).map(({ key, label, entry }) => (
+              <TableRow key={key} hover>
+                <TableCell>{label}</TableCell>
                 <TableCell align="right">
                   <MetricValue metricKey="coverage_80" value={entry.coverage_80} as="share" />
                 </TableCell>
@@ -141,6 +199,17 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, py: 1 }}>
         Totals are the locked window where it was scored, otherwise the fold means. The chase
         orientation is a recorded constant: {decision.chase_orientation ?? 'unset'}.
+        {split && factorless > 0 && (
+          <>
+            {' '}
+            {factorless} fold{factorless === 1 ? '' : 's'} (
+            {split.windows_without_shared_factor.join(', ')}) had too few complete first innings to
+            fit a shared match factor and simulated without one
+            {calibratedTotals
+              ? ', so the pooled rows average two different simulators; the rows beside them hold those folds out.'
+              : '.'}
+          </>
+        )}
       </Typography>
     </Paper>
   );

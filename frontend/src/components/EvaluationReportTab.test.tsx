@@ -359,6 +359,58 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText('78.6%')).toBeInTheDocument();
   });
 
+  /**
+   * B-12: a fold whose calibration window was too thin to fit the shared match factor ships
+   * a different simulator. The tab has to say so where it shows the fold means, or the
+   * headline coverage silently averages two simulators.
+   */
+  it('says how many folds simulated without a shared match factor, and their totals without them', async () => {
+    const odi = formatReport();
+    // No locked simulation: the table is showing the fold means, which is where the split lives.
+    odi.locked.simulation = undefined;
+    odi.walk_forward.summary.simulation = {
+      ...odi.walk_forward.summary.simulation,
+      shared_factor_folds: {
+        folds_scored: 10,
+        with_shared_factor: 9,
+        without_shared_factor: 1,
+        windows_without_shared_factor: ['2026-03-01'],
+        totals_with_shared_factor: {
+          first_innings: {
+            coverage_80: { mean: 0.77, sd: 0.02, n_folds: 9 },
+            width_80: { mean: 153.9, sd: 6, n_folds: 9 },
+          },
+        },
+      },
+    };
+    mockEvaluationReport.mockResolvedValue(report({ formats: { ODI: odi } }));
+    render(<EvaluationReportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByText('1 of 10 folds without a shared factor')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('First innings, folds with a shared match factor')).toBeInTheDocument();
+    expect(screen.getByText('76.4%')).toBeInTheDocument();
+    expect(screen.getByText('77.0%')).toBeInTheDocument();
+    expect(screen.getByText(/2026-03-01/)).toBeInTheDocument();
+  });
+
+  it('says when the locked window itself simulated without a shared match factor', async () => {
+    const test = formatReport();
+    test.locked.simulation = {
+      ...test.locked.simulation,
+      calibration: { shared_factor: null },
+    };
+    mockEvaluationReport.mockResolvedValue(report({ formats: { TEST: test } }));
+    render(<EvaluationReportTab />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('locked window simulated without a shared factor'),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it('reports a failed serving-parity check as an error, not a footnote', async () => {
     mockEvaluationReport.mockResolvedValue(report({ serving_parity: { passed: false } }));
     render(<EvaluationReportTab />);

@@ -660,6 +660,23 @@ METRICS: Tuple[Metric, ...] = (
         scale=PIT_TAIL_SCALE,
     ),
     Metric(
+        key="shared_factor_folds",
+        name="Folds with a shared match factor",
+        explanation=(
+            "How many walk-forward folds simulated with the shared match factor fitted, which "
+            "windows did not, and the same totals over the folds that did. A calibration window "
+            "holding too few complete first innings to deconvolve a factor ships the un-widened "
+            "simulator, whose intervals are much too narrow, so the two figures say how far a thin "
+            "fold pulled the pooled one."
+        ),
+        band=(
+            "Every scored fold, ideally. Where one is thin the pooled first-innings coverage sits "
+            "below the calibrated folds' -- 0.756 against 0.774 on 10 of 11 ODI folds, 0.783 against "
+            "0.792 on 9 of 10 T20I folds, and all 11 T20 folds have a factor (B-12)."
+        ),
+        better=HIGHER,
+    ),
+    Metric(
         key="delta_brier_simulated_minus_display",
         name="Simulated minus display Brier",
         explanation=(

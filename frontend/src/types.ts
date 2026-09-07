@@ -508,6 +508,27 @@ export type EvaluationSimulation = {
     delta_brier_simulated_minus_display?: number | FoldStat;
   };
   totals?: Record<string, EvaluationTotals>;
+  /**
+   * What this window's simulator was calibrated with. `shared_factor` is null where the
+   * calibration window was too thin to fit one, which is the window's own half of B-12.
+   */
+  calibration?: { shared_factor?: unknown } | null;
+  /** B-12: which folds simulated with a shared match factor, and their totals alone. */
+  shared_factor_folds?: EvaluationSharedFactorFolds;
+};
+
+/**
+ * B-12: a fold whose calibration window was too thin to fit the shared match factor ships
+ * the un-widened simulator, so its intervals belong to a different model. The walk-forward
+ * summary counts those folds, names their windows, and repeats the totals over the folds
+ * that had a factor — the pooled figure and the calibrated-only one, both published.
+ */
+export type EvaluationSharedFactorFolds = {
+  folds_scored: number;
+  with_shared_factor: number;
+  without_shared_factor: number;
+  windows_without_shared_factor: string[];
+  totals_with_shared_factor?: Record<string, EvaluationTotals> | null;
 };
 
 export type EvaluationTotals = {
