@@ -562,8 +562,12 @@ coverage 0.734 / 0.841 at nominal 0.80, dispersion 1.099 / 0.865 — `docs/BUG_B
 B-11), and conditioning the pool on the pre-match day/night label was gated and **is a
 recorded null** in both of its arms, because one factor serves both innings and at night
 they want opposite corrections (plan §8.13). A fold whose calibration window holds fewer
-than 30 complete first innings fits no factor at all and its (much narrower) intervals are
-pooled into the walk-forward totals with nothing saying so — B-12.
+than 30 complete first innings fits no factor at all, and its intervals are the much
+narrower un-widened ones: the walk-forward summary counts those folds, names their windows
+and repeats the totals over the folds that did have a factor
+(`simulation.shared_factor_folds`, shown on the Evaluation tab), so the pooled figure and
+the calibrated-only one are both published rather than the first standing for the second
+— B-12.
 
 **Chase response (A-2, plan §8.10).** The chase is drawn as a first innings is and truncated
 at the target, so the untruncated draw does not know the target — and the data's chases do:

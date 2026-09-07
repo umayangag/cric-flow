@@ -2580,7 +2580,12 @@ fold back reproduces X-2's numbers exactly — (0.739·9 + 0.500)/10 = 0.715, (1
 rather than argued. **So the ODI day side is much closer to nominal than X-2 reported, and
 the ODI day/night gap is 0.739 against 0.932 on two night folds, not 0.715 against 0.932.**
 That the L4 report pools a factorless fold into its walk-forward totals with nothing saying
-so is B-12 in `docs/BUG_BACKLOG.md`; the calibration gap itself is B-11.
+so is B-12 in `docs/BUG_BACKLOG.md` — **since fixed**: the walk-forward summary now carries
+`simulation.shared_factor_folds`, which counts the folds that had a shared factor, names the
+windows that did not, and repeats the totals over the calibrated folds alone, and the
+Evaluation tab shows both. The workaround this experiment used — skipping the thin fold — is
+what the report now does openly and beside the pooled figure rather than instead of it. The
+calibration gap itself is B-11.
 
 **Verdict.** Two candidates, one gate each: **both recorded nulls.** Nothing ships —
 `simulator.SHARED_FACTOR` and its fitting rule are untouched, `ml/xi/` still reads no

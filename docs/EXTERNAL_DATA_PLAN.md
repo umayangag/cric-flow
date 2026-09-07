@@ -1253,7 +1253,10 @@ mean of **two** folds (23 and 24 matches, one reading 23 of 23), not eleven; and
 shared factor at all, so that fold's simulator runs un-widened (coverage 0.500, dispersion
 1.48) — the nine folds that do have a factor read 0.739 / 150.9 / 1.048, and putting the
 thin fold back reproduces 0.715 / 146.4 / 1.092 exactly. That the harness pools a
-factorless fold in unflagged is `docs/BUG_BACKLOG.md` **B-12**.
+factorless fold in unflagged is `docs/BUG_BACKLOG.md` **B-12**, now fixed: the walk-forward
+summary reports `simulation.shared_factor_folds` — the count of folds with a factor, the
+windows without one, and the totals over the calibrated folds alone — beside the pooled
+figure, so a reading like this one no longer needs the per-fold JSON to be made.
 
 **Verdict.** Four families, three gates each: **every one a recorded null**. Nothing ships:
 `ml/xi/` reads no weather column, no glossary entry is added, no wire literal changes

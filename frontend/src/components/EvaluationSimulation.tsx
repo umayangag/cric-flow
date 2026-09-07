@@ -80,6 +80,10 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
   const factorless = split?.without_shared_factor ?? 0;
   const calibratedTotals =
     locked?.totals || factorless === 0 ? null : split?.totals_with_shared_factor;
+  // The same question of the locked window, which has no fold to be held out of: its
+  // totals are the un-widened simulator's whenever its own calibration fitted no factor.
+  const lockedWithoutFactor =
+    !!locked?.totals && !!locked.calibration && locked.calibration.shared_factor == null;
 
   return (
     <Paper variant="outlined" sx={{ mb: 3 }}>
@@ -109,6 +113,14 @@ const EvaluationSimulation: React.FC<{ report: EvaluationFormatReport }> = ({ re
         />
         {decision.shared_factor && (
           <Chip size="small" variant="outlined" label="shared match factor on" />
+        )}
+        {lockedWithoutFactor && (
+          <Chip
+            size="small"
+            color="warning"
+            variant="outlined"
+            label="locked window simulated without a shared factor"
+          />
         )}
         {split && factorless > 0 && (
           <Chip

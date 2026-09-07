@@ -273,11 +273,11 @@ def summarize_folds(folds: Mapping[str, Optional[Dict]]) -> Optional[Dict]:
     shared factor, which windows did not, and the same totals over the calibrated folds
     alone. Both numbers are published; a reader sees which population each averaged.
     """
-    scored = {window: fold for window, fold in folds.items() if fold and "win" in fold}
+    scored = {window: _numeric_only(fold) for window, fold in folds.items() if fold and "win" in fold}
     if not scored:
         return None
-    summary = perf_harness.summarize_folds([_numeric_only(f) for f in scored.values()])
-    calibrated = [_numeric_only(f) for f in scored.values() if has_shared_factor(f)]
+    summary = perf_harness.summarize_folds(list(scored.values()))
+    calibrated = [fold for fold in scored.values() if has_shared_factor(fold)]
     factorless = sorted(window for window, fold in scored.items() if not has_shared_factor(fold))
     summary["shared_factor_folds"] = {
         "folds_scored": len(scored),

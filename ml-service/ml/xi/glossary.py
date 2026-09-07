@@ -671,8 +671,8 @@ METRICS: Tuple[Metric, ...] = (
         ),
         band=(
             "Every scored fold, ideally. Where one is thin the pooled first-innings coverage sits "
-            "below the calibrated folds' -- 0.750 against 0.770 in ODI, 0.776 against 0.780 in "
-            "T20I, on the run that found it (B-12)."
+            "below the calibrated folds' -- 0.756 against 0.774 on 10 of 11 ODI folds, 0.783 against "
+            "0.792 on 9 of 10 T20I folds, and all 11 T20 folds have a factor (B-12)."
         ),
         better=HIGHER,
     ),

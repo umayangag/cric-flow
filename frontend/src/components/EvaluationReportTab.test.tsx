@@ -395,6 +395,22 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText(/2026-03-01/)).toBeInTheDocument();
   });
 
+  it('says when the locked window itself simulated without a shared match factor', async () => {
+    const test = formatReport();
+    test.locked.simulation = {
+      ...test.locked.simulation,
+      calibration: { shared_factor: null },
+    };
+    mockEvaluationReport.mockResolvedValue(report({ formats: { TEST: test } }));
+    render(<EvaluationReportTab />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('locked window simulated without a shared factor'),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it('reports a failed serving-parity check as an error, not a footnote', async () => {
     mockEvaluationReport.mockResolvedValue(report({ serving_parity: { passed: false } }));
     render(<EvaluationReportTab />);
