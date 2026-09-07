@@ -126,7 +126,14 @@ func fixtureFor(team1, team2 int64, date time.Time) trackrecord.Fixture {
 	return trackrecord.Fixture{Format: "T20I", Gender: "male", MatchDate: date, Team1: team1, Team2: team2}
 }
 
-func played(winner *int64, firstBats int64, firstRuns int, secondBats int64, secondRuns int, fielded map[int64]int64) trackrecord.PlayedMatch {
+func played(
+	winner *int64,
+	firstBats int64,
+	firstRuns int,
+	secondBats int64,
+	secondRuns int,
+	fielded map[int64]int64,
+) trackrecord.PlayedMatch {
 	return trackrecord.PlayedMatch{
 		MatchID:            9001,
 		WinnerOppositionID: winner,
@@ -228,12 +235,23 @@ func TestBuild_ALaterForecastOfTheSameFixtureSupersedesTheEarlierOne(t *testing.
 	t.Parallel()
 	first := stored(storedOptions{id: "first", issued: time.Date(2026, 9, 3, 9, 0, 0, 0, time.UTC), probability: 0.3})
 	// The same fixture with the sides named the other way round is the same fixture.
-	second := stored(storedOptions{id: "second", issued: time.Date(2026, 9, 8, 9, 0, 0, 0, time.UTC),
-		team1: otherland, team2: testland, probability: 0.7})
-	scenario := stored(storedOptions{id: "scenario", objective: "fixed", issued: time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC), probability: 0.5})
-	hindsight := stored(storedOptions{id: "hindsight", issued: time.Date(2026, 9, 12, 9, 0, 0, 0, time.UTC), probability: 0.9})
+	second := stored(storedOptions{
+		id: "second", issued: time.Date(2026, 9, 8, 9, 0, 0, 0, time.UTC),
+		team1: otherland, team2: testland, probability: 0.7,
+	})
+	scenario := stored(
+		storedOptions{
+			id:          "scenario",
+			objective:   "fixed",
+			issued:      time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC),
+			probability: 0.5,
+		},
+	)
+	hindsight := stored(
+		storedOptions{id: "hindsight", issued: time.Date(2026, 9, 12, 9, 0, 0, 0, time.UTC), probability: 0.9},
+	)
 	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{
-		fixtureFor(testland, otherland, matchDay):  {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
+		fixtureFor(testland, otherland, matchDay): {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
 		fixtureFor(otherland, testland, matchDay): {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
 	}}
 
@@ -244,7 +262,12 @@ func TestBuild_ALaterForecastOfTheSameFixtureSupersedesTheEarlierOne(t *testing.
 	assert.Equal(t, trackrecord.StateScored, entryByID(t, record, "second").State)
 	assert.Equal(t, trackrecord.StateScenario, entryByID(t, record, "scenario").State)
 	afterTheFact := entryByID(t, record, "hindsight")
-	assert.Equal(t, trackrecord.StateScored, afterTheFact.State, "issued after the match day: not superseding, not superseded")
+	assert.Equal(
+		t,
+		trackrecord.StateScored,
+		afterTheFact.State,
+		"issued after the match day: not superseding, not superseded",
+	)
 	assert.True(t, afterTheFact.IssuedAfterMatchDate, "and flagged on the wire")
 	assert.Equal(t, 2, record.Win.Overall.N)
 	assert.Equal(t, []string{"hindsight", "scenario", "second", "first"}, func() []string {
@@ -259,8 +282,12 @@ func TestBuild_ALaterForecastOfTheSameFixtureSupersedesTheEarlierOne(t *testing.
 // A forecast issued on the match day itself still counts as issued before the match.
 func TestBuild_AForecastIssuedOnTheMatchDaySupersedesAnEarlierOne(t *testing.T) {
 	t.Parallel()
-	earlier := stored(storedOptions{id: "earlier", issued: time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC), probability: 0.3})
-	matchDayForecast := stored(storedOptions{id: "match-day", issued: time.Date(2026, 9, 10, 23, 59, 0, 0, time.UTC), probability: 0.35})
+	earlier := stored(
+		storedOptions{id: "earlier", issued: time.Date(2026, 9, 9, 9, 0, 0, 0, time.UTC), probability: 0.3},
+	)
+	matchDayForecast := stored(
+		storedOptions{id: "match-day", issued: time.Date(2026, 9, 10, 23, 59, 0, 0, time.UTC), probability: 0.35},
+	)
 	lookup := &fakeLookup{}
 
 	record := build(t, lookup, earlier, matchDayForecast)
@@ -274,7 +301,9 @@ func TestBuild_AForecastIssuedOnTheMatchDaySupersedesAnEarlierOne(t *testing.T) 
 // the lookup holds on the neighbouring date is not found, because it is never asked for.
 func TestBuild_ResolvesByTheExactMatchDateAndNotANeighbouringOne(t *testing.T) {
 	t.Parallel()
-	row := stored(storedOptions{id: "series-game-1", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.4})
+	row := stored(
+		storedOptions{id: "series-game-1", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.4},
+	)
 	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{
 		fixtureFor(testland, otherland, dayAfter): {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
 	}}
@@ -314,15 +343,21 @@ func TestBuild_ScoresTheScoredPredictionsAgainstHandComputedValues(t *testing.T)
 	t.Parallel()
 	// Testland were given 0.8 and lost: Brier 0.64. Otherland-first fixture on another day:
 	// team1 given 0.3 and won: Brier 0.49. Mean 0.565; base rate 0.5, base-rate Brier 0.25.
-	lost := stored(storedOptions{id: "lost", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.8,
-		ranges: &[2][2]float64{{140, 180}, {130, 170}}, sharedFactor: ptr(true)})
-	won := stored(storedOptions{id: "won", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), matchDate: dayAfter,
+	lost := stored(storedOptions{
+		id: "lost", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.8,
+		ranges: &[2][2]float64{{140, 180}, {130, 170}}, sharedFactor: ptr(true),
+	})
+	won := stored(storedOptions{
+		id: "won", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), matchDate: dayAfter,
 		team1: elsewhere, team2: testland, probability: 0.3,
 		ranges: &[2][2]float64{{140, 180}, {130, 170}}, sharedFactor: ptr(true),
-		players1: []int64{301, 302}, players2: []int64{101, 999}})
+		players1: []int64{301, 302}, players2: []int64{101, 999},
+	})
 	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{
 		// Testland batted first for 150 (inside 140-180), Otherland chased 151 (inside 130-170).
-		fixtureFor(testland, otherland, matchDay): {played(ptr(otherland), testland, 150, otherland, 151, allFielded())},
+		fixtureFor(testland, otherland, matchDay): {
+			played(ptr(otherland), testland, 150, otherland, 151, allFielded()),
+		},
 		// Testland batted first for 200 (outside 130-170), Elsewhere chased 120 (outside 140-180).
 		fixtureFor(elsewhere, testland, dayAfter): {played(ptr(elsewhere), testland, 200, elsewhere, 120,
 			map[int64]int64{301: elsewhere, 101: testland, 999: otherland})},
@@ -342,7 +377,11 @@ func TestBuild_ScoresTheScoredPredictionsAgainstHandComputedValues(t *testing.T)
 	assert.False(t, lostEntry.Score.Team1Won)
 	assert.True(t, *lostEntry.Score.Team1Covered)
 	assert.True(t, *lostEntry.Score.Team2Covered)
-	assert.Equal(t, trackrecord.ElevenOverlap{Matched: 6, Of: 6, Team1Matched: 3, Team2Matched: 3}, lostEntry.Score.ElevenOverlap)
+	assert.Equal(
+		t,
+		trackrecord.ElevenOverlap{Matched: 6, Of: 6, Team1Matched: 3, Team2Matched: 3},
+		lostEntry.Score.ElevenOverlap,
+	)
 	require.NotNil(t, lostEntry.Happened)
 	assert.Equal(t, 150, *lostEntry.Happened.Team1Total)
 	assert.Equal(t, 151, *lostEntry.Happened.Team2Total)
@@ -355,7 +394,11 @@ func TestBuild_ScoresTheScoredPredictionsAgainstHandComputedValues(t *testing.T)
 	assert.False(t, *wonEntry.Score.Team2Covered, "Testland made 200 against a served 130-170")
 	// 301 played for Elsewhere; 302 did not play; 101 played for Testland; 999 played, but for
 	// a third side, which is not the side it was named for.
-	assert.Equal(t, trackrecord.ElevenOverlap{Matched: 2, Of: 4, Team1Matched: 1, Team2Matched: 1}, wonEntry.Score.ElevenOverlap)
+	assert.Equal(
+		t,
+		trackrecord.ElevenOverlap{Matched: 2, Of: 4, Team1Matched: 1, Team2Matched: 1},
+		wonEntry.Score.ElevenOverlap,
+	)
 	assert.False(t, *wonEntry.Happened.Team1BattedFirst)
 
 	// Coverage by the innings actually played: two first innings (one in, one out), two
@@ -379,7 +422,9 @@ func TestBuild_ScoresTheScoredPredictionsAgainstHandComputedValues(t *testing.T)
 func TestBuild_ReliabilityAndBrierMatchTheHarnessFixture(t *testing.T) {
 	t.Parallel()
 	_, file, _, _ := runtime.Caller(0)
-	raw, err := os.ReadFile(filepath.Join(filepath.Dir(file), "../../../ml-service/tests/fixtures/track_record_reliability.json"))
+	raw, err := os.ReadFile(
+		filepath.Join(filepath.Dir(file), "../../../ml-service/tests/fixtures/track_record_reliability.json"),
+	)
 	require.NoError(t, err)
 	var pinned struct {
 		Bins          int       `json:"bins"`
@@ -397,13 +442,17 @@ func TestBuild_ReliabilityAndBrierMatchTheHarnessFixture(t *testing.T) {
 	for i := range pinned.P {
 		// One fixture per row so none supersedes another; the side named first wins when y is 1.
 		date := matchDay.AddDate(0, 0, i)
-		rows = append(rows, stored(storedOptions{id: fmt.Sprintf("row-%d", i), issued: time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC),
-			matchDate: date, probability: pinned.P[i]}))
+		rows = append(rows, stored(storedOptions{
+			id: fmt.Sprintf("row-%d", i), issued: time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC),
+			matchDate: date, probability: pinned.P[i],
+		}))
 		winner := otherland
 		if pinned.Y[i] == 1 {
 			winner = testland
 		}
-		lookup.matches[fixtureFor(testland, otherland, date)] = []trackrecord.PlayedMatch{played(ptr(winner), testland, 150, otherland, 140, allFielded())}
+		lookup.matches[fixtureFor(testland, otherland, date)] = []trackrecord.PlayedMatch{
+			played(ptr(winner), testland, 150, otherland, 140, allFielded()),
+		}
 	}
 
 	record := build(t, lookup, rows...)
@@ -422,7 +471,11 @@ func TestBuild_ReliabilityAndBrierMatchTheHarnessFixture(t *testing.T) {
 		assert.InDelta(t, want.Observed, got.Observed, 1e-12, "bin %d", i)
 	}
 	// The pinned bin: both 0.3s fall in [0.2, 0.3), just below numpy's third edge.
-	assert.Equal(t, trackrecord.ReliabilityBin{Lo: 0.2, Hi: 0.30000000000000004, N: 2, Predicted: 0.3, Observed: 0.5}, record.Win.Reliability[1])
+	assert.Equal(
+		t,
+		trackrecord.ReliabilityBin{Lo: 0.2, Hi: 0.30000000000000004, N: 2, Predicted: 0.3, Observed: 0.5},
+		record.Win.Reliability[1],
+	)
 }
 
 // The two simulator populations are never pooled: a factored and a factorless prediction
@@ -433,15 +486,50 @@ func TestBuild_KeepsTheSimulatorPopulationsApart(t *testing.T) {
 	issued := time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC)
 	ranges := &[2][2]float64{{140, 180}, {130, 170}}
 	rows := []predictions.Prediction{
-		stored(storedOptions{id: "factored", issued: issued, matchDate: matchDay, probability: 0.5, ranges: ranges, sharedFactor: ptr(true)}),
-		stored(storedOptions{id: "factorless", issued: issued, matchDate: matchDay.AddDate(0, 0, 1), probability: 0.5, ranges: ranges, sharedFactor: ptr(false)}),
-		stored(storedOptions{id: "before-the-column", issued: issued, matchDate: matchDay.AddDate(0, 0, 2), probability: 0.5, ranges: ranges}),
-		stored(storedOptions{id: "no-innings-length", issued: issued, matchDate: matchDay.AddDate(0, 0, 3), probability: 0.5}),
+		stored(
+			storedOptions{
+				id:           "factored",
+				issued:       issued,
+				matchDate:    matchDay,
+				probability:  0.5,
+				ranges:       ranges,
+				sharedFactor: ptr(true),
+			},
+		),
+		stored(
+			storedOptions{
+				id:           "factorless",
+				issued:       issued,
+				matchDate:    matchDay.AddDate(0, 0, 1),
+				probability:  0.5,
+				ranges:       ranges,
+				sharedFactor: ptr(false),
+			},
+		),
+		stored(
+			storedOptions{
+				id:          "before-the-column",
+				issued:      issued,
+				matchDate:   matchDay.AddDate(0, 0, 2),
+				probability: 0.5,
+				ranges:      ranges,
+			},
+		),
+		stored(
+			storedOptions{
+				id:          "no-innings-length",
+				issued:      issued,
+				matchDate:   matchDay.AddDate(0, 0, 3),
+				probability: 0.5,
+			},
+		),
 	}
 	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{}}
 	for i := range rows {
 		// Testland 150 in 140-180; Otherland 200, outside 130-170.
-		lookup.matches[fixtureFor(testland, otherland, rows[i].MatchDate)] = []trackrecord.PlayedMatch{played(ptr(testland), testland, 150, otherland, 200, allFielded())}
+		lookup.matches[fixtureFor(testland, otherland, rows[i].MatchDate)] = []trackrecord.PlayedMatch{
+			played(ptr(testland), testland, 150, otherland, 200, allFielded()),
+		}
 	}
 
 	record := build(t, lookup, rows...)
@@ -458,8 +546,18 @@ func TestBuild_KeepsTheSimulatorPopulationsApart(t *testing.T) {
 		byPopulation[row.Population] = row
 	}
 	for _, simulated := range []string{trackrecord.PopulationWithSharedFactor, trackrecord.PopulationWithoutSharedFactor, trackrecord.PopulationUnknown} {
-		assert.Equal(t, trackrecord.CoverageScore{N: 1, Covered: 1, Coverage: ptr(1.0)}, byPopulation[simulated].FirstInnings, simulated)
-		assert.Equal(t, trackrecord.CoverageScore{N: 1, Covered: 0, Coverage: ptr(0.0)}, byPopulation[simulated].Chase, simulated)
+		assert.Equal(
+			t,
+			trackrecord.CoverageScore{N: 1, Covered: 1, Coverage: ptr(1.0)},
+			byPopulation[simulated].FirstInnings,
+			simulated,
+		)
+		assert.Equal(
+			t,
+			trackrecord.CoverageScore{N: 1, Covered: 0, Coverage: ptr(0.0)},
+			byPopulation[simulated].Chase,
+			simulated,
+		)
 	}
 	notSimulated := byPopulation[trackrecord.PopulationNotSimulated]
 	assert.Equal(t, 1, notSimulated.NPredictions)
@@ -487,7 +585,14 @@ func TestBuild_AnEmptyRecordInventsNothing(t *testing.T) {
 // A payload the record cannot read keeps its row, in its state, with the error on it.
 func TestBuild_AnUnreadablePayloadStaysOnTheRecordWithTheErrorNamed(t *testing.T) {
 	t.Parallel()
-	row := stored(storedOptions{id: "corrupt", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.4, payload: "{not json"})
+	row := stored(
+		storedOptions{
+			id:          "corrupt",
+			issued:      time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC),
+			probability: 0.4,
+			payload:     "{not json",
+		},
+	)
 	lookup := &fakeLookup{}
 
 	record := build(t, lookup, row)
@@ -503,7 +608,12 @@ func TestBuild_ALookupFailureIsReturned(t *testing.T) {
 	t.Parallel()
 	row := stored(storedOptions{id: "any", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC), probability: 0.4})
 
-	_, err := trackrecord.Build(context.Background(), []predictions.Prediction{row}, &fakeLookup{err: fmt.Errorf("connection refused")}, today)
+	_, err := trackrecord.Build(
+		context.Background(),
+		[]predictions.Prediction{row},
+		&fakeLookup{err: fmt.Errorf("connection refused")},
+		today,
+	)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connection refused")
@@ -512,6 +622,14 @@ func TestBuild_ALookupFailureIsReturned(t *testing.T) {
 func TestVocabularies_AreDeclaredOnce(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, []string{"scenario", "superseded", "unresolved", "no_result", "scored"}, trackrecord.States())
-	assert.Equal(t, []string{"with_shared_factor", "without_shared_factor", "unknown", "not_simulated"}, trackrecord.Populations())
-	assert.Equal(t, []string{"brier", "record_base_rate_brier", "reliability", "coverage_80", "eleven_overlap"}, trackrecord.MetricKeys())
+	assert.Equal(
+		t,
+		[]string{"with_shared_factor", "without_shared_factor", "unknown", "not_simulated"},
+		trackrecord.Populations(),
+	)
+	assert.Equal(
+		t,
+		[]string{"brier", "record_base_rate_brier", "reliability", "coverage_80", "eleven_overlap"},
+		trackrecord.MetricKeys(),
+	)
 }

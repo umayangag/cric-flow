@@ -53,16 +53,26 @@ func importMatch(t *testing.T, matchID int64, date string, team1, team2 int64, w
 	require.NoError(t, db.Exec(ctx,
 		`INSERT INTO match (match_id, format_id, match_date, original_match_type, gender, outcome_winner_opposition_id)
 		 VALUES ($1, $2, $3, 'TEST', 'male', $4)`, matchID, formatID, date, winner))
-	require.NoError(t, db.Exec(ctx,
+	require.NoError(t, db.Exec(
+		ctx,
 		`INSERT INTO match_inning (match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id, runs_scored)
-		 VALUES ($1, 1, $2, $3, 250), ($1, 2, $3, $2, 240)`, matchID, team1, team2))
+		 VALUES ($1, 1, $2, $3, 250), ($1, 2, $3, $2, 240)`,
+		matchID,
+		team1,
+		team2,
+	))
 	for i, playerID := range playerIDs {
 		side := team1
 		if i >= len(playerIDs)/2 {
 			side = team2
 		}
-		require.NoError(t, db.Exec(ctx,
-			`INSERT INTO match_player (match_id, player_id, opposition_id) VALUES ($1, $2, $3)`, matchID, playerID, side))
+		require.NoError(t, db.Exec(
+			ctx,
+			`INSERT INTO match_player (match_id, player_id, opposition_id) VALUES ($1, $2, $3)`,
+			matchID,
+			playerID,
+			side,
+		))
 	}
 }
 
@@ -93,7 +103,12 @@ func TestTrackRecord_EveryStateFromTheDatabase_Integration(t *testing.T) {
 	fixture := seedPredictFixture(t)
 	app := &App{mlClient: scriptedMLService(t, nil)}
 	optimise := func(date string) string {
-		return fmt.Sprintf(`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q}`, fixture.team1ID, fixture.team2ID, date)
+		return fmt.Sprintf(
+			`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q}`,
+			fixture.team1ID,
+			fixture.team2ID,
+			date,
+		)
 	}
 
 	// A fixture predicted twice: the earlier forecast is superseded by the later one.
@@ -155,7 +170,15 @@ func TestTrackRecord_ANeighbouringDateIsNotTheFixture_Integration(t *testing.T) 
 	dbtest.SkipUnlessScratchDatabase(t)
 	fixture := seedPredictFixture(t)
 	app := &App{mlClient: scriptedMLService(t, nil)}
-	id := issuePrediction(t, app, fmt.Sprintf(`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":"2026-09-10"}`, fixture.team1ID, fixture.team2ID))
+	id := issuePrediction(
+		t,
+		app,
+		fmt.Sprintf(
+			`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":"2026-09-10"}`,
+			fixture.team1ID,
+			fixture.team2ID,
+		),
+	)
 	backdate(t, id, time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC))
 	winner := fixture.team1ID
 	importMatch(t, 9011, "2026-09-11", fixture.team1ID, fixture.team2ID, &winner, nil)

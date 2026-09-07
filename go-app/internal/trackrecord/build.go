@@ -252,7 +252,10 @@ func (e *entry) resolve(resolved map[fixtureKey][]PlayedMatch, today time.Time) 
 		e.State = StateUnresolved
 		days := daysBetween(e.stored.MatchDate, today)
 		e.DaysPastMatchDate = &days
-		e.StateNote = fmt.Sprintf("%d matches between these sides on that date; the record cannot say which was meant", len(matches))
+		e.StateNote = fmt.Sprintf(
+			"%d matches between these sides on that date; the record cannot say which was meant",
+			len(matches),
+		)
 	}
 }
 

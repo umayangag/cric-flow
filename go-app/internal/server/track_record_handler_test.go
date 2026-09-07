@@ -43,8 +43,10 @@ func storedForecast(id string, probability float64) predictions.Prediction {
 		SelectionObjective:   "win",
 		WinProbabilityTeam1:  probability,
 		WinProbabilitySource: "display",
-		Payload: json.RawMessage(`{"team1_side": {"display_name": "Australia"}, "team2_side": {"display_name": "England"},
-			"team1": [{"player_id": 1}], "team2": [{"player_id": 2}]}`),
+		Payload: json.RawMessage(
+			`{"team1_side": {"display_name": "Australia"}, "team2_side": {"display_name": "England"},
+			"team1": [{"player_id": 1}], "team2": [{"player_id": 2}]}`,
+		),
 	}
 }
 
@@ -52,11 +54,17 @@ func TestTrackRecordHandler_ScoresTheRecordAgainstTheMatchesFound(t *testing.T) 
 	reader := mocks.NewMockReader(t)
 	reader.EXPECT().All(mock.Anything).Return([]predictions.Prediction{storedForecast("p-1", 0.3)}, nil)
 	winner := int64(54)
-	app := &App{predictionReaderStore: reader, matchLookupStore: scriptedMatchLookup{matches: []trackrecord.PlayedMatch{{
-		MatchID: 77, WinnerOppositionID: &winner,
-		Innings:        []trackrecord.PlayedInnings{{Number: 1, BattingOppositionID: 4, Runs: 150}, {Number: 2, BattingOppositionID: 54, Runs: 151}},
-		FieldedPlayers: map[int64]int64{1: 4, 2: 54},
-	}}}}
+	app := &App{
+		predictionReaderStore: reader,
+		matchLookupStore: scriptedMatchLookup{matches: []trackrecord.PlayedMatch{{
+			MatchID: 77, WinnerOppositionID: &winner,
+			Innings: []trackrecord.PlayedInnings{
+				{Number: 1, BattingOppositionID: 4, Runs: 150},
+				{Number: 2, BattingOppositionID: 54, Runs: 151},
+			},
+			FieldedPlayers: map[int64]int64{1: 4, 2: 54},
+		}}},
+	}
 	rec := httptest.NewRecorder()
 
 	app.trackRecordHandler(rec, httptest.NewRequest(http.MethodGet, "/api/track-record", nil))
@@ -89,7 +97,10 @@ func TestTrackRecordHandler_AnUnreadableRecordIsAnError(t *testing.T) {
 func TestTrackRecordHandler_AMatchLookupFailureIsAnErrorNotAnUnresolvedRecord(t *testing.T) {
 	reader := mocks.NewMockReader(t)
 	reader.EXPECT().All(mock.Anything).Return([]predictions.Prediction{storedForecast("p-1", 0.3)}, nil)
-	app := &App{predictionReaderStore: reader, matchLookupStore: scriptedMatchLookup{err: errors.New("connection refused")}}
+	app := &App{
+		predictionReaderStore: reader,
+		matchLookupStore:      scriptedMatchLookup{err: errors.New("connection refused")},
+	}
 	rec := httptest.NewRecorder()
 
 	app.trackRecordHandler(rec, httptest.NewRequest(http.MethodGet, "/api/track-record", nil))
