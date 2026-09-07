@@ -21,6 +21,18 @@ const (
 	SelectionObjectiveRatings = "ratings"
 )
 
+// SelectionObjectives returns every value `selection.objective` may carry, in the order a
+// surface should offer them (H-24).
+//
+// It became a declared vocabulary with the prediction record (P2-3): the store keeps the
+// objective as a column and the record's listing puts it on the wire, where it is the one
+// thing that separates an eleven this service chose from one the caller pinned in Play
+// mode — a scenario, which the track record lists and never scores. A reader that spelled
+// `fixed` differently would score a hypothetical eleven as though it were a forecast.
+func SelectionObjectives() []string {
+	return []string{SelectionObjectiveWin, SelectionObjectiveRatings, SelectionObjectiveFixed}
+}
+
 // notOptimisedReasons names every format that is served a rating-ordered XI rather than an
 // optimised one, with the reason every surface showing that XI has to give. One sentence
 // per format, in one place, so the API and the UI cannot drift apart about it.
@@ -351,8 +363,12 @@ func mergeMarginals(sides ...map[string]float64) map[string]float64 {
 	return out
 }
 
-// normalizeFormat is the one place a format string is folded, so the constant maps and the
-// wire payloads agree on spelling.
-func normalizeFormat(format string) string {
+// NormalizeFormat is the one place a format string is folded, so the constant maps, the
+// wire payloads and the prediction record agree on spelling.
+//
+// It is exported because the record stores the format a prediction was computed for
+// (P2-3), and a second folding rule in the server would be a stored format that did not
+// match the one the prediction was actually answered under.
+func NormalizeFormat(format string) string {
 	return strings.TrimSpace(strings.ToUpper(format))
 }

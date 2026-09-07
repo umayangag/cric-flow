@@ -17,6 +17,13 @@ packages:
       pkgname: mocks
     interfaces:
       Store: {}
+  github.com/umayangag/cric-flow/go-app/internal/predictions:
+    config:
+      dir: internal/predictions/mocks
+      pkgname: mocks
+    interfaces:
+      Recorder: {}
+      Reader: {}
   github.com/umayangag/cric-flow/go-app/internal/cricsheet:
     config:
       dir: internal/cricsheet/mocks

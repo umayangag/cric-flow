@@ -34,6 +34,21 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
+// writeJSONBytes writes an already-encoded body, in the encoding writeJSON would have
+// produced for the same value.
+//
+// It exists for the prediction record (P2-3): the answer is encoded once, that encoding is
+// what the store keeps, and the same bytes are what the caller receives — so "the record
+// holds what was served" is a property of the code and not a claim about two encoders
+// behaving the same way.
+func writeJSONBytes(w http.ResponseWriter, status int, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(append(body, '\n')); err != nil {
+		slog.Error("writing an encoded JSON body failed", slog.Any("err", err))
+	}
+}
+
 // respondErr writes a standardized 500 Internal Server Error response using apiError and logs the error.
 func respondErr(w http.ResponseWriter, err error) {
 	// A failure that already knows what it is keeps its own status, code and hint.

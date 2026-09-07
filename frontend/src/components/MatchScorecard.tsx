@@ -2,10 +2,12 @@ import React from 'react';
 import { Chip, Paper, Stack, Typography } from '@mui/material';
 import { MetricInfo, MetricLabel } from './common/MetricInfo';
 import RatingsAsOf from './RatingsAsOf';
+import PredictionRecordNote from './PredictionRecordNote';
 import type {
   ForecastSource,
   PredictForecastSummary,
   PredictInningsTotal,
+  PredictRecordBlock,
   PredictScorecard,
   PredictSelectionSummary,
   PredictServedRatings,
@@ -33,6 +35,12 @@ type Props = {
    * different run than the one that answered.
    */
   served: PredictServedRatings;
+  /**
+   * Whether this answer went on the prediction record, off the same payload (P2-3). It is
+   * shown beside the served date because the two answer neighbouring questions: which
+   * ratings produced the number, and whether the number will still be here to be scored.
+   */
+  record: PredictRecordBlock;
   team1: string;
   team2: string;
 };
@@ -154,6 +162,7 @@ const MatchScorecard: React.FC<Props> = ({
   selection,
   toss,
   served,
+  record,
   team1,
   team2,
 }) => {
@@ -187,6 +196,7 @@ const MatchScorecard: React.FC<Props> = ({
           </Typography>
         )}
         <RatingsAsOf served={served} />
+        <PredictionRecordNote record={record} />
       </Stack>
       <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
         <Typography variant="body2" color="text.secondary" component="div">

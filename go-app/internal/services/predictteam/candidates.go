@@ -64,7 +64,7 @@ type CandidatesResult struct {
 // path it does not refuse a pool too small to field an XI: a short list is what the user
 // opened this to see.
 func Candidates(ctx context.Context, input CandidatesInput) (*CandidatesResult, error) {
-	format := normalizeFormat(input.Format)
+	format := NormalizeFormat(input.Format)
 	if format == "" || input.Team.IsEmpty() {
 		err := fmt.Errorf("format and a side are required")
 		slog.Error("predictteam.Candidates validation failed", slog.Any("err", err))

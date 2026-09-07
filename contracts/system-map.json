@@ -1272,6 +1272,42 @@
         }
       ],
       "bindings": []
+    },
+    {
+      "id": "prediction-record",
+      "label": "Prediction record",
+      "lane": "serve",
+      "column": 3,
+      "kind": "data",
+      "summary": "Every answer the API has issued, kept as it was served. A prediction is assembled from four ml-service calls and returned, and until P2-3 that was the end of it: nothing held what was claimed, so when the match was finally imported there was nothing to score against the result. Each successful answer is now written here before it is served \u2014 the payload whole, the request beside it, the run and the date it was served from, and the columns a resolver joins on \u2014 and the answer names the row that holds it. A refusal writes nothing, because a refusal is not a prediction; a write that fails is named on the answer's `record` block and never costs the caller the prediction. It is not a cache: a row names a rating state the next retrain replaces, so nothing here can be recomputed once it has.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/predictions"
+        ],
+        "tables": [
+          "issued_prediction"
+        ],
+        "endpoints": [
+          "GET /api/predictions",
+          "GET /api/predictions/{id}"
+        ],
+        "files": [
+          "go-app/migrations/0013_issued_prediction.sql",
+          "go-app/internal/db/repo_prediction.go",
+          "go-app/internal/server/prediction_record.go"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/apis-backtest-and-ops.md",
+          "section": "## The prediction record"
+        },
+        {
+          "doc": "docs/config-and-data.md",
+          "section": "## Database migrations"
+        }
+      ],
+      "bindings": []
     }
   ],
   "edges": [
@@ -1389,6 +1425,11 @@
       "from": "player-biographies",
       "to": "ops-console",
       "label": "coverage"
+    },
+    {
+      "from": "go-api",
+      "to": "prediction-record",
+      "label": "every issued answer, as served"
     }
   ]
 }

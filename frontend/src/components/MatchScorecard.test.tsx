@@ -62,6 +62,7 @@ function renderCard(overrides: Overrides = {}) {
       selection={searched}
       toss={unknownToss}
       served={served}
+      record={{ stored: true, id: 'f0f8f1a4-0f0e-4a6b-9b6f-2c5d4a1e0004' }}
       team1="IND"
       team2="AUS"
       {...overrides}

@@ -96,6 +96,16 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/predict/team-selection", a.predictTeamSelectionHandler).
 		Methods(http.MethodPost, http.MethodGet, http.MethodOptions)
 
+	// The prediction record (P2-3): every answer this API has issued, as it was served.
+	// It is a read surface only — the one writer is the prediction endpoint above, which
+	// files an answer on its way out. The listing is registered before the by-id route so
+	// gorilla/mux matches the bare path against it rather than treating an empty id as a
+	// lookup.
+	admin.HandleFunc("/api/predictions", a.listPredictionsHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/predictions/{id}", a.getPredictionHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+
 	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
 	// flow scored the batting / bowling / fielding models and went with them (P-5).
 	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy")).

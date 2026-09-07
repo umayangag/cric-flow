@@ -87,6 +87,13 @@ type contractDoc struct {
 	// number shown with no model behind it. Two sides, not three: go-app decides both.
 	WinProbabilitySources []string `json:"win_probability_sources"`
 	ForecastSources       []string `json:"forecast_sources"`
+	// SelectionObjectives is how an eleven was arrived at (H-24, P2-3). It became a
+	// declared vocabulary with the prediction record: go-app stores it as a column and
+	// puts it on the record's listing, and it is the one value that separates an eleven
+	// this service chose from one the caller pinned in Play mode -- a scenario the track
+	// record lists and never scores. A reader spelling `fixed` differently would score a
+	// hypothetical eleven as a forecast about a fixture.
+	SelectionObjectives []string `json:"selection_objectives"`
 	// FreshnessStatuses, RetrainStatuses and RatingsStaleCode are the one freshness
 	// vocabulary (H-24, P2-1). There is a single verdict in this system — H-11's, computed
 	// by ml-service — and these are how it is spelled on the wire: go-app assembles the
@@ -180,6 +187,7 @@ func buildContract() contractDoc {
 		SelectionRoles:        predictteam.SelectionRoles(),
 		WinProbabilitySources: predictteam.WinProbabilitySources(),
 		ForecastSources:       predictteam.ForecastSources(),
+		SelectionObjectives:   predictteam.SelectionObjectives(),
 		FreshnessStatuses:     freshness.Statuses(),
 		RetrainStatuses:       freshness.RetrainStatuses(),
 		RatingsStaleCode:      freshness.RatingsStaleCode,

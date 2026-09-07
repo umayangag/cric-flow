@@ -117,6 +117,7 @@ const TeamLabResult: React.FC<TeamLabResultProps> = ({ result, onWiden }) => (
       selection={result.selection}
       toss={result.toss}
       served={{ ratings_through: result.ratings_through, run_id: result.run_id }}
+      record={result.record}
       team1={result.team1_side.display_name}
       team2={result.team2_side.display_name}
     />
