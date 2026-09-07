@@ -369,5 +369,13 @@ class SimulateResponse(BaseModel):
     team2: SimulatedSide
     win_probability: SimulatedWinProbability
     margin: SimulatedMargin
+    shared_factor: bool = Field(
+        ...,
+        description=(
+            "Whether the simulator that drew this match carried a shared match factor. A format whose "
+            "calibration fold was too thin to fit one ships the un-widened simulator, whose 10-90 "
+            "intervals are a different population's (B-12); the track record keeps the two apart"
+        ),
+    )
     unknown_player_ids: List[str] = Field(default_factory=list)
     served_ratings: ServedRatings

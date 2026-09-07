@@ -68,6 +68,7 @@ type XISimulatedSide struct {
 type XISimulationResult struct {
 	Samples                      int
 	TossMarginalised             bool
+	SharedFactor                 bool
 	Team1                        XISimulatedSide
 	Team2                        XISimulatedSide
 	SimulatedTeam1WinProbability float64
@@ -177,6 +178,7 @@ func applyXISimulation(
 	result.Scorecard = &Scorecard{
 		Samples:          sim.Samples,
 		TossMarginalised: sim.TossMarginalised,
+		SharedFactor:     sim.SharedFactor,
 		Team1Innings:     inningsTotal(sim.Team1),
 		Team2Innings:     inningsTotal(sim.Team2),
 	}

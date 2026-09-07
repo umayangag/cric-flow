@@ -681,6 +681,9 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
                 for key, value in summary["margin"].items()
             }
         ),
+        # Read off the calibration that drew these samples, never off a status call: what
+        # the record needs is whether *this* answer's simulator had a factor (B-12).
+        shared_factor=model.simulation is not None and model.simulation.shared_factor is not None,
         unknown_player_ids=unknown,
         served_ratings=_served_ratings(store),
     )

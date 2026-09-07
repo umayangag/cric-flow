@@ -372,6 +372,7 @@ type mlSimulatedWinProbability struct {
 type mlSimulateResponse struct {
 	NSamples         int                       `json:"n_samples"`
 	TossMarginalised bool                      `json:"toss_marginalised"`
+	SharedFactor     bool                      `json:"shared_factor"`
 	Team1            mlSimulatedSide           `json:"team1"`
 	Team2            mlSimulatedSide           `json:"team2"`
 	WinProbability   mlSimulatedWinProbability `json:"win_probability"`
@@ -407,6 +408,7 @@ func (c *MLClient) SimulateMatchXI(
 	return &predictteam.XISimulationResult{
 		Samples:                      out.NSamples,
 		TossMarginalised:             out.TossMarginalised,
+		SharedFactor:                 out.SharedFactor,
 		Team1:                        simulatedSide(out.Team1),
 		Team2:                        simulatedSide(out.Team2),
 		SimulatedTeam1WinProbability: out.WinProbability.Simulated,
