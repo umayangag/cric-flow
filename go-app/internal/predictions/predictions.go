@@ -67,6 +67,12 @@ type Prediction struct {
 	WinProbabilityTeam1  float64
 	WinProbabilitySource string
 
+	// SimulatorSharedFactor says whether the simulator that served this answer carried a
+	// shared match factor (B-12). Nil where the answer was stored before the field existed
+	// or where no simulator ran (a format with no innings length) -- the track record reads
+	// the payload to tell those two apart and reports the first as its own population.
+	SimulatorSharedFactor *bool
+
 	// Request is the body the caller sent, and Payload is the answer it received. Both
 	// are stored whole so a scorer written later never finds that the field it needs was
 	// not one of the columns somebody thought of.
@@ -104,6 +110,10 @@ type Page struct {
 type Reader interface {
 	Get(ctx context.Context, id string) (*Prediction, error)
 	List(ctx context.Context, query Query) (Page, error)
+	// All returns the whole record, oldest first, payloads included. The track record
+	// needs every row at once: which forecast of a fixture is the last one issued is a
+	// question about all of them, and the scores are read out of the payloads.
+	All(ctx context.Context) ([]Prediction, error)
 }
 
 // Store is both halves, which is what the database-backed implementation is.

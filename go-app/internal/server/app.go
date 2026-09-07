@@ -8,6 +8,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/predictions"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
+	"github.com/umayangag/cric-flow/go-app/internal/trackrecord"
 )
 
 // App holds long-lived application dependencies to be shared with handlers.
@@ -24,7 +25,10 @@ type App struct {
 	// works; tests set the field they are exercising to a mock.
 	predictionRecorderStore predictions.Recorder
 	predictionReaderStore   predictions.Reader
-	jobContext              context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	// matchLookupStore is the track record's view of the match tables (P2-4), on the
+	// same terms: nil is the database, tests set a fake.
+	matchLookupStore trackrecord.MatchLookup
+	jobContext       context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// jobCancels holds one cancel func per lane, for the job running in that lane.
 	//

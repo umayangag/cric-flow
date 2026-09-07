@@ -263,3 +263,16 @@ def test_retrain_endpoint_accepts_the_cutoff_go_app_sends(client, monkeypatch, c
     assert resp.status_code == 200, resp.text
     assert parsed["module"] == "ml.xi.retrain"
     assert parsed["cutoff"].date().isoformat() == cutoff[:10]
+
+
+def test_every_track_record_metric_key_has_a_glossary_entry(contract: Dict[str, Any]) -> None:
+    """P2-4 / L-1: every number the track record labels must be explainable from the one
+    glossary this service serves. go-app declares the keys it renders under; this is the
+    completeness gate for a surface that never passes through the harness's report."""
+    from ml.xi import glossary
+
+    keys = contract["track_record_metric_keys"]
+
+    assert keys, "the contract declares the track record's metric keys"
+    assert glossary.check_metric_names(keys, "track record") == []
+    assert all(key in glossary.REGISTRY for key in keys)

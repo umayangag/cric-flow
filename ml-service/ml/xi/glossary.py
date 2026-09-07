@@ -242,6 +242,37 @@ METRICS: Tuple[Metric, ...] = (
         scale=BRIER_SCALE,
     ),
     Metric(
+        key="record_base_rate_brier",
+        name="Base-rate Brier (track record)",
+        explanation=(
+            "The Brier score of predicting the scored predictions' own win rate for every one of them -- the "
+            "score to beat on the track record. The rate comes from the same rows because the record has no "
+            "training window to take one from, so with few predictions it is a flattering baseline: it "
+            "already knows how the record came out."
+        ),
+        band=(
+            "About 0.25 near an even rate. Read it beside the record's Brier and both beside their n; over tens "
+            "of predictions the difference is a diagnostic, not evidence -- `make evaluate` is where a "
+            "choice-facing number comes from."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="eleven_overlap",
+        name="Eleven overlap",
+        explanation=(
+            "How many of the twenty-two players a prediction named actually took the field in the match it was "
+            "about, read off the fielded elevens once the match is imported. A forecast for a side that did not "
+            "play is a forecast of a different match; the overlap is reported beside the score so a reader can "
+            "see how much of the fixture the prediction had right, and it never excludes a prediction."
+        ),
+        band=(
+            "22 means both elevens played as named. Anything lower is a fact about the fixture, not a verdict "
+            "on the model; the score stands and this number sits beside it."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
         key="base_rate_brier",
         name="Base-rate Brier",
         explanation=(

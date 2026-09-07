@@ -138,7 +138,20 @@ func (a *App) fileIssuedPrediction(
 		SelectionObjective:   result.Selection.Objective,
 		WinProbabilityTeam1:  result.WinProbability.Team1,
 		WinProbabilitySource: result.WinProbability.Source,
-		Request:              request,
-		Payload:              served,
+		// Nil where no simulator ran: a format with no innings length has no scorecard
+		// and no ranges for the record to cover, so there is no population to name.
+		SimulatorSharedFactor: simulatorSharedFactor(result),
+		Request:               request,
+		Payload:               served,
 	})
+}
+
+// simulatorSharedFactor reads whether the simulator that served this answer carried a
+// shared match factor, off the answer's own scorecard (P2-4, B-12).
+func simulatorSharedFactor(result *predictteam.Result) *bool {
+	if result.Scorecard == nil {
+		return nil
+	}
+	shared := result.Scorecard.SharedFactor
+	return &shared
 }

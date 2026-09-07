@@ -22,7 +22,7 @@ func NewPredictionStore() *PredictionStore { return &PredictionStore{} }
 // select different things and scan the same way.
 const predictionColumns = `id, issued_at, run_id, ratings_through, format_code,
 	team1_opposition_id, team2_opposition_id, gender, match_date, selection_objective,
-	win_probability_team1, win_probability_source`
+	win_probability_team1, win_probability_source, simulator_shared_factor`
 
 // Record files one issued answer.
 //
@@ -39,13 +39,14 @@ func (s *PredictionStore) Record(ctx context.Context, prediction predictions.Pre
 		  (id, issued_at, run_id, ratings_through, format_code,
 		   team1_opposition_id, team2_opposition_id, gender, match_date,
 		   selection_objective, win_probability_team1, win_probability_source,
-		   request, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		   simulator_shared_factor, request, payload)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`,
 		prediction.ID, prediction.IssuedAt, prediction.RunID, prediction.RatingsThrough,
 		prediction.FormatCode, prediction.Team1OppositionID, prediction.Team2OppositionID,
 		prediction.Gender, prediction.MatchDate, prediction.SelectionObjective,
 		prediction.WinProbabilityTeam1, prediction.WinProbabilitySource,
+		prediction.SimulatorSharedFactor,
 		[]byte(prediction.Request), []byte(prediction.Payload))
 	if err != nil {
 		return fmt.Errorf("record prediction: %w", err)
@@ -66,7 +67,8 @@ func (s *PredictionStore) Get(ctx context.Context, id string) (*predictions.Pred
 		Scan(&stored.ID, &stored.IssuedAt, &stored.RunID, &stored.RatingsThrough,
 			&stored.FormatCode, &stored.Team1OppositionID, &stored.Team2OppositionID,
 			&stored.Gender, &stored.MatchDate, &stored.SelectionObjective,
-			&stored.WinProbabilityTeam1, &stored.WinProbabilitySource, &request, &payload)
+			&stored.WinProbabilityTeam1, &stored.WinProbabilitySource,
+			&stored.SimulatorSharedFactor, &request, &payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, predictions.ErrNotFound
 	}
@@ -109,7 +111,8 @@ func (s *PredictionStore) List(
 		if err := rows.Scan(&stored.ID, &stored.IssuedAt, &stored.RunID, &stored.RatingsThrough,
 			&stored.FormatCode, &stored.Team1OppositionID, &stored.Team2OppositionID,
 			&stored.Gender, &stored.MatchDate, &stored.SelectionObjective,
-			&stored.WinProbabilityTeam1, &stored.WinProbabilitySource); err != nil {
+			&stored.WinProbabilityTeam1, &stored.WinProbabilitySource,
+			&stored.SimulatorSharedFactor); err != nil {
 			return predictions.Page{}, fmt.Errorf("list predictions: %w", err)
 		}
 		page.Predictions = append(page.Predictions, stored)
@@ -118,4 +121,43 @@ func (s *PredictionStore) List(
 		return predictions.Page{}, fmt.Errorf("list predictions: %w", err)
 	}
 	return page, nil
+}
+
+// All returns the whole record, oldest first, payloads included (P2-4).
+//
+// Unpaged on purpose: the track record decides which forecast of a fixture is the last
+// one issued, which is a question about every row, and it reads the ranges and the
+// elevens out of each payload. One operator's record is tens of rows; at ten kilobytes a
+// payload that is a single small read, and a page would only make the answer wrong.
+func (s *PredictionStore) All(ctx context.Context) ([]predictions.Prediction, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	rows, err := Pool.Query(ctx,
+		`SELECT `+predictionColumns+`, request, payload
+		 FROM issued_prediction ORDER BY issued_at ASC, id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("read the prediction record: %w", err)
+	}
+	defer rows.Close()
+
+	record := make([]predictions.Prediction, 0, 64)
+	for rows.Next() {
+		var stored predictions.Prediction
+		var request, payload []byte
+		if err := rows.Scan(&stored.ID, &stored.IssuedAt, &stored.RunID, &stored.RatingsThrough,
+			&stored.FormatCode, &stored.Team1OppositionID, &stored.Team2OppositionID,
+			&stored.Gender, &stored.MatchDate, &stored.SelectionObjective,
+			&stored.WinProbabilityTeam1, &stored.WinProbabilitySource,
+			&stored.SimulatorSharedFactor, &request, &payload); err != nil {
+			return nil, fmt.Errorf("read the prediction record: %w", err)
+		}
+		stored.Request = request
+		stored.Payload = payload
+		record = append(record, stored)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read the prediction record: %w", err)
+	}
+	return record, nil
 }

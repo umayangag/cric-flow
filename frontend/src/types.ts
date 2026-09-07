@@ -427,6 +427,140 @@ export type HealthResponse = {
 export const FRESHNESS_STATUSES = ['fresh', 'stale', 'not_loaded', 'unknown'] as const;
 export type FreshnessStatus = (typeof FRESHNESS_STATUSES)[number];
 
+/**
+ * The one state every stored prediction is in on the track record (H-24, P2-4), and the
+ * simulator population its ranges belong to -- never pooled (B-12). Both are declared in
+ * contracts/ops-console.contract.json and asserted against it; go-app computes them.
+ */
+export const PREDICTION_STATES = [
+  'scenario',
+  'superseded',
+  'unresolved',
+  'no_result',
+  'scored',
+] as const;
+export type PredictionState = (typeof PREDICTION_STATES)[number];
+export const SIMULATOR_POPULATIONS = [
+  'with_shared_factor',
+  'without_shared_factor',
+  'unknown',
+  'not_simulated',
+] as const;
+export type SimulatorPopulation = (typeof SIMULATOR_POPULATIONS)[number];
+/** The L-1 keys the track record labels its numbers under; the contract holds the same list. */
+export const TRACK_RECORD_METRIC_KEYS = [
+  'brier',
+  'record_base_rate_brier',
+  'reliability',
+  'coverage_80',
+  'eleven_overlap',
+] as const;
+
+/** A Brier with the base rate beside it, over n scored predictions. Null over none. */
+export type TrackRecordWinScore = {
+  n: number;
+  brier: number | null;
+  base_rate: number | null;
+  base_rate_brier: number | null;
+};
+
+export type TrackRecordReliabilityBin = {
+  lo: number;
+  hi: number;
+  n: number;
+  predicted: number;
+  observed: number;
+};
+
+export type TrackRecordCoverageScore = {
+  n: number;
+  covered: number;
+  coverage: number | null;
+};
+
+/** One (format, population) row; there is no pooled row across populations. */
+export type TrackRecordCoverageRow = {
+  format: string;
+  population: SimulatorPopulation;
+  n_predictions: number;
+  first_innings: TrackRecordCoverageScore;
+  chase: TrackRecordCoverageScore;
+};
+
+export type TrackRecordRange = { p10: number; p90: number };
+
+export type TrackRecordEntry = {
+  id: string;
+  issued_at: string;
+  run_id: string;
+  ratings_through: string;
+  format: string;
+  gender: string;
+  match_date: string;
+  team1: { id: number; name: string };
+  team2: { id: number; name: string };
+  objective: SelectionObjective;
+  state: PredictionState;
+  state_note?: string;
+  superseded_by?: string;
+  /** Set while unresolved: negative before the match. */
+  days_past_match_date?: number;
+  issued_after_match_date?: boolean;
+  population: SimulatorPopulation;
+  claimed: {
+    win_probability_team1: number;
+    win_probability_source: WinProbabilitySource;
+    predicted_winner_id: number;
+    team1_range?: TrackRecordRange;
+    team2_range?: TrackRecordRange;
+    team1_players: number;
+    team2_players: number;
+  };
+  happened?: {
+    match_id: number;
+    winner_opposition_id: number | null;
+    outcome_by_runs?: number;
+    outcome_by_wickets?: number;
+    team1_total: number | null;
+    team2_total: number | null;
+    team1_batted_first: boolean | null;
+  };
+  score?: {
+    team1_won: boolean;
+    brier: number;
+    team1_covered: boolean | null;
+    team2_covered: boolean | null;
+    eleven_overlap: { matched: number; of: number; team1_matched: number; team2_matched: number };
+  };
+  payload_error?: string;
+};
+
+/** GET /api/track-record: the record scored on read, misses included (P2-4). */
+export type TrackRecord = {
+  computed_at: string;
+  today: string;
+  total: number;
+  states: Record<PredictionState, number>;
+  win: {
+    overall: TrackRecordWinScore;
+    by_format: Record<string, TrackRecordWinScore>;
+    reliability: TrackRecordReliabilityBin[];
+    reliability_bins: number;
+  };
+  coverage: {
+    rows: TrackRecordCoverageRow[];
+    populations: Record<SimulatorPopulation, number>;
+  };
+  elevens: {
+    n: number;
+    mean_overlap: number | null;
+    min_overlap: number | null;
+    max_overlap: number | null;
+    complete: number;
+  };
+  predictions: TrackRecordEntry[];
+};
+
 /** Whether the database holds matches the served run never saw (the B-2 state). */
 export const RETRAIN_STATUSES = ['up_to_date', 'retrain_due', 'unknown'] as const;
 export type RetrainStatus = (typeof RETRAIN_STATUSES)[number];

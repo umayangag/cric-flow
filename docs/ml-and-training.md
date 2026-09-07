@@ -852,6 +852,33 @@ minutes**. That is why it is the optional `evaluate` step rather than part of `r
 why it writes its report beside the runs rather than into one: it measures the harness's own
 refits, not the run `current` points at.
 
+### The track record beside the harness
+
+The Track record tab (P2-4, `GET /api/track-record`) scores every prediction the Lab issued
+against the match once it is imported — the same Brier, reliability bins and inclusive 10–90
+coverage the harness computes, applied continuously to the served run on new data as it
+arrives, misses included. It is worth saying what each is evidence of, because they look
+alike and are not:
+
+- **The harness** (`make evaluate`) scores thousands of matches over walk-forward folds and a
+  locked window, with the model refitted per fold, the folds' spread reported, and every gate's
+  varies / fixed / decides triple recorded (H-23). It is where a choice-facing number comes
+  from, and the only place one comes from.
+- **The record** scores the tens of predictions one operator issued, from whichever run was
+  loaded at the time, against the fixtures that person happened to ask about. Its base rate
+  comes from the same rows it scores. No threshold is set on it and nothing on it turns red:
+  a Brier over tens is a diagnostic, and a reliability bin holding two predictions is a
+  count. A record that disagrees with the harness is a thing to investigate and write into
+  `docs/BUG_BACKLOG.md`, not a verdict on the model.
+
+The tab shows the harness's figure for the same format beside each of the record's, labelled
+by the window it came from, so a reader sees the record against the number the model was
+accepted on. Two of the harness's disciplines carry over unchanged: the factored and
+factorless simulator populations are never pooled (B-12; a simulated answer stored before the
+store recorded its simulator is a third population, "unknown"), and the ranges are the
+simulator's as served, with no day/night adjustment (B-11 is open and the record will show
+it). Glossary keys the record adds (L-1): `record_base_rate_brier`, `eleven_overlap`.
+
 ## The Docker image
 
 `ml-service/Dockerfile` builds one image, from `requirements.txt`.

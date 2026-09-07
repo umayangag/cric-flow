@@ -160,5 +160,25 @@
     "retrain_due",
     "unknown"
   ],
-  "ratings_stale_code": "RATINGS_STALE"
+  "ratings_stale_code": "RATINGS_STALE",
+  "prediction_states": [
+    "scenario",
+    "superseded",
+    "unresolved",
+    "no_result",
+    "scored"
+  ],
+  "simulator_populations": [
+    "with_shared_factor",
+    "without_shared_factor",
+    "unknown",
+    "not_simulated"
+  ],
+  "track_record_metric_keys": [
+    "brier",
+    "record_base_rate_brier",
+    "reliability",
+    "coverage_80",
+    "eleven_overlap"
+  ]
 }

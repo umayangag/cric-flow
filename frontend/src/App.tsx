@@ -23,6 +23,7 @@ const OpsStatusTab = lazy(() => import('./components/OpsStatusTab'));
 const TeamLabTab = lazy(() => import('./components/TeamLabTab'));
 const WorkbenchTab = lazy(() => import('./components/WorkbenchTab'));
 const SystemMapTab = lazy(() => import('./components/SystemMapTab'));
+const TrackRecordTab = lazy(() => import('./components/TrackRecordTab'));
 const Login = lazy(() => import('./pages/Login'));
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -49,6 +50,7 @@ const AppContent: React.FC = () => {
     if (location.pathname.startsWith('/lab')) return 'lab';
     if (location.pathname.startsWith('/workbench')) return 'workbench';
     if (location.pathname.startsWith('/system-map')) return 'systemMap';
+    if (location.pathname.startsWith('/track-record')) return 'trackRecord';
     return 'health';
   })();
 
@@ -59,6 +61,7 @@ const AppContent: React.FC = () => {
     else if (newValue === 'lab') navigate('/lab');
     else if (newValue === 'workbench') navigate('/workbench');
     else if (newValue === 'systemMap') navigate('/system-map');
+    else if (newValue === 'trackRecord') navigate('/track-record');
   };
 
   return (
@@ -175,6 +178,7 @@ const AppContent: React.FC = () => {
             <Tab value="workbench" label="Workbench" />
             <Tab value="evaluateDb" label="Evaluation report" />
             <Tab value="lab" label="Team Lab" />
+            <Tab value="trackRecord" label="Track record" />
             <Tab value="systemMap" label="System map" />
           </Tabs>
         )}
@@ -239,6 +243,14 @@ const AppContent: React.FC = () => {
                     element={
                       <ProtectedRoute>
                         <SystemMapTab />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/track-record"
+                    element={
+                      <ProtectedRoute>
+                        <TrackRecordTab />
                       </ProtectedRoute>
                     }
                   />

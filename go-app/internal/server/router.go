@@ -105,6 +105,10 @@ func NewRouter(a *App) http.Handler {
 		Methods(http.MethodGet, http.MethodOptions)
 	admin.HandleFunc("/api/predictions/{id}", a.getPredictionHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+	// The track record (P2-4): the record above scored against the match tables on
+	// every read -- no column, no step, no scheduler. Misses included.
+	admin.HandleFunc("/api/track-record", a.trackRecordHandler).
+		Methods(http.MethodGet, http.MethodOptions)
 
 	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
 	// flow scored the batting / bowling / fielding models and went with them (P-5).

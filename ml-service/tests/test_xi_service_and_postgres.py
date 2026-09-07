@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from app import xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
+from ml.xi import simulator
 from ml.xi.builder import build
 from ml.xi.retrain import main as retrain_main
 from ml.xi.retrain import retrain
@@ -806,6 +807,35 @@ def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry,
 
     assert first.team1.total == again.team1.total and first.win_probability == again.win_probability
     assert known.toss_marginalised is False
+
+
+def test_simulate_says_whether_its_simulator_carried_a_shared_factor(registry, artifacts_dir) -> None:
+    """P2-4 / B-12: the flag is read off the calibration that drew the samples, so a record
+    can keep factored and factorless predictions apart without a status call."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = SimulateRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=100)
+    _, model = registry.performance("T20I", None)
+
+    res = xi_service.simulate(req, registry)
+
+    assert res.shared_factor is (model.simulation.shared_factor is not None)
+
+
+def test_simulate_reports_no_shared_factor_when_the_calibration_fitted_none(
+    registry, artifacts_dir, monkeypatch
+) -> None:
+    """The thin-fold case: the simulator ships without a factor and the answer says so."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = SimulateRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=100)
+    _, model = registry.performance("T20I", None)
+    monkeypatch.setattr(
+        model, "simulation", simulator.SimulatorCalibration(model.simulation.runs_balls_rho, None, None)
+    )
+
+    res = xi_service.simulate(req, registry)
+
+    assert model.simulation.shared_factor is None
+    assert res.shared_factor is False
 
 
 def test_simulate_refuses_a_format_without_an_innings_length(registry) -> None:

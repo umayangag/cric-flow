@@ -3,6 +3,7 @@ import type {
   HealthResponse,
   XiStatusResponse,
   EvaluationReport,
+  TrackRecord,
   MetricGlossary,
   Migration,
   Suggestion,
@@ -399,6 +400,15 @@ export const api = {
   /** L4's evaluation report, as `make evaluate` last wrote it. */
   evaluationReport(): Promise<EvaluationReport> {
     return httpApi('/api/backtest/report');
+  },
+
+  /**
+   * The track record (P2-4): every stored prediction in its state, the scored ones against
+   * what happened, computed on this read. There is nothing to configure and no page: the
+   * states are decided over the whole record.
+   */
+  trackRecord(): Promise<TrackRecord> {
+    return httpApi('/api/track-record');
   },
 
   /**

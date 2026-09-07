@@ -15,6 +15,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/freshness"
 	"github.com/umayangag/cric-flow/go-app/internal/services/apiparams"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
+	"github.com/umayangag/cric-flow/go-app/internal/trackrecord"
 )
 
 // updateContract regenerates contracts/ops-console.contract.json instead of asserting
@@ -104,6 +105,16 @@ type contractDoc struct {
 	FreshnessStatuses []string `json:"freshness_statuses"`
 	RetrainStatuses   []string `json:"retrain_statuses"`
 	RatingsStaleCode  string   `json:"ratings_stale_code"`
+	// PredictionStates and SimulatorPopulations are the track record's vocabulary (H-24,
+	// P2-4): the one state every stored prediction is in, and the simulator population its
+	// ranges belong to, which the record never pools (B-12). go-app computes both, the
+	// frontend renders both by name; a state the UI could not spell would be a prediction
+	// counted on the wire and invisible on the surface. TrackRecordMetricKeys are the L-1
+	// keys the record labels its numbers under, so ml-service's completeness gate can
+	// assert every one has a glossary entry and the frontend can assert it uses no other.
+	PredictionStates      []string `json:"prediction_states"`
+	SimulatorPopulations  []string `json:"simulator_populations"`
+	TrackRecordMetricKeys []string `json:"track_record_metric_keys"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -190,6 +201,9 @@ func buildContract() contractDoc {
 		SelectionObjectives:   predictteam.SelectionObjectives(),
 		FreshnessStatuses:     freshness.Statuses(),
 		RetrainStatuses:       freshness.RetrainStatuses(),
+		PredictionStates:      trackrecord.States(),
+		SimulatorPopulations:  trackrecord.Populations(),
+		TrackRecordMetricKeys: trackrecord.MetricKeys(),
 		RatingsStaleCode:      freshness.RatingsStaleCode,
 	}
 }

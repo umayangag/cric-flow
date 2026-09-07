@@ -169,10 +169,15 @@ type InningsTotal struct {
 // `innings2`, which was invisible while the toss was always unknown and wrong the moment it
 // could be named — "innings 1 (India)" beside "Australia bats first" (P1-1).
 type Scorecard struct {
-	Samples          int          `json:"samples"`
-	TossMarginalised bool         `json:"toss_marginalised"`
-	Team1Innings     InningsTotal `json:"team1_innings"`
-	Team2Innings     InningsTotal `json:"team2_innings"`
+	Samples          int  `json:"samples"`
+	TossMarginalised bool `json:"toss_marginalised"`
+	// SharedFactor says whether the simulator that drew this scorecard carried a shared
+	// match factor. A format whose calibration fold was too thin ships without one, and
+	// its 10-90 ranges are a different population's (B-12); the track record keeps the
+	// two apart, so the answer has to say which it was (P2-4).
+	SharedFactor bool         `json:"shared_factor"`
+	Team1Innings InningsTotal `json:"team1_innings"`
+	Team2Innings InningsTotal `json:"team2_innings"`
 }
 
 // ResolvedSide is the side a prediction actually scored.
