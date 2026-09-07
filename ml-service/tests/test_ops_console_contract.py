@@ -276,4 +276,3 @@ def test_every_track_record_metric_key_has_a_glossary_entry(contract: Dict[str, 
     assert keys, "the contract declares the track record's metric keys"
     assert glossary.check_metric_names(keys, "track record") == []
     assert all(key in glossary.REGISTRY for key in keys)
-

@@ -14,10 +14,10 @@ from pydantic import ValidationError
 
 from app import xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
+from ml.xi import simulator
 from ml.xi.builder import build
 from ml.xi.retrain import main as retrain_main
 from ml.xi.retrain import retrain
-from ml.xi import simulator
 from ml.xi.simulator import SimulationUnavailable
 from ml.xi.sources import BOWLER_CREDITED_KINDS, Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
@@ -821,12 +821,16 @@ def test_simulate_says_whether_its_simulator_carried_a_shared_factor(registry, a
     assert res.shared_factor is (model.simulation.shared_factor is not None)
 
 
-def test_simulate_reports_no_shared_factor_when_the_calibration_fitted_none(registry, artifacts_dir, monkeypatch) -> None:
+def test_simulate_reports_no_shared_factor_when_the_calibration_fitted_none(
+    registry, artifacts_dir, monkeypatch
+) -> None:
     """The thin-fold case: the simulator ships without a factor and the answer says so."""
     _, squad_a, squad_b, _ = artifacts_dir
     req = SimulateRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=100)
     _, model = registry.performance("T20I", None)
-    monkeypatch.setattr(model, "simulation", simulator.SimulatorCalibration(model.simulation.runs_balls_rho, None, None))
+    monkeypatch.setattr(
+        model, "simulation", simulator.SimulatorCalibration(model.simulation.runs_balls_rho, None, None)
+    )
 
     res = xi_service.simulate(req, registry)
 
