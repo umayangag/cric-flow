@@ -98,7 +98,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (33 routes, from `internal/server/router.go`):
+**go-app** (34 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
@@ -133,6 +133,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET, POST | `/api/predict/team-selection` |
 | GET | `/api/predictions` |
 | GET | `/api/predictions/{id}` |
+| GET | `/api/track-record` |
 | GET | `/api/backtest/report` |
 | GET | `/api/backtest/metric-glossary` |
 
