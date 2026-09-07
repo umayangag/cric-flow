@@ -466,3 +466,19 @@ def test_calibration_draws_carry_the_chases_own_log_spread() -> None:
     reference = S.simulate_match(team1, team2, CONTEXT, 300, 0, True, S.SimulatorCalibration(0.9))
     expected = np.log(np.maximum(reference.team2.untruncated_total, 1.0)).std()
     assert draws.chase_log_sd[0] == pytest.approx(expected)
+
+
+def test_carrying_the_calibration_sample_changes_no_draw() -> None:
+    """B-11 keeps the chase sample on every calibration so an arm can refit from it. That is
+    evidence, not behaviour: with the term itself absent the draws must be the control's."""
+    team1, team2 = _teams()
+    pool = S.SharedFactor(np.linspace(0.8, 1.2, 60), 60, 0.02, 0.01, 0.7, _calibration_sample(60))
+    without_sample = S.SimulatorCalibration(0.9, pool)
+    with_sample = S.SimulatorCalibration(0.9, pool, None, None, _chase_sample(60, 0.0, 0.0, 0.3))
+
+    control = S.simulate_match(team1, team2, CONTEXT, 800, 0, None, without_sample)
+    carried = S.simulate_match(team1, team2, CONTEXT, 800, 0, None, with_sample)
+
+    np.testing.assert_array_equal(control.team1.total, carried.team1.total)
+    np.testing.assert_array_equal(control.team2.total, carried.team2.total)
+    np.testing.assert_array_equal(control.winner, carried.winner)
