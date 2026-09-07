@@ -335,8 +335,8 @@ func TestSameXI_IgnoresOrderAndCatchesADifference(t *testing.T) {
 
 func TestNormalizeFormat_FoldsSpacingAndCase(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "T20I", normalizeFormat(" t20i "))
-	assert.Equal(t, "", normalizeFormat(""))
+	assert.Equal(t, "T20I", NormalizeFormat(" t20i "))
+	assert.Equal(t, "", NormalizeFormat(""))
 }
 
 func TestPoolPlayerKeys_SendsRegistryIDsAndSkipsAPlayerWithout(t *testing.T) {

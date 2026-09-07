@@ -375,7 +375,7 @@ func applyMatchForecast(
 // and loads both player pools. Availability is the caller's knowledge, not the model's
 // (plan §9.4).
 func resolveFixture(ctx context.Context, input Input) (fixture, error) {
-	format := normalizeFormat(input.Format)
+	format := NormalizeFormat(input.Format)
 	if format == "" || input.Team1.IsEmpty() || input.Team2.IsEmpty() {
 		err := fmt.Errorf("format, team1, team2 are required")
 		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))

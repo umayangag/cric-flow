@@ -32,6 +32,7 @@ function answer(
     team1: [],
     team2: [],
     selection: { objective: 'fixed', optimised: false },
+    record: { stored: true, id: 'f0f8f1a4-0f0e-4a6b-9b6f-2c5d4a1e0001' },
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.6, source: 'display', predicted_winner: 'India (men)' },
     toss: { team1_bats_first: null, honoured: true },

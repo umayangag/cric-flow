@@ -260,7 +260,9 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		respondPredictErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	// A successful answer goes on the record before it is served, and a refused one does
+	// not: a refusal is not a prediction, so there is nothing to score later (P2-3).
+	a.respondWithRecordedPrediction(w, r, body, matchDate, result)
 }
 
 // validateSideReferences checks that the request names two sides at all, and that any gender

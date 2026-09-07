@@ -116,7 +116,7 @@ func ForecastSources() []string {
 
 // formatHasInningsLength reports whether the simulator runs for the format.
 func formatHasInningsLength(format string) bool {
-	return simulatedFormats[normalizeFormat(format)]
+	return simulatedFormats[NormalizeFormat(format)]
 }
 
 // applyXISimulation fills the scorecard, the per-player points and their ranges from one

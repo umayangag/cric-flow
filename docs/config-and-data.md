@@ -146,6 +146,27 @@ same PR — dropping them means changing the importer. The PR that stops the imp
 them is the one that drops them. Nothing in the ML pipeline reads them; the rating pass reads
 `ball_event` directly. See `ML_PIPELINE_REARCHITECTURE_PLAN.md` §9.1.
 
+**`issued_prediction` is the prediction record (P2-3, migration `0013`).** One row per
+successful `POST /api/predict/team-selection` answer, written by that endpoint before it
+replies and by nothing else. It holds:
+
+| Column | What it is |
+|---|---|
+| `id` (uuid), `issued_at` | The row's identity, minted by go-app *before* the insert — the id is inside `payload`, because what is stored is the answer the caller received, whole |
+| `run_id`, `ratings_through` | The rating state the answer was computed from, read off the answer's own `served_ratings` stamp (P1-5), never off a status call |
+| `format_code`, `team1_opposition_id`, `team2_opposition_id`, `gender`, `match_date` | The fixture, as the importer will present it when the match is played — the key a resolver joins on |
+| `selection_objective` | `win`, `ratings` or `fixed`. `fixed` is an eleven the caller pinned in Play mode: a scenario, listed and never scored |
+| `win_probability_team1`, `win_probability_source` | The headline claim and the model behind it — what a Brier is computed over |
+| `request`, `payload` (jsonb) | The request as this API parsed it, and the answer it received. Stored whole so a scorer written later never finds that the field it needs was not one of the columns somebody thought of |
+
+Every column beside the two documents is also inside one of them; they are columns because
+a join and a sort should not have to parse a payload. **It is not a cache.** Migration
+`0007` dropped one of those — `match_prediction_aggregates`, predictions about matches that
+had already been played, every row recomputable by running the flow again. A row here names
+a rating state that the next retrain replaces, so after that nothing in this system can
+reproduce it. Rows are never edited and never deleted by the application: a prediction is a
+claim that was made, and the record's whole value is that it cannot be tidied.
+
 **Existing databases:** a database created by the old chain has all 41 old versions in `schema_migrations` and will never match a fresh one. Recreate it:
 
 ```bash

@@ -60,6 +60,8 @@ backtest asks for a date and gets it.
 - **POST /import/cricsheet** — Body: `{ "dir", "placeholders_fielding" }`; 202 started
 - **GET /api/ml/xi-status** — proxies ml-service `GET /xi/status`: which run is loaded, what its
   manifest records, and whether its ratings are fresh enough to answer with
+- **GET /api/predictions**, **GET /api/predictions/{id}** — the prediction record: every
+  answer this API has issued, as it was served (P2-3). See the section below.
 - **GET /players/{id}** — one player's row: `id`, `player_name`, `is_wicket_keeper`, `is_retired`.
   The consistency numbers it used to carry came from `feature_raw_stats_snapshots`, which P-6
   dropped with the precompute pass that filled it; a player's form is in the rating state, read
@@ -165,6 +167,7 @@ returns the sides that club has played, in the same shape.
 | `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and `team1_innings` / `team2_innings` — named by side, not by batting position — each with the median-band `total`, its `extras` and the 10-90 range of the draws |
 | `constraints` | Present only where the caller pinned the elevens (P1-2): `team_size`, `min_bowlers` and `require_keeper` as they were asked for, and per side the `size`, the `bowlers` count, `has_keeper`, any `missing_must_include` players and whether the eleven `met` what was asked. The counts are ml-service's, measured on the eleven that was scored — nothing is repaired to satisfy them |
 | `team1_pool`, `team2_pool` | Which candidates each XI was chosen out of: `source` (`recency_window` / `all_time` / `manual`), the `window_months` and `since` it applied, the `size` it produced, and `retired_excluded` with the `excluded` players themselves — each with `reason` (`retired` / `user_flagged`) and `detail` |
+| `record` | Whether this answer went on the prediction record (P2-3): `stored`, and either the row's `id` and `issued_at` or the `reason` it was not stored. Always present |
 
 The scorecard lines and extras sum to the innings total by construction — they come from the
 same draws — so nothing is rescaled toward the win probability.
@@ -191,9 +194,63 @@ refusal is not a broken gateway. A prediction whose ml-service calls were answer
 different runs — a reload landed mid-request — is **`409 SERVED_RUN_CHANGED`** naming both,
 and the remedy is to run it again.
 
+**Every issued prediction is stored (P2-3).** A successful answer is written to
+`issued_prediction` *before* it is served, and the answer names the row it was written to:
+`record: {stored: true, id, issued_at}`. What is stored is the answer itself, whole — the
+same bytes the caller received, `record` block and all — beside the request it answered, the
+`run_id` and `ratings_through` it was served from, and the columns a resolver joins on
+(format, both opposition ids, gender, `match_date`, the selection objective, the headline
+probability and its source). A refused prediction stores nothing: a refusal is not a
+prediction, so there is nothing to score against a result later.
+
+A store failure never costs the caller the answer. The prediction is correct whether or not
+it was filed, so it is served with `record: {stored: false, reason: "..."}` — on the wire of
+the answer it failed to record, never only in a server log (§8.7), and the Lab shows it
+beside the served date. The alternative — refusing — would turn a bookkeeping outage into an
+outage of the only thing the product does, and would put a new single point of failure in
+front of a path that has none.
+
 **Retired fields are refused, not ignored:** `weather`, `simulate`, `use_reconciled_scorecard`
 and `include_both_scorecards` each return 400 with a code and a hint. A caller still sending one
 would otherwise get an answer to a different question with no indication why.
+
+---
+
+## The prediction record
+
+Every answer `POST /api/predict/team-selection` has issued, as it was served (P2-3). It is
+the ground truth P2-4's track record is scored from: a prediction names a rating state that
+the next retrain replaces, so once `run_id` is no longer the loaded run nothing in this
+system can reproduce a row here. That is the opposite of the cache migration `0007` dropped
+(`match_prediction_aggregates`, predictions *about played matches*, all of them
+recomputable).
+
+**`GET /api/predictions`** — the record, newest first, paged with `limit` (default 20,
+capped at 200) and `offset`. Returns `{predictions: [...], total, limit, offset}`, where
+`total` is the whole record's count so a surface can say "20 of 143". Each row carries the
+join columns and no payload: `id`, `issued_at`, `run_id`, `ratings_through`, `format`,
+`team1_opposition_id`, `team2_opposition_id`, `gender`, `match_date`, `objective`
+(`win` / `ratings` / `fixed`), `win_probability_team1` and `win_probability_source`. A
+`limit` or `offset` that is not a whole number is `400 INVALID_PARAM` rather than a silent
+default — a page you did not ask for looks exactly like the page you did.
+
+**`GET /api/predictions/{id}`** — one stored answer: those same columns plus `request` (the
+request as this API parsed it, so the POST and GET forms are recorded identically) and
+`payload` (the answer, whole). An id the record does not hold is `404 PREDICTION_NOT_FOUND`
+naming it. Ids come from a prediction's own `record` block.
+
+`payload` is a `jsonb` column, which keeps the JSON *value* exactly — every field, every
+number, every null — and normalises only insignificant whitespace and key order. The answer
+is encoded once, and those bytes are both what the store keeps and what the caller receives,
+so reading a prediction back reproduces what was served.
+
+**Play mode is on the record too.** A re-score is a served answer, and P2-4 counts what this
+store holds, so leaving re-scores off it would make the count dishonest by omission.
+`objective` is what tells the two apart: `fixed` is an eleven the caller built — a scenario,
+which the track record lists and never scores — and `win` / `ratings` is an eleven this
+service chose. Everything else a reader might segment on (the venue, the toss, the pool
+scope, the pinned elevens) is inside the two stored documents, so no new column is needed to
+ask a new question of the record.
 
 ---
 

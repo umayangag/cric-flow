@@ -71,9 +71,17 @@ export type PredictTeamSelectedPlayer = {
  * `fixed` is Play mode (P1-2): the caller built the eleven and the API scored it, so
  * nothing was searched for and no player carries a marginal value. It is go-app's own
  * value — ml-service is told which players to score and never asked how they were chosen.
+ *
+ * The three values are declared in contracts/ops-console.contract.json and asserted against
+ * it by `opsContract.test.ts` (H-24). They became a shared vocabulary with the prediction
+ * record (P2-3), which stores the objective as a column: `fixed` is what tells the track
+ * record that a stored answer is a scenario to be listed and never scored.
  */
+export const SELECTION_OBJECTIVES = ['win', 'ratings', 'fixed'] as const;
+export type SelectionObjective = (typeof SELECTION_OBJECTIVES)[number];
+
 export type PredictSelectionSummary = {
-  objective: 'win' | 'ratings' | 'fixed';
+  objective: SelectionObjective;
   optimised: boolean;
   note?: string;
   /**
@@ -371,6 +379,24 @@ export type PredictTeamSelectionResponse = PredictServedRatings & {
    * a user built is checked against them and never repaired.
    */
   constraints?: PredictConstraintReport;
+  /**
+   * What became of the attempt to file this answer in the prediction record (P2-3).
+   *
+   * Always present on a served prediction. `stored: false` means the answer is correct and
+   * was served, and that this one will not be on the track record — a substitution the Lab
+   * shows rather than leaving in a server log (§8.7).
+   */
+  record: PredictRecordBlock;
+};
+
+/** What an answer says about its own filing in the prediction record (P2-3). */
+export type PredictRecordBlock = {
+  stored: boolean;
+  /** The stored row's id, and when it was issued. Absent where nothing was stored. */
+  id?: string;
+  issued_at?: string;
+  /** Why it was not stored, in the store's own words. Present only on a failure. */
+  reason?: string;
 };
 
 /** ml-service GET /health, via the go-app proxy. */

@@ -5,6 +5,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/umayangag/cric-flow/go-app/internal/predictions"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
 )
@@ -14,9 +15,16 @@ import (
 type App struct {
 	// mlClient is the one ml-service client: after P-5 every prediction the API serves is
 	// an XI-layer call, so there is no second client and no second contract.
-	mlClient   *MLClient
-	dbProbe    opsstatus.DBProbe
-	jobContext context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	mlClient *MLClient
+	dbProbe  opsstatus.DBProbe
+	// The prediction record (P2-3), as two dependencies rather than one store: the
+	// prediction path may file an answer and may not read the record back, which is the
+	// smaller of the two capabilities and the only one it needs. Nil is the process
+	// default — the database-backed record — so a handler built without either still
+	// works; tests set the field they are exercising to a mock.
+	predictionRecorderStore predictions.Recorder
+	predictionReaderStore   predictions.Reader
+	jobContext              context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// jobCancels holds one cancel func per lane, for the job running in that lane.
 	//

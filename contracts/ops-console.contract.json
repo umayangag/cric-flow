@@ -144,6 +144,11 @@
     "simulator",
     "performance_quantiles"
   ],
+  "selection_objectives": [
+    "win",
+    "ratings",
+    "fixed"
+  ],
   "freshness_statuses": [
     "fresh",
     "stale",

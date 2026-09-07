@@ -10,6 +10,7 @@ import {
   POOL_SOURCES,
   RATINGS_STALE_CODE,
   RETRAIN_STATUSES,
+  SELECTION_OBJECTIVES,
   SELECTION_ROLES,
   TEAM_GENDERS,
   WIN_PROBABILITY_SOURCES,
@@ -57,6 +58,8 @@ type Contract = {
   /** The model behind the headline probability, and behind the per-player numbers (H-24, P1-4). */
   win_probability_sources: string[];
   forecast_sources: string[];
+  /** How an eleven was arrived at, as the prediction record stores it (H-24, P2-3). */
+  selection_objectives: string[];
   /** The one freshness vocabulary, and the code a refused prediction carries (H-24, P2-1). */
   freshness_statuses: string[];
   retrain_statuses: string[];
@@ -215,6 +218,18 @@ describe('ops console contract', () => {
       [...contract.win_probability_sources].sort(),
     );
     expect([...FORECAST_SOURCES].sort()).toEqual([...contract.forecast_sources].sort());
+  });
+
+  /**
+   * The selection objectives are the contract's too (H-24, P2-3).
+   *
+   * The Lab titles its XI tables off the objective, and the prediction record stores it as
+   * a column and lists it. `fixed` is what says a stored answer is an eleven the user built
+   * — a scenario the track record lists and never scores — so a side spelling it
+   * differently would score a hypothetical eleven as a forecast about a real fixture.
+   */
+  it('spells the selection objectives the way the backend does', () => {
+    expect([...SELECTION_OBJECTIVES].sort()).toEqual([...contract.selection_objectives].sort());
   });
 
   /**
