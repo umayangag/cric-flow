@@ -444,6 +444,67 @@ GATES: Tuple[Gate, ...] = (
         "3, never in the same fold) and is reported. A recorded null ships nothing",
         report_path=None,
     ),
+    Gate(
+        id="SIM-IN-chase",
+        name="A dispersion term the two innings do not share: the chase's own, alone",
+        varies="whether the chasing side's runs draws carry a second dispersion factor beside the shared match "
+        "factor -- drawn independently per draw with mean one, so it adds spread and no level (A-2 gated the chase "
+        "*level* and recorded a null), its log spread the excess of the chase's fitted residual scale over what the "
+        "draws themselves produce on the same calibration matches, deconvolved as fit_shared_factor deconvolves the "
+        "first innings and fitted by A-2's censored (Tobit) estimator because roughly half the calibration chases "
+        "are won and so right-censored at the target; the shared match factor is the control's, pooled, in this arm",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws both terms are fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels. The first innings' draws are taken "
+        "before the chase's from the same stream and are bit-identical to the control's, so its coverage cannot "
+        "move in this arm -- that is what makes it the isolating arm, and it is registered as one",
+        decides="in T20, paired per fold against the control with one fold-level standard error as the effect-size "
+        "floor, and in BOTH populations and BOTH innings, because §8.13's two candidates failed exactly by buying "
+        "the first innings with the chase: the 10-90 coverage's distance from 0.80 shrinks for the first innings "
+        "and for the chase, on the day matches and on the night matches separately (four clauses), and the "
+        "dispersion ratio's distance from 1.0 shrinks in the same four cells. H-22, with the sign each side needs: "
+        "the match-count-pooled FIRST-INNINGS width may not grow by more than 1 %, because §8.13 showed that "
+        "correction is a reallocation and not an inflation; the CHASE has no width cap because its correction is by "
+        "design a widening, and the guard against buying its coverage with width is its own dispersion clause, "
+        "which a mere inflation would push past 1.0 the other way. Width is reported beside coverage in every cell "
+        "either way. E2 states its sign rather than being symmetric (this family has now tripped three times on an "
+        "improvement -- §8.9, §8.10, §X-2): e2_not_degraded fails only if Brier(simulated) - Brier(display) GROWS "
+        "by more than one fold-level standard error, or leaves its 0.01 tolerance; a fall passes. ODI cannot decide "
+        "it (its night side clears the simulator's 20-match floor in 2 of 11 folds) and is reported. A recorded "
+        "null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="SIM-IN-both",
+        name="A dispersion term the two innings do not share, with the shared factor scaled per population",
+        varies="both levers at once: the chase's own dispersion factor exactly as SIM-IN-chase fits it, and the "
+        "shared match factor rescaled per pre-match day/night population under §8.13's SIM-DN-scale rule (each "
+        "population's deviations from one multiplied by sqrt(that population's excess variance / the pooled excess "
+        "variance), one shape borrowed across both, spread varied and location left pooled, under a 15-match floor "
+        "per population; a population under the floor falls back to the pooled factor and the fold records it). "
+        "The two are composed because they correct different halves of one defect and neither can pass alone: "
+        "§8.13's population lever moves the first innings and was blocked only by the chase, and the chase term "
+        "leaves the first innings bit-identical by construction",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws both terms are fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels",
+        decides="the same clauses as SIM-IN-chase, on the same folds, with the same signs: in T20, paired per fold "
+        "against the control with one fold-level standard error as the floor, the 10-90 coverage's distance from "
+        "0.80 and the dispersion ratio's distance from 1.0 both shrink for the first innings and for the chase, by "
+        "day and by night (eight clauses); the pooled first-innings width does not grow by more than 1 % and the "
+        "chase's width is guarded by its dispersion clause rather than a cap; e2_not_degraded is signed -- only a "
+        "growth of more than one fold-level standard error, or leaving the 0.01 tolerance, fails it. ODI cannot "
+        "decide it and is reported. A recorded null ships nothing",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}
