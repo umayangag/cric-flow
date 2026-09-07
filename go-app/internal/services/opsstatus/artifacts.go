@@ -96,21 +96,32 @@ func scanRuns(fsRoot string) map[string]any {
 
 // describeRunDir reads one run directory's manifest, reporting the absence of one rather
 // than guessing at the contents.
+//
+// `ratings_through` is copied through like the other manifest fields (P2-2), and a
+// manifest that predates it is reported with `refused` set rather than a blank: the
+// scan cannot load anything, but it can say what ml-service will refuse when it is
+// asked, so the fallback listing answers the same question the live one does (§8.7).
 func describeRunDir(dir, name string) map[string]any {
-	out := map[string]any{"run_id": name, "path": dir, "has_manifest": false}
+	out := map[string]any{"run_id": name, "path": dir, "has_manifest": false, "refused": nil}
 	raw, err := os.ReadFile(filepath.Join(dir, manifestName))
 	if err != nil {
+		out["refused"] = name + " has no " + manifestName + ", so nothing says which run produced its artifacts (H-16)"
 		return out
 	}
 	var manifest map[string]any
 	if err := json.Unmarshal(raw, &manifest); err != nil {
+		out["refused"] = name + ": " + manifestName + " is not readable as a run manifest: " + err.Error()
 		return out
 	}
 	out["has_manifest"] = true
-	for _, key := range []string{"run_id", "created_at", "cutoff", "git_sha", "dataset_sha", "formats"} {
+	for _, key := range []string{"run_id", "created_at", "cutoff", "ratings_through", "git_sha", "dataset_sha", "formats"} {
 		if v, ok := manifest[key]; ok {
 			out[key] = v
 		}
+	}
+	if s, ok := manifest["ratings_through"].(string); !ok || strings.TrimSpace(s) == "" {
+		out["refused"] = "run " + name + ": " + manifestName + " carries no ratings_through, so the date its data " +
+			"runs through is not written down; it was written before the field existed and cannot be loaded"
 	}
 	return out
 }

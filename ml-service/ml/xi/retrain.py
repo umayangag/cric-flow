@@ -132,10 +132,18 @@ def retrain(
     if unexplained:
         logger.error("retrain: %s", "; ".join(unexplained))
 
+    if result.state.last_date is None:
+        # A state that consumed no matches has no date to record and nothing to serve;
+        # writing it as a run would list something the loader must then refuse.
+        raise ValueError(f"retrain: run {run_id} consumed no matches, so there is no ratings_through to record")
     manifest = runs.RunManifest(
         run_id=run_id,
         created_at=datetime.now(timezone.utc).isoformat(),
         cutoff=cutoff.date().isoformat(),
+        # The last match the pass consumed -- the date every prediction from this run is
+        # "as of" -- beside the boundary the operator asked for (P2-2). The loader
+        # asserts it against the state, so the manifest cannot drift from the joblib.
+        ratings_through=result.state.last_date.isoformat(),
         dataset_sha=runs.dataset_sha(_match_keys(result)),
         git_sha=runs.git_sha(),
         rating_params={

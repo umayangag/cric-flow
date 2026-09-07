@@ -213,6 +213,25 @@ def _check_model_columns(models: "FormatModels", run_id: str) -> None:
         )
 
 
+def _check_ratings_through(manifest, state: RatingState) -> None:
+    """Refuse a run whose manifest and rating state disagree about the date (P2-2).
+
+    The manifest's ``ratings_through`` is what the runs listing and ``/xi/status``
+    quote for a run; the state's ``last_date`` is what every served prediction is
+    stamped with. Both were written by the same retrain from the same state, so a
+    difference means the directory is not what its manifest describes -- and the
+    remedy is to retrain, not to pick one of the two. Asserting it here, at load, is
+    what lets the listing answer for a run nobody has loaded.
+    """
+    actual = state.last_date.isoformat() if state.last_date is not None else None
+    if actual != manifest.ratings_through:
+        raise RunArtifactsInvalid(
+            f"run {manifest.run_id}: the manifest says its ratings run through {manifest.ratings_through} "
+            f"but the rating state runs through {actual}; the two were written by one retrain and cannot "
+            f"disagree, so this directory is not the run its manifest describes. Retrain."
+        )
+
+
 def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
     _check_payload_shape(payload, run_id)
     state = RatingState(
@@ -281,6 +300,7 @@ class XiStore:
         manifest = read_manifest(run_directory)
         artifacts_dir = run_directory
         state = load_ratings(artifacts_dir, manifest.run_id)
+        _check_ratings_through(manifest, state)
         models: Dict[str, FormatModels] = {}
         performance: Dict[str, PerformanceModels] = {}
         for fmt in C.FORMAT_CODES:

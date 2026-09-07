@@ -164,6 +164,7 @@ def test_registry_survives_a_corrupt_artifact(tmp_path) -> None:
             run_id="20260902T101500Z-corrupt0",
             created_at="2026-09-02T10:15:00+00:00",
             cutoff="2025-09-01",
+            ratings_through="2025-08-31",
             dataset_sha="",
             git_sha="",
         ),

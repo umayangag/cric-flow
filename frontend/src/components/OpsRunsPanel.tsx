@@ -16,10 +16,14 @@ type RunRow = {
   run_id?: string;
   created_at?: string;
   cutoff?: string;
+  /** The run's data date, off its manifest, for every run on disk (P2-2). */
+  ratings_through?: string | null;
   git_sha?: string;
   dataset_sha?: string;
   formats?: string[];
   has_manifest?: boolean;
+  /** Why the run cannot be loaded, when it cannot (§8.7). */
+  refused?: string | null;
   current?: boolean;
   loaded?: boolean;
 };
@@ -36,6 +40,13 @@ type RunRow = {
  * manifest, or arrays this code cannot serve (D-6) — appears with the reason instead of
  * looking like a box that has never trained. And ratings too old to answer a live
  * request with (H-11) are shown as the verdict, not as a date the reader has to judge.
+ *
+ * Every run carries "ratings through <date>" beside its cutoff, off its own manifest
+ * (P2-2), so which run is worth loading is answerable without loading it. For the
+ * loaded run it is the same date the freshness verdict and the Lab's served-ratings
+ * stamp carry — the loader asserts the manifest against the state — so the panel does
+ * not introduce a second date, only the record of the one date for the runs that are
+ * not loaded. A run whose manifest predates the field shows why it cannot be loaded.
  */
 const OpsRunsPanel: React.FC<{ data: OpsStatus }> = ({ data }) => {
   const artifacts = asObj(data.artifacts);
@@ -79,27 +90,39 @@ const OpsRunsPanel: React.FC<{ data: OpsStatus }> = ({ data }) => {
         ) : (
           <Stack spacing={0.75}>
             {runs.map((run) => (
-              <Stack
-                key={run.run_id}
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                spacing={1}
-              >
-                <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
-                  {run.run_id}
-                </Typography>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  {run.cutoff && <Chip size="small" label={`cutoff ${run.cutoff}`} />}
-                  {run.git_sha && <Chip size="small" label={run.git_sha.slice(0, 7)} />}
-                  {run.has_manifest === false && <StatusPill state="error" label="no manifest" />}
-                  {(run.run_id === currentRun || run.current) && (
-                    <StatusPill state="ok" label="current" />
-                  )}
-                  {(run.run_id === loadedRun || run.loaded) && (
-                    <StatusPill state="ok" label="loaded" />
-                  )}
+              <Stack key={run.run_id} spacing={0.25}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  spacing={1}
+                >
+                  <Typography variant="body2" sx={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>
+                    {run.run_id}
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    {run.cutoff && <Chip size="small" label={`cutoff ${run.cutoff}`} />}
+                    {run.ratings_through && (
+                      <Chip size="small" label={`ratings through ${run.ratings_through}`} />
+                    )}
+                    {run.git_sha && <Chip size="small" label={run.git_sha.slice(0, 7)} />}
+                    {run.has_manifest === false && <StatusPill state="error" label="no manifest" />}
+                    {run.has_manifest !== false && run.refused && (
+                      <StatusPill state="error" label="cannot be loaded" />
+                    )}
+                    {(run.run_id === currentRun || run.current) && (
+                      <StatusPill state="ok" label="current" />
+                    )}
+                    {(run.run_id === loadedRun || run.loaded) && (
+                      <StatusPill state="ok" label="loaded" />
+                    )}
+                  </Stack>
                 </Stack>
+                {run.refused && (
+                  <Typography variant="caption" color="error.dark">
+                    {run.refused}
+                  </Typography>
+                )}
               </Stack>
             ))}
           </Stack>

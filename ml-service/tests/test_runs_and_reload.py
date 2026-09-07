@@ -44,8 +44,17 @@ def _state(players: int = 3, last_date: date | None = None) -> RatingState:
     return state
 
 
-def _write_run(root, run_id: str = "20260902T101500Z-ab12cd34", *, last_date: date | None = None) -> str:
-    """A complete, loadable run: ratings, one format's models, and a manifest."""
+def _write_run(
+    root,
+    run_id: str = "20260902T101500Z-ab12cd34",
+    *,
+    last_date: date | None = None,
+    manifest_ratings_through: str | None = None,
+) -> str:
+    """A complete, loadable run: ratings, one format's models, and a manifest.
+
+    ``manifest_ratings_through`` overrides the date the manifest records; by default it
+    is the state's own, which is what ``retrain`` writes."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
     state = _state(last_date=last_date)
@@ -69,6 +78,7 @@ def _write_run(root, run_id: str = "20260902T101500Z-ab12cd34", *, last_date: da
             run_id=run_id,
             created_at="2026-09-02T10:15:00+00:00",
             cutoff="2025-09-01",
+            ratings_through=manifest_ratings_through or state.last_date.isoformat(),
             dataset_sha="abc123",
             git_sha="deadbee",
             state_shape=state_shape(state),
@@ -76,6 +86,16 @@ def _write_run(root, run_id: str = "20260902T101500Z-ab12cd34", *, last_date: da
         ),
     )
     return directory
+
+
+def _rewrite_manifest_without(directory: str, key: str) -> None:
+    """A manifest written before a field existed: the same file minus that key."""
+    path = runs.manifest_path(directory)
+    with open(path) as fh:
+        raw = json.load(fh)
+    del raw[key]
+    with open(path, "w") as fh:
+        json.dump(raw, fh)
 
 
 # --- H-16: a run names itself -------------------------------------------------------
@@ -197,6 +217,83 @@ def test_a_win_artifact_fitted_on_other_columns_is_refused_naming_them(tmp_path)
     assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
     assert "display_cols" in message and "t1_pelo_std" in message
     assert "Retrain." in message
+
+
+# --- P2-2: the manifest says what date its data runs through ------------------------
+
+
+def test_a_manifest_without_ratings_through_is_refused_naming_the_run(tmp_path):
+    """A run written before the field existed is not patched or served with a date read
+    off its joblib (§8.7): the manifest reader refuses it, naming the run and the field."""
+    directory = _write_run(tmp_path)
+    _rewrite_manifest_without(directory, "ratings_through")
+
+    with pytest.raises(RunArtifactsInvalid) as excinfo:
+        xi_service.XiStore.load(directory)
+
+    message = str(excinfo.value)
+    assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
+    assert "ratings_through" in message
+    assert "make retrain" in message
+
+
+def test_a_manifest_that_disagrees_with_its_state_is_refused_naming_both_dates(tmp_path):
+    """The manifest's date and the state's ``last_date`` were written by one retrain; a
+    difference means the directory is not the run its manifest describes."""
+    directory = _write_run(tmp_path, last_date=date(2026, 8, 30), manifest_ratings_through="2026-09-01")
+
+    with pytest.raises(RunArtifactsInvalid) as excinfo:
+        xi_service.XiStore.load(directory)
+
+    message = str(excinfo.value)
+    assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
+    assert "2026-09-01" in message and "2026-08-30" in message, "and both dates"
+    assert "Retrain." in message
+
+
+def test_a_loaded_run_status_stamp_and_manifest_carry_one_date(tmp_path, monkeypatch):
+    """Three readings of the date -- the status (off the state), the served stamp (off
+    the state) and the manifest summary (off the file) -- are the same date, because the
+    loader asserted it before any of them could be read."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
+    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    status = registry.status()
+    win = xi_service.predict_win(_live_win_request(), registry)
+
+    assert status.ratings_through == "2026-08-30"
+    assert status.manifest["ratings_through"] == status.ratings_through
+    assert win.served_ratings.ratings_through == status.ratings_through
+    assert status.manifest["cutoff"] == "2025-09-01", "the cutoff is a different date, and stays one"
+
+
+def test_the_listing_carries_the_date_per_run_and_the_reason_a_run_cannot_load(tmp_path):
+    """ "What date is this run's data?" is answered off the listing for every run on disk,
+    and a run that predates the field is listed with the reason, not a blank (§8.7)."""
+    _write_run(tmp_path, "20260901T090000Z-11111111", last_date=date(2026, 8, 29))
+    older = _write_run(tmp_path, "20260831T090000Z-00000000", last_date=date(2026, 8, 28))
+    _rewrite_manifest_without(older, "ratings_through")
+
+    listed = {entry["run_id"]: entry for entry in runs.list_runs(str(tmp_path))}
+
+    assert listed["20260901T090000Z-11111111"]["ratings_through"] == "2026-08-29"
+    assert listed["20260901T090000Z-11111111"]["refused"] is None
+    assert listed["20260831T090000Z-00000000"]["has_manifest"] is True
+    assert "ratings_through" in listed["20260831T090000Z-00000000"]["refused"]
+    assert "ratings_through" not in listed["20260831T090000Z-00000000"], "no date is read from anywhere else"
+    assert runs.newest_run_id(str(tmp_path)) == "20260901T090000Z-11111111"
+
+
+def test_a_run_that_predates_the_field_is_never_the_newest_run(tmp_path):
+    """A reload with no run named asks for the newest run that can be served; a manifest
+    the reader refuses is skipped rather than turned into a refusal nobody asked for."""
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    newer = _write_run(tmp_path, "20260902T090000Z-22222222")
+    _rewrite_manifest_without(newer, "ratings_through")
+
+    assert runs.newest_run_id(str(tmp_path)) == "20260901T090000Z-11111111"
 
 
 def test_a_refused_run_is_reported_rather_than_silently_unloaded(tmp_path):
@@ -408,6 +505,35 @@ def test_reload_of_a_refused_run_answers_409_with_the_reason(client, tmp_path):
 
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
+
+
+def test_artifacts_status_answers_the_date_per_run_and_names_what_cannot_load(client, tmp_path):
+    """The listing on the wire: ``ratings_through`` on every loadable run, and the refusal
+    reason on a run whose manifest predates the field (P2-2, §8.7)."""
+    _write_run(tmp_path, "20260902T101500Z-ab12cd34", last_date=date(2026, 8, 30))
+    older = _write_run(tmp_path, "20260831T090000Z-00000000", last_date=date(2026, 8, 28))
+    _rewrite_manifest_without(older, "ratings_through")
+    client.post("/admin/reload")
+
+    data = client.get("/artifacts/status").json()
+
+    by_id = {entry["run_id"]: entry for entry in data["runs"]}
+    assert data["loaded_run"] == "20260902T101500Z-ab12cd34"
+    assert by_id["20260902T101500Z-ab12cd34"]["ratings_through"] == data["ratings_through"] == "2026-08-30"
+    assert "ratings_through" in by_id["20260831T090000Z-00000000"]["refused"]
+    assert by_id["20260831T090000Z-00000000"]["loaded"] is False
+
+
+def test_reload_of_a_run_without_ratings_through_answers_409_naming_it(client, tmp_path):
+    directory = _write_run(tmp_path)
+    _rewrite_manifest_without(directory, "ratings_through")
+
+    resp = client.post("/admin/reload?run=20260902T101500Z-ab12cd34")
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
+    assert "20260902T101500Z-ab12cd34" in resp.json()["detail"]["message"]
+    assert "ratings_through" in resp.json()["detail"]["message"]
 
 
 def test_health_reports_the_run_and_the_freshness_verdict(client, tmp_path, monkeypatch):

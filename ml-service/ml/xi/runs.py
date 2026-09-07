@@ -75,11 +75,24 @@ class RunManifest:
     of them carries no holdout metrics -- or why it was not trained at all (B-3). The two
     together are what make "trained, nothing to score" and "nothing trained" different
     answers rather than the same empty manifest.
+
+    ``cutoff`` and ``ratings_through`` are two dates, not one written twice (P2-2). The
+    cutoff is the training boundary the operator asked for -- today, for a refresh --
+    and rows at or after it are the holdout. ``ratings_through`` is the last match date
+    the rating pass actually consumed, which is the date every served prediction is "as
+    of". On the dev box the two differed by a day on the served run (cutoff 2026-09-03,
+    ratings through 2026-09-02), because the archive lags the calendar. Without the
+    second date, "what date is this run's data?" could only be answered by loading the
+    run's joblib, so the listing of runs on disk could not say which was worth loading.
+    It is required, and the loader asserts it against the state (``XiStore.load``): a
+    manifest without it, or one that disagrees with the state it describes, is refused
+    by name rather than served with a date read from somewhere else (§8.7).
     """
 
     run_id: str
     created_at: str
     cutoff: str
+    ratings_through: str
     dataset_sha: str
     git_sha: str
     rating_params: Dict[str, Any] = field(default_factory=dict)
@@ -95,11 +108,17 @@ class RunManifest:
         return asdict(self)
 
     def summary(self) -> Dict[str, Any]:
-        """The short form ``/xi/status`` carries beside ``ratings_through``."""
+        """The short form ``/xi/status`` and the runs listing carry.
+
+        ``ratings_through`` is the manifest's own record of the date; the status's
+        top-level ``ratings_through`` is read off the loaded state. The loader asserts
+        the two agree, which is what lets a listing answer for a run nobody has loaded.
+        """
         return {
             "run_id": self.run_id,
             "created_at": self.created_at,
             "cutoff": self.cutoff,
+            "ratings_through": self.ratings_through,
             "dataset_sha": self.dataset_sha,
             "git_sha": self.git_sha,
             "formats": list(self.formats),
@@ -201,15 +220,27 @@ def read_manifest(directory: str) -> RunManifest:
         raise RunArtifactsInvalid(f"{path} is not readable as a run manifest: {exc}") from exc
     if not isinstance(raw, dict) or not raw.get("run_id"):
         raise RunArtifactsInvalid(f"{path} carries no run_id, so it does not identify a run")
+    if not raw.get("ratings_through"):
+        # Written before P2-2. The date is inside the joblib, but reading it from there
+        # would be serving a date the manifest never recorded (§8.7); the project is not
+        # live and nothing is backfilled -- an older run is retrained, not patched.
+        raise RunArtifactsInvalid(
+            f"run {raw['run_id']}: {MANIFEST_NAME} carries no ratings_through, so the date its data runs "
+            f"through is not written down; it was written before the field existed and cannot be loaded. "
+            f"Run `make retrain` to produce a run that records its date."
+        )
     known = {f for f in RunManifest.__dataclass_fields__}  # noqa: SIM118 - dataclass field names
     return RunManifest(**{k: v for k, v in raw.items() if k in known})
 
 
 def list_runs(artifacts_dir: str) -> List[Dict[str, Any]]:
-    """Every run on disk, newest first, saying which have a manifest and which do not.
+    """Every run on disk, newest first, each saying whether it can be loaded and why not.
 
-    A directory with no manifest is listed rather than hidden: an operator looking for
-    the artifacts that will not load needs to see them.
+    A directory that is not a loadable run -- no manifest, or a manifest written before
+    it recorded its date -- is listed rather than hidden, with the reason in ``refused``:
+    an operator looking for the artifacts that will not load needs to see them, and a
+    blank beside a run id would read as "nothing to say" rather than "cannot be served"
+    (§8.7). ``refused`` is ``None`` on every loadable run, so the key is always there.
     """
     root = runs_dir(artifacts_dir)
     try:
@@ -221,19 +252,25 @@ def list_runs(artifacts_dir: str) -> List[Dict[str, Any]]:
         directory = os.path.join(root, name)
         try:
             manifest = read_manifest(directory)
-        except RunArtifactsInvalid:
-            out.append({"run_id": name, "path": directory, "has_manifest": False})
+        except RunArtifactsInvalid as exc:
+            has_manifest = os.path.exists(manifest_path(directory))
+            out.append({"run_id": name, "path": directory, "has_manifest": has_manifest, "refused": str(exc)})
             continue
         entry = manifest.summary()
-        entry.update({"path": directory, "has_manifest": True})
+        entry.update({"path": directory, "has_manifest": True, "refused": None})
         out.append(entry)
     return out
 
 
 def newest_run_id(artifacts_dir: str) -> Optional[str]:
-    """The most recent run with a manifest, or None."""
+    """The most recent run whose manifest reads as one, or None.
+
+    A run the manifest reader refused is skipped, not picked: a reload with no run named
+    asks for the newest run that can be served, and an unloadable one would only turn
+    the request into a refusal of something the operator never asked for.
+    """
     for entry in list_runs(artifacts_dir):
-        if entry.get("has_manifest"):
+        if entry.get("has_manifest") and entry.get("refused") is None:
             return str(entry["run_id"])
     return None
 

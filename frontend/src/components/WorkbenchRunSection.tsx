@@ -125,7 +125,11 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, freshness, loading, erro
           items={[
             { label: 'Run id', value: status.run_id ?? '—' },
             { label: 'Trained through (cutoff)', value: status.manifest?.cutoff ?? '—' },
-            { label: 'Ratings', value: servedFreshnessLabel(freshness.served) },
+            // The manifest's own record of the date (P2-2), beside the cutoff it differs
+            // from. The loader asserted it against the state, so it is the date the
+            // freshness verdict below and the Lab's served-ratings stamp carry.
+            { label: 'Ratings through (manifest)', value: status.manifest?.ratings_through ?? '—' },
+            { label: 'Freshness', value: servedFreshnessLabel(freshness.served) },
             { label: 'Dataset sha', value: status.manifest?.dataset_sha?.slice(0, 16) ?? '—' },
             { label: 'Commit', value: status.manifest?.git_sha?.slice(0, 7) ?? '—' },
             { label: 'Players rated', value: String(status.players) },
