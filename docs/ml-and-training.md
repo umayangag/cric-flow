@@ -582,7 +582,11 @@ interval is too narrow for a day game and too wide for a night one (T20 first-in
 coverage 0.734 / 0.841 at nominal 0.80, dispersion 1.099 / 0.865 — `docs/BUG_BACKLOG.md`
 B-11), and conditioning the pool on the pre-match day/night label was gated and **is a
 recorded null** in both of its arms, because one factor serves both innings and at night
-they want opposite corrections (plan §8.13). A fold whose calibration window holds fewer
+they want opposite corrections (plan §8.13). Giving the chase a dispersion term of its own so
+that conditioning the factor no longer drags it — the answer §8.13's conclusion pointed at —
+was gated too and is **also a recorded null** (plan §8.14, *Chase dispersion* below): it
+removes the opposite-corrections problem and is stopped by a night population the folds are
+too thin to decide and by E2. A fold whose calibration window holds fewer
 than 30 complete first innings fits no factor at all, and its intervals are the much
 narrower un-widened ones: the walk-forward summary counts those folds, names their windows
 and repeats the totals over the folds that did have a factor
@@ -615,6 +619,34 @@ percentile — hard chases that were nevertheless won — so 10–90 coverage do
 degrades; the fitted residual scale is nearly twice the simulated chase's spread, which names
 the miss as the chase's *dispersion* (collapse or get there), the next candidate's target. Not modelled by it, and said so: the wickets a collapse loses (the runs fall,
 the depth does not), the overshoot of a won chase, DLS, per-ball required-rate dynamics.
+
+**Chase dispersion — a term the two innings do not share (B-11, plan §8.14).** The next
+candidate A-2 named, and the one §8.13's conclusion pointed at from the other side. The shared
+match factor keeps its meaning — a pitch is common to both innings — and the *chasing* side's
+runs draws are multiplied by a second factor drawn independently per draw with **mean one**,
+so it adds spread and no level (A-2 gated the level and nulled it, and a term that smuggled
+one in would make the gate unreadable). Its log spread is **fitted, never set**: the excess of
+the chase's residual scale about its expected total on the factor's own pitch over what the
+draws themselves produce on the same calibration matches, deconvolved the way
+`fit_shared_factor` deconvolves the first innings, with A-2's censored (Tobit) estimator doing
+the fitting because roughly half the calibration chases are won and so right-censored at the
+target — a pool of the lost chases alone would be selected on the residual it measures.
+`simulator.CHASE_DISPERSION` records the decision and `FitSpec.chase_dispersion` carries it
+into the run manifest; the artifact carries `ChaseDispersion` beside the shared factor.
+**The verdict is a recorded null and the term is off** (plan §8.14, gates `SIM-IN-chase` and
+`SIM-IN-both`, decided on T20's eleven folds — ODI and T20I could not decide it and a
+feasibility probe said so before the arms ran). It does what it was designed to do: the
+chase's tails go from 0.191 below the 10th percentile against 0.096 above it to **0.084 /
+0.097**, both at nominal, in one step; the day chase's coverage 0.689 → 0.811 and the first
+innings, composed with §8.13's per-population factor, 0.734 → 0.760 by day and 0.841 → 0.748
+at night with the pooled width *falling* 84.7 → 81.6 — so the chase no longer pays for the
+first innings, which is how §8.13's two candidates failed. It is stopped by the night
+population, which eleven folds of 139 matches cannot resolve, and by **E2**: an independent
+chase term widens the *difference* between the innings, which is what decides the match, so
+the simulated P(win) moves toward 0.5 and Brier(simulated) − Brier(display) grows by three
+standard errors (still inside its 0.01 tolerance). Interval calibration bought with
+probability calibration is the cost a shared factor does not have, and the next candidate is
+a chase dispersion that does not decorrelate the two innings.
 
 **Measured by (E2, `ml/xi/sim_harness.py`, in `make evaluate`).** Per format and window,
 beside the display model on the same matches: Brier and reliability of the simulated P(win)

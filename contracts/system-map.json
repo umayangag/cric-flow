@@ -863,7 +863,9 @@
           "X-2-dew",
           "X-2-rain",
           "SIM-DN-split",
-          "SIM-DN-scale"
+          "SIM-DN-scale",
+          "SIM-IN-chase",
+          "SIM-IN-both"
         ]
       },
       "documented_in": [
