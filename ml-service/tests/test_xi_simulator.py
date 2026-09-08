@@ -396,6 +396,11 @@ def test_calibration_draws_carry_the_chases_expected_untruncated_total() -> None
 # --- the chase's own dispersion (plan §8.14, gate B-11) ---------------------------------
 
 
+def _first_innings_totals(n: int, log_sd: float = 0.15, seed: int = 7) -> np.ndarray:
+    """First-innings totals as a draw stream produces them: lognormal around 160."""
+    return 160.0 * np.exp(np.random.default_rng(seed).normal(0.0, log_sd, n))
+
+
 def test_fit_chase_dispersion_deconvolves_the_draws_own_spread() -> None:
     sample = _chase_sample(4000, level=0.0, slope=0.0, sigma=0.30, simulated_log_sd=0.18)
 
@@ -413,13 +418,13 @@ def test_a_chase_already_as_wide_as_the_data_gets_no_extra_dispersion() -> None:
     fitted = S.fit_chase_dispersion(sample)
 
     assert fitted.excess_log_sd == 0.0
-    np.testing.assert_array_equal(fitted.sample(np.random.default_rng(0), 100), np.ones(100))
+    np.testing.assert_array_equal(fitted.sample(np.random.default_rng(0), np.full(100, 160.0)), np.ones(100))
 
 
 def test_the_dispersion_term_is_mean_one_so_it_adds_spread_and_no_level() -> None:
     fitted = S.ChaseDispersion(0.40, 0.20, 0.3464, 500, 240)
 
-    factors = fitted.sample(np.random.default_rng(0), 200_000)
+    factors = fitted.sample(np.random.default_rng(0), _first_innings_totals(200_000))
 
     assert factors.mean() == pytest.approx(1.0, abs=0.005)
     assert np.log(factors).std() == pytest.approx(0.3464, abs=0.005)
@@ -466,6 +471,145 @@ def test_calibration_draws_carry_the_chases_own_log_spread() -> None:
     reference = S.simulate_match(team1, team2, CONTEXT, 300, 0, True, S.SimulatorCalibration(0.9))
     expected = np.log(np.maximum(reference.team2.untruncated_total, 1.0)).std()
     assert draws.chase_log_sd[0] == pytest.approx(expected)
+
+
+# --- the chase's dispersion, correlated with the first innings (plan §8.15) --------------
+
+
+def _correlated_world(
+    n: int, factor_log_sd: float, first_log_sd: float, chase_log_sd: float, extra_slope: float, extra_log_sd: float
+) -> tuple[S.SharedFactor, S.ChaseCalibrationSample]:
+    """A calibration fold whose chases carry, beyond the control simulator, a sensitivity
+    ``extra_slope`` to the first innings' realised residual and ``extra_log_sd`` of their own
+    spread: exactly what ``fit_correlated_chase_dispersion`` is meant to read back."""
+    rng = np.random.default_rng(0)
+    pitch = rng.normal(0.0, factor_log_sd, n)
+    first_residual = pitch + rng.normal(0.0, first_log_sd, n)
+    chase_residual = (
+        pitch + rng.normal(0.0, chase_log_sd, n) + extra_slope * first_residual + rng.normal(0.0, extra_log_sd, n)
+    )
+    first_mean, chase_mean = np.full(n, 160.0), np.full(n, 158.0)
+    actual_first = first_mean * np.exp(first_residual)
+    untruncated_chase = chase_mean * np.exp(chase_residual)
+    target = actual_first + 1.0
+    won = untruncated_chase >= target
+    factor = S.fit_shared_factor(
+        S.SharedFactorCalibrationSample(
+            np.arange(n).astype(object), actual_first, first_mean, first_mean * first_log_sd
+        )
+    )
+    sample = S.chase_calibration_sample(
+        actual_first, np.where(won, target, untruncated_chase), won, chase_mean, np.full(n, chase_log_sd), factor.factors
+    )
+    return factor, sample
+
+
+def test_fit_correlated_chase_dispersion_reads_back_what_the_control_is_missing() -> None:
+    factor, sample = _correlated_world(
+        4000, factor_log_sd=0.12, first_log_sd=0.10, chase_log_sd=0.11, extra_slope=0.6, extra_log_sd=0.15
+    )
+
+    fitted = S.fit_correlated_chase_dispersion(factor, sample)
+
+    # The control's own regression of the chase on the first innings: the shared factor is
+    # all they have in common, so its share of the first innings' variance is the slope.
+    assert fitted.model_slope == pytest.approx(0.12**2 / (0.12**2 + 0.10**2), abs=0.02)
+    assert fitted.first_innings_slope == pytest.approx(0.6, abs=0.08)
+    assert fitted.independent_log_sd == pytest.approx(0.15, abs=0.03)
+    assert fitted.n_matches == 4000 and fitted.n_won == int(sample.censored.sum())
+
+
+def test_a_chase_the_control_already_matches_gets_no_correlated_term() -> None:
+    factor, sample = _correlated_world(
+        3000, factor_log_sd=0.12, first_log_sd=0.10, chase_log_sd=0.11, extra_slope=0.0, extra_log_sd=0.0
+    )
+
+    fitted = S.fit_correlated_chase_dispersion(factor, sample)
+
+    assert fitted.first_innings_slope == pytest.approx(0.0, abs=0.08)
+    assert fitted.independent_log_sd == pytest.approx(0.0, abs=0.03)
+
+
+def test_the_correlated_fit_refuses_a_sample_that_is_not_the_factors_matches() -> None:
+    factor, sample = _correlated_world(
+        60, factor_log_sd=0.12, first_log_sd=0.10, chase_log_sd=0.11, extra_slope=0.2, extra_log_sd=0.05
+    )
+    shorter = S.ChaseCalibrationSample(
+        sample.difficulty[:50], sample.response[:50], sample.censored[:50], sample.simulated_log_sd[:50]
+    )
+
+    with pytest.raises(ValueError, match="the fits read the same matches"):
+        S.fit_correlated_chase_dispersion(factor, shorter)
+
+
+def test_the_correlated_term_is_mean_one_and_moves_with_the_first_innings() -> None:
+    term = S.CorrelatedChaseDispersion(0.8, 0.10, 1.20, 0.40, 0.25, 0.20, 500, 240)
+    totals = _first_innings_totals(200_000)
+
+    factors = term.sample(np.random.default_rng(0), totals)
+
+    assert factors.mean() == pytest.approx(1.0, abs=0.005)
+    assert np.corrcoef(np.log(factors), np.log(totals))[0, 1] == pytest.approx(0.77, abs=0.03)
+
+
+def test_a_correlated_term_with_no_coefficients_is_todays_simulator() -> None:
+    term = S.CorrelatedChaseDispersion(0.0, 0.0, 0.4, 0.4, 0.2, 0.2, 500, 240)
+
+    np.testing.assert_array_equal(term.sample(np.random.default_rng(0), _first_innings_totals(100)), np.ones(100))
+
+
+def test_the_correlated_term_widens_the_chase_and_the_margin_by_less_than_an_independent_one() -> None:
+    team1, team2 = _teams()
+    pool = S.SharedFactor(np.linspace(0.8, 1.2, 60), 60, 0.02, 0.01, 0.7, _calibration_sample(60))
+    control = S.simulate_match(team1, team2, CONTEXT, 4000, 0, True, S.SimulatorCalibration(0.9, pool))
+    slope = 0.8
+    # An independent term scaled to the same log spread the correlated one takes from the
+    # first innings: the comparison is between two ways of widening the chase by about as
+    # much, and the difference is only whether the widening moves with the first innings.
+    matched = slope * float(np.log(np.maximum(control.team1.total, 1.0)).std())
+
+    correlated = S.simulate_match(
+        team1, team2, CONTEXT, 4000, 0, True,
+        S.SimulatorCalibration(0.9, pool, None, S.CorrelatedChaseDispersion(slope, 0.0, 0.0, 0.0, 0.0, 0.0, 60, 30)),
+    )
+    independent = S.simulate_match(
+        team1, team2, CONTEXT, 4000, 0, True,
+        S.SimulatorCalibration(0.9, pool, None, S.ChaseDispersion(0.0, 0.0, matched, 60, 30)),
+    )
+
+    # The first innings is drawn before the chase from the same stream: bit-identical.
+    np.testing.assert_array_equal(control.team1.total, correlated.team1.total)
+    chase_spread = {
+        arm: draws.team2.untruncated_total.std()
+        for arm, draws in (("control", control), ("correlated", correlated), ("independent", independent))
+    }
+    margin_spread = {
+        arm: (draws.team2.untruncated_total - draws.team1.total).std()
+        for arm, draws in (("control", control), ("correlated", correlated), ("independent", independent))
+    }
+    assert chase_spread["correlated"] > chase_spread["control"] * 1.2
+    assert chase_spread["correlated"] > chase_spread["independent"]
+    # The point of the design: it widens the chase by more and the margin by less, because
+    # the extra spread is shared with the innings the margin subtracts.
+    assert margin_spread["correlated"] < margin_spread["independent"]
+    assert margin_spread["correlated"] < margin_spread["control"]
+
+
+def test_the_correlated_term_is_reported_beside_the_shared_factor() -> None:
+    term = S.CorrelatedChaseDispersion(0.55, 0.15, 1.15, 0.60, 0.20, 0.13, 500, 240)
+
+    reported = S.SimulatorCalibration(0.9, None, None, term).as_dict()
+
+    assert reported["chase_dispersion"] == {
+        "first_innings_slope": 0.55,
+        "independent_log_sd": 0.15,
+        "data_slope": 1.15,
+        "model_slope": 0.60,
+        "data_residual_log_sd": 0.20,
+        "model_residual_log_sd": 0.13,
+        "n_matches": 500,
+        "n_won": 240,
+    }
 
 
 def test_carrying_the_calibration_sample_changes_no_draw() -> None:

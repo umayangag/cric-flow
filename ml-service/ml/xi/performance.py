@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -121,10 +121,10 @@ class FitSpec:
     # ``simulator.CHASE_RESPONSE_ARMS``); needs the shared factor, whose per-match factors
     # take the pitch out of the difficulty.
     chase_response: str = "none"
-    # Whether the chasing innings carries its own dispersion term beside the shared factor
-    # (B-11, plan §8.14); it reads the same per-match factors, so it needs the shared factor
-    # for the same reason the response does.
-    chase_dispersion: bool = False
+    # Which dispersion term the chasing innings carries beside the shared factor (B-11, plan
+    # §8.14 and §8.15, ``simulator.CHASE_DISPERSION_ARMS``); every arm reads the same
+    # per-match factors, so it needs the shared factor for the same reason the response does.
+    chase_dispersion: str = "none"
 
     def as_dict(self) -> Dict:
         return {
@@ -171,7 +171,7 @@ def default_spec(
     shared_factor: Optional[bool] = None,
     fixture_context_families: Tuple[str, ...] = C.FIXTURE_CONTEXT_FAMILIES_KEPT,
     chase_response: Optional[str] = None,
-    chase_dispersion: Optional[bool] = None,
+    chase_dispersion: Optional[str] = None,
     age: bool = C.AGE_FEATURES_KEPT,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
@@ -188,7 +188,7 @@ def default_spec(
         fixture_context_families=tuple(fixture_context_families),
         age=bool(age),
         chase_response=simulator.CHASE_RESPONSE if chase_response is None else chase_response,
-        chase_dispersion=simulator.CHASE_DISPERSION if chase_dispersion is None else bool(chase_dispersion),
+        chase_dispersion=simulator.CHASE_DISPERSION if chase_dispersion is None else chase_dispersion,
     )
 
 
@@ -443,8 +443,17 @@ class FoldCalibration:
 
     shared_factor: Optional[simulator.SharedFactor] = None
     chase_response: Optional[simulator.ChaseResponse] = None
-    chase_dispersion: Optional[simulator.ChaseDispersion] = None
+    chase_dispersion: Optional[simulator.ChaseDispersionTerm] = None
     chase_sample: Optional[simulator.ChaseCalibrationSample] = None
+
+
+#: What each ``simulator.CHASE_DISPERSION_ARMS`` arm fits from the calibration fold. Both take
+#: the fold's shared factor and its chase sample; §8.14's independent term needs only the
+#: latter, §8.15's correlated one reads the first innings' residuals off the former.
+CHASE_DISPERSION_FITTERS: Mapping[str, Callable[[simulator.SharedFactor, simulator.ChaseCalibrationSample], Any]] = {
+    "independent": lambda shared_factor, sample: simulator.fit_chase_dispersion(sample),
+    "correlated": simulator.fit_correlated_chase_dispersion,
+}
 
 
 def _fit_simulator_calibration(
@@ -452,7 +461,7 @@ def _fit_simulator_calibration(
     calibration_rows: pd.DataFrame,
     match_frame: pd.DataFrame,
     chase_response: str,
-    chase_dispersion: bool,
+    chase_dispersion: str,
 ) -> FoldCalibration:
     """The simulator's fold-fitted parts from the calibration fold's complete first innings
     (plan P-4, §8.10 and §8.14): fixtures the members did not train on, simulated toss-known
@@ -505,17 +514,15 @@ def _fit_simulator_calibration(
             response.sigma,
         )
         fold = replace(fold, chase_response=response)
-    if chase_dispersion:
-        dispersion = simulator.fit_chase_dispersion(sample)
+    fitter = CHASE_DISPERSION_FITTERS.get(chase_dispersion)
+    if fitter is not None:
+        dispersion = fitter(shared_factor, sample)
         logger.info(
-            "%s: chase dispersion on %d calibration chases (%d won): fitted log sd %.3f against the draws' own "
-            "%.3f, excess %.3f",
+            "%s: chase dispersion (%s) on %d calibration chases: %s",
             model.format_code,
-            dispersion.n_matches,
-            dispersion.n_won,
-            dispersion.fitted_log_sd,
-            dispersion.simulated_log_sd,
-            dispersion.excess_log_sd,
+            chase_dispersion,
+            len(sample),
+            dispersion.as_dict(),
         )
         fold = replace(fold, chase_dispersion=dispersion)
     return fold
@@ -536,7 +543,12 @@ def fit_performance(
         raise ValueError(f"{format_code}: the shared match factor needs the match frame")
     if spec.chase_response != "none" and not spec.shared_factor:
         raise ValueError(f"{format_code}: the chase response needs the shared match factor")
-    if spec.chase_dispersion and not spec.shared_factor:
+    if spec.chase_dispersion not in simulator.CHASE_DISPERSION_ARMS:
+        raise ValueError(
+            f"{format_code}: unknown chase dispersion arm {spec.chase_dispersion!r}; "
+            f"one of {simulator.CHASE_DISPERSION_ARMS}"
+        )
+    if spec.chase_dispersion != "none" and not spec.shared_factor:
         raise ValueError(f"{format_code}: the chase dispersion needs the shared match factor")
     started = time.perf_counter()
     hold_out = bool(spec.recalibrate) or spec.shared_factor
