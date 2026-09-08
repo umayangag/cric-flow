@@ -2925,6 +2925,148 @@ unchanged by construction rather than by comparison. §8.13 made the same call f
 reason; B-7, which did re-run it twice and compare field by field, had changed a *reported*
 number.
 
+### 8.15 The chase's dispersion, correlated with the first innings (B-11, 2026-09-08)
+
+The continuation of §8.14, whose *mechanism* is this section's premise. An **experiment**, on
+the same terms — the folds decide, a null is a complete result, nothing ships that has not
+cleared its gate. The evidence, the design, the leakage surface, the feasibility probe and
+both H-23 triples come first; the triples were registered in `ml/xi/gates.py` (commit
+`eb38f37c`) and printed by the script before anything ran, and nothing above *Results* was
+edited once a number existed.
+
+**What §8.13 and §8.14 established, and is not re-derived here.** One dispersion is fitted to
+two populations: T20 first-innings 10–90 coverage **0.734 by day against 0.841 at night** at
+nominal 0.80, width 78.4 / 96.3, dispersion ratio 1.099 / 0.865; the chase reads 0.689 /
+0.759 with dispersion ratios 1.180 / 1.037, under-covered in both. §8.13's two candidates
+moved the *shared* factor and failed because one factor cannot correct two innings that miss
+in opposite directions. §8.14 gave the chase a dispersion term the two innings do **not**
+share and came much closer — seven of eight cells moved toward nominal, the night-chase
+clause that had failed at +0.083 ± 0.015 missed by +0.0121 ± 0.0205, the chase's tails reached
+0.084 / 0.097, both nominal, with no level fitted — and failed on the signed
+`e2_not_degraded` at **+0.0043 ± 0.0013**, three standard errors. That failure has a
+mechanism, and it is the whole reason this section exists: the term was drawn **independently**
+of everything else, so all of its variance landed in the *margin*, and the margin decides the
+match, so the simulated P(win) moved toward 0.5. Interval calibration bought with probability
+calibration.
+
+**The hypothesis.** If the chase's missing spread were drawn so that it **moved with the first
+innings' realised residual** instead of independently of it, the two *totals* could carry the
+extra dispersion while their *difference* carried less of it — because what the two innings
+share cancels in the margin, exactly as the shared match factor already does. Whether the data
+offers a correlation of that sign and size is the experiment.
+
+**The candidate, designed from the code rather than from the phrase.** What
+`fit_shared_factor`, `ChaseDispersion` and `simulate_match`'s draw order actually do settles
+the rest:
+
+> Every chase draw's runs are multiplied by
+> `g = exp(slope · (ln T1 − the draws' mean ln T1) + independent_log_sd · z − half the
+> variance)`, with `T1` the first innings' **realised** total in that same draw. The centring
+> on the draws' own mean makes the term mean one *per fixture*, so it adds spread and no
+> level (A-2 gated the chase level and recorded a null, and §8.14's judgment call (2) asked
+> the same of any successor). `simulator.CorrelatedChaseDispersion`, fitted by
+> `simulator.fit_correlated_chase_dispersion`, applied in `batting_innings` before the target
+> truncation, and off under `simulator.CHASE_DISPERSION` until a gate says otherwise.
+
+Both coefficients are a **difference between what the data says and what the control already
+produces**, on the log scale and against the chase's **own** expectation — never the first
+innings' shrunk factor, which §8.14 named as the reason its own magnitude was over-stated:
+
+* the censored (Tobit) regression of the calibration fold's chase residual
+  `ln(chase / its own expected total)` on the first innings' residual
+  `ln(first / its own expected total)`, right-censored at the target, gives `data_slope` and
+  `data_residual_log_sd`. Multiplying the expectation back by the factor adds `ln factor` to
+  both the response and its censoring threshold, so their difference — and therefore the
+  censoring — is untouched, and the pitch becomes a thing to be explained rather than
+  something already divided out.
+* the control's own slope and residual scale are **composed from its parts** rather than
+  simulated again: the shared factor is the only thing the two innings have in common, so with
+  `Vf` its log variance and `V1`, `V2` each innings' model log variance (`Vf` plus that
+  innings' own draw spread, from the calibration draws the fold already holds), the control
+  regresses at `Vf / V1` with residual variance `V2 − Vf² / V1`.
+* `slope = data_slope − model_slope` and `independent_log_sd² = data residual variance −
+  model residual variance` then reproduce the data's regression **exactly**: adding
+  `slope · (ln T1 − mean)` moves the model's slope by exactly `slope` and leaves its residual
+  variance untouched (the algebra is in the class's docstring and is checked by a unit test
+  on a synthetic fold), and the independent part supplies what is left.
+
+Three alternatives were considered and rejected, each for a reason in the code:
+
+* **A correlation parameter ρ on a term of fixed spread** (`ρ` times a standardised first
+  innings, `√(1−ρ²)` times noise). Rejected: it is the same two degrees of freedom in a
+  parameterisation whose pieces do not map onto anything the fit can read separately, and it
+  needs the first innings' spread stored to standardise by. The regression pair (`slope`,
+  `independent_log_sd`) is what a censored regression *returns*, each piece is separately
+  clippable at zero, and each names something — "how much more the chase moves with the first
+  innings than the control has it" and "how much spread is left over".
+* **A bivariate draw of the two innings' factors**, replacing the shared factor with a
+  correlated pair. Rejected: it re-opens `SHARED_FACTOR`, which E2 decided in P-4 and which
+  §8.13 has already gated twice, and it cannot be composed with §8.13's population lever the
+  way a chase-side multiplier can. The composition is what gives this pass an arm that can
+  move both innings.
+* **Clipping the fitted slope at zero** so the term can only ever be a positive correlation.
+  Rejected as fitting the conclusion: the sign is the experiment's answer, not its premise,
+  and a slope the data puts on the other side of zero is exactly the finding a gate is for.
+  It is recorded per fold instead.
+
+**The arms.** As in §8.14 the chase-side term cannot move a first-innings clause at all — the
+first innings' draws are taken from the same stream before the chase's — so a gate that
+requires both innings needs the composed arm:
+
+* **`corr` (SIM-IN-corr)** — the correlated term on the control's pooled shared factor, the
+  **isolating arm**, registered as one. Its first-innings clauses cannot pass.
+* **`corrboth` (SIM-IN-corrboth)** — that same term composed with §8.13's `SIM-DN-scale` rule
+  for the shared factor (15-match floor per population, imported from `daynight_dispersion.py`
+  rather than reimplemented).
+* **`chase`** — §8.14's independent term, **re-run as a reference arm and not re-gated**: its
+  verdict is recorded in §8.14, and it is here only so that the two ways of widening the chase
+  are paired draw for draw against one control. This is the comparison the hypothesis is
+  about, and running it beside the candidates costs one arm of a pass that was being run
+  anyway.
+
+**The gate, and its signs.** Unchanged from §8.14, deliberately, so the two candidates are
+comparable: coverage must move toward nominal in **both populations and both innings**
+separately, and the dispersion ratio toward 1.0 in the same four cells — eight clauses, paired
+per fold with one fold-level standard error as the effect-size floor (§8.9's lesson). H-22 with
+the sign each innings needs: the match-count-pooled **first-innings** width may not grow by
+more than 1 %, while the **chase** has no width cap because its correction *is* a widening and
+the guard against buying its coverage with width is its own dispersion clause. Width is printed
+beside coverage in every cell either way. And `e2_not_degraded` keeps §8.14's sign — it fails
+only if Brier(simulated) − Brier(display) *grows* by more than one fold-level standard error or
+leaves its 0.01 tolerance — because **it is the clause this candidate exists to pass**, and a
+symmetric clause would not distinguish the improvement this design predicts from the
+degradation it is trying to undo.
+
+**The leakage surface (H-21).** One thing enters that did not before: the chase's multiplier
+reads the first innings' realised total. Within a simulated match that is **not** future
+information — `simulate_match` plays the first innings to completion and hands its total to the
+chase as the target, and the term is read at exactly that point in `batting_innings`, from
+`target − 1`, before the chase's own draws are truncated. Nothing about the *fixture* is read:
+the coefficients are fitted on the calibration fold — the last 92 days of the training rows,
+which the members do not train on and which all precede the cutoff — and are one pair of
+numbers per fold applied to every fixture of that fold. The day/night label, for the
+`corrboth` arm only, is §8.13's inference from documented competition and format start-time
+norms, with the same limitation stated there: it is an inference, not a record.
+
+**The feasibility probe, run before the arms and recorded here.** `--probe` counts, per fold
+and without fitting anything, what each arm needs, by calling the fit's own selection
+functions. Both dispersion arms need the same things §8.14's did — both populations over the
+harness's 20-match evaluation floor, at least 30 complete first innings in the calibration
+fold with at least two **lost** chases among them — so the table is §8.14's, and the run
+reproduced its `probe.json` **byte for byte**:
+
+| format | folds | can decide `corr` | can decide `corrboth` |
+|---|---:|---:|---:|
+| **T20** | 11 | **11** | **11** |
+| T20I | 11 | 4 | 1 |
+| ODI | 11 | 2 | 0 |
+
+**T20 decides both arms on every one of its eleven folds. ODI and T20I decide neither and are
+reported.** That is stated before any arm ran, and it is why this section reports ODI rather
+than deciding on it.
+
+#### Results
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not
