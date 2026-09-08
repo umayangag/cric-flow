@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
 import {
+  AUCTION_METRIC_KEYS,
+  AUCTION_PLAYER_STATES,
   FORECAST_SOURCES,
   FRESHNESS_STATUSES,
   POOL_EXCLUSION_REASONS,
@@ -71,6 +73,9 @@ type Contract = {
   prediction_states: string[];
   simulator_populations: string[];
   track_record_metric_keys: string[];
+  /** The auction record's player states and its L-1 keys (H-24, P3-1). */
+  auction_player_states: string[];
+  auction_metric_keys: string[];
 };
 
 const contract: Contract = JSON.parse(
@@ -320,5 +325,66 @@ describe('ops console contract', () => {
       }
     }
     expect([...used].sort()).toEqual([...contract.track_record_metric_keys].sort());
+  });
+
+  /**
+   * The auction's player states are the contract's too (H-24, P3-1).
+   *
+   * go-app writes them, the database's CHECK constraint holds them and the Auction tab
+   * renders each as a chip. A state the UI could not spell would be a player perfectly
+   * present on the wire and missing from every count on screen.
+   */
+  it('spells the auction player states the way the backend does', () => {
+    expect([...AUCTION_PLAYER_STATES]).toEqual(contract.auction_player_states);
+  });
+
+  it('labels the auction tab’s numbers under exactly the glossary keys the contract declares', () => {
+    // ml-service's completeness gate asserts every key here has a glossary entry; this
+    // side asserts the tab renders no key outside the list, so a count cannot reach the
+    // surface without an explainer behind it (L-1). The two explainers are where "batter
+    // by elimination" is defined and where the overlap between the keeper and
+    // bowling-option counts is stated.
+    expect([...AUCTION_METRIC_KEYS]).toEqual(contract.auction_metric_keys);
+    const tabSources = productionSources(join(frontendSrc, 'components')).filter((file) =>
+      file.includes('Auction'),
+    );
+    expect(tabSources.length).toBeGreaterThan(0);
+    const used = new Set<string>();
+    for (const file of tabSources) {
+      for (const match of readFileSync(file, 'utf8').matchAll(/metricKey="([a-z0-9_]+)"/g)) {
+        used.add(match[1]);
+      }
+    }
+    expect([...used].sort()).toEqual([...contract.auction_metric_keys].sort());
+  });
+
+  /**
+   * The never-XI-picking rule, asserted against the sources (P3-1, plan §8.8).
+   *
+   * The record is that optimised selection in domestic T20 is indistinguishable from
+   * rating order, and the IPL is domestic T20 — so no auction surface may reach
+   * `/xi/optimize`, or read a win probability or a marginal value off a payload. go-app
+   * asserts the same rule through its client; this is that rule where the requests are
+   * built, so a field cannot be rendered here that no endpoint of this module returns.
+   */
+  it('builds no auction request or field that would be a selection', () => {
+    const forbidden = ['xi/optimize', 'win_probability', 'marginal_value'];
+    const offenders: string[] = [];
+    const auctionSources = [
+      ...productionSources(join(frontendSrc, 'components')).filter((file) =>
+        file.includes('Auction'),
+      ),
+      ...productionSources(join(frontendSrc, 'hooks')).filter((file) =>
+        file.includes('useAuction'),
+      ),
+    ];
+    expect(auctionSources.length).toBeGreaterThan(0);
+    for (const file of auctionSources) {
+      const text = readFileSync(file, 'utf8');
+      for (const term of forbidden) {
+        if (text.includes(term)) offenders.push(`${file.slice(repoRoot.length + 1)}: ${term}`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

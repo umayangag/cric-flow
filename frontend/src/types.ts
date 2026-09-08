@@ -456,6 +456,155 @@ export const TRACK_RECORD_METRIC_KEYS = [
   'eleven_overlap',
 ] as const;
 
+/**
+ * The auction record (P3-1).
+ *
+ * A player is in exactly one of three states, and the vocabulary is the contract's: go-app
+ * writes it, the database's CHECK constraint holds it and this tab renders it. A state the
+ * UI could not spell would be a player on the wire and missing from every count on screen.
+ */
+export const AUCTION_PLAYER_STATES = ['available', 'sold', 'unsold'] as const;
+export type AuctionPlayerState = (typeof AUCTION_PLAYER_STATES)[number];
+
+/** The L-1 keys the Auction tab labels its numbers under; the contract holds the same list. */
+export const AUCTION_METRIC_KEYS = ['auction_open_slots', 'auction_available_by_role'] as const;
+
+/**
+ * What the served rating vectors say about one listed player.
+ *
+ * `known: false` is the served state having never seen him — his `roles` are then empty
+ * and mean nothing, and the surface must show him as unknown rather than as a batter. A
+ * known player with no roles is a batter *by elimination*: the system has measured no
+ * other role vocabulary, and the glossary entry says so.
+ *
+ * The whole object is absent where the role read was refused, which is a third thing again
+ * — the model was never asked.
+ */
+export type AuctionPlayerRoles = {
+  known: boolean;
+  roles: SelectionRole[];
+};
+
+/** One player on an auction list, as the record holds him. */
+export type AuctionListedPlayer = {
+  player_id: number;
+  player_name: string;
+  state: AuctionPlayerState;
+  /** The buying franchise as the operator typed it; present on a sold row only. */
+  buyer_name?: string;
+  /** That buyer as a club id, where the buyer is a side this database knows. */
+  buyer_club_id?: number;
+  /** What was paid, in the auction room's own unit. No currency is implied. */
+  price?: number;
+  state_changed_at: string;
+  roles?: AuctionPlayerRoles;
+};
+
+/** The side an auction is filling a squad for. */
+export type AuctionBuyer = { club_id: number; name: string };
+
+/** The auction as the operator entered it, and nothing derived. */
+export type AuctionRecord = {
+  id: string;
+  name: string;
+  format: string;
+  created_at: string;
+  buyer: AuctionBuyer;
+  venue_ids: number[];
+  squad_size: number;
+  min_bowlers: number;
+  require_keeper: boolean;
+  players: AuctionListedPlayer[];
+};
+
+/** One auction on the index an operator finds theirs from after a reload. */
+export type AuctionSummary = {
+  id: string;
+  name: string;
+  format: string;
+  created_at: string;
+  buyer: AuctionBuyer;
+  squad_size: number;
+};
+
+/** What the buyer has bought. */
+export type AuctionSquad = {
+  size: number;
+  player_ids: number[];
+  players: AuctionListedPlayer[];
+};
+
+/** The open places read through the eleven's constraints; absent when the roles were refused. */
+export type AuctionSlotsByRole = {
+  keepers: number;
+  bowling_options: number;
+  keeper_needed: boolean;
+  min_bowlers: number;
+  bowling_options_short: number;
+  unknown_roles: number;
+};
+
+export type AuctionSlots = {
+  squad_size: number;
+  filled: number;
+  open: number;
+  by_role?: AuctionSlotsByRole;
+};
+
+/**
+ * The remaining pool by role.
+ *
+ * `keepers` and `bowling_options` overlap: they are two independent predicates and not a
+ * partition, so a keeper who also bowls is in both. Only `batters` and `unknown` are
+ * exclusive of everything else.
+ */
+export type AuctionDistribution = {
+  available: number;
+  keepers: number;
+  bowling_options: number;
+  batters: number;
+  unknown: number;
+};
+
+/**
+ * Whether the role read happened, and either what served it or why it did not (§8.7).
+ *
+ * A refused read leaves the record whole — it is facts the operator typed and needs no
+ * model to be read back — and every number that comes off the model absent, with the code
+ * ml-service refused under.
+ */
+export type AuctionRolesBlock = {
+  available: boolean;
+  run_id?: string;
+  ratings_through?: string;
+  code?: string;
+  message?: string;
+  hint?: string;
+};
+
+/** An auction as it now stands: every read and every write answers with this. */
+export type AuctionResponse = {
+  auction: AuctionRecord;
+  squad: AuctionSquad;
+  slots: AuctionSlots;
+  distribution?: AuctionDistribution;
+  roles: AuctionRolesBlock;
+};
+
+/** One player a cross-club name search found. */
+export type PlayerSearchResult = {
+  player_id: number;
+  player_name: string;
+  /** `player.is_wicket_keeper` — the database's name-set flag, and not the model's role. */
+  is_wicket_keeper: boolean;
+  last_played?: string;
+  clubs: string[];
+  formats: string[];
+  excluded: boolean;
+  reason?: PoolExclusionReason;
+  detail?: string;
+};
+
 /** A Brier with the base rate beside it, over n scored predictions. Null over none. */
 export type TrackRecordWinScore = {
   n: number;

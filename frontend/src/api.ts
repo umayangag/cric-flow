@@ -24,6 +24,10 @@ import type {
   CandidatesResponse,
   PoolRequest,
   RetirementStatus,
+  AuctionPlayerState,
+  AuctionResponse,
+  AuctionSummary,
+  PlayerSearchResult,
 } from './types';
 import type { OpsStatusDTO } from './types';
 
@@ -501,5 +505,81 @@ export const api = {
   /** Withdraw a retirement flag, demoting the stored fact it had raised. */
   unflagRetirement(playerId: number): Promise<RetirementStatus> {
     return httpApi(`/api/players/${playerId}/retirement`, { method: 'DELETE' });
+  },
+
+  // --- The auction record (P3-1) ---
+  //
+  // Every write answers with the auction as it now stands, so nothing here merges a
+  // response into a local copy of the record: the answer *is* the record, and a client
+  // that patched its own would be one mistyped entry from showing a squad the backend
+  // does not hold. Nothing on these routes reaches /xi/optimize, returns a win probability
+  // or returns a marginal value — the module is valuation, never XI-picking (plan §8.8).
+
+  /** The index an operator finds an auction from after a reload. */
+  auctions(): Promise<{ auctions: AuctionSummary[] }> {
+    return httpApi('/api/auctions');
+  },
+
+  /** Set up an auction: its format, the buying side, the grounds and the squad to fill. */
+  createAuction(body: {
+    name: string;
+    format: string;
+    buyer_club_id: number;
+    venue_ids?: number[];
+    squad_size: number;
+    min_bowlers?: number;
+    require_keeper?: boolean;
+  }): Promise<AuctionResponse> {
+    return httpApi('/api/auctions', { method: 'POST', body: JSON.stringify(body) });
+  },
+
+  /** One auction whole, with the roles read off the served vectors. */
+  auction(auctionId: string): Promise<AuctionResponse> {
+    return httpApi(`/api/auctions/${auctionId}`);
+  },
+
+  /** List players onto the auction. A player already listed keeps the state he is in. */
+  addAuctionPlayers(auctionId: string, playerIds: number[]): Promise<AuctionResponse> {
+    return httpApi(`/api/auctions/${auctionId}/players`, {
+      method: 'POST',
+      body: JSON.stringify({ player_ids: playerIds }),
+    });
+  },
+
+  /**
+   * Record what the room did: a sale with its buyer and price, an unsold result, or an
+   * undo back to available. The undo is the same call with the available state, because
+   * the operator mistyped and the record now says he is available again.
+   */
+  recordAuctionOutcome(
+    auctionId: string,
+    outcome: {
+      player_id: number;
+      state: AuctionPlayerState;
+      buyer_name?: string;
+      buyer_club_id?: number;
+      price?: number;
+    },
+  ): Promise<AuctionResponse> {
+    return httpApi(`/api/auctions/${auctionId}/outcomes`, {
+      method: 'POST',
+      body: JSON.stringify(outcome),
+    });
+  },
+
+  /**
+   * The cross-club player search an auction list is built from.
+   *
+   * `getCandidates` is per club because a prediction is about one side; an auction room is
+   * not one side.
+   */
+  searchPlayers(params: { q: string; format?: string; limit?: number }): Promise<{
+    players: PlayerSearchResult[];
+  }> {
+    const url = new URL('/api/players/search', BASE_API_URL);
+    url.searchParams.set('q', params.q);
+    if (params.format) url.searchParams.set('format', params.format);
+    if (params.limit) url.searchParams.set('limit', String(params.limit));
+    return httpApi(url.toString());
   },
 };
