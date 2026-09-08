@@ -367,7 +367,7 @@ func applyMatchForecast(
 	xi1, xi2 []string,
 	result *Result,
 ) error {
-	if formatHasInningsLength(fix.format) {
+	if FormatHasInningsLength(fix.format) {
 		return applyXISimulation(ctx, service, fix, xi1, xi2, result)
 	}
 	// A named toss cannot be honoured without an innings to bat in, and the response says

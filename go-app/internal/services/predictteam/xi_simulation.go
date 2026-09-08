@@ -101,7 +101,14 @@ func WinProbabilitySources() []string {
 
 // simulatedFormats are the formats with an innings length; the simulator runs for these
 // only (TEST has no innings to draw, plan H-17). Mirrors ml.xi.simulator.SIMULATED_FORMATS.
-var simulatedFormats = map[string]bool{"T20": true, "T20I": true, "ODI": true}
+//
+// The order is the one a caller offers them in, so the list and the lookup are one
+// declaration: a format added to the slice is a format the lookup accepts.
+var simulatedFormats = []string{"T20", "T20I", "ODI"}
+
+// SimulatedFormatCodes returns the formats the simulator serves, for a caller that has to
+// offer them rather than test one.
+func SimulatedFormatCodes() []string { return append([]string(nil), simulatedFormats...) }
 
 // Forecast sources, mirroring predictteam.ForecastSummary.Source.
 const (
@@ -115,9 +122,15 @@ func ForecastSources() []string {
 	return []string{forecastSourceSimulator, forecastSourceQuantiles}
 }
 
-// formatHasInningsLength reports whether the simulator runs for the format.
-func formatHasInningsLength(format string) bool {
-	return simulatedFormats[NormalizeFormat(format)]
+// FormatHasInningsLength reports whether the simulator runs for the format.
+func FormatHasInningsLength(format string) bool {
+	normalized := NormalizeFormat(format)
+	for _, code := range simulatedFormats {
+		if code == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 // applyXISimulation fills the scorecard, the per-player points and their ranges from one

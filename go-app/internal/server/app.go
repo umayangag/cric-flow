@@ -5,6 +5,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/umayangag/cric-flow/go-app/internal/auction"
 	"github.com/umayangag/cric-flow/go-app/internal/predictions"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
@@ -28,7 +29,12 @@ type App struct {
 	// matchLookupStore is the track record's view of the match tables (P2-4), on the
 	// same terms: nil is the database, tests set a fake.
 	matchLookupStore trackrecord.MatchLookup
-	jobContext       context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	// auctionStore is the auction record (P3-1), on the same terms again. One store and
+	// not two halves: unlike a prediction, an auction is edited all the way through — the
+	// operator lists, sells, and undoes a mistyped sale — so there is no read-only
+	// capability to hand out separately.
+	auctionStore auction.Store
+	jobContext   context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// jobCancels holds one cancel func per lane, for the job running in that lane.
 	//

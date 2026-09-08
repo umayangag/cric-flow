@@ -82,6 +82,13 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/options/candidates", a.candidatesHandler).
 		Methods(http.MethodGet, http.MethodOptions)
 
+	// The cross-club player search (P3-1). It is not an options route: the candidate
+	// list above is per club because a prediction is about one side, and an auction room
+	// is not one side. Registered before /players/{id} so a search is not read as a
+	// lookup of a player called "search".
+	admin.HandleFunc("/api/players/search", a.searchPlayersHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+
 	// Domain queries
 	admin.HandleFunc("/players/{id}", getPlayerHandler).Methods(http.MethodGet, http.MethodOptions)
 	// The retirement ledger: a user's claim that a player has retired, and its
@@ -109,6 +116,25 @@ func NewRouter(a *App) http.Handler {
 	// every read -- no column, no step, no scheduler. Misses included.
 	admin.HandleFunc("/api/track-record", a.trackRecordHandler).
 		Methods(http.MethodGet, http.MethodOptions)
+
+	// The auction record (P3-1): facts the operator enters as a live auction runs, and
+	// the remaining pool's distribution by the model's two role predicates. Every write
+	// answers with the auction as it now stands, because that is what the next decision
+	// is made against. Nothing on these routes reaches /xi/optimize, and nothing on them
+	// returns a win probability or a marginal value: in T20 this system has not shown it
+	// can choose an eleven better than rating order (plan §8.8), and the module does not
+	// try to. The listing is registered before the by-id route so gorilla/mux matches the
+	// bare path against it rather than treating an empty id as a lookup.
+	admin.HandleFunc("/api/auctions", a.listAuctionsHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/auctions", a.createAuctionHandler).
+		Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/api/auctions/{id}", a.getAuctionHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/auctions/{id}/players", a.addAuctionPlayersHandler).
+		Methods(http.MethodPost, http.MethodOptions)
+	admin.HandleFunc("/api/auctions/{id}/outcomes", a.recordAuctionOutcomeHandler).
+		Methods(http.MethodPost, http.MethodOptions)
 
 	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
 	// flow scored the batting / bowling / fielding models and went with them (P-5).

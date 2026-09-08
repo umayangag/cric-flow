@@ -42,6 +42,7 @@ func seedPredictFixture(t *testing.T) predictFixture {
 	_, file, _, _ := runtime.Caller(0)
 	require.NoError(t, db.RunMigrations(ctx, filepath.Clean(filepath.Join(filepath.Dir(file), "../../migrations"))))
 	require.NoError(t, db.Exec(ctx, `TRUNCATE TABLE
+		auction_player, auction_venue, auction,
 		issued_prediction,
 		player_status_event, player_status, player_biography,
 		ball_event, match_player, batting_data, bowling_data,

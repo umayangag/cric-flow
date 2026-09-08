@@ -173,7 +173,7 @@ func (o Outcome) Validate() error {
 		return nil
 	}
 	if strings.TrimSpace(o.BuyerName) != "" || o.BuyerOppositionID != 0 || o.Price != nil {
-		return fmt.Errorf("a %s outcome carries no buyer and no price", o.State)
+		return fmt.Errorf("an outcome of %q carries no buyer and no price", o.State)
 	}
 	return nil
 }
