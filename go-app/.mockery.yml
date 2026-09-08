@@ -17,6 +17,12 @@ packages:
       pkgname: mocks
     interfaces:
       Store: {}
+  github.com/umayangag/cric-flow/go-app/internal/auction:
+    config:
+      dir: internal/auction/mocks
+      pkgname: mocks
+    interfaces:
+      Store: {}
   github.com/umayangag/cric-flow/go-app/internal/predictions:
     config:
       dir: internal/predictions/mocks

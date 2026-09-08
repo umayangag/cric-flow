@@ -282,7 +282,7 @@ func TestFormatHasInningsLength_OnlyLimitedOversFormatsAreSimulated(t *testing.T
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.want, formatHasInningsLength(tc.format))
+			assert.Equal(t, tc.want, FormatHasInningsLength(tc.format))
 		})
 	}
 }

@@ -28,8 +28,8 @@ from fastapi.testclient import TestClient
 from app import training_orchestrator, xi_service
 from ml.xi import contract as C
 from ml.xi import retrain
-from ml.xi.optimizer import SELECTION_ROLES
 from ml.xi.ratings import RatingState
+from ml.xi.roles import SELECTION_ROLES
 
 CONTRACT_PATH = Path(__file__).resolve().parents[2] / "contracts" / "ops-console.contract.json"
 
@@ -276,3 +276,32 @@ def test_every_track_record_metric_key_has_a_glossary_entry(contract: Dict[str, 
     assert keys, "the contract declares the track record's metric keys"
     assert glossary.check_metric_names(keys, "track record") == []
     assert all(key in glossary.REGISTRY for key in keys)
+
+
+def test_every_auction_metric_key_has_a_glossary_entry(contract: Dict[str, Any]) -> None:
+    """P3-1 / L-1: the Auction tab labels counts, not model measurements, but the rule is
+    the same — every labelled number opens an explainer served from this one glossary. The
+    band prose is where the counts say what they are not: not a selection, not a projection,
+    and overlapping rather than a partition."""
+    from ml.xi import glossary
+
+    keys = contract["auction_metric_keys"]
+
+    assert keys, "the contract declares the auction surface's metric keys"
+    assert glossary.check_metric_names(keys, "auction") == []
+    assert all(key in glossary.REGISTRY for key in keys)
+
+
+def test_the_auction_roles_are_the_selections_own_and_not_a_new_vocabulary(contract: Dict[str, Any]) -> None:
+    """The rule the item is built on: the auction module reads the objective's two role
+    predicates and invents none beside them. A third role appearing in the contract's
+    selection_roles because the auction wanted one would be exactly the drift
+    ``ml.xi.roles`` was extracted to prevent."""
+    assert contract["selection_roles"] == list(SELECTION_ROLES)
+
+
+def test_the_auction_player_states_are_the_three_an_auction_has(contract: Dict[str, Any]) -> None:
+    """H-24: the state vocabulary go-app writes, the database's CHECK constraint holds and
+    the Auction tab renders. Asserted here so a fourth state cannot reach the wire without
+    every side that matches on it being updated in the same commit."""
+    assert contract["auction_player_states"] == ["available", "sold", "unsold"]

@@ -22,6 +22,9 @@ from app.models.xi import (
     PerformancePredictResponse,
     PerformanceRange,
     PlayerPerformance,
+    PlayerRoles,
+    PlayerRolesRequest,
+    PlayerRolesResponse,
     PlayerSelectionReasonModel,
     RatingsFreshness,
     ServedRatings,
@@ -43,8 +46,8 @@ from app.models.xi import (
     XiWinResponse,
 )
 from ml.config import get_ratings_max_age_days
-from ml.xi import contract as C
 from ml.xi import glossary, runs, simulator
+from ml.xi import roles as R
 from ml.xi.asof import AsOfServer
 from ml.xi.evaluate import REPORT_NAME as EVALUATE_REPORT_NAME
 from ml.xi.optimizer import (
@@ -496,15 +499,16 @@ def _constraint_check(
     """Report whether an eleven meets its constraints, without changing it (P1-2).
 
     Only the counts are computed here; the rule that turns them into "broken" is the
-    caller's constraint, echoed back beside them. ``is_bowling_option`` and the keeper
-    flag come from the same contract and the same served vectors the optimiser reads, so
-    a chip that says "4 of 5 bowlers" is counting what the search would have counted.
+    caller's constraint, echoed back beside them. Both predicates come from ``ml.xi.roles``
+    -- the one definition the search enforces and the auction module reads -- over the same
+    served vectors, so a chip that says "4 of 5 bowlers" is counting what the search would
+    have counted.
     """
     if constraints is None:
         return None
     vectors = store.side_vectors(format_code, keys)
-    bowlers = int(sum(1 for balls in vectors["exp_balls_bowled"] if C.is_bowling_option(balls, format_code)))
-    has_keeper = bool(any(vectors["keeper"] > 0))
+    bowlers = R.count_bowling_options(vectors["exp_balls_bowled"], format_code)
+    has_keeper = R.any_keeper(vectors["keeper"])
     held = set(keys)
     missing = [key for key in constraints.must_include if key not in held]
     met = (
@@ -521,6 +525,50 @@ def _constraint_check(
         require_keeper=constraints.require_keeper,
         missing_must_include=missing,
         met=met,
+    )
+
+
+def player_roles(req: PlayerRolesRequest, registry: XiRegistry = REGISTRY) -> PlayerRolesResponse:
+    """What the served vectors say about each id asked for: keeper, bowling option, or
+    neither (P3-1).
+
+    The two predicates are ``ml.xi.roles``', which is where the selection's own constraints
+    and its ``selection_reasons`` read them from, so this answer and a "why this player"
+    card cannot disagree about the same player on the same run. Nothing here evaluates the
+    objective, scores an eleven or orders anything: it is a read of the rating state.
+
+    An id the state has never seen is reported ``known=false`` with no roles, and is named
+    again in ``unknown_player_ids``. It is not quietly given the vectors of a debutant and
+    reported as a batter -- a role invented for a player the model has never read is the
+    substitution §8.7 exists to forbid.
+
+    It is a live request, so H-11 applies: past the freshness limit the whole read is
+    refused as ``RATINGS_STALE`` rather than answered from ratings that have moved on.
+    """
+    store = registry.store_as_of(req.format, None)
+    keys = _keys(req.player_ids)
+    known = store.known_players(keys)
+    known_keys = [key for key, seen in zip(keys, known) if seen]
+    vectors = store.side_vectors(req.format, known_keys) if known_keys else {}
+    position = {key: i for i, key in enumerate(known_keys)}
+
+    players = [
+        PlayerRoles(
+            player_id=key,
+            known=seen,
+            roles=R.roles_of(vectors, position[key], req.format) if seen else [],
+        )
+        for key, seen in zip(keys, known)
+    ]
+    unknown = [key for key, seen in zip(keys, known) if not seen]
+    if unknown:
+        logger.warning("xi.player_roles.unknown_players", format=req.format, count=len(unknown), ids=unknown[:10])
+    logger.info("xi.player_roles.done", format=req.format, asked=len(keys), unknown=len(unknown))
+    return PlayerRolesResponse(
+        format=req.format,
+        players=players,
+        unknown_player_ids=unknown,
+        served_ratings=_served_ratings(store),
     )
 
 

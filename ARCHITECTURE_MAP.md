@@ -79,7 +79,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 
 <!-- BEGIN GENERATED: endpoints -- edit scripts/gen-architecture-map.py, not this block -->
 
-**ml-service** (14 routes, from `app/main.py`):
+**ml-service** (15 routes, from `app/main.py`):
 
 | Method | Path |
 |--------|------|
@@ -95,10 +95,11 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/xi/metric-glossary` |
 | POST | `/xi/predict-win` |
 | POST | `/performance/predict` |
+| POST | `/xi/player-roles` |
 | POST | `/simulate` |
 | POST | `/xi/optimize` |
 
-**go-app** (34 routes, from `internal/server/router.go`):
+**go-app** (40 routes, from `internal/server/router.go`):
 
 | Method | Path |
 |--------|------|
@@ -127,6 +128,7 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/api/canonical/formats` |
 | GET | `/api/options/venues` |
 | GET | `/api/options/candidates` |
+| GET | `/api/players/search` |
 | GET | `/players/{id}` |
 | DELETE, POST | `/api/players/{id}/retirement` |
 | GET | `/matches/{id}` |
@@ -134,6 +136,11 @@ Regenerate with `make gen-architecture-map`; CI fails if this block is stale.
 | GET | `/api/predictions` |
 | GET | `/api/predictions/{id}` |
 | GET | `/api/track-record` |
+| GET | `/api/auctions` |
+| POST | `/api/auctions` |
+| GET | `/api/auctions/{id}` |
+| POST | `/api/auctions/{id}/players` |
+| POST | `/api/auctions/{id}/outcomes` |
 | GET | `/api/backtest/report` |
 | GET | `/api/backtest/metric-glossary` |
 

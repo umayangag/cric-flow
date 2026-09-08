@@ -47,6 +47,7 @@ func setUpPoolFixture(t *testing.T) poolFixture {
 	t.Cleanup(func() { pool.Close() })
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 	require.NoError(t, Exec(ctx, `TRUNCATE TABLE
+		auction_player, auction_venue, auction,
 		issued_prediction,
 		player_status_event, player_status, player_biography,
 		ball_event, match_player, batting_data, bowling_data,

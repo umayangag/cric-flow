@@ -24,6 +24,7 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`, and optional `team1_constraints` / `team2_constraints` (P1-2: check the eleven being scored against these instead of selecting under them). Response: `team1_win_probability` (the displayed probability), `objective_probability`, and `team1_constraint_check` / `team2_constraint_check` where constraints were sent — the eleven's size, its bowler count by the optimiser's own definition, whether it holds a keeper, the `must_include` ids it does not hold, and whether it `met` them all.
 - **Every prediction response** (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict`) carries `served_ratings: {run_id, ratings_through}` — the run the answering store was loaded from and the last match date its ratings include, read off that store (P1-5). A live request against ratings older than `ml.ratings_max_age_days` is **503 `RATINGS_STALE`**, the message naming the date, the age and the limit and the hint the step that fixes it (H-11).
 - **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
+- **POST /xi/player-roles** — Body: `format`, `player_ids` (1–500 registry ids). Response: `format`, `players` (per id `player_id`, `known`, `roles`), `unknown_player_ids` and `served_ratings`. The two roles are the objective's own constraint predicates read off the served as-of vectors (`ml.xi.roles`: `keeper` is a player the state has credited with a stumping, `bowling_option` is one whose expected balls bowled clear `contract.MIN_BOWLING_BALLS`), extracted so this read and `/xi/optimize`'s `selection_reasons` cannot drift — a test pins them equal on the same ids. An id the served state has never seen comes back `known: false` with no roles and is named in `unknown_player_ids`; no role is invented for him (§8.7). It is a live request, so H-11 refuses the whole read past the freshness limit. It answers for players who are in no eleven, which is what the auction module (P3-1) needs and what `selection_reasons` cannot give: that reports only on players a search already picked. Nothing in it evaluates the objective, orders a pool or scores an eleven.
 - **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
 - **GET /xi/status** — Loaded formats, `ratings_through`, player count, the run's own training
   report, and — since P-6 — `run_id` and `manifest` (H-16: run id, cutoff, dataset sha, git sha,
@@ -62,6 +63,10 @@ backtest asks for a date and gets it.
   manifest records, and whether its ratings are fresh enough to answer with
 - **GET /api/predictions**, **GET /api/predictions/{id}** — the prediction record: every
   answer this API has issued, as it was served (P2-3). See the section below.
+- **GET /api/auctions**, **POST /api/auctions**, **GET /api/auctions/{id}**,
+  **POST /api/auctions/{id}/players**, **POST /api/auctions/{id}/outcomes** — the auction
+  record (P3-1). See the section below.
+- **GET /api/players/search** — a cross-club player search by name prefix. See the section below.
 - **GET /players/{id}** — one player's row: `id`, `player_name`, `is_wicket_keeper`, `is_retired`.
   The consistency numbers it used to carry came from `feature_raw_stats_snapshots`, which P-6
   dropped with the precompute pass that filled it; a player's form is in the rating state, read
@@ -326,6 +331,72 @@ where a choice-facing number comes from. Frontend: the Track record tab, which s
 harness's figure for the same format beside each of the record's, labelled by the window it
 came from (the locked window where it was scored, otherwise the walk-forward fold means, and
 B-12's calibrated-only coverage beside the pooled one where some fold had no factor).
+
+---
+
+## The auction record
+
+**P3-1.** An auction is a list of players, each still available, sold (to whom, for how much)
+or unsold; the buyer's own squad and open slots; and the format and the grounds it is for.
+Nothing in the schema held one, so migration `0015` adds three tables (`auction`,
+`auction_venue`, `auction_player` — see [config-and-data.md](config-and-data.md)) and these
+endpoints enter and read them. **Every row is a fact the operator typed during a live
+auction.** Nothing is fetched: a live auction feed is a paid or account-gated source and is
+not built.
+
+**The rule the module is built on: it is valuation and projection, never XI-picking.** The
+system's own record is that in T20 optimised selection is indistinguishable from rating
+order (plan §8.8) and the IPL is domestic T20, so **no auction endpoint calls `/xi/optimize`,
+returns a win probability or returns a marginal value** — asserted in a test through the
+client, not by inspection — and the Auction tab carries that sentence where the numbers are.
+
+- **`POST /api/auctions`** — Body: `name`, `format` (one the simulator serves: every later
+  Phase 3 item projects a total, and a total needs an innings length), `buyer_club_id` (the
+  side whose squad this fills), optional `venue_ids`, `squad_size`, and the eleven's
+  constraints `min_bowlers` (default 5) and `require_keeper` (default true) — the same two the
+  predict path takes, so an open slot means the same thing on both surfaces.
+- **`GET /api/auctions`** — the index, newest first, without the lists: how an operator finds
+  their auction again after a reload.
+- **`GET /api/auctions/{id}`** — the auction whole.
+- **`POST /api/auctions/{id}/players`** — Body `player_ids`. Lists players who are not on the
+  list yet; one already listed keeps the state he is in, because re-adding a sold player is a
+  double-click and not an instruction to forget the sale.
+- **`POST /api/auctions/{id}/outcomes`** — Body `player_id`, `state` (`available` | `sold` |
+  `unsold`, the vocabulary declared in `contracts/ops-console.contract.json`), and on a sale
+  `buyer_name`, optional `buyer_club_id` and `price`. A sale needs a buyer and a price and
+  anything else may carry neither; an undo is this call with `available`, and it clears the
+  buyer and the price with the state. **404 `AUCTION_NOT_FOUND`** for an auction nobody created
+  or a player nobody listed.
+
+**Every write answers with the auction as it now stands**, because that is what the
+operator's next decision is made against: `auction` (the record), `squad`, `slots`,
+`distribution` and `roles`.
+
+**The roles are the model's, and they are stamped.** On every read, go-app asks ml-service's
+`POST /xi/player-roles` for the listed players and puts `roles: {known, roles}` on each row,
+with `roles.run_id` and `roles.ratings_through` beside them. A player who answers neither
+predicate is a **batter by elimination** — the label means exactly that, and the L-1 glossary
+entry says so; a player the served state has never seen is reported unknown with no role
+invented for him. `player.is_wicket_keeper` is the *database's* name-set flag and is not the
+model's role; it appears only on the player search, named as the database's flag.
+
+**A refused role read does not refuse the auction** (§8.7). The record is facts the operator
+typed and reading it back needs no model, so a stale registry leaves the list exactly as
+entered, drops `distribution` and `slots.by_role` rather than showing zeroes, and names the
+refusal on the wire: `roles: {available: false, code: "RATINGS_STALE", message, hint}`.
+
+**`GET /api/players/search`** — a cross-club player search: `q` (a name prefix, at least two
+characters, matching the start of the name or of any word in it), optional `format` and
+`limit` (default 25, max 100). Per player: the registry-backed row, `is_wicket_keeper` as the
+database's flag, `clubs` (most recent first), `formats`, `last_played`, and the retirement
+ledger's verdict. It exists because `GET /api/options/candidates` is per club — a prediction
+is about one side — and an auction room is not one side. It applies no recency window and
+removes nobody: the ledger's opinion is shown beside a name rather than instead of one.
+
+**Nothing here is on the track record.** `issued_prediction` (P2-3) holds forecasts of
+fixtures, which P2-4 scores once the match is imported. An auction record holds what was
+entered and what was shown, which is a different thing and cannot be scored: no auction
+outcome data exists in the system to score a valuation against.
 
 ---
 

@@ -35,6 +35,8 @@ from .logging import bind_request_context, get_struct_logger, init_logging
 from .models.xi import (
     PerformancePredictRequest,
     PerformancePredictResponse,
+    PlayerRolesRequest,
+    PlayerRolesResponse,
     SimulateRequest,
     SimulateResponse,
     XiOptimizeRequest,
@@ -562,6 +564,26 @@ async def performance_predict(request: PerformancePredictRequest):
     ``team1_bats_first`` is given."""
     try:
         return xi_service.predict_performance(request)
+    except xi_service.XiUnavailable as exc:
+        raise HTTPException(status_code=503, detail=exc.payload) from exc
+
+
+@app.post("/xi/player-roles", response_model=PlayerRolesResponse)
+async def xi_player_roles(request: PlayerRolesRequest):
+    """What the served as-of vectors say about a list of players: keeper, bowling option,
+    or neither (P3-1).
+
+    The two predicates the selection's constraints are defined on (``ml.xi.roles``), read
+    for an arbitrary list of ids rather than for a selected eleven -- which is what the
+    auction module needs and what ``/xi/optimize``'s ``selection_reasons`` could never
+    answer, since it reports only on players a search already picked. Nothing here
+    evaluates the objective, orders a pool or scores an eleven.
+
+    An id the served rating state has never seen comes back ``known: false`` with no roles
+    and is named in ``unknown_player_ids``. Stale ratings refuse the whole read (H-11).
+    """
+    try:
+        return xi_service.player_roles(request)
     except xi_service.XiUnavailable as exc:
         raise HTTPException(status_code=503, detail=exc.payload) from exc
 

@@ -167,6 +167,33 @@ a rating state that the next retrain replaces, so after that nothing in this sys
 reproduce it. Rows are never edited and never deleted by the application: a prediction is a
 claim that was made, and the record's whole value is that it cannot be tidied.
 
+**The auction record is three tables (P3-1, migration `0015`).** Nothing in this schema held
+an auction — no player list spanning clubs, no price, no buyer, no squad in progress — so
+`0015` adds them. Every row is a fact the operator typed during a live auction; nothing is
+fetched, and no importer, job or scheduler writes any of it.
+
+| Table | What it holds |
+|---|---|
+| `auction` | One auction: `id` (uuid, minted by go-app), `name`, `format_code` (one the simulator serves), `buyer_opposition_id` (the side whose squad it fills), and the eleven's constraints `squad_size`, `min_bowlers`, `require_keeper` — the same two the predict path takes |
+| `auction_venue` | The grounds one auction is for, as `venue_id`s. A child table rather than an array so the reference to `venue` is a real one: a ground the database cannot resolve cannot be named |
+| `auction_player` | One listed player: `state` (`available` \| `sold` \| `unsold`, held by a CHECK constraint and declared in `contracts/ops-console.contract.json`), `buyer_name` and optional `buyer_opposition_id` on a sale, `price` (an integer in the auction room's own unit — no currency is implied), and `listed_at` / `state_changed_at`. A CHECK refuses half a sale: a sold row carries a buyer and a price, anything else carries neither |
+
+The buyer's squad is the sold rows whose `buyer_opposition_id` is the auction's own side;
+every other franchise is a name the operator typed, because they are buyers he observes and
+not sides this record keeps a squad for.
+
+**The roles are deliberately not stored.** Whether a player is a keeper or a bowling option
+is what the served rating vectors say *today*, read from ml-service's `POST /xi/player-roles`
+on every read and stamped with the run and date it came from. Storing it would freeze one
+run's answer into a record that outlives the run, and the surface would then show a role with
+no date on it. `player.is_wicket_keeper` is a name-set flag from the import and is not the
+model's role either.
+
+**It is not a prediction, not a cache and not a feed.** `issued_prediction` holds forecasts of
+fixtures, which P2-4 scores; nothing here is a forecast of anything, so nothing here is on the
+track record and nothing here is ever scored. No row can be recomputed from anything else in
+the database, because no other source of it exists.
+
 **Existing databases:** a database created by the old chain has all 41 old versions in `schema_migrations` and will never match a fresh one. Recreate it:
 
 ```bash
