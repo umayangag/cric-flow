@@ -1,7 +1,8 @@
 # Product roadmap: from an honest prediction system to something people pay for
 
 **Status: Phase 0 closed on route (a), Phase 1 closed on functional acceptance, Phase 2
-closed on functional acceptance of mechanism (2026-09-07).**
+closed on functional acceptance of mechanism (2026-09-07), Phase 3 opened on wedge 3a by
+an unevidenced judgment call (2026-09-08, § 6).**
 Written 2026-09-03. This is a business document kept to the repo's
 evidentiary standard: every capability claim below is either in the measured record
 ([ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md),
@@ -113,7 +114,10 @@ the user chose between the two honest routes through it:
   skipped; and **any later choice must be recorded as an unevidenced judgment call**,
   never as a validated one. Phase 1 opens on this footing as the Team Lab alone (§ 3): an
   internal prototype has one user and needs no billing, so the SaaS half of Phase 1 is
-  deferred with that reason and returns the day this route is revisited.
+  deferred with that reason and returns the day this route is revisited. *Revisited for
+  one wedge on 2026-09-08:* Phase 3 opens on 3a, the auction module, by the user's
+  judgment and recorded as exactly the unevidenced call this bullet requires — § 6 says
+  why 3a and why neither other wedge was available; the route itself is unchanged.
 - **(b) — declined.** A wedge chosen by judgment and recorded as unevidenced was offered
   and not taken. It stays the other honest route if the framing changes; nothing here
   forecloses it.
@@ -1649,19 +1653,972 @@ the harness did not, write it into docs/BUG_BACKLOG.md rather than into a claim.
 stop and hand over the push and PR commands.
 ```
 
-## 6. Phase 3 — one wedge, chosen by Phase 0 (not all three)
+## 6. Phase 3 — the auction/draft module (wedge 3a), chosen by judgment
 
-- **3a — Auction/draft module (valuation framing).** Pool distribution tracking during
-  an auction; per player: projected output distribution for the buyer's likely XI and
-  venue mix, replacement level by role among players still available, scarcity curve,
-  value-vs-price flag; "on the fly" recommendations = re-ranking the remaining pool as
-  slots fill. Built on L2-B + simulator (proven in T20). Never marketed as XI-picking.
-- **3b — Underserved B2B.** White-label match reports, opposition analysis and squad
-  reviews for women's teams, associate nations, emerging leagues; the harness's
-  honesty is the sales deck. Small contracts, real references, no incumbent contest.
-- **3c — Fantasy objective.** A points model (same infra, new target trained on the
-  same events, same calibration discipline) powering projections with ranges — only if
-  P0-2 clears it and P0-3 shows pull. Biggest market, biggest compliance weight.
+**Opened 2026-09-08, on wedge 3a, by the user's judgment and not on evidence.** Phase 0's
+exit gate closed on route (a) — *"internal tool / prototype, no wedge chosen"* (§ 2) — and
+said that any later choice of wedge "must be recorded as an unevidenced judgment call, never
+as a validated one". This is that record. On 2026-09-08 the user chose **3a, the
+auction/draft module in its valuation framing**, as the wedge Phase 3 opens on. **Nothing
+validates the choice, and nothing will while the standing constraint holds:** P0-3, the
+wedge interviews that were to produce the evidence a wedge rests on, was skipped as
+human-subject research, so no pull evidence exists; P0-1 could not benchmark the system
+against the market on the formats this wedge lives in; no user has asked for an auction
+tool and nobody has been shown one. Route (a)'s "no wedge chosen" is reversed here **for 3a
+alone, and reversed by judgment**. A reader who meets "the auction module" in a later
+document must not read it as market-tested, any more than § 3's closure could be read as a
+claim that anyone wants the Lab — this section says what it claims and what it does not,
+with the care § 2 and § 5 take. Routes (a) and (b) as § 2 records them stand: this is route
+(a)'s internal prototype taking on one more module, not a move to route (b), and the
+market questions P0-1 left open and P0-3 could not ask are exactly as open as they were.
+
+**Why 3a, and why the other two were not available.** The choice is constrained rather than
+arbitrary, and the constraints are the only evidence there is for it:
+
+- **3c — the fantasy points model — is closed by a gate it cannot clear.** § 6 as first
+  written made 3c conditional on P0-2 clearing it and on P0-3 showing pull. P0-2 is
+  deferred for want of paid counsel (§ 2), § 2 says nothing may be built fantasy-facing
+  until it runs, and P0-3 will not run. 3c is therefore not a wedge that was declined; it
+  is one that is not open.
+- **3b — underserved B2B — needs customers.** White-label match reports, opposition
+  analysis and squad reviews for women's teams, associate nations and emerging leagues are
+  a *sales motion*: outside contact, contracts, references, delivery to a second party.
+  That is the business activity route (a) set aside (§ 2), and it cannot be done as an
+  internal tool with one user — there is no B2B without a B.
+- **3a needs none of that.** An auction module is software the operator runs alone, on the
+  local stack, against data the database already holds — 1,243 IPL matches (2008-04-18 to
+  2026-05-31, `match.event_name`) in the T20 format, beside every other T20 league — with
+  no second party, no payment, no hosting, and none of the legal clearance a public or sold
+  tool would need. It is the one wedge that is buildable under the constraint as it stands,
+  and it is the one § 1 called the differentiator: the module built on the proven half.
+
+**The rule that is the item: valuation and projection, never XI-picking.** § 6 as first
+written said 3a is "never marketed as XI-picking", and § 1 says why: the system's own
+record (§ 8.8 of [ML_PIPELINE_REARCHITECTURE_PLAN.md](ML_PIPELINE_REARCHITECTURE_PLAN.md))
+is that optimised selection in domestic T20 is indistinguishable from rating order — E5
+lineup-only agreement 0.503 against the derived bar 0.506, and neither of A-3's feature
+families moved it (§ 8.11) — and it is scoped off: T20 selection is rating-ordered on the
+wire (`selection.optimised = false`, `ml/xi/optimizer.py` `NOT_OPTIMISED_REASONS`) and the
+Lab says so on every T20 eleven. **The IPL is domestic T20.** An auction tool that implied
+"buy this player and your eleven wins more" would be the claim the record refutes, made by
+a product built on that record; the whole document rests on not making it. What 3a
+legitimately offers is the half that passed its gates: **L2-B's per-player output
+distributions** (player quantiles at nominal coverage, § 8.2 of the plan) and **the
+simulator's projection of an eleven's total** (§ 8.3) — how much a player is projected to
+produce in a named eleven at named grounds, against what the rest of the pool would produce
+in his place. That is valuation. In operational form, which every prompt in § 6.2 carries
+in its own words:
+
+1. **The module never calls `/xi/optimize`, never shows a marginal value and never shows a
+   win probability.** Its numbers come from `/performance/predict` (the per-player
+   quantiles) and from `/simulate`'s totals; the `win_probability` `/simulate` also returns
+   is not on the module's surface, because a P(win) beside a purchase recommendation is the
+   XI-picking claim in another coat.
+2. **Every ordering it shows is an ordering by projected output above replacement** — a
+   quantity L2-B produces at nominal coverage — and the surface says so in those words. It
+   is not an ordering by "who makes the best eleven"; the words *best XI*, *optimal* and
+   *pick* do not appear on it.
+3. **The record's sentence is on the surface:** in T20 the system has not shown it can
+   choose an eleven better than rating order, and this module does not try to.
+
+**What the venue mix can honestly mean, read from the code on 2026-09-08.** The
+performance model's inputs (`ml/xi/contract.py` `performance_feature_cols`) are the
+player's own as-of vectors and roles, both sides' aggregates (`own_*`, `opp_*`), the Elo
+edge, and two venue columns — `venue_bf_rate` and `venue_n`, the ground's bat-first win
+rate and its sample size. The ground's *scoring level* (A-1's fixture-context families) was
+gated, recorded as a null — "population mix, not venue", § 8.9 — and is not consumed:
+`FIXTURE_CONTEXT_FAMILIES_KEPT` is empty. So a projection "at Chepauk" differs from one
+"at the Wankhede" by what the toss does there and by the eleven and opposition named, not by
+what the ground scores. § 6's sub-feature is kept as written — the projection *is* per
+venue — and the prompts require the surface to say what a venue changes, beside the mix,
+so a buyer is not left wondering why the ranges hardly moved.
+
+**Scoped as an internal tool, consistent with route (a).** One operator, the local stack
+(`make dev-up`), no accounts, no billing, no hosting — the scoping § 3 took for Phase 1,
+with the deferred SaaS half staying deferred for the reasons § 3's table gives. Added to
+that table by this phase, and not built:
+
+| deferred | why it waits |
+|---|---|
+| A multi-buyer auction — several people bidding through the tool | One user. The other franchises' purchases are facts the operator records as they happen, not bidders the tool serves |
+| A live auction feed — the list as published, the price ticker | A feed is a paid or account-gated source (the standing constraint). The list and the prices are entered by hand as the auction runs, the way availability is maintained lists (§ 5) |
+| Scoring the valuations against what the auction and the season then did | No auction outcome data exists in the system and none is free, licence-clean and public — see the exit gate below, which says what it therefore cannot measure |
+
+**What Phase 3 builds** — the five items of § 6.2, in run order, each derived from § 6's
+original 3a bullet (kept verbatim in quotation marks) and none added to it:
+
+- **The auction record, and the pool's distribution** (P3-1). *"Pool distribution tracking
+  during an auction."* An auction is a list of players, each still available, sold (to whom,
+  for how much) or unsold; the buyer's own squad and open slots; and the format and the
+  grounds it is for. Nothing in the system holds one. P3-1 makes it a record in go-app — a
+  forward migration, the way P2-3 made the prediction store — entered and updated by hand as
+  the auction runs, and shows the remaining pool's distribution by role. The roles are the
+  two predicates the objective reads and nothing invented beside them: keeper and bowling
+  option (`is_keeper`, `contract.is_bowling_option`), read off the served as-of vectors
+  through one new ml-service read stamped with `served_ratings`. Every later item is a
+  function of "the players still available", so this comes first.
+- **The projection: a player's output in the buyer's likely eleven, at the buyer's grounds**
+  (P3-2). *"Per player: projected output distribution for the buyer's likely XI and venue
+  mix."* L2-B's forecast for a player depends on the eleven around him, the opposition and
+  the venue. P3-2 lets the operator name the eleven a candidate would join, the opposition
+  it would face and the grounds it would play at, and returns his runs, balls faced,
+  wickets and runs conceded with their 10–90 ranges per ground from `/performance/predict`,
+  and the eleven's projected total with him in it from `/simulate` — as served, B-11 named.
+  One endpoint in go-app, the cost per candidate measured and recorded.
+- **Replacement level by role, and the scarcity curve** (P3-3). *"Replacement level by role
+  among players still available"; "scarcity curve."* One object read two ways: the
+  still-available players at a role, ordered by projected output in the buyer's eleven
+  (P3-2 over P3-1). The curve is that ordered list drawn; the replacement level is the point
+  on it a buyer would reach for free once the open slots at that role are filled. A
+  player's value above replacement is his projection minus that point, with the projection's
+  own range carried onto it and never narrowed.
+- **The value-vs-price flag** (P3-4). *"Value-vs-price flag."* A price is a fact the
+  operator enters; a value is P3-3's value above replacement, with its range. The flag
+  compares a bid with the going rate this auction has paid per unit of value so far —
+  computed from the players already sold in the record, with its *n* — and says where the
+  bid sits against it at the median and at both ends of the range. It is a comparison with
+  what the room has paid, never a verdict on what a player is worth.
+- **Re-ranking the remaining pool as slots fill** (P3-5). *"'On the fly' recommendations =
+  re-ranking the remaining pool as slots fill."* As the buyer's squad fills, the slots left
+  — a keeper still needed, bowling options short of the eleven's minimum, batting places —
+  change what a remaining player is worth to *this* buyer. After every recorded sale the
+  value above replacement is recomputed against the buyer's current eleven and open slots
+  and the pool is re-ordered by it. By the rule above this ordering is by projected output
+  at an open slot, says so, and never runs the objective.
+
+**What this phase does not claim, and each sub-feature stated at its real size** — read
+from the code on 2026-09-08, so no worker rediscovers it and no reader over-reads it:
+
+1. *Every number is a projection and every price is a fact; nothing here says whether a
+   purchase was good.* No auction outcome, no post-auction output-versus-price series and no
+   rival valuation exists in the system to score a valuation against, and none is free and
+   licence-clean. The gate below is functional for that reason.
+2. *The venue mix moves the projection only through what the model reads about a venue* —
+   the bat-first rate and its sample size, above. Stated on the surface, not adjusted for.
+3. *The opposition is an assumption the operator names.* A projection needs an opposing
+   eleven (`opp_*`, `elo_edge`), and for a league there is no single one. P3-2 makes the
+   operator name it — a real recent eleven from `match_player`, or one they build — shows
+   it beside the projection as an assumption, and never defaults to a silently neutral side
+   (§ 8.7).
+4. *The roles are the model's two predicates, not cricket's vocabulary.* "Keeper" and
+   "bowling option" are what the objective reads and what the as-of vectors support;
+   "all-rounder", "finisher", "death bowler" and "powerplay specialist" are not vocabularies
+   the system has measured — A-3's phase-matchup family was a null (§ 8.11) — and the module
+   does not invent them. A player who is neither predicate is listed as a batter by
+   elimination, and the surface says that is what the label means.
+5. *The projection is conditional on an eleven the buyer names, not the eleven they will
+   field.* At an auction the eleven is a guess, and every projection says which guess it was
+   made for.
+6. *Nothing the module produces is on the track record.* P2-3 records answers of
+   `POST /api/predict/team-selection`, which are forecasts of a fixture; a projection for a
+   hypothetical eleven at a mix of grounds is a forecast of no fixture and cannot be
+   resolved, so it is not stored as a prediction and is not scored. The auction record holds
+   what was entered and what was shown, which is a different thing and is said to be.
+
+**Exit gate — functional acceptance.** These are product items for an internal prototype,
+so the gate is functional acceptance in the sense § 3 and § 5 use — every clause is a thing
+a worker can demonstrate on the dev stack — and not a measured null. Phase 3 is done when
+all six hold, and § 10 records it:
+
+1. **An auction can be run end to end on the record.** A list entered; sales and unsold
+   outcomes recorded as they happen; the buyer's squad and open slots correct after each
+   entry; the pool's role distribution updating with no operator step beyond the entry;
+   the page reloaded, and the state is what was entered and nothing else.
+2. **Every projection is the stack's, as served.** Per candidate, the runs / balls /
+   wickets / runs-conceded ranges on the surface are the ones `/performance/predict`
+   returns for the named eleven, opposition and ground, and the eleven's total is
+   `/simulate`'s, with `ratings_through` and `run_id` on every one — no client-side
+   arithmetic, no widening or narrowing, no day/night adjustment, and B-11 named where an
+   interval from the simulator is shown.
+3. **Replacement level and the scarcity curve are computed from the record and the
+   projection alone, and move when a sale is recorded:** sell the best available keeper
+   and the keeper replacement level moves to the next one on the surface, with the
+   projection's range carried onto every value above replacement.
+4. **The flag is a comparison with a stated rate and an *n*.** With no sales recorded the
+   flag is absent and says why; with sales it names the going rate, the *n* behind it, and
+   where the bid sits at the median and at both ends of the range.
+5. **Re-ranking follows the buyer's slots.** Record the buyer's keeper purchase and every
+   remaining keeper's rank falls on the next read; record enough bowling options and the
+   bowling-option premium goes; the ordering is by projected output above replacement at an
+   open slot and is labelled as exactly that.
+6. **The never-XI-picking rule holds on every state.** No surface of the module shows a win
+   probability, a marginal value or an "optimal" eleven; no request from the module reaches
+   `/xi/optimize` (asserted in a test through the client, not by inspection); the record's
+   sentence about T20 selection is on the surface; and every failure state — stale ratings,
+   nothing loaded, an unknown player, an eleven that is not an eleven, an unreachable
+   ml-service — is a named refusal that shows no number.
+
+What this gate does not measure, said so nobody reads it as more: **whether the valuations
+are any good.** No auction outcome data exists to score them against — no price series, no
+post-auction output-versus-price, no rival valuation — so a player flagged "below the going
+rate" is a player the room has priced below the projection's rate, and nothing more. It
+does not measure users, pull, retention or a market: route (a) left all of those unmeasured
+(§ 2), P0-3 was skipped, and choosing 3a by judgment measured nothing. And, as § 5's gate
+said of the track record, `make evaluate` remains where a choice-facing number comes from;
+the module produces none.
+
+### 6.1 What Phase 3 inherits
+
+Ground truth the five items build on, recorded here so no worker rediscovers it:
+
+- **The proven half, which is all the module is built on.** L2-B, the distributional
+  performance model (plan § 8.2, PR #228): per player, quantiles for runs, balls faced and
+  runs conceded and a count distribution for wickets, at nominal coverage on the harness,
+  served by `/performance/predict` for any two elevens with `team1_bats_first` or averaged
+  over the toss. The simulator (plan § 8.3): draws from those forecasts with a shared match
+  factor, served by `/simulate` for the formats with an innings length
+  (`simulator.SIMULATED_FORMATS`: T20, T20I, ODI), returning per-side totals with 10–90
+  ranges, per-player ranges from the draws, `spread_share`, the median-band scorecard, the
+  margin — and a `win_probability` the module must not show. Both stamp `served_ratings`
+  on every answer (P1-5), so a projection carries its run and date without a status read.
+  **The performance forecast is the cost:** P1-2 timed one `/simulate` at 320 ms, of which
+  the per-player forecasts are 296 ms and the 2,000 draws 9.4 ms; a projection per candidate
+  is one forecast, so a pool of hundreds is minutes, not milliseconds, and P3-2 measures it
+  rather than assumes it.
+- **The Lab and its conventions** (P1-1 #269, P1-2 #271, P1-3 #272, P1-4 #273). One surface
+  on `POST /api/predict/team-selection` (`TeamLabTab` + `useTeamLab`), the toss toggle and
+  the pool machinery (`GET /api/options/candidates` — per club, with the ledger's exclusions
+  visible), Play mode's hand-built eleven and its constraint chips (`ConstraintChips`,
+  `usePlayMode`), the why-this-player card (`WhyThisPlayer`, showing only what the objective
+  consumed), and the honesty components every surface reuses: `RatingsAsOf` ("ratings as of
+  *date* · run *id*"), `PredictionReadiness` (the refused states), `MetricGlossaryContext`
+  (an L-1 explainer behind every labelled number; `ml/xi/glossary.py`'s completeness gate
+  names any that are missing), `MatchScorecard` (ranges beside every point). P1-4's rule for
+  the Lab — the ranges are the simulator's as served, no client-side widening or narrowing,
+  no day/night adjustment, no hiding of a range — is the module's rule. The objective's
+  roles (`selection_roles` in `contracts/ops-console.contract.json`: `keeper`,
+  `bowling_option`) are the module's role vocabulary.
+- **The prediction store and the track record** (P2-3 #282, P2-4 #283) — as a pattern, not
+  as a home. Migration `0013` (a forward migration; a payload kept verbatim as `jsonb`; a
+  one-method `Recorder` interface with a mockery mock; a store failure on the wire as
+  `record.stored: false`, never refusing the answer) is the shape a go-app record takes
+  here, and `0014` is the latest migration, so P3-1's is `0015`. `GET /api/track-record`
+  computes state on read with no scheduler; P3-3 and P3-5 compute on read the same way.
+  The module's projections are not issued predictions and are not on the record (above).
+- **One freshness verdict** (P2-1 #279). `/ops/status` carries the one `freshness` object,
+  H-11's `ml.ratings_max_age_days` is the only threshold and a live request past it is
+  `503 RATINGS_STALE` with the date, the age and the remedy. The module's projections are
+  live requests and are refused the same way; its readiness notice reads the same object.
+- **B-11 is open, and the module is built directly on the intervals it concerns.** The
+  simulator fits one dispersion to two populations: its 10–90 interval for a total is too
+  narrow by day and too wide at night — T20 first-innings coverage **0.734 / 0.841** at a
+  nominal 0.80 — and the **margin's** coverage is **0.50–0.69** against the same nominal,
+  the weakest number the harness reports. Four candidate designs have been gated across
+  three experiments, six arms in all, six recorded nulls: § 8.13 (`SIM-DN-split`,
+  `SIM-DN-scale` — one shared factor cannot correct two innings that miss in opposite
+  directions), § 8.14 (`SIM-IN-chase`, `SIM-IN-both` — an independent chase term fixes the
+  intervals and moves P(win) toward 0.5), § 8.15 (`SIM-IN-corr`, `SIM-IN-corrboth` — a
+  chase term correlated with the first innings' realised residual reads A-2's response to
+  the target and gets the wrong sign). § 8.15 ruled out a whole family — any term that reads
+  the first innings' residual, in any parameterisation, reads that same sum — and named the
+  two directions left: correlate with an estimate of the pitch that is not the first
+  innings' residual, or fit the margin itself. `simulator.CHASE_DISPERSION` is `"none"`;
+  nothing shipped. A scarcity curve and a value-vs-price flag are downstream of projected
+  output distributions, so **the module shows the simulator's ranges as served, unadjusted
+  and unhidden, with B-11 named** where an interval from the simulator appears — the rule
+  P1-4 followed for the Lab, and the glossary's `innings_total` explainer already carries
+  the band. L2-B's own per-player quantiles are a separate population, at nominal coverage on
+  the harness (§ 8.2), and the surface says which of the two an interval is.
+- **B-14 is open.** `XiStore.load` (`ml/xi/store.py`) joblib-loads
+  `performance_<format>.joblib` and shape-checks nothing in it, so a performance artifact
+  written before `SimulatorCalibration` changed shape restores with the missing fields at
+  their class defaults rather than being refused — the one artifact D-6 does not check. The
+  served run is fine today only because the default arm is `"none"`. For the module it means
+  a projection's interval can silently come from an older calibration after a reload;
+  P3-2 names it beside the interval and does not fix it (a load-time check is its own
+  serving-path PR, `docs/BUG_BACKLOG.md` § B-14).
+- **What the code holds for an auction, and what it does not** (read 2026-09-08). *No
+  auction, no price, no squad-in-progress* exists anywhere in the schema. *The player list
+  is per club:* `GET /api/options/candidates` takes `format` and `club_id` and returns that
+  club's pool with `is_wicket_keeper` (a database flag on `player`, set by name — not the
+  model's `keeper` vector), `last_played`, and the ledger's exclusions; an auction list
+  spans clubs and there is no cross-club player search, so P3-1 adds one. *Roles live in
+  ml-service:* `is_keeper` and `is_bowling_option` are read off the served as-of vectors
+  (`XiStore.side_vectors`; `exp_balls_bowled` against `contract.MIN_BOWLING_BALLS`, 12 in
+  T20), computed today only inside `/xi/optimize`'s `selection_reasons` for a selected
+  eleven; a pool-wide read for an arbitrary id list is new, and it is the one new
+  ml-service endpoint this phase needs. *The forecast takes any eleven:* `/performance/predict`
+  and `/simulate` take two id lists (`min_length=1`) and build rows from `serving_match`
+  with neutral context where team or venue is not named; go-app's predict path refuses a
+  ten-man side as `400 XI_INCOMPLETE`, and the module keeps that refusal — a projection for
+  "the buyer's likely XI" is for eleven named players. *Venue ids are integers keyed to
+  `venue`;* `GET /api/options/venues` searches them. *The IPL is in the database:* 1,243
+  matches with `event_name` naming the competition, `format_code` T20; no competition is a
+  first-class object, so an auction names its format and its grounds and not a league.
+- **Selection is rating-ordered in T20** (§ 3.1) and the module never asks the selection
+  anything. The one thing it shares with the selection is the two role predicates.
+
+### 6.2 Phase 3 kickoff prompts
+
+One prompt per item, in the [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) style: run each
+in a fresh chat with the model noted, and each ends by handing over the push and PR
+commands. Run order: **P3-1 → P3-2 → P3-3 → P3-4 → P3-5** — the record first because every
+later item is a function of the players still available, the projection next because the
+three items after it are arithmetic over it, then replacement level and the curve, the flag
+that prices against them, and last the re-ranking that reads all of it as slots fill. These
+are product items, so each gate is functional acceptance, not a measured null. Every prompt
+carries the same rules in its own words — the never-XI-picking rule and the ranges rule
+with B-11 named; branch off `main` as a named feature branch and never commit to `main`;
+conventional commits with scope; anchored edits; `make check-all` green and coverage gates
+never moving down (go-app `COV_MIN` is **78**, ml-service **93**, frontend as set in
+`frontend/vite.config.ts`; a ratchet is verified against the CI run's own figure, never a
+local one, per B-9); H-24 for any new wire literal; §8.7; the database rule; the checkpoint
+drill (commit and push after each meaningful step — five workers have been capped
+mid-command and two had whole items unpushed); the harness trap; and the worktree's venv —
+so that a fresh worker needs nothing but the prompt.
+
+#### P3-1 — The auction record, and the pool's distribution by role (model: Opus)
+
+**What.** *"Pool distribution tracking during an auction."* An auction record in go-app —
+a forward migration (`0015`), the way P2-3 made the prediction store — holding the auction
+(format, the buyer's side, the grounds it is for), its list of players, each player's state
+(available; sold, to whom, for how much; unsold), and the buyer's own squad and open slots.
+Entered and updated by hand through a small set of endpoints as the auction runs; nothing
+is fetched from anywhere. Beside it, one new ml-service read that returns, for any list of
+player ids, the two roles the objective reads off the served as-of vectors — keeper and
+bowling option — stamped with `served_ratings`; and a surface (a new Auction tab) that
+shows the list, the state of every player, and the remaining pool's distribution by role,
+updating on every recorded sale. A cross-club player search, because an auction list spans
+clubs and the candidate list is per club. **Gate:** an auction entered on the dev stack
+survives a reload as entered; every sale and unsold outcome is on the record with its price
+and buyer; the pool's role distribution reads off the served vectors and moves on every
+sale; every player's role is the model's predicate and says so; no request from this tab
+reaches `/xi/optimize`.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 6 (Phase 3: why 3a and by whose judgment; the
+never-XI-picking rule in its operational form; what the venue mix and the roles honestly
+mean; the exit gate's clauses 1 and 6), § 6.1 (what Phase 3 inherits: the store pattern
+of P2-3, the per-club candidate list, where roles live) and § 6.2's P3-1 entry;
+docs/PRODUCT_ROADMAP.md § 2 (route (a): an internal tool with one user) and § 4 (the
+role vocabulary and why it is two values). Read the code: go-app/migrations/0013_issued_prediction.sql
+and 0014 (the precedent: a forward migration, a comment saying what the table is and is
+not), go-app/internal/predictions/predictions.go (the Recorder, Reader and Store
+interfaces, with their mockery mocks in the package's mocks/ sibling — make -C go-app
+mocks regenerates them from .mockery.yml), go-app/internal/server/prediction_record.go
+and prediction_record_handlers.go (the record block on the wire),
+go-app/internal/db/repo_player_status.go (a store the way this repo writes one) and
+dbtest/, go-app/internal/server/candidate_handlers.go and
+internal/services/predictteam/candidates.go (per-club candidates; is_wicket_keeper is a
+database flag on player, not the model's role), options_handlers.go (venues, formats,
+teams-by-format), router.go, contracts/ops-console.contract.json (selection_roles is the
+role vocabulary; H-24); ml-service/ml/xi/optimizer.py (_Pool.is_keeper, is_bowler,
+selection_reasons — roles computed today only for a selected eleven), ml/xi/contract.py
+(is_bowling_option, MIN_BOWLING_BALLS, PLAYER_VECTOR_KEYS), ml/xi/store.py
+(XiStore.side_vectors, known_players), app/xi_service.py (_served_ratings; how an
+endpoint reads the registry and stamps its answer), app/models/xi.py, app/main.py;
+frontend/src/App.tsx (the tabs), components/TeamLabTab.tsx, CandidatePoolDialog.tsx,
+PlayerPickerDialog.tsx, PoolSummary.tsx, RatingsAsOf.tsx, PredictionReadiness.tsx,
+hooks/useCandidatePool.ts, src/api.ts. Branch off main as feat/p3-1-auction-record.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 78, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — a player state (available | sold | unsold) or a role either side matches on is
+declared once in contracts/ops-console.contract.json and asserted from every side that
+reads it; §8.7 — every substitution or fallback is visible on the wire, never only in a
+log: a player the served state has never seen is reported as unknown with no role
+invented for him. THE RULE THAT IS THE ITEM: this module is valuation and projection,
+never XI-picking — the record (plan §8.8) says optimised selection in domestic T20 is
+indistinguishable from rating order and is scoped off, and the IPL is domestic T20; so
+nothing in this item calls /xi/optimize, shows a marginal value or shows a win
+probability, and the surface carries that sentence. Ranges rule: where any range from
+the simulator appears it is shown as served, unadjusted and unhidden, with B-11 named
+(this item shows none; the rule is stated here because every later item inherits this
+surface). Database rule: cricket_data holds 22,818 matches, 11,539,808 ball events and
+13,662 player_biography rows — read it freely, run nothing destructive against it; the
+new tables are a forward migration and the only thing this item writes there; anything
+destructive goes to the scratch database cricket_flow_test (make -C go-app test-db, -p 1
+deliberately; dbtest.SkipUnlessScratchDatabase), and you verify those three counts
+unchanged before you hand over. Checkpoint drill: commit and push after each meaningful
+step — the migration, the store, the endpoints, the ml-service read, the surface — not at
+the end: five workers have been capped mid-command and two had whole items unpushed; keep
+RESUME_NOTES.md in the worktree, uncommitted, with every number already measured, and
+never report a partial item as complete. Harness trap: this item must not need make
+evaluate; if you run it, it takes 54-70 minutes and a foreground run was killed at ~55
+minutes by a background-task reaper before it wrote its JSON — launch it detached (nohup,
+output to a file) and poll. Worktree venv: the worktree usually has no ml-service venv
+and the make target would build one on Python 3.14, where pandas has no wheel — point at
+the main checkout's ml-service/.venv (3.12) and pass MAP_PYTHON=<that python> as a make
+variable to the map targets (gen-architecture-map, gen-architecture-map-check,
+check-system-map).
+
+Do P3-1: the auction record, and the pool's distribution by role.
+1. THE RECORD. Migration 0015 creates the auction in go-app's database: an auction (its
+   format — one of the simulator's formats, T20 first; the buyer's side by opposition id;
+   the grounds it is for as venue ids; created_at; a name), its players (one row per
+   listed player: player id, the state — available, sold, unsold — the buyer who bought
+   him by name or opposition id, the price as an integer in the auction's own unit, and
+   when the state changed), and the buyer's squad as the sold rows whose buyer is the
+   auction's own side. Open slots are a count the operator sets (squad size) minus the
+   squad; the eleven's constraints (a keeper, the minimum bowling options — the same
+   min_bowlers and require_keeper the predict path takes) are the auction's too, so a
+   later item can say which slots are open by role. Say in the migration's comment what
+   this is (facts the operator enters during a live auction) and what it is not (a
+   prediction, a cache, a feed).
+2. THE ENDPOINTS. Create an auction; add players to its list (by id, from a search); record
+   a sale (buyer, price), an unsold outcome, and an undo back to available — the
+   operator will mistype; read the auction whole. Every write returns the auction as it
+   now stands. A cross-club player search (name prefix, over player, with the club(s)
+   and format(s) he last played for and the ledger's flag where it exists) because
+   GET /api/options/candidates is per club and an auction list is not; reuse its pieces,
+   do not fork them.
+3. THE ROLES, FROM THE MODEL. One new ml-service endpoint (POST, a format and a list of
+   player ids) returning per id whether the served vectors say keeper (_Pool.is_keeper's
+   predicate) and bowling option (contract.is_bowling_option on exp_balls_bowled), and
+   unknown for an id the state has never seen, stamped with served_ratings; the same
+   predicates selection_reasons uses, extracted so the two cannot drift, with a test
+   that pins them equal. go-app reads it for the auction's list and puts the roles on
+   each player row of the answer, with ratings_through and run_id beside them; a player
+   who is neither is labelled a batter by elimination, and the glossary entry for the
+   label says that is what it means. The database's is_wicket_keeper flag is not the
+   role; if you show it at all, show it as the database's flag, named.
+4. THE SURFACE. An Auction tab (/auction): the list with each player's state, buyer,
+   price and role; the buyer's squad and open slots (total, and by constraint: keeper
+   needed or not, bowling options short of the minimum or not); and the remaining pool's
+   distribution by role — counts of available keepers, bowling options, batters — with
+   ratings_through and run_id through RatingsAsOf and the readiness notice through the
+   one freshness object (RATINGS_STALE refuses the role read like any live request).
+   The record's sentence is on the tab where the numbers are: in T20 the system has not
+   shown it can choose an eleven better than rating order, and this module does not try
+   to — it projects and values. No win probability, no marginal value, no "best XI"
+   anywhere on it. Every labelled number is an L-1 key with its explainer reachable.
+5. VERIFY the D-6 way on the dev stack: create a T20 auction for one IPL side, list twenty
+   real players across several clubs through the search, record sales to three buyers and
+   two unsold outcomes and one undo, reload the page, and record in the PR that the state
+   is exactly what was entered and that the role counts moved on each sale; show a stale
+   registry (XI_RATINGS_MAX_AGE_DAYS lowered on a branch ml-service) refusing the role
+   read by name with the list still shown; show an unknown id reported unknown.
+6. TESTS AND DOCS. Go: the store round trip and every state transition against the
+   scratch database through the real handlers; the handlers with a mock store and a mock
+   ml client (httptest); a test asserting through the client that this tab's endpoints
+   never call /xi/optimize; the vocabulary asserted against the contract. ml-service: the
+   roles equal selection_reasons' on the same ids, unknown ids reported unknown, the
+   stamp present, RATINGS_STALE on a stale registry. Frontend: the tab per state, the
+   distribution rendering, the refused states showing no number, the vocabulary asserted.
+   Docs: README's tab list, docs/apis-backtest-and-ops.md (the endpoints),
+   docs/config-and-data.md (the tables), make gen-architecture-map if a contract moved,
+   and contracts/system-map.json for anything the map binds.
+
+Acceptance (the P3-1 gate): an auction entered on the dev stack survives a reload as
+entered; every sale and unsold outcome is on the record with its price and buyer, and an
+undo returns a player to available; the pool's role distribution reads off the served
+vectors, is stamped with its run and date, and moves on every sale; every role is the
+model's predicate and the surface says so; no request from the tab reaches /xi/optimize;
+no win probability or marginal value is on the surface; make check-all green; coverage
+gates never move down; cricket_data's three counts unchanged. Record what shipped in
+docs/PRODUCT_ROADMAP.md § 10 (the P3-1 row). Then stop and hand over the push and PR
+commands.
+```
+
+#### P3-2 — The projection: a player's output in the buyer's likely eleven, at the buyer's grounds (model: Opus)
+
+**What.** *"Per player: projected output distribution for the buyer's likely XI and venue
+mix."* One go-app endpoint that takes an auction, a candidate, the eleven he would join
+(ten named players plus him — the buyer's squad so far and the operator's guesses for the
+rest), the opposition eleven the projection is against, and the auction's grounds, and
+returns per ground the candidate's runs, balls faced, wickets and runs conceded with their
+10–90 ranges from `/performance/predict`, and the eleven's projected total with him in it
+from `/simulate` — every number the stack's, as served, each with `ratings_through` and
+`run_id`. The venue mix is per-ground rows side by side; a mixed range, if shown, is
+computed from draws and never by averaging quantiles. The surface says what a ground
+changes and does not change (§ 6), which eleven and opposition the projection is
+conditional on, and which intervals are L2-B's and which the simulator's (B-11 and B-14
+named). The cost per candidate is measured and recorded, because P3-3 and P3-5 will pay it
+per available player. **Gate:** a candidate's projection on the surface equals the stack's
+answers for the same inputs; every interval is labelled with its source; the assumptions
+are on the surface; the `win_probability` `/simulate` returns is nowhere on it; the cost is
+recorded.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 6 (the never-XI-picking rule in operational form; what
+the venue mix honestly means; the opposition as a named assumption; the exit gate's
+clauses 2 and 6), § 6.1 (the proven half and its cost; B-11 and B-14 and the ranges
+rule; what /performance/predict and /simulate take) and § 6.2's P3-2 entry; § 3.1 (the
+Lab's rule for ranges) and docs/BUG_BACKLOG.md § B-11 and § B-14;
+docs/ML_PIPELINE_REARCHITECTURE_PLAN.md § 8.2 (L2-B's coverage), § 8.3 (the simulator)
+and § 8.15's "What B-11 carries forward". Read the code: ml-service/app/models/xi.py
+(PerformancePredictRequest, PlayerPerformance, SimulateRequest, SimulateResponse — and
+its win_probability, which this item must not surface), app/xi_service.py
+(_fixture_rows, predict_performance, simulate), ml/xi/rows.py (serving_match,
+player_feature_rows: which columns the venue and the opposition feed), ml/xi/contract.py
+(performance_feature_cols; FIXTURE_CONTEXT_FAMILIES_KEPT is empty — A-1's null),
+ml/xi/simulator.py (simulate_match returns the draws; summarize); go-app/internal/server/
+ml_xi_client.go (PredictPerformance, SimulateMatchXI), internal/services/predictteam/
+xi_performance.go, xi_simulation.go, play_mode.go (XI_INCOMPLETE, XI_PLAYER_UNKNOWN —
+the refusals a pinned eleven gets), predict_team.go (InningsTotal and how a range is
+carried); the P3-1 record and its handlers; frontend/src/components/MatchScorecard.tsx,
+TeamTable.tsx, RatingsAsOf.tsx, context/MetricGlossaryContext.tsx; ml/xi/glossary.py
+(innings_total already carries B-11's band). Branch off main as
+feat/p3-2-auction-projection.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 78, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — the interval sources (L2-B's quantiles | the simulator's draws) are a
+vocabulary declared once in contracts/ops-console.contract.json and asserted from both
+sides; §8.7 — every substitution or fallback is visible on the wire, never only in a
+log: a ground the served state has no context for reads neutral and the answer says so
+per ground. THE RULE THAT IS THE ITEM: valuation and projection, never XI-picking — the
+record (plan §8.8) says optimised selection in domestic T20 is indistinguishable from
+rating order and is scoped off, and the IPL is domestic T20; this item calls
+/performance/predict and /simulate and never /xi/optimize, shows no marginal value, and
+drops /simulate's win_probability at the client so it cannot reach the surface — a P(win)
+beside a purchase is the XI-picking claim in another coat. Ranges rule: every interval
+is the stack's as served — no client-side widening or narrowing, no day/night
+adjustment, no hiding of a range — and where the interval is the simulator's the surface
+names B-11 (the interval is too narrow by day and too wide at night, T20 first-innings
+coverage 0.734 / 0.841 at nominal 0.80, six gated arms nulled) and B-14 (the performance
+artifact is not shape-checked at load, so an older calibration can restore silently).
+Database rule: cricket_data holds 22,818 matches, 11,539,808 ball events and 13,662
+player_biography rows — read it freely, run nothing destructive against it; anything
+destructive goes to the scratch database cricket_flow_test (make -C go-app test-db, -p 1
+deliberately; dbtest.SkipUnlessScratchDatabase), and you verify those three counts
+unchanged before you hand over. Checkpoint drill: commit and push after each meaningful
+step — the endpoint, the client changes, the surface, the measurement — not at the end:
+five workers have been capped mid-command and two had whole items unpushed; keep
+RESUME_NOTES.md in the worktree, uncommitted, with every number already measured, and
+never report a partial item as complete. Harness trap: this item must not need make
+evaluate; if you run it, it takes 54-70 minutes and a foreground run was killed at ~55
+minutes by a background-task reaper before it wrote its JSON — launch it detached (nohup,
+output to a file) and poll. Worktree venv: the worktree usually has no ml-service venv
+and the make target would build one on Python 3.14, where pandas has no wheel — point at
+the main checkout's ml-service/.venv (3.12) and pass MAP_PYTHON=<that python> as a make
+variable to the map targets.
+
+Do P3-2: the projection, conditional on a named eleven, a named opposition and named
+grounds, as served.
+1. THE INPUTS ARE ASSUMPTIONS, AND NAMED. The eleven the candidate joins is eleven
+   players: the buyer's squad so far plus the operator's guesses, held on the auction
+   record as "the likely eleven" so every item after this reads one list; ten named
+   players plus the candidate, refused as XI_INCOMPLETE otherwise, exactly as the predict
+   path refuses. The opposition is an eleven the operator names — offer the last fielded
+   eleven of any side in the format from match_player as a starting point, and let them
+   edit it — never a silently neutral side: a projection against no one is a projection
+   for no league, and the answer names the opposition it was against. The grounds are the
+   auction's venue ids. Every answer carries all three back, so the surface can say "for
+   this eleven, against this eleven, at these grounds".
+2. THE PROJECTION. One go-app endpoint: for the candidate, per ground, the L2-B quantiles
+   (runs, balls faced, runs conceded: q10/median/q90; wickets: the expectation with
+   P(0/1/2+), which has no quantiles on this path and is shown as P1-4 shows it, never
+   with an interval derived from the pmf) from /performance/predict with the toss
+   unknown (marginalised) unless the operator sets it; and the likely eleven's projected
+   total with him in it from /simulate (total q10/median/q90, the candidate's
+   spread_share), at the served draw count. Decide from the code whether the candidate's
+   forecast can be batched (the rows are independent given the eleven's aggregates, so
+   many candidates against one eleven may be one call) and say why in the PR; do not
+   lower the draw count. The venue mix is per-ground rows side by side; if you show a
+   mixed range, compute it from the simulator's draws pooled across grounds (weights the
+   operator sets), never by averaging quantiles — a mixture's quantiles are not the mean
+   of its parts' — and label it as a mixture over the named grounds.
+3. WHAT A GROUND CHANGES, ON THE SURFACE. Beside the per-ground rows, one sentence from
+   the code: the model reads a ground through its bat-first rate and sample size
+   (venue_bf_rate, venue_n) and not through its scoring level (A-1, a recorded null,
+   FIXTURE_CONTEXT_FAMILIES_KEPT empty), so the rows differ by what the toss does there
+   and by nothing else about the ground. A ground with no context (venue_n 0) is said to
+   read neutral (§8.7).
+4. TWO KINDS OF INTERVAL, TOLD APART. L2-B's quantiles are at nominal coverage on the
+   harness (§8.2); the simulator's total is B-11's interval. Each interval on the surface
+   carries its source by name, with an explainer each (L-1; add glossary entries — the
+   completeness gate names the missing ones), and the simulator's names B-11 (the
+   innings_total entry already carries the band) and B-14 (an older calibration can
+   restore silently; the run id shown is the run, not a promise about its calibration's
+   shape). Nothing is widened, narrowed or adjusted.
+5. DROP THE WIN PROBABILITY AT THE CLIENT. The go-app type this item maps /simulate into
+   for the auction carries no win_probability field, so it cannot reach the surface by
+   accident; a test asserts the auction's endpoint payload has no key containing
+   "win" and no marginal value, and that /xi/optimize is never called.
+6. MEASURE THE COST. Time the endpoint per candidate per ground on the dev stack (thirty
+   repeats, median and p95) and, if you batched, per batch; record the table in the PR
+   and in § 10, because P3-3 and P3-5 pay this per available player and must know what
+   they are paying. Do not add a cache to reach a number; if a cache is warranted, that is
+   P3-5's decision, made with the numbers.
+7. VERIFY the D-6 way: on the P3-1 auction, project three candidates — a keeper, a
+   bowling option, a batter by elimination — for the likely eleven against a real recent
+   IPL eleven at three grounds, and record in the PR the served numbers beside the
+   surface's; show the same candidate at the same ground with the toss set both ways;
+   show a ten-man likely eleven refused as XI_INCOMPLETE and a stale registry refused as
+   RATINGS_STALE with no number shown.
+8. TESTS AND DOCS. Go: the endpoint with a mock ml client (httptest), the refusals, the
+   mixture arithmetic as a pure function against hand-computed draws, the no-win-key
+   assertion; ml-service: nothing changes unless batching needs a request shape, in which
+   case the new field is pinned and the stamp asserted; frontend: the per-ground rows, the
+   two interval sources rendering with their names, the assumptions sentence, the refused
+   states. Docs: docs/apis-backtest-and-ops.md (the endpoint), docs/ml-and-training.md
+   (what the auction projection is and is not: no fixture, not on the record), make
+   gen-architecture-map if a contract moved.
+
+Acceptance (the P3-2 gate): a candidate's projection on the surface equals
+/performance/predict's and /simulate's answers for the same eleven, opposition and ground,
+with ratings_through and run_id on every one; every interval is labelled L2-B's or the
+simulator's, the simulator's naming B-11 and B-14; the eleven, the opposition and what a
+ground changes are on the surface as assumptions; no win probability and no marginal value
+is on the surface or in the payload, and /xi/optimize is never called; the cost per
+candidate is recorded; make check-all green; coverage gates never move down;
+cricket_data's three counts unchanged. Record in docs/PRODUCT_ROADMAP.md § 10 (the P3-2
+row). Then stop and hand over the push and PR commands.
+```
+
+#### P3-3 — Replacement level by role, and the scarcity curve (model: Fable)
+
+**What.** *"Replacement level by role among players still available"; "scarcity curve."*
+Over the auction's available players (P3-1), each projected in the buyer's likely eleven
+(P3-2), per role: the players ordered by projected output — batters by median runs,
+bowling options by expected wickets with runs conceded beside them, keepers as batters
+with the keeper role marked — drawn as a curve with each point's 10–90 range; and the
+replacement level, the point on that curve a buyer reaches for free once the open slots at
+the role across the auction's buyers are filled, which the operator sets as a number of
+slots and the surface shows as an entered assumption. Value above replacement per player
+is his projection minus that point, carried with the projection's range. Computed on read
+from the record and the projection, no scheduler, so a recorded sale moves the curve on
+the next read. **Gate:** the curve and the replacement level per role are on the surface
+with their ranges and their assumptions; selling the best available keeper moves the
+keeper replacement level to the next one; every value above replacement carries its range;
+the ordering is labelled as projected output, not as a pick.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 6 (the never-XI-picking rule; the roles as the model's two
+predicates; the exit gate's clause 3), § 6.1 (the proven half; the ranges rule with B-11
+and B-14; computing on read the way the track record does) and § 6.2's P3-3 entry, and
+the P3-1 and P3-2 entries it builds on; docs/BUG_BACKLOG.md § B-11. Read the code as
+P3-1 and P3-2 left it: the auction record and its handlers, the projection endpoint and
+its cost table (§ 10's P3-2 row — this item pays it per available player, so read the
+numbers before deciding how the curve is computed), go-app/internal/trackrecord (state
+computed on read, every number with its n), frontend/src/components/TrackRecordTab.tsx
+(a plot that draws an empty record honestly), EvaluationSimulation.tsx (how ranges are
+drawn), context/MetricGlossaryContext.tsx, ml/xi/glossary.py. Branch off main as
+feat/p3-3-replacement-and-scarcity.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 78, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — the output measure per role (median runs | expected wickets) is a vocabulary
+declared once in contracts/ops-console.contract.json and asserted from both sides; §8.7
+— every substitution or fallback is visible on the wire, never only in a log: a player
+whose projection failed or is unknown is on the curve's list as unprojected with the
+reason, never silently dropped from it. THE RULE THAT IS THE ITEM: valuation and
+projection, never XI-picking — the record (plan §8.8) says optimised selection in
+domestic T20 is indistinguishable from rating order and is scoped off, and the IPL is
+domestic T20; the curve orders players by projected output above replacement at a role
+and the surface says so in those words; it never calls /xi/optimize, never shows a
+marginal value or a win probability, and never labels the top of a curve a pick. Ranges
+rule: every interval is the stack's as served — no widening, narrowing or day/night
+adjustment, none hidden — the value above replacement carries the projection's range,
+and where an interval is the simulator's the surface names B-11 (0.734 / 0.841
+first-innings coverage by day / night at nominal 0.80; six gated arms nulled) and B-14.
+Database rule: cricket_data holds 22,818 matches, 11,539,808 ball events and 13,662
+player_biography rows — read it freely, run nothing destructive against it; anything
+destructive goes to the scratch database cricket_flow_test (make -C go-app test-db, -p 1
+deliberately; dbtest.SkipUnlessScratchDatabase), and you verify those three counts
+unchanged before you hand over. Checkpoint drill: commit and push after each meaningful
+step — the arithmetic, the endpoint, the surface — not at the end: five workers have
+been capped mid-command and two had whole items unpushed; keep RESUME_NOTES.md in the
+worktree, uncommitted, with every number already measured, and never report a partial
+item as complete. Harness trap: this item must not need make evaluate; if you run it, it
+takes 54-70 minutes and a foreground run was killed at ~55 minutes by a background-task
+reaper before it wrote its JSON — launch it detached (nohup, output to a file) and poll.
+Worktree venv: the worktree usually has no ml-service venv and the make target would
+build one on Python 3.14, where pandas has no wheel — point at the main checkout's
+ml-service/.venv (3.12) and pass MAP_PYTHON=<that python> as a make variable to the map
+targets.
+
+Do P3-3: replacement level by role, and the scarcity curve, computed on read.
+1. THE MEASURE PER ROLE, DECLARED. Batters (the by-elimination role) and keepers are
+   ordered by the projection's median runs in the likely eleven; bowling options by
+   expected wickets, with median runs conceded shown beside them and not folded into one
+   number — the system has no single value scale across runs and wickets and this item
+   does not invent one (say so on the surface). A player who is both keeper and bowling
+   option appears under both with the role marked. The measures are a vocabulary in the
+   contract (H-24).
+2. THE CURVE. Per role, over the auction's available players, each projected by P3-2's
+   endpoint in the likely eleven at the auction's grounds (the mixture if P3-2 shipped
+   one, else the first ground — say which, on the surface), ordered by the measure and
+   drawn with each point's 10–90 range; a player whose projection is unavailable
+   (unknown to the state, or a refused call) is listed under the curve as unprojected
+   with the reason. Computed on read from the record and the projection — no column, no
+   scheduler — so a recorded sale moves the curve on the next read. Read P3-2's cost
+   table first: a pool of hundreds is minutes of forecasts, so decide, from the numbers,
+   whether the curve is computed per request or the projections are kept on the record
+   keyed by (run_id, likely eleven, opposition, grounds) and recomputed when any of those
+   changes; say why in the PR, and if you keep them, the keyed run id is what makes a
+   stale projection visible after a reload (§8.7).
+3. REPLACEMENT LEVEL. Per role, the (k + 1)-th point on the curve, where k is the number
+   of open slots at that role across the auction's buyers — a number the operator enters
+   on the auction record (the tool holds only the buyer's own squad, and says so), shown
+   beside the level as an entered assumption; with k unset the level is absent and the
+   surface says why. Value above replacement per player is his measure minus the level's,
+   carried with the player's own range (q10 and q90 minus the level's median, labelled as
+   such: the level is treated as a point, and the surface says so rather than inventing a
+   joint interval).
+4. THE SURFACE. On the Auction tab: one curve per role with the replacement level marked
+   and its k stated, the ordering labelled "by projected output above replacement, not a
+   pick", every point with its range and its interval source (B-11 named where the
+   source is the simulator), every labelled number an L-1 key with its explainer
+   (entries added; the completeness gate names the missing ones). No win probability, no
+   marginal value, no "best" anywhere.
+5. VERIFY the D-6 way: on the P3-1 auction with a real likely eleven, draw the three
+   curves, record the first three points and the level per role in the PR beside the
+   served projections; then record the sale of the best available keeper and show the
+   keeper level move to the next player on the next read; then set k to zero and show
+   the level become the best available; then show an unknown player listed as
+   unprojected.
+6. TESTS AND DOCS. Go: the ordering and the level from a fixture of projections
+   (table-driven: k at 0, inside and past the list's length), the value-above-replacement
+   arithmetic as pure functions, the unprojected case, the no-/xi/optimize assertion
+   through the client; frontend: the curve per role, the empty and unprojected states,
+   the labels and the vocabulary asserted. Docs: docs/apis-backtest-and-ops.md (the
+   endpoint), make gen-architecture-map if a contract moved.
+
+Acceptance (the P3-3 gate): the curve and the replacement level per role are on the
+surface with their ranges, their k and their interval sources; selling the best available
+keeper moves the keeper replacement level to the next one on the next read; every value
+above replacement carries its range; the ordering is labelled projected output above
+replacement and no surface calls it a pick; /xi/optimize is never called; make check-all
+green; coverage gates never move down; cricket_data's three counts unchanged. Record in
+docs/PRODUCT_ROADMAP.md § 10 (the P3-3 row). Then stop and hand over the push and PR
+commands.
+```
+
+#### P3-4 — The value-vs-price flag (model: Fable)
+
+**What.** *"Value-vs-price flag."* A bid is a number the operator types beside a player
+during the auction; a value is P3-3's value above replacement with its range. The flag
+compares the bid with what this auction has paid so far per unit of value above
+replacement — the going rate, computed on read from the sold players on the record, per
+role measure, with its *n* — and says where the bid sits: above the rate at the median,
+below it, or inside the range's spread. With no sales the flag is absent and says why. It
+is a comparison with what the room has paid and says so; it is not a verdict on what a
+player is worth, and the gate does not measure whether it is right. **Gate:** with no sales
+the flag is absent with its reason; with sales it names the rate, its *n* and where the bid
+sits at the median and both ends of the range; the rate moves when a sale is recorded; the
+flag never turns a number into a colour without the *n* beside it.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 6 (the never-XI-picking rule; what the gate does not
+measure — no auction outcome data exists; the exit gate's clause 4), § 6.1 (the ranges
+rule) and § 6.2's P3-4 entry, and the P3-1 and P3-3 entries it builds on. Read the code
+as P3-3 left it: the auction record (prices, buyers, states), the curve endpoint (value
+above replacement with its range, per role measure), go-app/internal/trackrecord
+(numbers with their n; nothing turns red at a threshold), frontend/src/components/
+TrackRecordTab.tsx and PredictionRecordNote.tsx (a note with a stated reason), ml/xi/
+glossary.py. Branch off main as feat/p3-4-value-vs-price.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 78, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — the flag's states (above | inside | below | absent) are a vocabulary declared
+once in contracts/ops-console.contract.json and asserted from both sides; §8.7 — every
+substitution or fallback is visible on the wire, never only in a log: a flag that cannot
+be computed says why on the wire, never a default state. THE RULE THAT IS THE ITEM:
+valuation and projection, never XI-picking — the record (plan §8.8) says optimised
+selection in domestic T20 is indistinguishable from rating order and is scoped off, and
+the IPL is domestic T20; the flag compares a price with a rate over projected output and
+says so; it never calls /xi/optimize, never shows a marginal value or a win probability,
+and never says "buy" or "pick". Ranges rule: every interval is the stack's as served — no
+widening, narrowing or day/night adjustment, none hidden — the flag is evaluated at the
+median and at both ends of the value's range, and where the value's interval is the
+simulator's the surface names B-11 (0.734 / 0.841 first-innings coverage by day / night
+at nominal 0.80; six gated arms nulled) and B-14. Database rule: cricket_data holds
+22,818 matches, 11,539,808 ball events and 13,662 player_biography rows — read it
+freely, run nothing destructive against it; anything destructive goes to the scratch
+database cricket_flow_test (make -C go-app test-db, -p 1 deliberately;
+dbtest.SkipUnlessScratchDatabase), and you verify those three counts unchanged before
+you hand over. Checkpoint drill: commit and push after each meaningful step — the
+arithmetic, the endpoint, the surface — not at the end: five workers have been capped
+mid-command and two had whole items unpushed; keep RESUME_NOTES.md in the worktree,
+uncommitted, with every number already measured, and never report a partial item as
+complete. Harness trap: this item must not need make evaluate; if you run it, it takes
+54-70 minutes and a foreground run was killed at ~55 minutes by a background-task reaper
+before it wrote its JSON — launch it detached (nohup, output to a file) and poll.
+Worktree venv: the worktree usually has no ml-service venv and the make target would
+build one on Python 3.14, where pandas has no wheel — point at the main checkout's
+ml-service/.venv (3.12) and pass MAP_PYTHON=<that python> as a make variable to the map
+targets.
+
+Do P3-4: the value-vs-price flag, a comparison with a stated rate and an n.
+1. THE GOING RATE. Per role measure, over the players sold so far in this auction whose
+   value above replacement is known (P3-3, computed at the moment of the read, against
+   the current level — say on the surface that the rate is re-read against today's
+   level, not the level at the time of the sale, and why: the record holds prices, not
+   past projections): price paid per unit of value above replacement — decide the
+   estimator from the data you have (a ratio of sums is robust to one outlier; a median of
+   ratios is robust to more) and say why in the PR; with its n, and absent below a
+   minimum you set and state (one sale is not a rate). A sale at or below replacement
+   (value ≤ 0) is counted, shown, and excluded from the ratio with the reason on the
+   wire.
+2. THE FLAG. For a bid the operator types beside an available player: the bid against
+   the rate times the player's value above replacement, evaluated at the median and at
+   both ends of the value's range, giving one of: above (the bid exceeds the rate's price
+   even at q90), below (under it even at q10), inside (between the two), absent (no rate,
+   with the reason). The state is a vocabulary in the contract; the surface renders the
+   three numbers beside the word and never the word alone.
+3. THE SURFACE. On the Auction tab, a bid field per available player and the flag beside
+   it with the rate, the n, and the sentence: "against what this auction has paid so far
+   for projected output above replacement — not a valuation of the player". Nothing
+   turns red at a threshold without the n beside it; no "buy", "pick" or "steal". Every
+   labelled number is an L-1 key with its explainer (entries added).
+4. VERIFY the D-6 way: on the P3-1 auction with no sales, show the flag absent with its
+   reason; record three sales at chosen prices and show the rate and its n on the surface
+   beside a hand computation in the PR; type a bid that reads above, one below and one
+   inside for one player and record all three; record a fourth sale and show the rate
+   move.
+5. TESTS AND DOCS. Go: the rate from a fixture (table-driven: no sales, below the
+   minimum, one outlier, a sale at or below replacement), the flag at the three positions
+   and absent, the vocabulary asserted, the no-/xi/optimize assertion through the client;
+   frontend: the four states rendering with the numbers, absent rendering its reason.
+   Docs: docs/apis-backtest-and-ops.md, make gen-architecture-map if a contract moved.
+
+Acceptance (the P3-4 gate): with no sales the flag is absent with its reason; with sales
+it names the rate, its n and where the bid sits at the median and both ends of the range;
+recording a sale moves the rate on the next read; no surface shows the flag's word without
+its numbers and its n; no win probability, marginal value or "buy" is on the surface;
+/xi/optimize is never called; make check-all green; coverage gates never move down;
+cricket_data's three counts unchanged. Record in docs/PRODUCT_ROADMAP.md § 10 (the P3-4
+row). Then stop and hand over the push and PR commands.
+```
+
+#### P3-5 — Re-ranking the remaining pool as slots fill (model: Opus)
+
+**What.** *"'On the fly' recommendations = re-ranking the remaining pool as slots fill."*
+The buyer's open slots by role — a keeper still needed or not, bowling options short of
+the eleven's minimum or not, and the remaining places — read off the auction record and
+its constraints after every sale, and the remaining pool ordered for *this* buyer by value
+above replacement at an open slot: a role whose slots are filled contributes nothing, a
+role still open contributes the player's value above replacement, and the likely eleven
+the projection is conditional on is updated as the buyer's purchases displace the
+operator's guesses. The ordering is labelled as projected output at an open slot; it never
+calls the objective, and it is not a recommendation to buy. The cost of re-projecting after
+a sale is what P3-2 measured, and this item is where a kept projection is decided, on the
+numbers. **Gate:** recording the buyer's keeper purchase drops every remaining keeper's
+rank on the next read; recording enough bowling options removes the bowling-option
+premium; the likely eleven updates as purchases displace guesses and the projections
+follow; the ordering is labelled as projected output above replacement at an open slot
+and never as a pick; nothing reaches `/xi/optimize`.
+
+```
+Read docs/PRODUCT_ROADMAP.md § 6 (the never-XI-picking rule in operational form — this
+item is where it is sharpest; the exit gate's clauses 5 and 6; what the phase does not
+claim), § 6.1 (the proven half and its cost; the ranges rule) and § 6.2's P3-5 entry, and
+the P3-1 to P3-4 entries it reads; docs/BUG_BACKLOG.md § B-8 (the rating order and the
+display model disagree — a reminder that "higher on a list" is a claim about one measure)
+and § B-10 (what a lock is and what it is not). Read the code as P3-4 left it: the
+auction record (squad, constraints, the likely eleven, k per role), the projection
+endpoint and its cost table, the curve and flag endpoints; ml-service/ml/xi/optimizer.py
+(_Pool.feasible — the two constraint predicates as the objective applies them; read them
+to reuse the predicates, not the search) and contract.is_bowling_option;
+frontend/src/components/ConstraintChips.tsx and hooks/usePlayMode.ts (how open
+constraints are shown on a hand-built eleven). Branch off main as
+feat/p3-5-pool-reranking.
+Rules: never commit to main; branch off main as the feature branch named above;
+conventional commits with scope; anchored edits; make check-all green and coverage
+gates never move down — ratchet them up when coverage rises (go-app/Makefile COV_MIN,
+now 78, + root Makefile COV_MIN_GO + .github/workflows/go-app-ci.yml move together;
+ml-service likewise at 93; frontend/vite.config.ts thresholds) and verify a ratchet
+against the CI run's own coverage figure, never a local one (B-9); H-24 for any new wire
+literal — a slot state (open | filled) either side matches on is declared once in
+contracts/ops-console.contract.json and asserted from both sides; §8.7 — every
+substitution or fallback is visible on the wire, never only in a log: a projection kept
+from an earlier read is labelled with the run id and the likely eleven it was made for,
+and one that is stale against either is shown stale, never served as current. THE RULE
+THAT IS THE ITEM, sharpest here: valuation and projection, never XI-picking — the record
+(plan §8.8) says optimised selection in domestic T20 is indistinguishable from rating
+order and is scoped off, and the IPL is domestic T20; this ordering is by projected
+output above replacement at an open slot and the surface says so in those words; it
+never calls /xi/optimize, never runs the objective over the remaining pool, never shows
+a marginal value or a win probability, and never labels its first row a recommendation
+to buy — the sentence on the surface is that in T20 the system has not shown it can
+choose an eleven better than rating order and this ordering does not try to. Ranges
+rule: every interval is the stack's as served — no widening, narrowing or day/night
+adjustment, none hidden — each row carries its value's range, and where the interval is
+the simulator's the surface names B-11 (0.734 / 0.841 first-innings coverage by day /
+night at nominal 0.80; six gated arms nulled) and B-14. Database rule: cricket_data
+holds 22,818 matches, 11,539,808 ball events and 13,662 player_biography rows — read it
+freely, run nothing destructive against it; anything destructive goes to the scratch
+database cricket_flow_test (make -C go-app test-db, -p 1 deliberately;
+dbtest.SkipUnlessScratchDatabase), and you verify those three counts unchanged before
+you hand over. Checkpoint drill: commit and push after each meaningful step — the slot
+accounting, the ordering, the projection policy, the surface — not at the end: five
+workers have been capped mid-command and two had whole items unpushed; keep
+RESUME_NOTES.md in the worktree, uncommitted, with every number already measured, and
+never report a partial item as complete. Harness trap: this item must not need make
+evaluate; if you run it, it takes 54-70 minutes and a foreground run was killed at ~55
+minutes by a background-task reaper before it wrote its JSON — launch it detached (nohup,
+output to a file) and poll. Worktree venv: the worktree usually has no ml-service venv
+and the make target would build one on Python 3.14, where pandas has no wheel — point at
+the main checkout's ml-service/.venv (3.12) and pass MAP_PYTHON=<that python> as a make
+variable to the map targets.
+
+Do P3-5: the remaining pool re-ordered for this buyer as slots fill, on read.
+1. THE SLOTS. From the auction record after every sale: the buyer's squad, the squad size
+   the operator set, and the eleven's constraints (require_keeper, min_bowlers — the same
+   two predicates the objective applies, reused from contract.is_bowling_option and the
+   keeper predicate through P3-1's role read, not re-derived), giving per role whether a
+   slot is still open — keeper needed or held; bowling options held against the minimum;
+   the places left. On the wire as a slot block with the numbers, the states a vocabulary
+   in the contract.
+2. THE LIKELY ELEVEN, UPDATED. When the buyer's purchase is recorded, he enters the likely
+   eleven in place of the operator's guess at his role (the operator confirms which guess
+   he displaces; the tool proposes the same-role guess and says so), so every projection
+   after the sale is conditional on the eleven the buyer now has. The eleven and the run
+   id every kept projection was made for are on each row (§8.7), and a projection made
+   for an earlier eleven or an earlier run is shown stale, not current.
+3. THE ORDERING. For each available player, the value above replacement (P3-3) at each
+   role he holds, counted only where that role's slot is open — a keeper when the keeper
+   slot is filled ranks as the batter he also is, by the batting measure, and the surface
+   says which slot he is ranked for; the pool ordered by that, with the range on every
+   row, and a bowling option's runs conceded beside him as P3-3 shows it. Ties and
+   cross-measure comparisons (a batter's runs against a bowler's wickets) are not resolved
+   by an invented exchange rate: the ordering is within a role for the open slot, and
+   across roles the surface shows the open slots side by side rather than one merged
+   list — unless you can name a measured basis for merging them, which the system does
+   not have today, and you say so on the surface.
+4. THE PROJECTION POLICY, DECIDED ON THE NUMBERS. Read P3-2's cost table and P3-3's
+   decision: after every sale the likely eleven may change and every remaining player's
+   projection with it. Decide whether the projections are recomputed on the read that
+   follows a sale, or kept on the record keyed by (run_id, likely eleven, opposition,
+   grounds) and recomputed only when the key changes, and say in the PR what one sale
+   costs the operator in wall-clock time either way; do not lower the draw count; a kept
+   projection that is stale against the served run is refused as stale, never shown as
+   current.
+5. THE SURFACE. On the Auction tab, the open slots beside the buyer's squad and the
+   remaining pool ordered per open slot, each row with the value above replacement and
+   its range, the interval's source (B-11 and B-14 named where it is the simulator's),
+   the P3-4 flag if a bid is typed, and the labels: "ordered by projected output above
+   replacement at an open slot — not a pick"; the record's sentence about T20 selection
+   where the ordering is. Every labelled number is an L-1 key with its explainer.
+6. VERIFY the D-6 way on the P3-1 auction: record the buyer's keeper purchase and show
+   every remaining keeper ranked as a batter on the next read with the slot shown filled;
+   record bowling options up to the minimum and show the bowling-option column close;
+   show the likely eleven updated by the purchase and a projection re-made for it; show a
+   kept projection from before a reload labelled stale; record the wall-clock cost of one
+   sale's re-read.
+7. TESTS AND DOCS. Go: the slot accounting from a fixture (table-driven: keeper held or
+   not, bowlers under, at and over the minimum, squad full), the per-slot ordering, a
+   both-role player ranked under the open slot only, the stale-projection refusal, the
+   no-/xi/optimize assertion through the client; frontend: the slots, the per-slot lists,
+   the labels, the stale state. Docs: docs/apis-backtest-and-ops.md, README's tab
+   description, make gen-architecture-map if a contract moved.
+
+Acceptance (the P3-5 gate): recording the buyer's keeper purchase drops every remaining
+keeper's rank for the keeper slot on the next read and ranks him as a batter with the slot
+shown filled; recording enough bowling options closes that slot; the likely eleven updates
+as purchases displace guesses and the projections follow, with a kept projection stale
+against its run or eleven shown stale; the ordering is labelled projected output above
+replacement at an open slot and no surface calls it a pick or a recommendation to buy;
+no win probability or marginal value is on the surface; /xi/optimize is never called;
+make check-all green; coverage gates never move down; cricket_data's three counts
+unchanged. Record in docs/PRODUCT_ROADMAP.md § 10 (the P3-5 row) and, if the module showed
+a state § 6's gate did not anticipate, add it to the gate. Then stop and hand over the
+push and PR commands.
+```
 
 ## 7. Phase 4 — the moat, if Phases 1–3 earn it
 
@@ -1681,7 +2638,8 @@ the moment they are real.
 | Fantasy/betting regulation | P0-2 before any 3c work; jurisdiction gating |
 | Freshness cost eats the margin | **Decided (P0-4, § 2.1): recurring data cost zero, staleness paid instead** — "as of last import", the date visible, H-11 refusing past 14 days. The residual risk is the licence, not the price: Cricsheet grants none, and that must be settled with the project before anything ships or is sold |
 | Solo-maintainer bus factor | The run pipeline, contracts and docs already assume operator-independence; keep it that way |
-| The lab is a toy (week-3 retention fails) | Unmeasurable under the standing constraint: Phase 1's gate is functional acceptance (§ 3) and says so; the retention question waits with the deferred SaaS half until route (a) is revisited, and the pivot to 3a/3b waits with it |
+| The lab is a toy (week-3 retention fails) | Unmeasurable under the standing constraint: Phase 1's gate is functional acceptance (§ 3) and says so; the retention question waits with the deferred SaaS half until route (a) is revisited. 3a is now being built as an internal tool by judgment (§ 6), which measures nothing about pull either; 3b waits with the route |
+| The auction module reads as XI-picking | § 6's rule in operational form, carried by every prompt: no `/xi/optimize`, no marginal value, no win probability on the module; every ordering labelled as projected output above replacement; the record's T20 sentence on the surface; the exit gate's clause 6 asserts it in a test |
 
 ## 9. Sequencing and effort
 
@@ -1689,7 +2647,8 @@ P0 (weeks, mostly not code — P0-1 is one harness PR) → P1 (the big build: mo
 product engineering; the model layer is done) → P2 (ongoing ops, starts during P1) →
 one wedge of P3 (months) → P4 (earned, not scheduled). Each phase gets item-by-item
 kickoff prompts in the [EXTERNAL_DATA_PLAN.md](EXTERNAL_DATA_PLAN.md) style when it
-starts; Phase 1's are in § 3.2 (2026-09-06), Phase 2's in § 5.2 (2026-09-07).
+starts; Phase 1's are in § 3.2 (2026-09-06), Phase 2's in § 5.2 (2026-09-07), Phase 3's in
+§ 6.2 (2026-09-08).
 
 Under the standing constraint the sequence reads differently. P0 is mostly not runnable
 (§ 2: one item measured, one deferred, one skipped, one forced), and its exit gate closed
@@ -1697,8 +2656,10 @@ on route (a). P1 is a **locally-run prototype**, not a hosted product — the Te
 only: its months of product engineering exclude the SaaS plumbing, whose hosting, accounts and metering are a
 running cost, and its "infra cost per active user" has no number to take until hosting is
 in scope. P2 is four items on the existing stack, ingest stays manual and its availability
-data is maintained lists (§ 5). P3's wedge, if one is chosen, is chosen by judgment. None of this shortens the model-layer work, which is done; it removes
-the parts that cost money or need people, and says so.
+data is maintained lists (§ 5). P3's wedge was chosen by judgment on 2026-09-08 — 3a, the
+one of the three that needs no customer and no counsel — and is five items on the existing
+stack as an internal tool, with its prompts in § 6.2. None of this shortens the model-layer
+work, which is done; it removes the parts that cost money or need people, and says so.
 
 ## 10. Record of outcomes
 
@@ -1708,7 +2669,7 @@ the parts that cost money or need people, and says so.
 | P0-2 | ⏸ **deferred** (2026-09-04, standing constraint: needs paid counsel) — a prerequisite again before anything ships publicly or takes payment; until then the prototype has no verified disclaimer architecture and no jurisdictional clearance, an accepted gap (§ 2) |
 | P0-3 | ✗ **skipped** (2026-09-04, standing constraint: interviews are human-subject research) — the Phase 3 wedge cannot be chosen on evidence; any later choice is a judgment call recorded as unevidenced (§ 2) |
 | P0-4 | ✅ **answered as a decision** (2026-09-04; write-up in § 2.1). The system ships **"as of last import" with the as-of date visible**, and refuses a live prediction past H-11's limit rather than answering from stale ratings; paid feeds were out of scope, so there was no feed to quote and the answer was forced. **Recurring data cost: zero. What is paid instead: staleness** — measured on this box, served ratings through 2026-09-02, **2 days** against the 14-day limit, with the database's own latest match on the same date (nothing lost between import and serving), and the weekly cadence bounding the age at eight or nine days. **Recorded beside the cost line: the Cricsheet licence is unresolved** — no licence is stated for the match archive, only the author's criteria (free, derivatives allowed, corrections reported, not resold), which this prototype's use sits inside; it must be settled with the project directly before anything ships or is sold ([config-and-data.md](config-and-data.md) § Data-source licence register). **The decision is answered; the surfacing it implies is not** — § 2.1's audit names four gaps (the prediction payload carries no as-of date or run id; the Upcoming-match tab shows the date only when the prediction would be refused; the run manifest records `cutoff` but not `ratings_through`; go-app's `db_freshness` buckets and H-11 are two unreconciled rules, disagreeing today) and fixes none: the first two were Phase 1's P1-5 (§ 3.2, shipped), the last two are Phase 2's P2-1 and P2-2 (§ 5.2) |
-| P0 exit gate | ✅ **closed — route (a), recorded 2026-09-06**: *"internal tool / prototype, no wedge chosen"*. Route (b) was declined. No Phase 3 wedge is chosen; no evidence for choosing one exists (P0-3 skipped); any later choice is recorded as an unevidenced judgment call (§ 2) |
+| P0 exit gate | ✅ **closed — route (a), recorded 2026-09-06**: *"internal tool / prototype, no wedge chosen"*. Route (b) was declined. No Phase 3 wedge is chosen; no evidence for choosing one exists (P0-3 skipped); any later choice is recorded as an unevidenced judgment call (§ 2). **That later choice was made on 2026-09-08** — 3a, by judgment, recorded as unevidenced in § 6; the route is unchanged and the gate's record stands as written |
 | P1 | ✅ **closed — functional acceptance, recorded 2026-09-06.** All five items shipped (P1-1 #269, P1-5 #270, P1-2 #271, P1-3 #272, P1-4 #273), run in the order P1-1 → P1-5 → P1-2 → P1-3 → P1-4, and each of § 3's six functional-acceptance clauses is marked with the item that demonstrated it on the dev stack. **What was accepted, at its actual size: an internal prototype whose surfaces do what § 3 says they do**, checked against P1-4's inventory of every served and refused state. **What was not:** retention, pull and cost per active user were never measured — route (a) put all three out of scope (§ 2), along with the user study the gate as first written rested on — so this closes the build, not the market question, and P0-1's unresolved benchmark and P0-3's skipped interviews stand exactly where they stood. Two findings were recorded rather than folded in: B-8 (the selection's rating order can disagree with the display model) and B-10 (must-include reached the search as an empty lock), both in `docs/BUG_BACKLOG.md`; B-10 is fixed on the branch carrying this row. The SaaS half — accounts, saved scenarios, rate limits and metering, hosting, freemium tiers — is deferred with its reason recorded in § 3, and returns the day route (a) is revisited |
 | P1-1 | ✅ **shipped** (2026-09-06) — one Lab surface, the toss toggle, the pools visible. The Upcoming-match tab **became** the Team Lab (`/lab`, `TeamLabTab` + `useTeamLab`) rather than gaining a sibling, so there is one surface on `POST /api/predict/team-selection`. New inputs: the **toss** (bat first / bowl first / unknown), and the constraints the endpoint always accepted but the UI never sent — minimum bowlers, the keeper, and must-include ids that join the pool whatever the window or the ledger says (an unreadable id stops the prediction rather than being dropped). **The toss reached the simulator for the first time**: `team1_bats_first` ran from `predictteam`'s simulation input through to `/simulate`, but `predictTeamRequest` had no field and the UI had no control, so nothing could set it; the field is nullable at every hop (absent = unknown = today's marginalised behaviour) and the response now carries `toss` — which batting order the numbers assume, and whether a named one could be used at all. Two §8.7 consequences: a named toss on a format with no innings length is reported *not honoured* with the reason instead of being ignored, and draws that disagree with the toss asked for (`toss_marginalised` against the request) are refused rather than served. One defect the toggle exposed and this fixes: `scorecard.innings1/innings2` were team1's and team2's innings whichever batted first, so "Innings 1 (India)" could sit beside "Australia bats first" — renamed `team1_innings`/`team2_innings` and labelled by side and batting position. **Verified on the dev stack** (run `20260906T083819Z-36689f80`, ratings through 2026-09-02, 4 days old): T20I India v Australia and ODI England v India come back `optimised true` with marginal values; T20 Mumbai Indians v Chennai Super Kings and TEST Australia v England come back `optimised false` with the H-17 / E5 note on screen and no marginal column; the three toss states give three different answers on the same fixture (unknown 73.1 % with innings 176/175 both orders averaged; team1 first 72.6 % with 189/170; team2 first 73.6 % with 168/183), each named on the surface; both pools render with window, size and the all-time pool one click away. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662. Frontend coverage ratcheted to 79/79/77/70 |
 | P1-5 | ✅ **shipped** (2026-09-06, PR #270) — every served prediction carries its date and run id, and a refused one says why. **The payload:** `predictteam.Result` gains `ratings_through` and `run_id`, required, never omitted (§ 2.1's gap (1) closed). They come from a `served_ratings {run_id, ratings_through}` stamp ml-service now puts on every answer a prediction is assembled from — `/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict` — read off the store that computed it (the same manifest and `state.last_date` `/xi/status` reports), rather than from one `/xi/status` read per prediction: a status read describes whatever is loaded at the moment of the read, and a reload can land between a prediction and that read. Nothing is cached past the request. go-app requires every stamp to agree; a prediction whose calls straddled a reload is `409 SERVED_RUN_CHANGED` naming both runs (§8.7), and an answer with no stamp is refused rather than read as an unknown date. **The surface:** the Lab shows "ratings as of *date* · run *id*" beside the headline probability, off its own payload (gap (2) closed); PredictionReadiness keeps the refused states, so the surface is dateless in no state. **The refusal, demonstrated end to end** on the dev stack with `XI_RATINGS_MAX_AGE_DAYS=1` as an env override on a branch ml-service (the served config untouched; the shared containers were not restarted): ml-service `/xi/status` read `fresh false, age_days 4, max_age_days 1, code RATINGS_STALE`; `POST /api/predict/team-selection` (T20I, India (men) v Australia (men), 2026-09-10) came back through go-app as **`503 {"code":"RATINGS_STALE","message":"ratings run through 2026-09-02 (4 days old, limit 1)","hint":"run the retrain step, then reload -- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate"}`** — a 503, because go-app now relays an upstream 503 as itself instead of rewriting it to 502, which had made a named refusal read as a broken gateway. On the Lab the refusal rendered with the date, the age against the limit, ml-service's hint, the place in this UI that fixes it (Ops → Pipeline: Retrain, then Reload) and the code, and no number: the failed request clears the previous answer. With the limit back at 14 the same fixture answered **200** with `ratings_through 2026-09-02`, `run_id 20260906T083819Z-36689f80`, P(India) 73.1 % (P1-1's figure), and the Lab showed "ratings as of **2026-09-02** · run 20260906T083819Z-36689f80" beside it. `as_of` stays unreachable from the product. No glossary entry: the date and the run id are labels, not numbers L-1's gate covers; the chip carries its own one-sentence tooltip. **Tests:** Go — the adopt/refuse rule, the selection and both forecast paths refusing a mid-prediction run change, the client mapping the stamp, `relayStatus` passing 503, the handler answering 503 `RATINGS_STALE` and 409 `SERVED_RUN_CHANGED`, and two scratch-database integration tests through the real handler (a served payload carries both fields; a stale registry is a 503 with the code on the wire); ml-service — the stamp equals the status on both the optimised and rating-ordered paths and on every response model, a backtest is dated by its as-of state, a store with no manifest is refused, and the 503 reaches the route with the code, the date, the age and the hint; frontend — the date renders on success, the refusal renders on 503 with no number, and neither state is blank. `make check-all` green; no coverage gate could move — the gates measure ml-service 93.60 %, go-app 76.7 % and frontend 77.85/70.16/79.13/79.87, each rounding down to its existing threshold. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
@@ -1720,4 +2681,9 @@ the parts that cost money or need people, and says so.
 | P2-2 | ✅ **shipped** (2026-09-07, PR #280) — the manifest says what date its data runs through. **What shipped:** `RunManifest.ratings_through` (YYYY-MM-DD, the rating state's `last_date`), **required**, written by `retrain` beside `cutoff` and carried by `summary()`, so `/xi/status` reports the manifest's date beside the state's; the manifest docstring says why the two dates differ (the cutoff is the boundary the operator asked for, `ratings_through` the last match the pass consumed). **One date, asserted:** `read_manifest` refuses a manifest without the field and `XiStore.load` refuses a run whose manifest disagrees with its state, both as `RunArtifactsInvalid` naming the run and both dates (409 `RUN_ARTIFACTS_INVALID` on reload); `_served_ratings` and `status()` keep reading the state, and the assertion is what makes the manifest's date the same date. No backfill and no compatibility path (D-6: retrained, not patched). **The listing:** `/artifacts/status` carries `ratings_through` per run and `refused` — `null` on a loadable run, the reason on one that cannot load (§8.7); `newest_run_id` skips a refused run; go-app copies the listing through whole and its fallback scan reports the same field and the same refusal; the Ops runs panel shows `ratings through <date>` beside the cutoff for every run and the reason under one that cannot load; the Workbench's loaded-run card shows `Ratings through (manifest)` beside the cutoff with the freshness verdict beneath. **Verified on the database (dev stack, 2026-09-07):** `make retrain CUTOFF=2026-09-07` from the branch wrote **`20260907T062657Z-6b16045e`** in **562 s (9 min 22 s)**, 13,605 players, manifest `cutoff 2026-09-07` / **`ratings_through 2026-09-02`** — five days apart, the archive's last day against the retrain's; after `make reload` the four readings are one date: the manifest **2026-09-02**, `/artifacts/status`'s loaded row **2026-09-02** (`refused null`; top-level `ratings_through` **2026-09-02**), `/xi/status` **2026-09-02** in both `ratings_through` and `manifest.ratings_through`, and `POST /api/predict/team-selection` (T20I Australia v England, 2026-09-10) stamped `run_id 20260907T062657Z-6b16045e`, **`ratings_through 2026-09-02`**. **The refusal, shown:** a copy of the run with `ratings_through` deleted from its manifest answered `POST /admin/reload?run=20260907T062657Z-copynodt` with **409 `RUN_ARTIFACTS_INVALID`** naming the run and the field, and was listed with that `refused` reason. **The previously served run is unloadable now, by design:** the branch ml-service refused `20260906T083819Z-36689f80` by name at startup (*"manifest.json carries no ratings_through …"*), and all five older runs on disk are listed with that reason. **Found on the way — B-13** (`docs/BUG_BACKLOG.md`, open): a refused named reload *unloads the run that was serving*, because `XiRegistry.reload` clears the store before attempting the load; the 409 above left `run_id: null` until `make reload` restored the good run. This is the mechanism behind the box being found serving nothing after artifact-policy changes. **The dev stack as left:** ml-service and go-api rebuilt from the branch, **serving `20260907T062657Z-6b16045e`**, `freshness.served` fresh (5 of 14, through 2026-09-02), `retrain_due up_to_date`. `make check-all` green; coverage gates unchanged — go-app **77.2 %** (floor 77), ml-service **93.85 %** (floor 93), frontend 81.89 / 81.45 / 79.99 / 73.13 against 81 / 81 / 79 / 73, all rounding down to the floors they sit on — and read off the PR's own CI runs rather than a local one (B-9): Go App CI run 34092046185 `Coverage 77.2% meets threshold (>= 77%)`, Frontend CI run 34092046178 `All files | 79.99 | 73.13 | 81.45 | 81.89`, ML Service CI run 34092046182 `Total coverage: 93.85%`, the same numbers as the local run; `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 |
 | P2-3 | ✅ **shipped** (2026-09-07, PR #282) — every issued prediction is on the record, as it was served. **What shipped:** migration `0013` creates `issued_prediction`, one row per successful `POST /api/predict/team-selection` answer — the payload whole as `jsonb`, the request beside it, `issued_at`, `run_id` and `ratings_through` off the answer's own P1-5 stamp (never off a status call), and the columns a resolver joins on and a record sorts by: `format_code`, both opposition ids, `gender`, `match_date`, `selection_objective` and the headline probability with its source. Every one of those is also inside one of the two documents; they are columns so a join and a sort need not parse a payload, and nothing derived that the documents do not already say is stored. The migration's comment says what 0007's dropped `match_prediction_aggregates` was, so nobody reads this as a cache revived. The write goes through `predictions.Recorder` (one method, mockery mock) *before* the handler answers; the id and `issued_at` are minted first, the whole response is encoded once, and those bytes are both what the store keeps and what the caller receives — so the answer carries a `record` block naming the row that holds it. `GET /api/predictions` lists the record newest first, paged, with the join columns and no payloads; `GET /api/predictions/{id}` returns one answer whole. `selection_objectives` (`win` / `ratings` / `fixed`) joins the generated contract and is asserted from both sides (H-24), because it is now a value a reader matches on. **The two rules decided here.** *A store failure never refuses the prediction:* every refusal this endpoint makes — stale ratings, a reload mid-assembly, a cross-gender fixture, an incomplete eleven — is a case where the answer would be wrong or meaningless, and a failure to file leaves the answer exactly as true as it was; refusing would turn a bookkeeping outage into an outage of the only thing the product does and put a new single point of failure in front of a path that has none. The record stays honest because the failure is on the wire of the answer it failed to record (§8.7) and the Lab shows it beside the served date. *Play-mode re-scores are recorded,* because P2-4 counts what this store holds and an answer the user saw but the record cannot account for is a dishonest count — and **no new column marks them**: `selection.objective` already separates an eleven this service chose from one the caller pinned, `fixed` is exactly the scenario clause 5 says is listed and never scored, "superseded" is computable from (fixture key, objective, `issued_at`), and everything else a reader might segment on (venue, toss, pool scope, the pinned elevens) is inside the two stored documents. A `kind` column would have been derived from `objective`, which this store does not do. **Verified on the dev stack (2026-09-07, served run `20260907T062657Z-6b16045e`, ratings through 2026-09-02):** three answers issued and read back — a T20I Optimise (Australia v England, 2026-09-10, `objective win`, P(team1) 0.3167 `display`), a rating-ordered T20 (Adelaide Strikers v Abu Dhabi Knight Riders, 2026-09-12, `objective ratings`) and a Play-mode re-score of the T20I eleven (`objective fixed`) — each `GET /api/predictions/{id}` payload **identical to the served body**, with `run_id` and `ratings_through` on every row. **A refusal stores nothing:** with a branch ml-service at `XI_RATINGS_MAX_AGE_DAYS=3` the same T20I request answered **503 `RATINGS_STALE`, "ratings run through 2026-09-02 (5 days old, limit 3)"** and the row count was unchanged at 3 before and after. **A store failure is named on the wire:** with the table renamed away for one request, the prediction was served **200** with the full eleven and P(team1) 0.3167 and `record: {stored: false, reason: "record prediction: ERROR: relation \"issued_prediction\" does not exist (SQLSTATE 42P01)"}`; the table was renamed back with its rows intact. **Blast radius:** nothing under `ml-service/` changed (the diff against main is empty there), the harness, the run plans and the three pipeline steps are untouched, and a repo-wide grep for `issued_prediction` finds only this item's migration, repo, handler, tests and docs. **Cost of the write:** the re-score is **median 181.5 ms / p95 213 ms** with the store against **192.2 ms / 243 ms** on the same box without it (15 requests each, T20I Play mode) — the difference is negative and inside run-to-run noise; the committed insert of the real 10 KB payload measures **median 0.31 ms, p95 0.69 ms, max 1.76 ms** over 30, three orders of magnitude below P1-2's 355–399 ms. **Tests:** go-app — the served bytes are the stored bytes (unit, mock recorder), the columns read off the answer, a Play-mode re-score filed as a scenario, the failure block on the wire with the prediction untouched, a refusal filing nothing (a recorder mock with no expectation at all), the default store, both read endpoints and the page parser (httptest, mock reader), and four scratch-database integration tests through the real handlers — the round trip, the listing, the refusal writing nothing and the re-score's `fixed` row; frontend — `PredictionRecordNote`'s three states and the objectives asserted against the contract. **Found by CI, not locally:** 0013's foreign keys point the record at `opposition`, and three `internal/db` fixtures truncate `opposition` without it, so every suite that resets the fact tables failed with *"cannot truncate a table referenced in a foreign key constraint"* — the branch had been run against `internal/server` alone. The keys stay (they are what makes the fixture a join rather than two loose integers, and nothing in this system deletes an opposition row) and the three fixtures name the new table. `make check-all` green; coverage gates never moved down — go-app **77.2 %** stays at its 77 floor and **frontend statements 79 → 80**, both read off this PR's own CI runs rather than a local one (B-9): Go App CI run 34099887154 `Coverage 77.2% meets threshold (>= 77%)`, Frontend CI run 34099887101 `All files | 80.05 | 73.37 | 81.48 | 81.95` — the same four numbers as the local run; ml-service is untouched, so its CI did not run and its 93 floor is unchanged. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662. **The dev stack as left:** go-api rebuilt from the branch (migration `0013` applied to `cricket_data`), ml-service back on the default 14-day limit and serving `20260907T062657Z-6b16045e`, fresh at 5 of 14; the 18 predictions this verification issued are left on the record rather than tidied away, which is the store's own rule |
 | P2-4 | ✅ **shipped** (2026-09-07, PR #283) — the internal track record, computed on read, misses included. **What shipped:** `GET /api/track-record` reads the whole prediction record and the match tables on every request and puts every stored prediction in exactly one of five states — `scenario` (`objective fixed`, listed and never scored), `superseded` (an Optimise forecast of a fixture that a later Optimise of the same fixture, issued on or before the match date, replaced; the row names the id that replaced it), `unresolved` (no match in the database, with `days_past_match_date`, negative before the match), `no_result` (a match with no `outcome_winner_opposition_id`), `scored` — with no column, no step and no scheduler, so an import moves a prediction to scored by itself. A fixture is resolved by the exact `match_date`, both opposition ids in either order, the format and the gender (`db.MatchLookup`, which reads the sides off `match_inning` and `match_player` because `match` names no teams); a match on a neighbouring date is not it, and a double-header the record cannot tell apart is left unresolved with the reason on the wire rather than scored against one of them. **The scores**, over the scored predictions only and every one with its n: Brier of the served headline probability with the base rate from the same rows and its Brier beside it, overall and per format; the reliability curve in the harness's ten equal-width bins with n per bin; the served 10–90 totals' coverage per innings *as played* (first innings / chase, the harness's labels), inclusive at both ends; and the eleven overlap — how many of the named players took the field for the side they were named for — per prediction and summarised, reported and never used to exclude. **Where the arithmetic lives:** in Go (`internal/trackrecord`), because Brier, the bins and the interval test are three lines each and the record is a go-app read of go-app's tables — a round trip to hand tens of rows to ml-service for three means would put a network hop and a second contract between a stored row and its score. The harness stays the reference: `ml-service/tests/fixtures/track_record_reliability.json` was generated by `sim_harness.reliability` and `_brier` (with 0.3 in it on purpose — it sits just below numpy's third edge, 0.30000000000000004, and lands in the [0.2, 0.3) bin on both sides), a Go test asserts the record's Brier, base-rate Brier and every bin against it to 1e-12, and a Python test holds the harness to still producing it. **Two populations, never pooled (B-12):** `/simulate` gains `shared_factor` (read off the calibration that drew the samples, never off a status call), go-app carries it onto the answer as `scorecard.shared_factor`, and migration `0014` keeps it as `issued_prediction.simulator_shared_factor`; coverage is reported per (format, population) with both denominators visible and **no pooled row**, and a simulated answer stored before the column existed is a third population, `unknown`, shown as such — the 18 rows P2-3 left are all in it, which is the honest reading. A fourth, `not_simulated`, holds answers with no scorecard (TEST), counted and with nothing to cover. **The surface:** a Track record tab (`/track-record`) with the state counts, the win table (n, Brier, base-rate Brier, and beside each format the harness's display Brier and base-rate Brier from `xi_evaluate_report.json`, labelled by the window they came from — the locked window where it was scored, otherwise the walk-forward fold means), the reliability plot (points with n, the diagonal, no line joining them, and an empty record drawing axes and saying so rather than a curve), the coverage table per format and population with the harness's pooled and calibrated-only coverage beside it, the elevens summary and every prediction newest first with what was claimed, what happened, whether each total was in range, the Brier and the overlap. Nothing turns red at a threshold — the tab renders plain values with the L-1 explainer behind each label and never paints one — and nothing is filtered by outcome. **H-24:** `prediction_states`, `simulator_populations` and `track_record_metric_keys` join the generated contract; go-app declares them, the frontend asserts the states and populations against the file and that the tab labels numbers under exactly the declared keys, and ml-service asserts every declared key has a glossary entry (two added: `record_base_rate_brier`, `eleven_overlap`). **Verified on the scratch database through the real handlers:** a scenario, two forecasts of one fixture, a no-result, an unresolved fixture and a scored one land in their five states at once (the scripted ml-service's 0.6 for a side that won reads Brier **0.16**); then the pending fixture's match is inserted and the next read, with nothing else run, shows it **scored** — a 0.6 for a side that lost, Brier 0.36, the record's mean **0.26**: the miss is on the record. A match between the same sides the day after the predicted date leaves the prediction unresolved. **Verified on the dev stack (2026-09-07, branch images serving `20260907T062657Z-6b16045e`, ratings through 2026-09-02, migration 14 applied):** the 18 predictions P2-3 left read **16 scenario, 2 unresolved** (the T20I Australia v England Optimise at −3 days, the T20 Adelaide Strikers v Abu Dhabi Knight Riders rating-ordered pick at −5), all `unknown` population, scored 0, no curve invented; a fresh T20I Optimise of the same fixture issued through the API stored `simulator_shared_factor = true` and read back `with_shared_factor`, and the record moved P2-3's earlier Optimise of that fixture to **superseded** naming the new id, with the 16 scenarios untouched — **16 scenario, 1 superseded, 2 unresolved, 0 no result, 0 scored, total 19**. **Nothing has resolved, and the record says so instead of inventing a result:** Cricsheet's most recently added matches on 2026-09-07 are dated 2026-09-02, the same day as the database's latest, so no predicted fixture can be imported yet; the tab shows the two forecasts as unresolved with their days (−3 and −5) and every scored number as n=0. The import-moves-it-to-scored clause is demonstrated on the scratch database above. **Blast radius:** ml-service's change is one boolean on `/simulate` and two glossary entries; the harness, the run plans and the three pipeline steps are untouched. The harness comparison reads the existing `xi_evaluate_report.json` (2026-09-02; its locked window is skipped for every format, so the tab shows the fold means and says so) and `make evaluate` was not run. Nothing the record showed disagrees with the harness — there is nothing scored to disagree — so no B-14 is written. `make check-all` green; coverage gates never moved down — **go-app 77 → 78** and **frontend lines 81 → 82**, each verified against the PR's own CI run rather than a local one (B-9): Go App CI run 34145895838 `Coverage 78.6% meets threshold`, Frontend CI run 34145895909 `All files | 80.22 | 73.2 | 81.79 | 82.31`, ML Service CI run 34145895786 `Total coverage: 93.85%` — the same numbers as the local runs; ml-service stays at its 93 floor, frontend functions / statements / branches at 81 / 80 / 73. `cricket_data` unchanged at 22,818 / 11,539,808 / 13,662 (migration 0014 adds a nullable column and touches no row). **The dev stack as left:** go-api and ml-service rebuilt from this branch (so `umayangag/cric-app-api:latest` and `cric-app-ml:latest` now point at P2-4's build), serving `20260907T062657Z-6b16045e`, fresh at 5 of 14; 19 predictions on the record |
-| P3 | open — **no wedge chosen** (route (a), § 2): P0-3 was skipped, so no evidence for a choice exists; if one is ever made it is recorded as an unevidenced judgment call, never as validated |
+| P3 | **open — wedge 3a, the auction/draft module in its valuation framing, chosen by the user's judgment on 2026-09-08 and recorded as an unevidenced judgment call** (§ 6). Not validated and not market-tested: P0-3 was skipped, so no pull evidence exists or will while the standing constraint holds; the P0 exit gate's "no wedge chosen" is reversed for 3a alone, by judgment, and route (a) is unchanged. The other two were not available — 3c is conditional on P0-2, which is deferred for want of paid counsel; 3b needs customers, which is the business activity route (a) set aside — and 3a is software the operator runs alone. Scoped as an internal tool (one operator, local stack, no accounts, billing or hosting); five items in § 6.2 (P3-1 → P3-5), each derived from § 6's original 3a bullet and none added; the rule that is the item — valuation and projection, never XI-picking (plan §8.8; the IPL is domestic T20) — in the phase text and in every prompt; built on the intervals B-11 concerns, shown as served with B-11 named, and on top of B-14, both open. The exit gate is functional acceptance and says it does not measure whether the valuations are good (no auction outcome data exists), nor users, nor a market |
+| P3-1 | open — the auction record and the pool's distribution by role; prompt in § 6.2 (Opus). Not started |
+| P3-2 | open — the projection: a player's output in the buyer's likely eleven, at the buyer's grounds; prompt in § 6.2 (Opus). Not started |
+| P3-3 | open — replacement level by role, and the scarcity curve; prompt in § 6.2 (Fable). Not started |
+| P3-4 | open — the value-vs-price flag; prompt in § 6.2 (Fable). Not started |
+| P3-5 | open — re-ranking the remaining pool as slots fill; prompt in § 6.2 (Opus). Not started |
