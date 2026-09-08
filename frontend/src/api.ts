@@ -27,6 +27,9 @@ import type {
   AuctionPlayerState,
   AuctionResponse,
   AuctionSummary,
+  AuctionProjection,
+  AuctionOppositionSuggestion,
+  AuctionVenueWeight,
   PlayerSearchResult,
 } from './types';
 import type { OpsStatusDTO } from './types';
@@ -564,6 +567,61 @@ export const api = {
     return httpApi(`/api/auctions/${auctionId}/outcomes`, {
       method: 'POST',
       body: JSON.stringify(outcome),
+    });
+  },
+
+  // --- The projection (P3-2) ---
+  //
+  // The two writes below the search are the projection's assumptions — an eleven the
+  // operator guesses and an opposition they name — held on the record so every later item
+  // reads one list. The projection itself carries no win probability and no marginal
+  // value: go-app's own type for the match-drawing call has no such field, so one cannot
+  // reach here. (The endpoint's name is not spelled here because the contract's rejected
+  // body params are matched against this file as plain words.)
+
+  /**
+   * Name the projection's assumptions. Each field is optional and an absent one is left as
+   * it stands: the operator names the opposition once and edits the likely eleven all
+   * through the auction as their squad fills.
+   */
+  setAuctionAssumptions(
+    auctionId: string,
+    body: { likely_xi?: number[]; opposition?: { club_id: number; player_ids: number[] } },
+  ): Promise<AuctionResponse> {
+    return httpApi(`/api/auctions/${auctionId}/assumptions`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+
+  /**
+   * The eleven a side last fielded in this format, as a starting point to edit. A fact
+   * with a date on it, never a side assembled by rating.
+   */
+  auctionOppositionSuggestion(
+    auctionId: string,
+    clubId: number,
+  ): Promise<AuctionOppositionSuggestion> {
+    return httpApi(`/api/auctions/${auctionId}/opposition-suggestion?club_id=${clubId}`);
+  },
+
+  /**
+   * Project one candidate in the likely eleven, per ground. `team1_bats_first` omitted is
+   * the toss unknown, which is the honest default months before a fixture exists;
+   * `venue_weights` asks for a mixture over the named grounds and is omitted otherwise,
+   * because how often an eleven plays where is a fact nobody has entered.
+   */
+  projectAuctionCandidate(
+    auctionId: string,
+    body: {
+      player_id: number;
+      team1_bats_first?: boolean | null;
+      venue_weights?: AuctionVenueWeight[];
+    },
+  ): Promise<AuctionProjection> {
+    return httpApi(`/api/auctions/${auctionId}/projection`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     });
   },
 

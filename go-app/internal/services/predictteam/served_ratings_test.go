@@ -65,7 +65,7 @@ func TestServedRatings_Adopt(t *testing.T) {
 			t.Parallel()
 			stamp := tc.already
 
-			err := stamp.adopt(tc.answer)
+			err := stamp.Adopt(tc.answer)
 
 			assert.Equal(t, tc.want, stamp)
 			if tc.wantError == "" {

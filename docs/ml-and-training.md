@@ -976,6 +976,44 @@ store recorded its simulator is a third population, "unknown"), and the ranges a
 simulator's as served, with no day/night adjustment (B-11 is open and the record will show
 it). Glossary keys the record adds (L-1): `record_base_rate_brier`, `eleven_overlap`.
 
+### The auction projection, and what it is not (P3-2)
+
+The auction module's projection (`POST /api/auctions/{id}/projection`) reads the two models
+above and nothing else: L2-B's per-player quantiles from `/performance/predict`, and the
+eleven's total from `/simulate`'s draws. It is worth saying plainly what it is, because it
+looks like a prediction and is not one:
+
+- **It is a forecast of no fixture.** The eleven is a guess the operator typed, the
+  opposition is a guess they named, and the grounds are a mix nobody has played. There is
+  no match to resolve it against, so it is **not stored as a prediction, is not on the
+  track record and is never scored** — `issued_prediction` (P2-3) holds answers about
+  fixtures, and P2-4 scores them once the match is imported. The auction record holds what
+  was entered and what was shown, which is a different thing and says so.
+- **It is valuation, never XI-picking.** Nothing in it calls `/xi/optimize`, nothing
+  computes a marginal value, and the Go type it maps `/simulate` into carries no
+  `win_probability` field at all, so the value never exists in that process. The record is
+  that in T20 optimised selection is indistinguishable from rating order (plan §8.8) and
+  the IPL is domestic T20; a P(win) beside a purchase would be that claim in another coat.
+- **It changes no model and measures nothing.** Two additive serving fields exist for it —
+  `venue_context` on `/performance/predict` (the two columns the model reads a ground
+  through, off the rows it consumed) and an opt-in `return_total_draws` on `/simulate` (the
+  drawn totals themselves, so a caller pooling grounds inverts the pool rather than
+  averaging summaries). Neither is a feature, neither enters a fit, and no measured number
+  moves.
+- **Its two intervals are different populations and are labelled as such.** L2-B's quantile
+  heads are at nominal coverage on the harness (§8.2); the simulator's drawn totals are
+  B-11's open defect and are shown with B-11 and B-14 named beside them. Nothing is
+  widened, narrowed, adjusted for day or night, or hidden.
+- **A ground moves it only through the toss.** `venue_bf_rate` and `venue_n` are the whole
+  of what the performance model reads about a ground — A-1's fixture-context families were
+  gated and nulled, and `FIXTURE_CONTEXT_FAMILIES_KEPT` is empty — so per-ground rows differ
+  by what the toss does there and by nothing else, and the answer says so. A ground the
+  served state has no matches at reads neutral and is reported neutral (§8.7).
+
+Glossary keys the projection adds (L-1): `auction_projected_output`,
+`auction_projected_total`, `interval_source_l2b_quantiles`,
+`interval_source_simulator_draws`.
+
 ## The Docker image
 
 `ml-service/Dockerfile` builds one image, from `requirements.txt`.

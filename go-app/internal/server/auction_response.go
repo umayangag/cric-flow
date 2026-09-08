@@ -42,6 +42,12 @@ type auctionRecord struct {
 	MinBowlers    int             `json:"min_bowlers"`
 	RequireKeeper bool            `json:"require_keeper"`
 	Players       []auctionPlayer `json:"players"`
+	// LikelyXI and Opposition are the projection's named assumptions (P3-2), on the record
+	// so every item after this one reads one list. LikelyXI is empty until the operator
+	// names it; Opposition is absent until they do, because a projection against no one is
+	// refused rather than made against a silently neutral side (§8.7).
+	LikelyXI   []auctionProjectionPlayer `json:"likely_xi"`
+	Opposition *auctionOppositionBlock   `json:"opposition,omitempty"`
 }
 
 // auctionBuyer is the side this auction fills a squad for.
@@ -259,7 +265,7 @@ func newAuctionRecord(record auction.Auction, roles map[int64]auction.PlayerRole
 	if venues == nil {
 		venues = []int64{}
 	}
-	return auctionRecord{
+	rendered := auctionRecord{
 		ID:            record.ID,
 		Name:          record.Name,
 		Format:        record.FormatCode,
@@ -270,6 +276,55 @@ func newAuctionRecord(record auction.Auction, roles map[int64]auction.PlayerRole
 		MinBowlers:    record.MinBowlers,
 		RequireKeeper: record.RequireKeeper,
 		Players:       newAuctionPlayers(record.Players, roles),
+		LikelyXI:      namedPlayersOnWire(record.LikelyXI),
+	}
+	if record.Opposition != nil {
+		rendered.Opposition = &auctionOppositionBlock{
+			ClubID:  record.Opposition.OppositionID,
+			Name:    record.Opposition.Name,
+			Players: namedPlayersOnWire(record.Opposition.Players),
+		}
+	}
+	return rendered
+}
+
+// oppositionSuggestion is a side's last recorded eleven, offered as a starting point for
+// the opposition the operator names (P3-2).
+//
+// It carries the match it came from because a fact's age is part of the fact: an operator
+// seeding an assumption from a side's last eleven should see whether that was last month
+// or four seasons ago, and decide from that whether to edit it.
+type oppositionSuggestion struct {
+	ClubID    int64                     `json:"club_id"`
+	Name      string                    `json:"name"`
+	Players   []auctionProjectionPlayer `json:"players"`
+	FromMatch oppositionSuggestionMatch `json:"from_match"`
+	Note      string                    `json:"note"`
+}
+
+type oppositionSuggestionMatch struct {
+	MatchDate string `json:"match_date"`
+	EventName string `json:"event_name,omitempty"`
+	VenueName string `json:"venue_name,omitempty"`
+}
+
+// suggestionNote says what this list is, so it is never read as the opposition the
+// projection will actually face.
+const suggestionNote = "The eleven this database records that side last fielding in this format. It is a " +
+	"starting point to edit, not a prediction of who will play: the opposition a projection is against is " +
+	"an assumption the operator names."
+
+func newOppositionSuggestion(found db.LastFieldedEleven) oppositionSuggestion {
+	return oppositionSuggestion{
+		ClubID:  found.OppositionID,
+		Name:    found.OppositionName,
+		Players: namedPlayersOnWire(found.Players),
+		FromMatch: oppositionSuggestionMatch{
+			MatchDate: found.MatchDate.Format(time.DateOnly),
+			EventName: found.EventName,
+			VenueName: found.VenueName,
+		},
+		Note: suggestionNote,
 	}
 }
 

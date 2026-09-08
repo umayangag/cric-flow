@@ -176,7 +176,7 @@ func applyXISimulation(
 	}
 	// The draws have to come from the rating state the XIs were chosen from, or the
 	// scorecard describes a different run than the selection beside it (P1-5).
-	if err := result.adopt(sim.Served); err != nil {
+	if err := result.Adopt(sim.Served); err != nil {
 		return fmt.Errorf("simulate match: %w", err)
 	}
 

@@ -34,7 +34,11 @@ type App struct {
 	// operator lists, sells, and undoes a mistyped sale — so there is no read-only
 	// capability to hand out separately.
 	auctionStore auction.Store
-	jobContext   context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
+	// auctionLookups is what the projection reads from the database beside the record
+	// (P3-2): the grounds' names, and a side's last recorded eleven. Nil is the process
+	// default; tests set a stub so the handlers can be exercised with no database.
+	auctionLookups auctionLookups
+	jobContext     context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
 	// jobCancels holds one cancel func per lane, for the job running in that lane.
 	//

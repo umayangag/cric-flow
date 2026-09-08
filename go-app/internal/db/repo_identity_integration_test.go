@@ -23,7 +23,8 @@ func connectAndMigrateForIdentity(t *testing.T) context.Context {
 	t.Cleanup(func() { pool.Close() })
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
 	require.NoError(t, Exec(ctx, `TRUNCATE TABLE
-		auction_player, auction_venue, auction,
+		auction_player, auction_venue, auction_likely_xi,
+		auction_opposition_player, auction_opposition, auction,
 		issued_prediction,
 		ball_event, match_player, batting_data, bowling_data, fielding_data, fielding_event,
 		match_inning, match, player, opposition,

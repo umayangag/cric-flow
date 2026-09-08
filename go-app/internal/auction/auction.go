@@ -70,7 +70,20 @@ const (
 )
 
 // MetricKeys returns the L-1 keys this module's numbers are reported under.
-func MetricKeys() []string { return []string{MetricOpenSlots, MetricAvailableRole} }
+//
+// P3-2 adds the projection's four and reuses the Lab's `spread_share` rather than minting
+// a second explanation of the same quantity.
+func MetricKeys() []string {
+	return []string{
+		MetricOpenSlots,
+		MetricAvailableRole,
+		MetricProjectedOutput,
+		MetricProjectedTotal,
+		MetricIntervalL2B,
+		MetricIntervalSimulator,
+		MetricProjectedSpread,
+	}
+}
 
 // NewID mints the identifier an auction is filed and read back under.
 //
@@ -107,6 +120,17 @@ type Auction struct {
 
 	// Players is the list, in the order it is read: by name.
 	Players []ListedPlayer
+
+	// LikelyXI is the eleven a candidate would be projected into (P3-2): the buyer's squad
+	// so far plus the operator's guesses, held here so every later item reads one list and
+	// not its own guess at one. It is an assumption and is carried back on every answer
+	// that was made under it.
+	LikelyXI []NamedPlayer
+
+	// Opposition is the eleven the projection is against, and the side it stands for. Nil
+	// until the operator names one: a projection then is refused rather than made against
+	// a silently neutral side (§8.7).
+	Opposition *Opposition
 }
 
 // ListedPlayer is one player on the list and the state the operator last recorded.
@@ -193,4 +217,68 @@ type Store interface {
 	// to forget that he was sold.
 	AddPlayers(ctx context.Context, auctionID string, playerIDs []int64) (*Auction, error)
 	RecordOutcome(ctx context.Context, auctionID string, outcome Outcome) (*Auction, error)
+	// SetAssumptions replaces the projection's named assumptions (P3-2). Each field of the
+	// change is optional and an absent one is left as it stands, because the operator sets
+	// the opposition once and edits the likely eleven all through the auction as their
+	// squad fills.
+	SetAssumptions(ctx context.Context, auctionID string, change AssumptionsChange) (*Auction, error)
+}
+
+// AssumptionsChange is a write of the projection's assumptions. Both fields are pointers
+// so "leave this as it stands" and "set this to nothing" are different requests: an
+// operator clearing a likely eleven sends an empty list, and one who is only naming the
+// opposition sends no likely eleven at all.
+type AssumptionsChange struct {
+	LikelyXIPlayerIDs *[]int64
+	Opposition        *OppositionChange
+}
+
+// OppositionChange is the opposition as the operator named it: the side, and its eleven.
+type OppositionChange struct {
+	OppositionID int64
+	PlayerIDs    []int64
+}
+
+// Validate refuses an assumption that could not be projected under.
+//
+// The likely eleven is *not* required to be eleven here: it is ten with a place open for a
+// candidate as often as it is eleven, and which of those it is only matters once a
+// candidate is named. The opposition is different — it is a whole eleven or it is nothing,
+// because there is no candidate joining it.
+func (c AssumptionsChange) Validate() error {
+	if c.LikelyXIPlayerIDs != nil {
+		if len(*c.LikelyXIPlayerIDs) > TeamSize {
+			return fmt.Errorf("the likely eleven holds at most %d players, and %d were sent",
+				TeamSize, len(*c.LikelyXIPlayerIDs))
+		}
+		if err := refuseRepeats(*c.LikelyXIPlayerIDs, "the likely eleven"); err != nil {
+			return err
+		}
+	}
+	if c.Opposition == nil {
+		return nil
+	}
+	if c.Opposition.OppositionID <= 0 {
+		return errors.New("the opposition names a side: send the club_id from /api/options/teams-by-format")
+	}
+	if len(c.Opposition.PlayerIDs) != TeamSize {
+		return fmt.Errorf("the opposition is an eleven, and %d players were sent",
+			len(c.Opposition.PlayerIDs))
+	}
+	return refuseRepeats(c.Opposition.PlayerIDs, "the opposition")
+}
+
+// refuseRepeats rejects a list that names one player twice: one player fills one place.
+func refuseRepeats(playerIDs []int64, where string) error {
+	seen := make(map[int64]bool, len(playerIDs))
+	for _, id := range playerIDs {
+		if id <= 0 {
+			return fmt.Errorf("%s names a player id that is not a player id: %d", where, id)
+		}
+		if seen[id] {
+			return fmt.Errorf("%s names player %d twice, and one player fills one place", where, id)
+		}
+		seen[id] = true
+	}
+	return nil
 }

@@ -246,6 +246,131 @@ func (a *App) recordAuctionOutcomeHandler(w http.ResponseWriter, r *http.Request
 	a.respondWithAuction(w, r, record)
 }
 
+// setAuctionAssumptionsRequest names the projection's assumptions (P3-2).
+//
+// Both fields are pointers so an absent one leaves the record as it stands: the operator
+// names the opposition once and edits the likely eleven all through the auction as their
+// squad fills, and a write that cleared what it did not mention would lose one of them
+// every time the other changed.
+type setAuctionAssumptionsRequest struct {
+	LikelyXI   *[]int64                   `json:"likely_xi"`
+	Opposition *setAuctionOppositionInput `json:"opposition"`
+}
+
+type setAuctionOppositionInput struct {
+	ClubID    int64   `json:"club_id"`
+	PlayerIDs []int64 `json:"player_ids"`
+}
+
+// setAuctionAssumptionsHandler answers PUT /api/auctions/{id}/assumptions.
+func (a *App) setAuctionAssumptionsHandler(w http.ResponseWriter, r *http.Request) {
+	auctionID := strings.TrimSpace(mux.Vars(r)["id"])
+	var request setAuctionAssumptionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_BODY",
+			Message: "the request body is not valid JSON: " + err.Error(),
+		})
+		return
+	}
+	change := auction.AssumptionsChange{LikelyXIPlayerIDs: request.LikelyXI}
+	if request.Opposition != nil {
+		change.Opposition = &auction.OppositionChange{
+			OppositionID: request.Opposition.ClubID,
+			PlayerIDs:    request.Opposition.PlayerIDs,
+		}
+	}
+	if change.LikelyXIPlayerIDs == nil && change.Opposition == nil {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_PARAM",
+			Message: "send likely_xi, opposition, or both: this write changes nothing as it stands",
+		})
+		return
+	}
+	if err := change.Validate(); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{Code: "INVALID_PARAM", Message: err.Error()})
+		return
+	}
+	record, err := a.auctionRecord().SetAssumptions(r.Context(), auctionID, change)
+	if err != nil {
+		a.respondAuctionErr(w, auctionID, "setAuctionAssumptions", err)
+		return
+	}
+	a.respondWithAuction(w, r, record)
+}
+
+// oppositionSuggestionHandler answers GET /api/auctions/{id}/opposition-suggestion.
+//
+// A starting point, not an answer: the eleven this database records the named side last
+// fielding in this auction's format, with the match it came from, for the operator to edit.
+// It is a fact with a date on it rather than a plausible side assembled by rating — which
+// would be this service inventing an opposition and presenting it as evidence.
+func (a *App) oppositionSuggestionHandler(w http.ResponseWriter, r *http.Request) {
+	record, ok := a.loadAuction(w, r)
+	if !ok {
+		return
+	}
+	clubID, apiErr := parsePositiveParam(r.URL.Query().Get("club_id"), "club_id")
+	if apiErr != nil {
+		writeJSON(w, http.StatusBadRequest, *apiErr)
+		return
+	}
+	if clubID == 0 {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_PARAM",
+			Message: "club_id names the side whose last eleven to start from",
+			Hint:    "club ids come from GET /api/options/teams-by-format",
+		})
+		return
+	}
+	found, err := a.auctionReads().LastFieldedEleven(r.Context(), record.FormatCode, int64(clubID))
+	if errors.Is(err, db.ErrNoFieldedEleven) {
+		writeJSON(w, http.StatusNotFound, apiError{
+			Code: "NO_FIELDED_ELEVEN",
+			Message: "this database records no full eleven for that side in " + record.FormatCode +
+				"; name the opposition by hand",
+			Hint: "an opposition is eleven players the operator names; nothing is assembled for them here",
+		})
+		return
+	}
+	if err != nil {
+		slog.Error("oppositionSuggestion: reading the last fielded eleven failed",
+			slog.String("auction_id", record.ID), slog.Any("err", err))
+		respondErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, newOppositionSuggestion(*found))
+}
+
+// projectAuctionCandidateHandler answers POST /api/auctions/{id}/projection.
+func (a *App) projectAuctionCandidateHandler(w http.ResponseWriter, r *http.Request) {
+	record, ok := a.loadAuction(w, r)
+	if !ok {
+		return
+	}
+	var request auctionProjectionRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_BODY",
+			Message: "the request body is not valid JSON: " + err.Error(),
+		})
+		return
+	}
+	if request.PlayerID <= 0 {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "INVALID_PARAM",
+			Message: "player_id names the candidate to project",
+		})
+		return
+	}
+	projection, err := a.projectAuctionCandidate(r.Context(), record, request)
+	if err != nil {
+		respondAuctionProjectionErr(w, record.ID, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, projection)
+}
+
 // loadAuction reads the record named in the path, answering 404 where there is none.
 func (a *App) loadAuction(w http.ResponseWriter, r *http.Request) (*auction.Auction, bool) {
 	auctionID := strings.TrimSpace(mux.Vars(r)["id"])

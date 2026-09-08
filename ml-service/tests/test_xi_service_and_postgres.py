@@ -130,6 +130,20 @@ def test_predict_performance_marginalises_unless_the_toss_is_known(registry, art
         assert u.runs.median == pytest.approx(0.5 * (f.runs.median + c.runs.median), abs=1e-9)
 
 
+def test_predict_performance_reports_the_venue_the_model_actually_read(registry, artifacts_dir) -> None:
+    """P3-2: the ground comes back as the two columns the model consumed, and a request the
+    served state has no context for is reported as neutral rather than as a projection at a
+    ground the model knows something about (§8.7)."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = PerformancePredictRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+
+    res = xi_service.predict_performance(req, registry)
+
+    assert res.venue_context.venue_n == 0.0
+    assert res.venue_context.venue_bf_rate == pytest.approx(0.5)
+    assert res.venue_context.neutral is True
+
+
 def test_predict_performance_without_an_artifact_is_unavailable(registry) -> None:
     registry._served.store.performance = {}
 
@@ -807,6 +821,23 @@ def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry,
 
     assert first.team1.total == again.team1.total and first.win_probability == again.win_probability
     assert known.toss_marginalised is False
+
+
+def test_simulate_returns_the_totals_draws_only_when_they_are_asked_for(registry, artifacts_dir) -> None:
+    """P3-2: a caller pooling several grounds needs the draws themselves, because a
+    mixture's quantiles are not the mean of its parts'. They are off by default -- no
+    surface needs n_samples floats a side -- and when returned they are the same numbers the
+    quantiles summarise, so inverting them reproduces the served median exactly."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    base = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=200, seed=3)
+
+    without = xi_service.simulate(SimulateRequest(**base), registry)
+    with_draws = xi_service.simulate(SimulateRequest(**base, return_total_draws=True), registry)
+
+    assert without.team1.total_draws is None and without.team2.total_draws is None
+    assert len(with_draws.team1.total_draws) == 200 and len(with_draws.team2.total_draws) == 200
+    assert with_draws.team1.total == without.team1.total  # the same draws, summarised the same way
+    assert np.quantile(with_draws.team1.total_draws, 0.5) == pytest.approx(with_draws.team1.total.median)
 
 
 def test_simulate_says_whether_its_simulator_carried_a_shared_factor(registry, artifacts_dir) -> None:

@@ -104,5 +104,9 @@ export function useAuction() {
     createAuction,
     listPlayers,
     recordOutcome,
+    // Every write answers with the whole record, so a write made elsewhere — the
+    // projection's assumptions (P3-2) — hands its answer straight back here rather than
+    // this hook re-reading and briefly showing a record two writes old.
+    setRecord,
   };
 }

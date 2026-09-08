@@ -327,6 +327,31 @@ class PlayerPerformance(BaseModel):
     catches_expected: float = Field(..., description="Poisson rate; reported, never a headline")
 
 
+class VenueContext(BaseModel):
+    """What the served rating state knows about the ground these rows were built with --
+    read off the rows the model consumed, never recomputed (P3-2).
+
+    The performance model reads a ground through exactly two columns
+    (``contract.performance_feature_cols``): its bat-first rate and the sample size behind
+    it. The ground's *scoring level* was gated and recorded as a null (A-1, plan §8.9) and
+    is not consumed -- ``FIXTURE_CONTEXT_FAMILIES_KEPT`` is empty. So a caller comparing
+    two grounds is comparing what the toss does at each, and nothing else about them.
+
+    ``neutral`` is the honest statement §8.7 asks for: a ground the state has no matches
+    for -- and equally a request that named no teams, since ``rows.team_context_or_neutral``
+    falls back for the pair, not for the venue alone -- is read at the prior, 0.5 with n 0.
+    A caller that showed such a row as "at the Wankhede" without saying so would be showing
+    a substitution nobody could see."""
+
+    venue_bf_rate: float = Field(
+        ..., description="The ground's bat-first win rate, shrunk toward 0.5 over VENUE_PRIOR_MATCHES"
+    )
+    venue_n: float = Field(..., description="How many matches at this ground the served state folded in")
+    neutral: bool = Field(
+        ..., description="True where venue_n is 0: the ground contributed nothing and the rows read at the prior"
+    )
+
+
 class PerformancePredictResponse(BaseModel):
     players: List[PlayerPerformance]
     innings_marginalised: bool = Field(
@@ -334,6 +359,9 @@ class PerformancePredictResponse(BaseModel):
     )
     unknown_player_ids: List[str] = Field(
         default_factory=list, description="Ids with no rating history; predicted as debutants"
+    )
+    venue_context: VenueContext = Field(
+        ..., description="What the served state knows about the ground these rows were built with (P3-2)"
     )
     served_ratings: ServedRatings
 
@@ -344,6 +372,15 @@ class SimulateRequest(PerformancePredictRequest):
 
     n_samples: int = Field(default=2000, ge=100, le=20000, description="Draws; the served default is 2000")
     seed: int = Field(default=0, ge=0, description="Draws are deterministic given the inputs and the seed")
+    return_total_draws: bool = Field(
+        default=False,
+        description=(
+            "Return each side's total for every draw, not only its quantiles (P3-2). A caller that pools "
+            "one eleven's totals across several grounds needs the draws: a mixture's quantiles are not the "
+            "mean of its parts' quantiles, so a mixed range computed from three summaries would be arithmetic "
+            "on the wrong object. Off by default -- it is n_samples floats a side and no surface needs them"
+        ),
+    )
 
 
 class SimulatedScorecardLine(BaseModel):
@@ -385,6 +422,14 @@ class SimulatedSide(BaseModel):
     extras_spread_share: float
     wickets_lost: PerformanceRange
     players: List[SimulatedPlayer]
+    total_draws: Optional[List[float]] = Field(
+        default=None,
+        description=(
+            "This side's total in every draw, in draw order, present only when the request asked for it "
+            "(``return_total_draws``). The same draws ``total`` summarises -- so a caller pooling several "
+            "simulations quantifies the pool rather than averaging summaries (P3-2)"
+        ),
+    )
 
 
 class SimulatedMargin(BaseModel):

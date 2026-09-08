@@ -467,7 +467,27 @@ export const AUCTION_PLAYER_STATES = ['available', 'sold', 'unsold'] as const;
 export type AuctionPlayerState = (typeof AUCTION_PLAYER_STATES)[number];
 
 /** The L-1 keys the Auction tab labels its numbers under; the contract holds the same list. */
-export const AUCTION_METRIC_KEYS = ['auction_open_slots', 'auction_available_by_role'] as const;
+export const AUCTION_METRIC_KEYS = [
+  'auction_open_slots',
+  'auction_available_by_role',
+  'auction_projected_output',
+  'auction_projected_total',
+  'interval_source_l2b_quantiles',
+  'interval_source_simulator_draws',
+  'spread_share',
+] as const;
+
+/**
+ * Where an interval on a projection came from (H-24, P3-2).
+ *
+ * Two intervals sit side by side on one row and they are different populations with
+ * different evidence: L2-B's quantile heads are at nominal coverage on the harness, and the
+ * simulator's drawn totals are B-11's open defect. A reader who could not tell them apart
+ * would read one's evidence onto the other, so every interval names its source and opens
+ * its own explainer.
+ */
+export const AUCTION_INTERVAL_SOURCES = ['l2b_quantiles', 'simulator_draws'] as const;
+export type AuctionIntervalSource = (typeof AUCTION_INTERVAL_SOURCES)[number];
 
 /**
  * What the served rating vectors say about one listed player.
@@ -515,6 +535,14 @@ export type AuctionRecord = {
   min_bowlers: number;
   require_keeper: boolean;
   players: AuctionListedPlayer[];
+  /**
+   * The projection's named assumptions (P3-2), on the record so every later item reads
+   * one list. `likely_xi` is empty until the operator names it; `opposition` is absent
+   * until they do, because a projection against no one is refused rather than made
+   * against a silently neutral side.
+   */
+  likely_xi: AuctionProjectionPlayer[];
+  opposition?: AuctionOppositionBlock;
 };
 
 /** One auction on the index an operator finds theirs from after a reload. */
@@ -589,6 +617,140 @@ export type AuctionResponse = {
   slots: AuctionSlots;
   distribution?: AuctionDistribution;
   roles: AuctionRolesBlock;
+};
+
+// --- The projection (P3-2) ---
+//
+// A projection is conditional on three things the operator named and not one of them is a
+// fact: the eleven a candidate would join, the opposition it would face, and the grounds.
+// All three come back on every answer, so a projection on screen says which guess it was
+// made for. Nothing here carries a win probability or a marginal value: the module is
+// valuation and projection and never XI-picking (plan §8.8).
+
+/** One named player on a projection's assumptions. */
+export type AuctionProjectionPlayer = { player_id: number; player_name: string };
+
+/** The side a projection is against, as the operator named it. */
+export type AuctionOppositionBlock = {
+  club_id: number;
+  name: string;
+  players: AuctionProjectionPlayer[];
+};
+
+export type AuctionGroundRef = { venue_id: number; venue_name: string };
+
+/**
+ * A quantity's 10-50-90, with the source of the interval named.
+ *
+ * The values are exactly as served: no client-side widening, narrowing or day/night
+ * adjustment, and no range is hidden.
+ */
+export type AuctionQuantiles = {
+  q10: number;
+  median: number;
+  q90: number;
+  interval_source: AuctionIntervalSource;
+};
+
+/**
+ * The wicket count: an expectation and three probabilities, and deliberately no interval.
+ * L2-B produces no quantile heads for wickets on this path, and one derived from the
+ * probabilities would be an interval the model never made.
+ */
+export type AuctionWicketDistribution = {
+  expected: number;
+  p0: number;
+  p1: number;
+  p2_plus: number;
+  note: string;
+};
+
+export type AuctionCandidateForecast = {
+  runs: AuctionQuantiles;
+  balls_faced: AuctionQuantiles;
+  runs_conceded: AuctionQuantiles;
+  wickets: AuctionWicketDistribution;
+  innings_marginalised: boolean;
+};
+
+/** The ground as the model read it, and whether it therefore read neutral (§8.7). */
+export type AuctionGroundContext = {
+  bat_first_rate: number;
+  matches: number;
+  neutral: boolean;
+  note?: string;
+};
+
+export type AuctionElevenTotal = {
+  total: AuctionQuantiles;
+  spread_share: number;
+  samples: number;
+  shared_factor: boolean;
+};
+
+export type AuctionGroundProjection = {
+  venue_id: number;
+  venue_name: string;
+  ground: AuctionGroundContext;
+  candidate: AuctionCandidateForecast;
+  eleven_total: AuctionElevenTotal;
+  toss_marginalised: boolean;
+};
+
+export type AuctionVenueWeight = { venue_id: number; weight: number };
+
+/** The eleven's total over the venue mix, inverted from the simulator's pooled draws. */
+export type AuctionMixture = {
+  total: AuctionQuantiles;
+  weights: AuctionVenueWeight[];
+  note: string;
+};
+
+/**
+ * What one interval source is, and what is open against it.
+ *
+ * No metric key: this surface spells the two L-1 keys itself, as literals asserted against
+ * the contract (H-24), so a source it could not name is a failing test rather than an
+ * interval shown with no explainer behind it.
+ */
+export type AuctionIntervalSourceBlock = {
+  source: AuctionIntervalSource;
+  label: string;
+  caveats?: string[];
+  note: string;
+};
+
+/** The toss a projection was made under, in the buyer's terms. */
+export type AuctionProjectionToss =
+  'unknown' | 'candidate_eleven_bats_first' | 'candidate_eleven_chases';
+
+export type AuctionAssumptionsBlock = {
+  eleven: AuctionProjectionPlayer[];
+  opposition: AuctionOppositionBlock;
+  grounds: AuctionGroundRef[];
+  toss: AuctionProjectionToss;
+  format: string;
+  what_a_ground_changes: string;
+  not_xi_picking: string;
+};
+
+export type AuctionProjection = {
+  auction_id: string;
+  candidate: AuctionProjectionPlayer;
+  assumptions: AuctionAssumptionsBlock;
+  grounds: AuctionGroundProjection[];
+  mixture?: AuctionMixture;
+  intervals: AuctionIntervalSourceBlock[];
+  served_ratings: PredictServedRatings;
+};
+
+/** A side's last recorded eleven, offered as a starting point for the opposition. */
+export type AuctionOppositionSuggestion = {
+  club_id: number;
+  name: string;
+  players: AuctionProjectionPlayer[];
+  from_match: { match_date: string; event_name?: string; venue_name?: string };
+  note: string;
 };
 
 /** One player a cross-club name search found. */

@@ -312,6 +312,83 @@ METRICS: Tuple[Metric, ...] = (
         ),
         better=PAIRED,
     ),
+    # --- The auction module's projection (P3-2). Two numbers and the two interval sources
+    # they come from. The rule the module is built on is in every band: this is valuation
+    # and projection, never XI-picking, so nothing here is a win probability, a marginal
+    # value or a verdict on a purchase.
+    Metric(
+        key="auction_projected_output",
+        name="Projected output at this ground",
+        explanation=(
+            "What the performance model (L2-B) forecasts this candidate would produce in the eleven named "
+            "beside it, against the opposition named beside it, at this ground: runs, balls faced and runs "
+            "conceded as a median with the 10-90 band the model's own quantile heads produced, and wickets "
+            "as an expectation with the chance of 0, 1 and 2 or more. The wicket line is a count "
+            "distribution and has no quantiles on this path, so it is shown as its probabilities and never "
+            "as an interval derived from them."
+        ),
+        band=(
+            "The three quantile lines are at nominal coverage on the harness (plan §8.2) and are shown "
+            "exactly as served -- nothing widened, narrowed or adjusted for day or night. The whole row is "
+            "conditional on three assumptions the operator named: the eleven, the opposition and the "
+            "ground. It is a projection of output, not a claim that buying him wins matches -- in T20 this "
+            "system has not shown it can choose an eleven better than rating order (plan §8.8)."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="auction_projected_total",
+        name="The eleven's total with him in it",
+        explanation=(
+            "The total the simulator draws for the eleven the candidate would join, at this ground: the "
+            "median of the drawn totals with the 10-90 band those same draws produced. It is the eleven's "
+            "number and not the candidate's; his own share of its spread is beside it."
+        ),
+        band=(
+            "This interval is the simulator's, and B-11 is open: one dispersion is fitted to two "
+            "populations, so a T20 first innings' 10-90 range covers 0.734 by day against 0.841 at night at "
+            "a nominal 0.80, and six gated arms across three experiments are all recorded nulls. Nothing "
+            "here corrects for it and nothing hides it. B-14 is open too: the performance artifact is not "
+            "shape-checked at load, so an older calibration can restore silently -- the run id shown beside "
+            "this number names the run that answered, and is not a promise about that run's calibration."
+        ),
+        better=PAIRED,
+    ),
+    # The two interval sources by name, keyed `<field>_<value>` the way the win-probability
+    # and forecast sources are: the values are go-app's wire vocabulary
+    # (contracts/ops-console.contract.json, `auction_interval_sources`). Two intervals sit
+    # side by side on the projection and they are different populations with different
+    # evidence, so each says which it is and opens its own explainer.
+    Metric(
+        key="interval_source_l2b_quantiles",
+        name="L2-B's quantiles",
+        explanation=(
+            "This band is the performance model's own quantile heads for one player -- the 10th and 90th "
+            "percentiles it predicts directly, reported rather than drawn from. No simulation is involved "
+            "and no other player's forecast enters it."
+        ),
+        band=(
+            "At nominal coverage on the harness (plan §8.2): the measured band is where reality lands about "
+            "eight times in ten. A separate population from the simulator's interval beside it."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="interval_source_simulator_draws",
+        name="The simulator's draws",
+        explanation=(
+            "This band is the spread of whole matches drawn from the eleven's forecasts (L2-C): the 10th "
+            "and 90th percentiles of the drawn totals themselves, with one shared match factor standing in "
+            "for the day's pitch. It is a property of the eleven, not of one player."
+        ),
+        band=(
+            "B-11 is open: the shared factor is fitted to one population and serves two, so this interval "
+            "is too narrow by day and too wide at night -- T20 first-innings coverage 0.734 / 0.841 at a "
+            "nominal 0.80, six gated arms nulled across plan §8.13, §8.14 and §8.15. Shown as drawn, "
+            "neither adjusted nor hidden."
+        ),
+        better=PAIRED,
+    ),
     Metric(
         key="base_rate_brier",
         name="Base-rate Brier",

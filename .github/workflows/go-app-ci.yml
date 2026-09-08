@@ -112,7 +112,7 @@ jobs:
 
       - name: Enforce coverage threshold
         env:
-          # Keep aligned with go-app/Makefile COV_MIN (currently 78). Raise together once coverage improves.
+          # Keep aligned with go-app/Makefile COV_MIN (currently 79). Raise together once coverage improves.
           #
           # Raised 76 -> 77 once B-9 was fixed. The total used to sit on the 76.95 boundary
           # with one statement deciding which side of it landed -- `ctxReader.Read`'s
@@ -123,7 +123,10 @@ jobs:
           #
           # Raised 77 -> 78 with P2-4 (the track record): this runner measured 78.6 on
           # PR #283's run 34145895838, the same figure as the local run.
-          COV_MIN: "78"
+          #
+          # Raised 78 -> 79 with P3-2 (the auction projection): this runner measured 79.1
+          # on PR #290's run 34275028287, the same figure as the local run.
+          COV_MIN: "79"
         run: make -C go-app coverage-check
 
       - name: Upload coverage artifact
