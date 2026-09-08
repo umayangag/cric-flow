@@ -1345,6 +1345,51 @@
         }
       ],
       "bindings": []
+    },
+    {
+      "id": "auction-record",
+      "label": "Auction record",
+      "lane": "serve",
+      "column": 5,
+      "kind": "surface",
+      "summary": "An auction as the operator entered it during a live room (P3-1): the list of players, each still available or sold (to whom, for how much) or unsold, the buyer's own squad and open slots, and the format and grounds it is for. Nothing is fetched -- a live feed is a paid source and is not built -- and nothing here is a prediction, a cache or a forecast of anything, so no row is on the track record and none is ever scored. Beside the record it shows the remaining pool's distribution by role, and the roles are the objective's own two constraint predicates read off the served as-of vectors through one ml-service read, stamped with the run and date that served them: a player answering neither is a batter by elimination, and one the served state has never seen is reported unknown with no role invented for him. A stale registry refuses the role read and every count off it while leaving the list exactly as entered. The module is valuation and projection and never XI-picking: in T20 optimised selection is indistinguishable from rating order (plan 8.8) and the IPL is domestic T20, so nothing here calls the optimiser, shows a win probability or shows a marginal value, and the surface carries that sentence.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/auction"
+        ],
+        "endpoints": [
+          "GET /api/auctions",
+          "POST /api/auctions",
+          "GET /api/auctions/{id}",
+          "POST /api/auctions/{id}/players",
+          "POST /api/auctions/{id}/outcomes",
+          "GET /api/players/search",
+          "POST /xi/player-roles"
+        ],
+        "tables": [
+          "auction",
+          "auction_venue",
+          "auction_player"
+        ],
+        "files": [
+          "go-app/migrations/0015_auction.sql",
+          "go-app/internal/db/repo_auction.go",
+          "go-app/internal/server/auction_handlers.go",
+          "ml-service/ml/xi/roles.py",
+          "frontend/src/components/AuctionTab.tsx"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/apis-backtest-and-ops.md",
+          "section": "## The auction record"
+        },
+        {
+          "doc": "docs/config-and-data.md",
+          "section": "## Database migrations"
+        }
+      ],
+      "bindings": []
     }
   ],
   "edges": [
@@ -1477,6 +1522,16 @@
       "from": "event-store",
       "to": "track-record",
       "label": "the match, once imported"
+    },
+    {
+      "from": "rating-pass",
+      "to": "auction-record",
+      "label": "the two role predicates, as served"
+    },
+    {
+      "from": "go-api",
+      "to": "auction-record",
+      "label": "what the operator entered"
     }
   ]
 }
