@@ -7,7 +7,10 @@ import AuctionRoleDistribution from './AuctionRoleDistribution';
 import AuctionPlayerList from './AuctionPlayerList';
 import AuctionPlayerSearchDialog from './AuctionPlayerSearchDialog';
 import AuctionSaleDialog from './AuctionSaleDialog';
+import AuctionAssumptions from './AuctionAssumptions';
+import AuctionProjectionPanel from './AuctionProjectionPanel';
 import { useAuction } from '../hooks/useAuction';
+import { useAuctionProjection } from '../hooks/useAuctionProjection';
 import { useAsync } from '../hooks/useAsync';
 import { api } from '../api';
 import type { AuctionListedPlayer } from '../types';
@@ -38,6 +41,7 @@ export const NOT_XI_PICKING_SENTENCE =
 
 const AuctionTab: React.FC = () => {
   const auction = useAuction();
+  const projection = useAuctionProjection(auction.openAuctionId, auction.setRecord);
   const opsStatus = useAsync(api.opsStatus, { runOnMount: [] });
 
   const [searching, setSearching] = React.useState(false);
@@ -115,6 +119,26 @@ const AuctionTab: React.FC = () => {
             onUndo={(player) =>
               void auction.recordOutcome({ playerId: player.player_id, state: 'available' })
             }
+          />
+
+          <AuctionAssumptions
+            record={record.auction}
+            listed={record.auction.players}
+            suggestion={projection.suggestion}
+            suggesting={projection.suggesting}
+            suggestionError={projection.suggestionError}
+            onSuggest={(clubId) => void projection.suggestOpposition(clubId)}
+            onSave={(body) => void projection.saveAssumptions(body)}
+            saving={projection.savingAssumptions}
+            saveError={projection.assumptionsError}
+          />
+
+          <AuctionProjectionPanel
+            listed={record.auction.players}
+            projection={projection.projection}
+            projecting={projection.projecting}
+            error={projection.projectionError}
+            onProject={(request) => void projection.project(request)}
           />
 
           <AuctionPlayerSearchDialog

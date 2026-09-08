@@ -39,6 +39,7 @@ function auctionResponse(overrides: Partial<AuctionResponse> = {}): AuctionRespo
       squad_size: 3,
       min_bowlers: 2,
       require_keeper: true,
+      likely_xi: [],
       players: [
         {
           player_id: 1,

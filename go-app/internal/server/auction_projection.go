@@ -191,11 +191,14 @@ type auctionMixture struct {
 }
 
 // auctionIntervalSource explains one of the two intervals on this answer.
+//
+// It carries no L-1 metric key. The surface spells the two keys itself, as literals
+// asserted against the contract's `auction_metric_keys` (H-24), so a key the UI could not
+// spell is a failing test rather than an interval rendered with no explainer behind it —
+// and sending the key here as well would be the same mapping written twice.
 type auctionIntervalSource struct {
 	Source string `json:"source"`
-	// MetricKey is the L-1 key the surface opens the explainer under.
-	MetricKey string `json:"metric_key"`
-	Label     string `json:"label"`
+	Label  string `json:"label"`
 	// Caveats are the open defects a reader must be told about before reading the
 	// interval — B-11 and B-14 for the simulator's, none for L2-B's.
 	Caveats []string `json:"caveats,omitempty"`
@@ -598,17 +601,15 @@ func namedPlayersOnWire(players []auction.NamedPlayer) []auctionProjectionPlayer
 func intervalSourcesOnWire() []auctionIntervalSource {
 	return []auctionIntervalSource{
 		{
-			Source:    auction.IntervalSourceL2BQuantiles,
-			MetricKey: auction.MetricIntervalL2B,
-			Label:     "L2-B's quantiles",
+			Source: auction.IntervalSourceL2BQuantiles,
+			Label:  "L2-B's quantiles",
 			Note: "The performance model's own 10th and 90th percentile heads for one player, reported " +
 				"rather than drawn from. At nominal coverage on the harness (plan §8.2).",
 		},
 		{
-			Source:    auction.IntervalSourceSimulatorDraws,
-			MetricKey: auction.MetricIntervalSimulator,
-			Label:     "The simulator's draws",
-			Caveats:   []string{"B-11", "B-14"},
+			Source:  auction.IntervalSourceSimulatorDraws,
+			Label:   "The simulator's draws",
+			Caveats: []string{"B-11", "B-14"},
 			Note: "The 10th and 90th percentiles of whole matches drawn from the eleven's forecasts. " +
 				"B-11 is open: one dispersion is fitted to two populations, so this interval is too narrow " +
 				"by day and too wide at night — T20 first-innings coverage 0.734 / 0.841 at a nominal 0.80, " +
