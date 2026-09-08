@@ -182,6 +182,18 @@ func (a *App) readAuctionRoles(
 		keys = append(keys, player.ExternalID)
 	}
 
+	if len(keys) == 0 {
+		// Nothing was read, so nothing is stamped. An empty list's distribution would be
+		// all zeroes and would look exactly like a served answer with no keepers left in
+		// it; "the model was not asked" is a different statement and this is it (§8.7).
+		return nil, auctionRolesBlock{
+			Available: false,
+			Code:      rolesNotReadCode,
+			Message:   "no player on this list carries a registry id the served ratings could be asked about",
+			Hint:      "add players to the list; the roles are read on every read of the auction",
+		}
+	}
+
 	result, err := a.mlClient.PlayerRoles(ctx, record.FormatCode, keys)
 	if err != nil {
 		refusal := refusalFrom(err)

@@ -372,6 +372,25 @@ func TestListAuctionsHandler_AStoreFailureIsReportedAndNotSwallowed(t *testing.T
 	assert.Contains(t, recorder.Body.String(), "connection refused")
 }
 
+func TestGetAuctionHandler_AnEmptyListIsReportedAsNotReadRatherThanAsZeroKeepers(t *testing.T) {
+	store := mocks.NewMockStore(t)
+	empty := storedAuction()
+	empty.Players = nil
+	store.EXPECT().Get(mock.Anything, "auction-1").Return(ptr(empty), nil)
+	// No ml-service behind the client at all: an empty list must produce no request, so a
+	// base URL nothing answers on is the strongest way to say the read did not happen.
+	app := &App{auctionStore: store, mlClient: &MLClient{BaseURL: "http://127.0.0.1:1"}}
+
+	answer := decodeAuction(t, getAuctionThrough(t, app))
+
+	assert.False(t, answer.Roles.Available)
+	assert.Equal(t, "ROLES_NOT_READ", answer.Roles.Code)
+	assert.Nil(t, answer.Distribution,
+		"an all-zero distribution would look exactly like a served answer with no keepers left")
+	assert.Nil(t, answer.Slots.ByRole)
+	assert.Equal(t, 3, answer.Slots.Open, "the places left need no model")
+}
+
 // callAuctionHandler runs one handler with a JSON body and the path variables the router
 // would have set.
 func callAuctionHandler(

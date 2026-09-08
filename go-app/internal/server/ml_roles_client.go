@@ -108,6 +108,10 @@ type rolesRefusal struct {
 	Hint    string
 }
 
+// rolesNotReadCode says the role read did not happen because there was nobody to ask
+// about — an auction with an empty list, or one whose players have no registry id.
+const rolesNotReadCode = "ROLES_NOT_READ"
+
 // refusalFrom names why the role read failed, keeping ml-service's own code where it gave
 // one (`RATINGS_STALE`, `XI_MODEL_UNAVAILABLE`, `ML_UNREACHABLE`).
 func refusalFrom(err error) rolesRefusal {
