@@ -667,8 +667,8 @@ draws themselves produce on the same calibration matches, deconvolved the way
 `fit_shared_factor` deconvolves the first innings, with A-2's censored (Tobit) estimator doing
 the fitting because roughly half the calibration chases are won and so right-censored at the
 target — a pool of the lost chases alone would be selected on the residual it measures.
-`simulator.CHASE_DISPERSION` records the decision and `FitSpec.chase_dispersion` carries it
-into the run manifest; the artifact carries `ChaseDispersion` beside the shared factor.
+`simulator.CHASE_DISPERSION` records which arm ships and `FitSpec.chase_dispersion` carries it
+into the run manifest; the artifact carries the fitted term beside the shared factor.
 **The verdict is a recorded null and the term is off** (plan §8.14, gates `SIM-IN-chase` and
 `SIM-IN-both`, decided on T20's eleven folds — ODI and T20I could not decide it and a
 feasibility probe said so before the arms ran). It does what it was designed to do: the
@@ -683,6 +683,35 @@ the simulated P(win) moves toward 0.5 and Brier(simulated) − Brier(display) gr
 standard errors (still inside its 0.01 tolerance). Interval calibration bought with
 probability calibration is the cost a shared factor does not have, and the next candidate is
 a chase dispersion that does not decorrelate the two innings.
+
+**Chase dispersion, correlated with the first innings (B-11, plan §8.15).** That next
+candidate, gated. The same widening, drawn so that it **moves with the first innings' realised
+log residual** in the same draw — `exp(slope · (ln T1 − the draws' mean ln T1) +
+independent_log_sd · z)`, centred to mean one per fixture, read from `target − 1` inside
+`batting_innings`, which is the first innings' own total and is settled before the chase
+begins, so it is not future information — and fitted against the chase's **own** expectation
+rather than through the shared factor's shrunk per-match value. Both coefficients are the
+difference between a censored regression of the calibration fold's chase residual on its first
+innings' residual and the same two quantities under the control, composed from the shared
+factor's log variance and each innings' own draw spread
+(`simulator.CorrelatedChaseDispersion` / `fit_correlated_chase_dispersion`).
+`CHASE_DISPERSION` is now an arm name — `"none"`, `"independent"`, `"correlated"` — as the
+chase response already was. **The verdict is a fourth recorded null and the term is off**
+(gates `SIM-IN-corr` and `SIM-IN-corrboth`, decided on T20's eleven folds with ODI reported).
+It fails the very clause it was built to pass: E2 moved **further** the wrong way than the
+independent term did, +0.0056 ± 0.0013 against +0.0039 ± 0.0013, paired on the same folds and
+the same draws. The reason is a sign, and it is in one column of the fold table — the fitted
+chase-on-first-innings slope is **negative in 11 of 11 T20 folds and 10 of 10 ODI ones** while
+the control's own is positive in every one, because a regression on the first innings' residual
+cannot separate the pitch (positive, and already carried by the shared factor) from the chasing
+side's reaction to the target it sets (negative — A-2's response, gated and nulled). The
+simulator says the same thing in its tails: the chase's mass below the simulated 10th
+percentile against above its 90th reads 0.191 / 0.096 in the control, 0.084 / 0.097 under the
+independent term and **0.100 / 0.179** under the correlated one, which is A-2's recorded tail
+flip reproduced from a different lever. What §8.15 leaves for the next candidate: correlate
+with an estimate of the *pitch* that is not the first innings' own residual, or fit the
+*margin* — whose coverage, 0.50–0.69 at nominal 0.80, is the weakest number the harness reports
+and the one E2 depends on.
 
 **Measured by (E2, `ml/xi/sim_harness.py`, in `make evaluate`).** Per format and window,
 beside the display model on the same matches: Brier and reliability of the simulated P(win)
