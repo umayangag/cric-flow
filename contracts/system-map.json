@@ -865,7 +865,9 @@
           "SIM-DN-split",
           "SIM-DN-scale",
           "SIM-IN-chase",
-          "SIM-IN-both"
+          "SIM-IN-both",
+          "SIM-IN-corr",
+          "SIM-IN-corrboth"
         ]
       },
       "documented_in": [
