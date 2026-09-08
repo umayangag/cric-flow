@@ -211,12 +211,16 @@ happened four times:
   fitted on the old list is refused.
 - **P2-2 (#280)** — the manifest gained the required `ratings_through`; a manifest without it
   is refused.
-- **B-11 (#285)** — `SimulatorCalibration` gained `chase_dispersion`. This one is *not*
-  refused: the performance artifact is joblib-loaded with no shape check, so an older pickle
-  restores without the field and reads the class default, `None` — which, under the default
-  arm (`CHASE_DISPERSION = False`), is also what a fresh retrain writes, so nothing served is
-  wrong yet. The shape still moved; the loader has no opinion on that artifact, and a run
-  written before the class changed is served as it was.
+- **B-11 (#285, and again in §8.15)** — `SimulatorCalibration` gained `chase_dispersion`, and
+  §8.15 widened it: the field now holds either of two classes (`ChaseDispersion` or
+  `CorrelatedChaseDispersion`, behind the `ChaseDispersionTerm` protocol) and
+  `CHASE_DISPERSION` / `FitSpec.chase_dispersion` became an arm *name* where they were a bool.
+  Neither is refused: the performance artifact is joblib-loaded with no shape check, so an
+  older pickle restores without the field and reads the class default, `None` — which, under
+  the default arm (`"none"`), is also what a fresh retrain writes, so nothing served is wrong
+  yet. The shape still moved twice; the loader has no opinion on that artifact, and a run
+  written before the class changed is served as it was. A load-time check for the performance
+  artifact is the standing follow-up (B-14).
 
 **Staleness (H-11).** A live prediction against ratings older than
 `ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
