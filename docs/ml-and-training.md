@@ -79,6 +79,10 @@ retrain → reload against data already imported.
 "serve that run" — and a retrain that published itself would leave no way back to the run
 before it. Naming a run is how you swap back.
 
+**After a merge that changes an artifact's shape, a deploy is `retrain → reload`, not a
+rebuild.** A rebuilt container against the runs already on disk is exactly the refusal
+§ Runs, manifests and staleness describes, which also lists the merges that have done this.
+
 **Why evaluate is separate from both.** The harness refits every model per fold per format:
 measured on the full database it takes ~67 minutes over the eleven folds the rotation left
 (A-4; it was ~54 over seven), against a whole pipeline that runs in a fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
@@ -185,6 +189,34 @@ from and what shape it is in. The refusal reaches `/xi/status`, `/health`, `/ops
 that the manifest reader refuses is still listed by `/artifacts/status`, with `refused` set
 to the reason and `null` on every loadable run, and is never picked as "the newest run" by a
 reload with no run named; the Ops runs panel shows the reason under the run.
+
+**A change to what an artifact contains makes every run on disk unloadable.** The rating
+payload's arrays and tables, a win artifact's feature list, the manifest's required fields:
+each is read by name, and a run written before the name existed does not carry it. Nothing
+backfills or shims an old run (`ratings_through` above; B-7's `display_cols`), so after such a
+merge the next `reload` refuses every run on disk by name, and the only remedy is a
+**retrain** — about ten minutes on this database — then a `reload`. What the operator sees: the
+refusal names the run and what it lacks; if a run was serving, it keeps serving with the
+refusal in `error` beside it (B-13, `docs/BUG_BACKLOG.md`); a container rebuilt from the new
+code starts with nothing loaded, because the run `current` points at is the refused one, and
+the Lab answers nothing until a run is built. Nothing does that for you — ingest is run by
+hand (`docs/PRODUCT_ROADMAP.md` § 2, route (a)), and a scheduled cadence retrains on its
+rhythm, not on a merge. `manifest.git_sha` records which code wrote a run, so whether a run
+predates a change is read off the manifest or `/artifacts/status` without loading it. It has
+happened four times:
+
+- **X-1b (#257)** — the rating payload gained the `birth_dates` table and the `debut_bat` /
+  `debut_bowl` arrays; a payload without them is refused.
+- **B-7 (#267)** — `t1_pelo_std` / `t2_pelo_std` left `DISPLAY_FEATURE_COLS`; a win artifact
+  fitted on the old list is refused.
+- **P2-2 (#280)** — the manifest gained the required `ratings_through`; a manifest without it
+  is refused.
+- **B-11 (#285)** — `SimulatorCalibration` gained `chase_dispersion`. This one is *not*
+  refused: the performance artifact is joblib-loaded with no shape check, so an older pickle
+  restores without the field and reads the class default, `None` — which, under the default
+  arm (`CHASE_DISPERSION = False`), is also what a fresh retrain writes, so nothing served is
+  wrong yet. The shape still moved; the loader has no opinion on that artifact, and a run
+  written before the class changed is served as it was.
 
 **Staleness (H-11).** A live prediction against ratings older than
 `ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
