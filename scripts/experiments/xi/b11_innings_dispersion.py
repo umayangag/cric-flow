@@ -187,6 +187,42 @@ def probe(player_frame: pd.DataFrame, match_frame: pd.DataFrame, formats: Sequen
     return out
 
 
+# --- the sign check: is the fitted correlation an estimator artefact? --------------------
+
+
+def slope_check(
+    player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cutoff: pd.Timestamp
+) -> Dict[str, Any]:
+    """Three readings of one fold's chase-on-first-innings slope, on the same calibration
+    matches: the censored (Tobit) estimate the correlated term is fitted from, ordinary least
+    squares on the **lost** chases alone (biased by the selection, but free of the censored
+    likelihood), and least squares over every chase with a won one held at its target (a
+    bound, since a won chase's untruncated total is at least that). A sign that survives all
+    three is the data's, not the estimator's."""
+    train, joint = perf_harness.training_rows(player_frame, fmt, cutoff)
+    train_matches = match_frame[(match_frame.format_code == fmt) & (match_frame.match_date < cutoff)]
+    model = P.fit_performance(train, fmt, P.default_spec(joint_format=joint, shared_factor=True), train_matches)
+    fitted = model.simulation
+    factor, sample = fitted.shared_factor, fitted.chase_sample
+    correlated = simulator.fit_correlated_chase_dispersion(factor, sample)
+    log_factor = np.log(np.maximum(factor.factors, 1e-6))
+    first_residual = np.log(
+        np.maximum(factor.sample_read.actual, 1.0) / np.maximum(factor.sample_read.simulated_mean, 1.0)
+    )
+    chase_residual = sample.response + log_factor
+    lost = ~sample.censored
+    return {
+        "cutoff": cutoff.date().isoformat(),
+        "n_matches": int(len(sample)),
+        "n_lost": int(lost.sum()),
+        "censored_slope": correlated.data_slope,
+        "least_squares_slope_lost_chases": float(np.polyfit(first_residual[lost], chase_residual[lost], 1)[0]),
+        "least_squares_slope_every_chase": float(np.polyfit(first_residual, chase_residual, 1)[0]),
+        "model_slope": correlated.model_slope,
+        "a2_chase_response_slope": simulator.fit_chase_response(sample, "both").slope,
+    }
+
+
 # --- one fold ----------------------------------------------------------------------------
 
 #: The chase's own dispersion and its tails, beside the first innings' -- §8.13's summary
@@ -537,6 +573,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("--geocoding", default=dn.DEFAULT_GEOCODING)
     p.add_argument("--format", choices=list(simulator.SIMULATED_FORMATS))
     p.add_argument("--probe", action="store_true", help="the feasibility probe only, over every simulated format")
+    p.add_argument(
+        "--slope-check",
+        action="store_true",
+        help="three readings of the chase-on-first-innings slope on one fold, to say whether its sign is the data's",
+    )
     p.add_argument("--out", help="where the run's JSON goes (a re-run resumes from it)")
     p.add_argument("--decide", nargs="+", help="result files; prints the tables and the verdict")
     args = p.parse_args(argv)
@@ -545,8 +586,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if not (args.frames and args.cricsheet_dir):
         p.error("--frames and --cricsheet-dir are required")
-    if not args.probe and not (args.format and args.out):
-        p.error("--format and --out are required unless --probe")
+    if not (args.probe or args.slope_check) and not (args.format and args.out):
+        p.error("--format and --out are required unless --probe or --slope-check")
     labels = dn.night_labels(args.cricsheet_dir, args.geocoding)
     player_frame, match_frame = load_frames(None, args.frames)
     player_frame, match_frame = dn.join_night(player_frame, labels), dn.join_night(match_frame, labels)
@@ -555,6 +596,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if args.out:
             _write(args.out, result)
         print(json.dumps(result["formats"], indent=2, default=str))
+        return 0
+    if args.slope_check:
+        if not args.format:
+            p.error("--format is required with --slope-check")
+        checks = [slope_check(player_frame, match_frame, args.format, cutoff) for cutoff, _ in fold_windows()]
+        if args.out:
+            _write(args.out, {"format": args.format, "folds": checks})
+        print(json.dumps(checks, indent=2, default=str))
         return 0
     for arm in CANDIDATES:
         print(gates.describe(GATE_IDS[arm]))

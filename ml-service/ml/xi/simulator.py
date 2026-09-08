@@ -622,13 +622,12 @@ def _censored_linear_fit(
     right-censored at ``threshold``. The covariate is a regressor and the threshold is where
     the observation stops, which is what separates this from ``fit_chase_response``: there the
     two are the same column, here the chase is regressed on the *first innings*."""
+
     def negative_log_likelihood(theta: np.ndarray) -> float:
         intercept, slope, sigma = float(theta[0]), float(theta[1]), float(np.exp(theta[2]))
         return _censored_normal_negative_log_likelihood(response, threshold, lost, intercept + slope * covariate, sigma)
 
-    start = np.array(
-        [float(np.mean(response[lost])), 0.0, np.log(max(float(np.std(response[lost])), 1e-3))]
-    )
+    start = np.array([float(np.mean(response[lost])), 0.0, np.log(max(float(np.std(response[lost])), 1e-3))])
     result = minimize(negative_log_likelihood, start, method="Nelder-Mead", options={"xatol": 1e-6, "fatol": 1e-8})
     return float(result.x[1]), float(np.exp(result.x[2]))
 

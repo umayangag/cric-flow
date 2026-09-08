@@ -499,7 +499,12 @@ def _correlated_world(
         )
     )
     sample = S.chase_calibration_sample(
-        actual_first, np.where(won, target, untruncated_chase), won, chase_mean, np.full(n, chase_log_sd), factor.factors
+        actual_first,
+        np.where(won, target, untruncated_chase),
+        won,
+        chase_mean,
+        np.full(n, chase_log_sd),
+        factor.factors,
     )
     return factor, sample
 
@@ -569,11 +574,21 @@ def test_the_correlated_term_widens_the_chase_and_the_margin_by_less_than_an_ind
     matched = slope * float(np.log(np.maximum(control.team1.total, 1.0)).std())
 
     correlated = S.simulate_match(
-        team1, team2, CONTEXT, 4000, 0, True,
+        team1,
+        team2,
+        CONTEXT,
+        4000,
+        0,
+        True,
         S.SimulatorCalibration(0.9, pool, None, S.CorrelatedChaseDispersion(slope, 0.0, 0.0, 0.0, 0.0, 0.0, 60, 30)),
     )
     independent = S.simulate_match(
-        team1, team2, CONTEXT, 4000, 0, True,
+        team1,
+        team2,
+        CONTEXT,
+        4000,
+        0,
+        True,
         S.SimulatorCalibration(0.9, pool, None, S.ChaseDispersion(0.0, 0.0, matched, 60, 30)),
     )
 
