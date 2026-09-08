@@ -38,12 +38,15 @@ func (e *ServedRunChangedError) Error() string {
 		e.Was.RunID, e.Was.RatingsThrough, e.Now.RunID, e.Now.RatingsThrough)
 }
 
-// adopt records the stamp one ml-service answer carried.
+// Adopt records the stamp one ml-service answer carried.
 //
 // The first stamp is taken as the prediction's; every later one must agree with it. An
 // answer with no stamp is refused outright rather than treated as "unknown", because an
 // unknown date on the wire is exactly a dateless prediction with a different spelling.
-func (s *ServedRatings) adopt(answer ServedRatings) error {
+//
+// Exported because the auction's projection assembles as many answers as it has grounds
+// (P3-2) and needs the same check: one projection stamped with one run, or refused.
+func (s *ServedRatings) Adopt(answer ServedRatings) error {
 	if answer.RunID == "" || answer.RatingsThrough == "" {
 		return fmt.Errorf("ml-service answered without naming the run and the date it served from")
 	}

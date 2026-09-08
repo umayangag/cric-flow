@@ -136,6 +136,20 @@ func NewRouter(a *App) http.Handler {
 	admin.HandleFunc("/api/auctions/{id}/outcomes", a.recordAuctionOutcomeHandler).
 		Methods(http.MethodPost, http.MethodOptions)
 
+	// The projection (P3-2): a candidate's output in a named eleven, against a named
+	// opposition, at the auction's grounds. The two writes above it are the assumptions
+	// the projection is conditional on — an eleven the operator guesses and an opposition
+	// they name — held on the record so every later item reads one list rather than its
+	// own guess at one. Nothing here reaches /xi/optimize either, and the type this maps
+	// /simulate into carries no win probability at all, so one cannot reach the surface by
+	// accident.
+	admin.HandleFunc("/api/auctions/{id}/assumptions", a.setAuctionAssumptionsHandler).
+		Methods(http.MethodPut, http.MethodOptions)
+	admin.HandleFunc("/api/auctions/{id}/opposition-suggestion", a.oppositionSuggestionHandler).
+		Methods(http.MethodGet, http.MethodOptions)
+	admin.HandleFunc("/api/auctions/{id}/projection", a.projectAuctionCandidateHandler).
+		Methods(http.MethodPost, http.MethodOptions)
+
 	// Backtesting: L4's evaluation report is the whole surface. The per-match evaluate
 	// flow scored the batting / bowling / fielding models and went with them (P-5).
 	admin.HandleFunc("/api/backtest/report", a.mlServiceProxy("/xi/evaluate-report", "xi evaluate report proxy")).

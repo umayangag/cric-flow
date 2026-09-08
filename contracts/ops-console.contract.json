@@ -188,6 +188,15 @@
   ],
   "auction_metric_keys": [
     "auction_open_slots",
-    "auction_available_by_role"
+    "auction_available_by_role",
+    "auction_projected_output",
+    "auction_projected_total",
+    "interval_source_l2b_quantiles",
+    "interval_source_simulator_draws",
+    "spread_share"
+  ],
+  "auction_interval_sources": [
+    "l2b_quantiles",
+    "simulator_draws"
   ]
 }

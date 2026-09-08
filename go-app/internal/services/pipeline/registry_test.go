@@ -127,6 +127,13 @@ type contractDoc struct {
 	// item — the auction reads the objective's own two predicates and invents none.
 	AuctionPlayerStates []string `json:"auction_player_states"`
 	AuctionMetricKeys   []string `json:"auction_metric_keys"`
+	// AuctionIntervalSources is where a projected interval came from (H-24, P3-2). Two
+	// intervals sit side by side on the projection and they are different populations with
+	// different evidence: L2-B's quantile heads are at nominal coverage on the harness,
+	// and the simulator's draws are B-11's open defect. go-app stamps each number with its
+	// source and the surface renders the source's name and its own explainer, so a source
+	// the UI could not spell would be an interval shown with the wrong evidence behind it.
+	AuctionIntervalSources []string `json:"auction_interval_sources"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -201,24 +208,25 @@ func buildContract() contractDoc {
 			Hint:    CutoffHint,
 			Example: CutoffExample,
 		},
-		MLCalls:               contractMLCalls(),
-		FormatCodes:           formats.CanonicalCodes(),
-		TeamGenders:           TeamGenders(),
-		StopResponseField:     StopResponseField,
-		PoolSources:           availability.PoolSources(),
-		PoolExclusionReasons:  availability.ExclusionReasons(),
-		SelectionRoles:        predictteam.SelectionRoles(),
-		WinProbabilitySources: predictteam.WinProbabilitySources(),
-		ForecastSources:       predictteam.ForecastSources(),
-		SelectionObjectives:   predictteam.SelectionObjectives(),
-		FreshnessStatuses:     freshness.Statuses(),
-		RetrainStatuses:       freshness.RetrainStatuses(),
-		PredictionStates:      trackrecord.States(),
-		SimulatorPopulations:  trackrecord.Populations(),
-		TrackRecordMetricKeys: trackrecord.MetricKeys(),
-		AuctionPlayerStates:   auction.States(),
-		AuctionMetricKeys:     auction.MetricKeys(),
-		RatingsStaleCode:      freshness.RatingsStaleCode,
+		MLCalls:                contractMLCalls(),
+		FormatCodes:            formats.CanonicalCodes(),
+		TeamGenders:            TeamGenders(),
+		StopResponseField:      StopResponseField,
+		PoolSources:            availability.PoolSources(),
+		PoolExclusionReasons:   availability.ExclusionReasons(),
+		SelectionRoles:         predictteam.SelectionRoles(),
+		WinProbabilitySources:  predictteam.WinProbabilitySources(),
+		ForecastSources:        predictteam.ForecastSources(),
+		SelectionObjectives:    predictteam.SelectionObjectives(),
+		FreshnessStatuses:      freshness.Statuses(),
+		RetrainStatuses:        freshness.RetrainStatuses(),
+		PredictionStates:       trackrecord.States(),
+		SimulatorPopulations:   trackrecord.Populations(),
+		TrackRecordMetricKeys:  trackrecord.MetricKeys(),
+		AuctionPlayerStates:    auction.States(),
+		AuctionMetricKeys:      auction.MetricKeys(),
+		AuctionIntervalSources: auction.IntervalSources(),
+		RatingsStaleCode:       freshness.RatingsStaleCode,
 	}
 }
 

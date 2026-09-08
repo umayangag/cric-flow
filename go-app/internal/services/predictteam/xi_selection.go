@@ -218,7 +218,7 @@ func selectByRatings(ctx context.Context, optimizer XISelectionOptimizer, fix fi
 		return selection, fmt.Errorf("select %s: %w", fix.team2.Label(), err)
 	}
 	for _, answer := range []*XIOptimizationResult{xi1, xi2} {
-		if err := selection.Served.adopt(answer.Served); err != nil {
+		if err := selection.Served.Adopt(answer.Served); err != nil {
 			return selection, fmt.Errorf("select: %w", err)
 		}
 	}
@@ -251,7 +251,7 @@ func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer,
 		return selection, fmt.Errorf("seed %s: %w", fix.team2.Label(), err)
 	}
 	for _, answer := range []*XIOptimizationResult{seed1, seed2} {
-		if err := selection.Served.adopt(answer.Served); err != nil {
+		if err := selection.Served.Adopt(answer.Served); err != nil {
 			return selection, fmt.Errorf("seed: %w", err)
 		}
 	}
@@ -275,7 +275,7 @@ func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer,
 			return selection, fmt.Errorf("optimize %s (round %d): %w", fix.team2.Label(), round, err)
 		}
 		for _, answer := range []*XIOptimizationResult{next1, next2} {
-			if err := selection.Served.adopt(answer.Served); err != nil {
+			if err := selection.Served.Adopt(answer.Served); err != nil {
 				return selection, fmt.Errorf("optimize (round %d): %w", round, err)
 			}
 		}

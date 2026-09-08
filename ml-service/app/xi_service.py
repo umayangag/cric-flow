@@ -36,6 +36,7 @@ from app.models.xi import (
     SimulatedWinProbability,
     SimulateRequest,
     SimulateResponse,
+    VenueContext,
     WicketDistribution,
     XiConstraintCheck,
     XiConstraints,
@@ -644,7 +645,26 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
         players=players,
         innings_marginalised=req.team1_bats_first is None,
         unknown_player_ids=unknown,
+        venue_context=_venue_context(rows),
         served_ratings=_served_ratings(store),
+    )
+
+
+def _venue_context(rows: pd.DataFrame) -> VenueContext:
+    """What the served state knew about the ground, read off the rows the model consumed.
+
+    Off the rows and not recomputed from the state: these are the two columns the
+    prediction beside it was actually made from, so a caller comparing grounds is comparing
+    what the model read. Recomputing them here would be a second definition of a number the
+    answer is meant to be reporting."""
+    venue_n = float(rows.venue_n.iloc[0])
+    return VenueContext(
+        venue_bf_rate=float(rows.venue_bf_rate.iloc[0]),
+        venue_n=venue_n,
+        # 0 is the prior, and the prior is where a ground the state has never seen lands --
+        # and equally where a request that named no teams lands, since the neutral fallback
+        # in ``rows.team_context_or_neutral`` is for the pair and takes the venue with it.
+        neutral=venue_n == 0.0,
     )
 
 
@@ -714,8 +734,11 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
         n_samples=req.n_samples,
         seed=req.seed,
         toss_marginalised=summary["toss_marginalised"],
-        team1=_simulated_side(summary["team1"], 1),
-        team2=_simulated_side(summary["team2"], 2),
+        # The draws themselves only where the caller asked (P3-2): they are the same numbers
+        # `total` summarises, handed over so a caller pooling several simulations quantifies
+        # the pool instead of averaging three summaries into a range nothing drew.
+        team1=_simulated_side(summary["team1"], 1, _total_draws(draws.team1, req.return_total_draws)),
+        team2=_simulated_side(summary["team2"], 2, _total_draws(draws.team2, req.return_total_draws)),
         win_probability=SimulatedWinProbability(
             simulated=simulated,
             p_tie=summary["win"]["tie"],
@@ -737,12 +760,24 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
     )
 
 
-def _simulated_side(side: Dict, team_side: int) -> SimulatedSide:
+def _total_draws(team, requested: bool) -> Optional[List[float]]:
+    """One side's total in every draw, or nothing where the caller did not ask.
+
+    Guarded rather than always sent: it is ``n_samples`` floats a side, and the only caller
+    that needs them is one pooling grounds (P3-2). Nothing is rounded on the way out -- a
+    pooled quantile computed from rounded draws is not the quantile of the draws."""
+    if not requested:
+        return None
+    return [float(value) for value in team.total]
+
+
+def _simulated_side(side: Dict, team_side: int, total_draws: Optional[List[float]] = None) -> SimulatedSide:
     return SimulatedSide(
         total=SimulatedTotal(**side["total"]),
         extras_scorecard=side["extras"]["scorecard"],
         extras_spread_share=side["extras"]["spread_share"],
         wickets_lost=PerformanceRange(**side["wickets_lost"]),
+        total_draws=total_draws,
         players=[
             SimulatedPlayer(
                 player_id=str(p["player_key"]),

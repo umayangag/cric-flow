@@ -383,3 +383,77 @@ func (_c *MockStore_RecordOutcome_Call) RunAndReturn(run func(ctx context.Contex
 	_c.Call.Return(run)
 	return _c
 }
+
+// SetAssumptions provides a mock function for the type MockStore
+func (_mock *MockStore) SetAssumptions(ctx context.Context, auctionID string, change auction.AssumptionsChange) (*auction.Auction, error) {
+	ret := _mock.Called(ctx, auctionID, change)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetAssumptions")
+	}
+
+	var r0 *auction.Auction
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, auction.AssumptionsChange) (*auction.Auction, error)); ok {
+		return returnFunc(ctx, auctionID, change)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, auction.AssumptionsChange) *auction.Auction); ok {
+		r0 = returnFunc(ctx, auctionID, change)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*auction.Auction)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, auction.AssumptionsChange) error); ok {
+		r1 = returnFunc(ctx, auctionID, change)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockStore_SetAssumptions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetAssumptions'
+type MockStore_SetAssumptions_Call struct {
+	*mock.Call
+}
+
+// SetAssumptions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - auctionID string
+//   - change auction.AssumptionsChange
+func (_e *MockStore_Expecter) SetAssumptions(ctx interface{}, auctionID interface{}, change interface{}) *MockStore_SetAssumptions_Call {
+	return &MockStore_SetAssumptions_Call{Call: _e.mock.On("SetAssumptions", ctx, auctionID, change)}
+}
+
+func (_c *MockStore_SetAssumptions_Call) Run(run func(ctx context.Context, auctionID string, change auction.AssumptionsChange)) *MockStore_SetAssumptions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 auction.AssumptionsChange
+		if args[2] != nil {
+			arg2 = args[2].(auction.AssumptionsChange)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockStore_SetAssumptions_Call) Return(auction1 *auction.Auction, err error) *MockStore_SetAssumptions_Call {
+	_c.Call.Return(auction1, err)
+	return _c
+}
+
+func (_c *MockStore_SetAssumptions_Call) RunAndReturn(run func(ctx context.Context, auctionID string, change auction.AssumptionsChange) (*auction.Auction, error)) *MockStore_SetAssumptions_Call {
+	_c.Call.Return(run)
+	return _c
+}

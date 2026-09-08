@@ -457,11 +457,23 @@ type mlPerformanceRequest struct {
 	Team1ID        *int64   `json:"team1_id,omitempty"`
 	Team2ID        *int64   `json:"team2_id,omitempty"`
 	VenueID        *int64   `json:"venue_id,omitempty"`
-	AsOf           string   `json:"as_of,omitempty"`
+	// Team1BatsFirst is nil before the toss, when both batting orders are averaged. The
+	// Lab's quantiles path never sets it — a format with no innings length has no toss to
+	// know — but the auction's projection lets the operator set it, because "what would he
+	// do batting first at this ground" is a different question from the marginal one.
+	Team1BatsFirst *bool  `json:"team1_bats_first,omitempty"`
+	AsOf           string `json:"as_of,omitempty"`
 }
 
+// mlWicketDistribution is the wicket count's distribution (app/models/xi.py
+// WicketDistribution). It is a count distribution and not a quantile head: there are no
+// q10/q90 on this path, and deriving an interval from the three probabilities would be an
+// interval the model never produced.
 type mlWicketDistribution struct {
 	Expected float64 `json:"expected"`
+	P0       float64 `json:"p0"`
+	P1       float64 `json:"p1"`
+	P2Plus   float64 `json:"p2_plus"`
 }
 
 type mlPerformancePlayer struct {
@@ -472,9 +484,19 @@ type mlPerformancePlayer struct {
 	Wickets      mlWicketDistribution `json:"wickets"`
 }
 
+// mlVenueContext is what the served state knew about the ground these rows were built with
+// (app/models/xi.py VenueContext, P3-2): read off the rows the model consumed, so a caller
+// comparing two grounds can say which of them the model had anything to go on for.
+type mlVenueContext struct {
+	VenueBFRate float64 `json:"venue_bf_rate"`
+	VenueN      float64 `json:"venue_n"`
+	Neutral     bool    `json:"neutral"`
+}
+
 type mlPerformanceResponse struct {
 	Players             []mlPerformancePlayer `json:"players"`
 	InningsMarginalised bool                  `json:"innings_marginalised"`
+	VenueContext        mlVenueContext        `json:"venue_context"`
 	ServedRatings       mlServedRatings       `json:"served_ratings"`
 }
 
@@ -492,6 +514,7 @@ func (c *MLClient) PredictPerformance(
 		Team1ID:        optionalID(req.Team1ID),
 		Team2ID:        optionalID(req.Team2ID),
 		VenueID:        optionalID(req.VenueID),
+		Team1BatsFirst: req.Team1BatsFirst,
 		AsOf:           asOfParam(req.AsOf),
 	})
 	if err != nil {
@@ -504,16 +527,22 @@ func (c *MLClient) PredictPerformance(
 	players := make([]predictteam.XIPerformancePlayer, 0, len(out.Players))
 	for _, p := range out.Players {
 		players = append(players, predictteam.XIPerformancePlayer{
-			PlayerKey:    p.PlayerID,
-			Runs:         simulatedRange(p.Runs),
-			BallsFaced:   simulatedRange(p.BallsFaced),
-			RunsConceded: simulatedRange(p.RunsConceded),
-			Wickets:      p.Wickets.Expected,
+			PlayerKey:     p.PlayerID,
+			Runs:          simulatedRange(p.Runs),
+			BallsFaced:    simulatedRange(p.BallsFaced),
+			RunsConceded:  simulatedRange(p.RunsConceded),
+			Wickets:       p.Wickets.Expected,
+			WicketsP0:     p.Wickets.P0,
+			WicketsP1:     p.Wickets.P1,
+			WicketsP2Plus: p.Wickets.P2Plus,
 		})
 	}
 	return &predictteam.XIPerformanceResult{
 		InningsMarginalised: out.InningsMarginalised,
 		Players:             players,
+		VenueBatFirstRate:   out.VenueContext.VenueBFRate,
+		VenueMatches:        out.VenueContext.VenueN,
+		VenueNeutral:        out.VenueContext.Neutral,
 		Served:              out.ServedRatings.served(),
 	}, nil
 }

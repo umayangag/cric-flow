@@ -330,7 +330,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
 	}
-	if err := result.adopt(win.Served); err != nil {
+	if err := result.Adopt(win.Served); err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
 	}
 	if fix.isPinned {

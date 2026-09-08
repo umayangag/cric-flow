@@ -65,7 +65,73 @@ func (s *AuctionStore) Get(ctx context.Context, auctionID string) (*auction.Auct
 	if record.Players, err = s.readPlayers(ctx, auctionID); err != nil {
 		return nil, err
 	}
+	if record.LikelyXI, err = s.readNamedPlayers(ctx, auctionID, "auction_likely_xi"); err != nil {
+		return nil, err
+	}
+	if record.Opposition, err = s.readOpposition(ctx, auctionID); err != nil {
+		return nil, err
+	}
 	return record, nil
+}
+
+// readNamedPlayers reads one of the projection's assumption lists, in the order the
+// operator entered it (P3-2).
+//
+// The table name is interpolated and is never caller-supplied: the two assumption tables
+// are the same shape and reading them through one query keeps their two orderings from
+// drifting apart. The only two call sites pass the two literals below.
+func (s *AuctionStore) readNamedPlayers(
+	ctx context.Context,
+	auctionID string,
+	table string,
+) ([]auction.NamedPlayer, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT x.player_id, COALESCE(p.external_id, ''), p.player_name
+		FROM `+table+` x
+		JOIN player p ON p.id = x.player_id
+		WHERE x.auction_id = $1
+		ORDER BY x.position, x.player_id
+	`, auctionID)
+	if err != nil {
+		return nil, fmt.Errorf("read %s %s: %w", table, auctionID, err)
+	}
+	defer rows.Close()
+
+	players := make([]auction.NamedPlayer, 0, auction.TeamSize)
+	for rows.Next() {
+		var player auction.NamedPlayer
+		if err := rows.Scan(&player.PlayerID, &player.ExternalID, &player.PlayerName); err != nil {
+			return nil, fmt.Errorf("read %s %s: %w", table, auctionID, err)
+		}
+		players = append(players, player)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read %s %s: %w", table, auctionID, err)
+	}
+	return players, nil
+}
+
+// readOpposition reads the side a projection is against, or nil where the operator has not
+// named one. Nil and not an empty eleven: "no opposition named" is what a projection is
+// refused for, and an empty side would be a side nobody plays rather than a missing answer.
+func (s *AuctionStore) readOpposition(ctx context.Context, auctionID string) (*auction.Opposition, error) {
+	var opposition auction.Opposition
+	err := Pool.QueryRow(ctx, `
+		SELECT ao.opposition_id, COALESCE(o.opposition_name, '')
+		FROM auction_opposition ao
+		LEFT JOIN opposition o ON o.id = ao.opposition_id
+		WHERE ao.auction_id = $1
+	`, auctionID).Scan(&opposition.OppositionID, &opposition.Name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read auction opposition %s: %w", auctionID, err)
+	}
+	if opposition.Players, err = s.readNamedPlayers(ctx, auctionID, "auction_opposition_player"); err != nil {
+		return nil, err
+	}
+	return &opposition, nil
 }
 
 // readAuctionRow reads the auction's own row, with the buying side named.
@@ -253,4 +319,72 @@ func (s *AuctionStore) RecordOutcome(
 		return nil, auction.ErrNotFound
 	}
 	return s.Get(ctx, auctionID)
+}
+
+// SetAssumptions replaces the projection's named assumptions and returns the auction as it
+// now stands (P3-2).
+//
+// Replace rather than merge: an eleven is a list, and merging a shorter list into a longer
+// one would leave the record holding a player the operator has just removed. One
+// transaction, because a half-written eleven read back mid-write would be an assumption
+// nobody made, and every projection under it would be labelled with it.
+func (s *AuctionStore) SetAssumptions(
+	ctx context.Context,
+	auctionID string,
+	change auction.AssumptionsChange,
+) (*auction.Auction, error) {
+	if Pool == nil {
+		return nil, errors.New("db pool not initialized")
+	}
+	if err := change.Validate(); err != nil {
+		return nil, err
+	}
+	if _, err := s.readAuctionRow(ctx, auctionID); err != nil {
+		return nil, err
+	}
+	err := withTx(ctx, func(tx pgx.Tx) error {
+		if change.LikelyXIPlayerIDs != nil {
+			if err := replaceAssumptionList(
+				ctx, tx, "auction_likely_xi", auctionID, *change.LikelyXIPlayerIDs); err != nil {
+				return err
+			}
+		}
+		if change.Opposition == nil {
+			return nil
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO auction_opposition (auction_id, opposition_id)
+			VALUES ($1, $2)
+			ON CONFLICT (auction_id) DO UPDATE SET opposition_id = EXCLUDED.opposition_id
+		`, auctionID, change.Opposition.OppositionID); err != nil {
+			return fmt.Errorf("set auction opposition %s: %w", auctionID, err)
+		}
+		return replaceAssumptionList(
+			ctx, tx, "auction_opposition_player", auctionID, change.Opposition.PlayerIDs)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, auctionID)
+}
+
+// replaceAssumptionList rewrites one assumption's eleven inside the caller's transaction.
+func replaceAssumptionList(
+	ctx context.Context,
+	tx pgx.Tx,
+	table string,
+	auctionID string,
+	playerIDs []int64,
+) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE auction_id = $1`, auctionID); err != nil {
+		return fmt.Errorf("clear %s %s: %w", table, auctionID, err)
+	}
+	for position, playerID := range playerIDs {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO `+table+` (auction_id, player_id, position) VALUES ($1, $2, $3)
+		`, auctionID, playerID, position); err != nil {
+			return fmt.Errorf("write %s %s player %d: %w", table, auctionID, playerID, err)
+		}
+	}
+	return nil
 }

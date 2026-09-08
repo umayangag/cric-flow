@@ -26,23 +26,47 @@ type XIPerformanceRequest struct {
 	Team1ID         int64
 	Team2ID         int64
 	VenueID         int64
-	AsOf            time.Time
+	// Team1BatsFirst is nil before the toss, when the model averages both batting orders.
+	// The Lab's quantiles path leaves it nil — a format with no innings length has no toss
+	// — and the auction's projection sets it where the operator asks a toss-known question.
+	Team1BatsFirst *bool
+	AsOf           time.Time
 }
 
 // XIPerformancePlayer is one player's forecast: the median of each target with its 10-90
-// interval, and the expected wickets.
+// interval, and the wicket count's distribution.
+//
+// The wickets are an expectation and three probabilities and never a range. L2-B predicts
+// wickets as a count distribution rather than through quantile heads, so there is no q10 or
+// q90 on this path and deriving one from the probabilities would be an interval the model
+// never produced (P1-4's rule, applied to the one target that has no interval).
 type XIPerformancePlayer struct {
 	PlayerKey    string
 	Runs         XISimulatedRange
 	BallsFaced   XISimulatedRange
 	RunsConceded XISimulatedRange
 	Wickets      float64
+	// WicketsP0, WicketsP1 and WicketsP2Plus are P(0), P(1) and P(2 or more).
+	WicketsP0     float64
+	WicketsP1     float64
+	WicketsP2Plus float64
 }
 
 // XIPerformanceResult is the Go-side response from POST /performance/predict.
 type XIPerformanceResult struct {
 	InningsMarginalised bool
 	Players             []XIPerformancePlayer
+	// The ground as the model read it, off the rows it consumed (P3-2). The performance
+	// model reads a ground through these two columns and through nothing else — the
+	// ground's scoring level was gated and recorded as a null (A-1), and
+	// `FIXTURE_CONTEXT_FAMILIES_KEPT` is empty — so a caller comparing two grounds is
+	// comparing what the toss does at each.
+	VenueBatFirstRate float64
+	VenueMatches      float64
+	// VenueNeutral is true where the served state has no matches at the ground and the
+	// rows read at the prior. Carried so a surface can say so rather than presenting a
+	// substitution nobody can see (§8.7).
+	VenueNeutral bool
 	// Served is the rating state the forecasts were made from.
 	Served ServedRatings
 }
@@ -69,7 +93,7 @@ func applyPerformanceForecast(
 	if err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
-	if err := result.adopt(forecast.Served); err != nil {
+	if err := result.Adopt(forecast.Served); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
 	byKey := make(map[string]XIPerformancePlayer, len(forecast.Players))
