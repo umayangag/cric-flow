@@ -505,6 +505,73 @@ GATES: Tuple[Gate, ...] = (
         "decide it and is reported. A recorded null ships nothing",
         report_path=None,
     ),
+    Gate(
+        id="SIM-IN-corr",
+        name="The chase's dispersion, correlated with the first innings' realised residual",
+        varies="how the chasing side's second dispersion factor is drawn, and what it is fitted against. §8.14's "
+        "term was drawn INDEPENDENTLY of everything else and fitted against the chase's expectation on the shared "
+        "factor's own pitch; this one is drawn so that it moves with the FIRST INNINGS' realised log residual in "
+        "the same draw -- exp(slope * (ln T1 - the draws' mean ln T1) + independent_log_sd * z), centred to mean "
+        "one per fixture so it adds spread and no level -- and is fitted against the chase's OWN expectation, with "
+        "the pitch a thing to be explained rather than divided out. Both coefficients are a difference between the "
+        "data and the control: the censored (Tobit) regression of the calibration fold's chase residual on its "
+        "first innings' residual gives the data's slope and residual scale, the control's own slope (Vf / V1) and "
+        "residual variance (V2 - Vf^2 / V1) are composed from the shared factor's log variance and each innings' "
+        "draw spread, and the term carries the difference. §8.14's null was E2 and its mechanism was understood: "
+        "an independent term widens the MARGIN, which decides the match, so P(win) moves toward 0.5. A correlated "
+        "term puts the extra spread into the two totals together, where it largely cancels in their difference. "
+        "The shared match factor is the control's, pooled, in this arm",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws every term is fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels. The first innings' draws are taken "
+        "before the chase's from the same stream and are bit-identical to the control's, so its coverage cannot "
+        "move in this arm -- that is what makes it the isolating arm, and it is registered as one",
+        decides="in T20, paired per fold against the control with one fold-level standard error as the effect-size "
+        "floor, and in BOTH populations and BOTH innings, because §8.13's candidates failed by buying the first "
+        "innings with the chase and §8.14's by buying the totals with the margin: the 10-90 coverage's distance "
+        "from 0.80 shrinks for the first innings and for the chase, on the day matches and on the night matches "
+        "separately (four clauses), and the dispersion ratio's distance from 1.0 shrinks in the same four cells. "
+        "H-22 with the sign each side needs: the match-count-pooled FIRST-INNINGS width may not grow by more than "
+        "1 %; the CHASE has no width cap because its correction is by design a widening, and the guard against "
+        "buying its coverage with width is its own dispersion clause, which a mere inflation would push past 1.0 "
+        "the other way. Width is reported beside coverage in every cell either way. E2 is SIGNED and is the clause "
+        "this candidate exists to pass: e2_not_degraded fails only if Brier(simulated) - Brier(display) GROWS by "
+        "more than one fold-level standard error, or leaves its 0.01 tolerance; a fall passes. ODI cannot decide "
+        "it (its night side clears the simulator's 20-match floor in 2 of 11 folds) and is reported. A recorded "
+        "null ships nothing",
+        report_path=None,
+    ),
+    Gate(
+        id="SIM-IN-corrboth",
+        name="The correlated chase dispersion, with the shared factor scaled per population",
+        varies="both levers at once: the chase's correlated dispersion exactly as SIM-IN-corr fits it, and the "
+        "shared match factor rescaled per pre-match day/night population under §8.13's SIM-DN-scale rule (each "
+        "population's deviations from one multiplied by sqrt(that population's excess variance / the pooled excess "
+        "variance), one shape borrowed across both, spread varied and location left pooled, under a 15-match floor "
+        "per population; a population under the floor falls back to the pooled factor and the fold records it). "
+        "The two are composed because they correct different halves of one defect and neither can pass alone: "
+        "§8.13's population lever moves the first innings and was blocked only by the chase, and the chase term "
+        "leaves the first innings bit-identical by construction",
+        fixed="the rows, the eleven quarterly cutoffs (A-4's rotated set), the three performance seeds, the "
+        "hyperparameters, the performance model (one fit per fold, shared by the arms, so every headline pinball is "
+        "identical by construction), the display models the simulator is scored against (the control's, fitted once "
+        "per fold and shared by the arms, so the display AUC is identical by construction), the 92-day calibration "
+        "fold and the calibration draws every term is fitted from, the chase response (none), the simulator's draw "
+        "count and its seeds (common random numbers across arms), the day/night label itself (inferred pre-match "
+        "from ml.weather.sessions' documented session rules, H-21), the labels",
+        decides="the same clauses as SIM-IN-corr, on the same folds, with the same signs: in T20, paired per fold "
+        "against the control with one fold-level standard error as the floor, the 10-90 coverage's distance from "
+        "0.80 and the dispersion ratio's distance from 1.0 both shrink for the first innings and for the chase, by "
+        "day and by night (eight clauses); the pooled first-innings width does not grow by more than 1 % and the "
+        "chase's width is guarded by its dispersion clause rather than a cap; e2_not_degraded is signed -- only a "
+        "growth of more than one fold-level standard error, or leaving the 0.01 tolerance, fails it. ODI cannot "
+        "decide it and is reported. A recorded null ships nothing",
+        report_path=None,
+    ),
 )
 
 REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}

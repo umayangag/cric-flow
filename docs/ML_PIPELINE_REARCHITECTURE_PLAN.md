@@ -2925,6 +2925,328 @@ unchanged by construction rather than by comparison. §8.13 made the same call f
 reason; B-7, which did re-run it twice and compare field by field, had changed a *reported*
 number.
 
+### 8.15 The chase's dispersion, correlated with the first innings (B-11, 2026-09-08)
+
+The continuation of §8.14, whose *mechanism* is this section's premise. An **experiment**, on
+the same terms — the folds decide, a null is a complete result, nothing ships that has not
+cleared its gate. The evidence, the design, the leakage surface, the feasibility probe and
+both H-23 triples come first; the triples were registered in `ml/xi/gates.py` (commit
+`eb38f37c`) and printed by the script before anything ran, and nothing above *Results* was
+edited once a number existed.
+
+**What §8.13 and §8.14 established, and is not re-derived here.** One dispersion is fitted to
+two populations: T20 first-innings 10–90 coverage **0.734 by day against 0.841 at night** at
+nominal 0.80, width 78.4 / 96.3, dispersion ratio 1.099 / 0.865; the chase reads 0.689 /
+0.759 with dispersion ratios 1.180 / 1.037, under-covered in both. §8.13's two candidates
+moved the *shared* factor and failed because one factor cannot correct two innings that miss
+in opposite directions. §8.14 gave the chase a dispersion term the two innings do **not**
+share and came much closer — seven of eight cells moved toward nominal, the night-chase
+clause that had failed at +0.083 ± 0.015 missed by +0.0121 ± 0.0205, the chase's tails reached
+0.084 / 0.097, both nominal, with no level fitted — and failed on the signed
+`e2_not_degraded` at **+0.0043 ± 0.0013**, three standard errors. That failure has a
+mechanism, and it is the whole reason this section exists: the term was drawn **independently**
+of everything else, so all of its variance landed in the *margin*, and the margin decides the
+match, so the simulated P(win) moved toward 0.5. Interval calibration bought with probability
+calibration.
+
+**The hypothesis.** If the chase's missing spread were drawn so that it **moved with the first
+innings' realised residual** instead of independently of it, the two *totals* could carry the
+extra dispersion while their *difference* carried less of it — because what the two innings
+share cancels in the margin, exactly as the shared match factor already does. Whether the data
+offers a correlation of that sign and size is the experiment.
+
+**The candidate, designed from the code rather than from the phrase.** What
+`fit_shared_factor`, `ChaseDispersion` and `simulate_match`'s draw order actually do settles
+the rest:
+
+> Every chase draw's runs are multiplied by
+> `g = exp(slope · (ln T1 − the draws' mean ln T1) + independent_log_sd · z − half the
+> variance)`, with `T1` the first innings' **realised** total in that same draw. The centring
+> on the draws' own mean makes the term mean one *per fixture*, so it adds spread and no
+> level (A-2 gated the chase level and recorded a null, and §8.14's judgment call (2) asked
+> the same of any successor). `simulator.CorrelatedChaseDispersion`, fitted by
+> `simulator.fit_correlated_chase_dispersion`, applied in `batting_innings` before the target
+> truncation, and off under `simulator.CHASE_DISPERSION` until a gate says otherwise.
+
+Both coefficients are a **difference between what the data says and what the control already
+produces**, on the log scale and against the chase's **own** expectation — never the first
+innings' shrunk factor, which §8.14 named as the reason its own magnitude was over-stated:
+
+* the censored (Tobit) regression of the calibration fold's chase residual
+  `ln(chase / its own expected total)` on the first innings' residual
+  `ln(first / its own expected total)`, right-censored at the target, gives `data_slope` and
+  `data_residual_log_sd`. Multiplying the expectation back by the factor adds `ln factor` to
+  both the response and its censoring threshold, so their difference — and therefore the
+  censoring — is untouched, and the pitch becomes a thing to be explained rather than
+  something already divided out.
+* the control's own slope and residual scale are **composed from its parts** rather than
+  simulated again: the shared factor is the only thing the two innings have in common, so with
+  `Vf` its log variance and `V1`, `V2` each innings' model log variance (`Vf` plus that
+  innings' own draw spread, from the calibration draws the fold already holds), the control
+  regresses at `Vf / V1` with residual variance `V2 − Vf² / V1`.
+* `slope = data_slope − model_slope` and `independent_log_sd² = data residual variance −
+  model residual variance` then reproduce the data's regression **exactly**: adding
+  `slope · (ln T1 − mean)` moves the model's slope by exactly `slope` and leaves its residual
+  variance untouched (the algebra is in the class's docstring and is checked by a unit test
+  on a synthetic fold), and the independent part supplies what is left.
+
+Three alternatives were considered and rejected, each for a reason in the code:
+
+* **A correlation parameter ρ on a term of fixed spread** (`ρ` times a standardised first
+  innings, `√(1−ρ²)` times noise). Rejected: it is the same two degrees of freedom in a
+  parameterisation whose pieces do not map onto anything the fit can read separately, and it
+  needs the first innings' spread stored to standardise by. The regression pair (`slope`,
+  `independent_log_sd`) is what a censored regression *returns*, each piece is separately
+  clippable at zero, and each names something — "how much more the chase moves with the first
+  innings than the control has it" and "how much spread is left over".
+* **A bivariate draw of the two innings' factors**, replacing the shared factor with a
+  correlated pair. Rejected: it re-opens `SHARED_FACTOR`, which E2 decided in P-4 and which
+  §8.13 has already gated twice, and it cannot be composed with §8.13's population lever the
+  way a chase-side multiplier can. The composition is what gives this pass an arm that can
+  move both innings.
+* **Clipping the fitted slope at zero** so the term can only ever be a positive correlation.
+  Rejected as fitting the conclusion: the sign is the experiment's answer, not its premise,
+  and a slope the data puts on the other side of zero is exactly the finding a gate is for.
+  It is recorded per fold instead.
+
+**The arms.** As in §8.14 the chase-side term cannot move a first-innings clause at all — the
+first innings' draws are taken from the same stream before the chase's — so a gate that
+requires both innings needs the composed arm:
+
+* **`corr` (SIM-IN-corr)** — the correlated term on the control's pooled shared factor, the
+  **isolating arm**, registered as one. Its first-innings clauses cannot pass.
+* **`corrboth` (SIM-IN-corrboth)** — that same term composed with §8.13's `SIM-DN-scale` rule
+  for the shared factor (15-match floor per population, imported from `daynight_dispersion.py`
+  rather than reimplemented).
+* **`chase`** — §8.14's independent term, **re-run as a reference arm and not re-gated**: its
+  verdict is recorded in §8.14, and it is here only so that the two ways of widening the chase
+  are paired draw for draw against one control. This is the comparison the hypothesis is
+  about, and running it beside the candidates costs one arm of a pass that was being run
+  anyway.
+
+**The gate, and its signs.** Unchanged from §8.14, deliberately, so the two candidates are
+comparable: coverage must move toward nominal in **both populations and both innings**
+separately, and the dispersion ratio toward 1.0 in the same four cells — eight clauses, paired
+per fold with one fold-level standard error as the effect-size floor (§8.9's lesson). H-22 with
+the sign each innings needs: the match-count-pooled **first-innings** width may not grow by
+more than 1 %, while the **chase** has no width cap because its correction *is* a widening and
+the guard against buying its coverage with width is its own dispersion clause. Width is printed
+beside coverage in every cell either way. And `e2_not_degraded` keeps §8.14's sign — it fails
+only if Brier(simulated) − Brier(display) *grows* by more than one fold-level standard error or
+leaves its 0.01 tolerance — because **it is the clause this candidate exists to pass**, and a
+symmetric clause would not distinguish the improvement this design predicts from the
+degradation it is trying to undo.
+
+**The leakage surface (H-21).** One thing enters that did not before: the chase's multiplier
+reads the first innings' realised total. Within a simulated match that is **not** future
+information — `simulate_match` plays the first innings to completion and hands its total to the
+chase as the target, and the term is read at exactly that point in `batting_innings`, from
+`target − 1`, before the chase's own draws are truncated. Nothing about the *fixture* is read:
+the coefficients are fitted on the calibration fold — the last 92 days of the training rows,
+which the members do not train on and which all precede the cutoff — and are one pair of
+numbers per fold applied to every fixture of that fold. The day/night label, for the
+`corrboth` arm only, is §8.13's inference from documented competition and format start-time
+norms, with the same limitation stated there: it is an inference, not a record.
+
+**The feasibility probe, run before the arms and recorded here.** `--probe` counts, per fold
+and without fitting anything, what each arm needs, by calling the fit's own selection
+functions. Both dispersion arms need the same things §8.14's did — both populations over the
+harness's 20-match evaluation floor, at least 30 complete first innings in the calibration
+fold with at least two **lost** chases among them — so the table is §8.14's, and the run
+reproduced its `probe.json` **byte for byte**:
+
+| format | folds | can decide `corr` | can decide `corrboth` |
+|---|---:|---:|---:|
+| **T20** | 11 | **11** | **11** |
+| T20I | 11 | 4 | 1 |
+| ODI | 11 | 2 | 0 |
+
+**T20 decides both arms on every one of its eleven folds. ODI and T20I decide neither and are
+reported.** That is stated before any arm ran, and it is why this section reports ODI rather
+than deciding on it.
+
+#### Results
+
+*T20, eleven folds, 1,000 draws per fixture, four arms sharing one fit and one seed stream.*
+
+**The control reproduces §8.14 in every cell, and so does the `chase` reference arm** —
+coverage, width, dispersion, both tails and Δ Brier alike, to every printed decimal, on a
+different worktree in a different run. That is the first thing the pass bought: §8.14's arm is
+not a number in a document, it is reproducible, and the two candidates are paired against it
+draw for draw.
+
+| arm | population | matches/fold | first coverage | first width | first dispersion | chase coverage | chase width | chase dispersion | chase below q10 | chase above q90 | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | all | 399 | 0.771 | 84.7 | — | 0.712 | 69.9 | — | 0.191 | 0.096 | +0.0019 |
+| control | day | 259 | **0.734** | 78.4 | **1.099** | **0.689** | 64.6 | **1.180** | 0.210 | 0.101 | +0.0024 |
+| control | night | 139 | **0.841** | 96.3 | **0.865** | **0.759** | 79.8 | **1.037** | 0.154 | 0.087 | +0.0002 |
+| chase (§8.14) | all | 399 | 0.771 | 84.7 | — | 0.820 | 92.3 | — | **0.084** | **0.097** | +0.0058 |
+| chase (§8.14) | day | 259 | 0.734 | 78.4 | 1.099 | 0.798 | 84.5 | 0.944 | 0.102 | 0.101 | +0.0085 |
+| chase (§8.14) | night | 139 | 0.841 | 96.3 | 0.865 | 0.859 | 106.3 | 0.815 | 0.052 | 0.089 | +0.0006 |
+| corr | all | 399 | 0.771 | 84.7 | — | 0.721 | 74.6 | — | 0.100 | **0.179** | +0.0075 |
+| corr | day | 259 | 0.734 | 78.4 | 1.099 | 0.714 | 68.5 | 1.173 | 0.120 | 0.166 | +0.0107 |
+| corr | night | 139 | 0.841 | 96.3 | 0.865 | 0.736 | 85.5 | 1.020 | 0.064 | 0.200 | +0.0011 |
+| corrboth | all | 399 | 0.754 | 81.6 | — | 0.725 | 73.9 | — | 0.097 | **0.179** | +0.0077 |
+| corrboth | day | 259 | 0.760 | 83.6 | 1.027 | 0.725 | 70.1 | 1.144 | 0.109 | 0.165 | +0.0111 |
+| corrboth | night | 139 | 0.748 | 78.2 | 1.076 | 0.724 | 80.5 | 1.092 | 0.074 | 0.202 | +0.0010 |
+
+Paired per fold against the control, one fold-level standard error as the floor:
+
+| arm | first coverage \|Δ→0.80\|, day | night | first dispersion \|Δ→1.0\|, day | night | chase coverage \|Δ→0.80\|, day | night | chase dispersion \|Δ→1.0\|, day | night | Δ E2 | pooled first width |
+|---|---|---|---|---|---|---|---|---|---|---|
+| chase (§8.14) | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | **−0.0604 ± 0.0148** | +0.0260 ± 0.0273 | **−0.0795 ± 0.0504** | +0.0646 ± 0.0623 | **+0.0039 ± 0.0013** | 84.7 → 84.7 |
+| corr | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | +0.0000 ± 0.0000 | **−0.0254 ± 0.0116** | +0.0239 ± 0.0191 | −0.0241 ± 0.0317 | −0.0206 ± 0.0315 | **+0.0056 ± 0.0013** | 84.7 → 84.7 |
+| corrboth | **−0.0160 ± 0.0075** | −0.0118 ± 0.0189 | **−0.0203 ± 0.0190** | **−0.0721 ± 0.0433** | **−0.0366 ± 0.0118** | +0.0252 ± 0.0169 | **−0.0535 ± 0.0294** | −0.0074 ± 0.0359 | **+0.0058 ± 0.0014** | 84.7 → 81.6 |
+
+**Both candidates are nulls, and the clause they were built to pass is the one they fail
+hardest.** `corr` fails eight of nine clauses (its four first-innings clauses cannot pass, by
+construction and checked: +0.0000 ± 0.0000, fold for fold, in both populations). `corrboth`
+passes five of nine — the same five §8.14's `both` passed, including the pooled first-innings
+width *falling* 84.7 → 81.6 — and fails the night first innings, the night chase's coverage
+and dispersion, and E2.
+
+**E2 did not improve; it got worse than §8.14's.** Paired against one control on the same
+folds and the same draws: **+0.0039 ± 0.0013 for the independent term, +0.0056 ± 0.0013 for
+the correlated one, +0.0058 ± 0.0014 composed.** The hypothesis was that a chase term
+correlated with the first innings would let the totals carry the dispersion while the margin
+carried less of it; on eleven folds it moved the margin **more**, by four standard errors of
+its own paired difference. The design is not wrong about the mechanism — a term positively
+correlated with the first innings does cancel in the margin, which a unit test pins on
+synthetic draws — it is wrong about the **sign the data offers**.
+
+**Why: the correlation in the data is negative, in every fold.** The censored regression of
+the calibration fold's chase residual on its first innings' residual, both against their own
+expectations, reads:
+
+| cutoff | data slope | control's own slope | the term's slope | data residual sd | control residual sd | independent log sd | §8.14's excess |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 2024-01-01 | −0.658 | +0.587 | −1.245 | 0.437 | 0.221 | 0.377 | 0.506 |
+| 2024-04-01 | −0.232 | +0.524 | −0.756 | 0.353 | 0.212 | 0.282 | 0.359 |
+| 2024-07-01 | −0.421 | +0.565 | −0.986 | 0.401 | 0.224 | 0.333 | 0.416 |
+| 2024-10-01 | −0.307 | +0.631 | −0.938 | 0.382 | 0.235 | 0.301 | 0.394 |
+| 2025-01-01 | −0.407 | +0.462 | −0.869 | 0.452 | 0.221 | 0.394 | 0.464 |
+| 2025-04-01 | −0.297 | +0.287 | −0.585 | 0.366 | 0.189 | 0.313 | 0.331 |
+| 2025-06-01 | −0.038 | +0.516 | −0.554 | 0.350 | 0.231 | 0.263 | 0.321 |
+| 2025-09-01 | −0.061 | +0.556 | −0.617 | 0.363 | 0.220 | 0.288 | 0.356 |
+| 2025-12-01 | −0.086 | +0.559 | −0.646 | 0.334 | 0.231 | 0.242 | 0.339 |
+| 2026-03-01 | −0.227 | +0.488 | −0.715 | 0.320 | 0.209 | 0.242 | 0.306 |
+| 2026-06-01 | −0.662 | +0.523 | −1.185 | 0.488 | 0.235 | 0.428 | 0.528 |
+
+The data's slope is **negative in eleven folds of eleven** (−0.662 to −0.038) while the
+control's own is **positive in eleven of eleven** (+0.287 to +0.631), so the term the fit asks
+for is a negative co-movement of −1.245 to −0.554. A negative correlation is the opposite of
+what buys margin calibration: it widens the difference between the innings by *more* than an
+independent term of the same marginal size, which is exactly what E2 read.
+
+**And what that negative number is, is A-2's chase response.** The regression cannot separate
+the two channels that connect the two innings. One is the pitch, which is positive and which
+the shared factor already carries — that is the control's +0.287 to +0.631. The other is the
+chasing side's response to the **target**, which A-2 measured as negative in every fold
+(T20 −0.8 to −2.0 on the log-difficulty scale) and gated and nulled as a *level*. The first
+innings' residual is very nearly the difficulty, so a regression on it sees the two channels'
+**sum**, the sum is negative net of what the control already has, and the term therefore
+re-introduces A-2's nulled response wearing a dispersion term's clothes. The simulator says so
+in the one place it cannot be argued with — the **tails**: the chase's mass below the
+simulated 10th percentile against above its 90th reads 0.191 / 0.096 in the control, **0.084 /
+0.097 under §8.14's independent term (both nominal)** and **0.100 / 0.179 under the correlated
+one**. A-2's own record says of its response: *"the mass moves to the other tail (above the
+90th: 0.10 → 0.13–0.16), so the 10-90 coverage does not move"*. That is this arm's behaviour,
+reproduced from a different lever, and it is behaviour rather than an estimate.
+
+**The sign is the data's, not the estimator's, and it was checked rather than assumed.**
+`--slope-check` reads the same slope on the same eleven folds three ways:
+
+| reading | range | negative in |
+|---|---|---:|
+| the censored (Tobit) estimate the term is fitted from | −0.662 … −0.038 | **11 of 11** |
+| least squares on the **lost** chases alone | −0.078 … +0.524 | 2 of 11 |
+| least squares over every chase, a won one held at its target | +0.437 … +0.818 | 0 of 11 |
+| A-2's own censored chase-response slope, on the difficulty scale | −2.019 … −0.757 | **11 of 11** |
+
+The two uncensored readings are biased **upward**, both of them, and for reasons that are
+arithmetic rather than arguable: a chase is lost when its latent total fell below a threshold
+that *rises* with the first innings, so conditioning on the lost chases keeps more of the high
+mass where the first innings was large; and holding a won chase at its target puts those rows —
+about half the sample — exactly on a line of slope one in the same two variables. The censored
+estimator is the one that corrects precisely this, it recovers a planted truth on a synthetic
+fold in `test_fit_correlated_chase_dispersion_reads_back_what_the_control_is_missing`, and
+A-2's independent censored fit — a different scale, a different purpose, two months earlier —
+agrees on the sign in every fold. There is no reading of this data in which the two innings'
+deviations, each measured against its own expectation, move together.
+
+**One piece of §8.14's diagnosis is confirmed.** §8.14 said its own magnitude was over-stated
+because the residual was taken through the shared factor's *shrunk* per-match value. Fitted
+against the chase's own expectation instead, the leftover independent spread is **smaller in
+every one of the eleven folds** (0.242–0.428 against §8.14's 0.306–0.528). The estimator was
+the right criticism; it is the correlation, not the magnitude, that has no sign to offer.
+
+*ODI, ten folds run (2026-03, which fits no shared factor, is skipped), reported and not
+decided.*
+
+| arm | population | folds scored | matches/fold | first coverage | first width | first dispersion | chase coverage | chase width | chase dispersion | chase below q10 | chase above q90 | Δ Brier (E2) |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| control | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.689 | 130.9 | **1.139** | 0.203 | 0.108 | +0.0052 |
+| control | night | **2** | 24 | 0.932 | 179.5 | 0.749 | 0.726 | 157.4 | 1.078 | 0.188 | 0.086 | +0.0274 |
+| chase (§8.14) | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.789 | 156.3 | 0.974 | 0.100 | 0.111 | +0.0074 |
+| corr | day | 9 | 102 | 0.739 | 150.9 | 1.048 | 0.713 | 132.4 | 1.136 | 0.106 | **0.182** | +0.0095 |
+| corr | night | 2 | 24 | 0.932 | 179.5 | 0.749 | 0.680 | 153.4 | 1.095 | 0.104 | 0.216 | +0.0451 |
+| corrboth | day | 9 | 102 | 0.747 | 154.8 | 1.028 | 0.720 | 133.6 | 1.127 | 0.092 | 0.188 | +0.0088 |
+
+**ODI reproduces T20's reading on an independent population and a different scale of total.**
+Its control and its `chase` arm are §8.14's ODI rows to every printed decimal. The fitted slope
+is negative in **ten folds of ten** (−1.356 to −0.129 after the control's own, which is positive
+in ten of ten), the day chase's tails go 0.203 / 0.108 → 0.106 / **0.182** — the same flip — and
+the day chase's coverage moves only −0.0124 ± 0.0226, half a standard error, against the
+independent term's −0.0728 ± 0.0185. E2 moves +0.0048 ± 0.0034 (`corr`) against the independent
+term's +0.0026 ± 0.0029: the same ordering as T20, on nine folds that cannot resolve it. And
+`corrboth` inflates ODI's pooled first-innings width by 2.4 % (152.2 → 155.8), failing
+`pooled_first_width_not_inflated`, which is §8.13's `scale` figure reproduced for the third
+time. Neither arm ships on ODI, which was never able to decide.
+
+**Verdict.** Two candidates, one gate each: **both recorded nulls.** Nothing ships —
+`simulator.CHASE_DISPERSION` is `"none"`, `SHARED_FACTOR` and its fitting rule are untouched,
+no served number and no surface changes, no wire literal changes (H-24 has nothing to record),
+H-8 parity is untouched because neither the rating pass nor the serving path is changed, and
+`make evaluate` is not re-run because no choice was made that would change one of its rows
+(§8.13's and §8.14's precedent). What stays is the measurement and the mechanism, switched off:
+`CorrelatedChaseDispersion`, `fit_correlated_chase_dispersion` and the `--slope-check` reading
+beside §8.14's term, so the next candidate can be fitted from the same calibration draws.
+
+**What B-11 carries forward.** The lever is still right and the obstacle has moved again, from
+*where the spread goes* to *what connects the two innings*. Three of the four candidates have
+now failed on the same underlying fact: the only positive, shareable channel between the
+innings that this data exposes is the one the shared factor already carries, and everything
+else the first innings tells the chase is A-2's negative response to the target. So a fifth
+candidate that reads the first innings' residual — in any parameterisation — will read that sum
+again and get the same sign. Two directions do not:
+
+1. **Correlate with the pitch, not with the first innings.** The margin-cancelling channel
+   needs an estimate of the day's batting conditions that is *not* the first innings' own
+   residual, so that the chase can be widened along it without picking up the target response.
+   The only such estimate the repo has is X-2's venue and weather context, whose display arm
+   was a null but which was never asked this question.
+2. **Stop treating the margin as a by-product.** Every candidate so far has corrected an
+   innings' interval and let the margin fall out. The margin's own coverage (0.50–0.69 at
+   nominal 0.80) is the weakest number the harness reports and the one E2 actually depends on;
+   a candidate that fits *it* would not have to buy it back.
+
+**Judgment calls, recorded.** (1) §8.14's arm was **re-run as a reference** rather than quoted.
+It cost one arm of a pass that was being run anyway, and it turned the comparison the whole
+hypothesis is about — independent against correlated — into a paired one on common random
+numbers (+0.0039 ± 0.0013 against +0.0056 ± 0.0013 on the same eleven folds), where quoting
+§8.14 would have compared two runs. It also reproduced §8.14's table cell for cell, which is
+worth having on its own. (2) The fitted slope was **not clipped at zero**. Clipping would have
+turned the candidate into §8.14's whenever the data disagreed with the hypothesis, which is
+fitting the conclusion; leaving it free is what produced the finding, because the sign is the
+answer. (3) The coefficients were parameterised as a **regression difference** (slope, residual
+scale) rather than as a correlation ρ on a term of fixed spread. The two are the same two
+degrees of freedom, but the regression pair is what a censored regression returns, each piece
+clips at zero independently, and each names something — which is why the null could be read off
+one column of a fold table. (4) The gate's clauses were kept **identical to §8.14's**, including
+the signed `e2_not_degraded`, so the two candidates are comparable rather than each being
+scored against a bar written for it. (5) `make evaluate` was **not** re-run, for §8.14's reason:
+nothing shipped, the term is off, and the production paths that changed consume no randomness.
+
 ---
 
 ## 9. Database schema and pipeline steps: what changes, what does not

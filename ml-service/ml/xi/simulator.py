@@ -29,7 +29,7 @@ step for step; in short:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence
 
 import numpy as np
 import pandas as pd
@@ -78,15 +78,27 @@ CHASE_RESPONSE_ARMS = ("none", "level", "slope", "both")
 #: draws lack is a chase's *dispersion* -- collapse or get there -- not a level by
 #: difficulty. Off; the fit stays so the question can be re-asked as a mixture.
 CHASE_RESPONSE = "none"
-#: Whether the chasing side's runs draws carry a **dispersion term the two innings do not
-#: share** (plan §8.14, gate B-11): the shared match factor keeps its role as the pitch both
-#: innings bat on, and the chase's draws are multiplied by a second, independent mean-one
-#: factor whose log spread is the excess of the chase's fitted residual scale over the
-#: draws' own -- deconvolved exactly as the shared factor deconvolves the first innings.
-#: The lever exists because one factor cannot correct two innings that miss in opposite
-#: directions (plan §8.13's two nulls) and because A-2 measured the chase's miss as
-#: dispersion rather than level.
-CHASE_DISPERSION = False
+#: The arms of gate B-11's chase dispersion: what, beside the shared match factor, multiplies
+#: the chasing side's runs draws. The lever exists because one factor cannot correct two
+#: innings that miss in opposite directions (plan §8.13's two nulls) and because A-2 measured
+#: the chase's miss as dispersion rather than level.
+#:
+#: * ``independent`` -- plan §8.14: a second mean-one factor drawn independently per draw,
+#:   its log spread the excess of the chase's fitted residual scale over the draws' own,
+#:   deconvolved as the shared factor deconvolves the first innings, and fitted against the
+#:   chase's expectation *on the shared factor's own pitch*.
+#: * ``correlated`` -- plan §8.15: the same widening, drawn so that it moves with the first
+#:   innings' **realised** residual, and fitted against the chase's **own** expectation.
+#:   §8.14's null was E2: an independent term widens the *margin*, which decides the match,
+#:   so P(win) moves toward 0.5. A term correlated with the first innings puts the extra
+#:   spread into the two totals *together*, where it largely cancels in their difference.
+CHASE_DISPERSION_ARMS = ("none", "independent", "correlated")
+#: Which chase dispersion the simulator applies. Decided on the walk-forward folds by gate
+#: B-11 (``scripts/experiments/xi/b11_innings_dispersion.py``): plan §8.14 recorded a null
+#: for ``independent`` and §8.15 gates ``correlated`` -- see the plan for the fold tables and
+#: the verdicts. The fits stay whatever the verdict, so the next candidate can be measured
+#: from the same calibration draws.
+CHASE_DISPERSION = "none"
 #: E2's rule (plan §5): the simulator's P(win) may be displayed only if it is within 0.01
 #: Brier of the display model on the walk-forward folds; otherwise it is a description of
 #: the draws. Measured (P-4, walk-forward folds): within tolerance in T20 (+0.0028 ± 0.0057)
@@ -208,9 +220,10 @@ class SimulatorCalibration:
     #: The chase response (plan §8.10), present only under a ``CHASE_RESPONSE`` arm that
     #: fits one; it needs the shared factor's per-match factors, so never without one.
     chase_response: Optional["ChaseResponse"] = None
-    #: The chase's own dispersion term (plan §8.14), present only under ``CHASE_DISPERSION``;
-    #: like the response it reads the shared factor's per-match factors, so never without one.
-    chase_dispersion: Optional["ChaseDispersion"] = None
+    #: The chase's own dispersion term (plan §8.14, §8.15), present only under a
+    #: ``CHASE_DISPERSION`` arm that fits one; like the response it reads the shared factor's
+    #: per-match factors, so never without one.
+    chase_dispersion: Optional["ChaseDispersionTerm"] = None
     #: The calibration fold's chases as a chase-side fit reads them, kept whether or not one
     #: was fitted -- as the shared factor keeps ``SharedFactorCalibrationSample`` -- so an
     #: arm can refit from the same evidence without simulating the calibration fold again.
@@ -241,7 +254,7 @@ def calibrate(
     rows: pd.DataFrame,
     shared_factor: Optional["SharedFactor"] = None,
     chase_response: Optional["ChaseResponse"] = None,
-    chase_dispersion: Optional["ChaseDispersion"] = None,
+    chase_dispersion: Optional["ChaseDispersionTerm"] = None,
     chase_sample: Optional["ChaseCalibrationSample"] = None,
 ) -> SimulatorCalibration:
     """The calibration from the fit's training rows and the calibration fold's fits."""
@@ -399,6 +412,20 @@ def chase_calibration_sample(
     )
 
 
+def _censored_normal_negative_log_likelihood(
+    response: np.ndarray, threshold: np.ndarray, lost: np.ndarray, mean: np.ndarray, sigma: float
+) -> float:
+    """-log L of y ~ N(``mean``, ``sigma``^2) **right-censored** at ``threshold``: a lost chase
+    contributes its density, a won chase the probability that the untruncated innings reached
+    the target. Shared by every chase-side fit on this sample, because the censoring is a
+    property of the sample and not of what a given fit regresses on."""
+    z_lost = (response[lost] - mean[lost]) / sigma
+    density = 0.5 * z_lost**2 + np.log(sigma)
+    # P(y >= threshold) = Phi((mean - threshold) / sigma), through log_ndtr for the far tail.
+    survival = log_ndtr((mean[~lost] - threshold[~lost]) / sigma)
+    return float(density.sum() - survival.sum())
+
+
 def fit_chase_response(sample: ChaseCalibrationSample, arm: str) -> Optional[ChaseResponse]:
     """Censored maximum likelihood of y = level + slope * x + N(0, sigma^2), with y >= x
     where the chaser won: a lost chase contributes its density, a won chase the probability
@@ -423,12 +450,7 @@ def fit_chase_response(sample: ChaseCalibrationSample, arm: str) -> Optional[Cha
 
     def negative_log_likelihood(theta: np.ndarray) -> float:
         level, slope, sigma = unpack(theta)
-        mean = level + slope * x
-        z_lost = (y[lost] - mean[lost]) / sigma
-        density = 0.5 * z_lost**2 + np.log(sigma)
-        # P(y >= x) = Phi((mean - x) / sigma), through log_ndtr for the far tail.
-        survival = log_ndtr((mean[~lost] - x[~lost]) / sigma)
-        return float(density.sum() - survival.sum())
+        return _censored_normal_negative_log_likelihood(y, x, lost, level + slope * x, sigma)
 
     start = np.array([0.0, 0.0, np.log(max(float(np.std(y[lost])), 1e-3))])
     result = minimize(negative_log_likelihood, start, method="Nelder-Mead", options={"xatol": 1e-6, "fatol": 1e-8})
@@ -437,6 +459,20 @@ def fit_chase_response(sample: ChaseCalibrationSample, arm: str) -> Optional[Cha
 
 
 # --- the chase's own dispersion --------------------------------------------------------
+
+
+class ChaseDispersionTerm(Protocol):
+    """What a ``CHASE_DISPERSION`` arm gives the chase beside the shared match factor: one
+    mean-one multiplier per draw, and a report of how it was fitted.
+
+    ``sample`` is handed the first innings' **realised** total for each draw, because that is
+    what separates the arms -- §8.14's term ignores it and draws independently, §8.15's reads
+    it. It is not future information: within a draw the first innings is played out before
+    the chase begins (``simulate_match`` passes its total as the chase's target)."""
+
+    def sample(self, rng: np.random.Generator, first_innings_total: np.ndarray) -> np.ndarray: ...
+
+    def as_dict(self) -> Dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -463,8 +499,11 @@ class ChaseDispersion:
     n_matches: int
     n_won: int
 
-    def sample(self, rng: np.random.Generator, n: int) -> np.ndarray:
-        """``n`` independent mean-one factors, one per draw."""
+    def sample(self, rng: np.random.Generator, first_innings_total: np.ndarray) -> np.ndarray:
+        """One mean-one factor per draw, drawn **independently** of everything else -- the
+        first innings' realised total is ignored here, and that independence is exactly what
+        §8.15 varies."""
+        n = len(first_innings_total)
         if self.excess_log_sd <= 0.0:
             return np.ones(n)
         spread = self.excess_log_sd
@@ -497,6 +536,147 @@ def fit_chase_dispersion(sample: ChaseCalibrationSample) -> ChaseDispersion:
     within = float(np.sqrt(np.mean(np.asarray(sample.simulated_log_sd, dtype=float) ** 2)))
     excess = float(np.sqrt(max(fit.sigma**2 - within**2, 0.0)))
     return ChaseDispersion(fit.sigma, within, excess, len(sample), int(sample.censored.sum()))
+
+
+# --- the chase's dispersion, correlated with the first innings ---------------------------
+
+
+@dataclass(frozen=True)
+class CorrelatedChaseDispersion:
+    """The chase's dispersion **correlated with the first innings' realised residual** (plan
+    §8.15). §8.14's term added the chase's missing spread independently, and the margin --
+    which is what decides the match -- got the whole of it, so the simulated P(win) moved
+    toward 0.5 and the gate's signed E2 clause failed by three standard errors. Here the same
+    missing spread is split into the part the two innings take **together** and the part the
+    chase takes alone, so a widened chase interval need not mean a widened margin.
+
+    Every draw's chase runs are multiplied by
+
+        g = exp(slope * (ln T1 - mean_draws ln T1) + independent_log_sd * z - half the variance)
+
+    with ``T1`` the first innings' realised total in that same draw and ``z`` a standard
+    normal. The centring on the draws' own mean makes the term mean one **per fixture**, so
+    it adds spread and no level (A-2 gated the chase *level* and recorded a null); the
+    correlation is with the deviation, not with the level.
+
+    Both coefficients are a **difference between what the data says and what the control
+    simulator already produces**, on the log scale and against the chase's *own* expectation
+    -- never the first innings' shrunk factor, which §8.14 measured as the reason its own
+    magnitude was over-stated:
+
+    * ``data_slope`` and ``data_residual_log_sd`` come from the censored (Tobit) regression of
+      the calibration fold's chase residual on its first innings' residual. Roughly half the
+      chases are won and so right-censored at the target, which is why the estimator is
+      censored and not least squares.
+    * ``model_slope`` and ``model_residual_log_sd`` are the same two quantities under the
+      control, composed from its parts: with ``Vf`` the log variance of the shared factor's
+      pool, ``V1`` and ``V2`` the model's log variance for the first innings and the chase
+      (``Vf`` plus each innings' own draw spread), the control has slope ``Vf / V1`` and
+      residual variance ``V2 - Vf^2 / V1``, because the factor is the only thing the two
+      innings share.
+    * ``slope = data_slope - model_slope`` and ``independent_log_sd^2 = data residual variance
+      - model residual variance`` then reproduce the data's regression exactly: adding
+      ``slope * (ln T1 - mean)`` moves the model's slope by exactly ``slope`` and leaves its
+      residual variance untouched, and the independent part supplies the rest.
+    """
+
+    first_innings_slope: float
+    independent_log_sd: float
+    data_slope: float
+    model_slope: float
+    data_residual_log_sd: float
+    model_residual_log_sd: float
+    n_matches: int
+    n_won: int
+
+    def sample(self, rng: np.random.Generator, first_innings_total: np.ndarray) -> np.ndarray:
+        """One mean-one factor per draw, correlated with that draw's first innings."""
+        totals = np.asarray(first_innings_total, dtype=float)
+        n = len(totals)
+        if self.first_innings_slope == 0.0 and self.independent_log_sd <= 0.0:
+            return np.ones(n)
+        deviation = np.log(np.maximum(totals, 1.0))
+        deviation = deviation - deviation.mean()
+        log_variance = self.first_innings_slope**2 * float(np.var(deviation)) + self.independent_log_sd**2
+        correlated = self.first_innings_slope * deviation
+        independent = self.independent_log_sd * rng.standard_normal(n)
+        return np.exp(correlated + independent - 0.5 * log_variance)
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "first_innings_slope": self.first_innings_slope,
+            "independent_log_sd": self.independent_log_sd,
+            "data_slope": self.data_slope,
+            "model_slope": self.model_slope,
+            "data_residual_log_sd": self.data_residual_log_sd,
+            "model_residual_log_sd": self.model_residual_log_sd,
+            "n_matches": self.n_matches,
+            "n_won": self.n_won,
+        }
+
+
+def _censored_linear_fit(
+    response: np.ndarray, threshold: np.ndarray, lost: np.ndarray, covariate: np.ndarray
+) -> tuple[float, float]:
+    """(slope, residual scale) of y = intercept + slope * ``covariate`` + N(0, sigma^2),
+    right-censored at ``threshold``. The covariate is a regressor and the threshold is where
+    the observation stops, which is what separates this from ``fit_chase_response``: there the
+    two are the same column, here the chase is regressed on the *first innings*."""
+
+    def negative_log_likelihood(theta: np.ndarray) -> float:
+        intercept, slope, sigma = float(theta[0]), float(theta[1]), float(np.exp(theta[2]))
+        return _censored_normal_negative_log_likelihood(response, threshold, lost, intercept + slope * covariate, sigma)
+
+    start = np.array([float(np.mean(response[lost])), 0.0, np.log(max(float(np.std(response[lost])), 1e-3))])
+    result = minimize(negative_log_likelihood, start, method="Nelder-Mead", options={"xatol": 1e-6, "fatol": 1e-8})
+    return float(result.x[1]), float(np.exp(result.x[2]))
+
+
+def fit_correlated_chase_dispersion(
+    shared_factor: SharedFactor, sample: ChaseCalibrationSample
+) -> CorrelatedChaseDispersion:
+    """Fit the chase's dispersion against the chase's own expectation and the first innings'
+    realised residual (plan §8.15).
+
+    ``sample`` measures the chase against the chasing side's expected total *on the shared
+    factor's pitch*; multiplying that expectation back by the factor -- adding ``ln factor`` to
+    both the response and its censoring threshold, which leaves their difference and so the
+    censoring untouched -- puts the chase back against its **own** expectation, where the
+    pitch is a thing to be explained rather than something already divided out. The first
+    innings' residual is read from the shared factor's own calibration sample, which holds the
+    same matches in the same order.
+    """
+    first = shared_factor.sample_read
+    if len(first) != len(sample):
+        raise ValueError(f"{len(first)} first innings against {len(sample)} chases; the fits read the same matches")
+    if len(sample) < MIN_SHARED_FACTOR_MATCHES:
+        raise ValueError(f"{len(sample)} calibration chases; need {MIN_SHARED_FACTOR_MATCHES} for a chase dispersion")
+    lost = ~sample.censored
+    if lost.sum() < 2:
+        raise ValueError(f"{int(lost.sum())} lost chases in the calibration fold; the residual scale is undefined")
+    log_factor = np.log(np.maximum(shared_factor.factors, 1e-6))
+    first_mean = np.maximum(first.simulated_mean, 1.0)
+    first_residual = np.log(np.maximum(first.actual, 1.0) / first_mean)
+    data_slope, data_sigma = _censored_linear_fit(
+        sample.response + log_factor, sample.difficulty + log_factor, lost, first_residual
+    )
+    # What the control already produces, composed from its parts: the factor is the only
+    # thing the two innings share, so it is the whole of their covariance.
+    factor_variance = float(np.var(log_factor))
+    first_variance = factor_variance + float(np.mean((first.simulated_sd / first_mean) ** 2))
+    chase_variance = factor_variance + float(np.mean(np.asarray(sample.simulated_log_sd, dtype=float) ** 2))
+    model_slope = factor_variance / first_variance if first_variance > 0 else 0.0
+    model_residual_variance = max(chase_variance - factor_variance * model_slope, 0.0)
+    return CorrelatedChaseDispersion(
+        first_innings_slope=data_slope - model_slope,
+        independent_log_sd=float(np.sqrt(max(data_sigma**2 - model_residual_variance, 0.0))),
+        data_slope=data_slope,
+        model_slope=model_slope,
+        data_residual_log_sd=data_sigma,
+        model_residual_log_sd=float(np.sqrt(model_residual_variance)),
+        n_matches=len(sample),
+        n_won=int(sample.censored.sum()),
+    )
 
 
 # --- distributions --------------------------------------------------------------------
@@ -643,11 +823,11 @@ def batting_innings(
     target: Optional[np.ndarray] = None,
     factor: Optional[np.ndarray] = None,
     chase_response: Optional[ChaseResponse] = None,
-    chase_dispersion: Optional[ChaseDispersion] = None,
+    chase_dispersion: Optional[ChaseDispersionTerm] = None,
 ) -> InningsDraws:
     """Sample one side's innings ``n`` times (plan §3, steps 1-7 and the chase; §8.10 for
-    the chase response and §8.14 for the chase's own dispersion, both applied to a chase's
-    runs draws before the truncation)."""
+    the chase response and §8.14/§8.15 for the chase's own dispersion, both applied to a
+    chase's runs draws before the truncation)."""
     order = side.batting_order
     k = len(order)
     p_bats = side.p_bats[order]
@@ -672,8 +852,11 @@ def batting_innings(
         if chase_response is not None:
             _respond_to_difficulty(runs, extras, target, factor, chase_response)
         if chase_dispersion is not None:
-            # Batter runs only, as the shared factor scales batter runs only.
-            runs[:] = np.rint(runs * chase_dispersion.sample(rng, len(target))[:, None])
+            # Batter runs only, as the shared factor scales batter runs only. The term is
+            # handed the first innings' realised total -- the target less the single run the
+            # chase needs to win it -- which is settled before this innings starts within the
+            # same draw, so reading it is not future information (H-21).
+            runs[:] = np.rint(runs * chase_dispersion.sample(rng, target - 1.0)[:, None])
         untruncated = runs.sum(axis=1) + extras
         extras, total, reached = _chase(runs, balls, extras, target)
         used = balls.sum(axis=1)

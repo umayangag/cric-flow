@@ -125,3 +125,22 @@ delta beside them, resumable per fold; `--decide` prints the tables and the verd
     python scripts/experiments/xi/x2_weather_context.py --display --frames output/ml-service/x1b/frames_off.pkl --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x2/display.json
     python scripts/experiments/xi/x2_weather_context.py --simulate --format T20 --frames output/ml-service/x1b/frames_off.pkl --cricsheet-dir data/go-app/cricsheet --out output/ml-service/x2/sim_T20.json
     python scripts/experiments/xi/x2_weather_context.py --decide output/ml-service/x2/display.json output/ml-service/x2/sim_T20.json output/ml-service/x2/sim_ODI.json output/ml-service/x2/sim_T20I.json
+
+`daynight_dispersion.py` and `b11_innings_dispersion.py` are B-11
+(`docs/BUG_BACKLOG.md` § B-11, plan §8.13–§8.15): the simulator fits one dispersion to two
+populations and its 10–90 interval is wrong in opposite directions on each. Both run on
+`sim_frame_cache.py`'s frames with X-2's inferred day/night label joined on, both decide on
+T20's eleven walk-forward folds and never on the locked window (H-19), and both state every
+arm's H-23 triple before anything runs. `daynight_dispersion.py` varies the **shared match
+factor** (`SIM-DN-split`, `SIM-DN-scale`); `b11_innings_dispersion.py` varies what the
+**chasing** side's runs draws carry beside it — `chase` is §8.14's independent mean-one term,
+`corr` is §8.15's, drawn so that it moves with the first innings' realised residual, and
+`corrboth` composes that with `SIM-DN-scale`. `--probe` is the feasibility count per fold,
+which is what says ODI and T20I can decide neither arm; `--slope-check` reads one fold's
+chase-on-first-innings slope three ways, which is what attributes §8.15's fitted sign to the
+data rather than to the estimator. Six recorded nulls; nothing has shipped:
+
+    python scripts/experiments/xi/b11_innings_dispersion.py --frames output/ml-service/b11c/frames.pkl --cricsheet-dir data/go-app/cricsheet --probe --out output/ml-service/b11c/probe.json
+    python scripts/experiments/xi/b11_innings_dispersion.py --frames output/ml-service/b11c/frames.pkl --cricsheet-dir data/go-app/cricsheet --format T20 --out output/ml-service/b11c/b11c_T20.json
+    python scripts/experiments/xi/b11_innings_dispersion.py --frames output/ml-service/b11c/frames.pkl --cricsheet-dir data/go-app/cricsheet --format T20 --slope-check --out output/ml-service/b11c/slope_check_T20.json
+    python scripts/experiments/xi/b11_innings_dispersion.py --decide output/ml-service/b11c/b11c_T20.json output/ml-service/b11c/b11c_ODI.json
