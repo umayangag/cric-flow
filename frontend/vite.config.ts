@@ -82,10 +82,14 @@ export default defineConfig({
       //
       // Lines 81 -> 82 with P2-4 (the track record): CI run 34145895909 measured
       // 82.31 lines, the same figure as the local run.
+      //
+      // Lines 82 -> 83, functions 81 -> 82 and statements 80 -> 81 with P3-1 (the
+      // Auction tab): CI run 34266207576 measured 81 / 73.92 / 82.76 / 83.23, the same
+      // figures as the local run. Branches stay at 73, which is what 73.92 rounds down to.
       thresholds: {
-        lines: 82,
-        functions: 81,
-        statements: 80,
+        lines: 83,
+        functions: 82,
+        statements: 81,
         branches: 73,
       },
     },
