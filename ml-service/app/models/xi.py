@@ -99,7 +99,7 @@ class PlayerSelectionReasonModel(BaseModel):
 
     roles: List[str] = Field(
         default_factory=list,
-        description="Constraint state this player answers: 'keeper', 'bowling_option' (ml.xi.optimizer.SELECTION_ROLES)",
+        description="Constraint state this player answers: 'keeper', 'bowling_option' (ml.xi.roles.SELECTION_ROLES)",
     )
     selection_rating: float = Field(
         ..., description="The composite the pool was ordered by (ml.xi.optimizer.rating_order_score)"
@@ -143,6 +143,53 @@ class XiOptimizeResponse(BaseModel):
     served_ratings: ServedRatings
 
 
+class PlayerRolesRequest(BaseModel):
+    """Ask what the served vectors say about a list of players (P3-1).
+
+    A list of ids and nothing else: no eleven, no opponent, no constraints. The auction
+    module asks this about players who are in no eleven at all -- which is precisely why
+    it is a route of its own rather than a corner of ``/xi/optimize``. Nothing here
+    selects, ranks or scores, and no answer of this route depends on the objective model.
+    """
+
+    format: str
+    player_ids: List[str] = Field(..., min_length=1, max_length=500)
+
+    @field_validator("format", mode="before")
+    def _format_upper(cls, v: str) -> str:
+        return _upper(v) or ""
+
+
+class PlayerRoles(BaseModel):
+    """What the served as-of vectors say about one player.
+
+    ``known`` is false where the served rating state has never seen the id. His ``roles``
+    are then empty and mean nothing: no role is invented for a player the model has never
+    read, and the caller must show him as unknown rather than as a batter (§8.7). "The
+    model says he neither keeps nor bowls" and "the model has never seen him" are
+    different answers.
+    """
+
+    player_id: str
+    known: bool = Field(..., description="False where the served rating state holds no vectors for this id")
+    roles: List[str] = Field(
+        default_factory=list,
+        description="Subset of ml.xi.roles.SELECTION_ROLES: 'keeper', 'bowling_option'. Empty for an "
+        "unknown player, and -- for a known one -- a batter by elimination",
+    )
+
+
+class PlayerRolesResponse(BaseModel):
+    """The roles for every id asked for, in the order they were asked for."""
+
+    format: str
+    players: List[PlayerRoles]
+    unknown_player_ids: List[str] = Field(
+        default_factory=list, description="Ids the served rating state has never seen, named rather than dropped"
+    )
+    served_ratings: ServedRatings
+
+
 class XiWinRequest(BaseModel):
     format: str
     team1_player_ids: List[str] = Field(..., min_length=1)
@@ -179,9 +226,9 @@ class XiConstraintCheck(BaseModel):
     never searched, so nothing applies them to it -- and repairing it silently would be
     scoring a different eleven from the one on screen. So it is checked and reported
     instead: the counts are the ones the constraint is defined on, not a caller's guess
-    at them. ``is_bowling_option`` is the same definition the optimiser and the feature
-    share (``ml.xi.contract``), and the keeper flag is the served rating state's, so
-    "five bowlers" means here exactly what it means inside the search.
+    at them. Both predicates come from ``ml.xi.roles`` -- the one definition the optimiser,
+    this check and the auction module's role read all share -- over the served rating
+    state's own vectors, so "five bowlers" means here exactly what it means inside the search.
 
     Every field is on the wire rather than just ``met``: a chip that says "4 of 5
     bowlers" is a broken constraint a user can act on, and "not met" is not.

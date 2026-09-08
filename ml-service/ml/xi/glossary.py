@@ -272,6 +272,46 @@ METRICS: Tuple[Metric, ...] = (
         ),
         better=PAIRED,
     ),
+    # --- The auction module's counts (P3-1). Not measurements of a model: facts the
+    # operator entered, read through the model's two role predicates. They are here
+    # because every labelled number on a surface must be explainable from one place, and
+    # because what these counts do *not* mean is the part a reader has to be told.
+    Metric(
+        key="auction_open_slots",
+        name="Open slots",
+        explanation=(
+            "The squad size the operator set, minus the players this auction's own side has bought so far. "
+            "Beside it, the same places read through the eleven's constraints: whether a keeper is still "
+            "needed, and how many bowling options the squad is short of the minimum. Every one of those is "
+            "counted off the record the operator typed and the two role predicates the served rating vectors "
+            "support -- nothing here is selected, ranked or projected."
+        ),
+        band=(
+            "A count, not a measurement. It says which places are unfilled, never which player should fill "
+            "one: in T20 this system has not shown it can choose an eleven better than rating order "
+            "(plan §8.8), and this module does not try to."
+        ),
+        better=PAIRED,
+    ),
+    Metric(
+        key="auction_available_by_role",
+        name="Remaining pool by role",
+        explanation=(
+            "How many players still available on this list are keepers, how many are bowling options, and how "
+            "many are neither. The two roles are the objective's own constraint predicates read off the served "
+            "as-of vectors (ml.xi.roles): a keeper is a player the rating state has credited with a stumping, "
+            "and a bowling option is one whose expected balls bowled clear the format's threshold. A player who "
+            "answers neither is listed as a batter *by elimination* -- the system has measured no other role "
+            "vocabulary -- and a player the served state has never seen is counted as unknown, with no role "
+            "invented for him."
+        ),
+        band=(
+            "The keeper and bowling-option counts overlap: they are two independent predicates, not a "
+            "partition, so a keeper who also bowls is in both. Only the batter and unknown counts are "
+            "exclusive. Every count is as of the run and date stamped beside it."
+        ),
+        better=PAIRED,
+    ),
     Metric(
         key="base_rate_brier",
         name="Base-rate Brier",

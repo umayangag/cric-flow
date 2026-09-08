@@ -180,5 +180,14 @@
     "reliability",
     "coverage_80",
     "eleven_overlap"
+  ],
+  "auction_player_states": [
+    "available",
+    "sold",
+    "unsold"
+  ],
+  "auction_metric_keys": [
+    "auction_open_slots",
+    "auction_available_by_role"
   ]
 }

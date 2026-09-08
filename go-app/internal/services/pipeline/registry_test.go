@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/umayangag/cric-flow/go-app/internal/auction"
 	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/freshness"
@@ -115,6 +116,17 @@ type contractDoc struct {
 	PredictionStates      []string `json:"prediction_states"`
 	SimulatorPopulations  []string `json:"simulator_populations"`
 	TrackRecordMetricKeys []string `json:"track_record_metric_keys"`
+	// AuctionPlayerStates and AuctionMetricKeys are the auction module's vocabulary
+	// (H-24, P3-1). The state is what an entry in the record says about a listed player,
+	// and go-app, the database's CHECK constraint and the Auction tab all match on the
+	// literal — a state the UI could not spell would be a player on the wire and missing
+	// from every count on the surface. The metric keys are the L-1 keys the tab labels
+	// its numbers under, so ml-service's completeness gate can assert each has a glossary
+	// entry and the frontend can assert it labels nothing else. The roles the tab shows
+	// are not a new vocabulary: they are SelectionRoles above, which is the point of the
+	// item — the auction reads the objective's own two predicates and invents none.
+	AuctionPlayerStates []string `json:"auction_player_states"`
+	AuctionMetricKeys   []string `json:"auction_metric_keys"`
 }
 
 // contractCutoff is the cutoff's declared format: the pattern a value must match, how
@@ -204,6 +216,8 @@ func buildContract() contractDoc {
 		PredictionStates:      trackrecord.States(),
 		SimulatorPopulations:  trackrecord.Populations(),
 		TrackRecordMetricKeys: trackrecord.MetricKeys(),
+		AuctionPlayerStates:   auction.States(),
+		AuctionMetricKeys:     auction.MetricKeys(),
 		RatingsStaleCode:      freshness.RatingsStaleCode,
 	}
 }

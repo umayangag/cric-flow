@@ -13,9 +13,6 @@ import pytest
 from ml.xi import contract as C
 from ml.xi.builder import build
 from ml.xi.optimizer import (
-    ROLE_BOWLING_OPTION,
-    ROLE_KEEPER,
-    SELECTION_ROLES,
     ConstraintConflict,
     Constraints,
     marginal_values,
@@ -26,6 +23,7 @@ from ml.xi.optimizer import (
     selection_reasons,
 )
 from ml.xi.retrain import retrain
+from ml.xi.roles import ROLE_BOWLING_OPTION, ROLE_KEEPER, SELECTION_ROLES
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
 from ml.xi.store import XiStore, load_ratings, save_ratings
 

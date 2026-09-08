@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ml.xi import contract as C
+from ml.xi import roles as R
 from ml.xi.ratings import aggregate_side, xi_feature_vector
 from ml.xi.store import XiStore
 
@@ -56,17 +57,15 @@ NOT_OPTIMISED_REASONS: Dict[str, str] = {
 }
 OPTIMISED_SELECTION_FORMATS = frozenset(fmt for fmt in C.FORMAT_CODES if fmt not in NOT_OPTIMISED_REASONS)
 
-# The constraint state a "why this player" card may name (P1-3): the requirements in this
-# module that a selected player answers, each read off the same as-of vectors the objective
-# reads. Two, not three: ``must_include`` is deliberately absent even now that go-app sends
+# The constraint state a "why this player" card may name (P1-3) lives in ``ml.xi.roles``,
+# with the two predicates that decide it. It is imported rather than restated here because
+# P3-1 added a fourth reader of those predicates -- the auction module, which asks for the
+# roles of players who are in no eleven at all -- and the one thing that must never happen
+# is the surface that values a player disagreeing with the surface that would pick him.
+# Two roles, not three: ``must_include`` is deliberately absent even now that go-app sends
 # and this module enforces it (B-10), because a lock is the caller's own input echoed back
 # and not something the selection read *about* the player -- and the answer already reports
 # it per side (``selection.must_include``) rather than per card.
-# Wire vocabulary, declared once in contracts/ops-console.contract.json and asserted from
-# every side (H-24).
-ROLE_KEEPER = "keeper"
-ROLE_BOWLING_OPTION = "bowling_option"
-SELECTION_ROLES: Tuple[str, ...] = (ROLE_KEEPER, ROLE_BOWLING_OPTION)
 
 
 @dataclass
@@ -111,10 +110,20 @@ class _Pool:
         self.evaluations = 0
 
     def is_bowler(self, i: int) -> bool:
-        return bool(C.is_bowling_option(self.vectors["exp_balls_bowled"][i], self.fmt))
+        return R.is_bowling_option(self.vectors["exp_balls_bowled"][i], self.fmt)
 
     def is_keeper(self, i: int) -> bool:
-        return bool(self.vectors["keeper"][i] > 0)
+        return R.is_keeper(self.vectors["keeper"][i])
+
+    def roles(self, i: int) -> List[str]:
+        """The roles this pool player's vectors support, named.
+
+        The same two predicates ``is_bowler`` and ``is_keeper`` enforce, from the same
+        module (``ml.xi.roles``), so the constraint the search applies and the role a
+        surface prints cannot come apart. The search calls the predicates directly
+        because it evaluates them thousands of times per selection and does not need the
+        names; everything that reports a role calls this."""
+        return R.roles_of(self.vectors, i, self.fmt)
 
     def feasible(self, idx: Sequence[int], c: Constraints) -> bool:
         if len(idx) != c.team_size:
@@ -477,11 +486,7 @@ def selection_reasons(
 
     out: Dict[str, SelectionReason] = {}
     for i in current:
-        roles = []
-        if pool.is_keeper(i):
-            roles.append(ROLE_KEEPER)
-        if pool.is_bowler(i):
-            roles.append(ROLE_BOWLING_OPTION)
+        roles = pool.roles(i)
         alternative = alternatives.get(i)
         out[pool.keys[i]] = SelectionReason(
             roles=roles,
