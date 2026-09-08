@@ -394,8 +394,11 @@ func TestProjectAuctionCandidate_ShowsNoMixtureWhenNoMixWasNamed(t *testing.T) {
 
 	answer := decodeProjection(t, projectThrough(t, app, map[string]any{"player_id": 2}))
 
-	assert.Nil(t, answer.Mixture,
-		"how often an eleven plays where is a fact nobody has entered; a uniform mix would be this service asserting one")
+	assert.Nil(
+		t,
+		answer.Mixture,
+		"how often an eleven plays where is a fact nobody has entered; a uniform mix would be this service asserting one",
+	)
 }
 
 // TestProjectAuctionCandidate_CarriesNoWinProbabilityAndNoMarginalValue is the rule that is
@@ -530,9 +533,12 @@ func TestProjectAuctionCandidate_RefusesEveryStateThatCannotBeProjectedAndShowsN
 			wantMessage: "not on auction auction-1's list",
 		},
 		{
-			name:        "a mix naming a ground this auction is not for has no draws to weight",
-			record:      projectionAuction(),
-			body:        map[string]any{"player_id": 2, "venue_weights": []map[string]any{{"venue_id": 77, "weight": 1}}},
+			name:   "a mix naming a ground this auction is not for has no draws to weight",
+			record: projectionAuction(),
+			body: map[string]any{
+				"player_id":     2,
+				"venue_weights": []map[string]any{{"venue_id": 77, "weight": 1}},
+			},
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    "INVALID_PARAM",
 			wantMessage: "not one of this auction's grounds",

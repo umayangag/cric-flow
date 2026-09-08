@@ -90,9 +90,13 @@ type Opposition struct {
 // Named rather than folded into the incomplete-eleven error because the operator's next
 // action is different: one is "name the eleven", the other is "name who it plays".
 var (
-	ErrNoLikelyEleven = errors.New("this auction has no likely eleven; a projection is for an eleven the operator names")
-	ErrNoOpposition   = errors.New("this auction has no opposition; a projection against no one is a projection for no league")
-	ErrNoGrounds      = errors.New("this auction names no grounds; a projection is per ground")
+	ErrNoLikelyEleven = errors.New(
+		"this auction has no likely eleven; a projection is for an eleven the operator names",
+	)
+	ErrNoOpposition = errors.New(
+		"this auction has no opposition; a projection against no one is a projection for no league",
+	)
+	ErrNoGrounds = errors.New("this auction names no grounds; a projection is per ground")
 )
 
 // IncompleteElevenError reports a side that is not an eleven, in the terms the operator

@@ -23,9 +23,9 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
 - **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format that is not offered an optimised selection — the message carries the format's reason from `ml.xi.optimizer.NOT_OPTIMISED_REASONS` (H-17: the objective does not rank, TEST; or E5: the objective has not shown it selects, plan §8.8) and the hint names `"ratings"`.
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`, and optional `team1_constraints` / `team2_constraints` (P1-2: check the eleven being scored against these instead of selecting under them). Response: `team1_win_probability` (the displayed probability), `objective_probability`, and `team1_constraint_check` / `team2_constraint_check` where constraints were sent — the eleven's size, its bowler count by the optimiser's own definition, whether it holds a keeper, the `must_include` ids it does not hold, and whether it `met` them all.
 - **Every prediction response** (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict`) carries `served_ratings: {run_id, ratings_through}` — the run the answering store was loaded from and the last match date its ratings include, read off that store (P1-5). A live request against ratings older than `ml.ratings_max_age_days` is **503 `RATINGS_STALE`**, the message naming the date, the age and the limit and the hint the step that fixes it (H-11).
-- **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged.
+- **POST /performance/predict** — Same body. Response: per player `p_bats`, `p_bowls`, the 0.1 / 0.5 / 0.9 quantiles of `runs`, `balls_faced` and `runs_conceded`, the wicket distribution (`expected`, `p0`, `p1`, `p2_plus`) and `catches_expected`; `innings_marginalised` is true when the toss was unknown and both batting orders were averaged. `venue_context` (`venue_bf_rate`, `venue_n`, `neutral`) is the ground as the model read it, off the rows it consumed — the two columns the performance model reads a ground through and the only two, since A-1's scoring-level families were nulled and `FIXTURE_CONTEXT_FAMILIES_KEPT` is empty; `neutral` is true at `venue_n` 0, where the rows read at the prior and a caller must say so rather than present a substitution nobody can see (§8.7, P3-2).
 - **POST /xi/player-roles** — Body: `format`, `player_ids` (1–500 registry ids). Response: `format`, `players` (per id `player_id`, `known`, `roles`), `unknown_player_ids` and `served_ratings`. The two roles are the objective's own constraint predicates read off the served as-of vectors (`ml.xi.roles`: `keeper` is a player the state has credited with a stumping, `bowling_option` is one whose expected balls bowled clear `contract.MIN_BOWLING_BALLS`), extracted so this read and `/xi/optimize`'s `selection_reasons` cannot drift — a test pins them equal on the same ids. An id the served state has never seen comes back `known: false` with no roles and is named in `unknown_player_ids`; no role is invented for him (§8.7). It is a live request, so H-11 refuses the whole read past the freshness limit. It answers for players who are in no eleven, which is what the auction module (P3-1) needs and what `selection_reasons` cannot give: that reports only on players a search already picked. Nothing in it evaluates the objective, orders a pool or scores an eleven.
-- **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
+- **POST /simulate** — Same body plus `n_samples` (default 2000) and `seed`. Response: per side the total (`q10`, `median`, `q90`, `mean`, `sd`, `scorecard`), extras, wickets lost, and per player ranges plus the median-band `scorecard` line and `spread_share`; `win_probability` carries `simulated`, `display`, `headline` and `headline_source`. With `return_total_draws` (default false, P3-2) each side also carries `total_draws`, its total in every draw: a caller pooling several grounds needs the draws themselves, because a mixture's quantiles are not the mean of its parts' quantiles. **422 `SIMULATION_UNSUPPORTED_FORMAT`** for a format with no innings length.
 - **GET /xi/status** — Loaded formats, `ratings_through`, player count, the run's own training
   report, and — since P-6 — `run_id` and `manifest` (H-16: run id, cutoff, dataset sha, git sha,
   the hyperparameters the grid chose, the run's headline metrics), `ratings` (H-11: `fresh`,
@@ -66,6 +66,9 @@ backtest asks for a date and gets it.
 - **GET /api/auctions**, **POST /api/auctions**, **GET /api/auctions/{id}**,
   **POST /api/auctions/{id}/players**, **POST /api/auctions/{id}/outcomes** — the auction
   record (P3-1). See the section below.
+- **PUT /api/auctions/{id}/assumptions**, **GET /api/auctions/{id}/opposition-suggestion**,
+  **POST /api/auctions/{id}/projection** — the projection's named assumptions and a
+  candidate's projected output per ground (P3-2). See the section below.
 - **GET /api/players/search** — a cross-club player search by name prefix. See the section below.
 - **GET /players/{id}** — one player's row: `id`, `player_name`, `is_wicket_keeper`, `is_retired`.
   The consistency numbers it used to carry came from `feature_raw_stats_snapshots`, which P-6
@@ -397,6 +400,104 @@ removes nobody: the ledger's opinion is shown beside a name rather than instead 
 fixtures, which P2-4 scores once the match is imported. An auction record holds what was
 entered and what was shown, which is a different thing and cannot be scored: no auction
 outcome data exists in the system to score a valuation against.
+
+---
+
+## The auction projection
+
+**P3-2.** What a candidate is projected to produce in a named eleven, against a named
+opposition, at the auction's grounds. Migration `0016` adds the two assumptions to the
+record (`auction_likely_xi`, `auction_opposition`, `auction_opposition_player`).
+
+**The three inputs are assumptions, and every answer names all three.** The eleven a
+candidate would join is a guess; the opposition is a guess; the grounds are the auction's.
+None is a fact months before a fixture exists, so each is held on the record, carried back
+on every projection, and shown on the surface as an assumption. There is no default
+opposition: a projection against a silently neutral side would be a projection for no
+league (§8.7).
+
+- **`PUT /api/auctions/{id}/assumptions`** — Body: `likely_xi` (up to eleven player ids) and
+  `opposition` (`club_id` and eleven `player_ids`). Each is optional and an absent one is
+  left exactly as it stands, because the operator names the opposition once and edits the
+  likely eleven all through the auction as their squad fills; each named one is *replaced*
+  rather than merged, since merging a shorter list into a longer one would leave the record
+  holding a player just removed. The opposition carries a side and not only eleven names
+  because the performance model reads a ground **only through the team context** —
+  `ml.xi.rows.team_context_or_neutral` falls back to neutral for the *pair* and takes the
+  venue with it — so an opposition with no `club_id` would make every ground read alike.
+- **`GET /api/auctions/{id}/opposition-suggestion?club_id=`** — the eleven this database
+  records that side last fielding in the auction's format, with the match it came from
+  (`from_match.match_date`, `event_name`, `venue_name`), as a starting point to edit.
+  Only a match whose recorded side holds a full eleven is offered — a partial team sheet
+  would seed an assumption with a hole in it. **404 `NO_FIELDED_ELEVEN`** where the database
+  records none, rather than a side assembled by rating: an invented opposition presented as
+  a starting point would be a guess wearing evidence's clothes.
+- **`POST /api/auctions/{id}/projection`** — Body: `player_id` (a candidate on this
+  auction's list), optional `team1_bats_first` (absent is the toss unknown and the model
+  marginalises over both batting orders), optional `venue_weights`
+  (`[{venue_id, weight}]`).
+
+**One row per ground, with two intervals told apart by name.** Each row carries the
+candidate's `runs`, `balls_faced` and `runs_conceded` as `q10/median/q90` from
+`/performance/predict` — `interval_source: "l2b_quantiles"`, at nominal coverage on the
+harness (plan §8.2) — and his `wickets` as an expectation with `p0`, `p1`, `p2_plus` and
+**no interval at all**, because L2-B has no quantile heads for wickets on this path and one
+derived from the probabilities would be an interval the model never made. Beside them
+`eleven_total` is the eleven's total with him in it from `/simulate` at the served draw
+count, `interval_source: "simulator_draws"`, with his `spread_share` over the same draws.
+`intervals` names both sources once with what each is, and the simulator's carries
+`caveats: ["B-11", "B-14"]` — **B-11**, the interval is too narrow by day and too wide at
+night (T20 first-innings coverage 0.734 / 0.841 at a nominal 0.80, six gated arms nulled),
+and **B-14**, the performance artifact is not shape-checked at load so an older calibration
+can restore silently: the run id shown is the run that answered and not a promise about its
+calibration. Nothing is widened, narrowed, adjusted for day or night, or hidden.
+`auction_interval_sources` in `contracts/ops-console.contract.json` is that vocabulary,
+asserted from both sides (H-24).
+
+**What a ground changes, said on the answer.** The performance model reads a ground through
+two columns and nothing else — `venue_bf_rate` and `venue_n` — because the ground's scoring
+level was gated and recorded as a null (A-1: population mix, not venue) and
+`FIXTURE_CONTEXT_FAMILIES_KEPT` is empty. So the rows differ by what the toss does at each
+ground and by nothing else about it, and `assumptions.what_a_ground_changes` says so. Each
+row carries `ground: {bat_first_rate, matches, neutral, note}` off the rows the model
+consumed; a ground the served state has no matches at reports `neutral: true` with a note
+saying it read at the prior, rather than being shown as a projection at a ground the model
+knows (§8.7).
+
+**The mixture is over draws, never over quantiles.** With `venue_weights`, `mixture` is the
+eleven's total over the named grounds, inverted from the simulator's drawn totals pooled
+with those weights (`/simulate` is asked for `return_total_draws`). A mixture's quantiles
+are not the mean of its parts' quantiles, so three per-ground summaries cannot be combined
+at all; without weights there is no mixture, because how often an eleven plays where is a
+fact nobody has entered.
+
+**No win probability, and no marginal value.** `/simulate` answers a `win_probability`; the
+Go type this endpoint maps it into has no such field, so the value never exists in this
+process and cannot reach a surface by accident. A test walks every key of the rendered
+payload at any depth and refuses one containing `win` or `marginal_value`, and asserts the
+endpoint's requests reach `/performance/predict` and `/simulate` and never `/xi/optimize`.
+A P(win) beside a purchase is the XI-picking claim in another coat.
+
+**Refusals, each showing no number.** **400 `XI_INCOMPLETE`** where the likely eleven with
+the candidate in it is not eleven — a ten-man side, and equally a full eleven plus an
+outside candidate, which is twelve men — exactly as the predict path refuses one. **400
+`ASSUMPTIONS_INCOMPLETE`** where the likely eleven, the opposition or the grounds are
+unnamed. **400 `XI_PLAYER_UNKNOWN`** where a named player carries no registry id; the ten
+who resolved are not scored, because that would answer for an eleven nobody named. **404
+`CANDIDATE_NOT_LISTED`** for a player this auction does not hold. **409
+`SERVED_RUN_CHANGED`** where a reload landed mid-assembly. **503 `RATINGS_STALE`** past
+H-11's limit — the record still reads back whole, because it is facts the operator typed.
+
+**The cost, measured and not assumed** (dev stack, 30 timed repeats after 5 warm-ups, 2000
+draws): **312 ms median / 358 ms p95 per candidate per ground**, and 967 ms / 1215 ms for
+one candidate over three grounds. Of one ground, ml-service is 138 ms
+(`/performance/predict`) plus 174 ms (`/simulate`); `return_total_draws` and the mixture are
+free inside the noise. **The forecast cannot be batched over candidates.**
+`ml.xi.rows.player_feature_rows` builds each row's `own_*` columns from `aggregate_side`
+over the whole side it is handed, so listing N candidates on one side would project each
+into a side of 10 + N rather than the eleven he would join, and `/simulate` draws exactly
+the innings it is given. There is no cache: if one is warranted that is P3-5's decision,
+made with these numbers.
 
 ---
 

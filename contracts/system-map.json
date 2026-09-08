@@ -1390,6 +1390,51 @@
         }
       ],
       "bindings": []
+    },
+    {
+      "id": "auction-projection",
+      "label": "Auction projection",
+      "lane": "serve",
+      "column": 6,
+      "kind": "surface",
+      "summary": "What a candidate is projected to produce in a named eleven, against a named opposition, at the auction's grounds (P3-2). All three are assumptions the operator typed -- at an auction the eleven is a guess, a league has no single opposition, and the venue mix is nobody's fact -- so the first two are held on the record and every answer carries all three back, and a projection against a silently neutral side is refused rather than made. Per ground it shows the candidate's runs, balls faced and runs conceded as L2-B's own quantiles, his wickets as an expectation with P(0)/P(1)/P(2+) and no interval at all, and the eleven's total with him in it from the simulator's draws with his share of their spread. The two intervals are different populations and each names its source: L2-B's quantiles are at nominal coverage on the harness, and the simulator's carries B-11 and B-14 by name. Nothing is widened, narrowed, adjusted for day or night, or hidden, and a mixture over grounds is inverted from the pooled draws rather than averaged from three summaries. A ground moves the answer only through its bat-first rate and sample size -- A-1's scoring-level families were nulled -- and a ground the served state has no matches at is reported neutral. It is valuation and never XI-picking: the Go type it maps the simulator into carries no win probability field at all, nothing computes a marginal value, and no request reaches the optimiser. Nothing it produces is a forecast of a fixture, so nothing is on the track record.",
+      "anchors": {
+        "packages": [
+          "go-app/internal/auction"
+        ],
+        "endpoints": [
+          "PUT /api/auctions/{id}/assumptions",
+          "GET /api/auctions/{id}/opposition-suggestion",
+          "POST /api/auctions/{id}/projection",
+          "POST /performance/predict",
+          "POST /simulate"
+        ],
+        "tables": [
+          "auction_likely_xi",
+          "auction_opposition",
+          "auction_opposition_player"
+        ],
+        "files": [
+          "go-app/migrations/0016_auction_projection_assumptions.sql",
+          "go-app/internal/auction/projection.go",
+          "go-app/internal/server/auction_projection.go",
+          "go-app/internal/server/ml_auction_client.go",
+          "go-app/internal/db/repo_last_eleven.go",
+          "frontend/src/components/AuctionProjectionPanel.tsx",
+          "frontend/src/components/AuctionAssumptions.tsx"
+        ]
+      },
+      "documented_in": [
+        {
+          "doc": "docs/apis-backtest-and-ops.md",
+          "section": "## The auction projection"
+        },
+        {
+          "doc": "docs/ml-and-training.md",
+          "section": "### The auction projection, and what it is not (P3-2)"
+        }
+      ],
+      "bindings": []
     }
   ],
   "edges": [
@@ -1532,6 +1577,21 @@
       "from": "go-api",
       "to": "auction-record",
       "label": "what the operator entered"
+    },
+    {
+      "from": "performance-model",
+      "to": "auction-projection",
+      "label": "the candidate's own quantiles"
+    },
+    {
+      "from": "simulator",
+      "to": "auction-projection",
+      "label": "the eleven's total, as drawn"
+    },
+    {
+      "from": "auction-record",
+      "to": "auction-projection",
+      "label": "the eleven, the opposition and the grounds"
     }
   ]
 }

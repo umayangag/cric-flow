@@ -182,6 +182,21 @@ The buyer's squad is the sold rows whose `buyer_opposition_id` is the auction's 
 every other franchise is a name the operator typed, because they are buyers he observes and
 not sides this record keeps a squad for.
 
+**The projection's assumptions are three more (P3-2, migration `0016`).** A projection of a
+candidate's output is conditional on the eleven he would join, the opposition it would face
+and the grounds, and at an auction not one of those is a fact. `0016` puts the first two on
+the record so every item after P3-2 reads one list rather than its own guess at one.
+
+| Table | What it holds |
+|---|---|
+| `auction_likely_xi` | The eleven a candidate would be projected into, as the operator guessed it: `player_id` and the `position` they listed them in. Ten with a place open for the candidate is the usual state and eleven naming him already is the other, so no size is fixed here — which it is only matters once a candidate is named. It is not a batting order: nothing in this system predicts one |
+| `auction_opposition` | The side a projection is against, as an `opposition_id`. Not decoration: the performance model reads a ground **only** through the team context, and `ml.xi.rows.team_context_or_neutral` falls back to neutral for the *pair* — taking the venue with it — whenever either side is unnamed, so an opposition with no side would make every ground read alike |
+| `auction_opposition_player` | Its eleven. A whole eleven or nothing, unlike the likely eleven: there is no candidate joining it, so a ten-man opposition is a side nobody plays |
+
+Neither is a fielded eleven. `match_player` holds elevens that actually played, and the
+opposition is *seeded* from a side's last recorded one and then edited — the fixture these
+two assume does not exist, so nothing here will ever be resolved against a match.
+
 **The roles are deliberately not stored.** Whether a player is a keeper or a bowling option
 is what the served rating vectors say *today*, read from ml-service's `POST /xi/player-roles`
 on every read and stamped with the run and date it came from. Storing it would freeze one
