@@ -1993,8 +1993,10 @@ of P2-3, the per-club candidate list, where roles live) and § 6.2's P3-1 entry;
 docs/PRODUCT_ROADMAP.md § 2 (route (a): an internal tool with one user) and § 4 (the
 role vocabulary and why it is two values). Read the code: go-app/migrations/0013_issued_prediction.sql
 and 0014 (the precedent: a forward migration, a comment saying what the table is and is
-not), go-app/internal/server/prediction_record.go and prediction_record_handlers.go (the
-Recorder interface, the mockery mock in internal/mocks, the record block on the wire),
+not), go-app/internal/predictions/predictions.go (the Recorder, Reader and Store
+interfaces, with their mockery mocks in the package's mocks/ sibling — make -C go-app
+mocks regenerates them from .mockery.yml), go-app/internal/server/prediction_record.go
+and prediction_record_handlers.go (the record block on the wire),
 go-app/internal/db/repo_player_status.go (a store the way this repo writes one) and
 dbtest/, go-app/internal/server/candidate_handlers.go and
 internal/services/predictteam/candidates.go (per-club candidates; is_wicket_keeper is a
