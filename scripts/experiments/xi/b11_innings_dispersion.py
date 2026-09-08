@@ -1,5 +1,6 @@
-"""B-11: a dispersion term the two innings do not share. Decided on the walk-forward folds
-and never on the locked window (H-19).
+"""B-11: a dispersion term the two innings do not share, independent (§8.14) or correlated
+with the first innings (§8.15). Decided on the walk-forward folds and never on the locked
+window (H-19).
 
 The defect (docs/BUG_BACKLOG.md § B-11, plan §8.13): the simulator fits **one** dispersion to
 two populations and its 10-90 interval is wrong in opposite directions on each. T20
@@ -16,23 +17,34 @@ is wrong, not its setting. A-2 (plan §8.10) reached the same place from the cha
 fitted chase residual scale 0.38-0.46 against the simulated chase's own 0.23-0.25, so the
 miss is the chase's *dispersion*, not a level by difficulty.
 
-Three arms per fold, differing only in what multiplies the runs draws (``ml.xi.gates``
-SIM-IN-chase / SIM-IN-both, printed before anything runs):
+§8.14 gated the chase's own dispersion term and recorded a **third** null. It came much
+closer -- seven of eight cells moved toward nominal and the chase's tails reached 0.084 /
+0.097, both nominal, with no level fitted -- and it failed on the signed ``e2_not_degraded``
+at +0.0043 ± 0.0013. Its mechanism was understood and is this run's premise: an
+**independent** chase term widens the *margin*, and the margin decides the match, so the
+simulated P(win) moves toward 0.5. Interval calibration bought with probability calibration.
 
-* ``control`` -- today's simulator: one pooled shared factor, both innings.
-* ``chase``   -- the shared factor unchanged, and the chasing side's runs draws multiplied by
-  a second, independent mean-one factor whose log spread is the excess of the chase's fitted
-  residual scale over the draws' own on the same calibration matches
-  (``simulator.fit_chase_dispersion``). The **isolating arm**: the first innings' draws are
-  taken before the chase's from the same stream, so they are bit-identical to the control's
-  and its first-innings clauses cannot pass. It says how much of ``both``'s movement is the
-  new lever, the way A-2's level arm did.
-* ``both``    -- that same chase term, composed with §8.13's ``SIM-DN-scale`` rule for the
-  shared factor (imported from ``daynight_dispersion``, not reimplemented). The two levers
+Four arms per fold, differing only in what multiplies the runs draws (``ml.xi.gates``
+SIM-IN-corr / SIM-IN-corrboth, printed before anything runs; ``chase`` re-runs §8.14's
+already-gated SIM-IN-chase as a **reference arm** so the two ways of widening the chase are
+paired draw for draw against one control):
+
+* ``control``  -- today's simulator: one pooled shared factor, both innings.
+* ``chase``    -- §8.14's term: the shared factor unchanged, and the chasing side's runs draws
+  multiplied by a second, **independent** mean-one factor (``simulator.fit_chase_dispersion``).
+  Re-run, not re-gated: its verdict is recorded in §8.14.
+* ``corr``     -- §8.15's candidate: the same second factor, drawn so that it **moves with the
+  first innings' realised log residual** in the same draw and fitted against the chase's own
+  expectation (``simulator.fit_correlated_chase_dispersion``). The **isolating arm**: the
+  first innings' draws are taken before the chase's from the same stream, so they are
+  bit-identical to the control's and its first-innings clauses cannot pass. It says how much
+  of ``corrboth``'s movement is the new lever, the way A-2's level arm did.
+* ``corrboth`` -- that same correlated term, composed with §8.13's ``SIM-DN-scale`` rule for
+  the shared factor (imported from ``daynight_dispersion``, not reimplemented). The two levers
   correct different halves of one defect and neither can pass alone.
 
 Everything else is held: one L2-B fit per fold shared by the arms, the control's display
-models, the calibration fold and the draws both terms are fitted from, the simulator's draw
+models, the calibration fold and the draws every term is fitted from, the simulator's draw
 count and its seeds, the labels.
 
 **Common random numbers, exactly.** Every deciding number comes from the toss-known
@@ -72,10 +84,14 @@ from ml.xi.evaluate import fold_windows  # noqa: E402
 logger = logging.getLogger("b11_innings_dispersion")
 
 CONTROL = dn.CONTROL
-CHASE, BOTH = "chase", "both"
-ARMS = (CONTROL, CHASE, BOTH)
-CANDIDATES = (CHASE, BOTH)
-GATE_IDS = {CHASE: "SIM-IN-chase", BOTH: "SIM-IN-both"}
+CHASE, CORR, CORRBOTH = "chase", "corr", "corrboth"
+ARMS = (CONTROL, CHASE, CORR, CORRBOTH)
+#: The arms this run gates. ``chase`` is a reference arm: §8.14 gated SIM-IN-chase and
+#: recorded its null, and it is re-run here only so the independent and the correlated way of
+#: widening the chase are paired draw for draw against one control.
+CANDIDATES = (CORR, CORRBOTH)
+REFERENCE = (CHASE,)
+GATE_IDS = {CHASE: "SIM-IN-chase", CORR: "SIM-IN-corr", CORRBOTH: "SIM-IN-corrboth"}
 POPULATIONS = dn.POPULATIONS
 #: The format the gates decide on, for §8.13's reason: ODI's night side clears the harness's
 #: 20-match floor in 2 of 11 folds and its night calibration fold clears the guards in 1,
@@ -217,14 +233,22 @@ def arm_calibrations(
     under, and what the fold records about how each was built."""
     pooled_factor = fitted.shared_factor
     scaled, scale_note = dn.arm_factors(dn.SCALE, pooled_factor, masks)
-    dispersion = simulator.fit_chase_dispersion(fitted.chase_sample)
+    # Both dispersion terms are fitted from the same calibration draws and the same pooled
+    # factor, so the arms differ only in how the term they apply is drawn.
+    independent = simulator.fit_chase_dispersion(fitted.chase_sample)
+    correlated = simulator.fit_correlated_chase_dispersion(pooled_factor, fitted.chase_sample)
     rho = fitted.runs_balls_rho
     calibrations = {
         CONTROL: {p: simulator.SimulatorCalibration(rho, pooled_factor) for p in POPULATIONS},
-        CHASE: {p: simulator.SimulatorCalibration(rho, pooled_factor, None, dispersion) for p in POPULATIONS},
-        BOTH: {p: simulator.SimulatorCalibration(rho, scaled[p], None, dispersion) for p in POPULATIONS},
+        CHASE: {p: simulator.SimulatorCalibration(rho, pooled_factor, None, independent) for p in POPULATIONS},
+        CORR: {p: simulator.SimulatorCalibration(rho, pooled_factor, None, correlated) for p in POPULATIONS},
+        CORRBOTH: {p: simulator.SimulatorCalibration(rho, scaled[p], None, correlated) for p in POPULATIONS},
     }
-    note = {"chase_dispersion": dispersion.as_dict(), "shared_factor_scale": scale_note}
+    note = {
+        "chase_dispersion": independent.as_dict(),
+        "correlated_chase_dispersion": correlated.as_dict(),
+        "shared_factor_scale": scale_note,
+    }
     return calibrations, note
 
 
@@ -399,7 +423,7 @@ def _write(path: str, payload: Dict[str, Any]) -> None:
 
 def run(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, out: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {
-        "gates": {arm: gates.describe(GATE_IDS[arm]) for arm in CANDIDATES},
+        "gates": {arm: gates.describe(GATE_IDS[arm]) for arm in (*CANDIDATES, *REFERENCE)},
         "format": fmt,
         "decided_format": fmt in DECIDED_FORMATS,
         "seeds": list(P.DEFAULT_SEEDS),
@@ -417,8 +441,11 @@ def run(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, out: st
         result["folds"].append(run_fold(player_frame, match_frame, fmt, cutoff, end))
         _write(out, result)
     result["means"] = arm_means(result["folds"])
+    # The reference arm is scored on the same clauses so its numbers are comparable, but only
+    # the candidates' verdicts can ship anything; §8.14 already recorded the reference's.
     result["verdicts"] = {
-        arm: verdict(result["folds"], result["means"], arm, result["decided_format"]) for arm in CANDIDATES
+        arm: verdict(result["folds"], result["means"], arm, result["decided_format"] and arm in CANDIDATES)
+        for arm in (*CANDIDATES, *REFERENCE)
     }
     _write(out, result)
     return result
@@ -450,7 +477,7 @@ def decide(paths: Sequence[str]) -> None:
         fmt, means = payload["format"], payload["means"]
         scored = [f for f in payload["folds"] if not f.get("skipped")]
         print(
-            f"### {fmt} -- a dispersion term the two innings do not share "
+            f"### {fmt} -- the chase's dispersion, independent and correlated "
             f"({payload['sim_samples']} draws, {len(scored)} folds"
             f"{'' if payload['decided_format'] else ', reported not decided'})"
         )
@@ -461,13 +488,13 @@ def decide(paths: Sequence[str]) -> None:
             for population in ("all", *POPULATIONS):
                 node = means[arm][population]
                 cells = " | ".join(dn._f(node.get(key), pattern) for _, key, pattern in COLUMNS)
-                cell = "control" if arm == CONTROL else ""
-                if arm != CONTROL and population == "all":
+                cell = {CONTROL: "control", CHASE: "reference (§8.14's SIM-IN-chase)"}.get(arm, "")
+                if arm in CANDIDATES and population == "all":
                     failed = [k for k, ok in payload["verdicts"][arm]["checks"].items() if not ok]
                     cell = "passes" if not failed else "fails: " + ", ".join(failed)
                 print(f"| {arm} | {population} | {node['n_scored_folds']} | {cells} | {cell} |")
         print()
-        for arm in CANDIDATES:
+        for arm in (*CANDIDATES, *REFERENCE):
             v = payload["verdicts"][arm]
             for name, node in v["paired_distance_deltas"].items():
                 readings = ", ".join(
@@ -483,15 +510,16 @@ def decide(paths: Sequence[str]) -> None:
                 f"{dn._f(v['pooled_first_width']['control'], '%.1f')} → "
                 f"{dn._f(v['pooled_first_width']['arm'], '%.1f')}"
             )
-            if payload["decided_format"]:
+            if payload["decided_format"] and arm in CANDIDATES:
                 decided_any = True
                 ships[arm] = ships[arm] and v["passes"]
         print()
     print(
         "The display model and the performance model are the control's in every arm (one fit per fold, shared), so "
         "the display AUC and every headline pinball are identical by construction, not measured. The first innings' "
-        "draws in the chase arm are the control's draw for draw, so its first-innings clauses cannot pass: it is "
-        "the isolating arm, registered as one."
+        "draws in the chase and corr arms are the control's draw for draw, so their first-innings clauses cannot "
+        "pass: they are the isolating arms, registered as such. The chase arm is §8.14's, re-run for the paired "
+        "contrast and not re-gated here."
     )
     print()
     if not decided_any:
