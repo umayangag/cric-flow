@@ -505,6 +505,35 @@ archive even if this dataset is already on disk"* checkbox sends. That is the su
 way to pick up newer matches; `POST /ops/data/fetch` remains available for pulling a
 source other than the configured one.
 
+### What the innings record holds
+
+`match_inning`, `batting_data`, `bowling_data`, `fielding_data`, `fielding_event` and
+`ball_event` describe the **innings of the match** and nothing else. A Cricsheet file's
+`innings` list is longer than that when a limited-overs tie was decided by a super over:
+the tie-breaker is appended as one more entry per side, flagged `super_over: true`, and
+the archive carries 226 of them (113 matches — IPL, BBL, CPL, T20Is and 20 ODI innings).
+The importer leaves those out (`cricsheet.Match.PlayedInnings`), so a tied T20 has two
+`match_inning` rows, no `ball_event` above innings 2, and no scorecard row for a player
+who appeared only in the super over. Until IMPORT-01 was fixed they were stored as
+innings 3 and 4: six deliveries of career balls, runs and dismissals per super over, a
+batting position for a batter who did not bat in the match, and an "innings 3" total in
+every context baseline the rating pass builds. The archive path of the rating pass
+(`ml.xi.sources.played_innings`) applies the same rule, which is what keeps the H-8 parity
+check comparing the same deliveries from both sources.
+
+The choice was to leave super overs out rather than store them behind an `is_super_over`
+flag, because every reader of those six tables — the rating pass, the scorecards, the
+career totals — would then have to remember to exclude them, and one that forgot would
+reproduce the defect silently. The fact that a match *was* decided by a super over is not
+a property of its innings but of its outcome, which is where Cricsheet records it
+(`info.outcome.eliminator` / `method`; decoding those is IMPORT-02).
+
+The same decode reads Cricsheet's other innings-level facts — `declared`, `forfeited`
+(an innings with no `overs` at all, 14 in the archive) and `target` — so a short innings
+can be told from a truncated file. `target.overs` is a float: 158 innings carry a
+rain-revised target in overs-and-balls notation such as `12.4`, and an integer field would
+refuse every one of those files. Nothing derived from these three is stored yet.
+
 ### What a re-import does to a match already in the database
 
 **An import replaces a match, it does not merge into it.** The match id comes from the
@@ -526,9 +555,9 @@ at all.
 
 **Every importer fix requires a re-import of the whole directory.** Rows are written once,
 by whichever version of the importer wrote them; nothing back-fills them later. A change
-to what the importer extracts or how it derives a column — a super over that should not be
-innings 3, byes that should not be charged to the bowler, an `info.event` field that was
-being dropped — reaches only the matches imported after it. The re-import is the whole
+to what the importer extracts or how it derives a column — a super over that was being
+stored as innings 3 (IMPORT-01), byes that should not be charged to the bowler, an
+`info.event` field that was being dropped — reaches only the matches imported after it. The re-import is the whole
 directory, not the changed files, because the fix applies to every match: run Import again
 with **`?refresh=1`** if the archive should be re-fetched too, and expect it to take as
 long as the first one did. A model built on the old rows is unaffected until it is rebuilt,

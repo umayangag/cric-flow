@@ -213,9 +213,21 @@ def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
     return keys
 
 
+def played_innings(innings: list) -> List[dict]:
+    """The innings of the match, in playing order, without super overs.
+
+    A super over is a tie-breaker Cricsheet appends to the innings list (``super_over:
+    true``; 226 of them in the current archive), not an innings anyone bats a career in.
+    The go-app importer leaves them out through ``Match.PlayedInnings`` (IMPORT-01), and
+    this is the same rule on the archive path, so the two sources yield the same
+    deliveries for a tied match and the H-8 parity check compares like with like.
+    """
+    return [inning for inning in innings if not inning.get("super_over")]
+
+
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
     over, inn, bat, bowl, rb, rt, wk, bwk, st, fld, out = [], [], [], [], [], [], [], [], [], [], []
-    for inning_index, inning in enumerate(innings):
+    for inning_index, inning in enumerate(played_innings(innings)):
         for ov in inning.get("overs", []):
             for b in ov.get("deliveries", []):
                 over.append(ov["over"])

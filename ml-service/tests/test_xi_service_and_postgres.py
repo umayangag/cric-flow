@@ -735,6 +735,48 @@ def test_an_unnamed_substitute_costs_the_fielding_credit_and_not_the_wicket() ->
     assert d.fielders == [[]]
 
 
+def _one_over_innings(batter: str, bowler: str, runs: int, super_over: bool = False) -> dict:
+    """One innings of one delivery, flagged as a super over when asked."""
+    inning = {
+        "overs": [
+            {"over": 0, "deliveries": [{"batter": batter, "bowler": bowler, "runs": {"batter": runs, "total": runs}}]}
+        ]
+    }
+    if super_over:
+        inning["super_over"] = True
+    return inning
+
+
+def test_the_archive_source_leaves_a_super_over_out_of_the_deliveries() -> None:
+    """A tie-breaker is not an innings of the match: its deliveries are dropped and the
+    innings that are kept are numbered as the go-app importer numbers them (IMPORT-01)."""
+    from ml.xi.sources import _deliveries_from_cricsheet
+
+    innings = [
+        _one_over_innings("A1", "B1", 4),
+        _one_over_innings("B1", "A1", 6),
+        _one_over_innings("B7", "A4", 6, super_over=True),
+        _one_over_innings("A1", "B1", 1, super_over=True),
+    ]
+
+    d = _deliveries_from_cricsheet(innings, {})
+
+    assert list(d.innings) == [0, 1]
+    assert list(d.batter) == ["name:A1", "name:B1"], "B7 batted only in the super over"
+    assert list(d.bowler) == ["name:B1", "name:A1"], "A4 bowled only in the super over"
+    assert list(d.runs_total) == [4.0, 6.0]
+
+
+def test_played_innings_keeps_a_declared_or_forfeited_innings() -> None:
+    """Only the super-over flag removes an innings; a first-class match's short innings
+    are innings of the match."""
+    from ml.xi.sources import played_innings
+
+    innings = [{"team": "A", "declared": True}, {"team": "B"}, {"team": "A", "forfeited": True}, {"team": "B"}]
+
+    assert played_innings(innings) == innings
+
+
 # ---------------------------------------------------------------------------
 # As-of serving (P-2): the registry answers "ratings as of date D"
 # ---------------------------------------------------------------------------
