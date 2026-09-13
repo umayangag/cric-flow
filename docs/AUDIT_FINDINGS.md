@@ -522,6 +522,28 @@ Every delta is exactly the super-over removal; nothing else moved. `player_biogr
 
 **Extras breakdown (IMPORT-04).** Stored across 11.58 M deliveries: 246,122 wides, 76,980 no-balls, 78,492 byes, 154,876 leg-byes, 954 penalty. The five parts sum to `runs_extras` on **every** delivery (0 mismatches), and **234,322 runs** (byes + leg-byes + penalty) are now separable from what the bowler is charged.
 
+#### Step 3 — `make xi-parity`: **passes**
+
+This is the batch's acceptance test at the data layer. It had been expected to fail since #298 and #300 added two compared counts Postgres could not satisfy before the re-import. After it, **all seventeen counts agree** and the run exits clean (4 min 42 s):
+
+| count | postgres | cricsheet |
+|---|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 |
+| **drawn_or_tied_matches** (FEAT-04, #298) | **1,121** | **1,121** |
+| **runs_not_charged_to_bowler** (FEAT-08, #300) | **234,322** | **234,322** |
+| namesake_sides / unknown_player_keys | 0 | 0 |
+| oversized_squads | 1,365 | 1,365 |
+| player_keys / team_keys | 13,639 / 522 | 13,639 / 522 |
+| players_with_birth_date | 6,955 | 6,955 |
+| matches_with_stage_label / knockout | 22,101 / 1,420 | 22,101 / 1,420 |
+| reconstructible_table / dead_rubber | 16,587 / 2,215 | 16,587 / 2,215 |
+
+The two new counts are the ones worth reading. `drawn_or_tied_matches` = 1,121 is exactly the 1,028 draws plus 204 ties less the 111 tie-breakers somebody won — the rule FEAT-04 named, now computed identically on both sources. `runs_not_charged_to_bowler` = 234,322 agrees to the run with the direct SQL sum of `extras_byes + extras_legbyes + extras_penalty` over `ball_event`, so the two paths are charging bowlers the same quantity. Both rating passes produce the same 21,293 training rows and 469,743 player-match rows.
+
+**One operator note, recorded because the first attempt failed.** Run without `BIRTH_DATES=`, parity fails on a single count — `players_with_birth_date: postgres 6955, cricsheet 0` — because the archive carries no biography (X-1b) and every age reads as unknown, which the run warns about in as many words. That is a flag omission, not a source disagreement, and the `ml-service` Makefile documents the remedy next to the target: `make export-birth-dates BIRTH_DATES=…` (6,967 players) then `make xi-parity BIRTH_DATES=…`. The sixteen other counts, including both new ones, already agreed on that first attempt. Anyone re-running this must pass `BIRTH_DATES`.
+
 ### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
 
 `ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
