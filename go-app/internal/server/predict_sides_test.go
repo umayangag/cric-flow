@@ -241,7 +241,7 @@ func TestBuildPredictInput_CarriesBothSideReferencesThrough(t *testing.T) {
 		Team1ID:     43,
 		Team2:       "Australia",
 		Team2Gender: "male",
-	}, matchDate, availability.DefaultActor)
+	}, matchDate, availability.DefaultActor, matchDate)
 
 	assert.Equal(t, db.TeamRef{ClubID: 43}, input.Team1)
 	assert.Equal(t, db.TeamRef{Name: "Australia", Gender: "male"}, input.Team2)
