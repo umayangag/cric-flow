@@ -46,6 +46,7 @@ def _deliveries(
         bowler=np.asarray(bowlers, dtype=object),
         runs_batter=np.asarray(runs, dtype=float),
         runs_total=np.asarray(runs, dtype=float),
+        runs_bowler=np.asarray(runs, dtype=float),
         wicket=np.asarray(wickets, dtype=float),
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=stump,

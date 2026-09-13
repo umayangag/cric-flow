@@ -128,10 +128,6 @@ bowl_m = self.bowl_matches[f, s]
 
 `ratings.py:446-447` uses `d.wicket` (any dismissal on the ball, `sources.py:44`); a non-striker run-out or "retired hurt" lowers the striker's `bat_wrate`, while the `dismissals` target (`rows.py:66-70`) uses `player_out`. Feature and target are defined on different events. **Fix.** Use `(d.player_out == d.batter)` as the batter's indicator.
 
-### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
-
-`ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery.
-
 ### FEAT-09 — Multi-day matches fold at the close of their *start* date  **Low (narrow leak)**
 
 `sources.py:287` (`dates[0]`), `builder.py:70-73`, `asof.py:66`. A Test running Jan 1–5 is in the state for any match dated Jan 2–5 — another TEST starting Jan 3 reads context baselines and `competition_scoring` containing all five days; other formats see only `career_all` and `team_venue_matches`. Narrow, but the `AsOfRatings` docstring ("nothing at `d` or after") is false for Tests. **Fix.** Buffer a match until the day-close of `dates[-1]` (persist `match_end_date`), keep `dates[0]` as the feature date.
@@ -486,6 +482,10 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
+
+`ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
 
 ### IMPORT-04 — Byes, leg-byes and penalty runs charged to the bowler; breakdown not stored  **High · retrain**
 

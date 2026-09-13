@@ -68,6 +68,15 @@ class DataQuality:
     # all Tests the first time a pre-0017 database is re-imported.
     drawn_or_tied_matches: int = 0
 
+    # Byes, leg-byes and penalty runs over every delivery the pass read: the part of the
+    # runs off the bat's end that the bowler is not charged (``Deliveries.runs_bowler``,
+    # FEAT-08). It is the one count that can see the extras breakdown, and it is here for
+    # the same reason as ``drawn_or_tied_matches``: a source that charges the bowler the
+    # whole total agrees with the other on every other count, so without it the parity
+    # check could not tell the two definitions of ``bowl_rate`` apart. A fact about the
+    # cricket and not gated: it reads zero until a pre-0018 database is re-imported.
+    runs_not_charged_to_bowler: int = 0
+
     # A person named on both sides of one match. Cricsheet's registry is keyed by name
     # within a file, so two namesakes in one match collapse into one identifier and the
     # source cannot say which side each delivery belongs to. Two files in the current

@@ -24,6 +24,7 @@ def _deliveries(batters: List[str], bowlers: List[str], runs: List[int], wickets
         bowler=np.asarray(bowlers, dtype=object),
         runs_batter=np.asarray(runs, dtype=float),
         runs_total=np.asarray(runs, dtype=float),
+        runs_bowler=np.asarray(runs, dtype=float),
         wicket=np.asarray(wickets, dtype=float),
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),
@@ -123,6 +124,29 @@ def test_ratings_are_per_format() -> None:
     assert state.side_vectors("T20", [t1[0]])["bat_rate"][0] == 0.0
     assert state.side_vectors("T20", [t1[0]])["career"][0] == 0.0
     assert state.side_vectors("T20", [t1[0]])["career_all"][0] == 1.0
+
+
+def _bowl_rate_after(deliveries: Deliveries) -> float:
+    """The bowler t2[0]'s ``bowl_rate`` after one match of the given deliveries."""
+    t1, t2 = _xi("a"), _xi("b")
+    state = RatingState()
+    state.update(_match("m", 0, "A", t1, t2, deliveries))
+    return float(state.side_vectors("T20", [t2[0]])["bowl_rate"][0])
+
+
+def test_the_bowlers_ledger_charges_him_only_the_runs_he_conceded() -> None:
+    """FEAT-08: an over of no-balls that each ran away for four leg-byes is thirty runs
+    to the innings and six to the bowler. His runs-saved ledger reads it as six singles
+    would, and not as thirty -- the keeper's misses are not his."""
+    t1, t2 = _xi("a"), _xi("b")
+    no_balls_with_four_leg_byes = _deliveries([t1[0]] * 6, [t2[0]] * 6, [0] * 6, [0] * 6)
+    no_balls_with_four_leg_byes.runs_total = np.full(6, 5.0)
+    no_balls_with_four_leg_byes.runs_bowler = np.full(6, 1.0)
+    six_singles = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+    charged_the_lot = replace(no_balls_with_four_leg_byes, runs_bowler=np.full(6, 5.0))
+
+    assert _bowl_rate_after(no_balls_with_four_leg_byes) == pytest.approx(_bowl_rate_after(six_singles))
+    assert _bowl_rate_after(no_balls_with_four_leg_byes) > _bowl_rate_after(charged_the_lot)
 
 
 def test_aggregate_side_role_coverage_and_monotone_direction() -> None:

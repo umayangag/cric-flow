@@ -27,7 +27,8 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
 
     Counts are over deliveries, wides included -- the same definition the as-of
     ``exp_balls_*`` vectors use -- and ``wickets`` / ``runs_conceded`` follow
-    ``bowl_wrate`` / ``bowl_rate`` (bowler-credited kinds; total runs off the ball).
+    ``bowl_wrate`` / ``bowl_rate`` (bowler-credited kinds; the runs charged to the bowler,
+    ``Deliveries.runs_bowler``, which leave byes, leg-byes and penalties to the innings).
     """
     d = match.deliveries
     out: Dict[str, Dict[str, float]] = {}
@@ -53,7 +54,7 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
 
     unique_bowlers, bowler_inverse = np.unique(d.bowler, return_inverse=True)
     balls_bowled = np.bincount(bowler_inverse).astype(float)
-    runs_conceded = np.bincount(bowler_inverse, weights=d.runs_total)
+    runs_conceded = np.bincount(bowler_inverse, weights=d.runs_bowler)
     wickets = np.bincount(bowler_inverse, weights=d.bowler_wicket)
     for i, key in enumerate(unique_bowlers):
         e = entry(key)

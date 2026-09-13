@@ -44,7 +44,7 @@ def _registry_keyed_history(n: int = 160):
         d = m.deliveries
         d2 = Deliveries(
             d.over, d.innings, np.asarray(remap(list(d.batter)), dtype=object), np.asarray(remap(list(d.bowler)), dtype=object),
-            d.runs_batter, d.runs_total, d.wicket, d.bowler_wicket, d.stumping, [remap(f) for f in d.fielders],
+            d.runs_batter, d.runs_total, d.runs_bowler, d.wicket, d.bowler_wicket, d.stumping, [remap(f) for f in d.fielders],
         )  # fmt: skip
         out.append(
             MatchRecord(
@@ -566,11 +566,11 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
         },
         "balls": {
             1: [
-                (1, 0, "a0000000", "b0000000", 4, 4, None, None, None),
-                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000"),
-                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000"),
+                (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0),
+                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000", 0, 0, 0),
+                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000", 0, 0, 0),
             ],
-            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None)],
+            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None, 0, 0, 0)],
         },
     }
     recs = list(PostgresSource(_FakeConnection(tables), formats=["T20I"]).iter_matches())
@@ -617,7 +617,7 @@ def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
 def test_postgres_source_carries_missing_delivery_players_as_empty_keys() -> None:
     """striker_id and bowler_id are nullable, so the join can yield NULL. That must become
     an empty key, not the string "None", which would become a rated player."""
-    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None, None)])
+    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None, None, 0, 0, 0)])
 
     assert list(d.batter) == [""] and list(d.bowler) == [""]
     assert d.fielders == [[]]
@@ -637,6 +637,75 @@ def test_postgres_balls_are_read_in_playing_order_not_legal_ball_order() -> None
 
 def test_deliveries_from_rows_handles_empty() -> None:
     assert len(_deliveries_from_rows([])) == 0
+
+
+# ---------------------------------------------------------------------------
+# Runs charged to the bowler (FEAT-08): one rule on both sources
+# ---------------------------------------------------------------------------
+
+
+def test_runs_conceded_by_bowler_is_the_importers_rule() -> None:
+    """Total less byes, leg-byes and penalty runs: wides and no-balls are the bowler's,
+    the rest are the innings' (``cricsheet.Delivery.RunsConcededByBowler``)."""
+    from ml.xi.sources import runs_conceded_by_bowler
+
+    # a four, a wide, a no-ball with four leg-byes off it, four byes, a five-run penalty
+    charged = runs_conceded_by_bowler(
+        [4, 1, 5, 4, 5], byes=[0, 0, 0, 4, 0], legbyes=[0, 0, 4, 0, 0], penalty=[0, 0, 0, 0, 5]
+    )
+
+    assert list(charged) == [4.0, 1.0, 1.0, 0.0, 0.0]
+
+
+def _no_ball_with_four_leg_byes() -> dict:
+    """IMPORT-04's example as Cricsheet writes it: a no-ball the batter missed that ran
+    away for four leg-byes. Five runs to the innings, one to the bowler."""
+    return {
+        "batter": "A1",
+        "bowler": "B1",
+        "runs": {"batter": 0, "extras": 5, "total": 5},
+        "extras": {"noballs": 1, "legbyes": 4},
+    }
+
+
+def test_the_archive_path_charges_the_bowler_only_the_runs_he_conceded() -> None:
+    """A no-ball with four leg-byes charges the bowler 1, not 5, and the innings still
+    scores 5; a delivery with no ``extras`` object charges him everything it scored."""
+    from ml.xi.sources import _deliveries_from_cricsheet
+
+    plain_four = {"batter": "A1", "bowler": "B1", "runs": {"batter": 4, "extras": 0, "total": 4}}
+    innings = [{"overs": [{"over": 0, "deliveries": [_no_ball_with_four_leg_byes(), plain_four]}]}]
+
+    d = _deliveries_from_cricsheet(innings, {})
+
+    assert list(d.runs_total) == [5.0, 4.0]
+    assert list(d.runs_bowler) == [1.0, 4.0]
+
+
+def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> None:
+    """The same delivery read from ``ball_event`` with its extras by kind (migration
+    0018): the bowler is charged 1 of the 5, exactly as the archive path charges him."""
+    squad = [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)]
+    no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0)
+    plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0)
+    tables = {
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None)],
+        "players": {1: squad},
+        "balls": {1: [no_ball_with_four_leg_byes, plain_four]},
+    }
+
+    (record,) = PostgresSource(_FakeConnection(tables), formats=["T20I"]).iter_matches()
+
+    assert list(record.deliveries.runs_total) == [5.0, 4.0]
+    assert list(record.deliveries.runs_bowler) == [1.0, 4.0]
+
+
+def test_postgres_balls_read_the_extras_by_kind() -> None:
+    """The three kinds the bowler is not charged come from the row itself: nothing else
+    in ``ball_event`` can say how many of a no-ball's five runs were leg-byes."""
+    from ml.xi.sources import _BALLS_SQL
+
+    assert "be.extras_byes, be.extras_legbyes, be.extras_penalty" in _BALLS_SQL
 
 
 def test_retrain_cli_runs_on_a_tiny_cricsheet_directory(tmp_path) -> None:

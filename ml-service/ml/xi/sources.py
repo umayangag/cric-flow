@@ -40,7 +40,10 @@ class Deliveries:
     batter: np.ndarray  # object, player key
     bowler: np.ndarray  # object, player key
     runs_batter: np.ndarray  # float
-    runs_total: np.ndarray  # float
+    runs_total: np.ndarray  # float, everything the innings scored off the ball
+    # The part of runs_total charged to the bowler, ``runs_conceded_by_bowler`` on both
+    # sources: byes, leg-byes and penalty runs are the innings' and not his (FEAT-08).
+    runs_bowler: np.ndarray  # float
     wicket: np.ndarray  # float 0/1, any dismissal on the ball
     bowler_wicket: np.ndarray  # float 0/1, dismissal credited to the bowler
     stumping: np.ndarray  # float 0/1
@@ -57,7 +60,26 @@ class Deliveries:
     def empty() -> "Deliveries":
         z = np.zeros(0)
         empty_keys = np.array([], dtype=object)
-        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, [], empty_keys.copy())
+        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, [], empty_keys.copy())
+
+
+def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:
+    """The part of each delivery's total that is charged to the bowler: the batter's runs
+    plus wides and no-balls, which is the total less byes, leg-byes and penalty runs.
+
+    Byes and leg-byes are the fielding side's -- a keeper's miss, a deflection off the
+    pad -- and a penalty is the umpire's, so a bowler's runs conceded that includes them
+    carries his keeper's quality as noise (FEAT-08). This is the one rule for both rating
+    sources, and it is the rule the go-app importer applies to ``bowling_data.runs``
+    (``cricsheet.Delivery.RunsConcededByBowler``, IMPORT-04), so a bowler's figures in the
+    database and his ``runs_conceded`` target agree delivery for delivery.
+    """
+    return (
+        np.asarray(runs_total, dtype=float)
+        - np.asarray(byes, dtype=float)
+        - np.asarray(legbyes, dtype=float)
+        - np.asarray(penalty, dtype=float)
+    )
 
 
 def batting_positions(deliveries: Deliveries) -> Dict[str, int]:
@@ -260,6 +282,7 @@ def played_innings(innings: list) -> List[dict]:
 
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
     over, inn, bat, bowl, rb, rt, wk, bwk, st, fld, out = [], [], [], [], [], [], [], [], [], [], []
+    byes, legbyes, penalty = [], [], []
     for inning_index, inning in enumerate(played_innings(innings)):
         for ov in inning.get("overs", []):
             for b in ov.get("deliveries", []):
@@ -269,6 +292,12 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
                 bowl.append(registry.get(b["bowler"], "name:" + b["bowler"]))
                 rb.append(b["runs"]["batter"])
                 rt.append(b["runs"]["total"])
+                # Cricsheet writes ``extras`` only on a delivery that has some, as an object
+                # of the kinds present; a kind it does not name is zero.
+                extras = b.get("extras") or {}
+                byes.append(extras.get("byes", 0))
+                legbyes.append(extras.get("legbyes", 0))
+                penalty.append(extras.get("penalty", 0))
                 wickets = b.get("wickets") or []
                 wk.append(1.0 if wickets else 0.0)
                 bwk.append(1.0 if any(w["kind"] in BOWLER_CREDITED_KINDS for w in wickets) else 0.0)
@@ -284,6 +313,7 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
         np.asarray(bowl, dtype=object),
         np.asarray(rb, dtype=float),
         np.asarray(rt, dtype=float),
+        runs_conceded_by_bowler(rt, byes, legbyes, penalty),
         np.asarray(wk, dtype=float),
         np.asarray(bwk, dtype=float),
         np.asarray(st, dtype=float),
@@ -527,6 +557,10 @@ WHERE mp.match_id = %s
 # pairs), so ordering by it left their relative order to the query planner. Nothing noticed
 # until the sequence families (P-3) read the order of deliveries, and the H-8 parity check
 # found two players whose dot-streak shares differed between two reads of the same match.
+#
+# The extras by kind (migration 0018, IMPORT-04) are what let the bowler be charged only
+# his own runs. A database migrated but not yet re-imported holds zeros in them, so it
+# charges him everything, which ``make xi-parity`` reports against the archive.
 _BALLS_SQL = f"""
 SELECT be.innings, be.over,
        {_player_key("striker")}, {_player_key("bowler")},
@@ -535,7 +569,8 @@ SELECT be.innings, be.over,
         FROM fielding_event fe
         JOIN player f ON f.id = fe.fielder_id
         WHERE fe.match_id = be.match_id AND fe.innings = be.innings AND fe.over = be.over AND fe.ball = be.ball),
-       {_player_key("pout")}
+       {_player_key("pout")},
+       be.extras_byes, be.extras_legbyes, be.extras_penalty
 FROM ball_event be
 LEFT JOIN player striker ON striker.id = be.striker_id
 LEFT JOIN player bowler ON bowler.id = be.bowler_id
@@ -652,13 +687,17 @@ def _deliveries_from_rows(rows) -> Deliveries:
     innings = np.asarray([r[0] for r in rows], dtype=int)
     innings = innings - innings.min()
     kinds = [r[6] or "" for r in rows]
+    runs_total = np.asarray([r[5] for r in rows], dtype=float)
     return Deliveries(
         over=np.asarray([r[1] for r in rows], dtype=int),
         innings=innings,
         batter=np.asarray([r[2] if r[2] else "" for r in rows], dtype=object),
         bowler=np.asarray([r[3] if r[3] else "" for r in rows], dtype=object),
         runs_batter=np.asarray([r[4] for r in rows], dtype=float),
-        runs_total=np.asarray([r[5] for r in rows], dtype=float),
+        runs_total=runs_total,
+        runs_bowler=runs_conceded_by_bowler(
+            runs_total, [r[9] for r in rows], [r[10] for r in rows], [r[11] for r in rows]
+        ),
         wicket=np.asarray([1.0 if k else 0.0 for k in kinds]),
         bowler_wicket=np.asarray([1.0 if k in BOWLER_CREDITED_KINDS else 0.0 for k in kinds]),
         stumping=np.asarray([1.0 if k == "stumped" else 0.0 for k in kinds]),

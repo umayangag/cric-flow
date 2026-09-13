@@ -54,6 +54,7 @@ def build(
     team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
+    runs_not_charged_to_bowler = 0
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
     pending: List = []
     current_date = None
@@ -62,6 +63,7 @@ def build(
         team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
+        runs_not_charged_to_bowler += _runs_not_charged_to_bowler(match)
         stakes_counts["stage"] += int(match.stakes.stage_known)
         stakes_counts["knockout"] += int(match.stakes.is_knockout)
         stakes_counts["table"] += int(match.stakes.dead_rubber_known)
@@ -96,6 +98,7 @@ def build(
         matches_read=counts.yielded,
         undecided_matches=n_undecided,
         drawn_or_tied_matches=n_drawn_or_tied,
+        runs_not_charged_to_bowler=runs_not_charged_to_bowler,
         namesake_sides=namesake_sides,
         oversized_squads=oversized_squads,
         unknown_player_keys=_unknown_player_keys(state),
@@ -150,6 +153,14 @@ def _namesake_sides(match) -> int:
 def _oversized_squads(match) -> int:
     """Sides of more than eleven: concussion and injury replacements, listed in full."""
     return sum(1 for side in (match.team1_players, match.team2_players) if len(side) > 11)
+
+
+def _runs_not_charged_to_bowler(match) -> int:
+    """The match's byes, leg-byes and penalty runs: what its deliveries scored that no
+    bowler is charged (``Deliveries.runs_bowler``). Whole runs on every source, so the
+    count is exact."""
+    deliveries = match.deliveries
+    return int(round(float((deliveries.runs_total - deliveries.runs_bowler).sum())))
 
 
 def _unknown_player_keys(state: RatingState) -> int:
