@@ -647,6 +647,43 @@ def test_parity_reports_extras_only_one_source_leaves_off_the_bowler() -> None:
     assert differences == ["runs_not_charged_to_bowler: postgres 0, cricsheet 4"]
 
 
+def _passes_with_two_wickets_on_one_ball(postgres_holds_both: bool):
+    """Both sources over one match holding IMPORT-06's delivery -- a batter bowled while
+    his partner is run out on the same ball -- with the database either holding both
+    wickets or, as a database that kept one wicket per delivery did, holding the first.
+    Every other count is identical either way."""
+    match = _match("m0", 0, ["a1", "a2"], ["b1", "b2"])
+    both = replace(match, deliveries=replace(match.deliveries, wicket=np.array([2.0]), bowler_wicket=np.array([1.0])))
+    first = replace(match, deliveries=replace(match.deliveries, wicket=np.array([1.0]), bowler_wicket=np.array([1.0])))
+    database = [both if postgres_holds_both else first]
+    return (
+        build(_CountingSource(database, SourceCounts(offered=1, yielded=1))),
+        build(_CountingSource([both], SourceCounts(offered=1, yielded=1))),
+    )
+
+
+def test_the_pass_counts_the_dismissals() -> None:
+    """IMPORT-06: the count that can see a wicket record the store dropped -- every
+    dismissal on every ball, summed over every delivery read."""
+    postgres, _ = _passes_with_two_wickets_on_one_ball(postgres_holds_both=True)
+
+    assert postgres.quality.dismissals == 2
+
+
+def test_parity_reports_a_wicket_only_one_source_holds() -> None:
+    """IMPORT-06, the guarantee itself: a database that kept the first wicket of a
+    delivery agrees with the archive on every other count, and the parity check must
+    still fail, naming the dismissals count."""
+    from ml.xi.parity import compare
+
+    postgres, cricsheet = _passes_with_two_wickets_on_one_ball(postgres_holds_both=False)
+
+    differences = compare(postgres, cricsheet)
+
+    assert postgres.quality.matches_read == cricsheet.quality.matches_read == 1
+    assert differences == ["dismissals: postgres 1, cricsheet 2"]
+
+
 def _passes_with_a_wide(postgres_reads_wides: bool):
     """Both sources over one match holding a wide, with the database either reading
     ``extras_wides`` or, as a database imported before migration 0018 does, holding a

@@ -40,19 +40,59 @@ func TestVocabulary_Kind_TheCommittedFileClassifiesEveryKindTheArchiveUses(t *te
 	}{
 		{name: "bowled", raw: "bowled", wantName: "bowled", wantClass: wicketkinds.CreditedToBowler},
 		{name: "caught", raw: "caught", wantName: "caught", wantClass: wicketkinds.CreditedToBowler},
-		{name: "caught and bowled", raw: "caught and bowled", wantName: "caught and bowled", wantClass: wicketkinds.CreditedToBowler},
+		{
+			name:      "caught and bowled",
+			raw:       "caught and bowled",
+			wantName:  "caught and bowled",
+			wantClass: wicketkinds.CreditedToBowler,
+		},
 		{name: "hit wicket", raw: "hit wicket", wantName: "hit wicket", wantClass: wicketkinds.CreditedToBowler},
 		{name: "lbw", raw: "lbw", wantName: "lbw", wantClass: wicketkinds.CreditedToBowler},
 		{name: "stumped", raw: "stumped", wantName: "stumped", wantClass: wicketkinds.CreditedToBowler},
-		{name: "run out is a dismissal and not the bowler's", raw: "run out", wantName: "run out", wantClass: wicketkinds.DismissalNotCredited},
-		{name: "retired out is a dismissal", raw: "retired out", wantName: "retired out", wantClass: wicketkinds.DismissalNotCredited},
-		{name: "obstructing the field", raw: "obstructing the field", wantName: "obstructing the field", wantClass: wicketkinds.DismissalNotCredited},
-		{name: "handled the ball", raw: "handled the ball", wantName: "handled the ball", wantClass: wicketkinds.DismissalNotCredited},
-		{name: "hit the ball twice", raw: "hit the ball twice", wantName: "hit the ball twice", wantClass: wicketkinds.DismissalNotCredited},
+		{
+			name:      "run out is a dismissal and not the bowler's",
+			raw:       "run out",
+			wantName:  "run out",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
+		{
+			name:      "retired out is a dismissal",
+			raw:       "retired out",
+			wantName:  "retired out",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
+		{
+			name:      "obstructing the field",
+			raw:       "obstructing the field",
+			wantName:  "obstructing the field",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
+		{
+			name:      "handled the ball",
+			raw:       "handled the ball",
+			wantName:  "handled the ball",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
+		{
+			name:      "hit the ball twice",
+			raw:       "hit the ball twice",
+			wantName:  "hit the ball twice",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
 		{name: "timed out", raw: "timed out", wantName: "timed out", wantClass: wicketkinds.DismissalNotCredited},
 		{name: "retired hurt is not out", raw: "retired hurt", wantName: "retired hurt", wantClass: wicketkinds.NotOut},
-		{name: "retired not out is not out", raw: "retired not out", wantName: "retired not out", wantClass: wicketkinds.NotOut},
-		{name: "case and space are not a different kind", raw: "  Run Out ", wantName: "run out", wantClass: wicketkinds.DismissalNotCredited},
+		{
+			name:      "retired not out is not out",
+			raw:       "retired not out",
+			wantName:  "retired not out",
+			wantClass: wicketkinds.NotOut,
+		},
+		{
+			name:      "case and space are not a different kind",
+			raw:       "  Run Out ",
+			wantName:  "run out",
+			wantClass: wicketkinds.DismissalNotCredited,
+		},
 	}
 
 	for i := range testCases {
@@ -148,8 +188,10 @@ func TestLoadFile_RejectsAVocabularyThatCannotClassify(t *testing.T) {
 
 func TestLoad_ReadsTheFileNamedByTheEnvironment(t *testing.T) {
 	// Not parallel: sets the process environment.
-	path := writeVocabulary(t,
-		`{"version":"t","credited_to_bowler":["bowled"],"dismissal_not_credited":["run out"],"not_out":["retired hurt"]}`)
+	path := writeVocabulary(
+		t,
+		`{"version":"t","credited_to_bowler":["bowled"],"dismissal_not_credited":["run out"],"not_out":["retired hurt"]}`,
+	)
 	t.Setenv(wicketkinds.EnvVar, path)
 
 	vocabulary, err := wicketkinds.Load()

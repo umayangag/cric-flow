@@ -54,6 +54,9 @@ services:
       # baked into the image the way config.json is; it is mounted below. Absolute so the
       # importer does not have to find it by searching upwards from the cwd.
       GO_APP_TEAM_LINEAGE: /configs/team_lineage.json
+      # The wicket-kind vocabulary (IMPORT-06), mounted the same way; unlike the lineage
+      # the importer refuses to run without it.
+      GO_APP_WICKET_KINDS: /configs/wicket_kinds.json
       # Go runtime memory target. If unset, Go uses the container's cgroup memory limit and pipelines auto-size to ~80% of it.
       # Set GOMEMLIMIT in .env only when you want to override that (e.g. GOMEMLIMIT=8GiB on a big host).
       GOMEMLIMIT: ${GOMEMLIMIT:-}
@@ -100,12 +103,16 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
       # H-11: a live prediction against ratings older than this is refused with RATINGS_STALE.
       XI_RATINGS_MAX_AGE_DAYS: ${XI_RATINGS_MAX_AGE_DAYS:-14}
+      # The wicket-kind vocabulary the rating pass classifies wickets by (IMPORT-06);
+      # a pass run through /admin/train/* needs it as the host's does.
+      GO_APP_WICKET_KINDS: /configs/wicket_kinds.json
       # Error (red) and warn (yellow) in docker logs for visibility
       LOG_COLOR: "1"
     ports:
       - "8000:8000"
     volumes:
       - ./output:/app/output
+      - ./configs:/configs:ro
     restart: unless-stopped
 
   # Watcher: monitors go-api, ml-service and postgres for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.

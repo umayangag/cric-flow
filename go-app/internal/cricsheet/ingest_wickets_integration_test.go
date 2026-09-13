@@ -50,8 +50,12 @@ func TestImportMatchFile_Wickets_CreditedLostAndAllRecorded(t *testing.T) {
 	assert.Equal(t, 6, countForMatch(ctx, t,
 		`SELECT count(*) FROM ball_event_wicket WHERE match_id = $1`, matchID),
 		"every wicket record in the file is a row")
-	assert.Equal(t, 2, countForMatch(ctx, t,
-		`SELECT count(*) FROM ball_event_wicket WHERE match_id = $1 AND innings = 1 AND "over" = 0 AND ball = 4`, matchID),
+	assert.Equal(t, 2, countForMatch(
+		ctx,
+		t,
+		`SELECT count(*) FROM ball_event_wicket WHERE match_id = $1 AND innings = 1 AND "over" = 0 AND ball = 4`,
+		matchID,
+	),
 		"the delivery with two wickets keeps both")
 	assert.Equal(t, "run out", wicketKindFor(ctx, t, matchID, "A6"),
 		"the second wicket on the delivery is the non-striker's run out, spelled as the vocabulary does")

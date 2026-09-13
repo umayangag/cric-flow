@@ -35,7 +35,9 @@ def make_deliveries(
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
         # One dismissed player per ball at most, "" for none: the shape every test needs.
-        players_out=[[key] if key else [] for key in players_out] if players_out is not None else [[] for _ in range(n)],
+        players_out=[[key] if key else [] for key in players_out]
+        if players_out is not None
+        else [[] for _ in range(n)],
     )
 
 

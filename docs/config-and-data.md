@@ -617,6 +617,40 @@ before `0018`, so until the directory is re-imported the rating pass over the da
 counts every wide as faced, which `make xi-parity` reports as `deliveries_not_faced`
 differing from the archive; `batting_data.balls` changes only when the file is re-imported.
 
+**A wicket is what the vocabulary says it is.** Cricsheet records fourteen kinds of wicket
+and the scorecard does not treat them alike: six are the bowler's (`bowled`, `caught`,
+`caught and bowled`, `hit wicket`, `lbw`, `stumped`), six are wickets the innings lost and
+nobody took (`run out`, `retired out`, `obstructing the field`, `handled the ball`, `hit the
+ball twice`, `timed out`), and two are not wickets at all — a batter who `retired hurt` or
+`retired not out` may come back and is not out. **`configs/wicket_kinds.json` is the one
+list**, read by the importer (`internal/wicketkinds`) and by the rating pass
+(`ml/xi/wicketkinds.py`), so the two cannot carry different sets. `bowling_data.wickets`
+counts the credited kinds only and `match_inning.wickets_lost` counts the dismissals
+(`cricsheet.Delivery.TallyWickets`); the rating pass's `wickets` target, `dismissals` target
+and innings wicket counts follow the same file on both of its sources
+(`ml/xi/sources.py`, `wicket_columns`). A kind the file does not name fails the import and
+the pass rather than being counted by guesswork: the only way a new kind arrives is
+Cricsheet adding one, and the answer is a reviewed edit to the file. Until IMPORT-06 was
+fixed every kind was credited to the bowler — 23,064 wickets in the archive that were not
+his, 22,898 of them run outs — every kind was a wicket lost, 508 retirements not out
+included, and the rating pass counted a retired-hurt batter as dismissed.
+
+**Every wicket on a delivery is a row of `ball_event_wicket`** (migration `0019`): one
+row per wicket, `wicket_number` in the order the file lists them, `kind` as the vocabulary
+spells it, `player_out_id`. `ball_event` used to carry one `wicket_kind` and one
+`player_out_id`, so a delivery with two wickets lost its second — 16 such deliveries in
+the archive, 15 with two (a batter bowled while his partner retired hurt, two run outs, a
+batter caught and another timed out) and one with ten (1483765, a side that retired its
+whole order out on one ball), 17 wicket records in all. A child table rather than a second
+column pair because that one delivery is real cricket and a pair would have kept two of
+its ten. The migration moves the first wicket each `ball_event` row held into the new
+table before dropping the two columns, so a database migrated but not yet re-imported
+describes the cricket it did before rather than none; the re-import writes the other 17.
+The rating pass's query reads the new table, so the migration must precede its next run
+over the database, and `make xi-parity` compares `dismissals` — every wicket the
+vocabulary calls one, on every ball — so a wicket record one source drops cannot pass
+unnoticed again.
+
 ### What a re-import does to a match already in the database
 
 **An import replaces a match, it does not merge into it.** The match id comes from the
@@ -640,7 +674,8 @@ at all.
 by whichever version of the importer wrote them; nothing back-fills them later. A change
 to what the importer extracts or how it derives a column — a super over that was being
 stored as innings 3 (IMPORT-01), a super-over win stored with no winner (IMPORT-02), byes
-that were being charged to the bowler (IMPORT-04), an `info.event` field that was being
+that were being charged to the bowler (IMPORT-04), a run out credited to him and the
+second wicket of a delivery dropped (IMPORT-06), an `info.event` field that was being
 dropped —
 reaches only the matches imported after it. The re-import is the whole
 directory, not the changed files, because the fix applies to every match: run Import again
