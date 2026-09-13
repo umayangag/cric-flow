@@ -405,6 +405,19 @@ innings. Like the draw count it is a fact about the cricket, compared across sou
 gated: a database migrated to `0018` but not yet re-imported holds zeros in the three
 columns, charges every bowler everything, and reads 0 here against the archive's total.
 
+And it counts `deliveries_not_faced` (IMPORT-05): the wides over every delivery it read —
+the deliveries no batter faced. Both sources derive `Deliveries.faced` through one rule,
+`sources.faced_by_batter` (every delivery but a wide: a no-ball is faced, a wide is not),
+which is the rule the importer applies to `batting_data.balls`
+(`cricsheet.Delivery.FacedByBatter`); the Postgres source reads `extras_wides`, the archive
+source the delivery's `extras` object. The `balls_faced` target is the sum of `faced` per
+batter. Every other ball count in the pass is still a count of deliveries, wides included:
+the as-of `exp_balls_faced` and `exp_balls_bowled`, the `balls_bowled` target, the over's
+expectation, the simulator's innings length and its extras rate — those describe how long
+the innings ran, and a wide takes a delivery without taking a ball from anyone. Compared
+across sources and not gated, for the same reason as the runs count: it reads 0 on a
+database migrated to `0018` but not yet re-imported.
+
 ### Source parity (`make xi-parity`)
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): `max_abs_difference`.
@@ -419,9 +432,10 @@ count could see, because a draw is undecided whether or not its result is read. 
 comparison covers every `DataQuality` count that is a property of the cricket rather than
 of the store (`ml/xi/parity.py`, `_COMPARED_COUNTS`), the number of training rows and the
 player-key sets; `drawn_or_tied_matches` is in that set, which is what makes the result
-column part of the guarantee, and `runs_not_charged_to_bowler` (FEAT-08) is in it for the
-same reason: a source that charges the bowler byes and leg-byes agrees with one that does
-not on every other count.
+column part of the guarantee, and `runs_not_charged_to_bowler` (FEAT-08) and
+`deliveries_not_faced` (IMPORT-05) are in it for the same reason: a source that charges the
+bowler byes and leg-byes, or counts a wide as a ball faced, agrees with one that does not
+on every other count.
 
 ```bash
 make xi-parity                                    # defaults to data/go-app/cricsheet
@@ -454,9 +468,9 @@ performance model (L2-B). Each row carries the player's as-of vectors, the expec
 (`exp_bat_position`: decayed mean batting slot shrunk toward 7; `bat_innings_share`; batting
 and bowling impact split by powerplay / middle / death, `contract.PHASE_BOUNDS`), the own-side
 and opponent-side aggregates, and venue context — joined with what the player then did
-(balls, runs, fours, sixes, dismissals, actual batting position, balls bowled, wickets,
-runs conceded — the runs charged to the bowler, byes, leg-byes and penalties left to the
-innings, FEAT-08). Rows cover **all XI players**, never only those who batted: who got to bat
+(balls faced — every delivery but a wide, IMPORT-05 — runs, fours, sixes, dismissals,
+actual batting position, balls bowled, wickets, runs conceded — the runs charged to the
+bowler, byes, leg-byes and penalties left to the innings, FEAT-08). Rows cover **all XI players**, never only those who batted: who got to bat
 is decided by the result, and a population selected by the outcome is a leak (H-20).
 `ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
 two cannot spell a column differently; the frame is never written to disk as a contract —
