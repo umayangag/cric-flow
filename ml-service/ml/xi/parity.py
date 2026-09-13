@@ -7,10 +7,13 @@ difference sat unnoticed because nobody ran the two side by side:
 * match identity was a hash of date and team names, so 618 files shared an id in 309 pairs
   and the database held 22,425 matches for 22,734 files;
 * the JSON path keyed 469 unnamed substitute fielders on the empty name, inventing a
-  cricketer with a fielding record drawn from 365 matches.
+  cricketer with a fielding record drawn from 365 matches;
+* the Postgres source hard-coded the match result to None while the archive path read it,
+  so a drawn Test moved both sides' form on one source and neither's on the other
+  (FEAT-04) -- and no count could see it, because a draw is undecided either way.
 
-Both are a one-line difference in a count. This runs both sources and prints the counts
-beside each other, and exits non-zero when they disagree.
+Each is a one-line difference in a count, once there is a count that can see it. This runs
+both sources and prints the counts beside each other, and exits non-zero when they disagree.
 
 It is a separate command rather than part of a retrain because it needs the archive as well
 as the database, and a production retrain has only the database. Run it whenever the
@@ -41,6 +44,7 @@ _COMPARED_COUNTS = (
     "unusable_matches",
     "matches_read",
     "undecided_matches",
+    "drawn_or_tied_matches",
     "namesake_sides",
     "oversized_squads",
     "unknown_player_keys",
