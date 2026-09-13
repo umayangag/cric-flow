@@ -188,3 +188,118 @@ func TestTrackRecord_ANeighbouringDateIsNotTheFixture_Integration(t *testing.T) 
 	assert.Equal(t, trackrecord.StateUnresolved, stateOf(record, id))
 	require.NotNil(t, record.Predictions[0].DaysPastMatchDate)
 }
+
+// recordRename points a superseded opposition row at the club's current row, the way the
+// importer writes opposition.canonical_id at the end of a run from configs/team_lineage.json.
+func recordRename(t *testing.T, superseded, current int64) {
+	t.Helper()
+	require.NoError(t, db.Exec(context.Background(),
+		`UPDATE opposition SET canonical_id = $2 WHERE id = $1`, superseded, current))
+}
+
+// leaveClubUnrenamed is the other half of the pair: the phase at which this case does not
+// rename anything.
+func leaveClubUnrenamed(*testing.T, int64, int64) {}
+
+// entryOf is the record's row for one prediction id.
+func entryOf(t *testing.T, record trackrecord.Record, id string) trackrecord.Entry {
+	t.Helper()
+	for _, entry := range record.Predictions {
+		if entry.ID == id {
+			return entry
+		}
+	}
+	require.FailNowf(t, "prediction missing from the record", "id %s", id)
+	return trackrecord.Entry{}
+}
+
+// everyFieldedPlayer is the twenty-two players seedPredictFixture inserts, eleven a side
+// in the order the two innings put them in, so that every player an eleven can name is
+// also a player who took the field.
+func everyFieldedPlayer() []int64 {
+	players := make([]int64, 0, 22)
+	for id := int64(1); id <= 22; id++ {
+		players = append(players, id)
+	}
+	return players
+}
+
+// A club that renames is one club to the record (GO-02).
+//
+// Cricsheet names a team by whatever it was called on the day, so a rebrand splits a club
+// into two opposition rows and a match keeps whichever row played; a prediction is filed
+// under the club id, COALESCE(canonical_id, id). Matching the two spaces against each
+// other leaves such a fixture unresolved forever, and where one side happens to match it
+// scores the other side's half the wrong way round: team1_won inverted, no team1_total,
+// team1_batted_first reversed, an eleven overlap of zero. Both orderings are here --
+// the lineage written before the forecast was issued, and written after the match was
+// imported -- because the record must not depend on when somebody reviewed the rename.
+func TestTrackRecord_ARenamedClubFixtureResolvesAndScores_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	testCases := []struct {
+		name string
+		// beforeTheForecast and afterTheImport are the two phases the lineage row can be
+		// written at; each case renames at one of them and does nothing at the other.
+		beforeTheForecast func(t *testing.T, superseded, current int64)
+		afterTheImport    func(t *testing.T, superseded, current int64)
+		// forecastTeam1 is the row the forecast names team1 by: the club id as it stood
+		// when the forecast was issued.
+		forecastTeam1 func(superseded, current int64) int64
+	}{
+		{
+			name:              "the club renamed before the forecast was issued",
+			beforeTheForecast: recordRename,
+			afterTheImport:    leaveClubUnrenamed,
+			forecastTeam1:     func(_, current int64) int64 { return current },
+		},
+		{
+			name:              "the club renamed after the match was imported",
+			beforeTheForecast: leaveClubUnrenamed,
+			afterTheImport:    recordRename,
+			forecastTeam1:     func(superseded, _ int64) int64 { return superseded },
+		},
+	}
+	for i := range testCases {
+		t.Run(testCases[i].name, func(t *testing.T) {
+			ctx := context.Background()
+			fixture := seedPredictFixture(t)
+			currentRow := insertClub(ctx, t, "Testland United")
+			app := &App{mlClient: scriptedMLService(t, nil)}
+			testCases[i].beforeTheForecast(t, fixture.team1ID, currentRow)
+
+			id := issuePrediction(t, app, fmt.Sprintf(
+				`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":"2026-09-10"}`,
+				testCases[i].forecastTeam1(fixture.team1ID, currentRow), fixture.team2ID))
+			backdate(t, id, time.Date(2026, 9, 2, 9, 0, 0, 0, time.UTC))
+			// The import writes the row that played on the day -- the pre-rename one --
+			// with team1 batting first, making 250, and winning.
+			winner := fixture.team1ID
+			importMatch(t, 9010, "2026-09-10",
+				fixture.team1ID, fixture.team2ID, &winner, everyFieldedPlayer())
+			testCases[i].afterTheImport(t, fixture.team1ID, currentRow)
+
+			record := readTrackRecord(t, app)
+
+			require.Equal(t, trackrecord.StateScored, stateOf(record, id))
+			entry := entryOf(t, record, id)
+			assert.Equal(t, currentRow, entry.Team1.ID, "the record names team1 by its club id")
+			require.NotNil(t, entry.Score)
+			assert.True(t, entry.Score.Team1Won, "team1 won, and the record has to say so")
+			// The scripted ml-service gives team1 0.6 and team1 won: Brier 0.16, not 0.36.
+			assert.InDelta(t, 0.16, entry.Score.Brier, 1e-9)
+			assert.Positive(t, entry.Score.ElevenOverlap.Team1Matched)
+			assert.Positive(t, entry.Score.ElevenOverlap.Team2Matched)
+			assert.Equal(t, entry.Score.ElevenOverlap.Of, entry.Score.ElevenOverlap.Matched,
+				"every named player took the field for the side they were named for")
+			require.NotNil(t, entry.Happened)
+			require.NotNil(t, entry.Happened.WinnerOppositionID)
+			assert.Equal(t, currentRow, *entry.Happened.WinnerOppositionID)
+			require.NotNil(t, entry.Happened.Team1Total)
+			assert.Equal(t, 250, *entry.Happened.Team1Total)
+			require.NotNil(t, entry.Happened.Team2Total)
+			assert.Equal(t, 240, *entry.Happened.Team2Total)
+			require.NotNil(t, entry.Happened.Team1BattedFirst)
+			assert.True(t, *entry.Happened.Team1BattedFirst)
+		})
+	}
+}

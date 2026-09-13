@@ -91,7 +91,16 @@ func MetricKeys() []string {
 // ReliabilityBins is the harness's RELIABILITY_BINS: ten equal-width probability bins.
 const ReliabilityBins = 10
 
-// Fixture is the key a played match is matched on: the exact date, both sides in either
+// Every opposition id this package handles -- on a stored prediction, on a Fixture and on
+// a PlayedMatch -- is a club id: COALESCE(opposition.canonical_id, opposition.id), one id
+// per club however many times it has been renamed. The store writes club ids because a
+// prediction is filed under the side ResolveTeamSide resolved, and the lookup is required
+// to answer in club ids for the same reason, so the comparisons below are like against
+// like (GO-02). A lookup that answered in the raw ids of the match tables would leave a
+// renamed club's fixture unresolved forever, and score the halves that did match the
+// wrong way round.
+
+// Fixture is the key a played match is matched on: the exact date, both clubs in either
 // order, the format and the gender. A match on a neighbouring date is not it -- a series
 // plays the same sides days apart, and the prediction was about one of those days.
 type Fixture struct {
@@ -102,21 +111,22 @@ type Fixture struct {
 	Team2     int64
 }
 
-// PlayedMatch is what the database holds about a match the record scores against.
+// PlayedMatch is what the database holds about a match the record scores against, with
+// every side named by its club id.
 type PlayedMatch struct {
 	MatchID int64
-	// WinnerOppositionID is nil for a no-result, a tie or a draw.
+	// WinnerOppositionID is the winning club, nil for a no-result, a tie or a draw.
 	WinnerOppositionID *int64
 	OutcomeByRuns      *int
 	OutcomeByWickets   *int
 	// Innings in the order they were played.
 	Innings []PlayedInnings
-	// FieldedPlayers is every player who took the field, keyed by player id, with the side
+	// FieldedPlayers is every player who took the field, keyed by player id, with the club
 	// they played for.
 	FieldedPlayers map[int64]int64
 }
 
-// PlayedInnings is one innings as match_inning holds it.
+// PlayedInnings is one innings as match_inning holds it, batting club first.
 type PlayedInnings struct {
 	Number              int
 	BattingOppositionID int64
@@ -125,7 +135,7 @@ type PlayedInnings struct {
 
 // MatchLookup finds the matches the database holds for a fixture. It returns every match
 // that fits the key: none means unresolved, more than one means the record cannot say
-// which was meant and says so rather than picking.
+// which was meant and says so rather than picking. Its answer is in club ids.
 type MatchLookup interface {
 	FindMatches(ctx context.Context, fixture Fixture) ([]PlayedMatch, error)
 }

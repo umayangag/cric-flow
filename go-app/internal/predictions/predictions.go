@@ -51,7 +51,10 @@ type Prediction struct {
 	RunID          string
 	RatingsThrough time.Time
 
-	// The fixture, as the importer will present it when the match is played.
+	// The fixture, as the importer will present it when the match is played. Both
+	// opposition ids are club ids -- COALESCE(opposition.canonical_id, id) -- written as
+	// such by the prediction path and read back as such by the store, so that a club
+	// renamed after the answer was filed is still the same club to a reader (GO-02).
 	FormatCode        string
 	Team1OppositionID int64
 	Team2OppositionID int64
