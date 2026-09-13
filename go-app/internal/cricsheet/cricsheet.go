@@ -282,6 +282,26 @@ func (d Delivery) RunsConcededByBowler() int {
 	return d.Runs.Total - d.Extras.Byes - d.Extras.LegByes - d.Extras.Penalty
 }
 
+// IsLegal reports whether the delivery is one of the over's balls: neither a wide nor a
+// no-ball, each of which the bowler must bowl again. It is the bowler's count -- his balls
+// and overs, the innings' balls bowled, ball_seq and ball_event.is_legal -- and not the
+// batter's, who faces a no-ball (FacedByBatter).
+func (d Delivery) IsLegal() bool {
+	return d.Extras.Wides == 0 && d.Extras.NoBalls == 0
+}
+
+// FacedByBatter reports whether the striker faced the delivery: every ball but a wide,
+// which passes out of his reach and is not one he could have played. A no-ball is faced --
+// he may hit it, and is out to a run-out off it -- so it is in his balls and his strike
+// rate while it is not one of the bowler's six (IsLegal). Until IMPORT-05 was fixed the
+// batter was counted by the bowler's rule and every no-ball he faced was missing from
+// batting_data.balls, while the rating source counted wides as faced, the opposite error;
+// this is the one rule, and ml.xi.sources.faced_by_batter is the same rule for the rating
+// pass, so the scorecard and the balls_faced target agree delivery for delivery.
+func (d Delivery) FacedByBatter() bool {
+	return d.Extras.Wides == 0
+}
+
 type (
 	// Wickets is a list of wicket events for a delivery.
 	Wickets []Wicket

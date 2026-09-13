@@ -402,7 +402,9 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				// total was charged, and the runs, economy and maidens of every bowler who
 				// bowled to a fumbling keeper carried the keeper's misses.
 				bowlerRuns := d.RunsConcededByBowler()
-				legal := (d.Extras.Wides == 0 && d.Extras.NoBalls == 0)
+				// The bowler's count, not the batter's: a no-ball is faced but is not one of
+				// his six, and a wide is neither (IMPORT-05).
+				legal := d.IsLegal()
 				if legal {
 					balls++
 					perBowler[d.Bowler] += bowlerRuns
@@ -510,7 +512,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 					br := d.Runs.Batter
 					b := ensureBat(batAgg, d.Batter)
 					b.Runs += br
-					if legal {
+					if d.FacedByBatter() {
 						b.Balls++
 					}
 					if br == 4 {

@@ -279,20 +279,43 @@ type inningsTotal struct {
 	extras int
 }
 
-// extrasSpyTx captures the bowling figures and innings totals the per-file transaction
-// writes, keyed by innings number. The fixture bowls one bowler per innings, which is
-// what lets the innings number stand in for the bowler: the offline import resolves
-// every player to the same id.
+// battingFigure is what the per-file transaction writes to batting_data for one batter:
+// the columns a ball faced decides.
+type battingFigure struct {
+	runs       int
+	balls      int
+	strikeRate float32
+}
+
+// extrasSpyTx captures the bowling figures, batting figures and innings totals the
+// per-file transaction writes, keyed by innings number. The fixture bowls one bowler per
+// innings, which is what lets the innings number stand in for the bowler: the offline
+// import resolves every player to the same id. Batters are more than one per innings and
+// cannot be told apart by id, so they are kept as the innings' set of figures.
 type extrasSpyTx struct {
 	bowlingByInnings map[int]bowlingFigure
+	battingByInnings map[int][]battingFigure
 	totalsByInnings  map[int]inningsTotal
 }
 
-// Column indexes in the bowling_data_tmp COPY in db.UpsertBowlingBatch (repo_bowling.go).
+func newExtrasSpyTx() *extrasSpyTx {
+	return &extrasSpyTx{
+		bowlingByInnings: map[int]bowlingFigure{},
+		battingByInnings: map[int][]battingFigure{},
+		totalsByInnings:  map[int]inningsTotal{},
+	}
+}
+
+// Column indexes in the bowling_data_tmp COPY in db.UpsertBowlingBatch (repo_bowling.go)
+// and the batting_data_tmp COPY in db.UpsertBattingBatch (repo_batting.go).
 const (
 	bowlingCopyArgInningNumber = 1
 	bowlingCopyArgMaidens      = 5
 	bowlingCopyArgRuns         = 6
+	battingCopyArgInningNumber = 1
+	battingCopyArgRuns         = 4
+	battingCopyArgBalls        = 5
+	battingCopyArgStrikeRate   = 9
 )
 
 func (s *extrasSpyTx) Exec(_ context.Context, sql string, args ...any) error {
@@ -318,6 +341,7 @@ func (s *extrasSpyTx) CopyFrom(
 	src pgx.CopyFromSource,
 ) (int64, error) {
 	isBowling := strings.Join(table, ".") == "bowling_data_tmp"
+	isBatting := strings.Join(table, ".") == "batting_data_tmp"
 	n := int64(0)
 	for src.Next() {
 		n++
@@ -330,6 +354,14 @@ func (s *extrasSpyTx) CopyFrom(
 				runs:    *toIntPtr(values[bowlingCopyArgRuns]),
 				maidens: *toIntPtr(values[bowlingCopyArgMaidens]),
 			}
+		}
+		if isBatting && len(values) > battingCopyArgStrikeRate {
+			innings := toInt(values[battingCopyArgInningNumber])
+			s.battingByInnings[innings] = append(s.battingByInnings[innings], battingFigure{
+				runs:       *toIntPtr(values[battingCopyArgRuns]),
+				balls:      *toIntPtr(values[battingCopyArgBalls]),
+				strikeRate: *toFloat32Ptr(values[battingCopyArgStrikeRate]),
+			})
 		}
 	}
 	return n, src.Err()
@@ -345,10 +377,7 @@ func TestImportMatchFile_ExtrasByKind_ChargesTheBowlerOnlyHisRuns(t *testing.T) 
 	prevPool := db.PoolAPI
 	db.SetPoolAPI(nopPool{})
 	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
-	spy := &extrasSpyTx{
-		bowlingByInnings: map[int]bowlingFigure{},
-		totalsByInnings:  map[int]inningsTotal{},
-	}
+	spy := newExtrasSpyTx()
 	cricsheet.SetRunInTxFn(func(ctx context.Context, inner func(context.Context, db.CopyFromTx) error) error {
 		return inner(ctx, spy)
 	})
