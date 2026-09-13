@@ -51,7 +51,7 @@ func TestDeleteMatchFactsTx_EveryFactTable_IsClearedForThatMatch(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 	for i := range matchFactTables {
-		mock.ExpectExec("DELETE FROM "+matchFactTables[i]+" WHERE match_id").
+		mock.ExpectExec("DELETE FROM " + matchFactTables[i] + " WHERE match_id").
 			WithArgs(int64(7)).
 			WillReturnResult(pgxmock.NewResult("DELETE", 3))
 	}

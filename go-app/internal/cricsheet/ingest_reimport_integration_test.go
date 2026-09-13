@@ -46,27 +46,34 @@ func matchFileJSON(innings ...string) string {
 }
 
 // inningsOf renders one innings of a single over, one delivery per entry in runs, all
-// faced by batter off bowler.
-func inningsOf(team, batter, nonStriker, bowler string, runs []int) string {
+// faced by batter off bowler. A caughtBy that is not empty makes the last delivery a
+// catch, so the import writes fielding_event and fielding_data rows for that innings.
+func inningsOf(team, batter, nonStriker, bowler string, runs []int, caughtBy string) string {
 	deliveries := make([]string, 0, len(runs))
 	for i := range runs {
-		deliveries = append(deliveries, fmt.Sprintf(
-			`{"batter":"%s","bowler":"%s","non_striker":"%s","runs":{"batter":%d,"extras":0,"total":%d}}`,
-			batter, bowler, nonStriker, runs[i], runs[i],
-		))
+		fielder := ""
+		if i == len(runs)-1 {
+			fielder = caughtBy
+		}
+		deliveries = append(deliveries, deliveryOf(batter, nonStriker, bowler, runs[i], fielder))
 	}
 	return fmt.Sprintf(`{"team":"%s","overs":[{"over":0,"deliveries":[%s]}]}`,
 		team, strings.Join(deliveries, ","))
 }
 
-// inningsWithACatch renders an innings whose last delivery is a catch, so the import
-// writes fielding_event and fielding_data rows for it.
-func inningsWithACatch(team, batter, nonStriker, bowler, fielder string) string {
-	return fmt.Sprintf(`{"team":"%s","overs":[{"over":0,"deliveries":[
-		{"batter":"%s","bowler":"%s","non_striker":"%s","runs":{"batter":1,"extras":0,"total":1}},
-		{"batter":"%s","bowler":"%s","non_striker":"%s","runs":{"batter":0,"extras":0,"total":0},
-		 "wickets":[{"player_out":"%s","kind":"caught","fielders":[{"name":"%s"}]}]}
-	]}]}`, team, batter, bowler, nonStriker, batter, bowler, nonStriker, batter, fielder)
+// deliveryOf renders one delivery, with a catch by caughtBy when that is not empty.
+func deliveryOf(batter, nonStriker, bowler string, runs int, caughtBy string) string {
+	wicket := ""
+	if caughtBy != "" {
+		wicket = fmt.Sprintf(
+			`,"wickets":[{"player_out":"%s","kind":"caught","fielders":[{"name":"%s"}]}]`,
+			batter, caughtBy,
+		)
+	}
+	return fmt.Sprintf(
+		`{"batter":"%s","bowler":"%s","non_striker":"%s","runs":{"batter":%d,"extras":0,"total":%d}%s}`,
+		batter, bowler, nonStriker, runs, runs, wicket,
+	)
 }
 
 // countForMatch returns how many rows of table belong to matchID, optionally narrowed by
@@ -98,9 +105,13 @@ func TestImportMatchFile_ReImportOfACorrectedFile_LeavesNothingOfTheOldOne(t *te
 	dbtest.SkipUnlessScratchDatabase(t)
 
 	ctx := context.Background()
-	pool, err := db.Connect(ctx)
+	_, err := db.Connect(ctx)
 	require.NoError(t, err)
-	t.Cleanup(func() { pool.Close() })
+	// Unwired, not merely closed: the offline tests in this package are written against
+	// db.Pool being nil, which is what makes the entity cache resolve no ids. Closing the
+	// pool while the package-level handle still points at it left them talking to a closed
+	// connection instead.
+	t.Cleanup(db.Close)
 	require.NoError(t, db.RunMigrations(ctx, filepath.Join("..", "..", "migrations")))
 	require.NoError(t, db.Exec(ctx, `TRUNCATE ball_event, fielding_event, batting_data,
 		bowling_data, fielding_data, match_inning, match_player, match`))
@@ -116,10 +127,10 @@ func TestImportMatchFile_ReImportOfACorrectedFile_LeavesNothingOfTheOldOne(t *te
 			name:     "an innings the corrected file no longer has leaves no rows behind",
 			fileName: "9000001.json",
 			first: matchFileJSON(
-				inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6}),
-				inningsWithACatch("Beta", "B2", "B3", "A1", "A3"),
+				inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6}, ""),
+				inningsOf("Beta", "B2", "B3", "A1", []int{1, 0}, "A3"),
 			),
-			second: matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6})),
+			second: matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6}, "")),
 			assert: func(t *testing.T, matchID int64) {
 				assertNoRowsForInnings(t, matchID, 2)
 				require.Equal(t, 3, countForMatch(ctx, t,
@@ -136,8 +147,8 @@ func TestImportMatchFile_ReImportOfACorrectedFile_LeavesNothingOfTheOldOne(t *te
 		{
 			name:     "a corrected delivery replaces the one imported before it",
 			fileName: "9000002.json",
-			first:    matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6})),
-			second:   matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{0, 1, 6})),
+			first:    matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6}, "")),
+			second:   matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{0, 1, 6}, "")),
 			assert: func(t *testing.T, matchID int64) {
 				var runsOnFirstBall int
 				require.NoError(t, db.QueryRow(ctx,
@@ -155,8 +166,8 @@ func TestImportMatchFile_ReImportOfACorrectedFile_LeavesNothingOfTheOldOne(t *te
 		{
 			name:     "a bowler the corrected file no longer names keeps no bowling row",
 			fileName: "9000003.json",
-			first:    matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6})),
-			second:   matchFileJSON(inningsOf("Alpha", "A1", "A2", "B9", []int{4, 1, 6})),
+			first:    matchFileJSON(inningsOf("Alpha", "A1", "A2", "B1", []int{4, 1, 6}, "")),
+			second:   matchFileJSON(inningsOf("Alpha", "A1", "A2", "B9", []int{4, 1, 6}, "")),
 			assert: func(t *testing.T, matchID int64) {
 				require.Equal(t, 0, countBowlingRowsFor(ctx, t, matchID, "B1"),
 					"the bowler of the first import is not in the corrected file")
