@@ -391,6 +391,20 @@ across sources rather than gated by the doubling rule: it is a fact about the cr
 it goes from zero to roughly a quarter of all Tests the first time a database imported
 before migration `0017` is re-imported.
 
+The pass also counts `runs_not_charged_to_bowler` (FEAT-08): the byes, leg-byes and penalty
+runs over every delivery it read — the part of `runs_total` that `Deliveries.runs_bowler`
+leaves off the bowler. Both sources derive `runs_bowler` through one rule,
+`sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty), which is the rule
+the importer applies to `bowling_data.runs` (`cricsheet.Delivery.RunsConcededByBowler`,
+IMPORT-04); the Postgres source reads the three `extras_*` columns migration `0018` added,
+the archive source reads the delivery's `extras` object. The bowler's runs-saved ledger
+(`bowl_rate`, its phase and debut splits, and the sequence families' `bowl_saved`) and the
+`runs_conceded` target charge him `runs_bowler`; the over's expectation, the simulator's
+extras rate and the innings outcomes stay on `runs_total`, because those describe the
+innings. Like the draw count it is a fact about the cricket, compared across sources and not
+gated: a database migrated to `0018` but not yet re-imported holds zeros in the three
+columns, charges every bowler everything, and reads 0 here against the archive's total.
+
 ### Source parity (`make xi-parity`)
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): `max_abs_difference`.
@@ -405,7 +419,9 @@ count could see, because a draw is undecided whether or not its result is read. 
 comparison covers every `DataQuality` count that is a property of the cricket rather than
 of the store (`ml/xi/parity.py`, `_COMPARED_COUNTS`), the number of training rows and the
 player-key sets; `drawn_or_tied_matches` is in that set, which is what makes the result
-column part of the guarantee.
+column part of the guarantee, and `runs_not_charged_to_bowler` (FEAT-08) is in it for the
+same reason: a source that charges the bowler byes and leg-byes agrees with one that does
+not on every other count.
 
 ```bash
 make xi-parity                                    # defaults to data/go-app/cricsheet
@@ -439,7 +455,8 @@ performance model (L2-B). Each row carries the player's as-of vectors, the expec
 and bowling impact split by powerplay / middle / death, `contract.PHASE_BOUNDS`), the own-side
 and opponent-side aggregates, and venue context — joined with what the player then did
 (balls, runs, fours, sixes, dismissals, actual batting position, balls bowled, wickets,
-runs conceded). Rows cover **all XI players**, never only those who batted: who got to bat
+runs conceded — the runs charged to the bowler, byes, leg-byes and penalties left to the
+innings, FEAT-08). Rows cover **all XI players**, never only those who batted: who got to bat
 is decided by the result, and a population selected by the outcome is a leak (H-20).
 `ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
 two cannot spell a column differently; the frame is never written to disk as a contract —

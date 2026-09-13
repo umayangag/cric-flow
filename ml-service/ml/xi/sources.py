@@ -60,9 +60,7 @@ class Deliveries:
     def empty() -> "Deliveries":
         z = np.zeros(0)
         empty_keys = np.array([], dtype=object)
-        return Deliveries(
-            z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, [], empty_keys.copy()
-        )
+        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, [], empty_keys.copy())
 
 
 def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:

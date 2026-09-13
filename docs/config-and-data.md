@@ -588,9 +588,15 @@ bowler's; byes, leg-byes and penalty runs go to the innings but not to him, and
 byes, leg-byes and penalty. `bowling_data.runs` (and so `econ`, and the per-over totals a
 maiden is judged on) is built from it. Until IMPORT-04 was fixed the bowler was charged
 the delivery's whole total, so every bowler's figures carried his keeper's misses, and
-the rating pass — which sums `runs_total` for runs conceded — inherited the same noise
-(FEAT-08 reads the new columns). Rows imported before `0018` hold zeros in all five
-until the directory is re-imported; nothing back-fills them.
+the rating pass — which summed `runs_total` for runs conceded — inherited the same noise.
+FEAT-08 closed the other half: both rating sources now derive the runs charged to the
+bowler through the same rule (`ml/xi/sources.py`, `runs_conceded_by_bowler`), the
+Postgres source reading `extras_byes`, `extras_legbyes` and `extras_penalty` and the
+archive source the delivery's `extras` object. Rows imported before `0018` hold zeros in
+all five until the directory is re-imported; nothing back-fills them, and until then the
+rating pass over the database charges the bowler everything — which `make xi-parity`
+reports as `runs_not_charged_to_bowler` differing from the archive. The rating pass's
+query names the three columns, so it needs the migration applied before it runs at all.
 
 ### What a re-import does to a match already in the database
 

@@ -611,8 +611,12 @@ def _passes_with_a_no_ball_and_four_leg_byes(postgres_reads_extras: bool):
     a database imported before migration 0018 does, holding zeros and charging the bowler
     all five. Every other count is identical either way."""
     match = _match("m0", 0, ["a1", "a2"], ["b1", "b2"])
-    charged_one = replace(match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([1.0])))
-    charged_five = replace(match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([5.0])))
+    charged_one = replace(
+        match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([1.0]))
+    )
+    charged_five = replace(
+        match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([5.0]))
+    )
     database = [charged_one if postgres_reads_extras else charged_five]
     return (
         build(_CountingSource(database, SourceCounts(offered=1, yielded=1))),
