@@ -13,7 +13,7 @@ from ml.xi import biography
 from ml.xi import contract as C
 from ml.xi import performance as P
 from ml.xi.builder import build
-from ml.xi.ratings import DEBUT_PRIOR_KEYS, RatingState, debut_prior_vectors
+from ml.xi.ratings import DEBUT_MATCHES, DEBUT_PRIOR_KEYS, RatingState, debut_prior_vectors
 from ml.xi.rows import player_feature_rows
 from ml.xi.sources import CricsheetJsonSource
 from ml.xi.store import load_ratings, save_ratings
@@ -156,6 +156,29 @@ def test_cold_start_prior_moves_only_debutants_of_known_age() -> None:
     assert prior["exp_balls_faced"][2] == pytest.approx(6.0)  # a0's six debut balls, the band's only debut
     assert prior["bat_rate"][2] != 0.0
     assert on.debut_bat[C.FORMAT_INDEX["T20"]][1, 3] == 1.0
+
+
+class _TwoDebutantsOfOneBand(_Source):
+    """a0 (23) and a1 (24) debut on the same day in the same band; only a0 bats."""
+
+    def birth_dates(self):
+        return {**BIRTH, "a1": date(2000, 1, 1)}
+
+
+def test_debut_prior_divides_the_bands_balls_by_every_debut_appearance() -> None:
+    """The band's expected balls faced is per debutant, not per debutant who got a ball
+    (FEAT-01): a0's six balls over two debut appearances read 3, and the appearance a1
+    made without batting counts in both tables."""
+    state = build(_TwoDebutantsOfOneBand(_matches([0])), age_aware_cold_start=True).state
+    state.birth_dates["fresh"] = date(2000, 1, 1)
+    f = C.FORMAT_INDEX["T20"]
+
+    prior = state.side_vectors("T20", ["fresh"], on=date(2024, 1, 10))
+
+    assert state.debut_bat[f][1, DEBUT_MATCHES] == 2.0
+    assert state.debut_bowl[f][1, DEBUT_MATCHES] == 2.0
+    assert prior["exp_balls_faced"][0] == pytest.approx(3.0)
+    assert prior["exp_balls_bowled"][0] == 0.0
 
 
 def test_cold_start_prior_is_off_by_default_and_read_at_the_states_date() -> None:

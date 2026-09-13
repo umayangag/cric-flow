@@ -89,8 +89,8 @@ _NO_VENUE_BAT_FIRST = (0.0, 0.0)
 _NO_VENUE_MATCHES = 0
 #: The debut accumulators' last axis (X-1b family 3): the sums a debutant's band pools over
 #: every debut match before this one -- the impact numerator, the balls, the wicket
-#: numerator and the matches with at least one ball -- exactly the four quantities a
-#: player's own ``side_vectors`` are computed from.
+#: numerator and the debut appearances, batted (bowled) or not -- exactly the four
+#: quantities a player's own ``side_vectors`` are computed from.
 DEBUT_IMPACT, DEBUT_BALLS, DEBUT_WICKETS, DEBUT_MATCHES = 0, 1, 2, 3
 #: The vector keys the age-band debut prior replaces for a player with no history in the
 #: format. Elo and the role keys keep their neutral values: the prior is about what a
@@ -126,8 +126,8 @@ class RatingState:
         self.age_aware_cold_start = age_aware_cold_start
         n = 1024
         z = lambda: np.zeros((_N_FMT, n))  # noqa: E731
-        self.bat_rae, self.bat_balls, self.bat_wae, self.bat_matches = z(), z(), z(), z()
-        self.bowl_rse, self.bowl_balls, self.bowl_wae, self.bowl_matches = z(), z(), z(), z()
+        self.bat_rae, self.bat_balls, self.bat_wae = z(), z(), z()
+        self.bowl_rse, self.bowl_balls, self.bowl_wae = z(), z(), z()
         self.career = z()
         self.career_all = np.zeros(n)
         self.keeper = np.zeros(n)
@@ -135,6 +135,11 @@ class RatingState:
         # expected batting slot: decayed sum of positions batted, decayed count of innings
         # batted, decayed count of XI appearances
         self.bat_pos_sum, self.bat_pos_n, self.xi_n = z(), z(), z()
+        # expected involvement: balls faced and bowled, decayed on the XI clock like
+        # ``xi_n`` -- on every appearance, not only the matches with a ball -- so that
+        # ``exp_balls_faced`` is balls per XI appearance. ``bat_balls`` / ``bowl_balls``
+        # above are the impact rates' denominators and keep the rates' own clock (FEAT-01).
+        self.xi_bat_balls, self.xi_bowl_balls = z(), z()
         # per-phase impact: (format, phase, player) decayed sums and ball counts
         zp = lambda: np.zeros((_N_FMT, _N_PHASES, n))  # noqa: E731
         self.bat_ph_rae, self.bat_ph_balls = zp(), zp()
@@ -183,9 +188,9 @@ class RatingState:
         if self.bat_rae.shape[1] >= n:
             return
         for name in (
-            "bat_rae", "bat_balls", "bat_wae", "bat_matches", "bowl_rse", "bowl_balls", "bowl_wae", "bowl_matches", "career",
-            "bat_pos_sum", "bat_pos_n", "xi_n", "bat_ph_rae", "bat_ph_balls", "bowl_ph_rse", "bowl_ph_balls",
-            "seq_num", "seq_den",
+            "bat_rae", "bat_balls", "bat_wae", "bowl_rse", "bowl_balls", "bowl_wae", "career",
+            "bat_pos_sum", "bat_pos_n", "xi_n", "xi_bat_balls", "xi_bowl_balls",
+            "bat_ph_rae", "bat_ph_balls", "bowl_ph_rse", "bowl_ph_balls", "seq_num", "seq_den",
         ):  # fmt: skip
             setattr(self, name, _grow(getattr(self, name), n, 0.0))
         self.career_all = _grow(self.career_all, n, 0.0)
@@ -233,11 +238,10 @@ class RatingState:
         """
         f = C.FORMAT_INDEX[format_code]
         s = self._read_slots(player_keys)
-        bat_m = self.bat_matches[f, s]
-        bowl_m = self.bowl_matches[f, s]
+        appearances = self.xi_n[f, s]
         out = {
-            "exp_balls_faced": np.where(bat_m > 0, self.bat_balls[f, s] / np.maximum(bat_m, 1e-9), 0.0),
-            "exp_balls_bowled": np.where(bowl_m > 0, self.bowl_balls[f, s] / np.maximum(bowl_m, 1e-9), 0.0),
+            "exp_balls_faced": per_xi_appearance(self.xi_bat_balls[f, s], appearances),
+            "exp_balls_bowled": per_xi_appearance(self.xi_bowl_balls[f, s], appearances),
             "bat_rate": self.bat_rae[f, s] / (self.bat_balls[f, s] + C.PRIOR_BALLS),
             "bat_wrate": self.bat_wae[f, s] / (self.bat_balls[f, s] + C.PRIOR_BALLS),
             "bowl_rate": self.bowl_rse[f, s] / (self.bowl_balls[f, s] + C.PRIOR_BALLS),
@@ -248,7 +252,7 @@ class RatingState:
             "keeper": self.keeper[s].copy(),
             "exp_bat_position": (self.bat_pos_sum[f, s] + C.BAT_POSITION_PRIOR * C.BAT_POSITION_PRIOR_INNINGS)
             / (self.bat_pos_n[f, s] + C.BAT_POSITION_PRIOR_INNINGS),
-            "bat_innings_share": self.bat_pos_n[f, s] / np.maximum(self.xi_n[f, s], 1.0),
+            "bat_innings_share": per_xi_appearance(self.bat_pos_n[f, s], appearances),
         }
         for p, name in enumerate(C.PHASE_NAMES):
             out[f"bat_{name}_rate"] = self.bat_ph_rae[f, p, s] / (self.bat_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
@@ -371,9 +375,10 @@ class RatingState:
             self._update_fixture_context(match, d)
         self.career[f, both] += 1.0
         self.career_all[both] += 1.0
-        # Expected batting slot: every XI member's accumulators decay together, so the mean
-        # position is unchanged by matches not batted in while the batted share is.
-        for name in ("bat_pos_sum", "bat_pos_n", "xi_n"):
+        # Expected batting slot and involvement: every XI member's accumulators decay
+        # together, so the mean position is unchanged by matches not batted in while the
+        # batted share and the balls per appearance are.
+        for name in ("bat_pos_sum", "bat_pos_n", "xi_n", "xi_bat_balls", "xi_bowl_balls"):
             getattr(self, name)[f, both] *= C.DECAY_PER_MATCH
         self.xi_n[f, both] += 1.0
         if len(d):
@@ -383,6 +388,7 @@ class RatingState:
                 if slot in in_xi:
                     self.bat_pos_sum[f, slot] += float(position)
                     self.bat_pos_n[f, slot] += 1.0
+            self._accumulate_involvement(f, both, d)
         self.team_venue_matches[(match.team1, match.venue)] += 1
         self.team_venue_matches[(match.team2, match.venue)] += 1
         y = match.outcome
@@ -408,6 +414,16 @@ class RatingState:
             self.team_results[(fmt, match.team2)].append(0.5)
         self.matches_seen += 1
         self.last_date = match.match_date
+
+    def _accumulate_involvement(self, f: int, xi_slots: np.ndarray, d: Deliveries) -> None:
+        """Land this match's deliveries on the XI members' involvement numerators -- every
+        delivery, wides included, as every ball count in the pass is. Only the players
+        named for the match take part: a ball by anyone else has no appearance to be
+        divided by, and landing it would put his numerator on no clock at all."""
+        for balls, who in ((self.xi_bat_balls, d.batter), (self.xi_bowl_balls, d.bowler)):
+            slots = self._slots(list(who))
+            named = np.isin(slots, xi_slots)
+            np.add.at(balls[f], slots[named], 1.0)
 
     def _debut_bands(self, f: int, slots: np.ndarray, keys: Sequence[str], match: MatchRecord) -> Dict[int, int]:
         """Slot -> age band for the XI members making their debut in the format today
@@ -440,7 +456,6 @@ class RatingState:
             self.bat_rae,
             self.bat_balls,
             self.bat_wae,
-            self.bat_matches,
             f,
             batters,
             d.runs_batter - exp_runs,
@@ -454,7 +469,6 @@ class RatingState:
             self.bowl_rse,
             self.bowl_balls,
             self.bowl_wae,
-            self.bowl_matches,
             f,
             bowlers,
             exp_runs - d.runs_bowler,
@@ -505,24 +519,25 @@ class RatingState:
     def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue) -> None:
         """Land a debutant's balls on his age band's lifetime sums (``DEBUT_IMPACT`` ..
         ``DEBUT_MATCHES``): the same per-ball quantities ``_accumulate`` lands on the
-        player, pooled by band and never decayed."""
+        player, pooled by band and never decayed. The appearance counts whether or not he
+        got a ball, as ``xi_n`` does for the player himself, so the band's balls per
+        appearance is the quantity ``side_vectors`` reads for everyone else."""
         for slot, band in debut_bands.items():
+            table[band, DEBUT_MATCHES] += 1.0
             mine = who == slot
             if not mine.any():
                 continue
             table[band, DEBUT_IMPACT] += float(value[mine].sum())
             table[band, DEBUT_BALLS] += float(mine.sum())
             table[band, DEBUT_WICKETS] += float(wvalue[mine].sum())
-            table[band, DEBUT_MATCHES] += 1.0
 
-    def _accumulate(self, total, balls, wtotal, matches, f, who, value, wvalue, count) -> None:
+    def _accumulate(self, total, balls, wtotal, f, who, value, wvalue, count) -> None:
         uniq, inv = np.unique(who, return_inverse=True)
-        for arr in (total, balls, wtotal, matches):
+        for arr in (total, balls, wtotal):
             arr[f, uniq] *= C.DECAY_PER_MATCH
         total[f, uniq] += np.bincount(inv, weights=value, minlength=len(uniq))
         balls[f, uniq] += np.bincount(inv, weights=count, minlength=len(uniq))
         wtotal[f, uniq] += np.bincount(inv, weights=wvalue, minlength=len(uniq))
-        matches[f, uniq] += 1.0
 
     def _update_sequence(self, f: int, d: Deliveries, batters, bowlers, exp_runs, exp_wk) -> None:
         """Accumulate the sequence families (E1) from this match's per-ball flags."""
@@ -578,19 +593,27 @@ class RatingState:
         np.add.at(balls[f], (phase, who), 1.0)
 
 
+def per_xi_appearance(quantity: np.ndarray, appearances: np.ndarray) -> np.ndarray:
+    """A per-appearance mean: ``quantity`` over the appearances it accrued across, both on
+    one decay clock (or both undecayed, as the debut tables are). Never divides by less
+    than one appearance, which is what a count with at least one appearance always is --
+    the latest contributes 1.0 undecayed -- so a player with none reads 0, not a ratio."""
+    return quantity / np.maximum(appearances, 1.0)
+
+
 def debut_prior_vectors(debut_bat: np.ndarray, debut_bowl: np.ndarray, bands: np.ndarray) -> Dict[str, np.ndarray]:
     """``DEBUT_PRIOR_KEYS`` for debutants in ``bands``, from one format's debut tables:
     the band's pooled sums put through the formulas ``side_vectors`` applies to a player's
-    own sums -- balls per match batted (bowled), and each impact shrunk over
-    ``PRIOR_BALLS`` -- so a band nobody has debuted in yet reads exactly the neutral vector."""
+    own sums -- balls per debut appearance, and each impact shrunk over ``PRIOR_BALLS`` --
+    so a band nobody has debuted in yet reads exactly the neutral vector."""
     out: Dict[str, np.ndarray] = {}
     for table, balls_key, rate_key, wrate_key in (
         (debut_bat, "exp_balls_faced", "bat_rate", "bat_wrate"),
         (debut_bowl, "exp_balls_bowled", "bowl_rate", "bowl_wrate"),
     ):
         rows = table[bands]
-        balls, matches = rows[:, DEBUT_BALLS], rows[:, DEBUT_MATCHES]
-        out[balls_key] = np.where(matches > 0, balls / np.maximum(matches, 1e-9), 0.0)
+        balls = rows[:, DEBUT_BALLS]
+        out[balls_key] = per_xi_appearance(balls, rows[:, DEBUT_MATCHES])
         out[rate_key] = rows[:, DEBUT_IMPACT] / (balls + C.PRIOR_BALLS)
         out[wrate_key] = rows[:, DEBUT_WICKETS] / (balls + C.PRIOR_BALLS)
     return out

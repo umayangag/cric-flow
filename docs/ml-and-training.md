@@ -319,8 +319,10 @@ match is folded in. There is no snapshot table; the as-of guarantee is structura
 (player, format) the state holds ball-level impact ratings (runs above the format×over
 expectation per ball faced, dismissals below expectation, runs saved per ball bowled,
 bowler-credited wickets above expectation; forgotten at 0.9 per match, shrunk with a 60-ball
-prior), expected involvement (balls faced / bowled per match), experience, a keeper flag and
-a player Elo. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
+prior), expected involvement (`exp_balls_faced` / `exp_balls_bowled`: balls faced / bowled per
+**XI appearance** — every match the player was named for, batted or bowled in or not, the
+balls and the appearances forgotten on one clock; a tailender who batted once in ten reads a
+tenth of that innings, not the innings), experience, a keeper flag and a player Elo. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
 bowling impact weighted by involvement, top-6 / top-5 sums, role coverage (bowling options,
 keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, form,
 head-to-head, venue bat-first bias, venue familiarity) is kept in a separate column list

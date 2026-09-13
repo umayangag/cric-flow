@@ -12,6 +12,7 @@ import pytest
 from ml.xi import contract as C
 from ml.xi.builder import build
 from ml.xi.ratings import RatingState, aggregate_side, match_features
+from ml.xi.roles import ROLE_BOWLING_OPTION, count_bowling_options, roles_of
 from ml.xi.sources import Deliveries, MatchRecord
 
 
@@ -113,6 +114,72 @@ def test_impact_rating_rewards_runs_above_context_and_penalises_wickets() -> Non
     vb = state.side_vectors("T20", [t2[0]])
     assert vb["exp_balls_bowled"][0] == pytest.approx(24.0)
     assert vb["bowl_wrate"][0] > 0, "twelve wickets in 24 balls is far above the baseline"
+
+
+def _decayed_appearances(n: int) -> float:
+    """What ``xi_n`` reads after ``n`` consecutive appearances: the latest undecayed."""
+    return sum(C.DECAY_PER_MATCH**j for j in range(n))
+
+
+@pytest.mark.parametrize("batted_in", [0, 9], ids=["first of ten", "last of ten"])
+def test_involvement_is_balls_per_xi_appearance_not_per_match_batted(batted_in: int) -> None:
+    """A tailender in ten XIs who batted once for 30 balls reads about 3 balls per
+    appearance -- the 30 forgotten at the XI clock over the appearances since -- not the
+    30 an opener who faces 30 every match reads (FEAT-01)."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    opener, tailender, stand_in, bowler = t1[0], t1[10], t1[1], t2[0]
+    for k in range(10):
+        second = tailender if k == batted_in else stand_in
+        d = _deliveries([opener] * 30 + [second] * 30, [bowler] * 60, [1] * 60, [0] * 60)
+        state.update(_match(f"m{k}", k, "A", t1, t2, d))
+
+    v = state.side_vectors("T20", [opener, tailender])
+
+    appearances_since = 9 - batted_in
+    expected = 30.0 * C.DECAY_PER_MATCH**appearances_since / _decayed_appearances(10)
+    assert v["exp_balls_faced"][1] == pytest.approx(expected)
+    assert v["exp_balls_faced"][1] < 5.0, "one innings in ten is not opener-level involvement"
+    assert v["exp_balls_faced"][0] == pytest.approx(30.0), "constant involvement reads as itself on any clock"
+
+
+def test_a_part_timer_with_one_spell_is_not_a_bowling_option() -> None:
+    """Two overs bowled once in ten appearances read as 12 / (decayed ten), under the T20
+    threshold, so the same predicate that counts ``n_bowlers`` and names the optimiser's
+    bowling cover stops counting him; a bowler who bowls two overs every match still clears
+    it exactly (FEAT-01)."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    frontline, part_timer = t2[0], t2[10]
+    for k in range(10):
+        bowlers = [frontline] * 12 + ([part_timer] * 12 if k == 9 else [])
+        d = _deliveries([t1[0]] * len(bowlers), bowlers, [1] * len(bowlers), [0] * len(bowlers))
+        state.update(_match(f"m{k}", k, "A", t1, t2, d))
+
+    v = state.side_vectors("T20", t2)
+
+    assert v["exp_balls_bowled"][10] == pytest.approx(12.0 / _decayed_appearances(10))
+    assert v["exp_balls_bowled"][10] < C.MIN_BOWLING_BALLS["T20"]
+    assert not C.is_bowling_option(v["exp_balls_bowled"][10], "T20")
+    assert C.is_bowling_option(v["exp_balls_bowled"][0], "T20")
+    assert count_bowling_options(v["exp_balls_bowled"], "T20") == 1
+    assert aggregate_side(v, "T20")["n_bowlers"] == 1.0
+    assert ROLE_BOWLING_OPTION not in roles_of(v, 10, "T20")
+    assert ROLE_BOWLING_OPTION in roles_of(v, 0, "T20")
+
+
+def test_a_ball_by_someone_not_named_for_the_match_is_nobodys_involvement() -> None:
+    """A batter the deliveries name but neither eleven does has no appearance to divide
+    by, so his balls land on no involvement numerator rather than on one with no clock."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    d = _deliveries(["ghost"] * 12, [t2[0]] * 12, [1] * 12, [0] * 12)
+    state.update(_match("m", 0, "A", t1, t2, d))
+
+    v = state.side_vectors("T20", ["ghost", t2[0]])
+
+    assert v["exp_balls_faced"][0] == 0.0
+    assert v["exp_balls_bowled"][1] == pytest.approx(12.0)
 
 
 def test_ratings_are_per_format() -> None:
