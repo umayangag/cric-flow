@@ -76,9 +76,8 @@ func deliveryOf(batter, nonStriker, bowler string, runs int, caughtBy string) st
 	)
 }
 
-// countForMatch returns how many rows of table belong to matchID, optionally narrowed by
-// one more equality. It takes the column names from the caller because the fact tables
-// disagree on what they call an innings.
+// countForMatch runs a counting query and returns the count. The query comes from the
+// caller because the fact tables disagree on what they call an innings.
 func countForMatch(ctx context.Context, t *testing.T, query string, args ...any) int {
 	t.Helper()
 	var count int
