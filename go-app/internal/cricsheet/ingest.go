@@ -330,7 +330,15 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 	var allMatchInnings []*db.MatchInningInsert
 	var allBatBatches [][]db.Batting
 	var allBowlBatches [][]db.Bowling
-	for i, inng := range m.Innings {
+	playedInnings := m.PlayedInnings()
+	if skipped := len(m.Innings) - len(playedInnings); skipped > 0 {
+		slog.Info("cricsheet: super over left out of the innings record",
+			slog.String("file", path),
+			slog.Int64("match_id", mid),
+			slog.String("match_date", dateISO),
+			slog.Int("super_over_innings", skipped))
+	}
+	for i, inng := range playedInnings {
 		inningNo := i + 1
 		batTeam := strings.TrimSpace(inng.Team)
 		oppTeam := otherTeam(batTeam, teamA, teamB)
@@ -550,8 +558,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 			rpo = float32(float64(runs) / float64(balls) * float64(ballsPerOver))
 		}
 		target := (*int)(nil)
-		if inningNo == 2 && len(m.Innings) >= 1 {
-			firRuns := inningsRuns(m.Innings[0])
+		if inningNo == 2 {
+			firRuns := inningsRuns(playedInnings[0])
 			target = &firRuns
 		}
 		mi := &db.MatchInningInsert{
