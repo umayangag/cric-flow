@@ -612,6 +612,22 @@ def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
     assert d.runs_total[2] == 1.0 and d.runs_batter[2] == 0.0
 
 
+def test_parse_cricsheet_file_gives_a_super_over_tie_to_the_eliminator(tmp_path) -> None:
+    """A tie settled by a super over is a win for the eliminator side, keyed like any
+    winner, and the record keeps result 'tie' beside it (IMPORT-02)."""
+    players = {"India": [f"I{i}" for i in range(11)], "Australia": [f"A{i}" for i in range(11)]}
+    doc = _cricsheet_doc("T20", ["India", "Australia"], players, None, 0)
+    doc["info"]["outcome"] = {"result": "tie", "eliminator": "Australia"}
+    path = tmp_path / "1.json"
+    path.write_text(json.dumps(doc))
+
+    rec = parse_cricsheet_file(str(path), _INTL)
+
+    assert rec is not None
+    assert rec.winner == "Australia|male" and rec.outcome == 0.0
+    assert rec.result == "tie"
+
+
 def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> None:
     players = {"X": [f"X{i}" for i in range(11)], "Y": [f"Y{i}" for i in range(11)]}
     (tmp_path / "b.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], players, "X", 5)))

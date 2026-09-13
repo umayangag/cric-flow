@@ -551,11 +551,12 @@ class _FakeConnection:
 
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
-        # Columns follow _MATCH_SQL: ..., winner, event name, match number, stage, group.
+        # Columns follow _MATCH_SQL: ..., winner, event name, match number, stage, group,
+        # result. Match 2 is a tie settled by a super over: a winner with result 'tie'.
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", ""),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", ""),
-            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None),
+            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None, "tie"),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -595,6 +596,10 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert first.match_number == 1 and first.event_stage == "" and first.event_group == ""
     assert first.stakes.stage_label == "bilateral" and not first.stakes.dead_rubber
     assert recs[1].stakes.stage_label == "" and not recs[1].stakes.dead_rubber_known
+    # The result reaches the record as the archive path reads it (IMPORT-02 / FEAT-04): a
+    # match won outright carries none, and a tie-breaker win keeps 'tie' beside its winner.
+    assert first.result is None
+    assert recs[1].result == "tie" and recs[1].winner == "10"
 
 
 def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
@@ -765,6 +770,27 @@ def test_the_archive_source_leaves_a_super_over_out_of_the_deliveries() -> None:
     assert list(d.batter) == ["name:A1", "name:B1"], "B7 batted only in the super over"
     assert list(d.bowler) == ["name:B1", "name:A1"], "A4 bowled only in the super over"
     assert list(d.runs_total) == [4.0, 6.0]
+
+
+@pytest.mark.parametrize(
+    "outcome,expected",
+    [
+        ({"winner": "Alpha", "by": {"runs": 12}}, "Alpha"),
+        ({"result": "tie", "eliminator": "Beta"}, "Beta"),
+        ({"result": "tie", "bowl_out": "Alpha"}, "Alpha"),
+        ({"result": "tie"}, None),
+        ({"result": "no result"}, None),
+        ({"result": "draw"}, None),
+        ({"winner": "Beta", "method": "Awarded"}, "Beta"),
+        ({}, None),
+    ],
+)
+def test_winning_team_reads_the_outcome_as_the_importer_does(outcome, expected) -> None:
+    """The outright winner, else the side that won the tie-breaker, else none: the rule
+    the go-app importer applies (IMPORT-02), so both sources agree on who has a winner."""
+    from ml.xi.sources import winning_team
+
+    assert winning_team(outcome) == expected
 
 
 def test_played_innings_keeps_a_declared_or_forfeited_innings() -> None:
