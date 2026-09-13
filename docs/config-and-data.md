@@ -525,14 +525,46 @@ The choice was to leave super overs out rather than store them behind an `is_sup
 flag, because every reader of those six tables — the rating pass, the scorecards, the
 career totals — would then have to remember to exclude them, and one that forgot would
 reproduce the defect silently. The fact that a match *was* decided by a super over is not
-a property of its innings but of its outcome, which is where Cricsheet records it
-(`info.outcome.eliminator` / `method`; decoding those is IMPORT-02).
+a property of its innings but of its outcome, which is where Cricsheet records it and
+where the record keeps it — see the next section.
 
 The same decode reads Cricsheet's other innings-level facts — `declared`, `forfeited`
 (an innings with no `overs` at all, 14 in the archive) and `target` — so a short innings
 can be told from a truncated file. `target.overs` is a float: 158 innings carry a
 rain-revised target in overs-and-balls notation such as `12.4`, and an integer field would
 refuse every one of those files. Nothing derived from these three is stored yet.
+
+### What the outcome record holds
+
+`match` says how a match was decided in three columns, all of them Cricsheet's own words
+from `info.outcome`. Cricsheet writes a match that was won outright as `winner` (and the
+margin, `outcome_by_runs` / `outcome_by_wickets`), and a match that was not as `result` —
+`draw`, `no result` or `tie` — with no winner. A tie that a tie-breaker then settled keeps
+`result: tie` and names the side that won it under `eliminator` (a super over; 109 files
+in the archive) or `bowl_out` (2 files, both 2007). `method` is the rule that adjusted or
+awarded the result: `D/L` on 1,018 files, `VJD`, `Awarded`, and once `Lost fewer wickets`.
+
+- **`outcome_winner_opposition_id`** is the side the match went to: `winner`, else
+  `eliminator`, else `bowl_out` (`cricsheet.Outcome.WinningTeam`, one rule for both
+  sources — `ml.xi.sources.winning_team` on the archive path). A tie-breaker win is a win:
+  the competition records it as one, a forecast of the match is scored against it, and
+  both sides' Elo and form see it. NULL means a draw, a no-result or a tie nobody broke.
+- **`result`** (migration `0017`) is `outcome.result` verbatim, NULL for a match won
+  outright. It is kept beside a winner for a tie-breaker win, so `result = 'tie'` with a
+  winner is a match that was tied and then decided — distinguishable from an outright win
+  and from a tie left as one, without going back to the file. A reader that wants to
+  weight such a win differently from an outright one can, from the row.
+- **`result_method`** (`0017`) is `outcome.method` verbatim, NULL where the archive names
+  none. It is `varchar(32)`, not the 16 the audit proposed, because the archive's longest
+  value is eighteen characters and a narrower column would have refused that file whole.
+
+Until IMPORT-02 was fixed only `winner` was read, so every super-over win was stored with
+no winner at all — the same row as an abandoned match — and the rating pass, which reads a
+NULL winner as no result, left those matches out of the frame and out of both sides' Elo.
+The archive path of the rating pass agreed with it, reading only `winner` too, which is why
+the H-8 parity check never saw the difference. Both columns are written by the importer
+and by nothing else; a match imported before `0017` carries NULL in both until the
+directory is re-imported.
 
 ### What a re-import does to a match already in the database
 
@@ -556,8 +588,9 @@ at all.
 **Every importer fix requires a re-import of the whole directory.** Rows are written once,
 by whichever version of the importer wrote them; nothing back-fills them later. A change
 to what the importer extracts or how it derives a column — a super over that was being
-stored as innings 3 (IMPORT-01), byes that should not be charged to the bowler, an
-`info.event` field that was being dropped — reaches only the matches imported after it. The re-import is the whole
+stored as innings 3 (IMPORT-01), a super-over win stored with no winner (IMPORT-02), byes
+that should not be charged to the bowler, an `info.event` field that was being dropped —
+reaches only the matches imported after it. The re-import is the whole
 directory, not the changed files, because the fix applies to every match: run Import again
 with **`?refresh=1`** if the archive should be re-fetched too, and expect it to take as
 long as the first one did. A model built on the old rows is unaffected until it is rebuilt,

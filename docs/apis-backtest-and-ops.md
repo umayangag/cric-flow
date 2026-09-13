@@ -295,7 +295,7 @@ asserted from go-app and the frontend):
 | `scenario` | a hand-built eleven (`objective: fixed`): listed, never scored, because the caller built a side that may not have played |
 | `superseded` | an Optimise forecast of a fixture that a later Optimise of the same fixture, issued on or before the match date, replaced — one forecast is scored per fixture, the last one issued; the row names the id that superseded it |
 | `unresolved` | the database holds no match for the fixture yet (Cricsheet lag, an import not run), shown with `days_past_match_date` (negative before the match); also a double-header the record cannot tell apart, with the reason in `state_note` |
-| `no_result` | the match was played with no `outcome_winner_opposition_id` (no result, tie, draw): counted, not scored |
+| `no_result` | the match was played with no `outcome_winner_opposition_id` (no result, draw, or a tie nobody broke — a tie settled by a super over or a bowl-out has a winner and is scored): counted, not scored |
 | `post_hoc` | the match was played and won by someone, but the forecast was issued **after** the match date: listed and counted, its own `score` on the row, and in none of the summaries below |
 | `scored` | the forecast was issued on or before its match date and the match was played and won by someone — the rows every summary is over |
 
