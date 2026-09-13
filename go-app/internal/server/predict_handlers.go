@@ -181,16 +181,15 @@ func parseTossParam(raw string) (*bool, *apiError) {
 	}
 }
 
-// buildPredictInput converts a parsed request into a predictteam.Input. `now` is when the
-// request is being answered, and decides whether the match is one that has been played.
-func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor string, now time.Time) predictteam.Input {
+// buildPredictInput converts a parsed request into a predictteam.Input.
+func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor string) predictteam.Input {
 	input := predictteam.Input{
 		Format:        body.Format,
 		Team1:         db.TeamRef{ClubID: body.Team1ID, Name: body.Team1, Gender: body.Team1Gender},
 		Team2:         db.TeamRef{ClubID: body.Team2ID, Name: body.Team2, Gender: body.Team2Gender},
 		Venue:         body.Venue,
 		MatchDate:     matchDate,
-		AsOf:          asOfFor(matchDate, now),
+		AsOf:          asOfFor(matchDate, time.Now().UTC()),
 		ExtraTeam1:    body.ExtraTeam1,
 		ExtraTeam2:    body.ExtraTeam2,
 		Team1XI:       body.Team1XI,
@@ -282,7 +281,7 @@ func (a *App) predictTeamSelectionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	result, err := predictteam.PredictTeams(
-		r.Context(), buildPredictInput(body, matchDate, actorFrom(r), time.Now().UTC()), a.mlClient)
+		r.Context(), buildPredictInput(body, matchDate, actorFrom(r)), a.mlClient)
 	if err != nil {
 		respondPredictErr(w, err)
 		return
