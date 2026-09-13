@@ -94,20 +94,12 @@ func RecomputeFieldingAggregatesTx(ctx context.Context, tx CopyFromTx, matchID i
 	return nil
 }
 
-// DeleteFieldingEventsForMatchTx removes a match's fielding_event rows so a re-import
-// replaces them. The insert below is ON CONFLICT DO NOTHING, which is right within one
-// import and wrong across two: a row the importer once wrote in error (P-3 found 452
-// catches credited to the bowler) would survive every re-import that no longer writes it.
-// Same reasoning as ReplaceMatchPlayersTx, on the caller's transaction.
-func DeleteFieldingEventsForMatchTx(ctx context.Context, tx CopyFromTx, matchID int64) error {
-	if err := tx.Exec(ctx, `DELETE FROM fielding_event WHERE match_id = $1`, matchID); err != nil {
-		return fmt.Errorf("delete fielding_event for match %d: %w", matchID, err)
-	}
-	return nil
-}
-
 // InsertFieldingEventsBatchTx inserts multiple fielding_event rows using the given transaction.
 // The same transaction may be used for multiple batches (e.g. one per inning), so we drop the temp table if it exists.
+//
+// The insert keeps ON CONFLICT DO NOTHING, which is right within one import and wrong
+// across two: the match's rows are cleared by DeleteMatchFactsTx before this runs, so what
+// the clause still guards against is a duplicate inside the file being imported now.
 func InsertFieldingEventsBatchTx(ctx context.Context, tx CopyFromTx, rows []FieldingEvent) error {
 	if len(rows) == 0 {
 		return nil

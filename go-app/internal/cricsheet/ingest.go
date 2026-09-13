@@ -709,6 +709,17 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		file, date, teams string
 	}{path, dateISO, fmt.Sprintf("%s vs %s", teamA, teamB)}
 	if err := runTx(ctx, func(ctx context.Context, tx db.CopyFromTx) error {
+		// First, and before anything is written: a re-import replaces the match rather
+		// than merging into whatever an earlier import of the same id left behind.
+		if err := db.DeleteMatchFactsTx(ctx, tx, mid); err != nil {
+			slog.Error("delete existing match rows failed",
+				slog.String("file", matchCtx.file),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", matchCtx.date),
+				slog.String("teams", matchCtx.teams),
+				slog.Any("err", err))
+			return fmt.Errorf("delete existing match rows: %w", err)
+		}
 		if err := db.UpsertMatchTx(ctx, tx, matchInsert); err != nil {
 			slog.Error("upsert match failed",
 				slog.String("file", matchCtx.file),
@@ -728,13 +739,6 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				slog.Int("squad_size", len(matchPlayerRows)),
 				slog.Any("err", err))
 			return fmt.Errorf("replace match_player: %w", err)
-		}
-		if err := db.DeleteFieldingEventsForMatchTx(ctx, tx, mid); err != nil {
-			slog.Error("delete fielding_events failed",
-				slog.String("file", matchCtx.file),
-				slog.Int64("match_id", mid),
-				slog.Any("err", err))
-			return fmt.Errorf("delete fielding_events: %w", err)
 		}
 		for i := range allMatchInnings {
 			inn := allMatchInnings[i]

@@ -505,6 +505,36 @@ archive even if this dataset is already on disk"* checkbox sends. That is the su
 way to pick up newer matches; `POST /ops/data/fetch` remains available for pulling a
 source other than the configured one.
 
+### What a re-import does to a match already in the database
+
+**An import replaces a match, it does not merge into it.** The match id comes from the
+file name, so importing a file whose match is already there is a *re-import* of that
+match: the per-file transaction begins by clearing the match out of `ball_event`,
+`fielding_event`, `batting_data`, `bowling_data`, `fielding_data` and `match_inning`
+(`db.DeleteMatchFactsTx`), and out of `match_player` (`db.ReplaceMatchPlayersTx`), and
+then writes the file as it now reads. The match row itself is upserted, because the match
+still exists. All of it is one transaction, so a file that fails to import leaves the
+previous version of the match intact rather than a half-deleted one.
+
+This is what makes a **corrected** Cricsheet file land. Corrections remove things as well
+as add them — an innings that was never played, a delivery scored twice, a player who was
+not in the side — and a re-import that only upserted would leave every removed row behind,
+so the match on record would become the union of every version of the file ever imported.
+Until IMPORT-03 was fixed it was worse than that for `ball_event`: the insert skipped rows
+whose key was already there, so a re-import of an already-imported match changed nothing
+at all.
+
+**Every importer fix requires a re-import of the whole directory.** Rows are written once,
+by whichever version of the importer wrote them; nothing back-fills them later. A change
+to what the importer extracts or how it derives a column — a super over that should not be
+innings 3, byes that should not be charged to the bowler, an `info.event` field that was
+being dropped — reaches only the matches imported after it. The re-import is the whole
+directory, not the changed files, because the fix applies to every match: run Import again
+with **`?refresh=1`** if the archive should be re-fetched too, and expect it to take as
+long as the first one did. A model built on the old rows is unaffected until it is rebuilt,
+so an importer fix that changes feature inputs is followed by `make retrain` — see
+`docs/ml-and-training.md` § The pipeline.
+
 ### The dataset registry
 
 `GET /ops/data/datasets` returns one row per acquired dataset, newest first, with the
