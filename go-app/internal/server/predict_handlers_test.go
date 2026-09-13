@@ -69,8 +69,7 @@ func TestParsePredictTeamRequest_TossHasThreeStates(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, body.Team1BatsFirst)
 			// The parsed field is what reaches the simulation input, unchanged.
-			matchDate := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
-			input := buildPredictInput(body, matchDate, "someone", matchDate)
+			input := buildPredictInput(body, time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC), "someone")
 			assert.Equal(t, tc.want, input.Team1BatsFirst)
 		})
 	}
@@ -80,9 +79,13 @@ func TestParsePredictTeamRequest_TossHasThreeStates(t *testing.T) {
 // names the match date as its as-of date, which is what ml-service serves ratings strictly
 // before and what turns the retirement ledger off. A match today or later is live and
 // names nothing, so the through-today state -- and H-11's verdict on it -- applies.
+//
+// "Today" is the wall clock's UTC day, read once here and once inside the call; the two
+// reads disagree only across a UTC midnight, which is the one moment the "today" cases
+// could name a different day than the code did.
 func TestBuildPredictInput_NamesThePastMatchDateAsAsOf(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 9, 13, 15, 30, 0, 0, time.UTC)
+	today := time.Now().UTC().Truncate(24 * time.Hour)
 
 	testCases := []struct {
 		name      string
@@ -96,22 +99,27 @@ func TestBuildPredictInput_NamesThePastMatchDateAsAsOf(t *testing.T) {
 		},
 		{
 			name:      "yesterday names its date",
-			matchDate: time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC),
-			wantAsOf:  time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC),
+			matchDate: today.AddDate(0, 0, -1),
+			wantAsOf:  today.AddDate(0, 0, -1),
 		},
 		{
 			name:      "a timestamped match keeps the calendar day it was written with",
-			matchDate: time.Date(2026, 9, 12, 23, 30, 0, 0, time.FixedZone("IST", 5*3600+1800)),
-			wantAsOf:  time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC),
+			matchDate: time.Date(2019, 7, 14, 23, 30, 0, 0, time.FixedZone("IST", 5*3600+1800)),
+			wantAsOf:  time.Date(2019, 7, 14, 0, 0, 0, 0, time.UTC),
 		},
 		{
 			name:      "today is live",
-			matchDate: time.Date(2026, 9, 13, 0, 0, 0, 0, time.UTC),
+			matchDate: today,
 			wantAsOf:  time.Time{},
 		},
 		{
 			name:      "an upcoming match is live",
-			matchDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			matchDate: today.AddDate(0, 0, 30),
+			wantAsOf:  time.Time{},
+		},
+		{
+			name:      "a match far in the future is live",
+			matchDate: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC),
 			wantAsOf:  time.Time{},
 		},
 	}
@@ -122,7 +130,7 @@ func TestBuildPredictInput_NamesThePastMatchDateAsAsOf(t *testing.T) {
 			t.Parallel()
 			body := predictTeamRequest{Format: "T20I", Team1ID: 1, Team2ID: 2}
 
-			input := buildPredictInput(body, tc.matchDate, "someone", now)
+			input := buildPredictInput(body, tc.matchDate, "someone")
 
 			assert.True(t, tc.wantAsOf.Equal(input.AsOf), "as_of: want %v, got %v", tc.wantAsOf, input.AsOf)
 			assert.Equal(t, tc.matchDate, input.MatchDate, "the match date itself is untouched")
