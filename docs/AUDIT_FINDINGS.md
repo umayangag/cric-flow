@@ -87,19 +87,6 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 ## 2. Rating pass and features (`ml-service/ml/xi/`)
 
-### FEAT-01 — `exp_balls_faced` / `exp_balls_bowled` use the wrong denominator  **High · retrain**
-
-`ml/xi/ratings.py:236-240`
-```python
-bat_m = self.bat_matches[f, s]
-bowl_m = self.bowl_matches[f, s]
-"exp_balls_faced": np.where(bat_m > 0, self.bat_balls[f, s] / np.maximum(bat_m, 1e-9), 0.0),
-"exp_balls_bowled": np.where(bowl_m > 0, self.bowl_balls[f, s] / np.maximum(bowl_m, 1e-9), 0.0),
-```
-`bat_matches` / `bowl_matches` are incremented (and decayed) only in `_accumulate` (`ratings.py:515-522`), i.e. only for players who actually faced/bowled a ball. A #11 who batted once for 30 balls in his last 20 matches reads `exp_balls_faced = 30`, the same as an opener who faces 30 every game. `aggregate_side` (`ratings.py:610-611`) weights `bat_rate * ebf`, so tailenders get opener-level involvement in `imp_bat_sum` / `imp_bat_top6`. For bowling, a part-timer who bowled 2 overs once reads `exp_balls_bowled = 12`, exactly `MIN_BOWLING_BALLS["T20"]` (`contract.py:41`), so `is_bowling_option` (`contract.py:44-48`) counts him as a bowler in the `n_bowlers` feature **and** in the optimiser's bowling-cover constraint. The correct denominator `xi_n` already exists and is used for `bat_innings_share` (`ratings.py:251`).
-
-**Fix.** Define involvement per XI appearance: `bat_balls / xi_n` and `bowl_balls / xi_n`, and decay `bat_balls` / `bowl_balls` on every XI appearance (as `bat_pos_sum` / `xi_n` already do, `ratings.py:376-378`) so numerator and denominator share one decay clock. Test: a player in 10 XIs who batted once for 30 balls must read `exp_balls_faced ≈ 3`, not 30.
-
 ### FEAT-02 — Sides of 12–13 are rated and aggregated as full squads  **Medium · retrain**
 
 `ratings.py:364-366, 372-378, 403-405`; `rows.py:146-149`; `builder.py:147-149` only counts oversized sides (1,358 of 45,468 per `quality.py:70`). Training rows for those matches sum `imp_bat_sum`, `n_bowlers`, `exp_balls_faced_sum`, `n_debutants` over 12–13 players while serving (`store.py:391-392`) always aggregates 11 — an upward bias on ~3 % of rows. A concussion replacement is decided *during* the match, so his presence is post-start information. Player Elo rewards 12 players.
@@ -568,6 +555,19 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 #### What this batch is accepted on
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
+### FEAT-01 — `exp_balls_faced` / `exp_balls_bowled` use the wrong denominator  **High · retrain**
+
+`ml/xi/ratings.py:236-240`
+```python
+bat_m = self.bat_matches[f, s]
+bowl_m = self.bowl_matches[f, s]
+"exp_balls_faced": np.where(bat_m > 0, self.bat_balls[f, s] / np.maximum(bat_m, 1e-9), 0.0),
+"exp_balls_bowled": np.where(bowl_m > 0, self.bowl_balls[f, s] / np.maximum(bowl_m, 1e-9), 0.0),
+```
+`bat_matches` / `bowl_matches` are incremented (and decayed) only in `_accumulate` (`ratings.py:515-522`), i.e. only for players who actually faced/bowled a ball. A #11 who batted once for 30 balls in his last 20 matches reads `exp_balls_faced = 30`, the same as an opener who faces 30 every game. `aggregate_side` (`ratings.py:610-611`) weights `bat_rate * ebf`, so tailenders get opener-level involvement in `imp_bat_sum` / `imp_bat_top6`. For bowling, a part-timer who bowled 2 overs once reads `exp_balls_bowled = 12`, exactly `MIN_BOWLING_BALLS["T20"]` (`contract.py:41`), so `is_bowling_option` (`contract.py:44-48`) counts him as a bowler in the `n_bowlers` feature **and** in the optimiser's bowling-cover constraint. The correct denominator `xi_n` already exists and is used for `bat_innings_share` (`ratings.py:251`).
+
+**Fix.** Define involvement per XI appearance: `bat_balls / xi_n` and `bowl_balls / xi_n`, and decay `bat_balls` / `bowl_balls` on every XI appearance (as `bat_pos_sum` / `xi_n` already do, `ratings.py:376-378`) so numerator and denominator share one decay clock. Test: a player in 10 XIs who batted once for 30 balls must read `exp_balls_faced ≈ 3`, not 30. — PR #306. Balls per XI appearance, with the numerator on the appearance clock: two accumulators, `xi_bat_balls` / `xi_bowl_balls`, decay with `xi_n` on every appearance and take the match's deliveries, so `exp_balls_faced` is `per_xi_appearance(xi_bat_balls, xi_n)` and a tailender in ten XIs who batted once reads a decayed tenth of the innings (1.78 if it was the first of the ten, 4.61 if the last), an opener who faces 30 every match reads exactly 30, and a part-timer with one two-over spell reads 12 / 6.51, under `MIN_BOWLING_BALLS` — so the one predicate behind `n_bowlers` and the optimiser's bowling cover stops counting him. Not the finding's letter: `bat_balls` / `bowl_balls` were left on the impact rates' own clock, because they are the denominators of `bat_rate` / `bat_wrate` / `bowl_rate` / `bowl_wrate` and decaying them on appearances without their numerators would have inflated every rate for every player who sat out an innings; a dedicated numerator meets the intent (one clock) without touching the ratings. `bat_matches` / `bowl_matches` had no other reader and are gone, from the state and from `store.PLAYER_ARRAY_NAMES`, so an older artifact is refused by name. The age-band debut prior computes the same quantity for a debutant, so `DEBUT_MATCHES` now counts every debut appearance rather than only those with a ball; `per_xi_appearance` is the one formula in both places and for `bat_innings_share`. Only players named for the match land balls on the accumulators — a batter the deliveries name but no eleven does has no appearance to be divided by. No `xi-parity` count: involvement is derived inside the pass by code both sources share, so the two sources cannot disagree on it. Tests pin the finding's own assertion (first and last of ten), the part-timer through `is_bowling_option`, `count_bowling_options`, `aggregate_side` and `roles_of`, the unnamed batter, and the debut prior over two same-band debutants of whom one batted; all five fail on main. Retrain required: this is an input to selection, not only a column, and the served run's numbers may move either way.
 
 ### IMPORT-06 — All wicket kinds credited to the bowler; retired-hurt counted as a wicket lost; only first wicket per ball stored  **Medium · retrain**
 
