@@ -483,6 +483,110 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 
 ## 9. Fixed
 
+### Batch 1 — the re-import, retrain and harness record
+
+Nine PRs — **GO-01 + SERVE-08 (#292), GO-03 (#293), GO-02 (#294), IMPORT-03 (#295), IMPORT-01 (#296), IMPORT-02 (#297), FEAT-04 (#298), IMPORT-04 (#299), FEAT-08 (#300)** — six of them re-import- or retrain-flagged. Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `1b960459`. This is that record. Steps ran in order: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make evaluate`.
+
+#### Step 1 — migrate
+
+Migrations `0017_match_result.sql` (`match.result`, `match.result_method`) and `0018_ball_event_extras_breakdown.sql` (`extras_wides / noballs / byes / legbyes / penalty` on `ball_event`) were in the repo but unapplied, and `_BALLS_SQL` names the `0018` columns — so the rating pass, `evaluate`, `xi-parity` and as-of serving all failed on an undefined column until this ran.
+
+| | before | after |
+|---|---|---|
+| migration level | `0016_auction_projection_assumptions.sql` (16 applied) | `0018_ball_event_extras_breakdown.sql` (18 applied) |
+
+Wall clock **2 s**. Eight columns exist afterwards that did not before: `match.result`, `match.result_method`, and the five `ball_event.extras_*` counts beside the pre-existing lossy `extras_kind`.
+
+#### Step 2 — the whole-archive re-import
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12 — not an incremental run. IMPORT-03 (#295) is what makes this rewrite rather than skip: `repo_match_facts.go` now deletes a match's `ball_event` and aggregate rows at the top of its transaction, so the importer's fixes reach matches that were already in the database.
+
+Wall clock **2 min 34 s** (14:05:58–14:08:32 UTC). **Zero errors**; 27 warnings, all of them the two documented benign cases — 25 × "file name is not a Cricsheet match id, deriving one" (the bounded, logged hash fallback § 10 records as sound) and 2 × "player named on both teams, omitted from both squads".
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,579,603 | 11,578,345 | −1,258 |
+| `match_inning` | 50,691 | 50,465 | −226 |
+| `batting_data` | 434,557 | 434,001 | −556 |
+| `bowling_data` | 299,686 | 299,460 | −226 |
+| `fielding_data` | 176,700 | 176,576 | −124 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+
+Every delta is exactly the super-over removal; nothing else moved. `player_biography` is untouched because the Wikidata backfill owns it, not the importer, and it was deliberately not re-run.
+
+**Super overs (IMPORT-01).** `match_inning` rows with `inning_number > 2` outside Tests: **226 across 110 matches → 0**. `ball_event` rows with `innings > 2` outside Tests: **1,258 → 0**. The importer logged `super_over_innings` for exactly 110 files totalling 226 innings, and a direct scan of the archive confirms **110** files carry 226 super-over innings — so the innings count quoted when the batch was planned (226) is right and the file count (113) was not; the correct figure is 110.
+
+**Tie-breakers (IMPORT-02).** Matches with a NULL winner: **1,723 → 1,612**, so **111 matches gained a winner** — and exactly **111** rows now read `result = 'tie'` beside a non-NULL winner, which is the same set. `match.result` is populated as 1,028 `draw`, 491 `no result`, 204 `tie`, the rest NULL (an outright result). `result_method` records 1,018 `D/L`, 5 `VJD`, 5 `Awarded` and one `Lost fewer wickets` — eighteen characters, the value that vindicates IMPORT-02's widening to `varchar(32)`.
+
+**Extras breakdown (IMPORT-04).** Stored across 11.58 M deliveries: 246,122 wides, 76,980 no-balls, 78,492 byes, 154,876 leg-byes, 954 penalty. The five parts sum to `runs_extras` on **every** delivery (0 mismatches), and **234,322 runs** (byes + leg-byes + penalty) are now separable from what the bowler is charged.
+
+#### Step 3 — `make xi-parity`: **passes**
+
+This is the batch's acceptance test at the data layer. It had been expected to fail since #298 and #300 added two compared counts Postgres could not satisfy before the re-import. After it, **all seventeen counts agree** and the run exits clean (4 min 42 s):
+
+| count | postgres | cricsheet |
+|---|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 |
+| **drawn_or_tied_matches** (FEAT-04, #298) | **1,121** | **1,121** |
+| **runs_not_charged_to_bowler** (FEAT-08, #300) | **234,322** | **234,322** |
+| namesake_sides / unknown_player_keys | 0 | 0 |
+| oversized_squads | 1,365 | 1,365 |
+| player_keys / team_keys | 13,639 / 522 | 13,639 / 522 |
+| players_with_birth_date | 6,955 | 6,955 |
+| matches_with_stage_label / knockout | 22,101 / 1,420 | 22,101 / 1,420 |
+| reconstructible_table / dead_rubber | 16,587 / 2,215 | 16,587 / 2,215 |
+
+The two new counts are the ones worth reading. `drawn_or_tied_matches` = 1,121 is exactly the 1,028 draws plus 204 ties less the 111 tie-breakers somebody won — the rule FEAT-04 named, now computed identically on both sources. `runs_not_charged_to_bowler` = 234,322 agrees to the run with the direct SQL sum of `extras_byes + extras_legbyes + extras_penalty` over `ball_event`, so the two paths are charging bowlers the same quantity. Both rating passes produce the same 21,293 training rows and 469,743 player-match rows.
+
+**One operator note, recorded because the first attempt failed.** Run without `BIRTH_DATES=`, parity fails on a single count — `players_with_birth_date: postgres 6955, cricsheet 0` — because the archive carries no biography (X-1b) and every age reads as unknown, which the run warns about in as many words. That is a flag omission, not a source disagreement, and the `ml-service` Makefile documents the remedy next to the target: `make export-birth-dates BIRTH_DATES=…` (6,967 players) then `make xi-parity BIRTH_DATES=…`. The sixteen other counts, including both new ones, already agreed on that first attempt. Anyone re-running this must pass `BIRTH_DATES`.
+
+#### Step 4 — retrain and reload
+
+`make retrain CUTOFF=2026-09-13` — **9 min 47 s** (14:20:15–14:30:02 UTC), clean, no error or traceback. Then `make reload`, **2 s**.
+
+| | |
+|---|---|
+| run id | **`20260913T142341Z-ab4caa13`** |
+| cutoff | 2026-09-13 |
+| ratings through | 2026-09-09 (13,639 players) |
+| dataset sha | `501c24882251…` |
+| git sha | `53fa134d` |
+| training rows | T20 12,130 · ODI 4,995 · TEST 2,095 · T20I 2,073 |
+| `data_quality_failures` | none |
+
+Reload returned `status: reloaded, loaded: true` for all four formats, ratings `fresh: true` (age 4 days against a 14-day bar), and its served `data_quality` block carries `drawn_or_tied_matches: 1121` and `runs_not_charged_to_bowler: 234322` — the new columns reaching the serving path, not just the training one.
+
+The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 0.08, max_iter 200` ("beat the incumbent on the inner split", 0.6329 vs 0.6303); T20, T20I and ODI all kept the incumbent because no candidate beat it by more than 0.002. That is the three-point grid behaving as `docs/ml-and-training.md` describes, not a tuning result.
+
+**Every format reports `n_holdout: 0` and no headline metric, with a warning each.** This is expected, not a regression: the cutoff is today and the archive ends 2026-09-09, so no row falls at or after it and there is nothing to score. A production retrain at today's cutoff is meant to train on everything; the choice-facing numbers come from the L4 harness in step 5, which is the whole reason `evaluate` is a step beside the pipeline rather than in it.
+
+#### Step 5 — `make evaluate`: the batch's acceptance test
+
+**72 min 12 s** (14:30:25–15:42:37 UTC), launched detached and polled; clean exit, no traceback, report written. Before is the last recorded report (generated 2026-09-02, `n_rows` 21,093); after is this run (generated 2026-09-13, `n_rows` **21,293**). Walk-forward means:
+
+| fmt | obj AUC | disp AUC | obj Brier | base-rate Brier | swap share | n_rows (fmt matches) |
+|---|---|---|---|---|---|---|
+| T20 | 0.6974 → **0.6963** (−0.0011) | 0.7300 → **0.7279** (−0.0021) | 0.2180 → **0.2184** (+0.0004) | 0.2498 → **0.2498** (0.0000) | 0.0023 → **0.0020** | 11,997 → 12,130 |
+| T20I | 0.7561 → **0.7609** (+0.0049) | 0.7533 → **0.7506** (−0.0027) | 0.1987 → **0.1982** (−0.0005) | 0.2501 → **0.2501** (0.0000) | 0.0075 → **0.0084** | 2,049 → 2,073 |
+| ODI | 0.6725 → **0.6698** (−0.0027) | 0.7067 → **0.7045** (−0.0022) | 0.2259 → **0.2264** (+0.0005) | 0.2472 → **0.2473** (0.0000) | 0.0000 → **0.0000** | 4,961 → 4,995 |
+| TEST | 0.6259 → **0.6257** (−0.0003) | 0.6456 → **0.6379** (−0.0077) | 0.2376 → **0.2378** (+0.0002) | 0.2503 → **0.2503** (0.0000) | 0.0052 → **0.0052** | 2,086 → 2,095 |
+
+**Nothing here is a movement anyone should read as a result.** The largest change in either direction — T20I objective AUC +0.0049, TEST display AUC −0.0077 — is a fraction of that format's own across-fold standard deviation (T20I 0.039, TEST 0.100 on those same columns). Every other cell is a thousandth or two. The batch was a correctness batch, and the headline numbers say what a correctness batch should say when the defects were rare: they did not move.
+
+**The confound, stated plainly.** The before report was computed by the pre-fix code on a pre-re-import archive **and** before the user's own import of 2026-09-13 08:43 added 87 matches — `offered_matches` was 22,815 then against 22,905 now, and every format gained matches. So the difference above reflects **both** the nine PRs and a larger, differently-shaped dataset, and the two cannot be separated without a second hour-long run that nobody has asked for. No number in this table should be attributed to a specific finding: none of the movements is large enough or mechanically specific enough to carry such a claim, and the honest reading is that the fixes changed the data materially (226 innings, 1,258 ball events, 111 winners, 234,322 runs re-attributed) while changing the model's discrimination not at all.
+
+**Gates.** `gates.passed` **true**, `problems` empty — same as before. `serving_parity` **passes**, 50 matches / 50 win rows / 1,100 player rows / 1,100 performance predictions / 50 simulations compared, `max_abs_difference` **0.0**, zero mismatches — identical to before. `leak_canary` is unchanged in kind and nearly in value: the best single column is still `team_elo_diff` for T20/T20I/ODI and `d_exp_mean_matches` for TEST, and the same three test-control suspects appear (`team_h2h` in T20 and T20I, `d_pelo_min` in T20I) at AUCs within 0.002 of before. **No gate that passed before fails now, and no new suspect appeared.**
+
+**Servability is unchanged in all four formats.** T20 selection still fails its derived bar (agreement 0.5034 against bar 0.5055) and is not served; T20I still passes and is served (0.5636 → 0.5818 against bar 0.4770); ODI still passes and is served (0.5665 → 0.5597); TEST still passes its bar but is still not served. Simulation stays within tolerance for T20, T20I and ODI, and TEST still has no simulated folds. Not one decision flipped.
+
+#### What this batch is accepted on
+
+Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
 ### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
 
 `ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
