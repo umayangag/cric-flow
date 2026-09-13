@@ -90,6 +90,14 @@ the selection is required to pick them), `min_bowlers`,
 team 1 bats first, absent where it is unknown and both orders are drawn, P1-1), and
 `team1_xi` / `team2_xi` (Play mode, P1-2).
 
+**A played match is a backtest (GO-01).** A `match_date` before today (UTC) is sent to
+ml-service as `as_of` on every call the prediction makes, so the sides are rated on ratings
+that stop strictly before the match — never on a state that already contains its result —
+and the retirement ledger, which describes who is available *now*, is not applied to that
+pool. A match today or later is a live request: no `as_of`, the through-today state, and
+H-11's freshness refusal. The first past-dated request after a reload pays for an as-of
+replay of the event store; requests in ascending date order share one pass.
+
 **Play mode: scoring an eleven the caller built (P1-2).** `team1_xi` / `team2_xi` name each
 side's eleven by `player_id`. Sent, the selection step is skipped and exactly those players
 are scored; omitted, the XIs are selected as they always were. Everything after the

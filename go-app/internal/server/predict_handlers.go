@@ -189,6 +189,7 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor strin
 		Team2:         db.TeamRef{ClubID: body.Team2ID, Name: body.Team2, Gender: body.Team2Gender},
 		Venue:         body.Venue,
 		MatchDate:     matchDate,
+		AsOf:          asOfFor(matchDate, time.Now().UTC()),
 		ExtraTeam1:    body.ExtraTeam1,
 		ExtraTeam2:    body.ExtraTeam2,
 		Team1XI:       body.Team1XI,
@@ -206,6 +207,31 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor strin
 		input.RequireKeeper = *body.RequireKeeper
 	}
 	return input
+}
+
+// asOfFor is the as-of date a request for matchDate carries: the match's own calendar day
+// when that day is before today's (UTC), and zero -- a live request -- for a match today or
+// later.
+//
+// A played match is a backtest whether or not the caller calls it one. Answering it from
+// the through-today state would rate the sides on ratings that already contain the
+// match's own result, and would apply today's retirement ledger to a pool the match date
+// chose (GO-01). Naming the match date as as-of is what makes the answer unable to see the
+// result; the pool's cutoff already is the match date, so the two agree.
+func asOfFor(matchDate, now time.Time) time.Time {
+	matchDay := calendarDay(matchDate)
+	if matchDay.Before(calendarDay(now.UTC())) {
+		return matchDay
+	}
+	return time.Time{}
+}
+
+// calendarDay is midnight UTC of t's own calendar date -- the date as the caller wrote it,
+// not the date the same instant falls on in UTC. A match is keyed by the date it was played
+// on, which is how the rating pass keys it too.
+func calendarDay(t time.Time) time.Time {
+	year, month, day := t.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
 // predictTeamSelectionHandler handles POST /api/predict/team-selection.

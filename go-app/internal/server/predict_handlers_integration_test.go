@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,10 +101,36 @@ func insertPlayerRow(ctx context.Context, t *testing.T, externalID, name string)
 	return id
 }
 
+// asOfRecorder collects the `as_of` every call to the scripted ml-service carried, so a
+// test can say what go-app sent rather than what it meant to send.
+type asOfRecorder struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (r *asOfRecorder) record(asOf string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seen = append(r.seen, asOf)
+}
+
+func (r *asOfRecorder) calls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string{}, r.seen...)
+}
+
 // scriptedMLService answers the calls a TEST prediction makes -- /xi/optimize for each side,
 // /xi/predict-win and /performance/predict -- every answer stamped with the same run and date. With
 // `refusal` set, /xi/optimize answers that instead, which is where H-11 refuses first.
 func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
+	t.Helper()
+	return scriptedMLServiceRecording(t, refusal, nil)
+}
+
+// scriptedMLServiceRecording is scriptedMLService with every call's `as_of` written to
+// `asOf` -- an empty string where the call carried none.
+func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asOfRecorder) *MLClient {
 	t.Helper()
 	const stamp = `"served_ratings": {"run_id": "20260906T083819Z-36689f80", "ratings_through": "2026-09-02"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -115,6 +143,7 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 			return
 		}
 		var body struct {
+			AsOf             string   `json:"as_of"`
 			PoolPlayerIDs    []string `json:"pool_player_ids"`
 			Team1PlayerIDs   []string `json:"team1_player_ids"`
 			Team2PlayerIDs   []string `json:"team2_player_ids"`
@@ -125,6 +154,9 @@ func scriptedMLService(t *testing.T, refusal *mlServiceError) *MLClient {
 			} `json:"team1_constraints"`
 		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if asOf != nil {
+			asOf.record(body.AsOf)
+		}
 		switch r.URL.Path {
 		case "/xi/optimize":
 			selected, err := json.Marshal(body.PoolPlayerIDs[:11])
@@ -191,6 +223,48 @@ func predictRequestFor(fixture predictFixture) *http.Request {
 	return jsonPredictRequest(fmt.Sprintf(
 		`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q}`,
 		fixture.team1ID, fixture.team2ID, fixture.matchDate))
+}
+
+// GO-01 end to end: a request for a played match reaches ml-service with `as_of` naming the
+// match date on every call it makes, so the ratings it is answered from stop before the
+// match; a request for an upcoming match names nothing and is answered through today.
+func TestPredictTeamSelectionHandler_SendsAsOfForAPlayedMatchOnly_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	upcoming := time.Now().UTC().AddDate(0, 0, 7).Format(time.DateOnly)
+
+	testCases := []struct {
+		name      string
+		matchDate string
+		wantAsOf  string
+	}{
+		{name: "a played match names its date", matchDate: "2026-08-01", wantAsOf: "2026-08-01"},
+		{name: "an upcoming match names nothing", matchDate: upcoming, wantAsOf: ""},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &asOfRecorder{}
+			app := &App{mlClient: scriptedMLServiceRecording(t, nil, recorder)}
+			rec := httptest.NewRecorder()
+			// A twelve-month window keeps the seeded 2026-06-01 match in the pool from
+			// either date, so both requests are answered and the only difference is as_of.
+			request := jsonPredictRequest(fmt.Sprintf(
+				`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q,
+				  "team1_pool":{"window_months":12},"team2_pool":{"window_months":12}}`,
+				fixture.team1ID, fixture.team2ID, tc.matchDate))
+
+			app.predictTeamSelectionHandler(rec, request)
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			calls := recorder.calls()
+			require.NotEmpty(t, calls, "the prediction made no ml-service call")
+			for _, asOf := range calls {
+				assert.Equal(t, tc.wantAsOf, asOf)
+			}
+		})
+	}
 }
 
 func TestPredictTeamSelectionHandler_AServedPredictionCarriesItsDateAndRun_Integration(t *testing.T) {

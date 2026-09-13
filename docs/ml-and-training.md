@@ -224,9 +224,12 @@ happened four times:
 
 **Staleness (H-11).** A live prediction against ratings older than
 `ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
-`RATINGS_STALE` and a hint naming the step that fixes it. A request that names its own `as_of`
-is not refused: a backtest asks for a date and gets it, and refusing one would break the
-harness for a reason that does not describe it. Setting the limit to zero turns the check off
+`RATINGS_STALE` and a hint naming the step that fixes it. A request that names an `as_of` the
+as-of pass serves is not refused: a backtest asks for a date and gets it, and refusing one
+would break the harness for a reason that does not describe it. An `as_of` past everything the
+loaded state holds is answered from the through-today state unchanged, so H-11 applies to it
+exactly as to a live request — otherwise naming any date after `ratings_through` would be a
+way around the refusal (SERVE-08). Setting the limit to zero turns the check off
 — a decision visible in config rather than a state the code can drift into. The verdict, not
 just the date, is on `/xi/status` (`ratings.fresh`, `age_days`, `max_age_days`, `code`).
 

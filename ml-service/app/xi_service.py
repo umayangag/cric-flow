@@ -254,16 +254,16 @@ class XiRegistry:
         a backtest walking matches in date order pays one sweep of the source in total.
         """
         store = self.store(format_code)
-        if as_of is None:
-            # H-11 applies to live requests only. A backtest names the date it wants
-            # served and gets exactly that, so "how old is today's state?" is not a
-            # question about it -- refusing one would break the harness for a reason
-            # that does not describe it.
+        if as_of is None or store.covers_as_of(as_of):
+            # H-11 is a verdict on the through-today state, so it applies whenever that
+            # state is what answers -- a live request, or an as-of date past everything
+            # the state holds, which the through-today state serves unchanged (SERVE-08).
+            # A backtest naming a date the as-of pass serves is not asked "how old is
+            # today's state?": it gets the date it named, and refusing it would break the
+            # harness for a reason that does not describe it.
             freshness = self.freshness()
             if not freshness.fresh:
                 raise RatingsStale(freshness)
-            return store
-        if store.covers_as_of(as_of):
             return store
         with self._lock:
             if self._as_of_server is None:

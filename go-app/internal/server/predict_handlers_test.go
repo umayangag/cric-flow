@@ -75,6 +75,69 @@ func TestParsePredictTeamRequest_TossHasThreeStates(t *testing.T) {
 	}
 }
 
+// A played match is a backtest whether or not the caller calls it one (GO-01): the input
+// names the match date as its as-of date, which is what ml-service serves ratings strictly
+// before and what turns the retirement ledger off. A match today or later is live and
+// names nothing, so the through-today state -- and H-11's verdict on it -- applies.
+//
+// "Today" is the wall clock's UTC day, read once here and once inside the call; the two
+// reads disagree only across a UTC midnight, which is the one moment the "today" cases
+// could name a different day than the code did.
+func TestBuildPredictInput_NamesThePastMatchDateAsAsOf(t *testing.T) {
+	t.Parallel()
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+
+	testCases := []struct {
+		name      string
+		matchDate time.Time
+		wantAsOf  time.Time
+	}{
+		{
+			name:      "a match years ago names its date",
+			matchDate: time.Date(2019, 7, 14, 0, 0, 0, 0, time.UTC),
+			wantAsOf:  time.Date(2019, 7, 14, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "yesterday names its date",
+			matchDate: today.AddDate(0, 0, -1),
+			wantAsOf:  today.AddDate(0, 0, -1),
+		},
+		{
+			name:      "a timestamped match keeps the calendar day it was written with",
+			matchDate: time.Date(2019, 7, 14, 23, 30, 0, 0, time.FixedZone("IST", 5*3600+1800)),
+			wantAsOf:  time.Date(2019, 7, 14, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:      "today is live",
+			matchDate: today,
+			wantAsOf:  time.Time{},
+		},
+		{
+			name:      "an upcoming match is live",
+			matchDate: today.AddDate(0, 0, 30),
+			wantAsOf:  time.Time{},
+		},
+		{
+			name:      "a match far in the future is live",
+			matchDate: time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC),
+			wantAsOf:  time.Time{},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := predictTeamRequest{Format: "T20I", Team1ID: 1, Team2ID: 2}
+
+			input := buildPredictInput(body, tc.matchDate, "someone")
+
+			assert.True(t, tc.wantAsOf.Equal(input.AsOf), "as_of: want %v, got %v", tc.wantAsOf, input.AsOf)
+			assert.Equal(t, tc.matchDate, input.MatchDate, "the match date itself is untouched")
+		})
+	}
+}
+
 // A toss nobody can read is refused rather than taken as unknown: "bat first" and "we do
 // not know" are different questions, and answering the second is a silent substitution.
 func TestParsePredictTeamRequest_RefusesATossItCannotRead(t *testing.T) {

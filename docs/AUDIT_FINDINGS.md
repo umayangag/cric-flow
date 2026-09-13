@@ -278,10 +278,6 @@ The calibration fold is needed to fit the shared factor, but the members are nev
 
 `asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
 
-### SERVE-08 — `as_of` bypasses the freshness refusal  **Low-Medium**
-
-`xi_service.py:252-263`: any `as_of > last_date` returns the through-today store with no H-11 check. **Fix.** Apply the check whenever the served state is the through-today one.
-
 ### SERVE-09 — Chase "balls remaining" uses max observed deliveries  **Low**
 
 `simulator.py:931, 940`: `capacity = second_deliveries.max()`. Biased low when no draw runs the full innings. **Fix.** Carry `context.deliveries` on `MatchDraws`.
@@ -399,12 +395,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 ---
 
 ## 6. go-app prediction path, track record and ops
-
-### GO-01 — `as_of` is never sent; historical `match_date` leaks the future  **Critical**
-
-`internal/server/predict_handlers.go:185-208` — `buildPredictInput` never sets `AsOf` (grep confirms only tests and the field definition assign it). `predict_team.go:417` `applyLedger := input.AsOf.IsZero()` is therefore always true, and `predict_team.go:463` / `ml_xi_client.go:204, 239, 397, 495` send no `as_of`, so `xi_service.py:246-263` serves the through-today state. For `POST /api/predict/team-selection` with a past `match_date`: the pool is correctly as-of (`m.match_date < $2`) but `/xi/optimize`, `/xi/predict-win` and `/simulate` are answered from ratings that include the match's own result and everything after it; today's `is_retired` / user flags remove players from a 2019 pool (exactly what H-19 forbids); and the answer is filed in `issued_prediction` and scored by the track record (GO-03).
-
-**Fix.** In `buildPredictInput`, set `input.AsOf = matchDate` when `matchDate` is before today (UTC day) — or add an explicit `as_of` request field — and make `applyLedger` depend on it. Alternatively refuse `match_date < today` on the live endpoint. Test: a handler test asserting the ML client receives `as_of == match_date` for a past date and nothing for a future one. Pair with SERVE-08 so `as_of` cannot bypass freshness.
 
 ### GO-02 — Track record matches in raw `opposition.id` space; record stores canonical club ids  **High**
 
@@ -537,7 +527,15 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 
 ## 9. Fixed
 
-_(Move findings here with the PR number when they land.)_
+### GO-01 — `as_of` is never sent; historical `match_date` leaks the future  **Critical**
+
+`internal/server/predict_handlers.go:185-208` — `buildPredictInput` never sets `AsOf` (grep confirms only tests and the field definition assign it). `predict_team.go:417` `applyLedger := input.AsOf.IsZero()` is therefore always true, and `predict_team.go:463` / `ml_xi_client.go:204, 239, 397, 495` send no `as_of`, so `xi_service.py:246-263` serves the through-today state. For `POST /api/predict/team-selection` with a past `match_date`: the pool is correctly as-of (`m.match_date < $2`) but `/xi/optimize`, `/xi/predict-win` and `/simulate` are answered from ratings that include the match's own result and everything after it; today's `is_retired` / user flags remove players from a 2019 pool (exactly what H-19 forbids); and the answer is filed in `issued_prediction` and scored by the track record (GO-03).
+
+**Fix.** In `buildPredictInput`, set `input.AsOf = matchDate` when `matchDate` is before today (UTC day) — or add an explicit `as_of` request field — and make `applyLedger` depend on it. Alternatively refuse `match_date < today` on the live endpoint. Test: a handler test asserting the ML client receives `as_of == match_date` for a past date and nothing for a future one. Pair with SERVE-08 so `as_of` cannot bypass freshness. — PR #292
+
+### SERVE-08 — `as_of` bypasses the freshness refusal  **Low-Medium**
+
+`xi_service.py:252-263`: any `as_of > last_date` returns the through-today store with no H-11 check. **Fix.** Apply the check whenever the served state is the through-today one. — PR #292
 
 ---
 
