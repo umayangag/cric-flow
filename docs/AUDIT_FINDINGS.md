@@ -112,12 +112,6 @@ bowl_m = self.bowl_matches[f, s]
 
 **Fix.** When `len(match.deliveries) == 0` and the match is decided, emit the win row (the label is real) but no player rows and no innings outcomes; count these in `DataQuality`.
 
-### FEAT-04 — Postgres source hard-codes `result=None`  **Medium · retrain (with IMPORT-02)**
-
-`sources.py:570-571` sets `result=None`; `ratings.py:406-408` appends 0.5 to `team_results` on `"tie"`/`"draw"`. Roughly a quarter of Tests are draws, so `team_form_diff` (a display-model column) has a different definition on the production source than on the archive path the parity tooling reads. `make xi-parity` compares counts and key sets, not this column.
-
-**Fix.** Persist `outcome.result` (IMPORT-02), read it in `_MATCH_SQL`, add it to the parity count set.
-
 ### FEAT-05 — No home-advantage and no toss feature  **Medium · retrain**
 
 `ratings.py:301-317` — the only venue-side context is `venue_fam_diff` (log1p of raw `(team, venue)` match counts). `venue.country` (`0001_baseline.sql:709`) and `toss_winner_opposition_id` / `toss_decision` (`0001_baseline.sql:482-483`) exist but `_MATCH_SQL` (`sources.py:423-438`) reads neither. Home advantage is the largest non-strength effect in international cricket; "chose to bat" vs "was made to bat" are different populations of batting-first sides.
@@ -510,6 +504,12 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 `cricsheet.go:132-142`; no `result` column in `match` (`0001_baseline.sql:475-492`). A super-over win is `outcome: {result: "tie", eliminator: "<team>"}` with no `winner`, so it lands as `outcome_winner_opposition_id = NULL` — the same as "no result", "draw", abandoned and unresolved tie. Those matches are dropped from the frame and never update Elo (`sources.py:106-113` treats NULL winner as excluded, which is correct given the data, but the data is wrong). Drawn Tests get no form update on the Postgres path (FEAT-04). `method` ("D/L") is not stored so no reader can tell which chases were adjusted.
 
 **Fix.** Add `Result`, `Method`, `Eliminator`, `BowlOut` to `Outcome`; migration adding `match.result varchar(16)`, `match.result_method varchar(16)`; set `outcome_winner_opposition_id` from `winner`, else `eliminator`, else `bowl_out`; have `_MATCH_SQL` read `result`. — PR #297. `Outcome.WinningTeam` is the one rule (winner, else eliminator, else bowl_out) and `ml.xi.sources.winning_team` applies it on the archive path, which had the same blind spot. `result_method` is `varchar(32)`, not 16: one file's method is `Lost fewer wickets`, eighteen characters, which the proposed width would have refused whole. `_MATCH_SQL` reads `result` (FEAT-04's first two steps; its parity count set is still FEAT-04's). Whether a tie-breaker win should move Elo like an outright one is a modelling question left open, decidable from the row (`result = 'tie'` beside a winner) without another re-import. Re-import and retrain required.
+
+### FEAT-04 — Postgres source hard-codes `result=None`  **Medium · retrain (with IMPORT-02)**
+
+`sources.py:570-571` sets `result=None`; `ratings.py:406-408` appends 0.5 to `team_results` on `"tie"`/`"draw"`. Roughly a quarter of Tests are draws, so `team_form_diff` (a display-model column) has a different definition on the production source than on the archive path the parity tooling reads. `make xi-parity` compares counts and key sets, not this column.
+
+**Fix.** Persist `outcome.result` (IMPORT-02), read it in `_MATCH_SQL`, add it to the parity count set. — PR #298. IMPORT-02 (#297) had already done the first two steps -- `match.result` persisted by migration `0017` and read by `_MATCH_SQL` -- and this PR did the third: `MatchRecord.drawn_or_tied` names the rule form applies (a draw or a tie nobody broke is half a win each; a tie-breaker win is a win), the rating pass counts it as `DataQuality.drawn_or_tied_matches`, and `make xi-parity` compares the count, which is the first count that can see the column -- a draw is `undecided_matches` whether or not its result is read, which is how both paths disagreed for years with every count equal. The count is compared, not gated, because a re-import of a pre-`0017` database takes it from zero to about a quarter of all Tests. Until that re-import the parity check fails on it, correctly. Retrain required.
 
 ### IMPORT-03 — Re-import is not idempotent for `ball_event` and the aggregate tables  **High · re-import**
 
