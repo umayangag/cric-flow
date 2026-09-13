@@ -483,6 +483,20 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 
 ## 9. Fixed
 
+### Batch 1 — the re-import, retrain and harness record
+
+Nine PRs — **GO-01 + SERVE-08 (#292), GO-03 (#293), GO-02 (#294), IMPORT-03 (#295), IMPORT-01 (#296), IMPORT-02 (#297), FEAT-04 (#298), IMPORT-04 (#299), FEAT-08 (#300)** — six of them re-import- or retrain-flagged. Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `1b960459`. This is that record. Steps ran in order: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make evaluate`.
+
+#### Step 1 — migrate
+
+Migrations `0017_match_result.sql` (`match.result`, `match.result_method`) and `0018_ball_event_extras_breakdown.sql` (`extras_wides / noballs / byes / legbyes / penalty` on `ball_event`) were in the repo but unapplied, and `_BALLS_SQL` names the `0018` columns — so the rating pass, `evaluate`, `xi-parity` and as-of serving all failed on an undefined column until this ran.
+
+| | before | after |
+|---|---|---|
+| migration level | `0016_auction_projection_assumptions.sql` (16 applied) | `0018_ball_event_extras_breakdown.sql` (18 applied) |
+
+Wall clock **2 s**. Eight columns exist afterwards that did not before: `match.result`, `match.result_method`, and the five `ball_event.extras_*` counts beside the pre-existing lossy `extras_kind`.
+
 ### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
 
 `ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
