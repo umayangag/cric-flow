@@ -15,7 +15,10 @@ type playerIDResolver interface {
 	PlayerID(ctx context.Context, name string) (int64, error)
 }
 
-// BuildBallEventRows builds ball_event rows for all innings. Used by both EmitBallEvents and transactional import.
+// BuildBallEventRows builds ball_event rows for every innings the match played. It
+// numbers innings the way the scorecard aggregates do -- both read Match.PlayedInnings --
+// so a delivery's innings number and its match_inning row always describe the same
+// innings.
 func BuildBallEventRows(
 	ctx context.Context,
 	identity playerIDResolver,
@@ -24,7 +27,7 @@ func BuildBallEventRows(
 	matchID int64,
 ) ([]db.BallEventRow, error) {
 	var allRows []db.BallEventRow
-	for i, inng := range m.Innings {
+	for i, inng := range m.PlayedInnings() {
 		inningNo := i + 1
 		// Pre-compute total legal deliveries in innings for phase clamping
 		totalLegal := 0

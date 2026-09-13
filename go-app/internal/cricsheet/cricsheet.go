@@ -155,9 +155,57 @@ type OutcomeBy struct {
 }
 
 // Innings represents a team's innings containing overs and deliveries.
+//
+// The four flags after Overs are what Cricsheet says about the innings *as a whole*, and
+// they are decoded because the innings list is not always a list of innings of the match.
+// SuperOver marks a tie-breaker: a one-over shoot-out Cricsheet appends after the second
+// innings (226 such entries in the current archive, always at index two or later, each of
+// exactly one over), whose deliveries belong to no innings anyone bats a career in. See
+// PlayedInnings. Declared and Forfeited say why a first-class innings ended short of ten
+// wickets, and Target is what the chasing side was set -- Cricsheet's own figure, which is
+// the revised one in a rain-shortened chase. They are read so the record can tell a short
+// innings from a truncated file; nothing derived from them is stored yet.
 type Innings struct {
-	Team  string `json:"team"`
-	Overs []Over `json:"overs"`
+	Team      string  `json:"team"`
+	Overs     []Over  `json:"overs"`
+	SuperOver bool    `json:"super_over"`
+	Declared  bool    `json:"declared"`
+	Forfeited bool    `json:"forfeited"`
+	Target    *Target `json:"target"`
+}
+
+// Target is the chase target Cricsheet writes on a second innings.
+//
+// Overs is a float64, not an int: 158 innings in the current archive carry a
+// rain-revised target such as 12.4 overs -- overs and balls, in the scorer's notation --
+// and decoding that as an integer would fail the parse of every one of those files.
+type Target struct {
+	Overs float64 `json:"overs"`
+	Runs  int     `json:"runs"`
+}
+
+// PlayedInnings returns the innings of the match in the order they were played, leaving
+// out super overs.
+//
+// A super over is not an innings of the match: it decides a tie, its runs do not count
+// towards either side's total, and its deliveries are not part of anyone's career. Stored
+// as innings 3 and 4 they were exactly that -- career balls, runs and dismissals, a
+// batting position for a batter who did not bat in the match, and an "innings 3" total
+// (IMPORT-01). Every consumer of a match's innings reads this and not Innings directly,
+// so the two write paths -- the scorecard aggregates and the ball-by-ball rows -- cannot
+// disagree about what an innings is, and the innings numbers they write are the same.
+//
+// The fact that a match was decided by a super over is not lost: it is a property of the
+// outcome, which is where Cricsheet records it (info.outcome), and not of the innings.
+func (m *Match) PlayedInnings() []Innings {
+	played := make([]Innings, 0, len(m.Innings))
+	for i := range m.Innings {
+		if m.Innings[i].SuperOver {
+			continue
+		}
+		played = append(played, m.Innings[i])
+	}
+	return played
 }
 
 // Over groups deliveries and indicates the over number.
