@@ -298,12 +298,6 @@ The calibration fold is needed to fit the shared factor, but the members are nev
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-04 — Byes, leg-byes and penalty runs charged to the bowler; breakdown not stored  **High · retrain**
-
-`ingest.go:389, 516-519`: `b.Runs += tr` where `tr = d.Runs.Total`. `ball_event` (`0001_baseline.sql:57-60`) stores `runs_batter`, `runs_extras`, `runs_total` and one `extras_kind` chosen by precedence (`ball_event_emit.go:76-93`), so a no-ball with 4 leg-byes is `extras_kind='no_ball', runs_extras=5` and the leg-byes are unrecoverable. The rating pass computes `runs_conceded = Σ runs_total` (FEAT-08).
-
-**Fix.** Add `extras_wides / noballs / byes / legbyes / penalty smallint` (or `runs_bowler = total − byes − legbyes − penalty`) to `ball_event`; in `ingest.go` compute `b.Runs += tr - byes - legbyes - penalty`.
-
 ### IMPORT-05 — No-balls excluded from batter's balls faced; ML counts wides as faced  **Medium · retrain**
 
 `ingest.go:392-396, 499-504`: the same `legal := wides == 0 && noballs == 0` is used for the bowler's balls (correct) and the batter's (wrong — a no-ball is faced, a wide is not). `batting_data.balls` and `strike_rate` are undercounted. Meanwhile the ML path (`rows.py:28, 41-49`; `ratings.py:481`) counts *every* delivery including wides as faced — a third definition. No test exercises a no-ball, a bye, a run-out or a super over (`grep` across `*_test.go` finds only the wide in `ingest_integration_test.go:38`).
@@ -492,6 +486,12 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### IMPORT-04 — Byes, leg-byes and penalty runs charged to the bowler; breakdown not stored  **High · retrain**
+
+`ingest.go:389, 516-519`: `b.Runs += tr` where `tr = d.Runs.Total`. `ball_event` (`0001_baseline.sql:57-60`) stores `runs_batter`, `runs_extras`, `runs_total` and one `extras_kind` chosen by precedence (`ball_event_emit.go:76-93`), so a no-ball with 4 leg-byes is `extras_kind='no_ball', runs_extras=5` and the leg-byes are unrecoverable. The rating pass computes `runs_conceded = Σ runs_total` (FEAT-08).
+
+**Fix.** Add `extras_wides / noballs / byes / legbyes / penalty smallint` (or `runs_bowler = total − byes − legbyes − penalty`) to `ball_event`; in `ingest.go` compute `b.Runs += tr - byes - legbyes - penalty`. — PR #299. Five columns, not a derived `runs_bowler`: the finding's own complaint is that the leg-byes are unrecoverable, and a derived column loses the same facts; the five counts are what FEAT-08 needs (byes, leg-byes and penalty separable from wides and no-balls) and what makes `extras_kind`'s precedence recoverable. `extras_kind` stays as the lossy summary it was. `Delivery.Extras` is a typed breakdown and `Delivery.RunsConcededByBowler` (total less byes, leg-byes and penalty) is the one rule, applied to `bowling_data.runs` and to the per-over totals a maiden is judged on — the same quantity by over. The archive survey found exactly the five keys, `sum(extras) == runs.extras` on every delivery, 800 no-balls with byes and 306 with leg-byes off them, a largest value of 12 (a penalty), and four deliveries spelling no leg-byes as `legbyes: 0`. `bowling_data.dots` still tests `runs_total == 0` and is left for a decision. Re-import and retrain required.
 
 ### IMPORT-01 — Super overs imported as ordinary innings 3 and 4  **Critical · retrain**
 

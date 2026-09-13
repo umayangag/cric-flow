@@ -28,9 +28,16 @@ type BallEventRow struct {
 	RunsBatter   int
 	RunsExtras   int
 	RunsTotal    int
-	ExtrasKind   *string
-	WicketKind   *string
-	PlayerOutID  *int64
+	// The extras by kind, as the file records them. RunsExtras is their sum; ExtrasKind is
+	// a one-word summary of them that loses the second kind on a delivery that has two.
+	ExtrasWides   int
+	ExtrasNoBalls int
+	ExtrasByes    int
+	ExtrasLegByes int
+	ExtrasPenalty int
+	ExtrasKind    *string
+	WicketKind    *string
+	PlayerOutID   *int64
 }
 
 // InsertBallEventsTx inserts ball_event rows using the given transaction.
@@ -54,12 +61,14 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
                     match_id, innings, "over", ball, ball_seq, is_legal, phase,
                     striker_id, non_striker_id, bowler_id,
                     runs_batter, runs_extras, runs_total,
+                    extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
                     extras_kind, wicket_kind, player_out_id
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             `,
 				r.MatchID, r.Innings, r.Over, r.Ball, r.BallSeq, r.IsLegal, r.Phase,
 				r.StrikerID, r.NonStrikerID, r.BowlerID,
 				r.RunsBatter, r.RunsExtras, r.RunsTotal,
+				r.ExtrasWides, r.ExtrasNoBalls, r.ExtrasByes, r.ExtrasLegByes, r.ExtrasPenalty,
 				r.ExtrasKind, r.WicketKind, r.PlayerOutID,
 			); err != nil {
 				return err
@@ -73,7 +82,8 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
         SELECT match_id::bigint, innings::int, "over"::int, ball::int, ball_seq::int,
             is_legal::boolean, phase::text, striker_id::bigint, non_striker_id::bigint,
             bowler_id::bigint, runs_batter::int, runs_extras::int, runs_total::int,
-            extras_kind::text, wicket_kind::text, player_out_id::bigint
+            extras_wides::int, extras_noballs::int, extras_byes::int, extras_legbyes::int,
+            extras_penalty::int, extras_kind::text, wicket_kind::text, player_out_id::bigint
         FROM ball_event
         WITH NO DATA
     `)
@@ -87,6 +97,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 			r.MatchID, r.Innings, r.Over, r.Ball, r.BallSeq, r.IsLegal, r.Phase,
 			r.StrikerID, r.NonStrikerID, r.BowlerID,
 			r.RunsBatter, r.RunsExtras, r.RunsTotal,
+			r.ExtrasWides, r.ExtrasNoBalls, r.ExtrasByes, r.ExtrasLegByes, r.ExtrasPenalty,
 			r.ExtrasKind, r.WicketKind, r.PlayerOutID,
 		})
 	}
@@ -95,6 +106,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 			"match_id", "innings", "over", "ball", "ball_seq", "is_legal", "phase",
 			"striker_id", "non_striker_id", "bowler_id",
 			"runs_batter", "runs_extras", "runs_total",
+			"extras_wides", "extras_noballs", "extras_byes", "extras_legbyes", "extras_penalty",
 			"extras_kind", "wicket_kind", "player_out_id",
 		},
 		pgx.CopyFromRows(data))
@@ -104,9 +116,11 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 	return tx.Exec(ctx, `
         INSERT INTO ball_event(match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
+            extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
             extras_kind, wicket_kind, player_out_id)
         SELECT match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
+            extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
             extras_kind, wicket_kind, player_out_id
         FROM ball_event_stage
     `)

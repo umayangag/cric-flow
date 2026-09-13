@@ -33,9 +33,7 @@ func BuildBallEventRows(
 		totalLegal := 0
 		for _, over := range inng.Overs {
 			for _, d := range over.Deliveries {
-				wides := d.Extras["wides"]
-				noballs := d.Extras["noballs"]
-				if wides == 0 && noballs == 0 {
+				if d.Extras.Wides == 0 && d.Extras.NoBalls == 0 {
 					totalLegal++
 				}
 			}
@@ -51,9 +49,7 @@ func BuildBallEventRows(
 			ballNo := 0
 			for _, d := range over.Deliveries {
 				ballNo++
-				wides := d.Extras["wides"]
-				noballs := d.Extras["noballs"]
-				legal := (wides == 0 && noballs == 0)
+				legal := (d.Extras.Wides == 0 && d.Extras.NoBalls == 0)
 				if legal {
 					ballSeq++
 				}
@@ -76,24 +72,7 @@ func BuildBallEventRows(
 						slog.Error("get/create bowler failed", slog.String("name", s), slog.Any("err", err))
 					}
 				}
-				// extras kind (prefer wide/no_ball; else leg_bye/bye/penalty when present)
-				var extrasKind *string
-				if wides > 0 {
-					v := "wide"
-					extrasKind = &v
-				} else if noballs > 0 {
-					v := "no_ball"
-					extrasKind = &v
-				} else if v, ok := d.Extras["legbyes"]; ok && v > 0 {
-					s := "leg_bye"
-					extrasKind = &s
-				} else if v, ok := d.Extras["byes"]; ok && v > 0 {
-					s := "bye"
-					extrasKind = &s
-				} else if v, ok := d.Extras["penalty"]; ok && v > 0 {
-					s := "penalty"
-					extrasKind = &s
-				}
+				extrasKind := extrasKindOf(d.Extras)
 				// wicket info (first only)
 				var wicketKind *string
 				var playerOutID *int64
@@ -113,26 +92,54 @@ func BuildBallEventRows(
 				}
 				phaseName := phase.PhaseFor(int(formatID), ballSeq, totalLegal)
 				inningRows = append(inningRows, db.BallEventRow{
-					MatchID:      matchID,
-					Innings:      inningNo,
-					Over:         overNo,
-					Ball:         ballNo,
-					BallSeq:      ballSeq,
-					IsLegal:      legal,
-					Phase:        phaseName,
-					StrikerID:    strikerID,
-					NonStrikerID: nonStrikerID,
-					BowlerID:     bowlerID,
-					RunsBatter:   d.Runs.Batter,
-					RunsExtras:   d.Runs.Extras,
-					RunsTotal:    d.Runs.Total,
-					ExtrasKind:   extrasKind,
-					WicketKind:   wicketKind,
-					PlayerOutID:  playerOutID,
+					MatchID:       matchID,
+					Innings:       inningNo,
+					Over:          overNo,
+					Ball:          ballNo,
+					BallSeq:       ballSeq,
+					IsLegal:       legal,
+					Phase:         phaseName,
+					StrikerID:     strikerID,
+					NonStrikerID:  nonStrikerID,
+					BowlerID:      bowlerID,
+					RunsBatter:    d.Runs.Batter,
+					RunsExtras:    d.Runs.Extras,
+					RunsTotal:     d.Runs.Total,
+					ExtrasWides:   d.Extras.Wides,
+					ExtrasNoBalls: d.Extras.NoBalls,
+					ExtrasByes:    d.Extras.Byes,
+					ExtrasLegByes: d.Extras.LegByes,
+					ExtrasPenalty: d.Extras.Penalty,
+					ExtrasKind:    extrasKind,
+					WicketKind:    wicketKind,
+					PlayerOutID:   playerOutID,
 				})
 			}
 		}
 		allRows = append(allRows, inningRows...)
 	}
 	return allRows, nil
+}
+
+// extrasKindOf names one kind of extra for ball_event.extras_kind, by precedence: wide,
+// then no-ball, then leg-bye, bye and penalty. It is a summary and a lossy one -- a
+// no-ball with leg-byes off it reads as 'no_ball' alone -- which is why the row also
+// carries every kind in the extras_* columns. Nil when the delivery had no extras.
+func extrasKindOf(extras ExtrasBreakdown) *string {
+	var kind string
+	switch {
+	case extras.Wides > 0:
+		kind = "wide"
+	case extras.NoBalls > 0:
+		kind = "no_ball"
+	case extras.LegByes > 0:
+		kind = "leg_bye"
+	case extras.Byes > 0:
+		kind = "bye"
+	case extras.Penalty > 0:
+		kind = "penalty"
+	default:
+		return nil
+	}
+	return &kind
 }

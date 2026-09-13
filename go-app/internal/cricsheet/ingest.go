@@ -397,12 +397,15 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				tr := d.Runs.Total
 				runs += tr
 				extras += d.Runs.Extras
-				wides := d.Extras["wides"]
-				noballs := d.Extras["noballs"]
-				legal := (wides == 0 && noballs == 0)
+				// The bowler's runs are not the delivery's total: byes, leg-byes and penalty
+				// runs go to the innings but not to him. Until IMPORT-04 was fixed the whole
+				// total was charged, and the runs, economy and maidens of every bowler who
+				// bowled to a fumbling keeper carried the keeper's misses.
+				bowlerRuns := d.RunsConcededByBowler()
+				legal := (d.Extras.Wides == 0 && d.Extras.NoBalls == 0)
 				if legal {
 					balls++
-					perBowler[d.Bowler] += tr
+					perBowler[d.Bowler] += bowlerRuns
 				}
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
 					wkts += len(*d.Wickets)
@@ -524,7 +527,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				if d.Bowler != "" {
 					playersSeen[d.Bowler] = true
 					b := ensureBowl(bowlAgg, d.Bowler)
-					b.Runs += tr
+					b.Runs += bowlerRuns
 					if legal {
 						b.Balls++
 						if tr == 0 {
@@ -540,8 +543,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 					if d.Wickets != nil && len(*d.Wickets) > 0 {
 						b.Wickets += len(*d.Wickets)
 					}
-					b.Wides += d.Extras["wides"]
-					b.NoBalls += d.Extras["noballs"]
+					b.Wides += d.Extras.Wides
+					b.NoBalls += d.Extras.NoBalls
 				}
 			}
 			for bowler, t := range perBowler {
