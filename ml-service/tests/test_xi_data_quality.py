@@ -157,6 +157,7 @@ def _match(match_id: str, day: int, team1, team2, winner="A", result=None) -> Ma
         bowler=np.asarray([team2[0]], dtype=object),
         runs_batter=z,
         runs_total=z,
+        runs_bowler=z,
         wicket=z,
         bowler_wicket=z,
         stumping=z,
@@ -602,3 +603,40 @@ def test_the_committed_lineage_is_the_one_both_sources_read() -> None:
     assert mapping.club("Royal Challengers Bangalore", "male") == "Royal Challengers Bengaluru"
     assert mapping.club("Royal Challengers Bangalore", "female") == "Royal Challengers Bengaluru"
     assert mapping.club("Mumbai Indians", "male") == "Mumbai Indians"
+
+
+def _passes_with_a_no_ball_and_four_leg_byes(postgres_reads_extras: bool):
+    """Both sources over one match holding IMPORT-04's delivery -- a no-ball that ran
+    away for four leg-byes -- with the database either reading the extras by kind or, as
+    a database imported before migration 0018 does, holding zeros and charging the bowler
+    all five. Every other count is identical either way."""
+    match = _match("m0", 0, ["a1", "a2"], ["b1", "b2"])
+    charged_one = replace(match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([1.0])))
+    charged_five = replace(match, deliveries=replace(match.deliveries, runs_total=np.array([5.0]), runs_bowler=np.array([5.0])))
+    database = [charged_one if postgres_reads_extras else charged_five]
+    return (
+        build(_CountingSource(database, SourceCounts(offered=1, yielded=1))),
+        build(_CountingSource([charged_one], SourceCounts(offered=1, yielded=1))),
+    )
+
+
+def test_the_pass_counts_the_runs_no_bowler_is_charged() -> None:
+    """FEAT-08: the count that can see the extras breakdown -- byes, leg-byes and
+    penalty runs, summed over every delivery read."""
+    postgres, _ = _passes_with_a_no_ball_and_four_leg_byes(postgres_reads_extras=True)
+
+    assert postgres.quality.runs_not_charged_to_bowler == 4
+
+
+def test_parity_reports_extras_only_one_source_leaves_off_the_bowler() -> None:
+    """FEAT-08, the guarantee itself: a database that charges the bowler every run agrees
+    with the archive on every other count, and the parity check must still fail, naming
+    the runs count."""
+    from ml.xi.parity import compare
+
+    postgres, cricsheet = _passes_with_a_no_ball_and_four_leg_byes(postgres_reads_extras=False)
+
+    differences = compare(postgres, cricsheet)
+
+    assert postgres.quality.matches_read == cricsheet.quality.matches_read == 1
+    assert differences == ["runs_not_charged_to_bowler: postgres 0, cricsheet 4"]

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -63,6 +66,20 @@ def test_match_actuals_counts_batting_bowling_and_dismissals() -> None:
     assert b0["balls_bowled"] == 2 and b0["runs_conceded"] == 10 and b0["wickets"] == 0
     b1 = actuals["b1"]
     assert b1["balls_bowled"] == 2 and b1["runs_conceded"] == 1 and b1["wickets"] == 1
+
+
+def test_runs_conceded_charges_the_bowler_only_his_own_runs() -> None:
+    """FEAT-08: a no-ball that ran away for four leg-byes is five to the innings and one
+    to the bowler, which is what the ``runs_conceded`` target must say -- the innings
+    outcome keeps the five."""
+    d = make_deliveries(batters=["a0"], bowlers=["b0"], runs=[0], wickets=[0])
+    no_ball_with_four_leg_byes = replace(d, runs_total=np.array([5.0]), runs_bowler=np.array([1.0]))
+    m = make_match("m1", 0, "A", xi("a"), xi("b"), no_ball_with_four_leg_byes)
+
+    actuals = match_actuals(m)
+
+    assert actuals["b0"]["runs_conceded"] == 1
+    assert actuals["a0"]["runs"] == 0
 
 
 def _two_match_source() -> ListSource:

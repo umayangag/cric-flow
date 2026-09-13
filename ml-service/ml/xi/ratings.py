@@ -434,7 +434,7 @@ class RatingState:
         if debut_bands:
             self._accumulate_debut(self.debut_bat[f], debut_bands, batters, d.runs_batter - exp_runs, exp_wk - d.wicket)
             self._accumulate_debut(
-                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_total, d.bowler_wicket - exp_wk
+                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_bowler, d.bowler_wicket - exp_wk
             )
         self._accumulate(
             self.bat_rae,
@@ -447,6 +447,9 @@ class RatingState:
             exp_wk - d.wicket,
             ones,
         )
+        # The bowler's ledger charges him ``runs_bowler`` -- the total less byes, leg-byes
+        # and penalty runs -- against the over's expectation, which stays the innings'
+        # total. Charging him the total put his keeper's misses in ``bowl_rate`` (FEAT-08).
         self._accumulate(
             self.bowl_rse,
             self.bowl_balls,
@@ -454,14 +457,14 @@ class RatingState:
             self.bowl_matches,
             f,
             bowlers,
-            exp_runs - d.runs_total,
+            exp_runs - d.runs_bowler,
             d.bowler_wicket - exp_wk,
             ones,
         )
         mid_start, death_start = C.PHASE_BOUNDS[format_code]
         phase = np.where(d.over >= death_start, 2, np.where(d.over >= mid_start, 1, 0))
         self._accumulate_phase(self.bat_ph_rae, self.bat_ph_balls, f, batters, phase, d.runs_batter - exp_runs)
-        self._accumulate_phase(self.bowl_ph_rse, self.bowl_ph_balls, f, bowlers, phase, exp_runs - d.runs_total)
+        self._accumulate_phase(self.bowl_ph_rse, self.bowl_ph_balls, f, bowlers, phase, exp_runs - d.runs_bowler)
         self._update_sequence(f, d, batters, bowlers, exp_runs, exp_wk)
         np.add.at(self.ctx_balls[g, f], over, 1.0)
         np.add.at(self.ctx_runs[g, f], over, d.runs_total)
@@ -527,7 +530,7 @@ class RatingState:
         bat_stuck = (flags.bat_dots_before >= C.SEQUENCE_DOT_STREAK).astype(float)
         bowl_squeeze = (flags.bowl_dots_before >= C.SEQUENCE_DOT_STREAK).astype(float)
         bat_above = d.runs_batter - exp_runs
-        bowl_saved = exp_runs - d.runs_total
+        bowl_saved = exp_runs - d.runs_bowler
         bowl_wickets_above = d.bowler_wicket - exp_wk
         ones = np.ones(len(d))
         first_over = flags.spell_first_over.astype(float)
