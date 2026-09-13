@@ -304,12 +304,6 @@ The calibration fold is needed to fit the shared factor, but the members are nev
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-01 — Super overs imported as ordinary innings 3 and 4  **Critical · retrain**
-
-`cricsheet.go:143-146` — `Innings{Team, Overs}` decodes neither `super_over` nor `declared`/`forfeited`/`target`; `ingest.go:333-334` numbers every entry `i+1`; `ball_event_emit.go:27-28` likewise. `grep super_over` across `go-app/` and `ml-service/` returns nothing. A tied T20/ODI with a super over writes `match_inning` rows 3 and 4, batting/bowling rows for the six balls, and `ball_event` rows with `innings = 3/4`. The rating pass then counts those deliveries as career balls, runs and dismissals (`rows.py:41-57`), adds them to `ctx_*` over-0 baselines and venue scoring (`ratings.py:466-468, 476-489`), gives a super-over batter who did not bat in the main innings a `batting_position` of 1–3 (`sources.py:63-73`), and emits `innings3_runs` / `innings4_runs` (`rows.py:91-92`). Every super over in the archive (IPL, BBL, CPL, T20Is) is polluted.
-
-**Fix.** Add `SuperOver bool \`json:"super_over"\`` (and `Declared`, `Forfeited`, `Target *struct{Overs, Runs}`) to `Innings`; skip super-over innings in both the aggregate loop and `BuildBallEventRows`, or persist `is_super_over` on `match_inning` / `ball_event` and exclude in `_MATCH_SQL` / `_BALLS_SQL` and the JSON source (`sources.py:216-234`). Test: a fixture file with a super over must produce exactly two `match_inning` rows and no ball_event with `innings > 2`.
-
 ### IMPORT-02 — `outcome.result` / `eliminator` / `bowl_out` / `method` not decoded  **High · retrain**
 
 `cricsheet.go:132-142`; no `result` column in `match` (`0001_baseline.sql:475-492`). A super-over win is `outcome: {result: "tie", eliminator: "<team>"}` with no `winner`, so it lands as `outcome_winner_opposition_id = NULL` — the same as "no result", "draw", abandoned and unresolved tie. Those matches are dropped from the frame and never update Elo (`sources.py:106-113` treats NULL winner as excluded, which is correct given the data, but the data is wrong). Drawn Tests get no form update on the Postgres path (FEAT-04). `method` ("D/L") is not stored so no reader can tell which chases were adjusted.
@@ -510,6 +504,12 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### IMPORT-01 — Super overs imported as ordinary innings 3 and 4  **Critical · retrain**
+
+`cricsheet.go:143-146` — `Innings{Team, Overs}` decodes neither `super_over` nor `declared`/`forfeited`/`target`; `ingest.go:333-334` numbers every entry `i+1`; `ball_event_emit.go:27-28` likewise. `grep super_over` across `go-app/` and `ml-service/` returns nothing. A tied T20/ODI with a super over writes `match_inning` rows 3 and 4, batting/bowling rows for the six balls, and `ball_event` rows with `innings = 3/4`. The rating pass then counts those deliveries as career balls, runs and dismissals (`rows.py:41-57`), adds them to `ctx_*` over-0 baselines and venue scoring (`ratings.py:466-468, 476-489`), gives a super-over batter who did not bat in the main innings a `batting_position` of 1–3 (`sources.py:63-73`), and emits `innings3_runs` / `innings4_runs` (`rows.py:91-92`). Every super over in the archive (IPL, BBL, CPL, T20Is) is polluted.
+
+**Fix.** Add `SuperOver bool \`json:"super_over"\`` (and `Declared`, `Forfeited`, `Target *struct{Overs, Runs}`) to `Innings`; skip super-over innings in both the aggregate loop and `BuildBallEventRows`, or persist `is_super_over` on `match_inning` / `ball_event` and exclude in `_MATCH_SQL` / `_BALLS_SQL` and the JSON source (`sources.py:216-234`). Test: a fixture file with a super over must produce exactly two `match_inning` rows and no ball_event with `innings > 2`. — PR #296. Skipped at import, not flagged; both write paths and the archive source read one rule (`Match.PlayedInnings`, `ml.xi.sources.played_innings`). `Target.Overs` is a `float64`: 158 innings carry a rain-revised target such as `12.4`, which the proposed integer would have refused. Re-import and retrain required.
 
 ### IMPORT-03 — Re-import is not idempotent for `ball_event` and the aggregate tables  **High · re-import**
 
