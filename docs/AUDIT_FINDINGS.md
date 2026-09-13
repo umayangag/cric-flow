@@ -316,12 +316,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 **Fix.** Add `Result`, `Method`, `Eliminator`, `BowlOut` to `Outcome`; migration adding `match.result varchar(16)`, `match.result_method varchar(16)`; set `outcome_winner_opposition_id` from `winner`, else `eliminator`, else `bowl_out`; have `_MATCH_SQL` read `result`.
 
-### IMPORT-03 — Re-import is not idempotent for `ball_event` and the aggregate tables  **High · re-import**
-
-`repo_ball_event.go:362, 416`: `ON CONFLICT (match_id, innings, "over", ball) DO NOTHING`. `ReplaceMatchPlayersTx` and `DeleteFieldingEventsForMatchTx` (`ingest.go:732-738`, `repo_fielding_event.go:105-110`) implement replace-on-reimport; `ball_event` does not. A corrected Cricsheet file (republished under the same id, `docs/config-and-data.md:457-459`) changes nothing; a match whose innings shrank keeps ghost rows; an importer fix (IMPORT-01, IMPORT-04) never reaches an already-imported match without a manual truncate. `batting_data` / `bowling_data` / `fielding_data` / `match_inning` are `DO UPDATE` so values refresh but vanished rows persist. No FK from `ball_event` to `match` (`0003_match_player.sql:55-57`) is what lets ghosts outlive a match.
-
-**Fix.** `DELETE FROM ball_event WHERE match_id = $1` (and the same for the aggregate tables) at the top of the per-file transaction, mirroring `ReplaceMatchPlayersTx`; drop `ON CONFLICT`. Document that every importer fix requires a re-import of the whole directory.
-
 ### IMPORT-04 — Byes, leg-byes and penalty runs charged to the bowler; breakdown not stored  **High · retrain**
 
 `ingest.go:389, 516-519`: `b.Runs += tr` where `tr = d.Runs.Total`. `ball_event` (`0001_baseline.sql:57-60`) stores `runs_batter`, `runs_extras`, `runs_total` and one `extras_kind` chosen by precedence (`ball_event_emit.go:76-93`), so a no-ball with 4 leg-byes is `extras_kind='no_ball', runs_extras=5` and the leg-byes are unrecoverable. The rating pass computes `runs_conceded = Σ runs_total` (FEAT-08).
@@ -516,6 +510,12 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### IMPORT-03 — Re-import is not idempotent for `ball_event` and the aggregate tables  **High · re-import**
+
+`repo_ball_event.go:362, 416`: `ON CONFLICT (match_id, innings, "over", ball) DO NOTHING`. `ReplaceMatchPlayersTx` and `DeleteFieldingEventsForMatchTx` (`ingest.go:732-738`, `repo_fielding_event.go:105-110`) implement replace-on-reimport; `ball_event` does not. A corrected Cricsheet file (republished under the same id, `docs/config-and-data.md:457-459`) changes nothing; a match whose innings shrank keeps ghost rows; an importer fix (IMPORT-01, IMPORT-04) never reaches an already-imported match without a manual truncate. `batting_data` / `bowling_data` / `fielding_data` / `match_inning` are `DO UPDATE` so values refresh but vanished rows persist. No FK from `ball_event` to `match` (`0003_match_player.sql:55-57`) is what lets ghosts outlive a match.
+
+**Fix.** `DELETE FROM ball_event WHERE match_id = $1` (and the same for the aggregate tables) at the top of the per-file transaction, mirroring `ReplaceMatchPlayersTx`; drop `ON CONFLICT`. Document that every importer fix requires a re-import of the whole directory. — PR #295
 
 ### GO-02 — Track record matches in raw `opposition.id` space; record stores canonical club ids  **High**
 
