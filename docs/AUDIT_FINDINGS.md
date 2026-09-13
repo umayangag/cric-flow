@@ -402,10 +402,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 **Fix.** In `FindMatches` / `fill`, fold every opposition id through `COALESCE(o.canonical_id, o.id)` so `PlayedMatch` is in club ids. Test: a renamed club fixture must resolve and score.
 
-### GO-03 — Forecasts issued after the match date are scored  **High**
-
-`trackrecord/build.go:239` sets `IssuedAfterMatchDate` but `State` still becomes `StateScored`; `scored()` (`build.go:342-350`) selects on `State` only, so they enter `win.overall`, `by_format`, `reliability`, `coverage`, `elevens`. With GO-01 those forecasts were computed from ratings containing the result; `markSuperseded` keys on `IssuedAt` so a post-match re-run is never superseded. **Fix.** Exclude `IssuedAfterMatchDate` from `scored()` (a separate `post_hoc` state), keep `score` on the row.
-
 ### GO-04 — Same player can be in both pools and both XIs  **Medium**
 
 `predict_team.go:429-440` loads pools independently; `xi_selection.go:355-364` `mergeMarginals` assumes "registry ids are unique across sides"; `selection_reason.go:151-161`; `xi_performance.go:75-84` keys one `byKey` for both sides and ignores `PlayerPerformance.side` (`ml_xi_client.go:467-473`); `play_mode.go:110-138` validates pinned XIs per side only. Franchise T20 with a 12-month window: a player who moved clubs is in both pools; alternating best response can select him for both sides. **Fix.** Drop intersection players from the club he played for less recently (by `LastPlayed`), pass the opposing XI as `must_exclude`, validate `team1_xi ∩ team2_xi = ∅`, key performance by `(side, player_id)`. Pair with SERVE-02.
@@ -526,6 +522,10 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### GO-03 — Forecasts issued after the match date are scored  **High**
+
+`trackrecord/build.go:239` sets `IssuedAfterMatchDate` but `State` still becomes `StateScored`; `scored()` (`build.go:342-350`) selects on `State` only, so they enter `win.overall`, `by_format`, `reliability`, `coverage`, `elevens`. With GO-01 those forecasts were computed from ratings containing the result; `markSuperseded` keys on `IssuedAt` so a post-match re-run is never superseded. **Fix.** Exclude `IssuedAfterMatchDate` from `scored()` (a separate `post_hoc` state), keep `score` on the row. — PR #293
 
 ### GO-01 — `as_of` is never sent; historical `match_date` leaks the future  **Critical**
 

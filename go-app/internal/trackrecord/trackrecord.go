@@ -34,13 +34,20 @@ const (
 	// StateNoResult is a forecast whose match was played with no winner recorded (no
 	// result, tie or draw): counted, never scored.
 	StateNoResult = "no_result"
-	// StateScored is a forecast whose match was played and won by someone.
+	// StatePostHoc is a forecast issued after the day it was about, whose match was played
+	// and won by someone. Its own score stays on the row -- what it claimed and what
+	// happened are both on the record -- but it enters no summary: the ratings behind it
+	// can already contain the result, so counting it would let hindsight flatter the
+	// record instead of testing it (GO-03). Listed and counted, never aggregated.
+	StatePostHoc = "post_hoc"
+	// StateScored is a forecast issued on or before its match date whose match was played
+	// and won by someone. These, and only these, are the rows every summary is over.
 	StateScored = "scored"
 )
 
 // States is the vocabulary in one place, for the contract.
 func States() []string {
-	return []string{StateScenario, StateSuperseded, StateUnresolved, StateNoResult, StateScored}
+	return []string{StateScenario, StateSuperseded, StateUnresolved, StateNoResult, StatePostHoc, StateScored}
 }
 
 // The simulator population a prediction's ranges belong to. Never pooled (B-12): a
@@ -228,9 +235,9 @@ type Entry struct {
 	SupersededBy string `json:"superseded_by,omitempty"`
 	// DaysPastMatchDate is set on an unresolved prediction: negative before the match.
 	DaysPastMatchDate *int `json:"days_past_match_date,omitempty"`
-	// IssuedAfterMatchDate flags a forecast issued after the day it was about. It is scored
-	// like any other -- the ratings it was served from are dated on the answer -- but a
-	// reader should see it (§8.7).
+	// IssuedAfterMatchDate flags a forecast issued after the day it was about. Such a
+	// forecast is in StatePostHoc: its score is on the row, and no summary is over it
+	// (§8.7, GO-03).
 	IssuedAfterMatchDate bool      `json:"issued_after_match_date,omitempty"`
 	Population           string    `json:"population"`
 	Claimed              Claimed   `json:"claimed"`

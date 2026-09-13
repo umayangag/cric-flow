@@ -44,7 +44,7 @@ function emptyRecord(overrides: Partial<TrackRecord> = {}): TrackRecord {
     computed_at: '2026-09-07T12:00:00Z',
     today: '2026-09-07',
     total: 0,
-    states: { scenario: 0, superseded: 0, unresolved: 0, no_result: 0, scored: 0 },
+    states: { scenario: 0, superseded: 0, unresolved: 0, no_result: 0, post_hoc: 0, scored: 0 },
     win: {
       overall: { n: 0, brier: null, base_rate: null, base_rate_brier: null },
       by_format: {},
@@ -69,8 +69,8 @@ function emptyRecord(overrides: Partial<TrackRecord> = {}): TrackRecord {
 /** One prediction in every state, and the summaries a scored one produces. */
 function fullRecord(): TrackRecord {
   return emptyRecord({
-    total: 5,
-    states: { scenario: 1, superseded: 1, unresolved: 1, no_result: 1, scored: 1 },
+    total: 6,
+    states: { scenario: 1, superseded: 1, unresolved: 1, no_result: 1, post_hoc: 1, scored: 1 },
     win: {
       overall: { n: 1, brier: 0.1, base_rate: 0, base_rate_brier: 0 },
       by_format: { T20I: { n: 1, brier: 0.1, base_rate: 0, base_rate_brier: 0 } },
@@ -133,6 +133,27 @@ function fullRecord(): TrackRecord {
         state_note: 'a later forecast of the same fixture was issued 2026-09-07T10:00:00Z',
       }),
       entry({ id: 'scenario', state: 'scenario', objective: 'fixed' }),
+      // Issued after the match date: on the record with its score, in none of the
+      // summaries above -- which is why win.overall still reads n = 1 (GO-03).
+      entry({
+        id: 'post-hoc',
+        state: 'post_hoc',
+        issued_after_match_date: true,
+        happened: {
+          match_id: 3,
+          winner_opposition_id: 54,
+          team1_total: 201,
+          team2_total: 160,
+          team1_batted_first: true,
+        },
+        score: {
+          team1_won: false,
+          brier: 0.002,
+          team1_covered: true,
+          team2_covered: true,
+          eleven_overlap: { matched: 22, of: 22, team1_matched: 11, team2_matched: 11 },
+        },
+      }),
     ],
   });
 }
@@ -156,6 +177,7 @@ describe('TrackRecordTab', () => {
       'unresolved',
       'superseded',
       'scenario',
+      'post_hoc',
     ]);
     expect(screen.getByTestId('state-count-scored')).toHaveTextContent('scored 1');
     expect(screen.getByTestId('state-count-scenario')).toHaveTextContent('scenario 1');
@@ -165,6 +187,13 @@ describe('TrackRecordTab', () => {
       within(rows[4]).getByText('hand-built eleven; listed, never scored'),
     ).toBeInTheDocument();
     expect(within(rows[0]).getByText('England (men) won')).toBeInTheDocument();
+    // A forecast issued after the match date keeps its row, its state and its score, and
+    // says why no summary counts it (GO-03).
+    expect(screen.getByTestId('state-count-post_hoc')).toHaveTextContent('post hoc 1');
+    expect(
+      within(rows[5]).getByText('England (men) won; issued after the match date, so in no summary'),
+    ).toBeInTheDocument();
+    expect(within(rows[5]).getByText('0.002')).toBeInTheDocument();
   });
 
   it('carries n on every summary number and keeps the miss on the record', async () => {

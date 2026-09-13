@@ -294,13 +294,19 @@ asserted from go-app and the frontend):
 | `superseded` | an Optimise forecast of a fixture that a later Optimise of the same fixture, issued on or before the match date, replaced — one forecast is scored per fixture, the last one issued; the row names the id that superseded it |
 | `unresolved` | the database holds no match for the fixture yet (Cricsheet lag, an import not run), shown with `days_past_match_date` (negative before the match); also a double-header the record cannot tell apart, with the reason in `state_note` |
 | `no_result` | the match was played with no `outcome_winner_opposition_id` (no result, tie, draw): counted, not scored |
-| `scored` | the match was played and won by someone |
+| `post_hoc` | the match was played and won by someone, but the forecast was issued **after** the match date: listed and counted, its own `score` on the row, and in none of the summaries below |
+| `scored` | the forecast was issued on or before its match date and the match was played and won by someone — the rows every summary is over |
 
 A fixture is resolved by the **exact** `match_date`, both opposition ids in either order, the
 format code and the gender. A match between the same sides on a neighbouring date is a
 different match and is not it (`db.MatchLookup`). A forecast issued after the day it was
-about neither supersedes nor is superseded; it is scored like any other and flagged
-`issued_after_match_date` on the wire.
+about neither supersedes nor is superseded: it stands alone in `post_hoc`, flagged
+`issued_after_match_date` on the wire, with its score on the row and no summary over it.
+The ratings behind such an answer can already contain the result — every row stored before
+*A played match is a backtest* (GO-01) was served from a through-today state — so counting
+its Brier or its coverage would be hindsight scoring itself (GO-03). It is excluded from
+the aggregates, never hidden: the row shows what it claimed and what happened, like every
+other row, and the state counts hold it.
 
 **The scores**, over the `scored` predictions only, every one with its `n`:
 

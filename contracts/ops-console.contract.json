@@ -166,6 +166,7 @@
     "superseded",
     "unresolved",
     "no_result",
+    "post_hoc",
     "scored"
   ],
   "simulator_populations": [

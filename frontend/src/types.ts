@@ -437,6 +437,7 @@ export const PREDICTION_STATES = [
   'superseded',
   'unresolved',
   'no_result',
+  'post_hoc',
   'scored',
 ] as const;
 export type PredictionState = (typeof PREDICTION_STATES)[number];

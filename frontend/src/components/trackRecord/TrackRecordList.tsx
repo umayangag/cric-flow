@@ -17,6 +17,7 @@ export const STATE_LABELS: Record<TrackRecordEntry['state'], string> = {
   superseded: 'superseded',
   unresolved: 'unresolved',
   no_result: 'no result',
+  post_hoc: 'post hoc',
   scored: 'scored',
 };
 
@@ -29,6 +30,11 @@ export const POPULATION_LABELS: Record<TrackRecordEntry['population'], string> =
 
 function range(served?: TrackRecordRange): string {
   return served ? `${Math.round(served.p10)}–${Math.round(served.p90)}` : '—';
+}
+
+/** The side the match was won by, in the prediction's own orientation. */
+function winningSide(entry: TrackRecordEntry): string {
+  return entry.score?.team1_won ? entry.team1.name : entry.team2.name;
 }
 
 /** What the state means for this row, in a phrase: never a verdict. */
@@ -47,8 +53,10 @@ function stateDetail(entry: TrackRecordEntry): string {
       return 'hand-built eleven; listed, never scored';
     case 'no_result':
       return 'played, no winner recorded';
+    case 'post_hoc':
+      return `${winningSide(entry)} won; issued after the match date, so in no summary`;
     case 'scored':
-      return entry.score?.team1_won ? `${entry.team1.name} won` : `${entry.team2.name} won`;
+      return `${winningSide(entry)} won`;
   }
 }
 
