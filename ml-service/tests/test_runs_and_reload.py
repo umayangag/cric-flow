@@ -26,6 +26,7 @@ from ml.xi import runs
 from ml.xi.ratings import RatingState
 from ml.xi.runs import RunArtifactsInvalid
 from ml.xi.store import STATE_ARRAY_NAMES, FormatModels, _state_to_payload, save_ratings, state_shape
+from tests.xi_fixtures import ListSource
 
 
 class _ConstantModel:
@@ -485,18 +486,37 @@ def test_stale_ratings_refuse_a_live_request_with_a_machine_readable_code(tmp_pa
     assert registry.status().ratings.code == "RATINGS_STALE", "the verdict is on /xi/status too"
 
 
-def test_a_backtest_naming_its_own_as_of_is_not_refused(tmp_path, monkeypatch):
-    """H-11 is about live requests. A backtest names the date it wants served, so "how old
-    is today's state?" is not a question about it -- refusing one would break the harness
-    for a reason that does not describe it."""
+def test_a_backtest_naming_a_date_the_as_of_pass_serves_is_not_refused(tmp_path, monkeypatch):
+    """H-11 is about the through-today state. A backtest names the date it wants served
+    and the as-of pass serves exactly that, so "how old is today's state?" is not a
+    question about it -- refusing one would break the harness for a reason that does not
+    describe it."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    ratings_through = date.today() - timedelta(days=40)
+    _write_run(tmp_path, last_date=ratings_through)
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+    registry.as_of_source_factory = lambda: ListSource([])
+
+    store = registry.store_as_of("T20", ratings_through - timedelta(days=1))
+
+    assert store is not registry.store("T20"), "the as-of pass answered, not the loaded state"
+
+
+def test_a_backtest_dated_past_the_loaded_state_is_refused_when_that_state_is_stale(tmp_path, monkeypatch):
+    """An as_of past everything the loaded state holds is answered from the through-today
+    state unchanged -- the same state a live request gets -- so H-11's verdict on it
+    applies whichever way it was asked for. Without this, naming any as_of after the
+    ratings-through date is a way around the freshness refusal (SERVE-08)."""
     monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
     _write_run(tmp_path, last_date=date.today() - timedelta(days=40))
     registry = xi_service.XiRegistry()
     registry.reload(str(tmp_path))
 
-    store = registry.store_as_of("T20", date.today())
+    with pytest.raises(xi_service.RatingsStale) as excinfo:
+        registry.store_as_of("T20", date.today() - timedelta(days=10))
 
-    assert store is not None
+    assert excinfo.value.payload["code"] == "RATINGS_STALE"
 
 
 def test_the_check_is_off_when_the_limit_is_zero(tmp_path, monkeypatch):
