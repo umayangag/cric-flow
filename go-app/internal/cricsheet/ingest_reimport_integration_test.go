@@ -27,8 +27,14 @@ import (
 // one date because nothing in these cases turns on it.
 const reimportFixtureDate = "2024-01-02"
 
-// matchFileJSON renders a Cricsheet file whose innings are the ones given.
+// matchFileJSON renders a Cricsheet file whose innings are the ones given, won by Alpha.
 func matchFileJSON(innings ...string) string {
+	return matchFileWithOutcomeJSON(`{"winner": "Alpha"}`, innings...)
+}
+
+// matchFileWithOutcomeJSON renders a Cricsheet file with the given info.outcome object
+// and innings.
+func matchFileWithOutcomeJSON(outcome string, innings ...string) string {
 	return fmt.Sprintf(`{
   "info": {
     "balls_per_over": 6,
@@ -39,10 +45,10 @@ func matchFileJSON(innings ...string) string {
     "season": "2024",
     "gender": "male",
     "toss": {"winner": "Alpha"},
-    "outcome": {"winner": "Alpha"}
+    "outcome": %s
   },
   "innings": [%s]
-}`, reimportFixtureDate, strings.Join(innings, ","))
+}`, reimportFixtureDate, outcome, strings.Join(innings, ","))
 }
 
 // inningsOf renders one innings of a single over, one delivery per entry in runs, all

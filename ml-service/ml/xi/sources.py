@@ -84,7 +84,10 @@ class MatchRecord:
     gender: str
     team1_players: List[str]
     team2_players: List[str]
-    winner: Optional[str]  # team1 / team2 name, or None (no result, tie, draw)
+    # The side the match went to: team1 / team2, or None for a no-result, a draw or a tie
+    # nobody broke. A tie settled by a super over or a bowl-out has a winner (IMPORT-02);
+    # ``result`` stays 'tie' beside it, which is how such a win is told from an outright one.
+    winner: Optional[str]
     result: Optional[str]  # 'tie' | 'draw' | 'no result' | None
     deliveries: Deliveries
     # The competition the match was played in: Cricsheet's ``info.event.name``, which the
@@ -213,6 +216,22 @@ def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
     return keys
 
 
+def winning_team(outcome: dict) -> Optional[str]:
+    """The side a Cricsheet ``info.outcome`` says the match went to, or None.
+
+    The outright ``winner``, else the side that won the tie-breaker -- ``eliminator`` for a
+    super over, ``bowl_out`` for a bowl-out -- else None for a draw, a no-result or a tie
+    that was left as one. The go-app importer applies the same rule
+    (``cricsheet.Outcome.WinningTeam``, IMPORT-02), so both sources agree on which matches
+    have a winner and enter the frame.
+    """
+    for key in ("winner", "eliminator", "bowl_out"):
+        side = str(outcome.get(key) or "").strip()
+        if side:
+            return side
+    return None
+
+
 def played_innings(innings: list) -> List[dict]:
     """The innings of the match, in playing order, without super overs.
 
@@ -291,7 +310,7 @@ def parse_cricsheet_file(
     gender = info.get("gender") or ""
     lineage = lineage or TeamLineage()
     club1, club2 = team_key(team1, gender, lineage), team_key(team2, gender, lineage)
-    winner = outcome.get("winner")
+    winner = winning_team(outcome)
     if winner:
         winner = team_key(winner, gender, lineage)
     return MatchRecord(
@@ -432,13 +451,17 @@ class CricsheetJsonSource:
 # (I-4). The Cricsheet source does the same through configs/team_lineage.json.
 # A match without a venue yields the empty venue, as the archive path does, so neither
 # source accumulates unnamed grounds under a key the other cannot produce.
+# ``m.result`` is Cricsheet's own word for a match with no outright winner (migration
+# 0017); the archive path reads the same field, so a drawn Test moves both sides' form the
+# same way on both sources (FEAT-04). A winner beside 'tie' is a tie-breaker win.
 _MATCH_SQL = """
 SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
        COALESCE(bowl.canonical_id, bowl.id),
        COALESCE(win.canonical_id, win.id),
        COALESCE(m.event_name, ''), m.match_number,
-       COALESCE(m.event_stage, ''), COALESCE(m.event_group, '')
+       COALESCE(m.event_stage, ''), COALESCE(m.event_group, ''),
+       m.result
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
@@ -580,7 +603,7 @@ class PostgresSource:
                 team1_players=t1,
                 team2_players=t2,
                 winner=None if winner_id is None else str(winner_id),
-                result=None,
+                result=row[12],
                 deliveries=_deliveries_from_rows(balls),
                 competition=event_name or "",
                 match_number=row[9],
