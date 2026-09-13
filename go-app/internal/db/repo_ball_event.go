@@ -14,6 +14,9 @@ const smallBatchThreshold = 8
 // BallEventRow mirrors columns for insertion into ball_event.
 // Optional player references are pointers; nil means unresolved/unknown.
 // fielder_ids is omitted in this version for simplicity (left NULL).
+//
+// The delivery's wickets are not on the row: a delivery can carry more than one, and
+// each is a BallEventWicketRow in ball_event_wicket (IMPORT-06).
 type BallEventRow struct {
 	MatchID      int64
 	Innings      int
@@ -36,8 +39,19 @@ type BallEventRow struct {
 	ExtrasLegByes int
 	ExtrasPenalty int
 	ExtrasKind    *string
-	WicketKind    *string
-	PlayerOutID   *int64
+}
+
+// BallEventWicketRow is one wicket on one delivery, for insertion into ball_event_wicket.
+// WicketNumber is the wicket's 1-based position among the delivery's wickets, in the
+// order the file lists them; Kind is the vocabulary's spelling (configs/wicket_kinds.json).
+type BallEventWicketRow struct {
+	MatchID      int64
+	Innings      int
+	Over         int
+	Ball         int
+	WicketNumber int
+	Kind         string
+	PlayerOutID  *int64
 }
 
 // InsertBallEventsTx inserts ball_event rows using the given transaction.
@@ -62,14 +76,14 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
                     striker_id, non_striker_id, bowler_id,
                     runs_batter, runs_extras, runs_total,
                     extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
-                    extras_kind, wicket_kind, player_out_id
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                    extras_kind
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
             `,
 				r.MatchID, r.Innings, r.Over, r.Ball, r.BallSeq, r.IsLegal, r.Phase,
 				r.StrikerID, r.NonStrikerID, r.BowlerID,
 				r.RunsBatter, r.RunsExtras, r.RunsTotal,
 				r.ExtrasWides, r.ExtrasNoBalls, r.ExtrasByes, r.ExtrasLegByes, r.ExtrasPenalty,
-				r.ExtrasKind, r.WicketKind, r.PlayerOutID,
+				r.ExtrasKind,
 			); err != nil {
 				return err
 			}
@@ -83,7 +97,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
             is_legal::boolean, phase::text, striker_id::bigint, non_striker_id::bigint,
             bowler_id::bigint, runs_batter::int, runs_extras::int, runs_total::int,
             extras_wides::int, extras_noballs::int, extras_byes::int, extras_legbyes::int,
-            extras_penalty::int, extras_kind::text, wicket_kind::text, player_out_id::bigint
+            extras_penalty::int, extras_kind::text
         FROM ball_event
         WITH NO DATA
     `)
@@ -98,7 +112,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 			r.StrikerID, r.NonStrikerID, r.BowlerID,
 			r.RunsBatter, r.RunsExtras, r.RunsTotal,
 			r.ExtrasWides, r.ExtrasNoBalls, r.ExtrasByes, r.ExtrasLegByes, r.ExtrasPenalty,
-			r.ExtrasKind, r.WicketKind, r.PlayerOutID,
+			r.ExtrasKind,
 		})
 	}
 	_, err = tx.CopyFrom(ctx, pgx.Identifier{"ball_event_stage"},
@@ -107,7 +121,7 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
 			"striker_id", "non_striker_id", "bowler_id",
 			"runs_batter", "runs_extras", "runs_total",
 			"extras_wides", "extras_noballs", "extras_byes", "extras_legbyes", "extras_penalty",
-			"extras_kind", "wicket_kind", "player_out_id",
+			"extras_kind",
 		},
 		pgx.CopyFromRows(data))
 	if err != nil {
@@ -117,11 +131,31 @@ func InsertBallEventsTx(ctx context.Context, tx CopyFromTx, rows []BallEventRow)
         INSERT INTO ball_event(match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
             extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
-            extras_kind, wicket_kind, player_out_id)
+            extras_kind)
         SELECT match_id, innings, "over", ball, ball_seq, is_legal, phase,
             striker_id, non_striker_id, bowler_id, runs_batter, runs_extras, runs_total,
             extras_wides, extras_noballs, extras_byes, extras_legbyes, extras_penalty,
-            extras_kind, wicket_kind, player_out_id
+            extras_kind
         FROM ball_event_stage
     `)
+}
+
+// InsertBallEventWicketsTx inserts ball_event_wicket rows using the given transaction,
+// after the delivery rows they reference. A match has a few dozen wickets at most, so
+// these are plain inserts; like the delivery rows they carry no ON CONFLICT clause,
+// because the match was cleared before anything was written.
+func InsertBallEventWicketsTx(ctx context.Context, tx CopyFromTx, rows []BallEventWicketRow) error {
+	for i := range rows {
+		r := rows[i]
+		if err := tx.Exec(
+			ctx, `
+            INSERT INTO ball_event_wicket(match_id, innings, "over", ball, wicket_number, kind, player_out_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `,
+			r.MatchID, r.Innings, r.Over, r.Ball, r.WicketNumber, r.Kind, r.PlayerOutID,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }

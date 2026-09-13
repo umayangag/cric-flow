@@ -1,0 +1,24 @@
+{
+  "version": "2026-09-13",
+  "note": "Every wicket kind the Cricsheet archive uses, and what each one is to the scorecard. The go-app importer (internal/wicketkinds) and the rating pass (ml/xi/wicketkinds.py) both read this file, so a bowler's wickets in bowling_data and his wickets target agree kind for kind, and an innings' wickets_lost and the pass's dismissal count agree ball for ball (IMPORT-06). A kind not listed here fails the import and the pass rather than being counted by guesswork; Cricsheet adding one is an edit to this file.",
+  "credited_to_bowler": [
+    "bowled",
+    "caught",
+    "caught and bowled",
+    "hit wicket",
+    "lbw",
+    "stumped"
+  ],
+  "dismissal_not_credited": [
+    "handled the ball",
+    "hit the ball twice",
+    "obstructing the field",
+    "retired out",
+    "run out",
+    "timed out"
+  ],
+  "not_out": [
+    "retired hurt",
+    "retired not out"
+  ]
+}

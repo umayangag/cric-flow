@@ -7,6 +7,7 @@ import (
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/phase"
+	"github.com/umayangag/cric-flow/go-app/internal/wicketkinds"
 )
 
 // playerIDResolver is the slice of match identity that ball events need: every name on a
@@ -15,18 +16,27 @@ type playerIDResolver interface {
 	PlayerID(ctx context.Context, name string) (int64, error)
 }
 
+// BallEvents is what a match's deliveries become: one ball_event row per delivery and
+// one ball_event_wicket row per wicket on it.
+type BallEvents struct {
+	Deliveries []db.BallEventRow
+	Wickets    []db.BallEventWicketRow
+}
+
 // BuildBallEventRows builds ball_event rows for every innings the match played. It
 // numbers innings the way the scorecard aggregates do -- both read Match.PlayedInnings --
 // so a delivery's innings number and its match_inning row always describe the same
-// innings.
+// innings. Every wicket on a delivery becomes a row of its own, in the order the file
+// lists them; until IMPORT-06 was fixed only the first was kept.
 func BuildBallEventRows(
 	ctx context.Context,
 	identity playerIDResolver,
+	vocabulary wicketkinds.Vocabulary,
 	m *Match,
 	formatID int,
 	matchID int64,
-) ([]db.BallEventRow, error) {
-	var allRows []db.BallEventRow
+) (BallEvents, error) {
+	var events BallEvents
 	for i, inng := range m.PlayedInnings() {
 		inningNo := i + 1
 		// Pre-compute total legal deliveries in innings for phase clamping
@@ -76,23 +86,11 @@ func BuildBallEventRows(
 					}
 				}
 				extrasKind := extrasKindOf(d.Extras)
-				// wicket info (first only)
-				var wicketKind *string
-				var playerOutID *int64
-				if d.Wickets != nil && len(*d.Wickets) > 0 {
-					wk := strings.TrimSpace((*d.Wickets)[0].Kind)
-					if wk != "" {
-						wicketKind = &wk
-					}
-					name := strings.TrimSpace((*d.Wickets)[0].PlayerOut)
-					if name != "" {
-						if id, err := identity.PlayerID(ctx, name); err == nil {
-							playerOutID = &id
-						} else {
-							slog.Error("get/create player failed", slog.String("name", name), slog.Any("err", err))
-						}
-					}
+				wicketRows, err := buildWicketRows(ctx, identity, vocabulary, d, matchID, inningNo, overNo, ballNo)
+				if err != nil {
+					return BallEvents{}, err
 				}
+				events.Wickets = append(events.Wickets, wicketRows...)
 				phaseName := phase.PhaseFor(int(formatID), ballSeq, totalLegal)
 				inningRows = append(inningRows, db.BallEventRow{
 					MatchID:       matchID,
@@ -114,14 +112,61 @@ func BuildBallEventRows(
 					ExtrasLegByes: d.Extras.LegByes,
 					ExtrasPenalty: d.Extras.Penalty,
 					ExtrasKind:    extrasKind,
-					WicketKind:    wicketKind,
-					PlayerOutID:   playerOutID,
 				})
 			}
 		}
-		allRows = append(allRows, inningRows...)
+		events.Deliveries = append(events.Deliveries, inningRows...)
 	}
-	return allRows, nil
+	return events, nil
+}
+
+// buildWicketRows is one delivery's wickets as ball_event_wicket rows. The kind is
+// stored as the vocabulary spells it, and a kind the vocabulary does not know fails the
+// file: the row is what the rating pass reads, and a kind it cannot classify would be a
+// wicket it cannot count.
+func buildWicketRows(
+	ctx context.Context,
+	identity playerIDResolver,
+	vocabulary wicketkinds.Vocabulary,
+	d Delivery,
+	matchID int64,
+	inningNo, overNo, ballNo int,
+) ([]db.BallEventWicketRow, error) {
+	if d.Wickets == nil {
+		return nil, nil
+	}
+	rows := make([]db.BallEventWicketRow, 0, len(*d.Wickets))
+	for i, w := range *d.Wickets {
+		kind, err := vocabulary.Kind(w.Kind)
+		if err != nil {
+			slog.Error("wicket kind not in the vocabulary",
+				slog.Int64("match_id", matchID),
+				slog.Int("innings", inningNo),
+				slog.Int("over", overNo),
+				slog.Int("ball", ballNo),
+				slog.String("kind", w.Kind),
+				slog.Any("err", err))
+			return nil, err
+		}
+		var playerOutID *int64
+		if name := strings.TrimSpace(w.PlayerOut); name != "" {
+			if id, err := identity.PlayerID(ctx, name); err == nil {
+				playerOutID = &id
+			} else {
+				slog.Error("get/create player failed", slog.String("name", name), slog.Any("err", err))
+			}
+		}
+		rows = append(rows, db.BallEventWicketRow{
+			MatchID:      matchID,
+			Innings:      inningNo,
+			Over:         overNo,
+			Ball:         ballNo,
+			WicketNumber: i + 1,
+			Kind:         kind.Name,
+			PlayerOutID:  playerOutID,
+		})
+	}
+	return rows, nil
 }
 
 // extrasKindOf names one kind of extra for ball_event.extras_kind, by precedence: wide,

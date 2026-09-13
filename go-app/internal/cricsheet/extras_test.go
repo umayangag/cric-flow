@@ -199,7 +199,9 @@ func TestBuildBallEventRows_ExtrasByKind_EveryKindSurvivesTheRow(t *testing.T) {
 	identity := playerIDsByName{"A1": 1, "A2": 2, "B1": 11, "B2": 12, "B3": 13}
 
 	// Act
-	rows, err := cricsheet.BuildBallEventRows(context.Background(), identity, match, 1, 9000011)
+	events, err := cricsheet.BuildBallEventRows(
+		context.Background(), identity, committedWicketKinds(t), match, 1, 9000011)
+	rows := events.Deliveries
 
 	// Assert
 	require.NoError(t, err)
@@ -267,16 +269,18 @@ func stringPointer(value string) *string {
 }
 
 // bowlingFigure is what the per-file transaction writes to bowling_data for one bowler:
-// the two columns the bowler's runs decide.
+// the two columns the bowler's runs decide, and the one his wickets do.
 type bowlingFigure struct {
 	runs    int
 	maidens int
+	wickets int
 }
 
 // inningsTotal is what the per-file transaction writes to match_inning for one innings.
 type inningsTotal struct {
-	runs   int
-	extras int
+	runs        int
+	extras      int
+	wicketsLost int
 }
 
 // battingFigure is what the per-file transaction writes to batting_data for one batter:
@@ -312,6 +316,7 @@ const (
 	bowlingCopyArgInningNumber = 1
 	bowlingCopyArgMaidens      = 5
 	bowlingCopyArgRuns         = 6
+	bowlingCopyArgWickets      = 7
 	battingCopyArgInningNumber = 1
 	battingCopyArgRuns         = 4
 	battingCopyArgBalls        = 5
@@ -321,8 +326,9 @@ const (
 func (s *extrasSpyTx) Exec(_ context.Context, sql string, args ...any) error {
 	if strings.Contains(sql, "INSERT INTO match_inning") && len(args) >= matchInningArgCount {
 		s.totalsByInnings[toInt(args[matchInningArgInningNumber])] = inningsTotal{
-			runs:   toInt(args[matchInningArgRunsScored]),
-			extras: toInt(args[matchInningArgExtras]),
+			runs:        toInt(args[matchInningArgRunsScored]),
+			extras:      toInt(args[matchInningArgExtras]),
+			wicketsLost: toInt(args[matchInningArgWicketsLost]),
 		}
 	}
 	return nil
@@ -349,10 +355,11 @@ func (s *extrasSpyTx) CopyFrom(
 		if err != nil {
 			return n, err
 		}
-		if isBowling && len(values) > bowlingCopyArgRuns {
+		if isBowling && len(values) > bowlingCopyArgWickets {
 			s.bowlingByInnings[toInt(values[bowlingCopyArgInningNumber])] = bowlingFigure{
 				runs:    *toIntPtr(values[bowlingCopyArgRuns]),
 				maidens: *toIntPtr(values[bowlingCopyArgMaidens]),
+				wickets: *toIntPtr(values[bowlingCopyArgWickets]),
 			}
 		}
 		if isBatting && len(values) > battingCopyArgStrikeRate {
