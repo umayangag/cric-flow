@@ -141,7 +141,7 @@ func TestTrackRecord_EveryStateFromTheDatabase_Integration(t *testing.T) {
 	assert.Equal(t, trackrecord.StateUnresolved, stateOf(record, pending))
 	assert.Equal(t, map[string]int{
 		trackrecord.StateScenario: 1, trackrecord.StateSuperseded: 1, trackrecord.StateUnresolved: 1,
-		trackrecord.StateNoResult: 1, trackrecord.StateScored: 1,
+		trackrecord.StateNoResult: 1, trackrecord.StatePostHoc: 0, trackrecord.StateScored: 1,
 	}, record.States)
 	require.Equal(t, 1, record.Win.Overall.N)
 	// The scripted ml-service gives team1 0.6 and team1 won: Brier 0.16, base rate 1.0.
