@@ -142,10 +142,46 @@ type Toss struct {
 	Decision string `json:"decision"`
 }
 
-// Outcome records the match winner and margin when available.
+// Outcome is info.outcome: how the match was decided, in the shapes Cricsheet writes it.
+//
+// A match that was won outright carries Winner (and usually By, the margin). A match that
+// was not carries Result instead -- "draw", "no result" or "tie" -- and *never* Winner. A
+// tie that was then settled by a tie-breaker keeps Result "tie" and names the side that
+// won the tie-breaker in Eliminator (a super over: 109 files in the current archive) or
+// BowlOut (2 files, both from 2007). Method is the rule that adjusted or awarded the
+// result: "D/L" on 1,018 files, "VJD", "Awarded", and once "Lost fewer wickets".
+//
+// Until IMPORT-02 only Winner and By were read, so a super-over win landed with no winner
+// at all -- the same record as an abandoned match -- and the rating pass excluded it. See
+// WinningTeam for the rule that reads these together.
 type Outcome struct {
-	Winner string     `json:"winner"`
-	By     *OutcomeBy `json:"by,omitempty"`
+	Winner     string     `json:"winner"`
+	By         *OutcomeBy `json:"by,omitempty"`
+	Result     string     `json:"result"`
+	Method     string     `json:"method"`
+	Eliminator string     `json:"eliminator"`
+	BowlOut    string     `json:"bowl_out"`
+}
+
+// WinningTeam returns the side the match went to: the outright winner, else the side that
+// won the tie-breaker (a super over, else a bowl-out), else "" for a draw, a no-result or
+// a tie that was left as one. Nil-safe, so a file with no outcome at all reads "".
+//
+// A tie-breaker win is a win: the fixture has a result and a side that took it, which is
+// what the competition records, what a forecast of the match is scored against, and what
+// a team's Elo and form should see. What the record keeps as well is that the match itself
+// was tied (Result stays "tie" beside the winner), so a reader that wants to weight such a
+// win differently can tell it from an outright one without going back to the file.
+func (o *Outcome) WinningTeam() string {
+	if o == nil {
+		return ""
+	}
+	for _, side := range []string{o.Winner, o.Eliminator, o.BowlOut} {
+		if side = strings.TrimSpace(side); side != "" {
+			return side
+		}
+	}
+	return ""
 }
 
 // OutcomeBy holds margin details (runs or wickets).

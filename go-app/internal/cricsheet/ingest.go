@@ -269,22 +269,20 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 	if info.Toss != nil {
 		toss = info.Toss.Winner
 	}
-	winner := ""
+	// The winner is whichever side the outcome says the match went to, tie-breakers
+	// included (Outcome.WinningTeam); the result and method are stored beside it verbatim.
 	var winnerID *int64
-	if info.Outcome != nil {
-		winner = strings.TrimSpace(info.Outcome.Winner)
-		if winner != "" {
-			if id, e := identity.OppositionID(ctx, winner); e == nil {
-				winnerID = &id
-			} else {
-				slog.Error("get/create opposition for winner failed",
-					slog.String("file", path),
-					slog.Int64("match_id", mid),
-					slog.String("winner", winner),
-					slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
-					slog.Any("err", e))
-				return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
-			}
+	if winner := info.Outcome.WinningTeam(); winner != "" {
+		if id, e := identity.OppositionID(ctx, winner); e == nil {
+			winnerID = &id
+		} else {
+			slog.Error("get/create opposition for winner failed",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("winner", winner),
+				slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+				slog.Any("err", e))
+			return fmt.Errorf("get/create opposition for winner '%s': %w", winner, e)
 		}
 	}
 
@@ -317,6 +315,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		OutcomeWinnerOppositionID: winnerID,
 		OutcomeByRuns:             outcomeByRuns(info.Outcome),
 		OutcomeByWickets:          outcomeByWickets(info.Outcome),
+		Result:                    outcomeResult(info.Outcome),
+		ResultMethod:              outcomeMethod(info.Outcome),
 		EventName:                 strPtrNonEmpty(eventName),
 		EventStage:                strPtrNonEmpty(eventStage),
 		EventGroup:                strPtrNonEmpty(eventGroup),
@@ -952,6 +952,24 @@ func outcomeByWickets(o *Outcome) *int {
 		return nil
 	}
 	return o.By.Wickets
+}
+
+// outcomeResult is Cricsheet's result verbatim ("draw", "no result", "tie"), nil for a
+// match that was won outright, which Cricsheet writes with no result at all.
+func outcomeResult(o *Outcome) *string {
+	if o == nil {
+		return nil
+	}
+	return strPtrNonEmpty(strings.TrimSpace(o.Result))
+}
+
+// outcomeMethod is the rule that adjusted or awarded the result ("D/L", "VJD",
+// "Awarded", ...), nil where the archive names none.
+func outcomeMethod(o *Outcome) *string {
+	if o == nil {
+		return nil
+	}
+	return strPtrNonEmpty(strings.TrimSpace(o.Method))
 }
 
 func scheduledOversFromFormatOrInfo(formatCode string, infoOvers int) *int {

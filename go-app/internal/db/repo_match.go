@@ -18,13 +18,18 @@ type MatchInsert struct {
 	OutcomeWinnerOppositionID *int64
 	OutcomeByRuns             *int
 	OutcomeByWickets          *int
-	EventName                 *string
-	EventStage                *string
-	EventGroup                *string
-	MatchNumber               *int
-	Gender                    *string
-	BallsPerOver              int
-	ScheduledOversPerInnings  *int
+	// Result and ResultMethod are Cricsheet's own words for how the match was decided
+	// ("tie", "draw", "no result"; "D/L", "Awarded", ...), nil where the archive says
+	// nothing. A winner beside Result "tie" is a tie-breaker win (migration 0017).
+	Result                   *string
+	ResultMethod             *string
+	EventName                *string
+	EventStage               *string
+	EventGroup               *string
+	MatchNumber              *int
+	Gender                   *string
+	BallsPerOver             int
+	ScheduledOversPerInnings *int
 }
 
 // MatchInningInsert carries inning-level fields for the match_inning table.
@@ -49,9 +54,10 @@ const upsertMatchSQL = `
 		INSERT INTO match (
 			match_id, format_id, match_date, original_match_type, venue_id, season_id,
 			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
-			outcome_by_runs, outcome_by_wickets, event_name, event_stage, event_group,
+			outcome_by_runs, outcome_by_wickets, result, result_method,
+			event_name, event_stage, event_group,
 			match_number, gender, balls_per_over, scheduled_overs_per_innings
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		ON CONFLICT (match_id) DO UPDATE SET
 			format_id = EXCLUDED.format_id,
 			match_date = EXCLUDED.match_date,
@@ -63,6 +69,8 @@ const upsertMatchSQL = `
 			outcome_winner_opposition_id = EXCLUDED.outcome_winner_opposition_id,
 			outcome_by_runs = EXCLUDED.outcome_by_runs,
 			outcome_by_wickets = EXCLUDED.outcome_by_wickets,
+			result = EXCLUDED.result,
+			result_method = EXCLUDED.result_method,
 			event_name = EXCLUDED.event_name,
 			event_stage = EXCLUDED.event_stage,
 			event_group = EXCLUDED.event_group,
@@ -77,7 +85,8 @@ func upsertMatchArgs(m *MatchInsert) []any {
 	return []any{
 		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.VenueID, m.SeasonID,
 		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
-		m.OutcomeByRuns, m.OutcomeByWickets, m.EventName, m.EventStage, m.EventGroup,
+		m.OutcomeByRuns, m.OutcomeByWickets, m.Result, m.ResultMethod,
+		m.EventName, m.EventStage, m.EventGroup,
 		m.MatchNumber, m.Gender, m.BallsPerOver, m.ScheduledOversPerInnings,
 	}
 }
