@@ -148,7 +148,7 @@ def test_a_baseline_that_is_not_an_object_is_no_baseline(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _match(match_id: str, day: int, team1, team2, winner="A") -> MatchRecord:
+def _match(match_id: str, day: int, team1, team2, winner="A", result=None) -> MatchRecord:
     z = np.zeros(1)
     deliveries = Deliveries(
         over=np.zeros(1, dtype=int),
@@ -173,7 +173,7 @@ def _match(match_id: str, day: int, team1, team2, winner="A") -> MatchRecord:
         list(team1),
         list(team2),
         winner,
-        None,
+        result,
         deliveries,
     )
 
@@ -230,6 +230,24 @@ def test_the_pass_counts_player_keys_the_source_could_not_resolve() -> None:
     result = build(_CountingSource(matches, SourceCounts(offered=1, yielded=1)))
 
     assert result.quality.unknown_player_keys == 1
+
+
+def test_the_pass_counts_the_draws_and_the_ties_nobody_broke() -> None:
+    """FEAT-04: the count that can see ``result``. A draw and an unbroken tie are the
+    matches form reads as half a win each; a tie-breaker win is a win, and a no-result is
+    undecided without being either."""
+    matches = [
+        _match("won", 0, ["a1"], ["b1"]),
+        _match("drawn", 1, ["a1"], ["b1"], winner=None, result="draw"),
+        _match("tied", 2, ["a1"], ["b1"], winner=None, result="tie"),
+        _match("super-over", 3, ["a1"], ["b1"], winner="A", result="tie"),
+        _match("abandoned", 4, ["a1"], ["b1"], winner=None, result="no result"),
+    ]
+
+    result = build(_CountingSource(matches, SourceCounts(offered=5, yielded=5)))
+
+    assert result.quality.undecided_matches == 3
+    assert result.quality.drawn_or_tied_matches == 2
 
 
 def test_a_source_that_reports_nothing_is_described_by_what_arrived() -> None:
@@ -299,6 +317,45 @@ def test_parity_reports_a_match_the_database_is_missing(two_passes) -> None:
 
     assert any("matches_read: postgres 3, cricsheet 4" in d for d in differences)
     assert any("training rows" in d for d in differences)
+
+
+def _passes_with_a_draw_and_a_tie(postgres_reads_result: bool):
+    """Both sources over the same three matches -- a win, a drawn Test and a tie nobody
+    broke -- with the database either reading ``result`` or, as it did before IMPORT-02,
+    hard-coding it to None. Every other count is identical either way, which is how the
+    difference survived: a draw is undecided whether or not its result is read."""
+    archive = [
+        _match("won", 0, ["a1", "a2"], ["b1", "b2"]),
+        _match("drawn", 1, ["a1", "a2"], ["b1", "b2"], winner=None, result="draw"),
+        _match("tied", 2, ["a1", "a2"], ["b1", "b2"], winner=None, result="tie"),
+    ]
+    database = [replace(m, result=m.result if postgres_reads_result else None) for m in archive]
+    return (
+        build(_CountingSource(database, SourceCounts(offered=3, yielded=3))),
+        build(_CountingSource(archive, SourceCounts(offered=3, yielded=3))),
+    )
+
+
+def test_parity_reports_nothing_when_both_sources_read_a_draw_and_a_tie() -> None:
+    from ml.xi.parity import compare
+
+    postgres, cricsheet = _passes_with_a_draw_and_a_tie(postgres_reads_result=True)
+
+    assert postgres.quality.drawn_or_tied_matches == cricsheet.quality.drawn_or_tied_matches == 2
+    assert compare(postgres, cricsheet) == []
+
+
+def test_parity_reports_a_result_only_one_source_reads() -> None:
+    """FEAT-04, the guarantee itself: the pre-fix database agrees with the archive on
+    every other count, and the parity check must still fail, naming the result count."""
+    from ml.xi.parity import compare
+
+    postgres, cricsheet = _passes_with_a_draw_and_a_tie(postgres_reads_result=False)
+
+    differences = compare(postgres, cricsheet)
+
+    assert postgres.quality.undecided_matches == cricsheet.quality.undecided_matches == 2
+    assert differences == ["drawn_or_tied_matches: postgres 0, cricsheet 2"]
 
 
 def test_parity_reports_a_player_key_only_one_source_has(two_passes) -> None:

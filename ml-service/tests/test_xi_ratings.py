@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import List
 
@@ -214,6 +215,29 @@ def test_build_skips_undecided_matches_as_rows_but_folds_them_into_state() -> No
     assert list(result.frame.match_id) == ["m"]
     assert result.frame.iloc[0]["d_imp_bat_sum"] > 0, "the no-result's deliveries still rate the players"
     assert result.frame.iloc[0]["team_elo_diff"] == pytest.approx(0.0), "but no result moves no Elo"
+
+
+def test_a_draw_or_an_unbroken_tie_is_half_a_win_of_form_and_moves_no_elo() -> None:
+    """The definition ``drawn_or_tied_matches`` guards (FEAT-04): a draw and a tie nobody
+    broke give each side half a win of form and leave Elo alone; a tie a super over settled
+    is a win for the side that won it; a no-result tells form nothing."""
+    t1, t2 = _xi("a"), _xi("b")
+    d = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+    drawn = replace(_match("drawn", 0, None, t1, t2, d), result="draw")
+    tied = replace(_match("tied", 1, None, t1, t2, d), result="tie")
+    super_over = replace(_match("super-over", 2, "A", t1, t2, d), result="tie")
+    abandoned = replace(_match("abandoned", 3, None, t1, t2, d), result="no result")
+    state = RatingState()
+
+    for match in (drawn, tied, abandoned):
+        state.update(match)
+    elo_after_draws = state.team_elo[("T20", "A")]
+    state.update(super_over)
+
+    assert state.team_results[("T20", "A")] == [0.5, 0.5, 1.0]
+    assert state.team_results[("T20", "B")] == [0.5, 0.5, 0.0]
+    assert elo_after_draws == pytest.approx(C.ELO_INITIAL), "a draw moves no Elo"
+    assert state.team_elo[("T20", "A")] > elo_after_draws, "a tie-breaker win is a win"
 
 
 def test_same_day_matches_do_not_see_each_other() -> None:
