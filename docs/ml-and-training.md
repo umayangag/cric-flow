@@ -68,7 +68,7 @@ cancelled, and the make targets do the same work without any of that.
 | Step | Command | What it does |
 |------|---------|--------------|
 | **import** | `make cricsheet-import` | Fetch the configured archive, extract it, load the matches. Fetch and extract are skipped, and say so, when the dataset directory already holds that archive. |
-| **retrain** | `make retrain CUTOFF=2025-09-01` | The whole model build: rating pass → XI win models (with the grid) → performance models → the run's report → `manifest.json`. Writes `runs/<run_id>/` and **publishes nothing**. |
+| **retrain** | `make retrain CUTOFF=2025-09-01` | The whole model build: rating pass → XI win models (with the grid) → performance models → the run's report → `manifest.json`, which carries the run's **usability verdict** (EVAL-04, below). Writes `runs/<run_id>/` and **publishes nothing**; exits 1 when the run is not usable, and `reload` refuses to publish it. |
 | **reload** | `make reload [RUN=<id>]` | Point `current` at a run and load it into the running service. With no run id: the newest run on disk, which is the one the retrain before it built. Naming a run is how you roll back to an earlier one. |
 | *evaluate* | `make evaluate` | L4 over the database: walk-forward folds, the locked window, the selection and performance metrics, the leak canary, the parity check. Touches no artifact `current` points at. Optional, and slow — see below. |
 
@@ -168,6 +168,28 @@ format that fitted nothing. An empty `formats` therefore means nothing was train
 nothing can be served; a populated one with notes means the models exist and this run
 measured nothing about them — use `make evaluate`, or a cutoff that leaves a holdout, to
 judge them.
+
+**`usable` is the run's own verdict on whether it may be published** (EVAL-04,
+`ml/xi/run_usability.py`). Before it, a run whose objective had stopped ranking — a broken
+feature join, an inverted label — was written, listed and served by the next `reload` exactly
+as a sound one. Retrain now evaluates two clauses per format it scored and writes the result
+into the manifest as `usable` with `unusable_reasons` per format: the objective's holdout AUC
+must be above the base rate's 0.5 (a constant predictor's AUC — an objective not above it does
+not rank, and a run with nothing to select on in a format is not published); and, **only when
+the run `current` points at was trained at the same cutoff** — the same holdout — this run's
+AUC may not fall under that run's by more than one Hanley–McNeil standard error of the AUC on
+this holdout. The margin is the measurement's own noise, computed from the counts the report
+carries (0.013 T20 on 1,635 rows, 0.036 T20I, 0.028 ODI, 0.046 TEST on the one scored run on
+record); a seed spread is zero by construction for a logistic objective, and the harness's
+fold spread is between-window variance, so neither is a floor. Across different cutoffs the
+two AUCs score different matches and no comparison is made. An unusable run is still written —
+the operator has to read what it produced — and `retrain` exits 1; `runs.set_current` refuses
+to point `current` at it, so a `reload` naming it answers 409 `RUN_ARTIFACTS_INVALID` with the
+reasons and keeps serving what was serving, and a reload naming nothing skips it for the newest
+usable run. **What the gate cannot judge is a run with no holdout** — which is every run a
+scheduled retrain at today's cutoff writes; such a run is `usable` with `format_notes` saying it
+was not scored, because the gate has nothing to read and says so rather than inventing a
+number.
 
 **The loader refuses what it cannot serve.** `XiStore.load` reads the manifest first and
 raises `RunArtifactsInvalid`, naming the run, when there is no manifest, when the manifest
@@ -977,6 +999,26 @@ it holds *fixed* and what *decides*, with the path at which the report carries i
 report embeds the registry, `gates.check_report` fails the run if a gate is printed without an
 entry or an entry has nowhere to be read from, and the Evaluation tab renders the triple beside
 each number. An experiment script prints its gate's triple before it runs.
+
+**The clause is evaluated, not only printed (EVAL-04).** Until this, `check_report` verified
+that each gate's path existed and nothing read the number: a served format whose walk-forward
+AUC had fallen under H-17's line reported `gates.passed: true`. Every standing gate now carries a
+`Threshold` beside its `report_path` — the clause as code plus the rule a reader can check by
+hand, which the report embeds beside the triple — and `check_report` evaluates it, naming the
+format and the value when it fails; `make evaluate` exits 1 on any failure. The clauses encode
+what the prose already says: H-17, E5 and specific-vs-typical decide *scoping*, and the serving
+policy is set by hand from the report (`optimizer.OPTIMISED_SELECTION_FORMATS`), so their
+enforceable form is the contrapositive — a format **served** an optimised selection must carry
+the evidence (mean objective AUC ≥ 0.65, E5 at or above its derived bar, the specific eleven
+adding more than zero over the typical one) and fails the run when it does not, while a format
+already scoped off is what the rule asks for; E2 is the same shape for the simulated headline
+(served only within tolerance); H-4 is unconditional, under 2 % in every format the folds
+scored; H-8 is `passed`. H-5's clause decides a recalibration the harness already applies, H-22
+compares against the previous release, and H-2 and X-4 inform, so they carry no threshold and
+say so; a gate a script runs is the script's to evaluate. On the batch-1 report every standing
+gate passes under these clauses (T20I and ODI served at 0.761 / 0.670 with E5 passing; swap
+share 0.0–0.8 %; TEST at 0.626 is scoped off, not failed). No standing clause is expressed
+against a seed-to-seed spread, so none depends on EVAL-02 landing first.
 
 **Metric glossary (L-1, `ml/xi/glossary.py`).** The same pattern for what the numbers *mean*:
 one entry per reported metric key — a plain-language name, an explanation, the reference band
