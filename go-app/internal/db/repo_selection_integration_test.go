@@ -51,7 +51,7 @@ func setUpPoolFixture(t *testing.T) poolFixture {
 		auction_opposition_player, auction_opposition, auction,
 		issued_prediction,
 		player_status_event, player_status, player_biography,
-		ball_event, match_player, batting_data, bowling_data,
+		ball_event_wicket, ball_event, match_player, batting_data, bowling_data,
 		fielding_data, fielding_event, match_inning, match, player, opposition RESTART IDENTITY`))
 
 	formatID, err := GetOrCreateMatchFormat(ctx, "ODI")

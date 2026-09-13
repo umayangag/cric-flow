@@ -20,6 +20,8 @@ type matchFactDelete struct {
 // A table added to the importer belongs in this list. Nothing enforces that, which is why
 // the list is here and not spread across the repositories that insert into each table.
 var matchFactDeletes = []matchFactDelete{
+	// ball_event_wicket references ball_event, so it goes first.
+	{table: "ball_event_wicket", statement: `DELETE FROM ball_event_wicket WHERE match_id = $1`},
 	{table: "ball_event", statement: `DELETE FROM ball_event WHERE match_id = $1`},
 	{table: "fielding_event", statement: `DELETE FROM fielding_event WHERE match_id = $1`},
 	{table: "batting_data", statement: `DELETE FROM batting_data WHERE match_id = $1`},

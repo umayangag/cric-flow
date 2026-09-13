@@ -15,6 +15,7 @@ import (
 // clears them. Written out here rather than read from the package: this test's job is to
 // fail when a table is dropped from that list, and a test that shares the list cannot.
 var matchFactTables = []string{
+	"ball_event_wicket",
 	"ball_event",
 	"fielding_event",
 	"batting_data",
@@ -72,8 +73,8 @@ func TestDeleteMatchFactsTx_DeleteFails_ReturnsErrorNamingTheTableAndMatch(t *te
 	}{
 		{
 			name:          "the first table stops the import before anything is written",
-			failingTable:  "ball_event",
-			expectedInErr: "delete ball_event for match 7",
+			failingTable:  "ball_event_wicket",
+			expectedInErr: "delete ball_event_wicket for match 7",
 		},
 		{
 			name:          "a later table stops it just the same",

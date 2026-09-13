@@ -19,12 +19,26 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	"github.com/umayangag/cric-flow/go-app/internal/teamlineage"
+	"github.com/umayangag/cric-flow/go-app/internal/wicketkinds"
 )
 
 // Options controls optional behaviors for Cricsheet import.
 type Options struct {
 	PlaceholdersFielding bool
 	FailFast             bool
+	// WicketKinds is the vocabulary that says what each wicket kind is to the scorecard
+	// (configs/wicket_kinds.json). ImportDir loads it once for the run; a single-file
+	// import with none set loads it itself.
+	WicketKinds *wicketkinds.Vocabulary
+}
+
+// wicketKinds is the vocabulary an import classifies wickets by: the one it was given,
+// else the committed file.
+func (o *Options) wicketKinds() (wicketkinds.Vocabulary, error) {
+	if o != nil && o.WicketKinds != nil {
+		return *o.WicketKinds, nil
+	}
+	return wicketkinds.Load()
 }
 
 // ErrNoMatchFiles is returned when the dataset directory holds nothing to import.
@@ -67,6 +81,19 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 		slog.String("dir", dir),
 		slog.Int("files_found", len(files)),
 		slog.Int("concurrency", concurrency))
+
+	// The wicket vocabulary is read once for the run, not once per file, and a run that
+	// cannot read it does not start: without it no wicket can be classified.
+	vocabulary, err := opts.wicketKinds()
+	if err != nil {
+		slog.Error("cricsheet.ImportDir could not read the wicket kinds vocabulary",
+			slog.String("dir", dir),
+			slog.Any("err", err))
+		return 0, fmt.Errorf("read wicket kinds: %w", err)
+	}
+	shared := *opts
+	shared.WicketKinds = &vocabulary
+	opts = &shared
 
 	var count int64
 	var failedMu sync.Mutex
@@ -208,6 +235,13 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 			slog.String("file", path),
 			slog.Any("err", err))
 		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	vocabulary, err := opts.wicketKinds()
+	if err != nil {
+		slog.Error("cricsheet.ImportMatchFile could not read the wicket kinds vocabulary",
+			slog.String("file", path),
+			slog.Any("err", err))
+		return fmt.Errorf("read wicket kinds: %w", err)
 	}
 	info := m.Info
 	dateISO := info.MatchDate()
@@ -409,8 +443,21 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 					balls++
 					perBowler[d.Bowler] += bowlerRuns
 				}
+				// What the delivery's wickets are to the scorecard: a run out is a wicket
+				// lost and not the bowler's, a batter retired hurt is neither (IMPORT-06).
+				wicketTally, err := d.TallyWickets(vocabulary)
+				if err != nil {
+					slog.Error("wicket kind not in the vocabulary",
+						slog.String("file", path),
+						slog.Int64("match_id", mid),
+						slog.Int("inning", inningNo),
+						slog.Int("over", overNo),
+						slog.Int("ball", ballIndex+1),
+						slog.Any("err", err))
+					return fmt.Errorf("classify wickets: %w", err)
+				}
+				wkts += wicketTally.Dismissals
 				if d.Wickets != nil && len(*d.Wickets) > 0 {
-					wkts += len(*d.Wickets)
 					for _, w := range *d.Wickets {
 						bowlNumber := ballIndex + 1
 						desc := w.Kind
@@ -542,9 +589,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 							b.Sixes++
 						}
 					}
-					if d.Wickets != nil && len(*d.Wickets) > 0 {
-						b.Wickets += len(*d.Wickets)
-					}
+					b.Wickets += wicketTally.CreditedToBowler
 					b.Wides += d.Extras.Wides
 					b.NoBalls += d.Extras.NoBalls
 				}
@@ -672,7 +717,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		return err
 	}
 	// Build ball event rows (requires cache; done before tx)
-	ballEventRows, err := BuildBallEventRows(ctx, identity, m, int(formatID), mid)
+	ballEvents, err := BuildBallEventRows(ctx, identity, vocabulary, m, int(formatID), mid)
 	if err != nil {
 		slog.Error("failed to build ball_event rows",
 			slog.String("file", path),
@@ -829,15 +874,24 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				slog.Any("err", err))
 			return fmt.Errorf("recompute fielding aggregates: %w", err)
 		}
-		if len(ballEventRows) > 0 {
-			if err := db.InsertBallEventsTx(ctx, tx, ballEventRows); err != nil {
+		if len(ballEvents.Deliveries) > 0 {
+			if err := db.InsertBallEventsTx(ctx, tx, ballEvents.Deliveries); err != nil {
 				slog.Error("insert ball_event failed",
 					slog.String("file", matchCtx.file),
 					slog.Int64("match_id", mid),
 					slog.String("match_date", matchCtx.date),
-					slog.Int("rows_count", len(ballEventRows)),
+					slog.Int("rows_count", len(ballEvents.Deliveries)),
 					slog.Any("err", err))
 				return fmt.Errorf("insert ball events: %w", err)
+			}
+			if err := db.InsertBallEventWicketsTx(ctx, tx, ballEvents.Wickets); err != nil {
+				slog.Error("insert ball_event_wicket failed",
+					slog.String("file", matchCtx.file),
+					slog.Int64("match_id", mid),
+					slog.String("match_date", matchCtx.date),
+					slog.Int("rows_count", len(ballEvents.Wickets)),
+					slog.Any("err", err))
+				return fmt.Errorf("insert ball event wickets: %w", err)
 			}
 		}
 		return nil

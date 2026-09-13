@@ -39,7 +39,7 @@ func TestImportMatchFile_Outcome_RecordsHowTheMatchWasDecided(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(db.Close)
 	require.NoError(t, db.RunMigrations(ctx, filepath.Join("..", "..", "migrations")))
-	require.NoError(t, db.Exec(ctx, `TRUNCATE ball_event, fielding_event, batting_data,
+	require.NoError(t, db.Exec(ctx, `TRUNCATE ball_event_wicket, ball_event, fielding_event, batting_data,
 		bowling_data, fielding_data, match_inning, match_player, match`))
 	dir := t.TempDir()
 

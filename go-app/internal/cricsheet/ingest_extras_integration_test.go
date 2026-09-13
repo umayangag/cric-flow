@@ -37,7 +37,7 @@ func TestImportMatchFile_NoBallWithFourLegByes_IsRecoverableAndNotTheBowlers(t *
 	require.NoError(t, err)
 	t.Cleanup(db.Close)
 	require.NoError(t, db.RunMigrations(ctx, filepath.Join("..", "..", "migrations")))
-	require.NoError(t, db.Exec(ctx, `TRUNCATE ball_event, fielding_event, batting_data,
+	require.NoError(t, db.Exec(ctx, `TRUNCATE ball_event_wicket, ball_event, fielding_event, batting_data,
 		bowling_data, fielding_data, match_inning, match_player, match`))
 	const matchID = int64(9000011)
 	path := filepath.Join(t.TempDir(), "9000011.json")

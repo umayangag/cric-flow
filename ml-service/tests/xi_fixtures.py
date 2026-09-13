@@ -34,9 +34,10 @@ def make_deliveries(
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
-        player_out=np.asarray(players_out, dtype=object)
+        # One dismissed player per ball at most, "" for none: the shape every test needs.
+        players_out=[[key] if key else [] for key in players_out]
         if players_out is not None
-        else np.asarray(["" for _ in range(n)], dtype=object),
+        else [[] for _ in range(n)],
     )
 
 

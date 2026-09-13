@@ -24,11 +24,10 @@ from ml.xi.lineage import TeamLineage
 from ml.xi.lineage import load as load_lineage
 from ml.xi.stakes import UNLABELLED, Header, MatchStakes
 from ml.xi.stakes import derive as derive_stakes
+from ml.xi.wicketkinds import Vocabulary
+from ml.xi.wicketkinds import vocabulary as wicket_vocabulary
 
 logger = logging.getLogger(__name__)
-
-# Wicket kinds credited to the bowler. Run outs, retirements and obstruction are not.
-BOWLER_CREDITED_KINDS = frozenset({"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"})
 
 
 @dataclass
@@ -47,14 +46,17 @@ class Deliveries:
     # 1.0 when the striker faced the ball -- everything but a wide -- ``faced_by_batter`` on
     # both sources. A no-ball is faced; neither is one of the bowler's six (IMPORT-05).
     faced: np.ndarray  # float 0/1
-    wicket: np.ndarray  # float 0/1, any dismissal on the ball
-    bowler_wicket: np.ndarray  # float 0/1, dismissal credited to the bowler
+    # The wickets the innings lost on the ball, by the vocabulary (``wicket_columns``):
+    # every kind but a batter retired hurt or retired not out. A count, not a flag -- a
+    # delivery can carry two dismissals, and one in the archive carries ten -- though it
+    # is 0 or 1 on all but sixteen of 11.6 million (IMPORT-06).
+    wicket: np.ndarray  # float
+    bowler_wicket: np.ndarray  # float 0/1, a dismissal credited to the bowler on the ball
     stumping: np.ndarray  # float 0/1
     fielders: List[Sequence[str]] = field(default_factory=list)  # per ball, keys of credited fielders
-    # Key of the player dismissed on the ball, "" when nobody was. The first-listed wicket
-    # only, which is all the go-app importer stores (ball_event.player_out_id), so the two
-    # sources produce the same player-match rows.
-    player_out: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
+    # Per ball, the keys of the players dismissed on it -- every wicket the file lists,
+    # retirements not out left out -- in the file's order. Empty on a ball nobody was out on.
+    players_out: List[Sequence[str]] = field(default_factory=list)
 
     def __len__(self) -> int:
         return int(len(self.over))
@@ -63,9 +65,7 @@ class Deliveries:
     def empty() -> "Deliveries":
         z = np.zeros(0)
         empty_keys = np.array([], dtype=object)
-        return Deliveries(
-            z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, z, [], empty_keys.copy()
-        )
+        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, z, [], [])
 
 
 def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:
@@ -85,6 +85,45 @@ def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:
         - np.asarray(legbyes, dtype=float)
         - np.asarray(penalty, dtype=float)
     )
+
+
+#: One ball's wickets as (kind, player key) pairs in the file's order; "" for a player the
+#: source could not key.
+BallWickets = Sequence[Tuple[str, str]]
+
+
+def wicket_columns(
+    wickets_per_ball: Sequence[BallWickets], vocabulary: Optional[Vocabulary] = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[Sequence[str]]]:
+    """Each ball's wickets -> ``wicket``, ``bowler_wicket``, ``stumping`` and ``players_out``.
+
+    The vocabulary (``configs/wicket_kinds.json``) says what each kind is: a run out is a
+    wicket the innings lost and not the bowler's, a batter retired hurt is neither and is
+    nobody's dismissal. This is the one rule for both rating sources, and it is the rule
+    the go-app importer applies to ``bowling_data.wickets`` and ``match_inning.wickets_lost``
+    (``cricsheet.Delivery.TallyWickets``, the same file), so a bowler's wickets in the
+    database and his ``wickets`` target agree kind for kind, and a batter's ``dismissals``
+    target counts the innings he was out in and not the one he retired hurt from. Every
+    wicket on the ball is read: until IMPORT-06 was fixed the database held the first one
+    only, and this path mirrored it.
+    """
+    vocabulary = vocabulary or wicket_vocabulary()
+    n = len(wickets_per_ball)
+    wicket, bowler_wicket, stumping = np.zeros(n), np.zeros(n), np.zeros(n)
+    players_out: List[Sequence[str]] = []
+    for i, wickets in enumerate(wickets_per_ball):
+        dismissed: List[str] = []
+        for kind, key in wickets:
+            if vocabulary.is_dismissal(kind):
+                wicket[i] += 1.0
+                if key:
+                    dismissed.append(key)
+            if vocabulary.is_credited_to_bowler(kind):
+                bowler_wicket[i] = 1.0
+            if vocabulary.is_stumping(kind):
+                stumping[i] = 1.0
+        players_out.append(dismissed)
+    return wicket, bowler_wicket, stumping, players_out
 
 
 def faced_by_batter(wides) -> np.ndarray:
@@ -301,7 +340,8 @@ def played_innings(innings: list) -> List[dict]:
 
 
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
-    over, inn, bat, bowl, rb, rt, wk, bwk, st, fld, out = [], [], [], [], [], [], [], [], [], [], []
+    over, inn, bat, bowl, rb, rt, fld = [], [], [], [], [], [], []
+    wickets_per_ball: List[BallWickets] = []
     wides, byes, legbyes, penalty = [], [], [], []
     for inning_index, inning in enumerate(played_innings(innings)):
         for ov in inning.get("overs", []):
@@ -320,13 +360,9 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
                 legbyes.append(extras.get("legbyes", 0))
                 penalty.append(extras.get("penalty", 0))
                 wickets = b.get("wickets") or []
-                wk.append(1.0 if wickets else 0.0)
-                bwk.append(1.0 if any(w["kind"] in BOWLER_CREDITED_KINDS for w in wickets) else 0.0)
-                st.append(1.0 if any(w["kind"] == "stumped" for w in wickets) else 0.0)
                 fld.append(_credited_fielder_keys(wickets, registry))
-                # The first-listed wicket only, mirroring the go-app importer.
-                out_name = (wickets[0].get("player_out") or "").strip() if wickets else ""
-                out.append(registry.get(out_name, "name:" + out_name) if out_name else "")
+                wickets_per_ball.append(_wickets_of(wickets, registry))
+    wicket, bowler_wicket, stumping, players_out = wicket_columns(wickets_per_ball)
     return Deliveries(
         np.asarray(over, dtype=int),
         np.asarray(inn, dtype=int),
@@ -336,12 +372,21 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
         np.asarray(rt, dtype=float),
         runs_conceded_by_bowler(rt, byes, legbyes, penalty),
         faced_by_batter(wides),
-        np.asarray(wk, dtype=float),
-        np.asarray(bwk, dtype=float),
-        np.asarray(st, dtype=float),
+        wicket,
+        bowler_wicket,
+        stumping,
         fld,
-        np.asarray(out, dtype=object),
+        players_out,
     )
+
+
+def _wickets_of(wickets: list, registry: dict) -> BallWickets:
+    """One delivery's ``wickets`` list as (kind, player key) pairs, in the file's order."""
+    pairs: List[Tuple[str, str]] = []
+    for w in wickets:
+        name = (w.get("player_out") or "").strip()
+        pairs.append((w["kind"], registry.get(name, "name:" + name) if name else ""))
+    return pairs
 
 
 def parse_cricsheet_file(
@@ -584,20 +629,31 @@ WHERE mp.match_id = %s
 # his own runs and the batter be counted only the balls he faced. A database migrated but
 # not yet re-imported holds zeros in them, so it charges him everything and counts every
 # wide as faced, which ``make xi-parity`` reports against the archive.
+#
+# Wickets come from ``ball_event_wicket`` (migration 0019, IMPORT-06) -- one row per wicket
+# on the ball, in the file's order -- as two arrays, the kinds and the dismissed players'
+# keys, which ``wicket_columns`` classifies by the same vocabulary the importer used.
+# ``ball_event`` used to carry one kind and one player, so a delivery with two wickets
+# lost its second; ``make xi-parity`` compares ``dismissals`` so that cannot come back.
 _BALLS_SQL = f"""
 SELECT be.innings, be.over,
        {_player_key("striker")}, {_player_key("bowler")},
-       be.runs_batter, be.runs_total, be.wicket_kind,
+       be.runs_batter, be.runs_total,
+       (SELECT array_agg(w.kind ORDER BY w.wicket_number)
+        FROM ball_event_wicket w
+        WHERE w.match_id = be.match_id AND w.innings = be.innings AND w.over = be.over AND w.ball = be.ball),
        (SELECT array_agg({_player_key("f")} ORDER BY fe.id)
         FROM fielding_event fe
         JOIN player f ON f.id = fe.fielder_id
         WHERE fe.match_id = be.match_id AND fe.innings = be.innings AND fe.over = be.over AND fe.ball = be.ball),
-       {_player_key("pout")},
+       (SELECT array_agg({_player_key("pout")} ORDER BY w.wicket_number)
+        FROM ball_event_wicket w
+        LEFT JOIN player pout ON pout.id = w.player_out_id
+        WHERE w.match_id = be.match_id AND w.innings = be.innings AND w.over = be.over AND w.ball = be.ball),
        be.extras_byes, be.extras_legbyes, be.extras_penalty, be.extras_wides
 FROM ball_event be
 LEFT JOIN player striker ON striker.id = be.striker_id
 LEFT JOIN player bowler ON bowler.id = be.bowler_id
-LEFT JOIN player pout ON pout.id = be.player_out_id
 WHERE be.match_id = %s
 ORDER BY be.innings, be.over, be.ball
 """
@@ -709,8 +765,12 @@ def _deliveries_from_rows(rows) -> Deliveries:
         return Deliveries.empty()
     innings = np.asarray([r[0] for r in rows], dtype=int)
     innings = innings - innings.min()
-    kinds = [r[6] or "" for r in rows]
     runs_total = np.asarray([r[5] for r in rows], dtype=float)
+    # A wicket whose player the database could not key reads as "" here, as on the
+    # archive path; the kinds and keys are two arrays of one length, in wicket order.
+    wicket, bowler_wicket, stumping, players_out = wicket_columns(
+        [list(zip(r[6] or [], [key or "" for key in (r[8] or [])])) for r in rows]
+    )
     return Deliveries(
         over=np.asarray([r[1] for r in rows], dtype=int),
         innings=innings,
@@ -722,9 +782,9 @@ def _deliveries_from_rows(rows) -> Deliveries:
             runs_total, [r[9] for r in rows], [r[10] for r in rows], [r[11] for r in rows]
         ),
         faced=faced_by_batter([r[12] for r in rows]),
-        wicket=np.asarray([1.0 if k else 0.0 for k in kinds]),
-        bowler_wicket=np.asarray([1.0 if k in BOWLER_CREDITED_KINDS else 0.0 for k in kinds]),
-        stumping=np.asarray([1.0 if k == "stumped" else 0.0 for k in kinds]),
+        wicket=wicket,
+        bowler_wicket=bowler_wicket,
+        stumping=stumping,
         fielders=[list(r[7] or []) for r in rows],
-        player_out=np.asarray([r[8] or "" for r in rows], dtype=object),
+        players_out=players_out,
     )

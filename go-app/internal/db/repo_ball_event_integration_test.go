@@ -56,7 +56,7 @@ func TestInsertBallEventsTx_ReImportOfAMatch_ReplacesEveryRow(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { pool.Close() })
 	require.NoError(t, RunMigrations(ctx, migrationsDir()))
-	require.NoError(t, Exec(ctx, "TRUNCATE ball_event"))
+	require.NoError(t, Exec(ctx, "TRUNCATE ball_event_wicket, ball_event"))
 
 	const matchID = int64(1)
 	// Nine deliveries take the bulk COPY path (smallBatchThreshold is 8); the six below

@@ -225,7 +225,9 @@ func TestBuildBallEventRows_SuperOverFile_WritesNoInningsAboveTwo(t *testing.T) 
 	identity := playerIDsByName{"A1": 1, "A2": 2, "A4": 4, "B1": 11, "B2": 12, "B3": 13, "B7": 17}
 
 	// Act
-	rows, err := cricsheet.BuildBallEventRows(context.Background(), identity, match, 1, 9000010)
+	events, err := cricsheet.BuildBallEventRows(
+		context.Background(), identity, committedWicketKinds(t), match, 1, 9000010)
+	rows := events.Deliveries
 
 	// Assert
 	require.NoError(t, err)

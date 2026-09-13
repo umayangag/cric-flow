@@ -361,7 +361,11 @@ person and their artifacts are comparable. Teams are keyed by the **club**: one 
 per (team name, gender) since migration `0004_identity.sql`, folded onto the club's current row
 by `opposition.canonical_id` since `0006_team_lineage.sql`, so a franchise that renames does not
 restart its Elo and head-to-head. The renames are reviewed data in `configs/team_lineage.json`
-(I-4), read by the go-app importer and by the Cricsheet-JSON source, so both agree. What the
+(I-4), read by the go-app importer and by the Cricsheet-JSON source, so both agree. The
+wicket kinds are the same shape: `configs/wicket_kinds.json` says which kinds are the
+bowler's, which are wickets nobody took and which are not wickets at all, and the importer's
+`bowling_data.wickets` / `wickets_lost` and the pass's `wickets` / `dismissals` targets read
+it on every source (IMPORT-06; `docs/config-and-data.md` § the wicket record). What the
 identity work bought is measured in E4 (§5.1 of `ML_PIPELINE_REARCHITECTURE_PLAN.md`): nothing
 the holdout can resolve, in any format or on either gender subset. It is correctness, not
 discrimination.
