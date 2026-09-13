@@ -396,12 +396,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 ## 6. go-app prediction path, track record and ops
 
-### GO-02 — Track record matches in raw `opposition.id` space; record stores canonical club ids  **High**
-
-`server/prediction_record.go:134-136` stores `result.Team1Side.ClubID` (= `COALESCE(canonical_id, id)`); `db/repo_track_record.go:39-46` matches `$4 IN (SELECT batting_team_opposition_id … UNION SELECT opposition_id FROM match_player …)` in raw ids; `trackrecord/build.go:270` `teamOneWon := *match.WinnerOppositionID == e.stored.Team1OppositionID`; `build.go:307-320` and `scores.go:128` likewise. The pool query (`repo_selection.go:118-122`) folds aliases; the track record does not. Any match whose rows reference the superseded row stays `unresolved` forever; where one side resolves, `team1_won` can be false when team1 won, `Team1Total` stays nil, `Team1BattedFirst` is wrong, `eleven_overlap` reads 0.
-
-**Fix.** In `FindMatches` / `fill`, fold every opposition id through `COALESCE(o.canonical_id, o.id)` so `PlayedMatch` is in club ids. Test: a renamed club fixture must resolve and score.
-
 ### GO-04 — Same player can be in both pools and both XIs  **Medium**
 
 `predict_team.go:429-440` loads pools independently; `xi_selection.go:355-364` `mergeMarginals` assumes "registry ids are unique across sides"; `selection_reason.go:151-161`; `xi_performance.go:75-84` keys one `byKey` for both sides and ignores `PlayerPerformance.side` (`ml_xi_client.go:467-473`); `play_mode.go:110-138` validates pinned XIs per side only. Franchise T20 with a 12-month window: a player who moved clubs is in both pools; alternating best response can select him for both sides. **Fix.** Drop intersection players from the club he played for less recently (by `LastPlayed`), pass the opposing XI as `must_exclude`, validate `team1_xi ∩ team2_xi = ∅`, key performance by `(side, player_id)`. Pair with SERVE-02.
@@ -522,6 +516,12 @@ return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.po
 ---
 
 ## 9. Fixed
+
+### GO-02 — Track record matches in raw `opposition.id` space; record stores canonical club ids  **High**
+
+`server/prediction_record.go:134-136` stores `result.Team1Side.ClubID` (= `COALESCE(canonical_id, id)`); `db/repo_track_record.go:39-46` matches `$4 IN (SELECT batting_team_opposition_id … UNION SELECT opposition_id FROM match_player …)` in raw ids; `trackrecord/build.go:270` `teamOneWon := *match.WinnerOppositionID == e.stored.Team1OppositionID`; `build.go:307-320` and `scores.go:128` likewise. The pool query (`repo_selection.go:118-122`) folds aliases; the track record does not. Any match whose rows reference the superseded row stays `unresolved` forever; where one side resolves, `team1_won` can be false when team1 won, `Team1Total` stays nil, `Team1BattedFirst` is wrong, `eleven_overlap` reads 0.
+
+**Fix.** In `FindMatches` / `fill`, fold every opposition id through `COALESCE(o.canonical_id, o.id)` so `PlayedMatch` is in club ids. Test: a renamed club fixture must resolve and score. — PR #294
 
 ### GO-03 — Forecasts issued after the match date are scored  **High**
 
