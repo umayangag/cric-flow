@@ -10,6 +10,7 @@ delivery gets zero targets, which is what happened to them.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -64,12 +65,12 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
         e["runs_conceded"] = float(runs_conceded[i])
         e["wickets"] = float(wickets[i])
 
-    # A source built before player_out existed (hand-made test Deliveries) records no
-    # dismissals; both real sources always fill the column.
-    if len(d.player_out) == len(d):
-        dismissed = d.player_out[d.player_out != ""]
-        unique_out, out_counts = np.unique(dismissed, return_counts=True)
-        for key, count in zip(unique_out, out_counts):
+    # Every player dismissed on every ball -- a run out at the non-striker's end and the
+    # second wicket of a delivery included, a retirement not out excluded, which is what
+    # ``wicket_columns`` leaves in the list. A hand-made Deliveries with no players_out
+    # records no dismissals; both real sources always fill it.
+    if len(d.players_out) == len(d):
+        for key, count in Counter(key for dismissed in d.players_out for key in dismissed).items():
             entry(key)["dismissals"] = float(count)
 
     # A catch is a fielder credited on a bowler-credited dismissal that is not a stumping

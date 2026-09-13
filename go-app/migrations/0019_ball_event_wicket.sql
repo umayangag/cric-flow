@@ -31,10 +31,10 @@ CREATE TABLE IF NOT EXISTS public.ball_event_wicket (
     kind character varying(24) NOT NULL,
     player_out_id bigint,
     CONSTRAINT ball_event_wicket_pkey PRIMARY KEY (match_id, innings, "over", ball, wicket_number),
+    -- The delivery must exist; the player reference is a bare id like ball_event's own
+    -- striker_id, non_striker_id and bowler_id, and for the same reason.
     CONSTRAINT ball_event_wicket_ball_fkey FOREIGN KEY (match_id, innings, "over", ball)
-        REFERENCES public.ball_event (match_id, innings, "over", ball),
-    CONSTRAINT ball_event_wicket_player_out_fkey FOREIGN KEY (player_out_id)
-        REFERENCES public.player (id)
+        REFERENCES public.ball_event (match_id, innings, "over", ball)
 );
 
 COMMENT ON TABLE public.ball_event_wicket IS

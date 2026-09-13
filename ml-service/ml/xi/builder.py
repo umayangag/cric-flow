@@ -56,6 +56,7 @@ def build(
     oversized_squads = 0
     runs_not_charged_to_bowler = 0
     deliveries_not_faced = 0
+    dismissals = 0
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
     pending: List = []
     current_date = None
@@ -66,6 +67,7 @@ def build(
         oversized_squads += _oversized_squads(match)
         runs_not_charged_to_bowler += _runs_not_charged_to_bowler(match)
         deliveries_not_faced += _deliveries_not_faced(match)
+        dismissals += _dismissals(match)
         stakes_counts["stage"] += int(match.stakes.stage_known)
         stakes_counts["knockout"] += int(match.stakes.is_knockout)
         stakes_counts["table"] += int(match.stakes.dead_rubber_known)
@@ -102,6 +104,7 @@ def build(
         drawn_or_tied_matches=n_drawn_or_tied,
         runs_not_charged_to_bowler=runs_not_charged_to_bowler,
         deliveries_not_faced=deliveries_not_faced,
+        dismissals=dismissals,
         namesake_sides=namesake_sides,
         oversized_squads=oversized_squads,
         unknown_player_keys=_unknown_player_keys(state),
@@ -171,6 +174,13 @@ def _deliveries_not_faced(match) -> int:
     deliveries on every source, so the count is exact."""
     deliveries = match.deliveries
     return int(len(deliveries) - int(round(float(deliveries.faced.sum()))))
+
+
+def _dismissals(match) -> int:
+    """The match's wickets lost (``Deliveries.wicket``): every wicket the source holds
+    that the vocabulary calls a dismissal, the second one on a delivery included. Whole
+    wickets on every source, so the count is exact."""
+    return int(round(float(match.deliveries.wicket.sum())))
 
 
 def _unknown_player_keys(state: RatingState) -> int:

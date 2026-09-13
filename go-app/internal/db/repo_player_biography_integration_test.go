@@ -26,7 +26,7 @@ func connectAndMigrateForBiography(t *testing.T) context.Context {
 		auction_opposition_player, auction_opposition, auction,
 		issued_prediction,
 		player_biography, player_status, player_status_event,
-		ball_event, match_player, batting_data, bowling_data, fielding_data,
+		ball_event_wicket, ball_event, match_player, batting_data, bowling_data, fielding_data,
 		fielding_event, match_inning, match, player, opposition RESTART IDENTITY`))
 	return ctx
 }

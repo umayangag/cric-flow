@@ -85,6 +85,15 @@ class DataQuality:
     # pre-0018 database is re-imported.
     deliveries_not_faced: int = 0
 
+    # Wickets lost over every delivery the pass read (``Deliveries.wicket``, IMPORT-06):
+    # every wicket record the source holds that the vocabulary calls a dismissal, on every
+    # ball, the second wicket of a delivery included. Here because the database used to
+    # keep one wicket per delivery and the archive path mirrored it, so the two sources
+    # agreed on every count while both were short seventeen wickets; a source that drops
+    # a wicket record now differs from the other here. A fact about the cricket and not
+    # gated.
+    dismissals: int = 0
+
     # A person named on both sides of one match. Cricsheet's registry is keyed by name
     # within a file, so two namesakes in one match collapse into one identifier and the
     # source cannot say which side each delivery belongs to. Two files in the current

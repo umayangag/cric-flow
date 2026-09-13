@@ -19,7 +19,7 @@ from ml.xi.builder import build
 from ml.xi.retrain import main as retrain_main
 from ml.xi.retrain import retrain
 from ml.xi.simulator import SimulationUnavailable
-from ml.xi.sources import BOWLER_CREDITED_KINDS, Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
+from ml.xi.sources import Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.xi_perf_fixtures import fast_fits
 
@@ -564,11 +564,13 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
             2: [(f"a{i:07x}", 10) for i in range(11)],  # side 20 has no squad -> skipped
             3: [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)],
         },
+        # Ball columns 6 and 8 are the wickets on the ball as two arrays in wicket order,
+        # the kinds and the dismissed players' keys (ball_event_wicket, IMPORT-06).
         "balls": {
             1: [
                 (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0),
-                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000", 0, 0, 0, 0),
-                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000", 0, 0, 0, 0),
+                (1, 0, "a0000000", "b0000000", 0, 0, ["caught"], ["b0000005"], ["a0000000"], 0, 0, 0, 0),
+                (2, 0, "b0000000", "a0000000", 0, 1, ["run out"], ["a0000005"], ["b0000000"], 0, 0, 0, 0),
             ],
             3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None, 0, 0, 0, 0)],
         },
@@ -587,8 +589,8 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert list(d.bowler_wicket) == [0.0, 1.0, 0.0]
     assert list(d.wicket) == [0.0, 1.0, 1.0]
     assert d.fielders[1] == ["b0000005"]
+    assert d.players_out == [[], ["a0000000"], ["b0000000"]]
     assert recs[1].outcome == 1.0
-    assert "caught" in BOWLER_CREDITED_KINDS and "run out" not in BOWLER_CREDITED_KINDS
     # The event fields reach the record verbatim and the stakes derivation reads them over
     # the whole set the source yields (X-3). Both matches here are between the same two
     # clubs, so the named edition is a bilateral series; the match with no event name
