@@ -252,12 +252,34 @@ type Over struct {
 
 // Delivery represents a single ball with runs, extras and optional wicket info.
 type Delivery struct {
-	Batter     string         `json:"batter"`
-	Bowler     string         `json:"bowler"`
-	NonStriker string         `json:"non_striker"`
-	Runs       RunInfo        `json:"runs"`
-	Extras     map[string]int `json:"extras"`
-	Wickets    *Wickets       `json:"wickets,omitempty"`
+	Batter     string          `json:"batter"`
+	Bowler     string          `json:"bowler"`
+	NonStriker string          `json:"non_striker"`
+	Runs       RunInfo         `json:"runs"`
+	Extras     ExtrasBreakdown `json:"extras"`
+	Wickets    *Wickets        `json:"wickets,omitempty"`
+}
+
+// ExtrasBreakdown is a delivery's extras by kind, as Cricsheet records them under
+// `extras`. The archive uses exactly these five keys and no others; a delivery with no
+// extras has no `extras` object at all, which decodes to the zero value. A delivery can
+// carry more than one kind -- a no-ball with leg-byes off it, a penalty beside a wide --
+// and each kind is kept, because which of them the bowler is charged with is a question
+// the summary in ball_event.extras_kind cannot answer (IMPORT-04).
+type ExtrasBreakdown struct {
+	Wides   int `json:"wides"`
+	NoBalls int `json:"noballs"`
+	Byes    int `json:"byes"`
+	LegByes int `json:"legbyes"`
+	Penalty int `json:"penalty"`
+}
+
+// RunsConcededByBowler is the part of a delivery's total that is charged to the bowler:
+// the batter's runs plus wides and no-balls. Byes and leg-byes are the fielding side's
+// fault, not the bowler's, and penalty runs are awarded against the side for conduct; the
+// scorecard credits none of them to him, so neither does the bowling record.
+func (d Delivery) RunsConcededByBowler() int {
+	return d.Runs.Total - d.Extras.Byes - d.Extras.LegByes - d.Extras.Penalty
 }
 type (
 	// Wickets is a list of wicket events for a delivery.
