@@ -44,7 +44,7 @@ def _registry_keyed_history(n: int = 160):
         d = m.deliveries
         d2 = Deliveries(
             d.over, d.innings, np.asarray(remap(list(d.batter)), dtype=object), np.asarray(remap(list(d.bowler)), dtype=object),
-            d.runs_batter, d.runs_total, d.runs_bowler, d.wicket, d.bowler_wicket, d.stumping, [remap(f) for f in d.fielders],
+            d.runs_batter, d.runs_total, d.runs_bowler, d.faced, d.wicket, d.bowler_wicket, d.stumping, [remap(f) for f in d.fielders],
         )  # fmt: skip
         out.append(
             MatchRecord(
@@ -566,11 +566,11 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
         },
         "balls": {
             1: [
-                (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0),
-                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000", 0, 0, 0),
-                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000", 0, 0, 0),
+                (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0),
+                (1, 0, "a0000000", "b0000000", 0, 0, "caught", ["b0000005"], "a0000000", 0, 0, 0, 0),
+                (2, 0, "b0000000", "a0000000", 0, 1, "run out", ["a0000005"], "b0000000", 0, 0, 0, 0),
             ],
-            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None, 0, 0, 0)],
+            3: [(1, 3, "a0000001", "b0000000", 1, 1, None, None, None, 0, 0, 0, 0)],
         },
     }
     recs = list(PostgresSource(_FakeConnection(tables), formats=["T20I"]).iter_matches())
@@ -617,7 +617,7 @@ def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
 def test_postgres_source_carries_missing_delivery_players_as_empty_keys() -> None:
     """striker_id and bowler_id are nullable, so the join can yield NULL. That must become
     an empty key, not the string "None", which would become a rated player."""
-    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None, None, 0, 0, 0)])
+    d = _deliveries_from_rows([(1, 0, None, None, 0, 0, None, None, None, 0, 0, 0, 0)])
 
     assert list(d.batter) == [""] and list(d.bowler) == [""]
     assert d.fielders == [[]]
@@ -686,8 +686,8 @@ def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> Non
     """The same delivery read from ``ball_event`` with its extras by kind (migration
     0018): the bowler is charged 1 of the 5, exactly as the archive path charges him."""
     squad = [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)]
-    no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0)
-    plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0)
+    no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0, 0)
+    plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
         "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None)],
         "players": {1: squad},
@@ -1017,3 +1017,71 @@ def test_a_numeric_player_id_is_refused_rather_than_silently_unrated() -> None:
     the XI was eleven debutants. The contract now rejects it at the boundary."""
     with pytest.raises(ValidationError):
         XiOptimizeRequest(format="T20I", pool_player_ids=[1, 2, 3], opponent_player_ids=["2911de16"])
+
+
+# ---------------------------------------------------------------------------
+# A ball faced (IMPORT-05): one rule on both sources
+# ---------------------------------------------------------------------------
+
+
+def test_faced_by_batter_is_the_importers_rule() -> None:
+    """Every delivery but a wide: a no-ball is faced, a wide is not
+    (``cricsheet.Delivery.FacedByBatter``)."""
+    from ml.xi.sources import faced_by_batter
+
+    # a four, a wide, a no-ball, four byes, a penalty beside a wide
+    faced = faced_by_batter([0, 1, 0, 0, 1])
+
+    assert list(faced) == [1.0, 0.0, 1.0, 1.0, 0.0]
+
+
+def _no_ball() -> dict:
+    """A no-ball the batter played and missed, as Cricsheet writes it: one run to the
+    innings and to the bowler, and a ball the batter faced."""
+    return {"batter": "A1", "bowler": "B1", "runs": {"batter": 0, "extras": 1, "total": 1}, "extras": {"noballs": 1}}
+
+
+def _wide() -> dict:
+    """A wide: one run to the innings and to the bowler, and a ball nobody faced."""
+    return {"batter": "A1", "bowler": "B1", "runs": {"batter": 0, "extras": 1, "total": 1}, "extras": {"wides": 1}}
+
+
+def test_the_archive_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
+    """The no-ball is faced and the wide is not; a delivery with no ``extras`` object is
+    faced."""
+    from ml.xi.sources import _deliveries_from_cricsheet
+
+    plain_four = {"batter": "A1", "bowler": "B1", "runs": {"batter": 4, "extras": 0, "total": 4}}
+    innings = [{"overs": [{"over": 0, "deliveries": [_no_ball(), _wide(), plain_four]}]}]
+
+    d = _deliveries_from_cricsheet(innings, {})
+
+    assert list(d.faced) == [1.0, 0.0, 1.0]
+
+
+def test_the_postgres_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
+    """The same deliveries read from ``ball_event`` with ``extras_wides`` (migration
+    0018): the no-ball is faced and the wide is not, exactly as the archive path reads
+    them."""
+    squad = [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)]
+    no_ball = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 0)
+    wide = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 1)
+    plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
+    tables = {
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None)],
+        "players": {1: squad},
+        "balls": {1: [no_ball, wide, plain_four]},
+    }
+
+    (record,) = PostgresSource(_FakeConnection(tables), formats=["T20I"]).iter_matches()
+
+    assert list(record.deliveries.faced) == [1.0, 0.0, 1.0]
+
+
+def test_postgres_balls_read_the_wides_and_not_is_legal() -> None:
+    """Whether the batter faced the ball is ``extras_wides``, read from the row itself:
+    ``is_legal`` is the bowler's count and would say a no-ball was not faced."""
+    from ml.xi.sources import _BALLS_SQL
+
+    assert "be.extras_wides" in _BALLS_SQL
+    assert "is_legal" not in _BALLS_SQL

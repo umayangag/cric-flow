@@ -7,7 +7,7 @@ from typing import List, Optional, Sequence
 
 import numpy as np
 
-from ml.xi.sources import Deliveries, MatchRecord
+from ml.xi.sources import Deliveries, MatchRecord, faced_by_batter
 
 
 def make_deliveries(
@@ -18,6 +18,7 @@ def make_deliveries(
     overs: Optional[List[int]] = None,
     innings: Optional[List[int]] = None,
     players_out: Optional[List[str]] = None,
+    wides: Optional[List[int]] = None,
 ) -> Deliveries:
     n = len(batters)
     return Deliveries(
@@ -28,6 +29,7 @@ def make_deliveries(
         runs_batter=np.asarray(runs, dtype=float),
         runs_total=np.asarray(runs, dtype=float),
         runs_bowler=np.asarray(runs, dtype=float),
+        faced=faced_by_batter(wides) if wides is not None else np.ones(n),
         wicket=np.asarray(wickets, dtype=float),
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),

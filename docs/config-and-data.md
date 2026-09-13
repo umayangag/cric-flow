@@ -598,6 +598,25 @@ rating pass over the database charges the bowler everything — which `make xi-p
 reports as `runs_not_charged_to_bowler` differing from the archive. The rating pass's
 query names the three columns, so it needs the migration applied before it runs at all.
 
+A ball faced and a ball bowled are two counts, and the row carries one of them.
+**`is_legal` is the bowler's:** a delivery that is neither a wide nor a no-ball, each of
+which he must bowl again — his balls and overs (`bowling_data.balls`, `overs`), the
+innings' `balls_bowled`, `ball_seq` and the phase are all counted by it
+(`cricsheet.Delivery.IsLegal`). **A ball faced is every delivery but a wide:** the batter
+faces a no-ball — he may hit it — and does not face a wide, which passes out of his reach.
+`batting_data.balls` and `strike_rate` are counted by that rule
+(`cricsheet.Delivery.FacedByBatter`), and there is no `faced` column because the row
+already says it: a ball faced is a row with `extras_wides = 0`, which the rating pass
+derives by the same rule on both of its sources (`ml/xi/sources.py`, `faced_by_batter`,
+read into `Deliveries.faced` and summed into the `balls_faced` target). Until IMPORT-05 was
+fixed the importer counted the batter by the bowler's rule, so every no-ball he faced was
+missing from his balls and his strike rate read high (58,068 no-balls in the archive), and
+the rating pass counted every delivery as faced, wides included (202,331) — two definitions
+erring in opposite directions. Like the extras, `extras_wides` is zero on rows imported
+before `0018`, so until the directory is re-imported the rating pass over the database
+counts every wide as faced, which `make xi-parity` reports as `deliveries_not_faced`
+differing from the archive; `batting_data.balls` changes only when the file is re-imported.
+
 ### What a re-import does to a match already in the database
 
 **An import replaces a match, it does not merge into it.** The match id comes from the

@@ -77,6 +77,14 @@ class DataQuality:
     # cricket and not gated: it reads zero until a pre-0018 database is re-imported.
     runs_not_charged_to_bowler: int = 0
 
+    # Wides over every delivery the pass read: the deliveries no batter faced
+    # (``Deliveries.faced``, IMPORT-05). Here for the same reason as the runs count: a
+    # source that counts every delivery as faced agrees with the other on every other
+    # count, so without it the parity check could not tell the two definitions of
+    # ``balls_faced`` apart. A fact about the cricket and not gated: it reads zero until a
+    # pre-0018 database is re-imported.
+    deliveries_not_faced: int = 0
+
     # A person named on both sides of one match. Cricsheet's registry is keyed by name
     # within a file, so two namesakes in one match collapse into one identifier and the
     # source cannot say which side each delivery belongs to. Two files in the current

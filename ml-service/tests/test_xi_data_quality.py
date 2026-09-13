@@ -158,6 +158,7 @@ def _match(match_id: str, day: int, team1, team2, winner="A", result=None) -> Ma
         runs_batter=z,
         runs_total=z,
         runs_bowler=z,
+        faced=np.ones(1),
         wicket=z,
         bowler_wicket=z,
         stumping=z,
@@ -644,3 +645,39 @@ def test_parity_reports_extras_only_one_source_leaves_off_the_bowler() -> None:
 
     assert postgres.quality.matches_read == cricsheet.quality.matches_read == 1
     assert differences == ["runs_not_charged_to_bowler: postgres 0, cricsheet 4"]
+
+
+def _passes_with_a_wide(postgres_reads_wides: bool):
+    """Both sources over one match holding a wide, with the database either reading
+    ``extras_wides`` or, as a database imported before migration 0018 does, holding a
+    zero and counting the wide as faced. Every other count is identical either way."""
+    match = _match("m0", 0, ["a1", "a2"], ["b1", "b2"])
+    not_faced = replace(match, deliveries=replace(match.deliveries, faced=np.array([0.0])))
+    faced = replace(match, deliveries=replace(match.deliveries, faced=np.array([1.0])))
+    database = [not_faced if postgres_reads_wides else faced]
+    return (
+        build(_CountingSource(database, SourceCounts(offered=1, yielded=1))),
+        build(_CountingSource([not_faced], SourceCounts(offered=1, yielded=1))),
+    )
+
+
+def test_the_pass_counts_the_deliveries_no_batter_faced() -> None:
+    """IMPORT-05: the count that can see a wide -- the deliveries no batter faced, over
+    every delivery read."""
+    postgres, _ = _passes_with_a_wide(postgres_reads_wides=True)
+
+    assert postgres.quality.deliveries_not_faced == 1
+
+
+def test_parity_reports_a_wide_only_one_source_leaves_off_the_batter() -> None:
+    """IMPORT-05, the guarantee itself: a database that counts every delivery as faced
+    agrees with the archive on every other count, and the parity check must still fail,
+    naming the faced count."""
+    from ml.xi.parity import compare
+
+    postgres, cricsheet = _passes_with_a_wide(postgres_reads_wides=False)
+
+    differences = compare(postgres, cricsheet)
+
+    assert postgres.quality.matches_read == cricsheet.quality.matches_read == 1
+    assert differences == ["deliveries_not_faced: postgres 0, cricsheet 1"]

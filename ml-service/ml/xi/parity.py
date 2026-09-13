@@ -46,6 +46,7 @@ _COMPARED_COUNTS = (
     "undecided_matches",
     "drawn_or_tied_matches",
     "runs_not_charged_to_bowler",
+    "deliveries_not_faced",
     "namesake_sides",
     "oversized_squads",
     "unknown_player_keys",

@@ -25,10 +25,12 @@ _ZERO_ACTUALS: Dict[str, float] = {name: 0.0 for name in C.PLAYER_MATCH_TARGET_C
 def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
     """What each player did in the match, keyed by player key (``PLAYER_MATCH_TARGET_COLS``).
 
-    Counts are over deliveries, wides included -- the same definition the as-of
-    ``exp_balls_*`` vectors use -- and ``wickets`` / ``runs_conceded`` follow
-    ``bowl_wrate`` / ``bowl_rate`` (bowler-credited kinds; the runs charged to the bowler,
-    ``Deliveries.runs_bowler``, which leave byes, leg-byes and penalties to the innings).
+    ``balls_faced`` is the balls the batter faced -- every delivery but a wide
+    (``Deliveries.faced``, the importer's ``batting_data.balls`` rule, IMPORT-05); the
+    as-of ``exp_balls_*`` vectors and ``balls_bowled`` are still counts over deliveries,
+    wides included. ``wickets`` / ``runs_conceded`` follow ``bowl_wrate`` / ``bowl_rate``
+    (bowler-credited kinds; the runs charged to the bowler, ``Deliveries.runs_bowler``,
+    which leave byes, leg-byes and penalties to the innings).
     """
     d = match.deliveries
     out: Dict[str, Dict[str, float]] = {}
@@ -42,7 +44,7 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
     runs = np.bincount(batter_inverse, weights=d.runs_batter)
     fours = np.bincount(batter_inverse, weights=(d.runs_batter == 4).astype(float))
     sixes = np.bincount(batter_inverse, weights=(d.runs_batter == 6).astype(float))
-    balls_faced = np.bincount(batter_inverse).astype(float)
+    balls_faced = np.bincount(batter_inverse, weights=d.faced)
     positions = batting_positions(d)
     for i, key in enumerate(unique_batters):
         e = entry(key)

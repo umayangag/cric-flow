@@ -33,7 +33,7 @@ func BuildBallEventRows(
 		totalLegal := 0
 		for _, over := range inng.Overs {
 			for _, d := range over.Deliveries {
-				if d.Extras.Wides == 0 && d.Extras.NoBalls == 0 {
+				if d.IsLegal() {
 					totalLegal++
 				}
 			}
@@ -49,7 +49,10 @@ func BuildBallEventRows(
 			ballNo := 0
 			for _, d := range over.Deliveries {
 				ballNo++
-				legal := (d.Extras.Wides == 0 && d.Extras.NoBalls == 0)
+				// is_legal is the bowler's count (Delivery.IsLegal): a no-ball is faced by the
+				// batter but is not one of the over's balls. The row carries no faced flag; a
+				// ball faced is extras_wides == 0, which every reader derives by one rule.
+				legal := d.IsLegal()
 				if legal {
 					ballSeq++
 				}
