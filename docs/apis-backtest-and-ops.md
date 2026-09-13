@@ -216,8 +216,10 @@ and the remedy is to run it again.
 same bytes the caller received, `record` block and all — beside the request it answered, the
 `run_id` and `ratings_through` it was served from, and the columns a resolver joins on
 (format, both opposition ids, gender, `match_date`, the selection objective, the headline
-probability and its source). A refused prediction stores nothing: a refusal is not a
-prediction, so there is nothing to score against a result later.
+probability and its source). The two opposition ids are club ids — written as such, and
+read back folded through `COALESCE(canonical_id, id)` so a club renamed after the answer
+was filed is still the same club to a reader (GO-02). A refused prediction stores nothing:
+a refusal is not a prediction, so there is nothing to score against a result later.
 
 A store failure never costs the caller the answer. The prediction is correct whether or not
 it was filed, so it is served with `record: {stored: false, reason: "..."}` — on the wire of
@@ -297,9 +299,23 @@ asserted from go-app and the frontend):
 | `post_hoc` | the match was played and won by someone, but the forecast was issued **after** the match date: listed and counted, its own `score` on the row, and in none of the summaries below |
 | `scored` | the forecast was issued on or before its match date and the match was played and won by someone — the rows every summary is over |
 
-A fixture is resolved by the **exact** `match_date`, both opposition ids in either order, the
+A fixture is resolved by the **exact** `match_date`, both clubs in either order, the
 format code and the gender. A match between the same sides on a neighbouring date is a
-different match and is not it (`db.MatchLookup`). A forecast issued after the day it was
+different match and is not it (`db.MatchLookup`).
+
+**A club that renames is one club here (GO-02).** Cricsheet names a team by whatever it
+was called on the day, so a rebrand splits a club into two `opposition` rows and each
+match keeps the row that played. Every opposition id the record handles is therefore
+folded onto its club — `COALESCE(opposition.canonical_id, id)`, the same rule the player
+pool uses — on **both** sides of the join: the lookup folds the match's sides, and the
+store folds the two ids of a stored prediction as it reads them, because a club can be
+renamed after an answer was filed. Matching raw ids instead would leave a renamed club's
+fixture `unresolved` forever, and where one side happened to match would score the other
+half the wrong way round: `team1_won` inverted, no `team1_total`, `team1_batted_first`
+reversed, an `eleven_overlap` of zero. The ids on the wire — `team1.id`, `team2.id` and
+`happened.winner_opposition_id` — are club ids for the same reason.
+
+A forecast issued after the day it was
 about neither supersedes nor is superseded: it stands alone in `post_hoc`, flagged
 `issued_after_match_date` on the wire, with its score on the row and no summary over it.
 The ratings behind such an answer can already contain the result — every row stored before
