@@ -281,6 +281,7 @@ type ExtrasBreakdown struct {
 func (d Delivery) RunsConcededByBowler() int {
 	return d.Runs.Total - d.Extras.Byes - d.Extras.LegByes - d.Extras.Penalty
 }
+
 type (
 	// Wickets is a list of wicket events for a delivery.
 	Wickets []Wicket
