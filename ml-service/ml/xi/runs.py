@@ -103,6 +103,13 @@ class RunManifest:
     #: format code -> why it has no headline metrics. Empty when every format was scored.
     format_notes: Dict[str, str] = field(default_factory=dict)
     report: str = ""
+    #: The usability verdict (EVAL-04, ``ml.xi.run_usability``): False when a scored
+    #: format's objective does not rank, or fell under the served run's on the same holdout
+    #: by more than the AUC's own standard error. A run that is not usable is written so
+    #: the operator can read why, and ``set_current`` refuses to publish it.
+    usable: bool = True
+    #: format code -> why the run is not usable there. Empty when it is usable.
+    unusable_reasons: Dict[str, str] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -125,6 +132,8 @@ class RunManifest:
             "format_notes": dict(self.format_notes),
             "hyperparameters": dict(self.hyperparameters),
             "metrics": dict(self.metrics),
+            "usable": self.usable,
+            "unusable_reasons": dict(self.unusable_reasons),
         }
 
 
@@ -263,14 +272,15 @@ def list_runs(artifacts_dir: str) -> List[Dict[str, Any]]:
 
 
 def newest_run_id(artifacts_dir: str) -> Optional[str]:
-    """The most recent run whose manifest reads as one, or None.
+    """The most recent run whose manifest reads as one and which may be published, or None.
 
-    A run the manifest reader refused is skipped, not picked: a reload with no run named
-    asks for the newest run that can be served, and an unloadable one would only turn
-    the request into a refusal of something the operator never asked for.
+    A run the manifest reader refused is skipped, not picked, and so is one its own
+    retrain judged not usable (EVAL-04): a reload with no run named asks for the newest
+    run that can be served, and either would only turn the request into a refusal of
+    something the operator never asked for.
     """
     for entry in list_runs(artifacts_dir):
-        if entry.get("has_manifest") and entry.get("refused") is None:
+        if entry.get("has_manifest") and entry.get("refused") is None and entry.get("usable", True):
             return str(entry["run_id"])
     return None
 
@@ -291,9 +301,17 @@ def read_current(artifacts_dir: str) -> Optional[str]:
 
 
 def set_current(artifacts_dir: str, run_id: str) -> str:
-    """Point ``current`` at a run. Refuses a run that is not one."""
+    """Point ``current`` at a run. Refuses a run that is not one, and a run its own
+    retrain judged not usable (EVAL-04): publishing is this pointer, so this is the one
+    place the refusal has to live for ``reload`` -- named or newest -- to honour it."""
     directory = run_dir(artifacts_dir, run_id)
-    read_manifest(directory)  # raises RunArtifactsInvalid if this is not a run
+    manifest = read_manifest(directory)  # raises RunArtifactsInvalid if this is not a run
+    if not manifest.usable:
+        reasons = "; ".join(f"{fmt}: {why}" for fmt, why in sorted(manifest.unusable_reasons.items()))
+        raise RunArtifactsInvalid(
+            f"run {run_id} is not usable and cannot be published -- {reasons}. It stays on disk to be read; "
+            f"run `make retrain` to replace it"
+        )
     os.makedirs(artifacts_dir, exist_ok=True)
     path = os.path.join(artifacts_dir, CURRENT_POINTER_NAME)
     with open(path, "w", encoding="utf-8") as fh:

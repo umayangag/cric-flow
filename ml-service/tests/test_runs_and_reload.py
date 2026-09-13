@@ -52,11 +52,13 @@ def _write_run(
     *,
     last_date: date | None = None,
     manifest_ratings_through: str | None = None,
+    unusable_reasons: dict[str, str] | None = None,
 ) -> str:
     """A complete, loadable run: ratings, one format's models, and a manifest.
 
     ``manifest_ratings_through`` overrides the date the manifest records; by default it
-    is the state's own, which is what ``retrain`` writes."""
+    is the state's own, which is what ``retrain`` writes. ``unusable_reasons`` writes the
+    run as one its retrain judged not usable (EVAL-04)."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
     state = _state(last_date=last_date)
@@ -85,6 +87,8 @@ def _write_run(
             git_sha="deadbee",
             state_shape=state_shape(state),
             formats=["T20"],
+            usable=not unusable_reasons,
+            unusable_reasons=dict(unusable_reasons or {}),
         ),
     )
     return directory
@@ -151,6 +155,35 @@ def test_current_is_a_pointer_and_refuses_a_run_that_is_not_one(tmp_path):
 
     with pytest.raises(RunArtifactsInvalid, match="no manifest.json"):
         runs.set_current(str(tmp_path), "never-trained")
+
+
+# --- EVAL-04: a run its retrain judged not usable is never published ----------------
+
+_DOES_NOT_RANK = {"T20": "objective holdout AUC 0.4800 is not above the base rate's 0.5 on 400 holdout rows"}
+
+
+def test_current_refuses_a_run_that_is_not_usable_naming_why(tmp_path):
+    """Publishing is the pointer, so the refusal lives where the pointer is set."""
+    _write_run(tmp_path, unusable_reasons=_DOES_NOT_RANK)
+
+    with pytest.raises(RunArtifactsInvalid, match="not usable and cannot be published -- T20: objective holdout AUC"):
+        runs.set_current(str(tmp_path), "20260902T101500Z-ab12cd34")
+    assert runs.read_current(str(tmp_path)) is None
+
+
+def test_the_newest_publishable_run_skips_one_that_is_not_usable(tmp_path):
+    """A reload with no run named asks for the newest run that can be served; the newest
+    directory on disk is listed, with its reasons, and passed over."""
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    _write_run(tmp_path, "20260903T154222Z-4e009a52", unusable_reasons=_DOES_NOT_RANK)
+
+    listed = {entry["run_id"]: entry for entry in runs.list_runs(str(tmp_path))}
+
+    assert runs.newest_run_id(str(tmp_path)) == "20260901T090000Z-11111111"
+    assert listed["20260903T154222Z-4e009a52"]["usable"] is False
+    assert listed["20260903T154222Z-4e009a52"]["unusable_reasons"] == _DOES_NOT_RANK
+    assert listed["20260903T154222Z-4e009a52"]["refused"] is None, "it loads; it is publication that is refused"
+    assert listed["20260901T090000Z-11111111"]["usable"] is True
 
 
 # --- D-6: a shape this code cannot serve is refused, by name ------------------------
@@ -628,6 +661,23 @@ def test_reload_of_a_refused_run_answers_409_with_the_reason(client, tmp_path):
 
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
+
+
+def test_reload_refuses_to_publish_a_run_that_is_not_usable_and_keeps_serving(client, tmp_path):
+    """EVAL-04 end to end: the run loads, publication is refused with its reasons on the
+    wire, and the run that was serving goes on serving (B-13)."""
+    _write_run(tmp_path, "20260901T090000Z-11111111")
+    client.post("/admin/reload?run=20260901T090000Z-11111111")
+    _write_run(tmp_path, "20260903T154222Z-4e009a52", unusable_reasons=_DOES_NOT_RANK)
+
+    named = client.post("/admin/reload?run=20260903T154222Z-4e009a52")
+    newest = client.post("/admin/reload")
+
+    assert named.status_code == 409
+    assert named.json()["detail"]["code"] == "RUN_ARTIFACTS_INVALID"
+    assert "not usable and cannot be published -- T20: objective holdout AUC" in named.json()["detail"]["message"]
+    assert newest.status_code == 200 and newest.json()["run_id"] == "20260901T090000Z-11111111"
+    assert runs.read_current(str(tmp_path)) == "20260901T090000Z-11111111"
 
 
 def test_artifacts_status_answers_the_date_per_run_and_names_what_cannot_load(client, tmp_path):

@@ -1150,6 +1150,11 @@ export type EvaluationGate = {
   fixed: string;
   decides: string;
   report_path?: string | null;
+  /**
+   * The decides clause as the harness evaluates it on the number at `report_path` (EVAL-04);
+   * null for a gate whose clause decides an action, informs, or is a script's to evaluate.
+   */
+  threshold?: string | null;
 };
 
 export type EvaluationFormatReport = {
