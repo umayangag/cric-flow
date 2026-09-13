@@ -14,6 +14,7 @@ from typing import List
 import pandas as pd
 import pytest
 
+from ml.xi import retrain as retrain_module
 from ml.xi import runs
 from ml.xi.builder import build
 from ml.xi.retrain import format_notes, headline_metrics, retrain
@@ -130,6 +131,100 @@ def test_headline_metrics_and_notes_read_the_report_not_the_models() -> None:
         "no discrimination numbers (0 rows at or after the cutoff)"
     )
     assert notes["TEST"] == "not trained: insufficient training rows (12 rows before the cutoff)"
+
+
+# --- EVAL-04: a retrain refuses to publish a run whose objective does not rank ---------
+
+
+def _summary_scoring(auc: float) -> dict:
+    """What ``train_all`` reports for one scored format, at the AUC the test needs; the
+    models it would have written are not needed to pin what the manifest says."""
+    return {
+        "data_quality_failures": [],
+        "formats": [
+            {
+                "format_code": "T20",
+                "n_train": 900,
+                "n_holdout": 100,
+                "holdout_positive_rate": 0.5,
+                "objective": {"auc": auc, "brier": 0.25},
+                "display": {"auc_mean": auc, "auc_sd": 0.0},
+                "hyperparameters": {"params": {"max_iter": 100}, "reason": "baseline"},
+            }
+        ],
+    }
+
+
+def test_a_scored_run_above_the_base_rate_is_usable(built, tmp_path) -> None:
+    manifest = _written_manifest(built, tmp_path, "2024-02-20")
+
+    assert manifest["usable"] is True
+    assert manifest["unusable_reasons"] == {}
+
+
+def test_a_run_whose_objective_does_not_rank_is_written_unusable_and_cannot_be_published(
+    built, tmp_path, monkeypatch
+) -> None:
+    """The finding's retrain half: the run is on disk with its reasons, so the operator
+    can read what it produced, and ``current`` refuses to point at it."""
+    monkeypatch.setattr(retrain_module, "train_all", lambda *args, **kwargs: _summary_scoring(0.48))
+
+    written = retrain(built, str(tmp_path), pd.Timestamp("2024-02-20"), formats=["T20"])
+    manifest = runs.read_manifest(written["run_dir"])
+
+    assert manifest.usable is False
+    assert manifest.unusable_reasons == {
+        "T20": "objective holdout AUC 0.4800 is not above the base rate's 0.5 on 100 holdout rows: "
+        "the objective does not rank"
+    }
+    with pytest.raises(runs.RunArtifactsInvalid, match="not usable and cannot be published"):
+        runs.set_current(str(tmp_path), written["run_id"])
+    assert runs.newest_run_id(str(tmp_path)) is None, "a reload with no run named must not find it either"
+
+
+def test_a_run_that_regressed_against_the_served_run_on_the_same_holdout_is_unusable(
+    built, tmp_path, monkeypatch
+) -> None:
+    served = runs.RunManifest(
+        run_id="20260902T102135Z-2818a6b7",
+        created_at="2026-09-02T10:21:35+00:00",
+        cutoff="2024-02-20",
+        ratings_through="2024-02-19",
+        dataset_sha="abc",
+        git_sha="def",
+        metrics={"T20": {"objective_auc": 0.80, "n_holdout": 100}},
+    )
+    monkeypatch.setattr(retrain_module, "train_all", lambda *args, **kwargs: _summary_scoring(0.65))
+
+    written = retrain(built, str(tmp_path), pd.Timestamp("2024-02-20"), formats=["T20"], served=served)
+
+    assert written["manifest"]["usable"] is False
+    assert written["manifest"]["unusable_reasons"]["T20"].startswith(
+        "objective holdout AUC 0.6500 is under the served run 20260902T102135Z-2818a6b7's 0.8000 on the same holdout"
+    )
+
+
+def test_retrain_main_exits_non_zero_on_an_unusable_run_and_still_records_the_quality_baseline(
+    tmp_path, monkeypatch
+) -> None:
+    """The exit code says what the manifest says. The data-quality baseline is about the
+    import and is recorded regardless: the two gates are independent."""
+    from ml.xi import quality
+    from tests.test_xi_data_quality import _tiny_cricsheet_dir
+
+    monkeypatch.setattr(retrain_module, "train_all", lambda *args, **kwargs: _summary_scoring(0.48))
+    src = _tiny_cricsheet_dir(tmp_path)
+    out = tmp_path / "artifacts"
+
+    rc = retrain_module.main(["--cricsheet-dir", str(src), "--cutoff", "2024-03-02", "--out", str(out)])
+
+    assert rc == 1
+    assert (out / quality.BASELINE_NAME).exists()
+    assert runs.newest_run_id(str(out)) is None
+
+
+def test_the_served_run_manifest_is_read_from_current_and_absent_when_nothing_is_published(tmp_path) -> None:
+    assert retrain_module.served_run_manifest(str(tmp_path)) is None
 
 
 def test_the_manifest_records_the_date_the_pass_consumed_through_beside_the_cutoff(built, tmp_path) -> None:

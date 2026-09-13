@@ -178,12 +178,6 @@ The calibration fold is needed to fit the shared factor, but the members are nev
 
 **Fix.** Fit the shared factor / recalibration on the temporal fold, then refit the members on all rows and attach the fold-fitted parts (standard calibrate-on-fold, refit-on-full); or cross-fit over two folds.
 
-### EVAL-04 — No gate can fail in code  **High**
-
-`gates.py:532-553` `check_report` verifies only that a report **path exists** per registered gate; the `decides` text (H-17 "AUC ≥ 0.65", H-4 "< 2 %", E2 tolerance, H-5) is prose nothing evaluates. `evaluate.main` (`evaluate.py:463-465, 617-626`) returns non-zero only for parity/registry problems; `retrain.main` (`retrain.py:276-299`) only on the data-quality gate. `OPTIMISED_SELECTION_FORMATS` (`optimizer.py:57`) and `SIMULATED_WIN_PROBABILITY_DISPLAYED` are hand-set constants, so a fold AUC dropping below 0.65 changes nothing served.
-
-**Fix.** Encode each gate's threshold beside its `report_path` and evaluate it in `check_report`; in retrain, refuse to write a manifest (or write `usable: false`) when holdout objective AUC is below the base-rate equivalent or below the previous accepted run minus a margin.
-
 ### EVAL-05 — Manifest `objective_auc` is toss-known; harness's is marginalised  **Medium**
 
 `train.py:235-236, 243-247` uses `_score(model, x_te, y_te)` on actual batting order; `evaluate.py:192-193, 201-203` uses `_score_marginalised`. Same glossary key, and H-17's criterion reads the harness key. Toss-known is systematically more optimistic than what `/xi/predict-win` serves without `team1_bats_first`. `objective_marginalised` is computed at `train.py:241` but not promoted. **Fix.** Make the manifest headline the marginalised numbers, or add `_toss_known` keys.
@@ -580,6 +574,12 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 #### What this batch is accepted on
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
+### EVAL-04 — No gate can fail in code  **High**
+
+`gates.py:532-553` `check_report` verifies only that a report **path exists** per registered gate; the `decides` text (H-17 "AUC ≥ 0.65", H-4 "< 2 %", E2 tolerance, H-5) is prose nothing evaluates. `evaluate.main` (`evaluate.py:463-465, 617-626`) returns non-zero only for parity/registry problems; `retrain.main` (`retrain.py:276-299`) only on the data-quality gate. `OPTIMISED_SELECTION_FORMATS` (`optimizer.py:57`) and `SIMULATED_WIN_PROBABILITY_DISPLAYED` are hand-set constants, so a fold AUC dropping below 0.65 changes nothing served.
+
+**Fix.** Encode each gate's threshold beside its `report_path` and evaluate it in `check_report`; in retrain, refuse to write a manifest (or write `usable: false`) when holdout objective AUC is below the base-rate equivalent or below the previous accepted run minus a margin. — PR #303. Every standing gate (H-17, H-4, specific-vs-typical, E5, E2, H-8) carries a `Threshold` beside its `report_path` and `check_report` evaluates it, naming the format and the value; the scoping gates are enforced as their contrapositive — a format *served* an optimised selection (or the simulated headline) must carry the evidence, and a format already scoped off is what the prose asks for. H-5 decides an action the harness already applies, H-22 needs the previous release, H-2 / X-4 inform: no threshold, said so in the registry. No encoded clause is seed-relative, so none waits on EVAL-02. Retrain writes `usable` / `unusable_reasons` into the manifest (`ml/xi/run_usability.py`): holdout objective AUC not above 0.5 fails; under the served run's on the **same cutoff** by more than one Hanley–McNeil standard error of the AUC (0.013 T20 / 0.036 T20I / 0.028 ODI / 0.046 TEST on the one scored run) fails; `set_current` refuses to publish, `newest_run_id` skips, `retrain` exits 1. On the batch-1 report every standing gate passes (ODI served at 0.670, 0.020 over the line with a fold sd of 0.067). **Spec gap recorded:** every served run is trained at today's cutoff and has no holdout, so the retrain clauses have nothing to read on cadence and no two runs share a cutoff; giving a retrain a number to read (a throw-away objective on the last quarter) is a separate finding.
 
 ### IMPORT-05 — No-balls excluded from batter's balls faced; ML counts wides as faced  **Medium · retrain**
 

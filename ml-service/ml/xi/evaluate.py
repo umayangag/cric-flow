@@ -459,7 +459,9 @@ def evaluate(
         performance_models=locked_models,
     )
     # H-23: the report carries every gate's varied / fixed / decides triple, and is checked
-    # against the registry -- a gate printed without one is a defect of the report.
+    # against the registry -- a gate printed without one is a defect of the report -- and
+    # every standing gate's clause is evaluated on the number the report carries, so a
+    # served format that has lost its evidence fails the run rather than passing (EVAL-04).
     report["gates"] = {"registry": gates.as_dict()}
     problems = gates.check_report(report)
     report["gates"].update({"passed": not problems, "problems": problems})
@@ -618,7 +620,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])
         return 1
     if not report["gates"]["passed"]:
-        logger.error("gate registry (H-23) FAILED: %s", report["gates"]["problems"])
+        logger.error("gates (H-23 registry, standing thresholds) FAILED: %s", report["gates"]["problems"])
         return 1
     glossary_node = report.get("glossary", {})
     if not glossary_node.get("passed", True):

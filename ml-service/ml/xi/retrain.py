@@ -33,7 +33,7 @@ from typing import Dict, List, Optional, Sequence
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import glossary, runs
+from ml.xi import glossary, run_usability, runs
 from ml.xi.builder import BuildResult, build
 from ml.xi.store import state_shape
 from ml.xi.train import REPORT_NAME, train_all
@@ -114,8 +114,14 @@ def retrain(
     cutoff: pd.Timestamp,
     formats: Sequence[str] = C.FORMAT_CODES,
     run_id: Optional[str] = None,
+    served: Optional[runs.RunManifest] = None,
 ) -> Dict:
-    """Write one run from a completed rating pass, and return its manifest as a dict."""
+    """Write one run from a completed rating pass, and return its manifest as a dict.
+
+    ``served`` is the manifest of the run ``current`` points at, when there is one: the
+    usability gate (EVAL-04) compares this run's holdout objective AUC against it only
+    when the two were trained at the same cutoff, which is the same holdout.
+    """
     run_id = run_id or runs.new_run_id()
     directory = runs.run_dir(artifacts_dir, run_id)
     os.makedirs(directory, exist_ok=True)
@@ -124,6 +130,7 @@ def retrain(
     summary = train_all(result, directory, cutoff, formats, baseline_dir=artifacts_dir)
     metrics = headline_metrics(summary)
     notes = format_notes(summary)
+    usability = run_usability.decide(summary, cutoff.date().isoformat(), served)
     # L-1: the Workbench renders these by key and looks each one up, so a headline metric
     # the glossary does not carry would reach a surface with nothing to say about itself.
     unexplained = glossary.check_metric_names(
@@ -162,6 +169,10 @@ def retrain(
         formats=sorted(metrics),
         format_notes=notes,
         report=REPORT_NAME,
+        # Written even when False: the operator has to be able to read what the run
+        # produced to judge it, and `reload` refuses to publish it either way.
+        usable=usability.usable,
+        unusable_reasons=usability.reasons,
     )
     runs.write_manifest(directory, manifest)
     logger.info(
@@ -173,7 +184,24 @@ def retrain(
     )
     for format_code, note in sorted(notes.items()):
         logger.warning("retrain: run %s has no headline metrics for %s -- %s", run_id, format_code, note)
+    for format_code, reason in sorted(usability.reasons.items()):
+        logger.error("retrain: run %s is not usable in %s -- %s", run_id, format_code, reason)
     return {"run_id": run_id, "run_dir": directory, "manifest": manifest.as_dict(), "summary": summary}
+
+
+def served_run_manifest(artifacts_dir: str) -> Optional[runs.RunManifest]:
+    """The manifest of the run ``current`` points at, for the usability gate to compare
+    against; None when nothing is published. A pointer at a run whose manifest cannot be
+    read is logged and compared against nothing: the retrain still has to write its run,
+    and the comparison it skips is recorded rather than faked."""
+    current = runs.read_current(artifacts_dir)
+    if current is None:
+        return None
+    try:
+        return runs.read_manifest(runs.run_dir(artifacts_dir, current))
+    except runs.RunArtifactsInvalid as exc:
+        logger.error("retrain: the served run %s cannot be read, so no regression comparison is made: %s", current, exc)
+        return None
 
 
 def _match_keys(result: BuildResult) -> List[str]:
@@ -271,7 +299,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         progress=lambda i: logger.info("rating pass: %d matches", i),
         gender_split_context=args.gender_split_context,
     )
-    written = retrain(result, out_dir, cutoff, args.formats)
+    written = retrain(result, out_dir, cutoff, args.formats, served=served_run_manifest(out_dir))
 
     # The data-quality gate (H-15) decides the exit code, not whether the run exists: an
     # operator has to be able to see what the run produced in order to judge whether the
@@ -295,6 +323,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if failures:
         logger.warning("data-quality gate failed but --accept-data-quality was given; recording the new baseline")
     quality.save_baseline(out_dir, result.quality)
+    # The usability gate (EVAL-04): the run is on disk with its reasons (logged above, per
+    # format), and `reload` will refuse to publish it, so the exit code says so here too.
+    if not written["manifest"]["usable"]:
+        logger.error(
+            "usability gate failed: run %s is written to be read and `reload` will refuse to publish it -- %s",
+            written["run_id"],
+            "; ".join(f"{fmt}: {why}" for fmt, why in sorted(written["manifest"]["unusable_reasons"].items())),
+        )
+        return 1
     logger.info("retrain complete: run %s. Point `current` at it with POST /admin/reload.", written["run_id"])
     return 0
 

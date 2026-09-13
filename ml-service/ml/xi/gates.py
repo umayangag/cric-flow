@@ -14,15 +14,65 @@ not describe, or describes a gate the report does not carry. The report embeds t
 registry so its consumers render the triple beside the number. An experiment script that
 runs a gate the report does not print (E3) reads its triple from here and states it before
 running, for the same reason.
+
+A standing gate -- one the report prints every run -- also carries its ``decides`` clause
+as code (EVAL-04): a ``Threshold`` beside the ``report_path``, evaluated by
+``check_report`` on the number the report carries there. Until it did, ``check_report``
+verified only that the path existed, so a run whose objective AUC had fallen under H-17's
+line, or whose swap share had crossed H-4's, reported ``gates.passed: true`` and changed
+nothing served. The clauses encode what the prose already says and nothing more:
+
+* H-17, E5 and specific-vs-typical are *scoping* gates -- their prose decides whether a
+  format is offered an optimised selection, and that policy is set by hand in
+  ``optimizer.OPTIMISED_SELECTION_FORMATS`` from the report, deliberately (plan §8.8). The
+  enforceable form is the contrapositive: a format **served** an optimised selection must
+  carry the evidence the policy rests on, and fails the run when it does not. A format
+  not served is not failed by them -- withholding the surface is what the prose asks for.
+* E2 is the same shape for the simulated P(win): served as the headline
+  (``simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED``) only within tolerance.
+* H-4 and H-8 are unconditional: the objective's swap-violation share under 2 % in every
+  format, and parity passed.
+* H-5's clause decides an *action* the harness already takes (``perf_harness
+  .recalibration_needed`` names the targets and the locked window recalibrates exactly
+  those), so there is nothing for it to refuse; H-22 compares against the previous release,
+  which one report does not carry; H-2 and X-4 inform. They carry no threshold and say so.
+* A gate an experiment script runs (``report_path`` None) is evaluated by that script; its
+  clause stays prose here.
+
+No standing clause is expressed against a seed-to-seed spread, so none depends on EVAL-02
+(the three seeds are bit-identical below 10k rows, so that spread is a zero floor); the
+experiment gates that do are the scripts' to fix.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 #: Prefix for a path read from the whole report rather than from one format's node.
 REPORT_SCOPE = "report:"
+
+#: H-17: the walk-forward mean objective AUC under which a format is not offered an
+#: optimised selection (plan §8, `optimizer.NOT_OPTIMISED_REASONS`).
+H17_MIN_OBJECTIVE_AUC = 0.65
+#: H-4: the share of one-player upgrades that may lower the objective's P(win).
+H4_MAX_SWAP_VIOLATION_SHARE = 0.02
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """A gate's ``decides`` clause as code, beside its number.
+
+    ``failure`` reads the value the report carries at the gate's ``report_path`` and the
+    node it sits in (the format's node, or the whole report for a ``report:`` path -- the
+    node is what says whether the format is served), and returns why the clause fails, or
+    None when it holds. It returns the reason rather than a bool because the reason is
+    what the report prints and the operator reads.
+    """
+
+    #: The clause a reader can check by hand against the number, rendered beside it.
+    rule: str
+    failure: Callable[[Any, Dict[str, Any]], Optional[str]]
 
 
 @dataclass(frozen=True)
@@ -35,6 +85,93 @@ class Gate:
     #: Where the report carries the number: relative to each format's node, or to the whole
     #: report with the ``report:`` prefix. None for a gate an experiment script reports.
     report_path: Optional[str]
+    #: The decides clause evaluated on that number. None where the clause decides an action
+    #: the harness already takes, needs a previous release, or informs (the docstring says
+    #: which) -- and for every gate a script reports.
+    threshold: Optional[Threshold] = None
+
+
+def _fold_mean(value: Any) -> Optional[float]:
+    """The walk-forward mean at a summary path, or None when no fold produced the number."""
+    if isinstance(value, dict) and value.get("mean") is not None:
+        return float(value["mean"])
+    return None
+
+
+def _optimised_selection_served(node: Dict[str, Any]) -> bool:
+    """The serving policy as the format's node records it: ``evaluate`` writes the constant
+    `optimizer.OPTIMISED_SELECTION_FORMATS` into E5's decision, so a report is checked
+    against what it says was served rather than against whatever the code says now."""
+    return bool((node.get("selection_decision") or {}).get("optimised_selection_served"))
+
+
+def _h17_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    if not _optimised_selection_served(node):
+        return None
+    mean = _fold_mean(value)
+    if mean is None:
+        return "an optimised selection is served with no walk-forward objective AUC to stand on"
+    if mean < H17_MIN_OBJECTIVE_AUC:
+        return (
+            f"an optimised selection is served on a walk-forward mean objective AUC of {mean:.4f}, "
+            f"under the {H17_MIN_OBJECTIVE_AUC} line"
+        )
+    return None
+
+
+def _h4_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    mean = _fold_mean(value)
+    if mean is None:
+        # No fold scored the format at all; a format served on that absence fails H-17.
+        return None
+    if mean >= H4_MAX_SWAP_VIOLATION_SHARE:
+        return (
+            f"the share of one-player upgrades that lower the objective's P(win) is {mean:.4f}, "
+            f"not under {H4_MAX_SWAP_VIOLATION_SHARE}"
+        )
+    return None
+
+
+def _specific_vs_typical_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    if not _optimised_selection_served(node):
+        return None
+    mean = _fold_mean(value)
+    if mean is None:
+        return "an optimised selection is served with no specific-vs-typical delta to stand on"
+    if mean <= 0.0:
+        return (
+            f"an optimised selection is served while the specific eleven adds {mean:+.4f} AUC over the typical "
+            "eleven, not above zero"
+        )
+    return None
+
+
+def _e5_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    if not _optimised_selection_served(node):
+        return None
+    decision = (node.get("e5_lineup_only") or {}).get("decision") or {}
+    if decision.get("passes_derived_bar"):
+        return None
+    if value is None:
+        return "an optimised selection is served with E5 unscored (no pairs whose result moved)"
+    return (
+        f"an optimised selection is served while E5 lineup-only agreement {value:.4f} does not clear the "
+        f"derived bar {decision.get('bar')}"
+    )
+
+
+def _e2_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    decision = node.get("simulation_decision") or {}
+    if not decision.get("served") or value:
+        return None
+    return (
+        "the simulated P(win) is served as the headline while it is not within tolerance of the display model: "
+        f"{decision.get('reason')}"
+    )
+
+
+def _h8_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    return None if value is True else "the as-of serving path and the training pass disagree"
 
 
 GATES: Tuple[Gate, ...] = (
@@ -45,6 +182,10 @@ GATES: Tuple[Gate, ...] = (
         fixed="the fold's cutoff, the objective fitted before it, the labels",
         decides="walk-forward mean objective AUC >= 0.65, else the format is not offered an optimised selection",
         report_path="walk_forward.summary.objective_auc",
+        threshold=Threshold(
+            rule="where an optimised selection is served, mean >= 0.65; a served format with no number fails",
+            failure=_h17_failure,
+        ),
     ),
     Gate(
         id="H-4",
@@ -53,6 +194,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the other ten, the opponent eleven, the as-of date, the fold's objective",
         decides="share of upgrades that lower P(win) < 2 %",
         report_path="walk_forward.summary.swap_violation_share",
+        threshold=Threshold(rule="mean < 0.02 in every format the folds scored", failure=_h4_failure),
     ),
     Gate(
         id="specific-vs-typical",
@@ -61,6 +203,12 @@ GATES: Tuple[Gate, ...] = (
         fixed="the evaluation matches, the labels, the fold's objective",
         decides="AUC(specific) - AUC(typical) > 0",
         report_path="walk_forward.summary.specific_vs_typical_delta",
+        # A selection gate (P-5 shipped the XI path on it beside H-4), so it is read as
+        # H-17 is: the eleven must add something where an optimised eleven is served.
+        threshold=Threshold(
+            rule="where an optimised selection is served, mean > 0; a served format with no number fails",
+            failure=_specific_vs_typical_failure,
+        ),
     ),
     Gate(
         id="E5",
@@ -70,6 +218,11 @@ GATES: Tuple[Gate, ...] = (
         decides="sign agreement between the objective's preference and the result change, over pairs whose "
         "result moved, at or above the bar derived from the objective's own claimed effect size (§8.8)",
         report_path="e5_lineup_only.decision.agreement",
+        threshold=Threshold(
+            rule="where an optimised selection is served, passes_derived_bar is true; a served format E5 could not "
+            "score fails",
+            failure=_e5_failure,
+        ),
     ),
     Gate(
         id="E2",
@@ -78,6 +231,10 @@ GATES: Tuple[Gate, ...] = (
         fixed="the fixtures, the as-of forecasts, the fold's models, the labels",
         decides="Brier(simulated) - Brier(display) <= 0.01 on the folds, else the simulation is a description only",
         report_path="simulation_decision.simulated_win_probability_within_tolerance",
+        threshold=Threshold(
+            rule="where the simulated P(win) is served as the headline, within tolerance is true",
+            failure=_e2_failure,
+        ),
     ),
     Gate(
         id="H-5",
@@ -111,6 +268,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the last 50 matches, their elevens, the performance model, the simulator seed",
         decides="max abs difference <= 1e-9 across rows, predictions and draws, else the run fails",
         report_path=REPORT_SCOPE + "serving_parity.passed",
+        threshold=Threshold(rule="passed is true", failure=_h8_failure),
     ),
     Gate(
         id="E3",
@@ -578,8 +736,20 @@ REGISTRY: Dict[str, Gate] = {gate.id: gate for gate in GATES}
 
 
 def as_dict() -> Dict[str, Dict[str, Any]]:
-    """The registry as the report embeds it."""
-    return {gate.id: asdict(gate) for gate in GATES}
+    """The registry as the report embeds it: the triple, the path, and the threshold's rule
+    (a clause is code, and the report carries what a reader can check by hand)."""
+    return {
+        gate.id: {
+            "id": gate.id,
+            "name": gate.name,
+            "varies": gate.varies,
+            "fixed": gate.fixed,
+            "decides": gate.decides,
+            "report_path": gate.report_path,
+            "threshold": None if gate.threshold is None else gate.threshold.rule,
+        }
+        for gate in GATES
+    }
 
 
 def describe(gate_id: str) -> str:
@@ -588,18 +758,35 @@ def describe(gate_id: str) -> str:
     return f"{gate.id} ({gate.name}) - varies: {gate.varies}; fixed: {gate.fixed}; decides: {gate.decides}"
 
 
-def _path_exists(node: Any, path: str) -> bool:
+_MISSING = object()
+
+
+def _value_at(node: Any, path: str) -> Any:
+    """The value at a dotted path, or ``_MISSING`` when the path is not carried."""
     for key in path.split("."):
         if not isinstance(node, dict) or key not in node:
-            return False
+            return _MISSING
         node = node[key]
-    return True
+    return node
+
+
+def _check_gate_at(gate: Gate, node: Dict[str, Any], path: str, where: str) -> Optional[str]:
+    """One gate against one node: the path must be carried, and the clause must hold."""
+    value = _value_at(node, path)
+    if value is _MISSING:
+        return f"gate {gate.id}: {where} carries nothing at {gate.report_path}"
+    if gate.threshold is None:
+        return None
+    failure = gate.threshold.failure(value, node)
+    return None if failure is None else f"gate {gate.id}: {where} fails its threshold: {failure}"
 
 
 def check_report(report: Dict[str, Any]) -> List[str]:
     """Every registered gate with a report path must be carried by the report -- at the
-    top level or under every format -- and every gate must declare a non-empty triple.
-    Returns the problems; an empty list is a report that says what its gates vary."""
+    top level or under every format -- every gate must declare a non-empty triple, and
+    every standing gate's threshold must hold on the number the report carries. Returns
+    the problems; an empty list is a report that says what its gates vary and whose
+    gates all pass."""
     problems: List[str] = []
     for gate in GATES:
         for field in ("varies", "fixed", "decides"):
@@ -608,12 +795,14 @@ def check_report(report: Dict[str, Any]) -> List[str]:
         if gate.report_path is None:
             continue
         if gate.report_path.startswith(REPORT_SCOPE):
-            if not _path_exists(report, gate.report_path[len(REPORT_SCOPE) :]):
-                problems.append(f"gate {gate.id}: report carries nothing at {gate.report_path}")
+            problem = _check_gate_at(gate, report, gate.report_path[len(REPORT_SCOPE) :], "report")
+            if problem:
+                problems.append(problem)
             continue
         for format_code, node in report.get("formats", {}).items():
-            if not _path_exists(node, gate.report_path):
-                problems.append(f"gate {gate.id}: {format_code} carries nothing at {gate.report_path}")
+            problem = _check_gate_at(gate, node, gate.report_path, format_code)
+            if problem:
+                problems.append(problem)
     embedded = report.get("gates", {}).get("registry")
     if embedded is not None and set(embedded) != set(REGISTRY):
         problems.append("the report's embedded registry does not match the code's")
