@@ -271,3 +271,28 @@ def test_player_rows_repeat_the_win_rows_fixture_context() -> None:
         for match_id in ("m1", "m2"):
             assert (players[players.match_id == match_id][col] == win_rows.loc[match_id, col]).all()
     assert win_rows.loc["m2", "venue_run_rate_rel"] != 1.0
+
+
+def test_balls_faced_counts_a_no_ball_and_not_a_wide() -> None:
+    """IMPORT-05: a four, a no-ball and a wide are three deliveries, of which the batter
+    faced two -- the no-ball is his, the wide is nobody's -- while the bowler's
+    ``balls_bowled`` and the innings' deliveries still count all three."""
+    d = make_deliveries(batters=["a0"] * 3, bowlers=["b0"] * 3, runs=[4, 0, 0], wickets=[0] * 3, wides=[0, 0, 1])
+    m = make_match("m1", 0, "A", xi("a"), xi("b"), d)
+
+    actuals = match_actuals(m)
+
+    assert actuals["a0"]["balls_faced"] == 2
+    assert actuals["b0"]["balls_bowled"] == 3
+
+
+def test_a_batter_who_saw_only_wides_faced_no_ball() -> None:
+    """The batter on strike for a wide alone has a row -- he was on strike -- and zero
+    balls faced, which is what the scorecard says of him."""
+    d = make_deliveries(batters=["a0", "a1"], bowlers=["b0"] * 2, runs=[0, 1], wickets=[0] * 2, wides=[1, 0])
+    m = make_match("m1", 0, "A", xi("a"), xi("b"), d)
+
+    actuals = match_actuals(m)
+
+    assert actuals["a0"]["balls_faced"] == 0
+    assert actuals["a1"]["balls_faced"] == 1

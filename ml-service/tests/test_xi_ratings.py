@@ -25,6 +25,7 @@ def _deliveries(batters: List[str], bowlers: List[str], runs: List[int], wickets
         runs_batter=np.asarray(runs, dtype=float),
         runs_total=np.asarray(runs, dtype=float),
         runs_bowler=np.asarray(runs, dtype=float),
+        faced=np.ones(n),
         wicket=np.asarray(wickets, dtype=float),
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),

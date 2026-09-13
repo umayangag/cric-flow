@@ -44,6 +44,9 @@ class Deliveries:
     # The part of runs_total charged to the bowler, ``runs_conceded_by_bowler`` on both
     # sources: byes, leg-byes and penalty runs are the innings' and not his (FEAT-08).
     runs_bowler: np.ndarray  # float
+    # 1.0 when the striker faced the ball -- everything but a wide -- ``faced_by_batter`` on
+    # both sources. A no-ball is faced; neither is one of the bowler's six (IMPORT-05).
+    faced: np.ndarray  # float 0/1
     wicket: np.ndarray  # float 0/1, any dismissal on the ball
     bowler_wicket: np.ndarray  # float 0/1, dismissal credited to the bowler
     stumping: np.ndarray  # float 0/1
@@ -60,7 +63,9 @@ class Deliveries:
     def empty() -> "Deliveries":
         z = np.zeros(0)
         empty_keys = np.array([], dtype=object)
-        return Deliveries(z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, [], empty_keys.copy())
+        return Deliveries(
+            z.astype(int), z.astype(int), empty_keys, empty_keys, z, z, z, z, z, z, z, [], empty_keys.copy()
+        )
 
 
 def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:
@@ -80,6 +85,21 @@ def runs_conceded_by_bowler(runs_total, byes, legbyes, penalty) -> np.ndarray:
         - np.asarray(legbyes, dtype=float)
         - np.asarray(penalty, dtype=float)
     )
+
+
+def faced_by_batter(wides) -> np.ndarray:
+    """1.0 for each delivery the striker faced: every ball but a wide, which passes out of
+    his reach and is not one he could have played.
+
+    A no-ball is faced -- he may hit it -- so it is one of his balls while it is not one of
+    the bowler's six; a wide is neither. This is the one rule for both rating sources, and
+    it is the rule the go-app importer applies to ``batting_data.balls``
+    (``cricsheet.Delivery.FacedByBatter``), so a batter's balls in the database and his
+    ``balls_faced`` target agree delivery for delivery. Until IMPORT-05 was fixed this path
+    counted every delivery as faced, wides included, and the importer counted none of the
+    no-balls: two definitions erring in opposite directions.
+    """
+    return (np.asarray(wides, dtype=float) == 0).astype(float)
 
 
 def batting_positions(deliveries: Deliveries) -> Dict[str, int]:
@@ -282,7 +302,7 @@ def played_innings(innings: list) -> List[dict]:
 
 def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
     over, inn, bat, bowl, rb, rt, wk, bwk, st, fld, out = [], [], [], [], [], [], [], [], [], [], []
-    byes, legbyes, penalty = [], [], []
+    wides, byes, legbyes, penalty = [], [], [], []
     for inning_index, inning in enumerate(played_innings(innings)):
         for ov in inning.get("overs", []):
             for b in ov.get("deliveries", []):
@@ -295,6 +315,7 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
                 # Cricsheet writes ``extras`` only on a delivery that has some, as an object
                 # of the kinds present; a kind it does not name is zero.
                 extras = b.get("extras") or {}
+                wides.append(extras.get("wides", 0))
                 byes.append(extras.get("byes", 0))
                 legbyes.append(extras.get("legbyes", 0))
                 penalty.append(extras.get("penalty", 0))
@@ -314,6 +335,7 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
         np.asarray(rb, dtype=float),
         np.asarray(rt, dtype=float),
         runs_conceded_by_bowler(rt, byes, legbyes, penalty),
+        faced_by_batter(wides),
         np.asarray(wk, dtype=float),
         np.asarray(bwk, dtype=float),
         np.asarray(st, dtype=float),
@@ -559,8 +581,9 @@ WHERE mp.match_id = %s
 # found two players whose dot-streak shares differed between two reads of the same match.
 #
 # The extras by kind (migration 0018, IMPORT-04) are what let the bowler be charged only
-# his own runs. A database migrated but not yet re-imported holds zeros in them, so it
-# charges him everything, which ``make xi-parity`` reports against the archive.
+# his own runs and the batter be counted only the balls he faced. A database migrated but
+# not yet re-imported holds zeros in them, so it charges him everything and counts every
+# wide as faced, which ``make xi-parity`` reports against the archive.
 _BALLS_SQL = f"""
 SELECT be.innings, be.over,
        {_player_key("striker")}, {_player_key("bowler")},
@@ -570,7 +593,7 @@ SELECT be.innings, be.over,
         JOIN player f ON f.id = fe.fielder_id
         WHERE fe.match_id = be.match_id AND fe.innings = be.innings AND fe.over = be.over AND fe.ball = be.ball),
        {_player_key("pout")},
-       be.extras_byes, be.extras_legbyes, be.extras_penalty
+       be.extras_byes, be.extras_legbyes, be.extras_penalty, be.extras_wides
 FROM ball_event be
 LEFT JOIN player striker ON striker.id = be.striker_id
 LEFT JOIN player bowler ON bowler.id = be.bowler_id
@@ -698,6 +721,7 @@ def _deliveries_from_rows(rows) -> Deliveries:
         runs_bowler=runs_conceded_by_bowler(
             runs_total, [r[9] for r in rows], [r[10] for r in rows], [r[11] for r in rows]
         ),
+        faced=faced_by_batter([r[12] for r in rows]),
         wicket=np.asarray([1.0 if k else 0.0 for k in kinds]),
         bowler_wicket=np.asarray([1.0 if k in BOWLER_CREDITED_KINDS else 0.0 for k in kinds]),
         stumping=np.asarray([1.0 if k == "stumped" else 0.0 for k in kinds]),

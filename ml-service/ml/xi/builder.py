@@ -55,6 +55,7 @@ def build(
     namesake_sides = 0
     oversized_squads = 0
     runs_not_charged_to_bowler = 0
+    deliveries_not_faced = 0
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
     pending: List = []
     current_date = None
@@ -64,6 +65,7 @@ def build(
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
         runs_not_charged_to_bowler += _runs_not_charged_to_bowler(match)
+        deliveries_not_faced += _deliveries_not_faced(match)
         stakes_counts["stage"] += int(match.stakes.stage_known)
         stakes_counts["knockout"] += int(match.stakes.is_knockout)
         stakes_counts["table"] += int(match.stakes.dead_rubber_known)
@@ -99,6 +101,7 @@ def build(
         undecided_matches=n_undecided,
         drawn_or_tied_matches=n_drawn_or_tied,
         runs_not_charged_to_bowler=runs_not_charged_to_bowler,
+        deliveries_not_faced=deliveries_not_faced,
         namesake_sides=namesake_sides,
         oversized_squads=oversized_squads,
         unknown_player_keys=_unknown_player_keys(state),
@@ -161,6 +164,13 @@ def _runs_not_charged_to_bowler(match) -> int:
     count is exact."""
     deliveries = match.deliveries
     return int(round(float((deliveries.runs_total - deliveries.runs_bowler).sum())))
+
+
+def _deliveries_not_faced(match) -> int:
+    """The match's wides: the deliveries no batter faced (``Deliveries.faced``). Whole
+    deliveries on every source, so the count is exact."""
+    deliveries = match.deliveries
+    return int(len(deliveries) - int(round(float(deliveries.faced.sum()))))
 
 
 def _unknown_player_keys(state: RatingState) -> int:
