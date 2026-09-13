@@ -497,6 +497,31 @@ Migrations `0017_match_result.sql` (`match.result`, `match.result_method`) and `
 
 Wall clock **2 s**. Eight columns exist afterwards that did not before: `match.result`, `match.result_method`, and the five `ball_event.extras_*` counts beside the pre-existing lossy `extras_kind`.
 
+#### Step 2 — the whole-archive re-import
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12 — not an incremental run. IMPORT-03 (#295) is what makes this rewrite rather than skip: `repo_match_facts.go` now deletes a match's `ball_event` and aggregate rows at the top of its transaction, so the importer's fixes reach matches that were already in the database.
+
+Wall clock **2 min 34 s** (14:05:58–14:08:32 UTC). **Zero errors**; 27 warnings, all of them the two documented benign cases — 25 × "file name is not a Cricsheet match id, deriving one" (the bounded, logged hash fallback § 10 records as sound) and 2 × "player named on both teams, omitted from both squads".
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,579,603 | 11,578,345 | −1,258 |
+| `match_inning` | 50,691 | 50,465 | −226 |
+| `batting_data` | 434,557 | 434,001 | −556 |
+| `bowling_data` | 299,686 | 299,460 | −226 |
+| `fielding_data` | 176,700 | 176,576 | −124 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+
+Every delta is exactly the super-over removal; nothing else moved. `player_biography` is untouched because the Wikidata backfill owns it, not the importer, and it was deliberately not re-run.
+
+**Super overs (IMPORT-01).** `match_inning` rows with `inning_number > 2` outside Tests: **226 across 110 matches → 0**. `ball_event` rows with `innings > 2` outside Tests: **1,258 → 0**. The importer logged `super_over_innings` for exactly 110 files totalling 226 innings, and a direct scan of the archive confirms **110** files carry 226 super-over innings — so the innings count quoted when the batch was planned (226) is right and the file count (113) was not; the correct figure is 110.
+
+**Tie-breakers (IMPORT-02).** Matches with a NULL winner: **1,723 → 1,612**, so **111 matches gained a winner** — and exactly **111** rows now read `result = 'tie'` beside a non-NULL winner, which is the same set. `match.result` is populated as 1,028 `draw`, 491 `no result`, 204 `tie`, the rest NULL (an outright result). `result_method` records 1,018 `D/L`, 5 `VJD`, 5 `Awarded` and one `Lost fewer wickets` — eighteen characters, the value that vindicates IMPORT-02's widening to `varchar(32)`.
+
+**Extras breakdown (IMPORT-04).** Stored across 11.58 M deliveries: 246,122 wides, 76,980 no-balls, 78,492 byes, 154,876 leg-byes, 954 penalty. The five parts sum to `runs_extras` on **every** delivery (0 mismatches), and **234,322 runs** (byes + leg-byes + penalty) are now separable from what the bowler is charged.
+
 ### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
 
 `ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
