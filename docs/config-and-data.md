@@ -569,6 +569,29 @@ the H-8 parity check never saw the difference. Both columns are written by the i
 and by nothing else; a match imported before `0017` carries NULL in both until the
 directory is re-imported.
 
+### What the ball-event record holds
+
+`ball_event` has one row per delivery, and its runs are in three parts as Cricsheet writes
+them: `runs_batter`, `runs_extras` and their sum `runs_total`. The extras are then broken
+out by kind — **`extras_wides`, `extras_noballs`, `extras_byes`, `extras_legbyes`,
+`extras_penalty`** (migration `0018`), each Cricsheet's own count from the delivery's
+`extras` object. The archive uses exactly those five keys and no others, `runs_extras` is
+their sum on every one of its 11.6 million deliveries, and a delivery can carry two of
+them: 800 no-balls have byes off them, 306 have leg-byes, and a penalty sits beside a wide
+on 5. `extras_kind` is older and stays: one word chosen by precedence (wide, then no-ball,
+then leg-bye, bye, penalty), which is a convenient summary and a lossy one — a no-ball
+with four leg-byes reads `no_ball` alone. The five counts are what make it recoverable.
+
+The breakdown matters because of who the runs belong to. Wides and no-balls are the
+bowler's; byes, leg-byes and penalty runs go to the innings but not to him, and
+`cricsheet.Delivery.RunsConcededByBowler` is the one rule for that — `runs_total` less
+byes, leg-byes and penalty. `bowling_data.runs` (and so `econ`, and the per-over totals a
+maiden is judged on) is built from it. Until IMPORT-04 was fixed the bowler was charged
+the delivery's whole total, so every bowler's figures carried his keeper's misses, and
+the rating pass — which sums `runs_total` for runs conceded — inherited the same noise
+(FEAT-08 reads the new columns). Rows imported before `0018` hold zeros in all five
+until the directory is re-imported; nothing back-fills them.
+
 ### What a re-import does to a match already in the database
 
 **An import replaces a match, it does not merge into it.** The match id comes from the
@@ -592,7 +615,8 @@ at all.
 by whichever version of the importer wrote them; nothing back-fills them later. A change
 to what the importer extracts or how it derives a column — a super over that was being
 stored as innings 3 (IMPORT-01), a super-over win stored with no winner (IMPORT-02), byes
-that should not be charged to the bowler, an `info.event` field that was being dropped —
+that were being charged to the bowler (IMPORT-04), an `info.event` field that was being
+dropped —
 reaches only the matches imported after it. The re-import is the whole
 directory, not the changed files, because the fix applies to every match: run Import again
 with **`?refresh=1`** if the archive should be re-fetched too, and expect it to take as
