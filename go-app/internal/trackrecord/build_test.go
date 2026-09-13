@@ -204,6 +204,14 @@ func TestBuild_EachStoredPredictionLandsInExactlyOneState(t *testing.T) {
 			matches:   []trackrecord.PlayedMatch{played(ptr(otherland), testland, 150, otherland, 151, allFielded())},
 			wantState: trackrecord.StateScored,
 		},
+		{
+			name: "a forecast issued after the match date is post hoc",
+			row: stored(storedOptions{
+				id: "hindsight", issued: time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC), probability: 0.4,
+			}),
+			matches:   []trackrecord.PlayedMatch{played(ptr(otherland), testland, 150, otherland, 151, allFielded())},
+			wantState: trackrecord.StatePostHoc,
+		},
 	}
 	for i := range testCases {
 		tc := testCases[i]
@@ -264,12 +272,12 @@ func TestBuild_ALaterForecastOfTheSameFixtureSupersedesTheEarlierOne(t *testing.
 	afterTheFact := entryByID(t, record, "hindsight")
 	assert.Equal(
 		t,
-		trackrecord.StateScored,
+		trackrecord.StatePostHoc,
 		afterTheFact.State,
-		"issued after the match day: not superseding, not superseded",
+		"issued after the match day: not superseding, not superseded, not scored",
 	)
 	assert.True(t, afterTheFact.IssuedAfterMatchDate, "and flagged on the wire")
-	assert.Equal(t, 2, record.Win.Overall.N)
+	assert.Equal(t, 1, record.Win.Overall.N, "only the forecast issued before the match is summarised")
 	assert.Equal(t, []string{"hindsight", "scenario", "second", "first"}, func() []string {
 		ids := make([]string, 0, 4)
 		for _, e := range record.Predictions {
@@ -295,6 +303,114 @@ func TestBuild_AForecastIssuedOnTheMatchDaySupersedesAnEarlierOne(t *testing.T) 
 	assert.Equal(t, trackrecord.StateSuperseded, entryByID(t, record, "earlier").State)
 	assert.Equal(t, trackrecord.StateUnresolved, entryByID(t, record, "match-day").State)
 	assert.False(t, entryByID(t, record, "match-day").IssuedAfterMatchDate)
+}
+
+// beforeAndAfterTheMatch is two forecasts alike in everything but when they were issued:
+// one of a fixture on the match day's fixture, issued five days before it, and one of the
+// next day's fixture, issued a day after that match was played. Both sides won the side
+// the forecast favoured, both carry ranges and named players, and neither supersedes the
+// other -- so anything that separates them in the summaries is the issue date alone.
+func beforeAndAfterTheMatch() ([]predictions.Prediction, *fakeLookup) {
+	ranges := &[2][2]float64{{140, 180}, {130, 170}}
+	honest := stored(storedOptions{
+		id: "before-the-match", issued: time.Date(2026, 9, 5, 9, 0, 0, 0, time.UTC),
+		matchDate: matchDay, probability: 0.6, ranges: ranges, sharedFactor: ptr(true),
+	})
+	hindsight := stored(storedOptions{
+		id: "after-the-match", issued: time.Date(2026, 9, 12, 9, 0, 0, 0, time.UTC),
+		matchDate: dayAfter, probability: 0.95, ranges: ranges, sharedFactor: ptr(true),
+	})
+	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{
+		fixtureFor(testland, otherland, matchDay): {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
+		fixtureFor(testland, otherland, dayAfter): {played(ptr(testland), testland, 150, otherland, 140, allFielded())},
+	}}
+	return []predictions.Prediction{honest, hindsight}, lookup
+}
+
+// GO-03: a forecast issued after the day it was about enters none of the five summaries.
+// It was served from ratings that can already hold the result -- before the as-of fix
+// (GO-01) every stored post-match answer was -- so its Brier, its bin, its coverage and
+// its overlap would be hindsight scoring itself, and the record would read as better than
+// the model is. Each case is one of the summaries the finding names; the n that reaches it
+// is the one forecast issued before its match.
+func TestBuild_AForecastIssuedAfterItsMatchDateEntersNoSummary(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name string
+		n    func(record *trackrecord.Record) int
+	}{
+		{
+			name: "win.overall",
+			n:    func(record *trackrecord.Record) int { return record.Win.Overall.N },
+		},
+		{
+			name: "win.by_format",
+			n:    func(record *trackrecord.Record) int { return record.Win.ByFormat["T20I"].N },
+		},
+		{
+			name: "reliability",
+			n: func(record *trackrecord.Record) int {
+				total := 0
+				for _, bin := range record.Win.Reliability {
+					total += bin.N
+				}
+				return total
+			},
+		},
+		{
+			name: "coverage",
+			n: func(record *trackrecord.Record) int {
+				total := 0
+				for _, row := range record.Coverage.Rows {
+					total += row.NPredictions
+				}
+				return total
+			},
+		},
+		{
+			name: "elevens",
+			n:    func(record *trackrecord.Record) int { return record.Elevens.N },
+		},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rows, lookup := beforeAndAfterTheMatch()
+
+			record := build(t, lookup, rows...)
+
+			assert.Equal(t, 1, tc.n(record), "the post-hoc forecast is not in %s", tc.name)
+		})
+	}
+}
+
+// The other half of the same rule: a post-hoc forecast is excluded from the summaries, not
+// from the record. It keeps its row, its state, its count and its score -- what it claimed
+// and what happened are both visible, because nothing on this surface is filtered by
+// outcome (P2-4).
+func TestBuild_AForecastIssuedAfterItsMatchDateKeepsItsRowAndItsScore(t *testing.T) {
+	t.Parallel()
+	rows, lookup := beforeAndAfterTheMatch()
+
+	record := build(t, lookup, rows...)
+
+	entry := entryByID(t, record, "after-the-match")
+	assert.Equal(t, trackrecord.StatePostHoc, entry.State)
+	assert.True(t, entry.IssuedAfterMatchDate)
+	require.NotNil(t, entry.Score, "the score stays on the row")
+	assert.InDelta(t, 0.0025, entry.Score.Brier, 1e-9, "0.95 for the side that won")
+	assert.True(t, entry.Score.Team1Won)
+	assert.True(t, *entry.Score.Team1Covered)
+	assert.Equal(t, 6, entry.Score.ElevenOverlap.Matched)
+	require.NotNil(t, entry.Happened)
+	assert.Equal(t, 150, *entry.Happened.Team1Total)
+	assert.Equal(t, 2, record.Total, "listed, not dropped")
+	assert.Equal(t, 1, record.States[trackrecord.StatePostHoc], "counted in its own state")
+	assert.Equal(t, 1, record.States[trackrecord.StateScored])
+	assert.Equal(t, trackrecord.StateScored, entryByID(t, record, "before-the-match").State)
+	assert.InDelta(t, 0.16, *record.Win.Overall.Brier, 1e-9,
+		"the record's Brier is the honest forecast's alone, not flattered by the 0.95")
 }
 
 // The record asks for the exact fixture -- date, both sides, format, gender -- and a match
@@ -621,7 +737,11 @@ func TestBuild_ALookupFailureIsReturned(t *testing.T) {
 
 func TestVocabularies_AreDeclaredOnce(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, []string{"scenario", "superseded", "unresolved", "no_result", "scored"}, trackrecord.States())
+	assert.Equal(
+		t,
+		[]string{"scenario", "superseded", "unresolved", "no_result", "post_hoc", "scored"},
+		trackrecord.States(),
+	)
 	assert.Equal(
 		t,
 		[]string{"with_shared_factor", "without_shared_factor", "unknown", "not_simulated"},

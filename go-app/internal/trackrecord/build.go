@@ -260,6 +260,11 @@ func (e *entry) resolve(resolved map[fixtureKey][]PlayedMatch, today time.Time) 
 }
 
 // settle is the scored / no-result decision against the one match found, and the score.
+//
+// A forecast issued after the day it was about is settled and scored exactly like any
+// other -- the row shows what it claimed and what happened -- but it lands in
+// StatePostHoc, which no summary is over: it was served from ratings that may already
+// hold the result, so its Brier and coverage measure hindsight, not the model (GO-03).
 func (e *entry) settle(match PlayedMatch) {
 	e.Happened = happened(e, match)
 	if match.WinnerOppositionID == nil {
@@ -267,6 +272,9 @@ func (e *entry) settle(match PlayedMatch) {
 		return
 	}
 	e.State = StateScored
+	if e.IssuedAfterMatchDate {
+		e.State = StatePostHoc
+	}
 	teamOneWon := *match.WinnerOppositionID == e.stored.Team1OppositionID
 	e.p = e.stored.WinProbabilityTeam1
 	if teamOneWon {
@@ -339,6 +347,8 @@ func countStates(entries []*entry) map[string]int {
 	return counts
 }
 
+// scored is the rows every summary is over. It selects StateScored alone, which is what
+// keeps a post-hoc forecast's score on its own row and out of the aggregates (GO-03).
 func scored(entries []*entry) []*entry {
 	out := make([]*entry, 0, len(entries))
 	for _, e := range entries {
