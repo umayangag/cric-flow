@@ -544,6 +544,26 @@ The two new counts are the ones worth reading. `drawn_or_tied_matches` = 1,121 i
 
 **One operator note, recorded because the first attempt failed.** Run without `BIRTH_DATES=`, parity fails on a single count — `players_with_birth_date: postgres 6955, cricsheet 0` — because the archive carries no biography (X-1b) and every age reads as unknown, which the run warns about in as many words. That is a flag omission, not a source disagreement, and the `ml-service` Makefile documents the remedy next to the target: `make export-birth-dates BIRTH_DATES=…` (6,967 players) then `make xi-parity BIRTH_DATES=…`. The sixteen other counts, including both new ones, already agreed on that first attempt. Anyone re-running this must pass `BIRTH_DATES`.
 
+#### Step 4 — retrain and reload
+
+`make retrain CUTOFF=2026-09-13` — **9 min 47 s** (14:20:15–14:30:02 UTC), clean, no error or traceback. Then `make reload`, **2 s**.
+
+| | |
+|---|---|
+| run id | **`20260913T142341Z-ab4caa13`** |
+| cutoff | 2026-09-13 |
+| ratings through | 2026-09-09 (13,639 players) |
+| dataset sha | `501c24882251…` |
+| git sha | `53fa134d` |
+| training rows | T20 12,130 · ODI 4,995 · TEST 2,095 · T20I 2,073 |
+| `data_quality_failures` | none |
+
+Reload returned `status: reloaded, loaded: true` for all four formats, ratings `fresh: true` (age 4 days against a 14-day bar), and its served `data_quality` block carries `drawn_or_tied_matches: 1121` and `runs_not_charged_to_bowler: 234322` — the new columns reaching the serving path, not just the training one.
+
+The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 0.08, max_iter 200` ("beat the incumbent on the inner split", 0.6329 vs 0.6303); T20, T20I and ODI all kept the incumbent because no candidate beat it by more than 0.002. That is the three-point grid behaving as `docs/ml-and-training.md` describes, not a tuning result.
+
+**Every format reports `n_holdout: 0` and no headline metric, with a warning each.** This is expected, not a regression: the cutoff is today and the archive ends 2026-09-09, so no row falls at or after it and there is nothing to score. A production retrain at today's cutoff is meant to train on everything; the choice-facing numbers come from the L4 harness in step 5, which is the whole reason `evaluate` is a step beside the pipeline rather than in it.
+
 ### FEAT-08 — Bowler's "runs saved" and `runs_conceded` include byes and leg-byes  **Low · retrain (with IMPORT-04)**
 
 `ratings.py:457` (`exp_runs - d.runs_total`), `rows.py:56`. `_BALLS_SQL` (`sources.py:481-496`) does not select `extras_kind` / `runs_extras`. Keeper-quality-correlated noise on `bowl_rate` and on the `runs_conceded` target. **Fix.** After IMPORT-04, subtract byes/leg-byes/penalty in the bowler's ledger; the JSON path has `extras: {byes, legbyes}` per delivery. — PR #300. `_BALLS_SQL` selected neither `extras_kind` nor `runs_extras`, only `runs_batter` and `runs_total`, and nothing that could split the bowler's runs from the keeper's; it now reads `extras_byes / extras_legbyes / extras_penalty` (migration `0018`), and the archive path reads the delivery's `extras` object. `Deliveries.runs_bowler` is derived on both sources by one function, `sources.runs_conceded_by_bowler` (total less byes, leg-byes and penalty) — the rule the importer applies to `bowling_data.runs` — and is what the four ledger sites in `ratings.py` (main, phase, debut, the sequence families' `bowl_saved`) and `runs_conceded` in `rows.py` charge; every innings-level use of `runs_total` (over expectation, extras rate, fixture context, innings outcomes, dot flag) is unchanged. The parity check could not have seen the defect — a source charging the bowler everything agrees with one that does not on every count, the FEAT-04 shape — so the pass counts `runs_not_charged_to_bowler` and `make xi-parity` compares it; it reads 0 on a database imported before `0018`. The query names the new columns, so the migrate step must precede the next rating pass over the database. Retrain required.
