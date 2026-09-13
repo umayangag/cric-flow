@@ -553,7 +553,10 @@ awarded the result: `D/L` on 1,018 files, `VJD`, `Awarded`, and once `Lost fewer
   outright. It is kept beside a winner for a tie-breaker win, so `result = 'tie'` with a
   winner is a match that was tied and then decided — distinguishable from an outright win
   and from a tie left as one, without going back to the file. A reader that wants to
-  weight such a win differently from an outright one can, from the row.
+  weight such a win differently from an outright one can, from the row. The rating pass
+  reads it in one place — a draw or an unbroken tie is half a win of form for each side
+  (`team_form_diff`) — and `make xi-parity` compares `drawn_or_tied_matches` between the
+  sources so that reading cannot silently differ again (FEAT-04).
 - **`result_method`** (`0017`) is `outcome.method` verbatim, NULL where the archive names
   none. It is `varchar(32)`, not the 16 the audit proposed, because the archive's longest
   value is eighteen characters and a narrower column would have refused that file whole.

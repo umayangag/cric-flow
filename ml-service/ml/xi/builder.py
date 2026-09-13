@@ -49,6 +49,7 @@ def build(
     rows = []
     player_rows = []
     n_undecided = 0
+    n_drawn_or_tied = 0
     n_seen = 0
     team_keys = set()
     namesake_sides = 0
@@ -78,6 +79,7 @@ def build(
             player_rows.extend(match_player_rows)
         else:
             n_undecided += 1
+            n_drawn_or_tied += int(match.drawn_or_tied)
         pending.append(match)
         if progress and i % 1000 == 0:
             progress(i)
@@ -93,6 +95,7 @@ def build(
         unusable_matches=counts.unusable,
         matches_read=counts.yielded,
         undecided_matches=n_undecided,
+        drawn_or_tied_matches=n_drawn_or_tied,
         namesake_sides=namesake_sides,
         oversized_squads=oversized_squads,
         unknown_player_keys=_unknown_player_keys(state),

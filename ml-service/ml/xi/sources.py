@@ -114,6 +114,20 @@ class MatchRecord:
             return 0.0
         return None
 
+    @property
+    def drawn_or_tied(self) -> bool:
+        """The match reached a result that nobody won: a draw, or a tie no tie-breaker
+        settled. Form reads it as half a win for each side (``RatingState.update``), so it
+        is the one place ``result`` changes a feature -- which is why the rating pass counts
+        it and ``make xi-parity`` compares the count (FEAT-04). A tie-breaker win has a
+        winner and is a win; a no-result moves nothing."""
+        return self.outcome is None and self.result in DRAWN_OR_TIED_RESULTS
+
+
+#: Cricsheet's ``outcome.result`` values for a match both sides played to a finish without
+#: either winning it. ``'no result'`` is not one: an abandoned match tells form nothing.
+DRAWN_OR_TIED_RESULTS = ("tie", "draw")
+
 
 @dataclass
 class SourceCounts:

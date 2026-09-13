@@ -59,6 +59,15 @@ class DataQuality:
     matches_read: int = 0
     undecided_matches: int = 0
 
+    # Of the undecided matches, the draws and the ties nobody broke: the ones form reads
+    # as half a win for each side (``MatchRecord.drawn_or_tied``). It is the only count
+    # that can see ``match.result``, and it exists because the Postgres source hard-coded
+    # the field to None for years while the archive path read it, so ``team_form_diff``
+    # had two definitions and every other count still agreed (FEAT-04). Not gated by the
+    # doubling rule: it is a fact about the cricket, and it goes from zero to a quarter of
+    # all Tests the first time a pre-0017 database is re-imported.
+    drawn_or_tied_matches: int = 0
+
     # A person named on both sides of one match. Cricsheet's registry is keyed by name
     # within a file, so two namesakes in one match collapse into one identifier and the
     # source cannot say which side each delivery belongs to. Two files in the current

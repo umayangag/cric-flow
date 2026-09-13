@@ -403,7 +403,7 @@ class RatingState:
             p_exp = elo_expected(float(self.pelo[f, s1].mean()), float(self.pelo[f, s2].mean()))
             self.pelo[f, s1] += C.K_PLAYER_ELO * (y - p_exp)
             self.pelo[f, s2] += C.K_PLAYER_ELO * ((1.0 - y) - (1.0 - p_exp))
-        elif match.result in ("tie", "draw"):
+        elif match.drawn_or_tied:
             self.team_results[(fmt, match.team1)].append(0.5)
             self.team_results[(fmt, match.team2)].append(0.5)
         self.matches_seen += 1

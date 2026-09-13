@@ -383,14 +383,29 @@ Current baseline on the full dataset: 22,734 matches offered and 22,734 read, 1,
 undecided, 0 namesake sides, 1,358 sides of more than eleven (concussion and injury
 replacements, which Cricsheet lists in full), 0 unresolved player keys, 13,569 players.
 
+Beside `undecided_matches` the pass counts `drawn_or_tied_matches` (FEAT-04): of the
+undecided, the draws and the ties no tie-breaker settled — the matches form reads as half
+a win for each side (`MatchRecord.drawn_or_tied`, the rule `RatingState.update` applies to
+`team_results`). It is the only count that can see `match.result`, and it is compared
+across sources rather than gated by the doubling rule: it is a fact about the cricket, and
+it goes from zero to roughly a quarter of all Tests the first time a database imported
+before migration `0017` is re-imported.
+
 ### Source parity (`make xi-parity`)
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): `max_abs_difference`.
 
-The two rating sources are supposed to describe the same cricket, and three times they did
+The two rating sources are supposed to describe the same cricket, and four times they did
 not — a hashed match id that lost 309 matches, an unnamed substitute fielder folded into a
-fictional player, and a namesake rule implemented on one side only. Each was a one-line
-difference in a count that nobody was printing.
+fictional player, a namesake rule implemented on one side only, and a match result the
+Postgres source hard-coded to `None` while the archive path read it (FEAT-04), so a drawn
+Test moved both sides' form on one source and neither's on the other. Each was a one-line
+difference in a count that nobody was printing — and the last one was a difference no
+count could see, because a draw is undecided whether or not its result is read. The
+comparison covers every `DataQuality` count that is a property of the cricket rather than
+of the store (`ml/xi/parity.py`, `_COMPARED_COUNTS`), the number of training rows and the
+player-key sets; `drawn_or_tied_matches` is in that set, which is what makes the result
+column part of the guarantee.
 
 ```bash
 make xi-parity                                    # defaults to data/go-app/cricsheet
