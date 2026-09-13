@@ -76,20 +76,25 @@ describe('SystemMapTab', () => {
    * The acceptance clause, asserted rather than eyeballed: every step in the contract is
    * on the map, and every one of them opens a panel that says what it does. A node added
    * to the contract with no summary fails here, not in review.
+   *
+   * One case per node rather than one case walking all of them (B-15): the walk's value is
+   * full coverage of the contract, not that a single test carries it. 24 renders and clicks
+   * in one `it` was racing vitest's per-test timeout on CI's runner (4,987-5,036ms against a
+   * 5,000ms budget) while nowhere near a real defect — splitting gives each node its own
+   * render and its own timeout budget instead of asking one case to survive the whole tab's
+   * async setup times 24.
    */
-  it('draws every node in the contract and opens details for each one', async () => {
+  it.each(systemMap.nodes)('draws $id in the contract and opens its details', async (node) => {
     const user = userEvent.setup();
     render(<SystemMapTab />);
 
-    for (const node of systemMap.nodes) {
-      const box = await screen.findByTestId(`system-map-node-${node.id}`);
-      await user.click(within(box).getByRole('button', { name: nodeCardName(node.label) }));
+    const box = await screen.findByTestId(`system-map-node-${node.id}`);
+    await user.click(within(box).getByRole('button', { name: nodeCardName(node.label) }));
 
-      const detail = screen.getByTestId('system-map-detail');
-      expect(within(detail).getByRole('heading', { name: node.label })).toBeInTheDocument();
-      expect(within(detail).getByText(node.summary)).toBeInTheDocument();
-      expect(within(detail).getByText('Documented in')).toBeInTheDocument();
-    }
+    const detail = screen.getByTestId('system-map-detail');
+    expect(within(detail).getByRole('heading', { name: node.label })).toBeInTheDocument();
+    expect(within(detail).getByText(node.summary)).toBeInTheDocument();
+    expect(within(detail).getByText('Documented in')).toBeInTheDocument();
   });
 
   it('expands a node with inner structure and lists what is inside it', async () => {
