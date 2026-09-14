@@ -520,7 +520,7 @@
       "lane": "l2",
       "column": 0,
       "kind": "model",
-      "summary": "The model the selector optimises. Every column it reads is a function of the two elevens and nothing else, so the only way to move its answer is to change a player — which is exactly the property a selection objective needs. It is fitted with monotone constraints, meaning that replacing a player with a better one can never lower the predicted chance of winning. Where a format's version of this model cannot rank results well enough, that format is not offered an optimised selection at all.",
+      "summary": "The model the selector optimises. Every column it reads is a function of the two elevens and nothing else, so the only way to move its answer is to change a player — which is exactly the property a selection objective needs. It is fitted under the contract's signs — a coefficient on a rating the contract marks as good cannot be negative, in either batting order — so replacing a player with a better one can never lower the predicted chance of winning; that is a property of the fit, not a measurement, since FEAT-14. Where a format's version of this model cannot rank results well enough, that format is not offered an optimised selection at all.",
       "anchors": {
         "modules": [
           "ml.xi.train",
@@ -579,7 +579,7 @@
       "lane": "l2",
       "column": 1,
       "kind": "model",
-      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice. It is monotone under the same probe the objective is held to: upgrading a player never lowers the displayed probability, in any format, measured at zero violations per fold. That guarantee was bought, not free -- roughly one upgrade in twenty used to move the number the wrong way, and the one column responsible (the spread of player Elo across an eleven, whose direction is genuinely unknown) was dropped from what this model reads at a cost of about half a point of AUC in ODI and TEST.",
+      "summary": "The probability a person is actually shown. It reads the same eleven columns as the objective plus the context a selector cannot change — team strength, form, head-to-head, venue — which makes it the more accurate forecast and a useless selection objective. Keeping the two apart is why the number on screen can be honest about a match while the number the search maximises stays honest about a choice. It is monotone under the same probe the objective is held to: upgrading a player never lowers the displayed probability, in any format, measured at zero violations per fold. That guarantee was bought, not free -- roughly one upgrade in twenty used to move the number the wrong way, and the one column responsible (the spread of player Elo across an eleven, whose direction is genuinely unknown) was dropped from what this model reads at a cost of about half a point of AUC in ODI and TEST. Since FEAT-14 the objective does not read it either, so the two models read the same eleven columns.",
       "anchors": {
         "modules": [
           "ml.xi.train",
@@ -592,8 +592,7 @@
           "xi_win_<FORMAT>.joblib"
         ],
         "feature_groups": [
-          "DISPLAY_FEATURE_COLS",
-          "DISPLAY_EXCLUDED_COLS"
+          "DISPLAY_FEATURE_COLS"
         ]
       },
       "documented_in": [
