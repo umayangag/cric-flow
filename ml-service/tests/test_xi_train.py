@@ -109,7 +109,9 @@ def collinear_elo_rows(n: int = 3000, seed: int = 7) -> pd.DataFrame:
     rewards the top-three Elo *more* than the mean -- so an unconstrained fit resolves the
     pair with a negative weight on the mean, exactly what the served T20I objective did."""
     rows = synthetic_win_rows(n, seed)
-    rng = np.random.default_rng(seed)
+    # A generator of its own: reseeding with ``seed`` would replay the draw that became
+    # ``d_pelo_mean`` and make the pair exactly collinear, where no sign goes wrong.
+    rng = np.random.default_rng(seed + 1)
     rows["d_pelo_top3"] = rows["d_pelo_mean"] + 0.7 * rng.normal(size=n)
     logit = 2.0 * rows["d_pelo_top3"] - 1.5 * rows["d_pelo_mean"]
     rows[C.TARGET_COL] = (rng.uniform(size=n) < 1.0 / (1.0 + np.exp(-logit))).astype(float)
