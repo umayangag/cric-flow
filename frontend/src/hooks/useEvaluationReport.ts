@@ -6,8 +6,8 @@ import type { EvaluationReport } from '../types';
 /**
  * L4's evaluation report, and which format is being looked at.
  *
- * There is nothing to configure: the harness decides the folds, the locked window and the
- * seeds, and writes one file. The tab picks a format to read and nothing else — a form
+ * There is nothing to configure: the harness decides the folds and the locked window, and
+ * writes one file. The tab picks a format to read and nothing else — a form
  * that let the browser choose a cutoff would be a choice made off the locked window, which
  * H-19 forbids.
  */

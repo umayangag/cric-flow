@@ -50,7 +50,7 @@ from ml.weather.backfill import DEFAULT_CACHE, DEFAULT_GEOCODING  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates, perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
+from ml.xi.evaluate import fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
 
 logger = logging.getLogger("x2_weather_context")
@@ -141,12 +141,11 @@ def run_display(match_frame: pd.DataFrame, player_frame: pd.DataFrame, out: str)
             arm = display_arm(format_frame, player_frame, format_code, control_cols + features.WEATHER_FAMILIES[family])
             node["families"][family] = {"arm": arm, "verdict": stakes_feature_verdict(control, arm)}
             logger.info(
-                "%-5s display %-22s AUC %+.4f ± %.4f (seed sd %.4f)",
+                "%-5s display %-22s AUC %+.4f ± %.4f",
                 format_code,
                 family,
                 node["families"][family]["verdict"]["auc_delta"]["mean"] or 0.0,
                 node["families"][family]["verdict"]["auc_delta"]["se"] or 0.0,
-                node["families"][family]["verdict"]["control_seed_sd"] or 0.0,
             )
         node["seconds"] = round(time.perf_counter() - started, 1)
         result["formats"][format_code] = node
@@ -157,9 +156,9 @@ def run_display(match_frame: pd.DataFrame, player_frame: pd.DataFrame, out: str)
 # --- Gates (b) and (c): the performance model and the simulator ---------------------------
 
 
-def _display_models(train_matches: pd.DataFrame) -> List[Any]:
+def _display_model(train_matches: pd.DataFrame) -> Any:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y) for seed in DISPLAY_SEEDS]
+    return make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
 
 
 def _simulation_summary(report: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -223,7 +222,7 @@ def run_fold(
         return fold
     simulated = fmt in simulator.SIMULATED_FORMATS
     started = time.perf_counter()
-    displays = _display_models(train_matches) if simulated else []
+    display = _display_model(train_matches) if simulated else None
     base_rate = float(train_matches[C.TARGET_COL].mean())
     night = eval_matches[features.NIGHT_COL] == 1.0
     windows = {"day": eval_matches[~night], "night": eval_matches[night]}
@@ -242,7 +241,7 @@ def run_fold(
                 split_players = evaluation[evaluation.match_id.isin(split_matches.match_id)]
                 splits[split] = _simulation_summary(
                     sim_harness.evaluate_window(
-                        model, displays, split_matches, split_players, fmt, base_rate, SIM_SAMPLES
+                        model, display, split_matches, split_players, fmt, base_rate, SIM_SAMPLES
                     )
                 )
             entry["simulation"] = {**splits, "all": _pooled(splits)}
@@ -410,12 +409,12 @@ def decide(paths: Sequence[str]) -> None:
         print()
     ships: Dict[str, bool] = {}
     if display:
-        print("### Gate (a) -- the family in the display model (walk-forward, 3 seeds)")
+        print("### Gate (a) -- the family in the display model (walk-forward)")
         print()
         print(
-            "| format | family | display AUC (control) | with family | Δ ± se | seed sd | Brier Δ | swap share (control → arm) | verdict |"
+            "| format | family | display AUC (control) | with family | Δ ± se | Brier Δ | swap share (control → arm) | verdict |"
         )
-        print("|---|---|---:|---:|---|---:|---|---:|---|")
+        print("|---|---|---:|---:|---|---|---:|---|")
         for format_code, node in display["formats"].items():
             for family, fam in node["families"].items():
                 v = fam["verdict"]
@@ -423,7 +422,7 @@ def decide(paths: Sequence[str]) -> None:
                 print(
                     f"| {format_code} | {family} | {_f(v['control_auc'], '%.4f')} | {_f(v['arm_auc'], '%.4f')} | "
                     f"{_f(v['auc_delta']['mean'], '%+.4f')} ± {_f(v['auc_delta']['se'], '%.4f')} | "
-                    f"{_f(v['control_seed_sd'], '%.4f')} | {_f(v['brier_delta']['mean'], '%+.4f')} | "
+                    f"{_f(v['brier_delta']['mean'], '%+.4f')} | "
                     f"{_f(v['control_swap_violation_share'], '%.4f')} → {_f(v['swap_violation_share'], '%.4f')} | "
                     f"{'beyond noise' if v['beyond_noise'] else 'inside noise'}{'' if v['swap_within_h4'] else '; H-4 fails'} |"
                 )

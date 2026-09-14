@@ -55,7 +55,6 @@ from sim_frame_cache import load_frames  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates  # noqa: E402
 from ml.xi.evaluate import (  # noqa: E402
-    DISPLAY_SEEDS,
     MIN_EVAL_ROWS,
     MIN_TRAIN_ROWS,
     SWAP_MAX_MATCHES,
@@ -126,18 +125,13 @@ def display_arm(
             folds.append(entry)
             continue
         x, y = _xy(train, columns)
-        models = [
-            make_display_model(columns, seed, constrain_team_context=constrain_team_context).fit(x, y)
-            for seed in DISPLAY_SEEDS
-        ]
-        scores = [_score_marginalised(model, evaluation, columns) for model in models]
-        entry["display_auc_mean"] = float(np.mean([s["auc"] for s in scores]))
-        entry["display_auc_seed_sd"] = float(np.std([s["auc"] for s in scores]))
-        entry["display_brier_mean"] = float(np.mean([s["brier"] for s in scores]))
+        model = make_display_model(columns, constrain_team_context=constrain_team_context).fit(x, y)
+        scores = _score_marginalised(model, evaluation, columns)
+        entry["display_auc_mean"] = scores["auc"]
+        entry["display_brier_mean"] = scores["brier"]
         window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
-        # Seed 0 is the model an artifact stores and a person is shown, so it is the one probed.
         probe = display_swap_monotonicity(
-            models[0], columns, evaluation, window_players, format_code, max_matches=SWAP_MAX_MATCHES
+            model, columns, evaluation, window_players, format_code, max_matches=SWAP_MAX_MATCHES
         )
         entry["swap_violation_share"] = None if probe is None else probe["violation_share"]
         entry["swap_upgrades"] = None if probe is None else probe["upgrades"]
@@ -161,7 +155,7 @@ def xi_only_diagnostic(format_frame: pd.DataFrame, player_frame: pd.DataFrame, f
             folds.append(entry)
             continue
         x, y = _xy(train, C.XI_FEATURE_COLS)
-        model = make_display_model(C.XI_FEATURE_COLS, DISPLAY_SEEDS[0]).fit(x, y)
+        model = make_display_model(C.XI_FEATURE_COLS).fit(x, y)
         entry["display_auc_mean"] = _score_marginalised(model, evaluation, C.XI_FEATURE_COLS)["auc"]
         window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
         probe = display_swap_monotonicity(
@@ -275,7 +269,6 @@ def verdict(arm: Dict[str, Any], control: Dict[str, Any], diagnostic: Dict[str, 
     arm_swap = _mean(arm["folds"], "swap_violation_share")
     swap_delta = _paired(arm["folds"], control["folds"], "swap_violation_share")
     auc_delta = _paired(arm["folds"], control["folds"], "display_auc_mean")
-    seed_sd = _mean(control["folds"], "display_auc_seed_sd")
 
     material_floor = None
     if control_swap is not None:
@@ -286,7 +279,9 @@ def verdict(arm: Dict[str, Any], control: Dict[str, Any], diagnostic: Dict[str, 
     swap_material = (
         material_floor is not None and swap_delta["mean"] is not None and swap_delta["mean"] <= material_floor
     )
-    auc_floor = max(abs(auc_delta["se"] or 0.0), seed_sd or 0.0)
+    # One fold-level standard error of the paired difference. The clause once also named
+    # the control's seed-to-seed sd; that spread was identically zero (EVAL-02).
+    auc_floor = abs(auc_delta["se"] or 0.0)
     auc_holds = auc_delta["mean"] is not None and auc_delta["mean"] >= -auc_floor
     return {
         "control_swap_violation_share": control_swap,
@@ -298,7 +293,6 @@ def verdict(arm: Dict[str, Any], control: Dict[str, Any], diagnostic: Dict[str, 
         "control_display_auc": _mean(control["folds"], "display_auc_mean"),
         "arm_display_auc": _mean(arm["folds"], "display_auc_mean"),
         "display_auc_delta": auc_delta,
-        "control_seed_sd": seed_sd,
         "display_auc_floor": auc_floor,
         "display_auc_holds": bool(auc_holds),
         "xi_only_swap_violation_share": _mean(diagnostic["folds"], "swap_violation_share"),
@@ -314,7 +308,6 @@ def run(frames_path: str, out: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "gate": gates.as_dict()[GATE_ID],
         "informing_gate": gates.as_dict()[SPREAD_GATE_ID],
-        "seeds": list(DISPLAY_SEEDS),
         "swap_violation_limit": SWAP_VIOLATION_LIMIT,
         "material_fall_fraction": MATERIAL_FALL_FRACTION,
         "formats": {},

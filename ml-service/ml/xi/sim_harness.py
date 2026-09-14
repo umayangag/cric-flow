@@ -119,7 +119,7 @@ def _win_probability(draws: simulator.MatchDraws) -> float:
 
 def evaluate_window(
     model: PerformanceModels,
-    display_models: Sequence[Any],
+    display_model: Any,
     win_rows: pd.DataFrame,
     player_rows: pd.DataFrame,
     format_code: str,
@@ -129,7 +129,7 @@ def evaluate_window(
 ) -> Dict[str, Any]:
     """E2 for one window's matches. ``win_rows`` are the window's win-frame rows (with the
     innings outcomes and the simulation context), ``player_rows`` the same matches' player
-    rows, ``display_models`` the window's fitted display models (one per seed)."""
+    rows, ``display_model`` the window's fitted display model."""
     if format_code not in simulator.SIMULATED_FORMATS:
         return {"skipped_reason": "format has no innings length; not simulated"}
     fixtures = simulator.fixtures_from_rows(player_rows, win_rows, model.predict_oriented)
@@ -172,9 +172,7 @@ def evaluate_window(
     simulator.simulate_match(fixtures[0].team1, fixtures[0].team2, fixtures[0].context, simulator.DEFAULT_SAMPLES, seed)
     default_seconds = time.perf_counter() - default_started
 
-    p_display = np.mean(
-        [marginalised_probabilities(m, rows.reset_index(), C.DISPLAY_FEATURE_COLS) for m in display_models], axis=0
-    )
+    p_display = marginalised_probabilities(display_model, rows.reset_index(), C.DISPLAY_FEATURE_COLS)
     brier_display, brier_pre = _brier(p_display, y), _brier(p_pre, y)
     complete = simulator.complete_first_innings(rows)
     actual_first = rows.innings1_runs.to_numpy(dtype=float)

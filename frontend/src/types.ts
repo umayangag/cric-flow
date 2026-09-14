@@ -1259,7 +1259,6 @@ export type EvaluationReport = {
     reason: string;
     retired_into_folds: string[];
   };
-  seeds: number[];
   n_rows: number;
   n_player_rows: number;
   data_quality?: Record<string, unknown>;

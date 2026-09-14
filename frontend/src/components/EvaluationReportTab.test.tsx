@@ -185,7 +185,6 @@ function report(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
       reason: 'the migration read the previous window',
       retired_into_folds: ['2025-09-01', '2025-12-01'],
     },
-    seeds: [0, 1, 2],
     n_rows: 22734,
     n_player_rows: 463818,
     formats: { T20: formatReport() },

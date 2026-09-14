@@ -67,7 +67,9 @@ def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
         entry: Dict[str, float] = {"n_train": report["n_train"], "n_holdout": report["n_holdout"]}
         if "objective" in report:
             entry["objective_auc"] = report["objective"]["auc"]
-            entry["display_auc_mean"] = report["display"]["auc_mean"]
+            # The key is the wire name the Workbench and the harness share; since EVAL-02
+            # the display model is one fit, so the value is its AUC and nothing is averaged.
+            entry["display_auc_mean"] = report["display"]["auc"]
         out[report["format_code"]] = entry
     return out
 

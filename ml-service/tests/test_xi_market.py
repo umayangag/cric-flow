@@ -291,7 +291,7 @@ def _benchmark_over(frame: pd.DataFrame, probabilities: Sequence[float]) -> Dict
         }
     )
     benchmark = market.Benchmark(joined, market.LoadCounts(), market.JoinCounts(joined=len(joined)), "/cache")
-    benchmark.observe("T20", "fold", pd.Timestamp("2025-12-01"), pd.Timestamp("2026-01-01"), frame, [_ColumnModel()])
+    benchmark.observe("T20", "fold", pd.Timestamp("2025-12-01"), pd.Timestamp("2026-01-01"), frame, _ColumnModel())
     return benchmark.report(C.FORMAT_CODES)
 
 
@@ -322,7 +322,7 @@ def test_benchmark_states_the_joined_coverage_beside_every_number() -> None:
         }
     )
     benchmark = market.Benchmark(joined, market.LoadCounts(), market.JoinCounts(joined=10), "/cache")
-    benchmark.observe("T20", "fold", pd.Timestamp("2025-12-01"), pd.Timestamp("2026-01-01"), frame, [_ColumnModel()])
+    benchmark.observe("T20", "fold", pd.Timestamp("2025-12-01"), pd.Timestamp("2026-01-01"), frame, _ColumnModel())
 
     entry = benchmark.report(C.FORMAT_CODES)["formats"]["T20"]
 

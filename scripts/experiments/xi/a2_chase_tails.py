@@ -39,7 +39,7 @@ from sim_frame_cache import load_frames  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates, perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
+from ml.xi.evaluate import fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
 
 logger = logging.getLogger("a2_chase_tails")
@@ -58,9 +58,9 @@ FIRST_COVERAGE_TOLERANCE = 0.03
 BRIER_TOLERANCE = sim_harness.BRIER_TOLERANCE
 
 
-def _display_models(train_matches: pd.DataFrame) -> List[Any]:
+def _display_model(train_matches: pd.DataFrame) -> Any:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y) for seed in DISPLAY_SEEDS]
+    return make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
 
 
 def _summary(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,7 +122,7 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
         fold["skipped_reason"] = "too few training or evaluation rows"
         return fold
     started = time.perf_counter()
-    displays = _display_models(train_matches)
+    display = _display_model(train_matches)
     base_rate = float(train_matches[C.TARGET_COL].mean())
     # One fit per fold: the members, the shared factor and the ``both`` response's sample.
     model = P.fit_performance(
@@ -139,7 +139,7 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
     for arm in ARMS:
         response = simulator.fit_chase_response(sample, arm)
         model.simulation = simulator.SimulatorCalibration(fitted.runs_balls_rho, fitted.shared_factor, response)
-        report = sim_harness.evaluate_window(model, displays, eval_matches, evaluation, fmt, base_rate, SIM_SAMPLES)
+        report = sim_harness.evaluate_window(model, display, eval_matches, evaluation, fmt, base_rate, SIM_SAMPLES)
         fold[arm] = _summary(report)
         logger.info(
             "%s @ %s %-6s chase coverage %.3f width %.1f bias %+.1f below-q10 %.3f | first %.3f / %.1f | Δ Brier %+.4f%s",

@@ -151,7 +151,6 @@ SPEARMAN_SCALE = Scale(bad=0.0, good=0.35)
 PIT_TAIL_SCALE = Scale(bad=0.20, good=0.10)
 E5_SCALE = Scale(bad=0.50, good=0.52)
 PARITY_SCALE = Scale(bad=0.0, good=0.0)
-SEED_SD_SCALE = Scale(bad=0.010, good=0.0)
 VIOLATION_SCALE = Scale(bad=0.02, good=0.0)
 #: The display surface used to be painted against its own 3-7 % range, because H-4's 2 %
 #: is a contract on the objective and a scale saturating red everywhere says nothing about
@@ -184,38 +183,21 @@ METRICS: Tuple[Metric, ...] = (
         better=HIGHER,
         scale=AUC_SCALE,
     ),
+    # The two ``_mean`` keys below are the wire names the harness report, the run manifest
+    # and the market benchmark share with the Workbench. The display model is one fit
+    # per window (EVAL-02: its random seed produced bit-identical refits), so each is that
+    # fit's own score and nothing is averaged; the noise a difference is read against is
+    # the spread over folds beside it, never a spread across seeds.
     Metric(
         key="display_auc_mean",
-        name="Display AUC (mean over seeds)",
+        name="Display AUC",
         explanation=(
-            "The displayed model is fitted under several random seeds and its AUC averaged, so a "
-            "lucky seed cannot be read as an improvement. " + AUC_EXPLANATION
+            "The same measure for the probability a user is actually shown, from the one display "
+            "model fitted for the window. " + AUC_EXPLANATION
         ),
         band=AUC_BAND,
         better=HIGHER,
         scale=AUC_SCALE,
-    ),
-    Metric(
-        key="display_auc_seed_sd",
-        name="Display AUC spread across seeds",
-        explanation=(
-            "How far the displayed model's AUC moves when only the random seed changes. It is the "
-            "noise floor: a change smaller than this is not evidence of anything (H-14)."
-        ),
-        band="A few thousandths here. Any claimed improvement must be larger than it.",
-        better=LOWER,
-        scale=SEED_SD_SCALE,
-    ),
-    Metric(
-        key="display_auc_seed_sd_mean",
-        name="Display AUC seed spread, mean over folds",
-        explanation=(
-            "The seed-to-seed spread of the displayed AUC, averaged over the walk-forward folds. "
-            "It is the size below which a difference between releases means nothing."
-        ),
-        band="A few thousandths here. Any claimed improvement must be larger than it.",
-        better=LOWER,
-        scale=SEED_SD_SCALE,
     ),
     Metric(
         key="objective_brier",
@@ -227,8 +209,8 @@ METRICS: Tuple[Metric, ...] = (
     ),
     Metric(
         key="display_brier_mean",
-        name="Display Brier (mean over seeds)",
-        explanation="The displayed probability, scored rather than ranked, averaged over seeds. " + BRIER_EXPLANATION,
+        name="Display Brier",
+        explanation="The displayed probability, scored rather than ranked. " + BRIER_EXPLANATION,
         band=BRIER_BAND,
         better=LOWER,
         scale=BRIER_SCALE,
@@ -1261,7 +1243,8 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "matches_joined": "how many of those a closing price was joined to",
     # Inputs and configuration, not results.
     "seed": "the random seed a simulation was run under",
-    "seeds": "the random seeds the display model was fitted under",
+    "seeds": "the random seeds the performance model's members were fitted under (they enter through "
+    "its early-stopping split); the display model is one fit and has none",
     "replicates": "how many null replicates the derived bar was simulated from",
     "bar_quantile": "which quantile of the null the bar is taken at",
     "tolerance": "E2's configured tolerance, not a measurement",

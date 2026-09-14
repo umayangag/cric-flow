@@ -315,7 +315,7 @@ def run_fold(
         fold["skipped_reason"] = "too few training or evaluation rows"
         return fold
     started = time.perf_counter()
-    displays = dn._display_models(train_matches)
+    display = dn._display_model(train_matches)
     base_rate = float(train_matches[dn.C.TARGET_COL].mean())
     # One fit per fold: the members, the recalibration, the pooled shared factor and the
     # calibration fold's chase sample. The arms differ only in what multiplies the runs
@@ -342,7 +342,7 @@ def run_fold(
             model.simulation = calibrations[arm][population]
             players = evaluation[evaluation.match_id.isin(window.match_id)]
             summaries[population] = _summary(
-                sim_harness.evaluate_window(model, displays, window, players, fmt, base_rate, dn.SIM_SAMPLES)
+                sim_harness.evaluate_window(model, display, window, players, fmt, base_rate, dn.SIM_SAMPLES)
             )
         fold[arm] = {**summaries, "all": _pooled_summary(summaries)}
         logger.info(

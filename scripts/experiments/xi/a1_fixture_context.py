@@ -42,7 +42,7 @@ from sim_frame_cache import load_frames  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates, perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
+from ml.xi.evaluate import fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
 
 logger = logging.getLogger("a1_fixture_context")
@@ -64,12 +64,9 @@ PINBALL_TOLERANCE = 0.005
 HEADLINE_TARGETS = tuple(t.name for t in P.TARGETS if t.headline)
 
 
-def _display_models(train_matches: pd.DataFrame) -> List[Any]:
+def _display_model(train_matches: pd.DataFrame) -> Any:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [
-        make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y)
-        for seed in DISPLAY_SEEDS
-    ]
+    return make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
 
 
 def _simulation_summary(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -131,7 +128,7 @@ def run_fold(
         return fold
     simulated = fmt in simulator.SIMULATED_FORMATS
     started = time.perf_counter()
-    displays = _display_models(train_matches) if simulated else []
+    display = _display_model(train_matches) if simulated else None
     base_rate = float(train_matches[C.TARGET_COL].mean())
     for arm, families in ARMS.items():
         spec = P.default_spec(
@@ -154,7 +151,7 @@ def run_fold(
             entry["simulation"] = _simulation_summary(
                 sim_harness.evaluate_window(
                     model,
-                    displays,
+                    display,
                     eval_matches,
                     evaluation,
                     fmt,

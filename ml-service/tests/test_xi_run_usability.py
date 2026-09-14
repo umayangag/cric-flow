@@ -22,7 +22,7 @@ def _scored(format_code: str, auc: float, n_holdout: int = 400, positive_rate: f
         "n_holdout": n_holdout,
         "holdout_positive_rate": positive_rate,
         "objective": {"auc": auc, "brier": 0.22},
-        "display": {"auc_mean": auc + 0.02},
+        "display": {"auc": auc + 0.02, "brier": 0.22},
     }
 
 
