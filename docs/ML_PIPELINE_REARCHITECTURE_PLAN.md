@@ -759,6 +759,21 @@ calibration quarter and the scored one: the ODI folds carry a per-fold bias of �
 runs–balls copula correlation is 0.92 in both formats. **Decision:** `simulator.SHARED_FACTOR
 = True`; the before/after is the table.
 
+*EVAL-03 (2026-09-14).* Until this fix the "calibration fit" members were also the members
+served: the fold was held out of the fit and never refitted, so the served quantiles ended
+92 days before the cutoff. The fit is now calibrate-on-fold, refit-on-full: the factor (and
+H-5's recalibration) is still fitted on the calibration-fit members' out-of-sample residuals,
+and the members served are the production fit, on every row. The factor's validity for the
+served members rests on the row pairs above: the production fit and the calibration fit have
+the same first-innings coverage (0.638 / 0.634 T20, 0.576 / 0.572 ODI), width (60.6 / 60.2,
+107.3 / 107.2) and dispersion ratio (1.42 / 1.43, 1.36 / 1.36) on the scored windows, so the
+residual the factor deconvolves is the same for both kinds of members to within the folds'
+resolution; and the fold's horizon (0–92 days after its members' last row) now matches
+serving's (0 to the retrain cadence after the served members' last row) instead of falling
+92 days short of it. The harness fits the same recipe per fold, so the next `make evaluate`
+measures the served recipe's coverage directly. The served quantiles change at the next
+retrain; the factor's `shrink` and `factor_sd` do not, by construction.
+
 **E2 — is the simulated P(win) a probability?** Pre-toss, on the same matches as the display
 model (three display seeds averaged):
 

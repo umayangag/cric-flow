@@ -528,15 +528,69 @@ def _fit_simulator_calibration(
     return fold
 
 
+def _fit_members(rows: pd.DataFrame, spec: FitSpec) -> List[SeedMember]:
+    x = design_matrix(rows, spec.feature_cols)
+    return [_fit_member(x, rows, spec, seed) for seed in spec.seeds]
+
+
+def _calibration_fold(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """The rows before the temporal calibration fold and the fold itself -- empty when the
+    spec fits nothing on a fold, or when the history before it is too short to fit the
+    members that predict it."""
+    if not (spec.recalibrate or spec.shared_factor):
+        return rows, rows.iloc[0:0]
+    fold_rows, calibration_rows = _temporal_calibration_split(rows)
+    if len(fold_rows) < MIN_FIT_ROWS:
+        logger.warning(
+            "%s: %d rows before the calibration fold, need %d; no recalibration or shared factor is fitted",
+            format_code,
+            len(fold_rows),
+            MIN_FIT_ROWS,
+        )
+        return rows, rows.iloc[0:0]
+    return fold_rows, calibration_rows
+
+
+def _fit_fold_parts(
+    fold_rows: pd.DataFrame,
+    calibration_rows: pd.DataFrame,
+    format_code: str,
+    spec: FitSpec,
+    match_frame: Optional[pd.DataFrame],
+) -> Tuple[Dict[str, QuantileRecalibration], FoldCalibration]:
+    """The parts fitted on the calibration fold's residuals: members fitted on the rows
+    before the fold predict the fold, which they did not train on (H-21), and the quantile
+    recalibration (H-5) and the simulator's calibration (P-4) read the residuals. These
+    members are discarded afterwards; the served ones are refitted on every row."""
+    fold_model = PerformanceModels(format_code, spec, _fit_members(fold_rows, spec), {}, {})
+    for target in spec.recalibrate:
+        raw = fold_model.predict_marginalised(calibration_rows)[target]["quantiles"]
+        fold_model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
+    simulation = (
+        _fit_simulator_calibration(
+            fold_model, calibration_rows, match_frame, spec.chase_response, spec.chase_dispersion
+        )
+        if spec.shared_factor
+        else FoldCalibration()
+    )
+    return fold_model.calibration, simulation
+
+
 def fit_performance(
     rows: pd.DataFrame, format_code: str, spec: FitSpec, match_frame: Optional[pd.DataFrame] = None
 ) -> PerformanceModels:
     """Fit the format's model on ``rows`` (the training population, every XI player) under
-    ``spec``: one member per seed, and -- for the targets ``spec.recalibrate`` names -- a
-    quantile recalibration fitted on the last ``CALIBRATION_DAYS`` of the rows, which the
-    members then do not train on. The simulator's calibration comes from the same rows:
-    the runs-balls copula from the fit rows and, under ``spec.shared_factor``, the shared
-    match factor from the calibration fold, which needs the win rows (``match_frame``)."""
+    ``spec``: one member per seed, fitted on every row, and -- for the targets
+    ``spec.recalibrate`` names -- a quantile recalibration fitted on the last
+    ``CALIBRATION_DAYS`` of the rows against members that did not train on them. The
+    simulator's calibration comes from the same rows: the runs-balls copula from every row
+    and, under ``spec.shared_factor``, the shared match factor from the calibration fold,
+    which needs the win rows (``match_frame``).
+
+    Calibrate on the fold, refit on the full history: the fold-fitted parts must read
+    residuals the members could not have learned, and the served members must read the
+    most recent rows -- the ratings they serve beside already do. The fold members differ
+    from the served ones only by the fold's rows (2-5 % of a format's history)."""
     if len(rows) < MIN_FIT_ROWS:
         raise ValueError(f"{format_code}: {len(rows)} training rows, need {MIN_FIT_ROWS}")
     if spec.shared_factor and match_frame is None:
@@ -551,39 +605,25 @@ def fit_performance(
     if spec.chase_dispersion != "none" and not spec.shared_factor:
         raise ValueError(f"{format_code}: the chase dispersion needs the shared match factor")
     started = time.perf_counter()
-    hold_out = bool(spec.recalibrate) or spec.shared_factor
-    fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else (rows, rows.iloc[0:0])
-    if hold_out and len(fit_rows) < MIN_FIT_ROWS:
-        # A history shorter than the calibration fold cannot hold one out; the members take
-        # every row and the fold-fitted parts (recalibration, shared factor) are not fitted.
-        logger.warning(
-            "%s: %d rows before the calibration fold, need %d; fitting on every row without recalibration or a shared factor",
-            format_code,
-            len(fit_rows),
-            MIN_FIT_ROWS,
-        )
-        hold_out = False
-        fit_rows, calibration_rows = rows, rows.iloc[0:0]
-    x = design_matrix(fit_rows, spec.feature_cols)
-    members = [_fit_member(x, fit_rows, spec, seed) for seed in spec.seeds]
-    model = PerformanceModels(format_code, spec, members, {}, {})
-    for target in spec.recalibrate if hold_out else ():
-        raw = model.predict_marginalised(calibration_rows)[target]["quantiles"]
-        model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
-    fold = (
-        _fit_simulator_calibration(model, calibration_rows, match_frame, spec.chase_response, spec.chase_dispersion)
-        if spec.shared_factor and hold_out
-        else FoldCalibration()
+    fold_rows, calibration_rows = _calibration_fold(rows, format_code, spec)
+    calibration, fold = (
+        _fit_fold_parts(fold_rows, calibration_rows, format_code, spec, match_frame)
+        if len(calibration_rows)
+        else ({}, FoldCalibration())
     )
+    model = PerformanceModels(format_code, spec, _fit_members(rows, spec), calibration, {})
     model.simulation = simulator.calibrate(
-        fit_rows, fold.shared_factor, fold.chase_response, fold.chase_dispersion, fold.chase_sample
+        rows, fold.shared_factor, fold.chase_response, fold.chase_dispersion, fold.chase_sample
     )
     model.metadata = {
         "format_code": format_code,
-        "n_train": int(len(fit_rows)),
+        "n_train": int(len(rows)),
         "n_calibration": int(len(calibration_rows)),
-        "train_from": fit_rows.match_date.min().date().isoformat(),
-        "train_to": fit_rows.match_date.max().date().isoformat(),
+        "train_from": rows.match_date.min().date().isoformat(),
+        "train_to": rows.match_date.max().date().isoformat(),
+        # The fold the recalibration and the shared factor were fitted on; its members saw
+        # only the rows before it.
+        "calibration_from": calibration_rows.match_date.min().date().isoformat() if len(calibration_rows) else None,
         "spec": spec.as_dict(),
         "iterations": model.iterations,
         "simulation": model.simulation.as_dict(),

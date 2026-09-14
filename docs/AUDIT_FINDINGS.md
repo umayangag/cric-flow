@@ -129,18 +129,6 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depend on that version's `HistGradientBoosting*` behaviour.
 
-### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
-
-`performance.py:542-556`:
-```python
-hold_out = bool(spec.recalibrate) or spec.shared_factor      # True in production (SHARED_FACTOR = True, simulator.py:62)
-fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else ...
-members = [_fit_member(x, fit_rows, spec, seed) for seed in spec.seeds]
-```
-The calibration fold is needed to fit the shared factor, but the members are never refitted on the full history afterwards. Served quantiles are ~3 months stale relative to the ratings they read. The harness has the same structure so it cannot see the cost.
-
-**Fix.** Fit the shared factor / recalibration on the temporal fold, then refit the members on all rows and attach the fold-fitted parts (standard calibrate-on-fold, refit-on-full); or cross-fit over two folds.
-
 ### EVAL-05 — Manifest `objective_auc` is toss-known; harness's is marginalised  **Medium**
 
 `train.py:235-236, 243-247` uses `_score(model, x_te, y_te)` on actual batting order; `evaluate.py:192-193, 201-203` uses `_score_marginalised`. Same glossary key, and H-17's criterion reads the harness key. Toss-known is systematically more optimistic than what `/xi/predict-win` serves without `team1_bats_first`. `objective_marginalised` is computed at `train.py:241` but not promoted. **Fix.** Make the manifest headline the marginalised numbers, or add `_toss_known` keys.
@@ -531,6 +519,18 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 #### What this batch is accepted on
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
+### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
+
+`performance.py:542-556`:
+```python
+hold_out = bool(spec.recalibrate) or spec.shared_factor      # True in production (SHARED_FACTOR = True, simulator.py:62)
+fit_rows, calibration_rows = _temporal_calibration_split(rows) if hold_out else ...
+members = [_fit_member(x, fit_rows, spec, seed) for seed in spec.seeds]
+```
+The calibration fold is needed to fit the shared factor, but the members are never refitted on the full history afterwards. Served quantiles are ~3 months stale relative to the ratings they read. The harness has the same structure so it cannot see the cost.
+
+**Fix.** Fit the shared factor / recalibration on the temporal fold, then refit the members on all rows and attach the fold-fitted parts (standard calibrate-on-fold, refit-on-full); or cross-fit over two folds. — PR #311
 
 ### EVAL-01 — Display model early stopping is `'auto'`  **High · retrain**
 
