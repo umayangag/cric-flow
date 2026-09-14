@@ -191,7 +191,7 @@ def _evaluate_win_window(
         return skip, None, None
     x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
     x_display, _ = _xy(train, C.DISPLAY_FEATURE_COLS)
-    objective = make_objective_model().fit(x_objective, y_train)
+    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_objective, y_train)
     display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y_train)
     objective_scores = _score_marginalised(objective, evaluation, C.XI_FEATURE_COLS)
     display_scores = _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)
@@ -295,6 +295,13 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "display_auc": over_folds(lambda f: f["display_auc_mean"]),
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
+        # H-4's probe per axis (FEAT-14), beside the combined share it is a gate on.
+        "swap_violation_share_pelo_only": over_folds(
+            lambda f: nested(f, "swap_monotonicity", "by_axis", "pelo_only", "violation_share")
+        ),
+        "swap_violation_share_rates_only": over_folds(
+            lambda f: nested(f, "swap_monotonicity", "by_axis", "rates_only", "violation_share")
+        ),
         "display_swap_violation_share": over_folds(lambda f: nested(f, "display_swap_monotonicity", "violation_share")),
         "specific_vs_typical_delta": over_folds(lambda f: nested(f, "specific_vs_typical", "delta")),
         "performance": perf_harness.summarize_folds(

@@ -212,7 +212,11 @@ SIDE_FEATURE_STEMS: List[str] = [
 ]
 
 # Sign of each stem's effect on P(team1 wins) when it belongs to team1: +1 good, -1 bad,
-# 0 no constraint. Used for the monotone selection objective.
+# 0 no constraint. Both win models are fitted under it, through ``monotone_directions``:
+# the display model as tree constraints, the objective as bounds on its coefficients
+# (FEAT-14). A stem at 0 is one whose direction cannot be declared; such a stem may be
+# read only if no one-player upgrade moves it, or the surface is not monotone under the
+# swap -- which is why ``pelo_std`` is in no win model (``_SIDE_STEMS``).
 _STEM_DIRECTION: Dict[str, int] = {
     "imp_bat_sum": 1,
     "imp_bat_top6": 1,
@@ -258,9 +262,19 @@ _DIFF_STEMS: List[str] = [
     "n_debutants",
     "exp_mean_matches_all",
 ]
+# ``pelo_std`` -- the spread of player Elo across an eleven -- is a side aggregate (it
+# reaches the performance model as ``own_pelo_std``) but no win model reads it. Its
+# direction is 0 and cannot be declared: raising a player above the side's mean widens the
+# spread and raising one below it narrows it. It is the only stem a one-player upgrade
+# moves that the contract leaves free, so any model that reads it can lower P(win) on an
+# upgrade whatever the other coefficients do. B-7 (PR #267) took it out of the display
+# model for exactly that, at −0.0004 / +0.0088 / −0.0055 / −0.0047 of display AUC; FEAT-14
+# took it out of the objective once the other stems were sign-bound and it was where every
+# remaining swap violation came from (3 / 1 / 0 / 1 per format on the folds, all through
+# this stem; 0 / 0 / 0 / 0 without it, for +0.0017 / +0.0022 / −0.0011 / −0.0001 of
+# objective AUC in T20I / ODI / T20 / TEST, each within one fold-level standard error).
 _SIDE_STEMS: List[str] = [
     "pelo_mean",
-    "pelo_std",
     "imp_bat_sum",
     "imp_bat_top6",
     "imp_bat_tail",
@@ -318,28 +332,12 @@ STAKES_COLS: List[str] = ["stakes_knockout", "stakes_stage_known"]
 #: Gate X-3, use 2: whether the display model reads ``STAKES_COLS``.
 STAKES_FEATURES_KEPT = False
 
-# B-7: the spread of player Elo across an eleven, in each side's raw form (there is no
-# ``d_pelo_std``; the contract never made this stem a differential). The *objective* keeps
-# it -- it is linear, its coefficient there is small, and H-4 measures 0.0-0.8 % on it --
-# but the display model is fitted as trees, and a tree's step response to a column whose
-# direction is 0 is what makes an upgrade lower the displayed probability.
-#
-# It is the only column of ``DISPLAY_FEATURE_COLS`` that a one-player upgrade moves and
-# the monotone contract leaves free, and it moves on 100 % of upgrades in every format,
-# while no constrained column ever moves against its direction. Dropping it takes the
-# display swap-violation share from 3-7 % to exactly 0.0000 in every format and every
-# fold, for -0.0004 (T20), +0.0088 (T20I), -0.0055 (ODI), -0.0047 (TEST) of display AUC:
-# discrimination traded for a surface that is coherent by construction, decided
-# deliberately because the Team Lab's what-if is the product (`docs/BUG_BACKLOG.md` § B-7,
-# gate ``B-7-pelo-spread``). Its direction cannot simply be declared instead: raising a
-# player above the side's mean widens the spread and raising one below it narrows it, so
-# no sign is defensible.
-DISPLAY_EXCLUDED_COLS: Tuple[str, ...] = ("t1_pelo_std", "t2_pelo_std")
-
+# The display model reads every XI column the objective reads, plus the team context the
+# objective must not see (it cannot distinguish two elevens). The two lists differ in
+# nothing else since FEAT-14: B-7's ``t1_pelo_std`` / ``t2_pelo_std`` exclusion is now the
+# contract for both models (see ``_SIDE_STEMS``).
 DISPLAY_FEATURE_COLS: List[str] = (
-    [column for column in XI_FEATURE_COLS if column not in DISPLAY_EXCLUDED_COLS]
-    + TEAM_CONTEXT_COLS
-    + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
+    list(XI_FEATURE_COLS) + TEAM_CONTEXT_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
 )
 
 TARGET_COL = "team1_wins"
@@ -465,9 +463,11 @@ def performance_feature_cols(
 def monotone_directions(columns: List[str], constrain_team_context: bool = DISPLAY_CONTEXT_MONOTONE_KEPT) -> List[int]:
     """Monotone constraint per column for P(team1 wins): +1 / -1 / 0.
 
-    ``constrain_team_context`` is gate B-7's arm switch: with it off, every column outside
-    the XI stems reads 0 and nothing constrains the display model's view of team strength,
-    form and venue familiarity. It defaults to what the gate decided.
+    The display model passes it to the booster as ``monotonic_cst``; the objective fits its
+    coefficients under it as sign bounds (FEAT-14). ``constrain_team_context`` is gate B-7's
+    arm switch: with it off, every column outside the XI stems reads 0 and nothing
+    constrains the display model's view of team strength, form and venue familiarity. It
+    defaults to what the gate decided.
     """
     out = []
     for col in columns:

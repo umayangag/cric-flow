@@ -58,15 +58,15 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 
 | Model | Level | Inputs | Outputs | Input source |
 |-------|-------|--------|---------|--------------|
-| **XI win — objective** | Match | 42 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
+| **XI win — objective** | Match | 40 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
 | **XI win — display** | Match | 47 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns bar the Elo spread (B-7), plus team and venue context |
-| **Performance (L2-B)** | Player | 42 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
+| **Performance (L2-B)** | Player | 40 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
 
 One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (L2-C) trains nothing — it draws from the performance model.
 
 Input feature names, in order:
 
-- **XI win — objective** (42): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+30 more, see `ml.xi.contract.XI_FEATURE_COLS`)
+- **XI win — objective** (40): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+28 more, see `ml.xi.contract.XI_FEATURE_COLS`)
 - **XI win — display** (47): `d_pelo_mean`, `d_pelo_top3`, `d_pelo_min`, `d_imp_bat_sum`, `d_imp_bat_top6`, `d_imp_bat_tail`, `d_imp_bat_wk`, `d_imp_bowl_sum`, `d_imp_bowl_top5`, `d_imp_bowl_wk`, `d_imp_bowl_wk_top5`, `d_n_bowlers` … (+35 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
 
 <!-- END GENERATED: models -->

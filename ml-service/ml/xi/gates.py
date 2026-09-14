@@ -450,9 +450,9 @@ GATES: Tuple[Gate, ...] = (
         "violations and the display AUC would be without the free column, so the trade can be decided "
         "deliberately rather than inferred. It read exactly 0.0000 violations in every format and every fold "
         "for -0.0004 (T20), +0.0088 (T20I), -0.0055 (ODI), -0.0047 (TEST) of display AUC, and the trade was "
-        "then TAKEN by decision, not by this gate: the columns are out of DISPLAY_FEATURE_COLS "
-        "(contract.DISPLAY_EXCLUDED_COLS), display AUC was spent on a Team Lab surface that is coherent by "
-        "construction, and the cost is recorded in docs/BUG_BACKLOG.md § B-7",
+        "then TAKEN by decision, not by this gate: the columns are out of DISPLAY_FEATURE_COLS (and, since "
+        "FEAT-14, out of the objective's columns too -- no win model reads them), display AUC was spent on a "
+        "Team Lab surface that is coherent by construction, and the cost is recorded in docs/BUG_BACKLOG.md § B-7",
         report_path=None,
     ),
     Gate(

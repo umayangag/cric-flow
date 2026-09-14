@@ -394,7 +394,11 @@ def run_fold(
     started = time.perf_counter()
     train_rows = _match_pairs(family, train, sides)
     fold["base_stem_parity_max_abs_difference"] = _base_parity(train_rows, train)
-    model = make_objective_model().fit(feature_matrix(family, train_rows), train[C.TARGET_COL].to_numpy(dtype=float))
+    # The contract signs the XI columns; a family's own stems and cross terms carry no
+    # direction, so ``monotone_directions`` leaves them free.
+    model = make_objective_model(objective_columns(family)).fit(
+        feature_matrix(family, train_rows), train[C.TARGET_COL].to_numpy(dtype=float)
+    )
     eval_rows = _match_pairs(family, evaluation, sides)
     p = marginalised(model, family, [a for a, _ in eval_rows], [b for _, b in eval_rows])
     fold["objective_auc"] = float(roc_auc_score(evaluation[C.TARGET_COL].to_numpy(dtype=float), p))

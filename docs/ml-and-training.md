@@ -238,12 +238,14 @@ the Lab answers nothing until a run is built. Nothing does that for you — inge
 hand (`docs/PRODUCT_ROADMAP.md` § 2, route (a)), and a scheduled cadence retrains on its
 rhythm, not on a merge. `manifest.git_sha` records which code wrote a run, so whether a run
 predates a change is read off the manifest or `/artifacts/status` without loading it. It has
-happened four times:
+happened five times:
 
 - **X-1b (#257)** — the rating payload gained the `birth_dates` table and the `debut_bat` /
   `debut_bowl` arrays; a payload without them is refused.
 - **B-7 (#267)** — `t1_pelo_std` / `t2_pelo_std` left `DISPLAY_FEATURE_COLS`; a win artifact
   fitted on the old list is refused.
+- **FEAT-14** — the same two columns left `XI_FEATURE_COLS`, and the objective became a
+  sign-bounded fit; a win artifact whose `objective_cols` still carry them is refused.
 - **P2-2 (#280)** — the manifest gained the required `ratings_through`; a manifest without it
   is refused.
 - **B-11 (#285, and again in §8.15)** — `SimulatorCalibration` gained `chase_dispersion`, and
@@ -351,16 +353,22 @@ keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, f
 head-to-head, venue bat-first bias, venue familiarity) is kept in a separate column list
 because it cannot distinguish two XIs.
 
-**Two models per format.** `objective` — logistic regression on the XI columns, additive and
-so monotone in practice (a one-player upgrade lowers p in <1% of cases vs 12% for
-unconstrained boosting); this is what `/xi/optimize` maximises. `display` —
+**Two models per format.** `objective` — logistic regression on the XI columns, fitted under
+the contract's signs (`ml/xi/signed_logistic.py`: the same L2 log-loss as sklearn's `C=0.3`,
+solved by L-BFGS-B with each coefficient bounded by its column's `monotone_directions`
+entry). Additive *and* monotone by construction: a `+1` stem's own-side sensitivity is
+non-negative in both batting orders, so a one-player upgrade never lowers p and the
+harness's swap probe reads exactly 0 in every format. This is what `/xi/optimize` maximises.
+Until FEAT-14 the fit was unconstrained and its monotonicity was only empirical — the T20I
+objective carried a negative own-side weight on `pelo_mean`, and H-4 held only while
+FEAT-01's broken involvement denominator inflated every upgrade's rate terms. `display` —
 monotone-constrained gradient boosting on XI + team-context columns; the probability shown.
-The two column lists differ in exactly one place: the display model does **not** read
-`t1_pelo_std` / `t2_pelo_std`, the spread of player Elo across an eleven
-(`contract.DISPLAY_EXCLUDED_COLS`). It is the only column an upgrade moves whose direction
-the contract leaves free, and a tree's step response to it made one swap in twenty lower
-the displayed probability; dropping it makes the displayed surface monotone under the swap
-probe by construction, at a measured cost in display AUC (B-7, below).
+Neither model reads `t1_pelo_std` / `t2_pelo_std`, the spread of player Elo across an
+eleven: it is the only column an upgrade moves whose direction the contract cannot declare,
+B-7 dropped it from the display model (a tree's step response to it made one swap in twenty
+lower the displayed probability) and FEAT-14 from the objective (with every other stem
+sign-bound, it was where every remaining violation came from), each at a measured cost
+recorded below and in `contract._SIDE_STEMS`.
 
 **Run:** `make retrain CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
 `CRICSHEET_DIR=data/go-app/cricsheet` it reads the raw Cricsheet JSON instead (same format
@@ -983,12 +991,14 @@ informs and ships nothing on its own judgement.
 **The trade was taken, and it was not free.** The Team Lab's what-if — swap a player, watch
 the probability move — is what the product sells, and a swap that moves it the wrong way
 one time in twenty undermines the proposition whatever the AUC says. So the two columns are
-out of `DISPLAY_FEATURE_COLS` (`contract.DISPLAY_EXCLUDED_COLS`), the display surface is
+out of `DISPLAY_FEATURE_COLS`, the display surface is
 monotone under the probe by construction, and **display AUC in ODI and TEST is about half a
 point lower for it** (−0.0055 and −0.0047, 1.4 and 0.9 fold-level standard errors: real
-losses, not rounding), against −0.0004 in T20 and +0.0088 in T20I. The objective keeps the
-column — it is linear there, and H-4 measures under 1 % on it — so the two contracts differ
-on purpose. Because the display artifact's feature list moved with it, the store now
+losses, not rounding), against −0.0004 in T20 and +0.0088 in T20I. The objective kept the
+column at the time — it is linear there, and H-4 then measured under 1 % on it — but that
+figure was FEAT-01's broken denominator talking; FEAT-14 took it out of the objective too,
+once the other stems were sign-bound and it was the source of every remaining violation,
+so the two win models now read the same XI columns. Because the display artifact's feature list moved with it, the store now
 refuses a win artifact whose `display_cols` or `objective_cols` are not the contract's
 (D-6): an older run is retrained, never reloaded. The decision and its cost are recorded in
 `docs/BUG_BACKLOG.md` § B-7.

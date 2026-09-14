@@ -25,25 +25,39 @@ from tests.xi_fixtures import ListSource, make_deliveries, make_match, xi
 TEAM_ONE, TEAM_TWO = xi("a"), xi("b")
 
 
+#: The one batter who decides the synthetic history below: he scores at three times the
+#: rate, and the side he opens for wins.
+STAR = "star"
+STAR_RUNS_PER_BALL = 6
+
+
 def _innings(batting: List[str], bowling: List[str], runs_per_ball: int, n_balls: int = 36) -> tuple:
     """One side's innings: the top six bat in turn and five bowlers share the overs, so
     enough players are involved for the performance model to have rows to fit on."""
     batters = [batting[i % 6] for i in range(n_balls)]
     bowlers = [bowling[5 + (i // 6) % 5] for i in range(n_balls)]
-    runs = [runs_per_ball] * n_balls
+    runs = [STAR_RUNS_PER_BALL if batter == STAR else runs_per_ball for batter in batters]
     wickets = [1 if i % 12 == 11 else 0 for i in range(n_balls)]
     return batters, bowlers, runs, wickets
 
 
 def _history(n_matches: int = 80) -> List:
-    """A synthetic T20 history where the winning side scores at twice the rate, so the
-    target has both classes and the objective has something to learn from."""
+    """A synthetic T20 history the objective can learn under the contract's signs: the
+    star opens for one side or the other and the side he plays for wins, so the winner is
+    the side with the higher batting impact and -- since his side always wins -- the
+    higher Elo. Two wins in three go to A, so the label has both classes.
+
+    It used to make the winner score at twice the rate on a fixed A, A, B cycle, which
+    left the rating gap widest right before the weaker side won: only a fit reading Elo
+    and batting impact *negatively* could rank that (the unconstrained objective did, at
+    0.825 on the holdout), and one bound to the contract's signs correctly cannot (FEAT-14)."""
     matches = []
     for k in range(n_matches):
         winner = "A" if k % 3 else "B"
-        strong, weak = (TEAM_ONE, TEAM_TWO) if winner == "A" else (TEAM_TWO, TEAM_ONE)
-        first = _innings(strong, weak, runs_per_ball=4)
-        second = _innings(weak, strong, runs_per_ball=2)
+        team_one, team_two = list(TEAM_ONE), list(TEAM_TWO)
+        (team_one if winner == "A" else team_two)[0] = STAR
+        first = _innings(team_one, team_two, runs_per_ball=2)
+        second = _innings(team_two, team_one, runs_per_ball=2)
         deliveries = make_deliveries(
             batters=first[0] + second[0],
             bowlers=first[1] + second[1],
@@ -51,7 +65,7 @@ def _history(n_matches: int = 80) -> List:
             wickets=first[3] + second[3],
             innings=[0] * len(first[0]) + [1] * len(second[0]),
         )
-        matches.append(make_match(f"m{k}", k, winner, TEAM_ONE, TEAM_TWO, deliveries))
+        matches.append(make_match(f"m{k}", k, winner, team_one, team_two, deliveries))
     return matches
 
 

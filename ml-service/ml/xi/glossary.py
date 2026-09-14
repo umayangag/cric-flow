@@ -141,6 +141,16 @@ MARKET_DELTA_BAND = (
     "spanning zero means the two are indistinguishable on the matches scored."
 )
 
+SWAP_BAND = (
+    "Under 2 % passes (H-4). Since FEAT-14 the objective is fitted under the contract's signs and "
+    "reads no free-sign column an upgrade moves, so it is monotone by construction and this reads "
+    "exactly 0 in every format; any nonzero value is a regression in the fit or the contract."
+)
+SWAP_AXIS_BAND = (
+    "0 by construction since FEAT-14, like the combined share; a nonzero value names the axis "
+    "whose coefficient has the wrong sign."
+)
+
 #: The anchors behind the shared bands above. Each is the sentence as two numbers: an
 #: AUC is painted from chance to the measured ceiling, a Brier from the base rate it
 #: must beat to what this system reaches, and so on. Where the band gives a gate
@@ -430,7 +440,7 @@ METRICS: Tuple[Metric, ...] = (
             "opponent alone -- *lowers* the predicted win chance. Each one is the model contradicting "
             "itself about what a better player is."
         ),
-        band="Under 2 % passes (H-4); this system measures under 1 %.",
+        band=SWAP_BAND,
         better=LOWER,
         scale=VIOLATION_SCALE,
     ),
@@ -441,7 +451,32 @@ METRICS: Tuple[Metric, ...] = (
             "How often upgrading one player -- raising his ratings, leaving the other ten and the "
             "opponent alone -- *lowers* the predicted win chance, in one fold."
         ),
-        band="Under 2 % passes (H-4); this system measures under 1 %.",
+        band=SWAP_BAND,
+        better=LOWER,
+        scale=VIOLATION_SCALE,
+    ),
+    Metric(
+        key="swap_violation_share_pelo_only",
+        name="Swap violations, Elo axis only",
+        explanation=(
+            "The same one-player upgrade with only the player's Elo raised and his four impact rates "
+            "left alone. Reported beside the combined share because the combined probe once passed for "
+            "the wrong reason: a negative weight on the side's mean Elo stayed under the line while an "
+            "inflated involvement definition made every upgrade's rate terms cover it (FEAT-14). Informs; "
+            "the combined share is the gate."
+        ),
+        band=SWAP_AXIS_BAND,
+        better=LOWER,
+        scale=VIOLATION_SCALE,
+    ),
+    Metric(
+        key="swap_violation_share_rates_only",
+        name="Swap violations, rate axes only",
+        explanation=(
+            "The same one-player upgrade with only the player's four impact rates raised and his Elo "
+            "left alone -- the other half of the split above. Informs; the combined share is the gate."
+        ),
+        band=SWAP_AXIS_BAND,
         better=LOWER,
         scale=VIOLATION_SCALE,
     ),
