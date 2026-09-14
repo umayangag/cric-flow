@@ -3296,7 +3296,7 @@ P-1.
 | `precompute` | **removed (P-6)** |
 | `export` | **removed (P-6)**; the rating pass writes its frames into the run directory |
 | `train_batting`, `train_bowling`, `train_fielding`, `train_extras`, `train_innings`, `train_win`, `train_combination_meta` | **replaced by one `retrain`** step: rating pass → XI win models → performance models → run report → run manifest. P-5 removed six of the seven — a step whose command no longer exists is a broken surface, not a deferred one — and **P-6 folded `train_win` into `retrain`** |
-| `auto_tune` | **removed (P-6)**; the three-point grid runs inside `retrain` and records its choice, and its evidence, in the manifest |
+| `auto_tune` | **removed (P-6)**; the three-point grid runs inside `retrain` and records its choice, its evidence and the iterations the fit ran (`n_iter`) in the manifest. The display model's early stopping is off explicitly (EVAL-01): sklearn's `'auto'` had switched it on above 10,000 rows — T20 only — with a random split, so the model the grid scored on the inner 80 % was not the one refitted on all the rows |
 | (new) `evaluate` | **done (P-6)**: L4 on demand, writing its report and touching no artifact `current` points at. `Optional` in the registry, so no plan implies it |
 | (new) `reload` | **done (P-6)**: point `current` at a run and load it; `POST /admin/reload?run=<id>` |
 
