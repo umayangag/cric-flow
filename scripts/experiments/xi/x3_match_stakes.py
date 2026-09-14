@@ -53,7 +53,6 @@ from ml.xi import gates  # noqa: E402
 from ml.xi import natural_experiment as ne  # noqa: E402
 from ml.xi import stakes as stakes_module  # noqa: E402
 from ml.xi.evaluate import (  # noqa: E402
-    DISPLAY_SEEDS,
     LOCKED_PREVIOUS_START,
     MIN_EVAL_ROWS,
     MIN_TRAIN_ROWS,
@@ -276,14 +275,13 @@ def display_arm(format_frame: pd.DataFrame, player_frame: pd.DataFrame, format_c
             folds.append(entry)
             continue
         x, y = _xy(train, columns)
-        models = [make_display_model(columns, seed).fit(x, y) for seed in DISPLAY_SEEDS]
-        scores = [_score_marginalised(m, evaluation, columns) for m in models]
-        entry["display_auc_mean"] = float(np.mean([s["auc"] for s in scores]))
-        entry["display_auc_seed_sd"] = float(np.std([s["auc"] for s in scores]))
-        entry["display_brier_mean"] = float(np.mean([s["brier"] for s in scores]))
+        model = make_display_model(columns).fit(x, y)
+        scores = _score_marginalised(model, evaluation, columns)
+        entry["display_auc_mean"] = scores["auc"]
+        entry["display_brier_mean"] = scores["brier"]
         window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
         entry["swap_monotonicity"] = display_swap_monotonicity(
-            models[0], columns, evaluation, window_players, format_code, max_matches=SWAP_MAX_MATCHES
+            model, columns, evaluation, window_players, format_code, max_matches=SWAP_MAX_MATCHES
         )
         folds.append(entry)
     return {"columns": columns, "folds": folds}
@@ -311,20 +309,15 @@ def _swap_mean(folds: List[Dict]) -> Optional[float]:
 
 
 def stakes_feature_verdict(control: Dict, arm: Dict) -> Dict[str, Any]:
-    """The gate: display AUC up by more than the seed noise the fold itself reports, in
-    every format, with H-4's share still under 2 %."""
+    """The gate: display AUC up by more than one fold-level standard error of the paired
+    difference, in every format, with H-4's share still under 2 %. (The clause once also
+    named the control's seed-to-seed sd; that spread was identically zero -- EVAL-02 -- so
+    the standard error was always the floor that bound.)"""
     auc = _paired(arm["folds"], control["folds"], "display_auc_mean")
-    seed_noise = _mean(control["folds"], "display_auc_seed_sd")
     swap = _swap_mean(arm["folds"])
-    beyond_noise = (
-        auc["mean"] is not None
-        and seed_noise is not None
-        and auc["se"] == auc["se"]
-        and auc["mean"] > max(seed_noise, auc["se"])
-    )
+    beyond_noise = auc["mean"] is not None and auc["se"] == auc["se"] and auc["mean"] > auc["se"]
     return {
         "auc_delta": auc,
-        "control_seed_sd": seed_noise,
         "control_swap_violation_share": _swap_mean(control["folds"]),
         "swap_delta_vs_control": None
         if swap is None or _swap_mean(control["folds"]) is None
@@ -456,16 +449,16 @@ def decide(path: str, coverage_path: Optional[str]) -> None:
     print("### Use 2 -- the stakes columns in the display model")
     print()
     print(
-        "| format | display AUC (control) | with stakes | Δ ± se | seed sd | Brier Δ | "
+        "| format | display AUC (control) | with stakes | Δ ± se | Brier Δ | "
         "swap share (control → arm) | verdict |"
     )
-    print("|---|---:|---:|---|---:|---|---:|---|")
+    print("|---|---:|---:|---|---|---:|---|")
     for format_code, node in result["stakes_feature"].items():
         v = node["verdict"]
         print(
             f"| {format_code} | {_f(v['control_auc'], '%.4f')} | {_f(v['arm_auc'], '%.4f')} | "
             f"{_f(v['auc_delta']['mean'], '%+.4f')} ± {_f(v['auc_delta']['se'], '%.4f')} | "
-            f"{_f(v['control_seed_sd'], '%.4f')} | {_f(v['brier_delta']['mean'], '%+.4f')} | "
+            f"{_f(v['brier_delta']['mean'], '%+.4f')} | "
             f"{_f(v['control_swap_violation_share'], '%.4f')} → {_f(v['swap_violation_share'], '%.4f')} | "
             f"{'beyond noise' if v['beyond_noise'] else 'inside noise'}"
             f"{'' if v['swap_within_h4'] else '; H-4 fails'}{' → SHIPS' if v['ships'] else ''} |"

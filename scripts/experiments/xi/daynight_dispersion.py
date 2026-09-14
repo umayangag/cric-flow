@@ -67,7 +67,7 @@ from ml.weather.backfill import DEFAULT_GEOCODING  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates, perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
+from ml.xi.evaluate import fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
 
 logger = logging.getLogger("daynight_dispersion")
@@ -200,9 +200,9 @@ def arm_factors(
 # --- one fold ---------------------------------------------------------------------------
 
 
-def _display_models(train_matches: pd.DataFrame) -> List[Any]:
+def _display_model(train_matches: pd.DataFrame) -> Any:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y) for seed in DISPLAY_SEEDS]
+    return make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
 
 
 def _summary(report: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -282,7 +282,7 @@ def run_fold(
         fold["skipped_reason"] = "too few training or evaluation rows"
         return fold
     started = time.perf_counter()
-    displays = _display_models(train_matches)
+    display = _display_model(train_matches)
     base_rate = float(train_matches[C.TARGET_COL].mean())
     # One fit per fold: the members, the recalibration and the pooled shared factor. The arms
     # differ only in which pool the factor is sampled from, so nothing else may be refitted.
@@ -308,7 +308,7 @@ def run_fold(
             model.simulation = simulator.SimulatorCalibration(fitted.runs_balls_rho, factors[population])
             players = evaluation[evaluation.match_id.isin(window.match_id)]
             summaries[population] = _summary(
-                sim_harness.evaluate_window(model, displays, window, players, fmt, base_rate, SIM_SAMPLES)
+                sim_harness.evaluate_window(model, display, window, players, fmt, base_rate, SIM_SAMPLES)
             )
         fold[arm] = {**summaries, "all": _pooled_summary(summaries), "factor": note}
         logger.info(

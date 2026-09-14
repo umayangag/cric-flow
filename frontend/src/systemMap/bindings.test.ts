@@ -132,7 +132,6 @@ const report: EvaluationReport = {
     reason: 'the migration read the previous window',
     retired_into_folds: ['2025-09-01'],
   },
-  seeds: [0, 1, 2],
   n_rows: 19345,
   n_player_rows: 425590,
   formats: { T20I: formatReport },

@@ -39,7 +39,7 @@ from sim_frame_cache import load_frames  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import perf_harness, sim_harness, simulator  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, fold_windows  # noqa: E402
+from ml.xi.evaluate import fold_windows  # noqa: E402
 from ml.xi.train import _xy, make_display_model  # noqa: E402
 
 logger = logging.getLogger("sim_choices")
@@ -49,9 +49,9 @@ MIN_EVAL_ROWS = 200
 SIM_SAMPLES = 1000
 
 
-def _display_models(train_matches: pd.DataFrame) -> List[Any]:
+def _display_model(train_matches: pd.DataFrame) -> Any:
     x, y = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-    return [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x, y) for seed in DISPLAY_SEEDS]
+    return make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
 
 
 def _summary(report: Dict[str, Any]) -> Dict[str, Any]:
@@ -92,13 +92,13 @@ def run_fold(player_frame: pd.DataFrame, match_frame: pd.DataFrame, fmt: str, cu
     if len(train) < MIN_TRAIN_ROWS or len(evaluation) < MIN_EVAL_ROWS:
         return {"cutoff": cutoff.date().isoformat(), "skipped": True}
     started = time.perf_counter()
-    displays = _display_models(train_matches)
+    display = _display_model(train_matches)
     base_rate = float(train_matches[C.TARGET_COL].mean())
     fold: Dict[str, Any] = {"cutoff": cutoff.date().isoformat(), "n_eval_matches": int(len(eval_matches))}
 
     def measure(model: P.PerformanceModels) -> Dict[str, Any]:
         return _summary(
-            sim_harness.evaluate_window(model, displays, eval_matches, evaluation, fmt, base_rate, SIM_SAMPLES)
+            sim_harness.evaluate_window(model, display, eval_matches, evaluation, fmt, base_rate, SIM_SAMPLES)
         )
 
     # Production fit (all rows, no factor): the chase-orientation question.

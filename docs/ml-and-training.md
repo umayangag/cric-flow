@@ -305,7 +305,7 @@ The same pattern applies to other components:
 
 ## XI-responsive win model (`ml.xi`)
 
-**Glossary keys** (L-1, `ml/xi/glossary.py`): `objective_auc`, `display_auc`, `display_auc_mean`, `display_auc_seed_sd`, `objective_brier`, `display_brier_mean`, `base_rate_brier`, `marginal_value`, `win_probability`.
+**Glossary keys** (L-1, `ml/xi/glossary.py`): `objective_auc`, `display_auc`, `display_auc_mean`, `objective_brier`, `display_brier_mean`, `base_rate_brier`, `marginal_value`, `win_probability`.
 
 **Purpose:** a win model whose every input is a function of the two elevens, so it can rank
 candidate XIs — the objective for team selection. It replaces the windowed-form aggregates
@@ -352,9 +352,23 @@ probe by construction, at a measured cost in display AUC (B-7, below).
 **Run:** `make retrain CUTOFF=2025-09-01` reads the database (`POSTGRES_*`); with
 `CRICSHEET_DIR=data/go-app/cricsheet` it reads the raw Cricsheet JSON instead (same format
 taxonomy as `format.go`, ~2 minutes for the full archive). Writes `xi_win_<FMT>.joblib`,
-`xi_ratings.joblib` and `xi_win_report.json` (AUC and Brier for both models over three seeds,
+`xi_ratings.joblib` and `xi_win_report.json` (AUC and Brier for both models, each fitted once,
 base-rate Brier, and the best single column's AUC — a model that cannot beat its own best
-column is not being measured). `POST /admin/reload` picks the artifacts up; `GET /xi/status`
+column is not being measured).
+
+**One fit, no seed spread (EVAL-02).** The display model is fitted once, under a fixed
+`DISPLAY_RANDOM_STATE`. `HistGradientBoostingClassifier`'s `random_state` reaches only the
+early-stopping validation split (which sklearn switches on by itself above 10,000 rows —
+EVAL-01) and the binning subsample above 200,000, so the three "seeds" the pipeline used to
+fit were bit-identical in every format but T20 and, in T20, differed only by the luck of that
+split. The `display_auc_sd` / `display_auc_seed_sd` the report carried was therefore exactly
+zero, and every clause that read a change against "the control's seed-to-seed sd" had a floor
+that never bound. Nothing in the report now names a seed for the display model; the noise a
+difference is read against is the fold-level paired standard error (H-14), and for a single
+holdout the Hanley–McNeil standard error `run_usability.py` computes. `display_auc_mean` and
+`display_brier_mean` keep their names — they are the wire keys the report, the run manifest and
+the Workbench share — and are the one fit's own score. The performance model's members still
+carry seeds: their early stopping is on explicitly, so the seed enters through the split. `POST /admin/reload` picks the artifacts up; `GET /xi/status`
 shows what is loaded.
 
 **Serving:** `POST /xi/predict-win` and `POST /xi/optimize` take player ids, not feature maps.
@@ -1061,8 +1075,12 @@ scored; H-8 is `passed`. H-5's clause decides a recalibration the harness alread
 compares against the previous release, and H-2 and X-4 inform, so they carry no threshold and
 say so; a gate a script runs is the script's to evaluate. On the batch-1 report every standing
 gate passes under these clauses (T20I and ODI served at 0.761 / 0.670 with E5 passing; swap
-share 0.0–0.8 %; TEST at 0.626 is scoped off, not failed). No standing clause is expressed
-against a seed-to-seed spread, so none depends on EVAL-02 landing first.
+share 0.0–0.8 %; TEST at 0.626 is scoped off, not failed). No clause anywhere is read against
+a seed-to-seed spread: the display model is one fit per window and the spread the harness used
+to report across seeds was identically zero (EVAL-02). The three experiment gates whose clause
+named it — X-3-stakes, B-7-display-monotone and the X-2 families — say so in place in the
+registry; each was decided, in practice, on the fold-level standard error of the paired
+difference, which is the floor every gate reads (H-14).
 
 **Metric glossary (L-1, `ml/xi/glossary.py`).** The same pattern for what the numbers *mean*:
 one entry per reported metric key — a plain-language name, an explanation, the reference band

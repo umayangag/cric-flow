@@ -46,7 +46,7 @@ from sim_frame_cache import load_debut_tables, load_frames  # noqa: E402
 from ml.xi import contract as C  # noqa: E402
 from ml.xi import gates, perf_harness, perf_metrics, selection_metrics  # noqa: E402
 from ml.xi import performance as P  # noqa: E402
-from ml.xi.evaluate import DISPLAY_SEEDS, SWAP_MAX_MATCHES, fold_windows  # noqa: E402
+from ml.xi.evaluate import SWAP_MAX_MATCHES, fold_windows  # noqa: E402
 from ml.xi.ratings import DEBUT_PRIOR_KEYS, RatingState, aggregate_side, debut_prior_vectors  # noqa: E402
 from ml.xi.selection_metrics import _objective_probability  # noqa: E402
 from ml.xi.train import _score_marginalised, _xy, make_display_model, make_objective_model  # noqa: E402
@@ -301,11 +301,9 @@ def run_cold_start_fold(
         x_objective, y = _xy(train_matches, C.XI_FEATURE_COLS)
         x_display, _ = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
         objective = make_objective_model().fit(x_objective, y)
-        displays = [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x_display, y) for seed in DISPLAY_SEEDS]
+        display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y)
         entry["objective_auc"] = _score_marginalised(objective, eval_matches, C.XI_FEATURE_COLS)["auc"]
-        entry["display_auc"] = float(
-            np.mean([_score_marginalised(m, eval_matches, C.DISPLAY_FEATURE_COLS)["auc"] for m in displays])
-        )
+        entry["display_auc"] = _score_marginalised(display, eval_matches, C.DISPLAY_FEATURE_COLS)["auc"]
         swap = selection_metrics.swap_monotonicity(
             objective, C.XI_FEATURE_COLS, evaluation, fmt, max_matches=SWAP_MAX_MATCHES
         )
