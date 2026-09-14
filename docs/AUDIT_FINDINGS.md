@@ -29,50 +29,51 @@ Severity scale: **Critical** — a leak or wrong answer on the live path today; 
 | 14 | SERVE-01 | High | Every route is `async def` running CPU-bound work inline; the event loop (and `/health`) blocks for the whole optimise/simulate/as-of sweep | no |
 | 15 | SERVE-02 | High | Request models accept sides of any size, duplicate ids and the same player on both sides; downstream silently assumes 11 distinct | no |
 | 16 | DATA-01 | High | Geocoder picks a candidate in *any* voted country: Chinnaswamy → Pakistan, Shere Bangla → Punjab IN, Warner Park → South Australia, Providence → Rhode Island (~590 venue-days of wrong weather) | no (experiments only) |
-| 17 | GO-04 | Medium | The same player can be in both pools and both XIs; merges keyed by registry id clobber one side | no |
-| 18 | IMPORT-05 | Medium | No-balls are excluded from the batter's balls faced (`batting_data`), and the ML path counts wides as faced — two definitions | yes |
-| 19 | IMPORT-06 | Medium | Every wicket kind credited to the bowler in `bowling_data`; retired-hurt counted as a wicket lost; only first wicket per ball reaches `ball_event` | partial |
-| 20 | FEAT-02 | Medium | Sides of 12–13 (concussion subs) are rated and aggregated as full squads — train/serve mismatch on ~3 % of rows and a mild post-start leak | yes |
-| 21 | FEAT-03 | Medium | A decided match with no `ball_event` rows emits 22 player rows with all-zero targets | yes |
-| 22 | EVAL-05 | Medium | Manifest `objective_auc` is toss-known; harness's is marginalised — same glossary key, different quantity | no |
-| 23 | EVAL-06 | Medium | Harness never runs the grid; walk-forward numbers describe grid point 0 only | no |
-| 24 | EVAL-07 | Medium | Served display artifact is seed 0; headline is the seed mean | no |
-| 25 | EVAL-08 | Medium | Latent crash in locked-window recalibration when the 92-day fold is thin; duplicate knots in `np.interp` | no |
-| 26 | EVAL-09 | Medium | Performance-model early stopping uses a random split that puts rows of one match on both sides | yes |
-| 27 | EVAL-10 | Medium | H-8 parity compares `rows.py` with `rows.py`; the saved artifact and `XiStore` serving path are outside it | no |
-| 28 | EVAL-11 | Medium | Locked window is days old and every gate was decided on the same eleven folds — no untouched holdout | no |
-| 29 | EVAL-12 | Medium | Manifest cannot reproduce a run: `git_sha` empty in the container, no library versions, `dataset_sha` blind to squad/delivery edits | no |
-| 30 | SERVE-03 | Medium | `RATINGS_STALE` measures last *match* date, not data currency; refuses fresh runs in an off-season, global not per format | no |
-| 31 | SERVE-04 | Medium | Serving fixtures are stamped with `state.last_date`, not the fixture date; no `match_date`/`gender` in the request | no |
-| 32 | SERVE-05 | Medium | Simulator batting depth uses one shared uniform vs per-player `p_bats`; realised P(bats) contradicts L2-B when `p_bats` is not monotone in order | no |
-| 33 | SERVE-06 | Medium | Training process registry keyed by module — concurrent runs overwrite each other's handle; stop races natural exit | no |
-| 34 | GO-05 | Medium | Cancelled run plan can never record its outcome (cancelled ctx used for `Finish`) — row stuck `IN_PROGRESS`, every later plan 409 | no |
-| 35 | GO-06 | Medium | Lane lock is check-then-insert; a second job in the same lane overwrites the first's cancel func | no |
-| 36 | GO-07 | Medium | `/xi/predict-win` and `/performance/predict` are never told the toss (Go structs omit `team1_bats_first`) | no |
-| 37 | GO-08 | Medium | Venue lookup failure is swallowed; prediction silently runs with no venue | no |
-| 38 | GO-09 | Medium | `match_date` with a UTC offset is truncated in UTC; pool cutoff and stored date disagree and can include the fixture itself | no |
-| 39 | IMPORT-07 | Medium | Fail-fast abort skips display-name settlement and team lineage — renamed clubs stay split | no |
-| 40 | IMPORT-08 | Medium | Venue identity is the raw string; `normalized_name` never populated; city used as venue when blank | yes |
-| 41 | IMPORT-09 | Medium | Format taxonomy merges MDM with TEST, ODM with ODI, men with women; T20I inferred from a hand list instead of `info.team_type` | yes (design) |
-| 42 | IMPORT-10 | Medium | `-apply` (dry-run) flag is parsed and ignored; every run writes | no |
-| 43 | IMPORT-11 | Medium | `match_inning.target_runs` ignores `innings[].target` (D/L) and is set on Test second innings | no |
-| 44 | FEAT-04 | Medium | Postgres source hard-codes `result=None`; JSON path reads it — `team_form_diff` has two definitions | yes (with IMPORT-02) |
-| 45 | FEAT-05 | Medium | No home-advantage and no toss feature although `venue.country` and `toss_*` are in the DB | yes |
-| 46 | FEAT-06 | Medium | Ratings siloed per format; every T20⇄T20I / ODI⇄List-A crossover is a cold start shrunk toward zero | yes |
-| 47 | DATA-02 | Medium | Venue-key normalisation does not merge spellings of one ground; 20 rows are country centroids | no |
-| 48 | DATA-03 | Medium | Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured; other needles unanchored | no |
-| 49 | DATA-04 | Medium | ERA5 hours indexed by local-time string with one fixed offset per call across DST transitions | no |
-| 50 | DATA-05 | Medium | `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start — in-match rain leaks when the norm is late | no |
-| 51 | OPS-01 | Medium | `reference-data/**`, `configs/**`, `scripts/**`, `contracts/**` trigger no CI | no |
-| 52 | OPS-02 | Medium | `dev-local-key` admin default baked into compose, three Makefiles and `cadence.sh`; Postgres and both APIs bound to all interfaces; watcher holds the Docker socket | no |
-| 53–80 | various | Low | See § 2–8 | — |
+| 17 | FEAT-15 | Medium | `MIN_BOWLING_BALLS` is documented per match and was calibrated on the pre-FEAT-01 denominator; read per XI appearance the same number is a far higher bar, and a fifth of T20I sides and a quarter of T20 sides now read as short of five bowling options | yes |
+| 18 | GO-04 | Medium | The same player can be in both pools and both XIs; merges keyed by registry id clobber one side | no |
+| 19 | IMPORT-05 | Medium | No-balls are excluded from the batter's balls faced (`batting_data`), and the ML path counts wides as faced — two definitions | yes |
+| 20 | IMPORT-06 | Medium | Every wicket kind credited to the bowler in `bowling_data`; retired-hurt counted as a wicket lost; only first wicket per ball reaches `ball_event` | partial |
+| 21 | FEAT-02 | Medium | Sides of 12–13 (concussion subs) are rated and aggregated as full squads — train/serve mismatch on ~3 % of rows and a mild post-start leak | yes |
+| 22 | FEAT-03 | Medium | A decided match with no `ball_event` rows emits 22 player rows with all-zero targets | yes |
+| 23 | EVAL-05 | Medium | Manifest `objective_auc` is toss-known; harness's is marginalised — same glossary key, different quantity | no |
+| 24 | EVAL-06 | Medium | Harness never runs the grid; walk-forward numbers describe grid point 0 only | no |
+| 25 | EVAL-07 | Medium | Served display artifact is seed 0; headline is the seed mean | no |
+| 26 | EVAL-08 | Medium | Latent crash in locked-window recalibration when the 92-day fold is thin; duplicate knots in `np.interp` | no |
+| 27 | EVAL-09 | Medium | Performance-model early stopping uses a random split that puts rows of one match on both sides | yes |
+| 28 | EVAL-10 | Medium | H-8 parity compares `rows.py` with `rows.py`; the saved artifact and `XiStore` serving path are outside it | no |
+| 29 | EVAL-11 | Medium | Locked window is days old and every gate was decided on the same eleven folds — no untouched holdout | no |
+| 30 | EVAL-12 | Medium | Manifest cannot reproduce a run: `git_sha` empty in the container, no library versions, `dataset_sha` blind to squad/delivery edits | no |
+| 31 | SERVE-03 | Medium | `RATINGS_STALE` measures last *match* date, not data currency; refuses fresh runs in an off-season, global not per format | no |
+| 32 | SERVE-04 | Medium | Serving fixtures are stamped with `state.last_date`, not the fixture date; no `match_date`/`gender` in the request | no |
+| 33 | SERVE-05 | Medium | Simulator batting depth uses one shared uniform vs per-player `p_bats`; realised P(bats) contradicts L2-B when `p_bats` is not monotone in order | no |
+| 34 | SERVE-06 | Medium | Training process registry keyed by module — concurrent runs overwrite each other's handle; stop races natural exit | no |
+| 35 | GO-05 | Medium | Cancelled run plan can never record its outcome (cancelled ctx used for `Finish`) — row stuck `IN_PROGRESS`, every later plan 409 | no |
+| 36 | GO-06 | Medium | Lane lock is check-then-insert; a second job in the same lane overwrites the first's cancel func | no |
+| 37 | GO-07 | Medium | `/xi/predict-win` and `/performance/predict` are never told the toss (Go structs omit `team1_bats_first`) | no |
+| 38 | GO-08 | Medium | Venue lookup failure is swallowed; prediction silently runs with no venue | no |
+| 39 | GO-09 | Medium | `match_date` with a UTC offset is truncated in UTC; pool cutoff and stored date disagree and can include the fixture itself | no |
+| 40 | IMPORT-07 | Medium | Fail-fast abort skips display-name settlement and team lineage — renamed clubs stay split | no |
+| 41 | IMPORT-08 | Medium | Venue identity is the raw string; `normalized_name` never populated; city used as venue when blank | yes |
+| 42 | IMPORT-09 | Medium | Format taxonomy merges MDM with TEST, ODM with ODI, men with women; T20I inferred from a hand list instead of `info.team_type` | yes (design) |
+| 43 | IMPORT-10 | Medium | `-apply` (dry-run) flag is parsed and ignored; every run writes | no |
+| 44 | IMPORT-11 | Medium | `match_inning.target_runs` ignores `innings[].target` (D/L) and is set on Test second innings | no |
+| 45 | FEAT-04 | Medium | Postgres source hard-codes `result=None`; JSON path reads it — `team_form_diff` has two definitions | yes (with IMPORT-02) |
+| 46 | FEAT-05 | Medium | No home-advantage and no toss feature although `venue.country` and `toss_*` are in the DB | yes |
+| 47 | FEAT-06 | Medium | Ratings siloed per format; every T20⇄T20I / ODI⇄List-A crossover is a cold start shrunk toward zero | yes |
+| 48 | DATA-02 | Medium | Venue-key normalisation does not merge spellings of one ground; 20 rows are country centroids | no |
+| 49 | DATA-03 | Medium | Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured; other needles unanchored | no |
+| 50 | DATA-04 | Medium | ERA5 hours indexed by local-time string with one fixed offset per call across DST transitions | no |
+| 51 | DATA-05 | Medium | `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start — in-match rain leaks when the norm is late | no |
+| 52 | OPS-01 | Medium | `reference-data/**`, `configs/**`, `scripts/**`, `contracts/**` trigger no CI | no |
+| 53 | OPS-02 | Medium | `dev-local-key` admin default baked into compose, three Makefiles and `cadence.sh`; Postgres and both APIs bound to all interfaces; watcher holds the Docker socket | no |
+| 54–81 | various | Low | See § 2–8 | — |
 
 ### 1b. Which model does the fix
 
 Three tiers, chosen by how much the fix depends on judgment about *what the right behaviour is* rather than on executing a spec. The rule: if getting it slightly wrong would silently change a served number or a training label, use Fable; if the spec in this doc is complete and the risk is engineering (races, SQL, plumbing), use Opus; if it is mechanical, use Sonnet. A fixer may escalate one tier if the file turns out harder than described, never de-escalate.
 
 **Fable (`claude-fable-5-1`)** — ML semantics, leakage, feature definitions, anything marked **retrain**, and the two Critical leaks. The fixer has to read the rating pass or harness deeply, decide the definition, and prove it with a targeted test and a before/after on the harness.
-`GO-01`, `IMPORT-01`, `IMPORT-02`, `IMPORT-04`, `IMPORT-05`, `IMPORT-06`, `IMPORT-09`, `FEAT-01` … `FEAT-14`, `EVAL-01`, `EVAL-02`, `EVAL-03`, `EVAL-04`, `EVAL-05`, `EVAL-06`, `EVAL-07`, `EVAL-09`, `EVAL-10`, `EVAL-11`, `EVAL-13`, `EVAL-14`, `SERVE-05`, `SERVE-10`, `SERVE-12`, `DATA-01`, `DATA-05`.
+`GO-01`, `IMPORT-01`, `IMPORT-02`, `IMPORT-04`, `IMPORT-05`, `IMPORT-06`, `IMPORT-09`, `FEAT-01` … `FEAT-15`, `EVAL-01`, `EVAL-02`, `EVAL-03`, `EVAL-04`, `EVAL-05`, `EVAL-06`, `EVAL-07`, `EVAL-09`, `EVAL-10`, `EVAL-11`, `EVAL-13`, `EVAL-14`, `SERVE-05`, `SERVE-10`, `SERVE-12`, `DATA-01`, `DATA-05`.
 
 **Opus (`claude-opus-4-1` or the newest Opus)** — well-specified engineering with a non-trivial blast radius: transactions, concurrency, id-space folding, API plumbing, schema migrations without a semantic decision.
 `GO-02`, `GO-03`, `GO-04`, `GO-05`, `GO-06`, `GO-07`, `GO-08`, `GO-09`, `IMPORT-03`, `IMPORT-07`, `IMPORT-08`, `IMPORT-11`, `IMPORT-12`, `IMPORT-13`, `SERVE-01`, `SERVE-02`, `SERVE-03`, `SERVE-04`, `SERVE-06`, `SERVE-07`, `SERVE-08`, `EVAL-08`, `EVAL-12`, `EVAL-16`, `DATA-02`, `DATA-03`, `DATA-04`, `DATA-06`, `OPS-01`, `OPS-02`.
@@ -149,6 +150,14 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 A separate observation, not this finding's subject: with involvement counted honestly, 20.0 % of T20I sides and 25.8 % of T20 sides since 2024 carry fewer than five bowling options (39.0 % of ODI sides; 13.2 % under four), so `Constraints.min_bowlers` binds on real elevens far more often than the batch-1 counts implied. Whether the constraint's default is right is a question for the optimiser, not for the objective.
 
 **Fix.** Make the objective's monotonicity structural: fit it under the contract's signs — the same `_STEM_DIRECTION` the display model already obeys — for example an L2-regularised logistic regression with non-negative coefficients on direction-signed columns (negate the `−1` stems; give the `0` stems a sign by decision or drop them from the own-side set), fitted with `scipy.optimize.minimize` under bounds, or on a design that folds each stem's `d_`, `t1_` and `t2_` columns into one signed own-side column so a pair like `pelo_mean` / `pelo_top3` cannot be fitted with opposite signs. Resolve the collinear top-k pairs (EVAL-13) in the same change, since they are where the negative signs come from. Do not revert FEAT-01 and do not move the 2 % line. Test: in `tests/test_xi_train.py`, fit `make_objective_model` on a synthetic frame in which `d_pelo_mean` and `d_pelo_top3` are collinear and assert every `+1` stem's own-side sensitivity `2·w_d + w_t1 − w_t2` is ≥ 0 (fails on main); and in the harness, report H-4's probe split by axis — Elo only, rates only — beside the combined share, so the next definition change cannot hide a wrong sign behind a large term again. Whether the axis split also becomes a gate is a decision for the fix.
+
+### FEAT-15 — `MIN_BOWLING_BALLS` was calibrated on the old involvement denominator; since FEAT-01 the same number is a much higher bar  **Medium · retrain**
+
+`contract.py:38-40` — `MIN_BOWLING_BALLS = {"T20": 12, "T20I": 12, "ODI": 30, "TEST": 60}`, documented as "expected legal balls bowled **per match** for a player to count as a bowling option", is read by `is_bowling_option` (`contract.py:43-48`), the one predicate behind the `n_bowlers` stem (`ratings.py`, `aggregate_side` — a `+1` stem the objective reads), `n_allrounders`, `roles_of`, and the optimiser's bowling-cover constraint (`optimizer.py`, `Constraints.min_bowlers`). The thresholds were chosen when `exp_balls_bowled` was `bowl_balls / bowl_matches` — balls per match *in which he bowled* — so 12 meant "two overs on the days he bowls". FEAT-01 (#306) redefined it as balls per XI appearance without re-deriving the thresholds, so the same 12 now means "two overs averaged over every match he plays, whether or not he bowled": a frontline bowler who plays ten and bowls 24 balls in five of them drops from 24 to 12 (exactly at the line), and a part-timer with one two-over spell in ten appearances from 12 to 1.2. That is why, with involvement counted honestly, 57 of the 511 T20I players in FEAT-14's probe fixtures lost `is_bowling_option` and none gained it (median `exp_balls_bowled` 14.3 → 6.6), the training rows' `t1_n_bowlers` mean fell 5.95 → 4.82 in T20I, 6.45 → 5.02 in T20, 5.45 → 4.69 in ODI and 5.23 → 4.86 in TEST, and 20.0 % of T20I sides, 25.8 % of T20 sides and 39.0 % of ODI sides since 2024 (13.2 % under four) read as short of five bowling options (all from FEAT-14's investigation, which measured the shift and deliberately did not touch it). Real elevens carry five bowlers; a definition under which a fifth of them do not is measuring the threshold, not the eleven.
+
+Blast radius. (1) `n_bowlers` and `n_allrounders` are objective inputs whose level shifted by most of a bowler; the fitted objective absorbs the level, so no sign is wrong, but every served run since #306 was trained on the shifted columns. (2) The bowling-cover constraint binds on real elevens far more often than the batch-1 counts implied: at its default, `/xi/optimize` will reshape a side a selector would field in T20I and ODI — the two formats where it is served — to admit a "fifth bowler" the eleven already has, and the "why this player" card names a constraint a genuine fifth bowler does not satisfy. (3) The optimiser's `roles_of` and the auction module's role reads inherit the same predicate. None of this is a leak or a wrong sign: it is a bar set in one unit and read in another.
+
+**Fix.** Re-derive `MIN_BOWLING_BALLS` in the new unit from the population, before any outcome is read — for example the balls-per-appearance threshold at which the expected number of qualifying players per real decided eleven is five in each format, or the old thresholds scaled by the format's mean share of appearances in which a bowling option actually bowls — and record the derivation beside the constant, as `AGE_BANDS` does. Change the docstring from "per match" to "per XI appearance" whatever the number becomes. Test: the share of decided sides since 2024 with fewer than five bowling options, per format, returns to the pre-FEAT-01 level (the counts above are the before/after), and a frontline bowler who bowls his full allocation in half his appearances is a bowling option. Do not change the threshold inside another finding's PR. Cross-references: FEAT-01 (#306) changed the unit; FEAT-14 measured the consequence while establishing H-4's mechanism and left it. **Severity Medium, ranked 17 in § 1**: below the Highs because nothing served carries a wrong sign or a leak, above GO-04 because it changes what `/xi/optimize` fields in the two formats where it is served. Tier: Fable — the fix is a definition and a derivation, not plumbing. Retrain-flagged: `n_bowlers` and `n_allrounders` are objective inputs.
 
 ---
 
