@@ -165,9 +165,11 @@ def test_recalibration_is_fitted_on_the_last_quarter_and_applied(frame) -> None:
             train, "T20", P.default_spec(recalibrate=("runs",), targets=("runs",), shared_factor=False)
         )
 
-    assert isinstance(model.calibration["runs"], QuantileRecalibration)
-    assert model.metadata["n_calibration"] > 0
-    assert pd.Timestamp(model.metadata["train_to"]) < train.match_date.max()
+    recalibration = model.calibration["runs"]
+    assert isinstance(recalibration, QuantileRecalibration)
+    assert recalibration.n_fit == model.metadata["n_calibration"] > 0
+    assert pd.Timestamp(model.metadata["calibration_from"]) == _calibration_fold_start(train)
+    assert pd.Timestamp(model.metadata["train_to"]) == train.match_date.max()  # the served members saw the fold
     prediction = model.predict_marginalised(train.tail(20))["runs"]["quantiles"]
     assert np.all(np.diff(prediction, axis=1) >= 0)
 
@@ -189,6 +191,25 @@ def test_degenerate_columns_fall_back_to_constants(frame) -> None:
 def test_fit_refuses_too_few_rows(frame) -> None:
     with pytest.raises(ValueError, match="training rows"):
         P.fit_performance(frame.head(10), "T20", P.default_spec(shared_factor=False))
+
+
+def _calibration_fold_start(rows: pd.DataFrame) -> pd.Timestamp:
+    """The first date of the rows' temporal calibration fold (``CALIBRATION_DAYS`` before the last)."""
+    return rows.match_date[rows.match_date >= rows.match_date.max() - pd.Timedelta(days=P.CALIBRATION_DAYS)].min()
+
+
+def _record_member_fits(monkeypatch) -> list:
+    """Every ``_fit_member`` call as (last training date, the member it returned)."""
+    fits: list = []
+    original = P._fit_member
+
+    def recording(x, rows, spec, seed):
+        member = original(x, rows, spec, seed)
+        fits.append((rows.match_date.max(), member))
+        return member
+
+    monkeypatch.setattr(P, "_fit_member", recording)
+    return fits
 
 
 def _frames_for_shared_factor():
@@ -214,7 +235,10 @@ def test_shared_factor_is_fitted_on_the_calibration_fold_from_complete_first_inn
     assert factor is not None and factor.n_matches >= 30
     assert 0.0 <= factor.shrink <= 1.0 and np.all(factor.factors >= 0.0)
     assert model.metadata["simulation"]["shared_factor"]["n_matches"] == factor.n_matches
-    assert pd.Timestamp(model.metadata["train_to"]) < train.match_date.max()  # the members did not see the fold
+    fold_dates = train.drop_duplicates("match_id").set_index("match_id").match_date.loc[factor.sample_read.match_ids]
+    assert (fold_dates >= _calibration_fold_start(train)).all()  # the residuals are the fold's
+    assert pd.Timestamp(model.metadata["train_to"]) == train.match_date.max()  # the served members saw the fold
+    assert model.metadata["n_train"] == len(train)
     assert 0.0 <= model.simulation.runs_balls_rho < 1.0
 
 
@@ -279,3 +303,86 @@ def test_chase_response_none_fits_nothing_and_needs_the_shared_factor() -> None:
     assert model.simulation.chase_response is None and model.metadata["simulation"]["chase_response"] is None
     with pytest.raises(ValueError, match="chase response needs the shared"):
         P.fit_performance(train, "T20", P.default_spec(shared_factor=False, chase_response="slope"))
+
+
+def test_fold_parts_read_members_that_did_not_see_the_fold_and_the_served_members_are_refitted_on_every_row(
+    monkeypatch,
+) -> None:
+    """Calibrate on the fold, refit on the full history (EVAL-03): the shared factor is
+    fitted against members trained short of the fold, and the members served are a second
+    fit on every row -- the fold included -- so the served forecast is not 92 days stale."""
+    player_frame, match_frame = _frames_for_shared_factor()
+    train = player_frame[player_frame.match_date < pd.Timestamp("2023-06-01")]
+    matches = match_frame.copy()
+    matches["innings1_deliveries"] = 120.0
+    fits = _record_member_fits(monkeypatch)
+    calibrated_against: list = []
+    original = P._fit_simulator_calibration
+
+    def recording(model, *args):
+        calibrated_against.append(model.members[0])
+        return original(model, *args)
+
+    monkeypatch.setattr(P, "_fit_simulator_calibration", recording)
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True), matches)
+
+    assert len(fits) == 2  # one seed: the fold members, then the served ones
+    (fold_last_date, fold_member), (served_last_date, served_member) = fits
+    assert fold_last_date < _calibration_fold_start(train)
+    assert served_last_date == train.match_date.max()
+    assert calibrated_against == [fold_member]
+    assert model.members == [served_member] and served_member is not fold_member
+    assert model.simulation.shared_factor is not None
+
+
+def test_recalibration_reads_the_fold_members_and_is_served_with_the_refitted_ones(monkeypatch, frame) -> None:
+    train = frame[frame.match_date < pd.Timestamp("2023-05-01")]
+    fits = _record_member_fits(monkeypatch)
+    fitted_on: list = []
+    original = QuantileRecalibration.fit
+
+    def recording(predicted, y, levels=P.QUANTILE_LEVELS):
+        fitted_on.append(predicted)
+        return original(predicted, y, levels)
+
+    monkeypatch.setattr(QuantileRecalibration, "fit", staticmethod(recording))
+
+    with fast_fits():
+        model = P.fit_performance(
+            train, "T20", P.default_spec(recalibrate=("runs",), targets=("runs",), shared_factor=False)
+        )
+
+    (_, fold_member), (_, served_member) = fits
+    fold_only = P.PerformanceModels("T20", model.spec, [fold_member], {}, {})
+    fold_rows = train[train.match_date >= _calibration_fold_start(train)]
+    np.testing.assert_allclose(fitted_on[0], fold_only.predict_marginalised(fold_rows)["runs"]["quantiles"])
+    assert model.members == [served_member]
+
+
+def test_without_fold_fitted_parts_the_members_are_fitted_once_on_every_row(monkeypatch, frame) -> None:
+    train = frame[frame.match_date < pd.Timestamp("2023-05-01")]
+    fits = _record_member_fits(monkeypatch)
+
+    with fast_fits():
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=False))
+
+    assert [date for date, _ in fits] == [train.match_date.max()]
+    assert model.metadata["n_calibration"] == 0 and model.metadata["calibration_from"] is None
+    assert model.metadata["n_train"] == len(train)
+
+
+def test_a_history_too_short_to_hold_out_the_fold_fits_once_on_every_row_and_warns(monkeypatch, frame, caplog) -> None:
+    train = frame[frame.match_date >= frame.match_date.max() - pd.Timedelta(days=P.CALIBRATION_DAYS + 8)]
+    assert (train.match_date < _calibration_fold_start(train)).sum() < P.MIN_FIT_ROWS <= len(train)  # the scenario
+    fits = _record_member_fits(monkeypatch)
+
+    with fast_fits(), caplog.at_level("WARNING"):
+        model = P.fit_performance(
+            train, "T20", P.default_spec(recalibrate=("runs",), targets=("runs",), shared_factor=False)
+        )
+
+    assert [date for date, _ in fits] == [train.match_date.max()]
+    assert model.calibration == {} and model.metadata["n_calibration"] == 0
+    assert "no recalibration or shared factor is fitted" in caplog.text
