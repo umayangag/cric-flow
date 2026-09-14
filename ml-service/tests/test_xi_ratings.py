@@ -253,7 +253,7 @@ def test_monotone_directions_follow_the_contract() -> None:
     assert dirs["t1_imp_bowl_sum"] == 1
     assert dirs["t2_imp_bowl_sum"] == -1
     assert dirs["d_n_debutants"] == -1
-    assert dirs["t1_pelo_std"] == 0
+    assert C.monotone_directions(["t1_pelo_std"]) == [0]
     assert C.monotone_directions(C.TEAM_CONTEXT_COLS) == [0] * len(C.TEAM_CONTEXT_COLS)
 
 
@@ -271,19 +271,31 @@ def test_team_context_is_constrained_only_when_gate_b7s_switch_is_on() -> None:
     assert C.monotone_directions(C.XI_FEATURE_COLS, True) == C.monotone_directions(C.XI_FEATURE_COLS, False)
 
 
-def test_the_display_columns_drop_the_elo_spread_and_the_objective_keeps_it() -> None:
-    """B-7's decision. The spread of player Elo across an eleven is the only column an
-    upgrade moves that no constraint covers, and a tree's step response to it is what made
-    one swap in twenty lower the displayed probability. The objective keeps it -- it is
-    linear there, and H-4 measures under 1 % on it -- so the two contracts differ on
-    purpose and neither list may quietly drift back."""
-    assert set(C.DISPLAY_EXCLUDED_COLS) == {"t1_pelo_std", "t2_pelo_std"}
-    assert set(C.DISPLAY_EXCLUDED_COLS) <= set(C.XI_FEATURE_COLS), "the objective still reads them"
-    assert not set(C.DISPLAY_EXCLUDED_COLS) & set(C.DISPLAY_FEATURE_COLS)
-    assert set(C.XI_FEATURE_COLS) - set(C.DISPLAY_EXCLUDED_COLS) <= set(C.DISPLAY_FEATURE_COLS)
-    # Both sides' columns go, or ``swap_orientation`` would exchange a column the model
-    # reads for one it does not and the marginalisation over batting order would be lopsided.
+def test_no_win_model_reads_the_elo_spread() -> None:
+    """B-7 took the spread of player Elo across an eleven out of the display model and
+    FEAT-14 out of the objective: it is the one stem a one-player upgrade moves whose
+    direction the contract cannot declare, so a model that reads it can lower P(win) on an
+    upgrade whatever the other coefficients do. The aggregate itself stays -- the
+    performance model reads it as ``own_pelo_std`` -- and neither win list may quietly
+    drift back."""
+    assert "pelo_std" in C.SIDE_FEATURE_STEMS
+    assert not any(column.endswith("_pelo_std") for column in C.XI_FEATURE_COLS)
     assert not any(column.endswith("_pelo_std") for column in C.DISPLAY_FEATURE_COLS)
+    assert set(C.XI_FEATURE_COLS) <= set(C.DISPLAY_FEATURE_COLS)
+
+
+def test_every_xi_column_an_upgrade_moves_carries_a_direction() -> None:
+    """FEAT-14's structural claim, stated on the contract: the objective is monotone under
+    H-4's upgrade because every column it reads either has a sign to be bounded by, or is
+    a stem the five upgraded ratings do not touch (expected balls, all-rounder and
+    debutant counts are functions of involvement and career, not of the ratings)."""
+    unsigned_stems = {
+        column.split("_", 1)[1]
+        for column, direction in zip(C.XI_FEATURE_COLS, C.monotone_directions(C.XI_FEATURE_COLS))
+        if direction == 0
+    }
+
+    assert unsigned_stems == {"exp_balls_bowled_top5", "exp_balls_faced_sum", "n_allrounders"}
 
 
 def test_build_rejects_out_of_order_sources() -> None:

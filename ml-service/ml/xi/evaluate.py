@@ -295,6 +295,13 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "display_auc": over_folds(lambda f: f["display_auc_mean"]),
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
+        # H-4's probe per axis (FEAT-14), beside the combined share it is a gate on.
+        "swap_violation_share_pelo_only": over_folds(
+            lambda f: nested(f, "swap_monotonicity", "by_axis", "pelo_only", "violation_share")
+        ),
+        "swap_violation_share_rates_only": over_folds(
+            lambda f: nested(f, "swap_monotonicity", "by_axis", "rates_only", "violation_share")
+        ),
         "display_swap_violation_share": over_folds(lambda f: nested(f, "display_swap_monotonicity", "violation_share")),
         "specific_vs_typical_delta": over_folds(lambda f: nested(f, "specific_vs_typical", "delta")),
         "performance": perf_harness.summarize_folds(

@@ -57,6 +57,20 @@ def test_swap_monotonicity_is_none_without_rows() -> None:
     assert sm.swap_monotonicity(_LinearModel({}), C.XI_FEATURE_COLS, empty, "T20") is None
 
 
+def test_swap_monotonicity_reports_the_probe_per_axis(synthetic_build) -> None:
+    """FEAT-14: a wrong sign on the Elo axis must show on its own, not only when the rate
+    terms fail to cover it. A surface that likes batting impact and dislikes Elo violates
+    on every Elo-only upgrade and on no rates-only one."""
+    model = _LinearModel({"d_pelo_mean": -0.01, "d_imp_bat_sum": 0.5})
+
+    report = sm.swap_monotonicity(model, C.XI_FEATURE_COLS, synthetic_build.player_frame, "T20", max_matches=10)
+
+    assert set(report["by_axis"]) == set(sm.UPGRADE_AXES)
+    assert report["by_axis"]["pelo_only"]["upgrades"] == report["upgrades"]
+    assert report["by_axis"]["pelo_only"]["violation_share"] == 1.0
+    assert report["by_axis"]["rates_only"]["violation_share"] == 0.0
+
+
 def test_display_swap_monotonicity_is_clean_for_a_monotone_display_surface(synthetic_build) -> None:
     """B-7: a display surface that likes a better batting eleven never contradicts itself."""
     model = _display_model({"d_imp_bat_sum": 0.5, "team_elo_diff": 0.01})

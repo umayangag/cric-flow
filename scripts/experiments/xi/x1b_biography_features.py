@@ -300,7 +300,7 @@ def run_cold_start_fold(
             return fold
         x_objective, y = _xy(train_matches, C.XI_FEATURE_COLS)
         x_display, _ = _xy(train_matches, C.DISPLAY_FEATURE_COLS)
-        objective = make_objective_model().fit(x_objective, y)
+        objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_objective, y)
         display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y)
         entry["objective_auc"] = _score_marginalised(objective, eval_matches, C.XI_FEATURE_COLS)["auc"]
         entry["display_auc"] = _score_marginalised(display, eval_matches, C.DISPLAY_FEATURE_COLS)["auc"]

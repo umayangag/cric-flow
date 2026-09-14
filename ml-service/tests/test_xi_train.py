@@ -19,7 +19,10 @@ import pytest
 from sklearn.metrics import roc_auc_score
 
 from ml.xi import contract as C
-from ml.xi.train import _xy, make_display_model, train_format
+from ml.xi import selection_metrics
+from ml.xi.builder import build
+from ml.xi.train import _xy, make_display_model, make_objective_model, own_side_sensitivities, train_format
+from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 
 SWAP_COLUMNS = ("team_elo_diff", "team_form_diff", "venue_fam_diff", "team_h2h")
 
@@ -96,3 +99,81 @@ def test_train_format_fits_the_display_model_once_and_reports_that_fits_score() 
     assert set(report["display"]) == {"auc", "brier"}
     assert report["display"]["auc"] == pytest.approx(served_auc)
     assert set(report["by_gender"]["male"]) == {"n_holdout", "objective_auc", "display_auc"}
+
+
+# --- FEAT-14: the objective is monotone by construction -----------------------------------
+
+
+def collinear_elo_rows(n: int = 3000, seed: int = 7) -> pd.DataFrame:
+    """Win rows in which ``d_pelo_top3`` is correlated with ``d_pelo_mean`` and the label
+    rewards the top-three Elo *more* than the mean -- so an unconstrained fit resolves the
+    pair with a negative weight on the mean, exactly what the served T20I objective did."""
+    rows = synthetic_win_rows(n, seed)
+    rng = np.random.default_rng(seed)
+    rows["d_pelo_top3"] = rows["d_pelo_mean"] + 0.7 * rng.normal(size=n)
+    logit = 2.0 * rows["d_pelo_top3"] - 1.5 * rows["d_pelo_mean"]
+    rows[C.TARGET_COL] = (rng.uniform(size=n) < 1.0 / (1.0 + np.exp(-logit))).astype(float)
+    return rows
+
+
+def _assert_sensitivities_carry_the_contract(sensitivities: dict) -> None:
+    """Every stem the objective reads that the contract signs moves the logit the
+    contract's way in both batting orders."""
+    signed = {stem: C._STEM_DIRECTION[stem] for stem in sensitivities if C._STEM_DIRECTION[stem] != 0}
+    assert {"pelo_mean", "pelo_top3", "pelo_min", "imp_bat_sum", "n_debutants"} <= set(signed)
+    for stem, direction in signed.items():
+        bats_first, bats_second = sensitivities[stem]
+        assert direction * bats_first >= 0.0, stem
+        assert direction * bats_second >= 0.0, stem
+
+
+def test_objective_own_side_sensitivity_carries_the_contracts_sign_in_both_batting_orders() -> None:
+    """The finding's own test. Fitted on rows that pull ``pelo_mean`` negative, the objective
+    still cannot rate a higher-Elo eleven lower: every signed stem's sensitivity has the
+    contract's sign whether the side bats first or second. Fails on an unconstrained fit."""
+    rows = collinear_elo_rows()
+    x, y = _xy(rows, C.XI_FEATURE_COLS)
+
+    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x, y)
+    sensitivities = own_side_sensitivities(objective, C.XI_FEATURE_COLS)
+
+    assert sensitivities["pelo_mean"][0] >= 0.0
+    assert sensitivities["pelo_mean"][1] >= 0.0
+    _assert_sensitivities_carry_the_contract(sensitivities)
+
+
+def test_objective_reads_the_contracts_sign_for_every_column() -> None:
+    objective = make_objective_model(C.XI_FEATURE_COLS)
+
+    assert list(objective.steps[-1][1].signs) == C.monotone_directions(C.XI_FEATURE_COLS)
+
+
+def test_a_one_player_upgrade_never_lowers_the_fitted_objective() -> None:
+    """H-4's probe on the fitted surface, on every axis: exactly zero, not under a line. The
+    rows are the ones that made the unconstrained fit prefer the lower-Elo player."""
+    rows = collinear_elo_rows()
+    x, y = _xy(rows, C.XI_FEATURE_COLS)
+    matches, _, _ = _synthetic_history(60)
+    player_rows = build(_ListSource(matches)).player_frame
+
+    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x, y)
+    report = selection_metrics.swap_monotonicity(objective, C.XI_FEATURE_COLS, player_rows, "T20", max_matches=20)
+
+    assert report["upgrades"] > 0
+    assert report["violations"] == 0
+    assert report["by_axis"]["pelo_only"]["violations"] == 0
+    assert report["by_axis"]["rates_only"]["violations"] == 0
+
+
+def test_train_format_fits_the_objective_under_the_contract() -> None:
+    """The served artifact, not only the factory: what ``train_format`` writes carries the
+    sign contract and reads the XI columns without the Elo spread."""
+    rows = collinear_elo_rows(600)
+    cutoff = rows.match_date.iloc[500]
+
+    models, report = train_format(rows, "T20", cutoff)
+
+    assert models.objective_cols == list(C.XI_FEATURE_COLS)
+    assert not any(column.endswith("_pelo_std") for column in models.objective_cols)
+    _assert_sensitivities_carry_the_contract(own_side_sensitivities(models.objective, models.objective_cols))
+    assert set(report["objective"]) == {"auc", "brier"}

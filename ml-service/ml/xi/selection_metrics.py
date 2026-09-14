@@ -38,6 +38,15 @@ _VIOLATION_EPS = 1e-12
 #: deviation. They are the axes the objective's monotone contract is written against, so
 #: a probability that falls when all five rise is the surface contradicting itself.
 UPGRADE_RATING_KEYS = ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate", "pelo")
+#: H-4's probe split by axis (FEAT-14): the same upgrade with only the player's Elo raised,
+#: and with only his four impact rates raised. Reported beside the combined share because
+#: the combined probe once passed for the wrong reason -- a negative weight on the side's
+#: mean Elo stayed under the 2 % line while an inflated involvement definition made every
+#: upgrade's rate terms cover it. Neither axis is a gate; the combined share is.
+UPGRADE_AXES: Dict[str, Tuple[str, ...]] = {
+    "pelo_only": ("pelo",),
+    "rates_only": ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate"),
+}
 # How many recent matches define a team's "typical" side aggregates.
 TYPICAL_WINDOW = 10
 # A team needs at least this many prior matches before its typical XI means anything.
@@ -58,6 +67,11 @@ def _objective_probability(model, columns: List[str], own: Dict, opp: Dict) -> f
 def upgrade_steps(player_rows: pd.DataFrame) -> Dict[str, float]:
     """One population standard deviation per upgraded rating, over the window's own rows."""
     return {name: float(player_rows[name].std()) for name in UPGRADE_RATING_KEYS}
+
+
+def _steps_on_axis(steps: Dict[str, float], keys: Tuple[str, ...]) -> Dict[str, float]:
+    """The same upgrade with every rating outside ``keys`` left where it was."""
+    return {name: (step if name in keys else 0.0) for name, step in steps.items()}
 
 
 def upgraded_sides(
@@ -97,13 +111,15 @@ def swap_monotonicity(
 
     An upgrade raises one player's scoring, wicket and Elo ratings by one population
     standard deviation each -- strictly better on every axis the objective is constrained
-    to like -- so any probability drop is a monotonicity violation, not a trade-off.
+    to like -- so any probability drop is a monotonicity violation, not a trade-off. The
+    report also carries the probe per axis (``by_axis``, ``UPGRADE_AXES``): the same
+    fixtures with only the Elo raised and with only the rates raised.
     """
     if player_rows.empty:
         return None
     steps = upgrade_steps(player_rows)
-    upgrades = 0
-    violations = 0
+    probes = {"all": steps, **{axis: _steps_on_axis(steps, keys) for axis, keys in UPGRADE_AXES.items()}}
+    counts = {name: [0, 0] for name in probes}
     match_ids = player_rows.match_id.drop_duplicates().tolist()[:max_matches]
     for match_id in match_ids:
         match = player_rows[player_rows.match_id == match_id]
@@ -115,14 +131,19 @@ def swap_monotonicity(
         opponent = aggregate_side(
             {name: side2[name].to_numpy(dtype=float) for name in C.PLAYER_VECTOR_KEYS}, format_code
         )
-        probabilities = [
-            _objective_probability(model, columns, aggregate_side(variant, format_code), opponent)
-            for variant in upgraded_sides(vectors, steps, len(side1))
-        ]
-        tried, lowered = _violation_counts(probabilities)
-        upgrades += tried
-        violations += lowered
-    return _violation_report(upgrades, violations)
+        for name, axis_steps in probes.items():
+            probabilities = [
+                _objective_probability(model, columns, aggregate_side(variant, format_code), opponent)
+                for variant in upgraded_sides(vectors, axis_steps, len(side1))
+            ]
+            tried, lowered = _violation_counts(probabilities)
+            counts[name][0] += tried
+            counts[name][1] += lowered
+    report = _violation_report(*counts["all"])
+    if report is None:
+        return None
+    report["by_axis"] = {axis: _violation_report(*counts[axis]) for axis in UPGRADE_AXES}
+    return report
 
 
 def display_swap_monotonicity(

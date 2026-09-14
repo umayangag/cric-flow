@@ -70,14 +70,18 @@ GATE_ID = "B-7-display-monotone"
 #: The second, informing-only gate: the column the feature-space diagnostic names.
 SPREAD_GATE_ID = "B-7-pelo-spread"
 #: The spread of player Elo across an eleven, in each side's raw form. There is no
-#: ``d_pelo_std``: the contract never made this stem a differential.
-PELO_SPREAD_COLS: Tuple[str, ...] = C.DISPLAY_EXCLUDED_COLS
-#: The display columns as they were when this gate ran, in the contract's own order. The
-#: reading below was acted on -- ``DISPLAY_FEATURE_COLS`` no longer carries the spread
-#: columns -- so the control has to name them itself, or after the ship both arms would be
-#: the same list and the gate would compare a model with itself.
+#: ``d_pelo_std``: the contract never made this stem a differential. Named here rather
+#: than read from the contract: since FEAT-14 no win model's column list carries them.
+PELO_SPREAD_COLS: Tuple[str, ...] = ("t1_pelo_std", "t2_pelo_std")
+#: The display columns as they were when this gate ran. The reading below was acted on --
+#: ``DISPLAY_FEATURE_COLS`` no longer carries the spread columns, and since FEAT-14 neither
+#: does ``XI_FEATURE_COLS`` -- so the control has to name them itself, or after the ship
+#: both arms would be the same list and the gate would compare a model with itself.
 PRE_B7_DISPLAY_COLS: List[str] = (
-    list(C.XI_FEATURE_COLS) + list(C.TEAM_CONTEXT_COLS) + (list(C.STAKES_COLS) if C.STAKES_FEATURES_KEPT else [])
+    list(C.XI_FEATURE_COLS)
+    + list(PELO_SPREAD_COLS)
+    + list(C.TEAM_CONTEXT_COLS)
+    + (list(C.STAKES_COLS) if C.STAKES_FEATURES_KEPT else [])
 )
 #: H-4's line, which this gate measures the distance to and does not itself enforce.
 SWAP_VIOLATION_LIMIT = 0.02

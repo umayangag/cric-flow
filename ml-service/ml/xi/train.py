@@ -68,6 +68,25 @@ def make_objective_model(columns: List[str]) -> object:
     )
 
 
+def own_side_sensitivities(objective, columns: List[str]) -> Dict[str, Tuple[float, float]]:
+    """Per stem, how the fitted objective's logit moves when the stem rises by one raw unit
+    on the side being scored, in each batting order: ``(w_d + w_t1, w_d - w_t2)`` -- the
+    side as team1 (bats first) and as team2. The contract's sign holds on the surface
+    exactly when both carry it for every signed stem; FEAT-14 found the served T20I
+    objective at -0.016 on ``pelo_mean`` with the toss marginalised."""
+    scaler = objective.named_steps["standardscaler"]
+    estimator = objective.steps[-1][1]
+    raw_weights = dict(zip(columns, estimator.coef_[0] / scaler.scale_))
+    out: Dict[str, Tuple[float, float]] = {}
+    for stem in C.SIDE_FEATURE_STEMS:
+        weight_d = raw_weights.get(f"d_{stem}", 0.0)
+        weight_t1 = raw_weights.get(f"t1_{stem}", 0.0)
+        weight_t2 = raw_weights.get(f"t2_{stem}", 0.0)
+        if any(f"{prefix}_{stem}" in raw_weights for prefix in ("d", "t1", "t2")):
+            out[stem] = (weight_d + weight_t1, weight_d - weight_t2)
+    return out
+
+
 # The whole hyperparameter search this pipeline has (§9.3): three points for the display
 # model, chosen inside the training rows and recorded in the run manifest.
 #

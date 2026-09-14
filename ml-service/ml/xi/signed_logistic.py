@@ -53,11 +53,12 @@ class SignedLogisticRegression(BaseEstimator, ClassifierMixin):
     intercept unpenalised, which is what ``LogisticRegression(C=C)`` minimises.
     """
 
-    def __init__(self, signs: Sequence[int], C: float = 1.0, max_iter: int = 3000, tol: float = 1e-6):
+    def __init__(self, signs: Sequence[int], C: float = 1.0, max_iter: int = 3000, tol: float = 1e-4):
         self.signs = signs
         self.C = C
         self.max_iter = max_iter
-        #: The projected-gradient tolerance L-BFGS-B stops at.
+        #: The projected-gradient tolerance L-BFGS-B stops at -- sklearn's default for its
+        #: own lbfgs solver, which this fit reproduces when every sign is free.
         self.tol = tol
 
     def fit(self, X, y) -> "SignedLogisticRegression":
@@ -88,14 +89,16 @@ class SignedLogisticRegression(BaseEstimator, ClassifierMixin):
             jac=True,
             method="L-BFGS-B",
             bounds=bounds,
-            options={"maxiter": self.max_iter, "gtol": self.tol, "ftol": 0.0},
+            options={"maxiter": self.max_iter, "gtol": self.tol, "ftol": 1e-12},
         )
         # Every L-BFGS-B iterate lies inside the bounds, so the sign contract holds on the
         # returned coefficients whether or not the solver reached its tolerance; a fit that
         # stopped early is a slightly under-optimised objective, not an unconstrained one.
         self.converged_ = bool(result.success)
         if not self.converged_:
-            logger.warning("signed logistic fit stopped before tolerance after %d iterations: %s", result.nit, result.message)
+            logger.warning(
+                "signed logistic fit stopped before tolerance after %d iterations: %s", result.nit, result.message
+            )
         self.coef_ = result.x[np.newaxis, :-1]
         self.intercept_ = result.x[-1:]
         self.n_iter_ = int(result.nit)

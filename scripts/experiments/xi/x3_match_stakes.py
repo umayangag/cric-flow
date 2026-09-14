@@ -189,7 +189,7 @@ def _fold_objectives(
             out.append((cutoff, end, None, entry))
             continue
         x, y = _xy(train, C.XI_FEATURE_COLS)
-        model = make_objective_model().fit(x, y)
+        model = make_objective_model(C.XI_FEATURE_COLS).fit(x, y)
         entry["objective_auc"] = _score_marginalised(model, evaluation, C.XI_FEATURE_COLS)["auc"]
         out.append((cutoff, end, _proba_of(model), entry))
     return out
