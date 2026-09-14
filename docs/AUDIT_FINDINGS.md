@@ -621,6 +621,57 @@ Both languages logged the 1537342 case in their own words, as FEAT-02 said they 
 
 **The operator note from batch 1 still stands and was obeyed:** `BIRTH_DATES=` must be supplied or `players_with_birth_date` fails spuriously at postgres 6,955 against cricsheet 0, because the archive carries no biography (X-1b). `make export-birth-dates BIRTH_DATES=…` wrote 6,967 players first; the Wikidata backfill was **not** re-run, and `player_biography` is untouched at 13,662 rows.
 
+#### Step 4 — retrain, and a reload that **failed**
+
+`make retrain CUTOFF=2026-09-14` — **15 min 2 s** (12:11:26–12:26:28 UTC), clean, no error or traceback, `data_quality_failures: []`. That is half again batch 1's 9 min 47 s, and the extra is where EVAL-03 (#311) put it: the performance members are now fitted twice per format, once on the fold and once on the whole history.
+
+| | |
+|---|---|
+| run id | **`20260914T121506Z-da5b6680`** |
+| cutoff | 2026-09-14 |
+| ratings through | 2026-09-09 (13,639 players) |
+| dataset sha | `501c24882251…` |
+| git sha | `8e2f7863` |
+| training rows | T20 12,130 · ODI 4,995 · TEST 2,095 · T20I 2,073 |
+| player-match rows | 468,461 |
+| `usable` | **true** |
+| `unusable_reasons` | `{}` (empty) |
+
+**`usable: true` (EVAL-04, #303).** The run is publishable on the gate's own terms. Read what that verdict actually rests on, though: both of EVAL-04's retrain clauses need a holdout, every format reports `n_holdout: 0` because the cutoff is today and the archive ends 2026-09-09, and so neither clause had a number to read. The run is usable because nothing disqualified it, not because something confirmed it. This is the spec gap EVAL-04's own entry recorded in advance ("every served run is trained at today's cutoff and has no holdout, so the retrain clauses have nothing to read on cadence"), and this pass is the first run to demonstrate it rather than predict it. The four `format_notes` say so in as many words.
+
+**`n_iter` (EVAL-01, #310).** Every format reports **`n_iter: 300`**, equal to the `max_iter` the grid chose. The field did not exist in batch 1's manifest, and on batch 1's code T20 — the one format above the 10,000-row line — would have stopped at roughly 117 of those 300 on a random 90 % of the rows. So T20's served display model is now the model its grid scored, and the other three, which were always below the line, are unchanged in kind.
+
+**`train_to` and `calibration_from` (EVAL-03, #311).** Both fields are new, and they show the staleness closed:
+
+| fmt | train_from | **train_to** | **calibration_from** | perf n_train | n_calibration |
+|---|---|---|---|---:|---:|
+| T20 | 2007-09-01 | **2026-09-09** | **2026-06-09** | 266,877 | 12,541 |
+| T20I | 2005-02-17 | **2026-09-06** | **2026-06-11** | 45,606 | 1,078 |
+| ODI | 2002-06-27 | **2026-09-09** | **2026-06-09** | 109,888 | 4,640 |
+| TEST | 2002-12-26 | **2026-09-08** | **2026-06-12** | 46,090 | 1,012 |
+
+`train_to` now reaches the last match in the archive in every format, and `calibration_from` sits **92 days** before it — the exact interval EVAL-03 named. The decisive number is that `performance.fit.n_train` *equals* `performance.n_train` (266,877 for T20): the members saw every row, calibration fold included, where before they saw only the rows before the fold. Batch 1's report is the control — every one of its folds reads a `train_to` about 94 days short of its own cutoff (fold 1: cutoff 2024-01-01, `train_to` 2023-09-29; fold 11: cutoff 2026-06-01, `train_to` 2026-02-27) and carries no `calibration_from` key at all.
+
+**The grid moved nothing.** All four formats kept the incumbent (`max_depth 3, learning_rate 0.04, max_iter 300`) on "no candidate beat the incumbent by more than 0.002" — where batch 1 had moved TEST to `0.08 / 200`. The inner-split scores behind that did move, and not uniformly: T20I's incumbent rose 0.7280 → 0.7566 and TEST's fell 0.6303 → 0.6133. These are inner-split numbers on a split that is not the harness's, they are the only scored figures a holdout-less retrain produces, and they should not be read as results; step 5 is where the choice-facing numbers are.
+
+**`dataset_sha` is unchanged at `501c24882251…`, and that is correct rather than suspicious.** The digest is `sha256` over `match_id|match_date` for every match the pass walked (`runs.py:186`), and the re-import changed no match's id and no match's date. Worth stating plainly because it is a trap for a reader: the sha answers "were these two runs trained on the same cricket?", not "were they trained on the same features". Batch 1's run and this one share a sha while differing in what a ball faced is, what a wicket is, how many men a side has and how involvement is computed. Anyone using the sha to tell these two runs apart will be misled; the run id and the git sha (`53fa134d` against `8e2f7863`) are what separate them.
+
+##### `make reload` **failed — HTTP 409, and the run was not published**
+
+```
+{"code": "RUN_ARTIFACTS_INVALID",
+ "message": "run 20260914T121506Z-da5b6680: the rating artifact is missing 2 array(s) this code
+             reads (bat_matches, bowl_matches); it was written by an older pass and cannot be
+             served. Retrain to produce a run with all 32 arrays.",
+ "hint": "20260913T142341Z-ab4caa13 is still serving"}
+```
+
+**This is not a defect in the batch, and it is not a bad run.** It is the deployed ML service running **pre-batch-2 code**. FEAT-01 (#306) deleted `bat_matches` / `bowl_matches` from the rating state and added `xi_bat_balls` / `xi_bowl_balls`, and recorded that "an older artifact is refused by name". The guard fired in the other direction: the artifact is new and the *reader* is old. Confirmed directly in the container — `store.PLAYER_ARRAY_NAMES` has **21** entries there and includes `bat_matches` and not `xi_bat_balls`, against the **32** the new run writes — and the image is dated **2026-09-13 08:42 UTC**, built before any of batch 2's nine PRs landed. The compatibility check did exactly what it was written to do: it refused to serve a mismatch instead of loading one and producing nonsense.
+
+**The consequence, stated plainly.** `current` still points at batch 1's run `20260913T142341Z-ab4caa13`; the new run is on disk, `usable: true`, and **unpublished**. The stack must be rebuilt from current `main` before `make reload` can succeed. That was not done here: rebuilding the application images is outside this pass's remit, this worktree is not the checkout the running stack was built from, and § 1 rule 6's pass reports a failing step rather than working around it.
+
+**Step 5 is unaffected and its numbers stand.** `make evaluate` does not talk to the service: there is no HTTP client anywhere in `ml/xi/`, the harness reads Postgres directly and builds the served recipe in-process (`asof.serving_parity`). So the harness below measures this batch's code against this batch's data, which is what it is for — it simply describes a system that is not yet the one on the port.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
