@@ -112,11 +112,26 @@ class DataQuality:
     # dataset do this. A jump means either a new namesake or a broken registry.
     namesake_sides: int = 0
 
-    # Sides of more than eleven: concussion and injury replacements, which Cricsheet lists
-    # in full. 1,357 of 45,468 sides in the current dataset, so this is a fact about the
-    # game and not an error -- but a sudden doubling would mean the squad parse had
-    # started collecting somebody else.
+    # Sides still of more than eleven once the replacements are taken out (FEAT-02): a
+    # source that lists twelve and records no replacement for the twelfth. Cricsheet lists
+    # everyone who took the field, and 1,365 of 45,810 sides in the current archive are
+    # over eleven; 1,342 of those carry a `replacements.match` entry naming the man who came
+    # in, so the pass leaves him out and the side is an eleven. The 23 that do not (21 Syed
+    # Mushtaq Ali Trophy 2022 sides of twelve, 2 Women's T20 Challenge 2018 sides of
+    # thirteen) and the one whose entry names a player the other side lists (1537342)
+    # stay oversized and are what this counts. A sudden doubling would mean the squad parse
+    # had started collecting somebody else, or a source had stopped seeing its replacements.
     oversized_squads: int = 0
+
+    # Players who joined a side after the match started and were left out of its eleven:
+    # the `in` of a `replacements.match` entry on the archive path, `match_player.
+    # is_replacement` (migration 0020) on the database. Here because the two sources
+    # derive it separately -- the importer in Go, the archive path in Python -- and a source
+    # that flags nobody, or flags the man who went out as well as the man who came in,
+    # agrees with the other on every count that counts elevens; `make xi-parity` compares
+    # it. A fact about the cricket and not gated: it reads zero until a pre-0020 database
+    # is re-imported.
+    replacement_players: int = 0
 
     # Player keys the source could not resolve to a person: "name:..." fallbacks. Zero on
     # the current dataset from either source, which is what makes it worth gating.

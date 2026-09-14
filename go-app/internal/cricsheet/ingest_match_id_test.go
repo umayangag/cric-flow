@@ -30,9 +30,9 @@ func importFileNamed(t *testing.T, name string) []int64 {
 	file := writeTempJSON(t, t.TempDir(), name, squadJSON)
 	require.NoError(t, cricsheet.ImportMatchFile(context.Background(), file, &cricsheet.Options{}))
 
-	// match_player rows are (match_id, player_id, opposition_id) triples.
-	ids := make([]int64, 0, len(spy.insertArgs)/3)
-	for i := 0; i < len(spy.insertArgs); i += 3 {
+	// match_player rows are (match_id, player_id, opposition_id, is_replacement) quads.
+	ids := make([]int64, 0, len(spy.insertArgs)/matchPlayerInsertArgs)
+	for i := 0; i < len(spy.insertArgs); i += matchPlayerInsertArgs {
 		ids = append(ids, spy.insertArgs[i].(int64))
 	}
 	return ids

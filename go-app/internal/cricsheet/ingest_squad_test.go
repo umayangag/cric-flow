@@ -86,6 +86,10 @@ const namesakeSquadJSON = `{
   ]
 }`
 
+// matchPlayerInsertArgs is how many values one match_player row is inserted with:
+// (match_id, player_id, opposition_id, is_replacement).
+const matchPlayerInsertArgs = 4
+
 // squadSpyTx records the match_player statements the importer runs.
 type squadSpyTx struct {
 	deletes     int
@@ -151,9 +155,9 @@ func TestImportMatchFile_WithPlayers_WritesTheWholeSquad(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, spy.deletes, "the previous squad is cleared exactly once")
 	assert.Equal(t, 1, spy.insertCount, "one multi-row insert, not one per player")
-	// Eight players across both sides, three arguments each. A4 and B4 never appear in
+	// Eight players across both sides, four arguments each. A4 and B4 never appear in
 	// the scorecard, so a count of 8 is what distinguishes this from the old behaviour.
-	assert.Len(t, spy.insertArgs, 8*3)
+	assert.Len(t, spy.insertArgs, 8*matchPlayerInsertArgs)
 }
 
 func TestImportMatchFile_WithoutPlayers_ImportsTheMatchAndRecordsNoSquad(t *testing.T) {
@@ -176,5 +180,54 @@ func TestImportMatchFile_PlayerOnBothTeams_ImportsWithoutThatPlayer(t *testing.T
 	require.NoError(t, err, "an unresolvable name must not cost the whole match")
 	assert.Equal(t, 1, spy.insertCount)
 	// A1 is named by both sides and dropped from both, leaving A2 and B2.
-	assert.Len(t, spy.insertArgs, 2*3)
+	assert.Len(t, spy.insertArgs, 2*matchPlayerInsertArgs)
+}
+
+// replacementSquadJSON is squadJSON with a fifth Alpha player, A5, who came in for A3 on
+// the second ball as a concussion substitute (FEAT-02). Alpha lists five and started four.
+const replacementSquadJSON = `{
+  "info": {
+    "balls_per_over": 6,
+    "dates": ["2024-01-02"],
+    "match_type": "T20",
+    "teams": ["Alpha", "Beta"],
+    "venue": "The Oval",
+    "season": "2024",
+    "players": {
+      "Alpha": ["A1", "A2", "A3", "A4", "A5"],
+      "Beta": ["B1", "B2", "B3", "B4"]
+    },
+    "outcome": {"winner": "Alpha"}
+  },
+  "innings": [
+    {"team":"Alpha","overs":[
+      {"over":1,"deliveries":[
+        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":4,"extras":0,"total":4}},
+        {"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":0,"extras":0,"total":0},
+         "replacements":{"match":[{"in":"A5","out":"A3","reason":"concussion_substitute","team":"Alpha"}]}}
+      ]}
+    ]},
+    {"team":"Beta","overs":[
+      {"over":1,"deliveries":[
+        {"batter":"B1","bowler":"A5","non_striker":"B2","runs":{"batter":1,"extras":0,"total":1}}
+      ]}
+    ]}
+  ]
+}`
+
+func TestImportMatchFile_WithAReplacement_FlagsTheManWhoCameInAndNobodyElse(t *testing.T) {
+	// Not parallel: uses package-level singletons (db.PoolAPI, SetRunInTxFn).
+	// Arrange + Act
+	spy, err := importWithSquadSpy(t, replacementSquadJSON)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, spy.insertArgs, 9*matchPlayerInsertArgs, "everyone listed is a row, the replacement included")
+	// Rows follow info.players order, four arguments each, the flag last: A5 is the fifth
+	// row and the only one flagged.
+	flags := make([]any, 0, 9)
+	for i := matchPlayerInsertArgs - 1; i < len(spy.insertArgs); i += matchPlayerInsertArgs {
+		flags = append(flags, spy.insertArgs[i])
+	}
+	assert.Equal(t, []any{false, false, false, false, true, false, false, false, false}, flags)
 }

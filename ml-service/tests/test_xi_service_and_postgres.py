@@ -560,9 +560,9 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
-            1: [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)],
-            2: [(f"a{i:07x}", 10) for i in range(11)],  # side 20 has no squad -> skipped
-            3: [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)],
+            1: [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)],
+            2: [(f"a{i:07x}", 10, False) for i in range(11)],  # side 20 has no squad -> skipped
+            3: [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)],
         },
         # Ball columns 6 and 8 are the wickets on the ball as two arrays in wicket order,
         # the kinds and the dismissed players' keys (ball_event_wicket, IMPORT-06).
@@ -687,7 +687,7 @@ def test_the_archive_path_charges_the_bowler_only_the_runs_he_conceded() -> None
 def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> None:
     """The same delivery read from ``ball_event`` with its extras by kind (migration
     0018): the bowler is charged 1 of the 5, exactly as the archive path charges him."""
-    squad = [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)]
+    squad = [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)]
     no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0, 0)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
@@ -1065,7 +1065,7 @@ def test_the_postgres_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
     """The same deliveries read from ``ball_event`` with ``extras_wides`` (migration
     0018): the no-ball is faced and the wide is not, exactly as the archive path reads
     them."""
-    squad = [(f"a{i:07x}", 10) for i in range(11)] + [(f"b{i:07x}", 20) for i in range(11)]
+    squad = [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)]
     no_ball = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 0)
     wide = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 1)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)

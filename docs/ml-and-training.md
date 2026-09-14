@@ -322,7 +322,17 @@ bowler-credited wickets above expectation; forgotten at 0.9 per match, shrunk wi
 prior), expected involvement (`exp_balls_faced` / `exp_balls_bowled`: balls faced / bowled per
 **XI appearance** — every match the player was named for, batted or bowled in or not, the
 balls and the appearances forgotten on one clock; a tailender who batted once in ten reads a
-tenth of that innings, not the innings), experience, a keeper flag and a player Elo. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
+tenth of that innings, not the innings), experience, a keeper flag and a player Elo. **A
+side is the eleven that started** (FEAT-02): everyone the source lists for it less its
+replacements — the concussion substitute, impact player or supersub who came in after the
+start, whom Cricsheet lists with the rest and names in a `replacements.match` entry on the
+delivery he joined at. Both sources leave him out of `team1_players` / `team2_players`
+(the archive path by `sources.replacement_keys`, the Postgres path by
+`match_player.is_replacement`), so he is not rated as a member, not counted as a debutant
+or a bowling option, gets no player row and no share of the result's Elo; his deliveries
+stay his own, so what he did still reaches his ledger. Before this the 1,342 sides that
+used one were rated and aggregated as twelve while serving always aggregates eleven, and
+his presence was post-start information in a pre-match row. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
 bowling impact weighted by involvement, top-6 / top-5 sums, role coverage (bowling options,
 keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, form,
 head-to-head, venue bat-first bias, venue familiarity) is kept in a separate column list
@@ -410,6 +420,12 @@ approve.
 Current baseline on the full dataset: 22,734 matches offered and 22,734 read, 1,710
 undecided, 0 namesake sides, 1,358 sides of more than eleven (concussion and injury
 replacements, which Cricsheet lists in full), 0 unresolved player keys, 13,569 players.
+Since FEAT-02 `oversized_squads` counts the sides still over eleven once their
+replacements are taken out — 24 on the archive (23 with no replacement entry, one whose
+entry names a player the other side lists) — and the pass also counts
+`replacement_players` (1,362 on the archive), compared across sources rather than gated: it reads zero on a
+database imported before migration `0020`, and the doubling rule is what would notice a
+source that stopped seeing its replacements.
 
 Beside `undecided_matches` the pass counts `drawn_or_tied_matches` (FEAT-04): of the
 undecided, the draws and the ties no tie-breaker settled — the matches form reads as half

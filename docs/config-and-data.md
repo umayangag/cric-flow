@@ -651,6 +651,42 @@ over the database, and `make xi-parity` compares `dismissals` — every wicket t
 vocabulary calls one, on every ball — so a wicket record one source drops cannot pass
 unnoticed again.
 
+### What the squad record holds
+
+`match_player` has one row per player a side fielded in a match — everyone `info.players`
+lists, which is the only record of who was picked (the scorecard shows only whoever
+batted or bowled). Cricsheet lists everyone who took the field, so a side that used a
+concussion substitute, an impact player, a supersub or a covid replacement is listed in
+full: 1,343 sides of twelve, 21 of thirteen and one of fourteen among the archive's 45,810.
+**`is_replacement` (migration `0020`) says which of them came in after the start.** The
+fact lives where it happened: not in `info`, but as a `replacements.match` entry on the
+delivery he came in at — `in`, `out`, `team`, `reason` — and 1,342 of the 1,365 oversized
+sides carry one (916 impact players, 164 concussion substitutes, 140 supersubs, 48 injury
+substitutes, 41 national call-ups, 20 releases, 17 covid, 17 unknown, one tactical). The
+rule is `cricsheet.Match.ReplacementPlayers`: the entries are read in playing order over
+every innings and the `in` of each is a replacement *for the side the entry names* unless
+he had already gone `out` of an earlier one — the archive's one swap-back (1234909, a
+covid stand-in who went back out when the man he stood in for returned) reads as one
+replacement, not two. A `role` entry (a substitute finishing an injured bowler's over)
+changes nobody's membership and is not read. The rating pass's archive path applies the
+same rule (`ml/xi/sources.py`, `replacement_keys`) and its Postgres path reads the flag, so
+both build the same eleven from one match; `make xi-parity` compares
+`replacement_players` (1,362 on the archive), and `oversized_squads` now counts the sides
+still over eleven once their replacements are out.
+
+Twenty-four sides stay oversized, and honestly so: 21 Syed Mushtaq Ali Trophy 2022 sides
+of twelve and two Women's T20 Challenge 2018 sides of thirteen carry no replacement entry
+at all, and one (1537342) names as the man who came in for one side a player the *other*
+side lists — which is why the side is part of the rule: matched by name alone, that entry
+would have taken a starter off the wrong team. The importer logs that one and keeps both
+sides as listed rather than guessing. A flag rather than a shorter squad because
+the row is a fact worth keeping: the replacement did play, his deliveries are his, and a
+reader that wants everyone who took the field (appearances, biographies, the auction's
+last fielded eleven) reads the table as before. Rows imported before `0020` read `false`
+until the directory is re-imported; until then the rating pass over the database hands
+over the twelve, which `make xi-parity` reports as `oversized_squads` and
+`replacement_players` differing from the archive.
+
 ### What a re-import does to a match already in the database
 
 **An import replaces a match, it does not merge into it.** The match id comes from the
