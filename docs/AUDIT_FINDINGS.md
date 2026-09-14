@@ -587,6 +587,40 @@ The 24 are the ones the route could not fix and recorded in advance: 23 oversize
 
 **A pre-existing defect this measurement surfaced — recorded, not fixed (B-17 candidate).** The one ball is match **514034** innings 4 (South Africa v Sri Lanka, 2012-01-03, Test, won by 10 wickets): a fourth innings consisting of a single delivery, a no-ball off which the batter scored one, winning the match. `batting_data` charges the batter that ball (correct under IMPORT-05) and `match_inning` records the innings with 2 runs and 0 legal balls (also correct), but **`ball_event` holds no row for it at all** — the innings is absent from the ball store. The cause is in `go-app/internal/cricsheet/ball_event_emit.go:46-53`: `BuildBallEventRows` counts the innings' legal deliveries for phase clamping and then `if totalLegal == 0 { continue }`, so an innings whose every delivery is illegal emits nothing. It is not a batch-2 regression — `ball_event` did not move in this re-import — and it is the only such innings in 11.58 M deliveries, but it is a real disagreement between two stores of the same cricket, and the rating pass reads the one that is missing the ball. Reported to the master rather than fixed here; § 1 rule 6's pass does not fix findings.
 
+#### Step 3 — `make xi-parity`: **passes**
+
+This is the batch's acceptance test at the data layer, and the reason it is the step that could have stopped the pass. Four PRs added a compared count that Postgres could not satisfy before the re-import — `deliveries_not_faced` (IMPORT-05, #302), `dismissals` (IMPORT-06, #305), `decided_matches_without_deliveries` (FEAT-03, #307) and `replacement_players` (FEAT-02, #308) — so the check has been failing by design since they landed, and `oversized_squads` changed meaning under #308 from "over eleven as listed" to "over eleven once replacements are out". After the migration and the re-import, **all twenty-one counts agree** and the run exits clean (**5 min 7 s**, 12:05:31–12:10:38 UTC):
+
+| count | postgres | cricsheet |
+|---|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 |
+| drawn_or_tied_matches | 1,121 | 1,121 |
+| **decided_matches_without_deliveries** (FEAT-03, #307) | **0** | **0** |
+| runs_not_charged_to_bowler | 234,322 | 234,322 |
+| **deliveries_not_faced** (IMPORT-05, #302) | **202,331** | **202,331** |
+| **dismissals** (IMPORT-06, #305) | **353,063** | **353,063** |
+| namesake_sides / unknown_player_keys | 0 | 0 |
+| **oversized_squads** (FEAT-02, #308 — new meaning) | **24** | **24** |
+| **replacement_players** (FEAT-02, #308) | **1,362** | **1,362** |
+| player_keys / team_keys | 13,639 / 522 | 13,639 / 522 |
+| players_with_birth_date | 6,955 | 6,955 |
+| matches_with_stage_label / knockout | 22,101 / 1,420 | 22,101 / 1,420 |
+| reconstructible_table / dead_rubber | 16,587 / 2,215 | 16,587 / 2,215 |
+
+`source parity: the database and the archive agree`.
+
+The four new counts are the ones worth reading, and each is independently checkable against step 2's direct measurements. **`deliveries_not_faced` = 202,331** is exactly the archive's wide count and exactly `ball_event`'s `extras_wides > 0` count, so both paths are now excluding the same deliveries from a batter's ledger. **`dismissals` = 353,063** is the 353,571 wicket records less the 508 that `configs/wicket_kinds.json` calls `not_out` (463 retired hurt, 45 retired not out) — the vocabulary applied identically in Go and in Python, which is the whole point of the shared config. **`replacement_players` = 1,362** matches the flagged `match_player` rows to the row, so the Go importer's rule and `sources.replacement_keys`' rule agree on who came in. **`oversized_squads` = 24** is the residual both sources compute the same way, and it agreeing at 24 rather than at 1,365 is what says the flag reached the database.
+
+**`decided_matches_without_deliveries` = 0 on both sources**, which confirms FEAT-03's own survey: the guard it added still guards a case that has not occurred. Note that this is a *match*-level count and so does not see the one-innings gap step 2 found at match 514034 — that match has three other innings full of deliveries, so it is decided and has deliveries, and the count is right to read 0. The two observations are consistent; neither covers the other.
+
+Both rating passes produce the same **21,293** training rows — unchanged from batch 1 — and the same **468,461** player-match rows, down from batch 1's 469,743. That fall of 1,282 is FEAT-02 doing what it was merged to do: a replacement is no longer one of the eleven, so he no longer contributes a player row to the match he came into. It is smaller than the 1,362 flagged rows because some replacements appear in matches that yield no player rows at all (the 1,612 undecided ones), which is the expected direction and magnitude.
+
+Both languages logged the 1537342 case in their own words, as FEAT-02 said they would: Go as `Dambulla Sixers: RMMP Rathnayake`, Python as `Dambulla Sixers: afe830a2`, the same man by name and by registry key. Two namesake warnings appeared on the archive path, matching the importer's two.
+
+**The operator note from batch 1 still stands and was obeyed:** `BIRTH_DATES=` must be supplied or `players_with_birth_date` fails spuriously at postgres 6,955 against cricsheet 0, because the archive carries no biography (X-1b). `make export-birth-dates BIRTH_DATES=…` wrote 6,967 players first; the Wikidata backfill was **not** re-run, and `player_biography` is untouched at 13,662 rows.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
