@@ -110,10 +110,23 @@ display model has always been fitted with) keeps its place unless a candidate be
 than `DISPLAY_GRID_MARGIN` = 0.002 AUC: differences under the noise floor are not evidence
 (H-14), and a grid that reshuffles the model on 0.001 every release is a source of drift.
 
-The choice, the reason and every candidate's score go into `manifest.json` under
-`hyperparameters`. That is the whole record — there is no tuned-params table, because a table
-nothing could join back to an artifact was how a model came to carry parameters from a search
-it had never seen.
+**The model the grid scored is the model fitted (EVAL-01).** `make_display_model` passes
+`early_stopping=False` explicitly. sklearn's default is `'auto'`, which switches early stopping
+on above 10,000 rows with a *random* 10 % validation split — so the grid, scoring on the inner
+80 % of a format's rows, fitted every candidate to its full `max_iter`, and the winner was then
+refitted on all the rows — above the line in T20 only — to a different, early-stopped
+iteration count on a random 90 % of them (measured: 117 of 300 on a 10,200-row frame). With
+it off, `max_iter` is the iteration count in every format, walk-forward folds no longer change
+regime as they cross 10,000 rows, and the most recent rows are not held back from the final
+fit. The grid is the whole regularisation choice; a temporal early-stopping split built by hand
+was the alternative, and was not taken because the grid already fixes the iteration count and
+a second, hand-built split would be a second thing to get right.
+
+The choice, the reason, every candidate's score and **`n_iter`** — the iterations the served
+model actually ran, equal to the chosen `max_iter` by construction — go into `manifest.json`
+under `hyperparameters`. That is the whole record — there is no tuned-params table, because a
+table nothing could join back to an artifact was how a model came to carry parameters from a
+search it had never seen.
 
 This replaced a two-phase Optuna search with PyCaret and AutoGluon ranking. It was removed
 because the model class was measured not to be the constraint, twice; the constraint is the
@@ -141,8 +154,8 @@ output/ml-service/
 `manifest.json` carries the run id, when it was created, the cutoff, **`ratings_through`**,
 the dataset sha (a digest of the matches the pass consumed — computed from what was read,
 because ml-service does not mount the dataset directory), the git sha, the rating params, the
-hyperparameters the grid chose *and why*, the run's headline metrics per format, and the
-rating state's shape. It is written **last**, so a directory only becomes a run once
+hyperparameters the grid chose *and why* with the iterations the display model ran (`n_iter`),
+the run's headline metrics per format, and the rating state's shape. It is written **last**, so a directory only becomes a run once
 everything it names is on disk: a retrain that dies half-way leaves wreckage the loader never
 selects and `/artifacts/status` lists as "no manifest".
 
@@ -358,10 +371,10 @@ column is not being measured).
 
 **One fit, no seed spread (EVAL-02).** The display model is fitted once, under a fixed
 `DISPLAY_RANDOM_STATE`. `HistGradientBoostingClassifier`'s `random_state` reaches only the
-early-stopping validation split (which sklearn switches on by itself above 10,000 rows —
-EVAL-01) and the binning subsample above 200,000, so the three "seeds" the pipeline used to
-fit were bit-identical in every format but T20 and, in T20, differed only by the luck of that
-split. The `display_auc_sd` / `display_auc_seed_sd` the report carried was therefore exactly
+early-stopping validation split (now off explicitly — EVAL-01, § Hyperparameters) and the
+binning subsample above 200,000 rows, so the three "seeds" the pipeline used to fit were
+bit-identical in every format but T20 and, in T20 while sklearn still switched early stopping
+on by itself above 10,000 rows, differed only by the luck of that split. The `display_auc_sd` / `display_auc_seed_sd` the report carried was therefore exactly
 zero, and every clause that read a change against "the control's seed-to-seed sd" had a floor
 that never bound. Nothing in the report now names a seed for the display model; the noise a
 difference is read against is the fold-level paired standard error (H-14), and for a single

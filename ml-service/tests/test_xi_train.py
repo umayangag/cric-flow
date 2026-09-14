@@ -1,11 +1,14 @@
-"""The display model is one fit, and the report says so (EVAL-02).
+"""The display model is one fit, it runs every iteration the grid chose, and the report
+says so (EVAL-01, EVAL-02).
 
 ``HistGradientBoostingClassifier``'s ``random_state`` reaches only the early-stopping
-validation split (which sklearn switches on above 10,000 rows) and the binning subsample
-(above 200,000). Below that the three "seeds" the pipeline used to fit were the same
-model three times, and the spread it reported across them -- and called a noise floor --
-was identically zero. These tests pin the premise on the model's own settings and hold
-the report to fitting once and reporting that fit's score.
+validation split (which sklearn's ``'auto'`` switches on above 10,000 rows) and the
+binning subsample (above 200,000). Below that the three "seeds" the pipeline used to fit
+were the same model three times, and the spread it reported across them -- and called a
+noise floor -- was identically zero. Above it, ``'auto'`` fitted a different model from
+the one the grid had scored: fewer iterations, on a random 90 % of the rows. These tests
+pin the premise on the model's own settings, hold early stopping off so the fitted model
+is the scored one, and hold the report to fitting once and reporting that fit's score.
 """
 
 from __future__ import annotations
@@ -52,6 +55,30 @@ def test_display_refits_under_other_seeds_are_identical_below_the_early_stopping
 
     assert np.array_equal(predictions[0], predictions[1])
     assert np.array_equal(predictions[0], predictions[2])
+
+
+def test_display_model_never_early_stops() -> None:
+    """EVAL-01: the setting is explicit, not sklearn's row-count-dependent ``'auto'``, so
+    the grid's ``max_iter`` is honoured at every training-set size."""
+    model = make_display_model(C.DISPLAY_FEATURE_COLS)
+
+    assert model.early_stopping is False
+
+
+def test_train_format_fits_every_iteration_the_grid_chose_above_the_early_stopping_threshold() -> None:
+    """The finding's own test: above 10,000 training rows -- T20's regime -- the served
+    display model runs the ``max_iter`` the grid scored, and the report records the
+    iterations it ran beside the choice. Under ``'auto'`` the same fit stops at ~117."""
+    rows = synthetic_win_rows(10_400)
+    cutoff = rows.match_date.iloc[10_200]
+
+    models, report = train_format(rows, "T20", cutoff)
+
+    chosen_max_iter = report["hyperparameters"]["params"]["max_iter"]
+    assert report["n_train"] > 10_000
+    assert models.display.n_iter_ == chosen_max_iter
+    assert report["hyperparameters"]["n_iter"] == chosen_max_iter
+    assert models.metadata["hyperparameters"]["n_iter"] == chosen_max_iter
 
 
 def test_train_format_fits_the_display_model_once_and_reports_that_fits_score() -> None:

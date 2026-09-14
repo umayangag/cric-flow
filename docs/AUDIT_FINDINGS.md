@@ -129,12 +129,6 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depend on that version's `HistGradientBoosting*` behaviour.
 
-### EVAL-01 — Display model early stopping is `'auto'`  **High · retrain**
-
-`train.py:89-98` builds `HistGradientBoostingClassifier(...)` with no `early_stopping` argument. In 1.5.2 `'auto'` enables early stopping iff `n_samples > 10000`, with a **random, shuffled 10 %** validation split. T20 has >10k rows; the others do not. So: `choose_display_params` fits candidates on the inner 80 % (<10k → early stopping off, full `max_iter`) then `train_format` refits the winner on all rows (>10k → early stopping on, far fewer iterations). The grid scores a model that is not the one fitted; `max_iter` in `DISPLAY_GRID` is not honoured for T20; walk-forward folds cross the 10k line mid-sequence so early and late folds fit different regimes; 10 % of the most recent rows are dropped from the final fit.
-
-**Fix.** Pass `early_stopping=False` explicitly (the grid already controls `max_iter`), or `early_stopping=True` everywhere with a deterministic temporal split built by hand. Record `n_iter_` in the manifest. Test: assert `model.n_iter_ == max_iter` after `train_format` on a >10k-row synthetic frame.
-
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
@@ -537,6 +531,12 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 #### What this batch is accepted on
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
+### EVAL-01 — Display model early stopping is `'auto'`  **High · retrain**
+
+`train.py:89-98` builds `HistGradientBoostingClassifier(...)` with no `early_stopping` argument. In 1.5.2 `'auto'` enables early stopping iff `n_samples > 10000`, with a **random, shuffled 10 %** validation split. T20 has >10k rows; the others do not. So: `choose_display_params` fits candidates on the inner 80 % (<10k → early stopping off, full `max_iter`) then `train_format` refits the winner on all rows (>10k → early stopping on, far fewer iterations). The grid scores a model that is not the one fitted; `max_iter` in `DISPLAY_GRID` is not honoured for T20; walk-forward folds cross the 10k line mid-sequence so early and late folds fit different regimes; 10 % of the most recent rows are dropped from the final fit.
+
+**Fix.** Pass `early_stopping=False` explicitly (the grid already controls `max_iter`), or `early_stopping=True` everywhere with a deterministic temporal split built by hand. Record `n_iter_` in the manifest. Test: assert `model.n_iter_ == max_iter` after `train_format` on a >10k-row synthetic frame. — PR #310. Route taken: `early_stopping=False`, explicit, in `make_display_model` — the one call site EVAL-02 left, which the harness shares. The grid already fixes the iteration count and is the pipeline's whole regularisation choice, so the model it scored is now the model fitted, `max_iter` is honoured in every format, folds no longer change regime across 10,000 rows, and the most recent 10 % of rows are no longer held back from the final fit. The hand-built temporal split was not taken: it would keep a second split, built not to leak, to choose a number the grid already chooses, and the random split *is* the defect. The spec held against the code: measured on a 10,200-row synthetic frame under the unmodified constructor, 117 iterations of the chosen 300 with `early_stopping='auto'`. `n_iter` — the iterations the served model ran — is recorded in the train report and the run manifest beside the grid's choice, equal to `max_iter` by construction. Tests pin the finding's own assertion (`n_iter_ == max_iter` after `train_format` on 10,200 training rows; on main it reads 117 ≠ 300), the setting on the constructor, and `n_iter` in the manifest. Retrain-flagged: T20 is the one format above the line, so its served display model changes and its display AUC is expected to move; EVAL-04's gates read it. T20I, ODI and TEST fit bit-identically. Not run here.
 
 ### EVAL-02 — Three seeds produce bit-identical models below 10k rows  **High**
 
