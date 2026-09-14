@@ -764,12 +764,6 @@ The nominal figure is 0.80. **Every format's 80 % interval covers less than 80 %
 
 **One reading note.** The report's `generated_at` (2026-09-14T12:40:27Z) is stamped when the rating pass completes, about seven minutes into the run, not when the JSON is written two hours later. Batch 1's report has the same property. It is not a clock error.
 
-##### What this batch is accepted on, and what it is not
-
-Parity — the acceptance test at the data layer — **passes on all twenty-one counts**, and every count the four new findings added agrees between the database and the archive at exactly the figure a direct scan of the archive gives. The data moved precisely as the nine PRs predicted: 353,571 wicket records where the store had kept 353,547, 1,362 replacements taken out of the elevens, 202,331 wides out of the batters' ledgers, and 24 sides still over eleven for reasons recorded in advance. `serving_parity` is 0.0. The leak canary found nothing new. Discrimination did not move outside noise in any format, on a comparison that — unlike batch 1's — is not confounded by a changed dataset.
-
-**The batch is not accepted clean.** `make evaluate` exits 1, `gates.passed` is **false**, and **H-4 fails in T20I at 0.0230 against a 0.02 line** with the violation count tripled there and quintupled in T20 while ODI and TEST did not move at all. That is the batch's one red gate, it is a change in behaviour rather than noise, and its cause is not established. Two further verdicts flipped without failing a gate (E2 in ODI, the sign of TEST's specific-vs-typical delta). Separately, **`make reload` failed and the run is unpublished** because the deployed service predates the batch. None of these was fixed or worked around here, and no threshold was touched.
-
 ##### Wall clock
 
 | step | command | wall clock | result |
@@ -782,6 +776,12 @@ Parity — the acceptance test at the data layer — **passes on all twenty-one 
 | 5 | `make evaluate` | **2 h 5 min 42 s** | report written, **exit 1**, H-4 fails in T20I |
 | | (`make export-birth-dates`, prerequisite to step 3) | 1 s | 6,967 players |
 | | **total** | **≈ 2 h 29 min** | |
+
+##### What this batch is accepted on, and what it is not
+
+Parity — the acceptance test at the data layer — **passes on all twenty-one counts**, and every count the four new findings added agrees between the database and the archive at exactly the figure a direct scan of the archive gives. The data moved precisely as the nine PRs predicted: 353,571 wicket records where the store had kept 353,547, 1,362 replacements taken out of the elevens, 202,331 wides out of the batters' ledgers, and 24 sides still over eleven for reasons recorded in advance. `serving_parity` is 0.0. The leak canary found nothing new. Discrimination did not move outside noise in any format, on a comparison that — unlike batch 1's — is not confounded by a changed dataset.
+
+**The batch is not accepted clean.** `make evaluate` exits 1, `gates.passed` is **false**, and **H-4 fails in T20I at 0.0230 against a 0.02 line** with the violation count tripled there and quintupled in T20 while ODI and TEST did not move at all. That is the batch's one red gate, it is a change in behaviour rather than noise, and its cause is not established. Two further verdicts flipped without failing a gate (E2 in ODI, the sign of TEST's specific-vs-typical delta). Separately, **`make reload` failed and the run is unpublished** because the deployed service predates the batch. None of these was fixed or worked around here, and no threshold was touched.
 
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
