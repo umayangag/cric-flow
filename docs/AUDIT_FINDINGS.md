@@ -536,6 +536,57 @@ Wall clock **10 s**. One table exists afterwards that did not before (`ball_even
 
 `0019` carries the first wicket of every delivery into the new table as it drops the columns, so a database migrated but not yet re-imported describes the same cricket it did before rather than none: **353,547 rows**, one per delivery that held a wicket. `0020`'s column defaults to false for every existing row, so **0 replacements** are flagged. The re-import is what writes the other wickets and the flags; until it runs, `make xi-parity` reports the difference, which is what step 3 measures.
 
+#### Step 2 — the whole-archive re-import
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12 — not an incremental run. IMPORT-03 (#295, batch 1) is what makes this rewrite rather than skip.
+
+Wall clock **3 min 1 s** (12:00:09–12:03:10 UTC). **Zero errors**; 28 warnings — the 27 documented benign ones (25 × "file name is not a Cricsheet match id, deriving one", 2 × "player named on both teams, omitted from both squads") and **one new kind**, `cricsheet: replacement not in the side's info.players, side kept as listed` on **1537342**, which is exactly the case FEAT-02 (#308) recorded in advance and logged deliberately.
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,578,345 | 11,578,345 | 0 |
+| `match_inning` | 50,465 | 50,465 | 0 |
+| `batting_data` | 434,001 | 434,001 | 0 |
+| `bowling_data` | 299,460 | 299,460 | 0 |
+| `fielding_data` | 176,576 | 176,576 | 0 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `player` | 13,694 | 13,694 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+| **`ball_event_wicket`** | 353,547 *(0019's carry)* | **353,571** | **+24** |
+| **`match_player` where `is_replacement`** | 0 | **1,362** | **+1,362** |
+
+**No row count moved.** That is the right answer and worth saying plainly: batch 1 had already re-imported the archive, and batch 2's importer changes redefine *what a row says*, not which rows exist. Only the two new stores moved, and both moved to exactly the figure their finding predicted.
+
+The figures the brief asked for, measured after the run:
+
+| | |
+|---|---:|
+| `ball_event` | **11,578,345** |
+| `match_inning` rows above innings 2 outside Tests | **0** |
+| `ball_event_wicket` rows | **353,571** |
+| `match_player` rows with `is_replacement = true` | **1,362** |
+| matches with a non-null `result` | **1,723** |
+
+The first two are batch 1's results holding (super overs stay out of the innings record; the importer logged `super_over_innings` for the same 110 files). The last three are batch 2's.
+
+**Wickets (IMPORT-06, #305).** The store now holds **353,571** wicket records, which is *exactly* the count of a direct scan of the archive's non-super-over deliveries — so no wicket in the archive is now missing from the database. Fourteen kinds appear and all fourteen are in `configs/wicket_kinds.json`: 200,579 caught · 69,621 bowled · 39,610 lbw · 22,898 run out · 10,252 caught and bowled · 9,664 stumped · 463 retired hurt · 273 hit wicket · 121 retired out · 45 retired not out · 34 obstructing the field · 8 handled the ball · 2 timed out · 1 hit the ball twice. So **23,064** wickets are not the bowler's and **508** are not dismissals at all, both agreeing with the finding's survey to the record. **16** deliveries carry more than one wicket and the largest carries **10** (1483765), as predicted.
+
+**A doc slip, recorded because the measurement contradicts the prose.** Migration `0019`'s header comment and IMPORT-06's § 9 entry both say the first-only store lost "17 wicket records across 16 deliveries". The measured figure is **24**, and 24 is forced by the same entry's own survey: 15 deliveries of two wickets lose one each, and the one delivery of ten loses nine — 15 + 9 = 24. The archive scan and the `+24` delta above agree independently. The behaviour is right and the fix is complete; only the number in the prose is wrong. No code or data change follows from it.
+
+**Replacements (FEAT-02, #308).** **1,362** `match_player` rows are flagged, across **1,341** sides of the archive's 45,810. Squad sizes resolve exactly as the finding predicted:
+
+| | sides |
+|---|---:|
+| over eleven as listed | 1,365 |
+| **over eleven once replacements are out** | **24** |
+
+The 24 are the ones the route could not fix and recorded in advance: 23 oversized sides that carry no replacement entry (21 Syed Mushtaq Ali Trophy 2022, 2 Women's T20 Challenge 2018) and 1537342, whose named replacement belongs to the other side — the one warning above. Everything else is now an eleven.
+
+**Balls faced (IMPORT-05, #302).** The archive holds 202,331 wides and 58,068 no-balls. Under the new rule a batter faces every delivery but a wide, so the database should charge batters `11,578,345 − 202,331 = 11,376,014` balls. `sum(batting_data.balls)` reads **11,376,015** — right on the rule but for **one ball**, traced below.
+
+**A pre-existing defect this measurement surfaced — recorded, not fixed (B-17 candidate).** The one ball is match **514034** innings 4 (South Africa v Sri Lanka, 2012-01-03, Test, won by 10 wickets): a fourth innings consisting of a single delivery, a no-ball off which the batter scored one, winning the match. `batting_data` charges the batter that ball (correct under IMPORT-05) and `match_inning` records the innings with 2 runs and 0 legal balls (also correct), but **`ball_event` holds no row for it at all** — the innings is absent from the ball store. The cause is in `go-app/internal/cricsheet/ball_event_emit.go:46-53`: `BuildBallEventRows` counts the innings' legal deliveries for phase clamping and then `if totalLegal == 0 { continue }`, so an innings whose every delivery is illegal emits nothing. It is not a batch-2 regression — `ball_event` did not move in this re-import — and it is the only such innings in 11.58 M deliveries, but it is a real disagreement between two stores of the same cricket, and the rating pass reads the one that is missing the ball. Reported to the master rather than fixed here; § 1 rule 6's pass does not fix findings.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
