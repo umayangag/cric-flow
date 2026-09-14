@@ -672,6 +672,117 @@ Both languages logged the 1537342 case in their own words, as FEAT-02 said they 
 
 **Step 5 is unaffected and its numbers stand.** `make evaluate` does not talk to the service: there is no HTTP client anywhere in `ml/xi/`, the harness reads Postgres directly and builds the served recipe in-process (`asof.serving_parity`). So the harness below measures this batch's code against this batch's data, which is what it is for — it simply describes a system that is not yet the one on the port.
 
+#### Step 5 — `make evaluate`: the batch's acceptance test, and **a gate fails**
+
+**2 h 5 min 42 s** (12:33:02–14:38:44 UTC), launched detached and polled; the report was written in full, and then **the command exited 1**. That is EVAL-04 (#303) working: `check_report` now evaluates each standing gate's threshold and `make evaluate` fails the build on a violation, where before it checked only that the report carried a path. This is the first pass under that enforcement and it is the first pass to go red.
+
+The run is three times batch 1's 72 minutes, well past the 54–70 the runbook quotes. EVAL-03's second member fit per format is part of it (T20 alone spent 52 minutes on its eleven folds, at 211–292 s per performance fit), but it does not account for all of it; anyone budgeting this step should now budget two hours.
+
+##### The headline
+
+Before is batch 1's run `20260913T142341Z-ab4caa13` (generated 2026-09-13, `n_rows` 21,293); after is this run (generated 2026-09-14, `n_rows` **21,293**, `n_player_rows` 469,743 → **468,461**). Walk-forward means, with each format's across-fold standard deviation on the *after* column:
+
+| fmt | objective AUC | fold sd | display AUC | fold sd | n_rows (fmt matches) |
+|---|---|---:|---|---:|---:|
+| T20 | 0.6963 → **0.6980** (+0.0018) | 0.0386 | 0.7279 → **0.7295** (+0.0017) | 0.0479 | 12,130 |
+| T20I | 0.7609 → **0.7670** (+0.0061) | 0.0441 | 0.7506 → **0.7618** (+0.0111) | 0.0413 | 2,073 |
+| ODI | 0.6698 → **0.6733** (+0.0035) | 0.0729 | 0.7045 → **0.7110** (+0.0065) | 0.0755 | 4,995 |
+| TEST | 0.6257 → **0.6114** (−0.0143) | 0.1135 | 0.6379 → **0.6286** (−0.0094) | 0.0969 | 2,095 |
+
+**Not one of these movements is a result.** Every delta is a small fraction of its own format's fold sd — the largest, TEST's −0.0143, is 0.13 of that format's 0.1135. Three formats drifted up and one drifted down, which is what noise looks like. Objective Brier moved the same way and as little (T20 0.2184 → 0.2179, T20I 0.1982 → 0.1954, ODI 0.2264 → 0.2261, TEST 0.2378 → 0.2406) against base-rate Briers that did not move at all in any format.
+
+**This pass is cleaner than batch 1's in one respect worth stating:** batch 1's comparison was confounded by 87 extra matches arriving between the two reports. Here `n_rows` is **21,293 on both sides** and both reports were built from the same 22,905 matches. The only differences between these two runs are the nine PRs' code and the data they rewrote. So the deltas above are attributable to the batch in a way batch 1's were not — and what they say is that the batch did not move discrimination.
+
+**Four things this batch changed that these numbers may reflect** — named, as the runbook asks, without attributing a movement to one unless the mechanism is unambiguous:
+
+- **T20's display model is now fitted the way its grid scored it** (EVAL-01): all 300 chosen iterations on every row, instead of ~117 of 300 on a random 90 %. The expectation going in was that T20 and only T20 would move from this. **The report does not show that.** T20's display AUC moved +0.0017, the *smallest* display movement of the four; T20I's moved +0.0111, the largest, in a format EVAL-01 left bit-identical. Both are inside noise, so the honest conclusion is not "the expectation was wrong" but "this report cannot see the effect": a change worth 0.001–0.01 is invisible against a fold sd of 0.04–0.05. The manifest's `n_iter: 300` is the evidence the fix landed; the AUC is not.
+- **The performance members now train on the full history** (EVAL-03), not 92 days stale — and in the harness too, which matters below.
+- **Sides are eleven, not twelve** (FEAT-02) on 1,341 sides; involvement is per XI appearance (FEAT-01).
+- **A ball faced and a wicket are redefined** (IMPORT-05, IMPORT-06).
+
+##### The gates: `passed: false`
+
+```
+gate H-4: T20I fails its threshold: the share of one-player upgrades that lower the
+          objective's P(win) is 0.0230, not under 0.02
+```
+
+**H-4 fails in T20I.** It is the only entry in `problems`, and it is a genuine failure, not a registry or plumbing complaint. H-4 is unconditional — it binds in every format the folds scored, not only where something is served — so this is a red gate on a served format, and `make evaluate` exited 1 on it.
+
+The swap-monotonicity numbers across the batch, in raw counts as well as shares:
+
+| fmt | share before → after | upgrades before → after | **violations before → after** |
+|---|---|---:|---:|
+| T20 | 0.0020 → **0.0099** | 6,107 → 6,050 | **12 → 60** |
+| **T20I** | 0.0084 → **0.0230** ❌ | 4,634 → 4,631 | **38 → 103** |
+| ODI | 0.0000 → 0.0000 | 5,667 → 5,665 | 0 → 0 |
+| TEST | 0.0052 → 0.0052 | 4,835 → 4,807 | 24 → 24 |
+
+This is not noise and should not be read as noise. The number of one-player upgrades barely moved in any format, and in the two T20-family formats the number of upgrades that *lowered* the objective's P(win) **tripled in T20I (38 → 103) and quintupled in T20 (12 → 60)** — while ODI (0) and TEST (24) did not move by a single violation. A shift that large, that one-sided, and that sharply split by format is a change in behaviour, and T20I's crossed the line H-4 exists to hold.
+
+**What can and cannot be said about the cause.** **EVAL-01 is excluded**: H-4 measures the *objective* model, and the separate `display_swap_violation_share` is **0.0000 in every format both before and after**, so the display model's refit cannot be behind it. That leaves the feature-definition changes. **FEAT-01 (#306) is the leading candidate** and is named as a candidate only: it is the one change that alters both the inputs the objective reads and the set of swaps the optimiser proposes — it redefines `exp_balls_faced` / `exp_balls_bowled`, and through `is_bowling_option` and `MIN_BOWLING_BALLS` (12 in T20) it changes which players count as bowlers for `n_bowlers` and for the bowling-cover constraint. That mechanism is format-shaped in a way consistent with T20 and T20I moving while ODI and TEST do not. **It is not established here**, and this pass deliberately did not try to establish it: separating FEAT-01 from FEAT-02, IMPORT-05 and IMPORT-06 needs a run per candidate, which is four more two-hour runs nobody has asked for.
+
+**No threshold was adjusted, and no finding was fixed.** H-4's 0.02 stands as written. This is reported to the master as the batch's one red gate.
+
+##### Every other standing gate
+
+| gate | verdict | on what |
+|---|---|---|
+| **H-17** (objective AUC ≥ 0.65 where an optimised selection is served) | **passes** | served formats are T20I **0.7670** and ODI **0.6733**, both over the line |
+| **H-4** (swap violations < 2 %) | **FAILS** | T20I **0.0230** |
+| **specific-vs-typical** (specific XI adds AUC where served) | **passes** | T20I +0.0224, ODI +0.0145, both positive |
+| **E5** (lineup-only agreement clears the derived bar where served) | **passes** | T20I 0.5677 vs bar 0.4823; ODI 0.5565 vs 0.4978 |
+| **E2** (simulated P(win) within tolerance where served as the headline) | **passes** | no format serves the simulated headline |
+| **H-8 / serving parity** | **passes** | `max_abs_difference` **0.0** |
+| H-5, H-22, H-2, X-4 | no threshold | declared as informational in the registry |
+
+**The ODI warning in the brief did not materialise, in the direction feared.** ODI was 0.020 above H-17's 0.65 line with a fold sd of 0.067 and could have gone red on noise alone; it went **up**, to 0.6733, and H-17 passes. **TEST fell furthest** (0.6257 → 0.6114) and does not trip H-17 — but only because H-17 is a scoping gate that binds where an optimised selection is served, and TEST serves none. On the number alone TEST is now **0.039 below** H-17's 0.65 line, where batch 1 had it 0.024 below. It is the format's scoping, not its AUC, that keeps it off the problems list, and if TEST were ever proposed for serving this is the figure that would have to move first.
+
+**Two verdicts flipped without failing a gate. Both are recorded because a future pass should not rediscover them as new.**
+
+- **E2 in ODI flipped from "a probability" to "a description only."** Δ Brier (simulated − display) 0.0070 → **0.0114**, against a tolerance of 0.01, over the same 11 folds; `simulated_win_probability_within_tolerance` went `true` → **`false`**. It fails no gate because E2 binds only where the simulated headline is served, and ODI serves the display model. But ODI's simulated P(win) is no longer within tolerance of the model it stands beside, and the E2 registry entry is the place that decision lives.
+- **`specific_vs_typical_delta` in TEST went negative**, 0.0021 → **−0.0082**: the specific eleven now scores *worse* than a typical eleven of that side. It fails no gate for the same scoping reason (TEST serves no optimised selection), and at a fold sd of 0.10 it is not distinguishable from zero in either report. Recorded as a sign change, not as a finding.
+
+**Nothing else flipped.** All four E5 verdicts are unchanged: T20 still fails its derived bar and is not served (0.5034 → 0.5043 against a bar that rose 0.5055 → 0.5126, so it fails by slightly more); T20I still passes and is served (0.5818 → 0.5677 against 0.4770 → 0.4823); ODI still passes and is served (0.5597 → 0.5565 against 0.5037 → 0.4978); TEST still clears its bar and is still not served. Pairs scored rose in every format (T20 2,187 → 2,465 the most), which is FEAT-02 and FEAT-01 changing which previous elevens are comparable, not a change of verdict.
+
+##### Serving parity, the leak canary, and the simulator's intervals
+
+**`serving_parity` passes with `max_abs_difference` = 0.0** — 50 matches, 50 win rows, 1,100 player rows, 1,100 performance predictions and 49 simulations compared, zero mismatches. Identical to batch 1. The training path and the serving path compute the same numbers to the last bit, through every one of this batch's redefinitions.
+
+**`leak_canary` is unchanged in kind and almost unchanged in value.** The best single column is still `team_elo_diff` for T20 (0.6614), T20I (0.7526) and ODI (0.6327) — identical to four decimal places, which is expected since team Elo reads match results and none of this batch's changes touch them — and `d_exp_mean_matches` for TEST (0.6380 → 0.6354). The same three test-control suspects appear and no others: `team_h2h` in T20 (0.6534) and T20I (0.7293), `d_pelo_min` in T20I (0.7037 → 0.7032). **No new suspect appeared, and no suspect's AUC moved by more than 0.003.**
+
+**The simulator's interval coverage — and why it means more this time.** EVAL-03 makes the harness fit the served recipe per fold, so these figures describe the system that would actually be served rather than a stale relative of it. That is the first time that is true, and it bears on the open **B-11**:
+
+| fmt | walk-forward `coverage_80` | width | locked |
+|---|---|---:|---|
+| T20 | 0.7703 → **0.7665** | 84.5 → 82.6 | 0.7451 → 0.7451 |
+| T20I | 0.7812 → **0.7898** | 80.8 → 79.3 | — (no locked folds) |
+| ODI | 0.7579 → **0.7509** | 149.7 → 148.6 | 0.6190 → **0.6667** |
+| TEST | — (no simulated folds) | | |
+
+The nominal figure is 0.80. **Every format's 80 % interval covers less than 80 %, before and after**, on the walk-forward folds (0.75–0.79) and further short on the locked window (T20 0.745, ODI 0.667). The refit did not fix it and did not make it worse: the changes are a few thousandths on a fold sd of 0.06–0.09. What the refit does change is the standing of the number — this is now a measurement of the served recipe, so "the simulator's first-innings intervals are too narrow" is a statement about the real system and not an artefact of the harness fitting something else. ODI's locked coverage rising 0.619 → 0.667 is 2 matches on a window of 21 and should not be read as an improvement.
+
+**One reading note.** The report's `generated_at` (2026-09-14T12:40:27Z) is stamped when the rating pass completes, about seven minutes into the run, not when the JSON is written two hours later. Batch 1's report has the same property. It is not a clock error.
+
+##### What this batch is accepted on, and what it is not
+
+Parity — the acceptance test at the data layer — **passes on all twenty-one counts**, and every count the four new findings added agrees between the database and the archive at exactly the figure a direct scan of the archive gives. The data moved precisely as the nine PRs predicted: 353,571 wicket records where the store had kept 353,547, 1,362 replacements taken out of the elevens, 202,331 wides out of the batters' ledgers, and 24 sides still over eleven for reasons recorded in advance. `serving_parity` is 0.0. The leak canary found nothing new. Discrimination did not move outside noise in any format, on a comparison that — unlike batch 1's — is not confounded by a changed dataset.
+
+**The batch is not accepted clean.** `make evaluate` exits 1, `gates.passed` is **false**, and **H-4 fails in T20I at 0.0230 against a 0.02 line** with the violation count tripled there and quintupled in T20 while ODI and TEST did not move at all. That is the batch's one red gate, it is a change in behaviour rather than noise, and its cause is not established. Two further verdicts flipped without failing a gate (E2 in ODI, the sign of TEST's specific-vs-typical delta). Separately, **`make reload` failed and the run is unpublished** because the deployed service predates the batch. None of these was fixed or worked around here, and no threshold was touched.
+
+##### Wall clock
+
+| step | command | wall clock | result |
+|---|---|---:|---|
+| 1 | `make migrate` | **10 s** | 0018 → 0020 |
+| 2 | `make cricsheet-import` (22,905 files) | **3 min 1 s** | 0 errors, 28 warnings |
+| 3 | `make xi-parity BIRTH_DATES=…` | **5 min 7 s** | **passes**, 21/21 counts |
+| 4a | `make retrain CUTOFF=2026-09-14` | **15 min 2 s** | run `20260914T121506Z-da5b6680`, `usable: true` |
+| 4b | `make reload` | 1 s | **FAILED — HTTP 409**, run unpublished |
+| 5 | `make evaluate` | **2 h 5 min 42 s** | report written, **exit 1**, H-4 fails in T20I |
+| | (`make export-birth-dates`, prerequisite to step 3) | 1 s | 6,967 players |
+| | **total** | **≈ 2 h 29 min** | |
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
