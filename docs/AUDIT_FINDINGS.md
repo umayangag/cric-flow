@@ -20,58 +20,59 @@ Severity scale: **Critical** — a leak or wrong answer on the live path today; 
 | 5 | EVAL-02 | High | Three "seeds" produce bit-identical display models below 10k rows; gate noise floors built on that sd are zero | no |
 | 6 | EVAL-03 | High | The served performance model never trains on the last 92 days before the cutoff (calibration fold held out permanently) | yes |
 | 7 | EVAL-04 | High | No gate can fail in code — `check_report` only checks that a report path exists; a regressed model ships on cadence | no |
-| 8 | GO-02 | High | Track record joins fixtures and winners in raw `opposition.id` space while the record stores canonical club ids — renamed clubs never resolve or score the wrong way | no |
-| 9 | GO-03 | High | Forecasts issued after the match date are scored into Brier/coverage — with GO-01 those are leaked forecasts | no |
-| 10 | IMPORT-02 | High | `outcome.result` / `eliminator` / `method` not decoded: super-over winners stored as "no winner", ties indistinguishable from no-results, drawn Tests get no form update on the Postgres path | yes |
-| 11 | IMPORT-03 | High | Re-import is not idempotent for `ball_event` (`ON CONFLICT DO NOTHING`): corrected Cricsheet files and importer fixes never reach already-imported matches | no (but re-import) |
-| 12 | IMPORT-04 | High | Byes, leg-byes and penalty runs are charged to the bowler; `ball_event` cannot carry the breakdown | yes |
-| 13 | SERVE-01 | High | Every route is `async def` running CPU-bound work inline; the event loop (and `/health`) blocks for the whole optimise/simulate/as-of sweep | no |
-| 14 | SERVE-02 | High | Request models accept sides of any size, duplicate ids and the same player on both sides; downstream silently assumes 11 distinct | no |
-| 15 | DATA-01 | High | Geocoder picks a candidate in *any* voted country: Chinnaswamy → Pakistan, Shere Bangla → Punjab IN, Warner Park → South Australia, Providence → Rhode Island (~590 venue-days of wrong weather) | no (experiments only) |
-| 16 | GO-04 | Medium | The same player can be in both pools and both XIs; merges keyed by registry id clobber one side | no |
-| 17 | IMPORT-05 | Medium | No-balls are excluded from the batter's balls faced (`batting_data`), and the ML path counts wides as faced — two definitions | yes |
-| 18 | IMPORT-06 | Medium | Every wicket kind credited to the bowler in `bowling_data`; retired-hurt counted as a wicket lost; only first wicket per ball reaches `ball_event` | partial |
-| 19 | FEAT-02 | Medium | Sides of 12–13 (concussion subs) are rated and aggregated as full squads — train/serve mismatch on ~3 % of rows and a mild post-start leak | yes |
-| 20 | FEAT-03 | Medium | A decided match with no `ball_event` rows emits 22 player rows with all-zero targets | yes |
-| 21 | EVAL-05 | Medium | Manifest `objective_auc` is toss-known; harness's is marginalised — same glossary key, different quantity | no |
-| 22 | EVAL-06 | Medium | Harness never runs the grid; walk-forward numbers describe grid point 0 only | no |
-| 23 | EVAL-07 | Medium | Served display artifact is seed 0; headline is the seed mean | no |
-| 24 | EVAL-08 | Medium | Latent crash in locked-window recalibration when the 92-day fold is thin; duplicate knots in `np.interp` | no |
-| 25 | EVAL-09 | Medium | Performance-model early stopping uses a random split that puts rows of one match on both sides | yes |
-| 26 | EVAL-10 | Medium | H-8 parity compares `rows.py` with `rows.py`; the saved artifact and `XiStore` serving path are outside it | no |
-| 27 | EVAL-11 | Medium | Locked window is days old and every gate was decided on the same eleven folds — no untouched holdout | no |
-| 28 | EVAL-12 | Medium | Manifest cannot reproduce a run: `git_sha` empty in the container, no library versions, `dataset_sha` blind to squad/delivery edits | no |
-| 29 | SERVE-03 | Medium | `RATINGS_STALE` measures last *match* date, not data currency; refuses fresh runs in an off-season, global not per format | no |
-| 30 | SERVE-04 | Medium | Serving fixtures are stamped with `state.last_date`, not the fixture date; no `match_date`/`gender` in the request | no |
-| 31 | SERVE-05 | Medium | Simulator batting depth uses one shared uniform vs per-player `p_bats`; realised P(bats) contradicts L2-B when `p_bats` is not monotone in order | no |
-| 32 | SERVE-06 | Medium | Training process registry keyed by module — concurrent runs overwrite each other's handle; stop races natural exit | no |
-| 33 | GO-05 | Medium | Cancelled run plan can never record its outcome (cancelled ctx used for `Finish`) — row stuck `IN_PROGRESS`, every later plan 409 | no |
-| 34 | GO-06 | Medium | Lane lock is check-then-insert; a second job in the same lane overwrites the first's cancel func | no |
-| 35 | GO-07 | Medium | `/xi/predict-win` and `/performance/predict` are never told the toss (Go structs omit `team1_bats_first`) | no |
-| 36 | GO-08 | Medium | Venue lookup failure is swallowed; prediction silently runs with no venue | no |
-| 37 | GO-09 | Medium | `match_date` with a UTC offset is truncated in UTC; pool cutoff and stored date disagree and can include the fixture itself | no |
-| 38 | IMPORT-07 | Medium | Fail-fast abort skips display-name settlement and team lineage — renamed clubs stay split | no |
-| 39 | IMPORT-08 | Medium | Venue identity is the raw string; `normalized_name` never populated; city used as venue when blank | yes |
-| 40 | IMPORT-09 | Medium | Format taxonomy merges MDM with TEST, ODM with ODI, men with women; T20I inferred from a hand list instead of `info.team_type` | yes (design) |
-| 41 | IMPORT-10 | Medium | `-apply` (dry-run) flag is parsed and ignored; every run writes | no |
-| 42 | IMPORT-11 | Medium | `match_inning.target_runs` ignores `innings[].target` (D/L) and is set on Test second innings | no |
-| 43 | FEAT-04 | Medium | Postgres source hard-codes `result=None`; JSON path reads it — `team_form_diff` has two definitions | yes (with IMPORT-02) |
-| 44 | FEAT-05 | Medium | No home-advantage and no toss feature although `venue.country` and `toss_*` are in the DB | yes |
-| 45 | FEAT-06 | Medium | Ratings siloed per format; every T20⇄T20I / ODI⇄List-A crossover is a cold start shrunk toward zero | yes |
-| 46 | DATA-02 | Medium | Venue-key normalisation does not merge spellings of one ground; 20 rows are country centroids | no |
-| 47 | DATA-03 | Medium | Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured; other needles unanchored | no |
-| 48 | DATA-04 | Medium | ERA5 hours indexed by local-time string with one fixed offset per call across DST transitions | no |
-| 49 | DATA-05 | Medium | `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start — in-match rain leaks when the norm is late | no |
-| 50 | OPS-01 | Medium | `reference-data/**`, `configs/**`, `scripts/**`, `contracts/**` trigger no CI | no |
-| 51 | OPS-02 | Medium | `dev-local-key` admin default baked into compose, three Makefiles and `cadence.sh`; Postgres and both APIs bound to all interfaces; watcher holds the Docker socket | no |
-| 52–79 | various | Low | See § 2–8 | — |
+| 8 | FEAT-14 | High | The objective is an unconstrained logistic regression — its fitted own-side sign on `pelo_mean` is negative in T20I, H-4 held only because FEAT-01's broken denominator inflated every upgrade's rate terms, and it fails in T20I (0.0230) once involvement is honest | yes |
+| 9 | GO-02 | High | Track record joins fixtures and winners in raw `opposition.id` space while the record stores canonical club ids — renamed clubs never resolve or score the wrong way | no |
+| 10 | GO-03 | High | Forecasts issued after the match date are scored into Brier/coverage — with GO-01 those are leaked forecasts | no |
+| 11 | IMPORT-02 | High | `outcome.result` / `eliminator` / `method` not decoded: super-over winners stored as "no winner", ties indistinguishable from no-results, drawn Tests get no form update on the Postgres path | yes |
+| 12 | IMPORT-03 | High | Re-import is not idempotent for `ball_event` (`ON CONFLICT DO NOTHING`): corrected Cricsheet files and importer fixes never reach already-imported matches | no (but re-import) |
+| 13 | IMPORT-04 | High | Byes, leg-byes and penalty runs are charged to the bowler; `ball_event` cannot carry the breakdown | yes |
+| 14 | SERVE-01 | High | Every route is `async def` running CPU-bound work inline; the event loop (and `/health`) blocks for the whole optimise/simulate/as-of sweep | no |
+| 15 | SERVE-02 | High | Request models accept sides of any size, duplicate ids and the same player on both sides; downstream silently assumes 11 distinct | no |
+| 16 | DATA-01 | High | Geocoder picks a candidate in *any* voted country: Chinnaswamy → Pakistan, Shere Bangla → Punjab IN, Warner Park → South Australia, Providence → Rhode Island (~590 venue-days of wrong weather) | no (experiments only) |
+| 17 | GO-04 | Medium | The same player can be in both pools and both XIs; merges keyed by registry id clobber one side | no |
+| 18 | IMPORT-05 | Medium | No-balls are excluded from the batter's balls faced (`batting_data`), and the ML path counts wides as faced — two definitions | yes |
+| 19 | IMPORT-06 | Medium | Every wicket kind credited to the bowler in `bowling_data`; retired-hurt counted as a wicket lost; only first wicket per ball reaches `ball_event` | partial |
+| 20 | FEAT-02 | Medium | Sides of 12–13 (concussion subs) are rated and aggregated as full squads — train/serve mismatch on ~3 % of rows and a mild post-start leak | yes |
+| 21 | FEAT-03 | Medium | A decided match with no `ball_event` rows emits 22 player rows with all-zero targets | yes |
+| 22 | EVAL-05 | Medium | Manifest `objective_auc` is toss-known; harness's is marginalised — same glossary key, different quantity | no |
+| 23 | EVAL-06 | Medium | Harness never runs the grid; walk-forward numbers describe grid point 0 only | no |
+| 24 | EVAL-07 | Medium | Served display artifact is seed 0; headline is the seed mean | no |
+| 25 | EVAL-08 | Medium | Latent crash in locked-window recalibration when the 92-day fold is thin; duplicate knots in `np.interp` | no |
+| 26 | EVAL-09 | Medium | Performance-model early stopping uses a random split that puts rows of one match on both sides | yes |
+| 27 | EVAL-10 | Medium | H-8 parity compares `rows.py` with `rows.py`; the saved artifact and `XiStore` serving path are outside it | no |
+| 28 | EVAL-11 | Medium | Locked window is days old and every gate was decided on the same eleven folds — no untouched holdout | no |
+| 29 | EVAL-12 | Medium | Manifest cannot reproduce a run: `git_sha` empty in the container, no library versions, `dataset_sha` blind to squad/delivery edits | no |
+| 30 | SERVE-03 | Medium | `RATINGS_STALE` measures last *match* date, not data currency; refuses fresh runs in an off-season, global not per format | no |
+| 31 | SERVE-04 | Medium | Serving fixtures are stamped with `state.last_date`, not the fixture date; no `match_date`/`gender` in the request | no |
+| 32 | SERVE-05 | Medium | Simulator batting depth uses one shared uniform vs per-player `p_bats`; realised P(bats) contradicts L2-B when `p_bats` is not monotone in order | no |
+| 33 | SERVE-06 | Medium | Training process registry keyed by module — concurrent runs overwrite each other's handle; stop races natural exit | no |
+| 34 | GO-05 | Medium | Cancelled run plan can never record its outcome (cancelled ctx used for `Finish`) — row stuck `IN_PROGRESS`, every later plan 409 | no |
+| 35 | GO-06 | Medium | Lane lock is check-then-insert; a second job in the same lane overwrites the first's cancel func | no |
+| 36 | GO-07 | Medium | `/xi/predict-win` and `/performance/predict` are never told the toss (Go structs omit `team1_bats_first`) | no |
+| 37 | GO-08 | Medium | Venue lookup failure is swallowed; prediction silently runs with no venue | no |
+| 38 | GO-09 | Medium | `match_date` with a UTC offset is truncated in UTC; pool cutoff and stored date disagree and can include the fixture itself | no |
+| 39 | IMPORT-07 | Medium | Fail-fast abort skips display-name settlement and team lineage — renamed clubs stay split | no |
+| 40 | IMPORT-08 | Medium | Venue identity is the raw string; `normalized_name` never populated; city used as venue when blank | yes |
+| 41 | IMPORT-09 | Medium | Format taxonomy merges MDM with TEST, ODM with ODI, men with women; T20I inferred from a hand list instead of `info.team_type` | yes (design) |
+| 42 | IMPORT-10 | Medium | `-apply` (dry-run) flag is parsed and ignored; every run writes | no |
+| 43 | IMPORT-11 | Medium | `match_inning.target_runs` ignores `innings[].target` (D/L) and is set on Test second innings | no |
+| 44 | FEAT-04 | Medium | Postgres source hard-codes `result=None`; JSON path reads it — `team_form_diff` has two definitions | yes (with IMPORT-02) |
+| 45 | FEAT-05 | Medium | No home-advantage and no toss feature although `venue.country` and `toss_*` are in the DB | yes |
+| 46 | FEAT-06 | Medium | Ratings siloed per format; every T20⇄T20I / ODI⇄List-A crossover is a cold start shrunk toward zero | yes |
+| 47 | DATA-02 | Medium | Venue-key normalisation does not merge spellings of one ground; 20 rows are country centroids | no |
+| 48 | DATA-03 | Medium | Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured; other needles unanchored | no |
+| 49 | DATA-04 | Medium | ERA5 hours indexed by local-time string with one fixed offset per call across DST transitions | no |
+| 50 | DATA-05 | Medium | `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start — in-match rain leaks when the norm is late | no |
+| 51 | OPS-01 | Medium | `reference-data/**`, `configs/**`, `scripts/**`, `contracts/**` trigger no CI | no |
+| 52 | OPS-02 | Medium | `dev-local-key` admin default baked into compose, three Makefiles and `cadence.sh`; Postgres and both APIs bound to all interfaces; watcher holds the Docker socket | no |
+| 53–80 | various | Low | See § 2–8 | — |
 
 ### 1b. Which model does the fix
 
 Three tiers, chosen by how much the fix depends on judgment about *what the right behaviour is* rather than on executing a spec. The rule: if getting it slightly wrong would silently change a served number or a training label, use Fable; if the spec in this doc is complete and the risk is engineering (races, SQL, plumbing), use Opus; if it is mechanical, use Sonnet. A fixer may escalate one tier if the file turns out harder than described, never de-escalate.
 
 **Fable (`claude-fable-5-1`)** — ML semantics, leakage, feature definitions, anything marked **retrain**, and the two Critical leaks. The fixer has to read the rating pass or harness deeply, decide the definition, and prove it with a targeted test and a before/after on the harness.
-`GO-01`, `IMPORT-01`, `IMPORT-02`, `IMPORT-04`, `IMPORT-05`, `IMPORT-06`, `IMPORT-09`, `FEAT-01` … `FEAT-13`, `EVAL-01`, `EVAL-02`, `EVAL-03`, `EVAL-04`, `EVAL-05`, `EVAL-06`, `EVAL-07`, `EVAL-09`, `EVAL-10`, `EVAL-11`, `EVAL-13`, `EVAL-14`, `SERVE-05`, `SERVE-10`, `SERVE-12`, `DATA-01`, `DATA-05`.
+`GO-01`, `IMPORT-01`, `IMPORT-02`, `IMPORT-04`, `IMPORT-05`, `IMPORT-06`, `IMPORT-09`, `FEAT-01` … `FEAT-14`, `EVAL-01`, `EVAL-02`, `EVAL-03`, `EVAL-04`, `EVAL-05`, `EVAL-06`, `EVAL-07`, `EVAL-09`, `EVAL-10`, `EVAL-11`, `EVAL-13`, `EVAL-14`, `SERVE-05`, `SERVE-10`, `SERVE-12`, `DATA-01`, `DATA-05`.
 
 **Opus (`claude-opus-4-1` or the newest Opus)** — well-specified engineering with a non-trivial blast radius: transactions, concurrency, id-space folding, API plumbing, schema migrations without a semantic decision.
 `GO-02`, `GO-03`, `GO-04`, `GO-05`, `GO-06`, `GO-07`, `GO-08`, `GO-09`, `IMPORT-03`, `IMPORT-07`, `IMPORT-08`, `IMPORT-11`, `IMPORT-12`, `IMPORT-13`, `SERVE-01`, `SERVE-02`, `SERVE-03`, `SERVE-04`, `SERVE-06`, `SERVE-07`, `SERVE-08`, `EVAL-08`, `EVAL-12`, `EVAL-16`, `DATA-02`, `DATA-03`, `DATA-04`, `DATA-06`, `OPS-01`, `OPS-02`.
@@ -122,6 +123,32 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 ### FEAT-13 — Gender split at serving would diverge if `gender_split_context` is ever on  **Low (latent)**
 
 `serving_match` stamps `gender=""` (`rows.py:116`), reading context group 0. Matches training only while the split is off. **Fix.** Guard in `store.py` refusing a state built with the split on, or carry `gender` in the request (SERVE-04).
+
+### FEAT-14 — The objective is not monotone by construction; H-4 held on FEAT-01's broken denominator and fails in T20I without it  **High · retrain**
+
+`train.py:55` — `make_objective_model` is `make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=3000))`: nothing constrains a coefficient's sign. `contract.monotone_directions` and `_STEM_DIRECTION` (`contract.py:213-234, 465-480`) are read by `make_display_model` only (`train.py:116`). The record says otherwise: `train.py:10-13` and `docs/ml-and-training.md:354-356` call the objective "additive and so monotone in practice (<1 %)", the glossary band for `swap_violation_share` (`glossary.py:433, 444`) says "this system measures under 1 %", and `docs/BUG_BACKLOG.md`'s B-7 row says H-4 is checked on "the objective, whose surface is monotone-constrained on every stem it reads". None of that is in the code. The probe is `selection_metrics.py:93-126`, the gate `gates.py:62, 120-130`, and the surface `/xi/optimize` maximises in T20I and ODI is `optimizer.py:157-172` (`score_many`) over `aggregate_side` (`ratings.py:634-668`). Found by batch 2's acceptance pass (§ 9, *Batch 2*, step 5), which reports the red gate and named FEAT-01 (#306) as a candidate; this entry is the investigation and does not restate that record.
+
+**The failure, established by reproducing the harness.** Rebuilding the frames from `cricket_data` at migration `0020` with batch 2's code (the rating pass alone, 219 s) and refitting the per-fold objective reproduces the report **to the violation in every fold**: T20I 16/407, 15/550, 9/407, 16/550, 9/253, 5/473, 3/451, 4/550, 12/462, 14/528; T20 8, 3, 3, 13, 4, 16, 8, 0, 4, 1, 0 of 550 (the harness skips T20I's 2025-04-01 fold at 5 evaluation rows, where the probe reads 4/55). The rise is spread over the folds, not concentrated: seven of T20I's ten scored folds are over 2 %. On that reproduction:
+
+1. **Every violation is on the Elo axis.** Raising only `pelo` by its population sd lowers the objective's P(win) on **30.8 %** of T20I upgrades (1,444 of 4,686), 4.3 % of T20, 12.5 % of TEST and 0.2 % of ODI; raising only the four impact rates lowers it on **0 of 4,686 / 6,050 / 4,807 / 5,665**. H-4's five-axis upgrade violates exactly when the rate terms are too small to cover the Elo term.
+2. **Why: the fitted signs.** With the toss marginalised, a stem's own-side sensitivity is `2·w_d + w_t1 − w_t2` in raw units. In the served T20I objective (run `20260914T121506Z-da5b6680`) that is **−0.016 for `pelo_mean`** (−0.013 in batch 1's run) against +0.017 for `pelo_top3`, +0.004 for `pelo_min` and −0.006 for `pelo_std`, so an Elo upgrade to a player who is neither top-three nor the minimum of his side is *negative* on this surface — the mean per-stem contribution to ΔP is `pelo_mean` −0.0115 on every upgrade and `pelo_top3` +0.023 for the top three, 0 for the rest. Not one of 1,278 upgrades of a side's top-three Elo player violates; at Elo rank 9 the rate is 5.6 %. T20 does the same through `pelo_min` and `pelo_std` (28 of its 60 violations are the side's lowest-rated player, 32 are cold starts). The negative signs sit on collinear pairs the contract marks `+1` on both sides (`imp_bowl_wk` +0.37 against `imp_bowl_wk_top5` −0.18; `pelo_mean` against `pelo_top3`), EVAL-13's collinearity resolved by the fit in whichever direction the rows lean.
+3. **What hid it: the broken denominator.** Under batch 1, `exp_balls_*` divided by matches batted (bowled), so anyone who had ever faced or bowled a ball read a full innings' involvement and his upgrade's rate terms covered the Elo term. FEAT-01 makes involvement per XI appearance and the cover goes where involvement is small: T20I's violation share is **16.7 % at ≤ 3 balls per appearance, 13.8 % at 3–9, 3.5 % at 9–18 and 0.6 % above 18**; 3.6 % for players who are not bowling options against 0.7 % for those who are; 22 % for cold starts; the violators' median `exp_balls_bowled` is 0. On the served states the share of T20I players at ≤ 18 balls per appearance rose from 18.8 % to 34.1 % (T20 28.1 % → 46.9 %), 57 of 511 lost `is_bowling_option` (median `exp_balls_bowled` 14.3 → 6.6) and none gained it, and the training rows' `t1_n_bowlers` mean fell 5.95 → 4.82 in T20I, 6.45 → 5.02 in T20, 5.45 → 4.69 in ODI, 5.23 → 4.86 in TEST.
+4. **Attribution, by the one experiment that isolates it.** The same pass with **only** FEAT-01's definition reverted — `bat_matches` / `bowl_matches` restored by monkeypatching `RatingState` in the probe process; IMPORT-05, IMPORT-06, FEAT-02, FEAT-03, the rates and the elevens held at batch 2 — and the same per-fold refit:
+
+| fmt | batch 1 (§ 9) | batch 2 (§ 9) | batch 2, involvement reverted | Elo-only share, batch 2 / reverted |
+|---|---|---|---|---|
+| **T20I** | 38 / 4,634 (0.0084) | **103 / 4,631 (0.0230)** | **38 / 4,686 (0.0081)** | 0.308 / 0.302 |
+| T20 | 12 / 6,107 (0.0020) | 60 / 6,050 (0.0099) | 14 / 6,050 (0.0023) | 0.043 / 0.026 |
+| ODI | 0 / 5,667 | 0 / 5,665 | 0 / 5,665 | 0.000 / 0.002 |
+| TEST | 24 / 4,835 (0.0052) | 24 / 4,807 (0.0052) | 23 / 4,807 (0.0048) | 0.125 / 0.125 |
+
+(The reverted column scores T20I's skipped fold; over the ten the harness scores it is 37.) **The involvement definition alone accounts for the rise, to within one violation per format, and the Elo-only share does not move with it**: the wrong sign is the model's and is there under both definitions; the definition decides how often the rate terms cover it. A cross on the served artifacts agrees in direction — batch 2's model and vectors give 17 violations over the last five windows' 2,464 T20I upgrades, the same with batch 1's involvement swapped in gives 4, and batch 1's model and vectors go from 0 to 8 when batch 2's involvement is swapped in.
+
+**What this means for the record.** FEAT-01 is correct and is not the defect: it removed the accident that satisfied H-4. **H-4's 2 % line was never satisfied for the right reasons** — the objective's monotonicity is empirical, not structural, and the batch-1 figures that passed it (0.2 / 0.8 / 0.0 / 0.5 %, the numbers B-7, P-5 § 8.4 and the glossary band quote) were computed on the broken involvement definition. There is no monotone guarantee on the surface `/xi/optimize` maximises: in T20I, a served format, the hill-climb can prefer the lower-Elo of two otherwise-equal low-involvement players, and the marginal value the Team Lab prints for such a player can carry the wrong sign. The gate is right and the threshold is not negotiable; what it measures is a defect in the objective, not in the probe. **Severity High** rather than Medium because a standing gate is red on a served format, the failure is on the number selection acts on, and it describes the served run's behaviour once the stack is rebuilt and `make reload` accepts the batch-2 run — not a harness artefact. **Ranked 8 in § 1**, first among the open findings and ahead of SERVE-01 / SERVE-02 / DATA-01, because it is the only open finding on which a gate is currently failing and because the batch-2 run cannot be relied on for T20I selection until it lands. Retrain-flagged: any fix changes the served objective. Not established, and not needed for the fix: how much IMPORT-05 / IMPORT-06's rate redefinitions would move the share on their own (the reverted run bounds it at one violation per format).
+
+A separate observation, not this finding's subject: with involvement counted honestly, 20.0 % of T20I sides and 25.8 % of T20 sides since 2024 carry fewer than five bowling options (39.0 % of ODI sides; 13.2 % under four), so `Constraints.min_bowlers` binds on real elevens far more often than the batch-1 counts implied. Whether the constraint's default is right is a question for the optimiser, not for the objective.
+
+**Fix.** Make the objective's monotonicity structural: fit it under the contract's signs — the same `_STEM_DIRECTION` the display model already obeys — for example an L2-regularised logistic regression with non-negative coefficients on direction-signed columns (negate the `−1` stems; give the `0` stems a sign by decision or drop them from the own-side set), fitted with `scipy.optimize.minimize` under bounds, or on a design that folds each stem's `d_`, `t1_` and `t2_` columns into one signed own-side column so a pair like `pelo_mean` / `pelo_top3` cannot be fitted with opposite signs. Resolve the collinear top-k pairs (EVAL-13) in the same change, since they are where the negative signs come from. Do not revert FEAT-01 and do not move the 2 % line. Test: in `tests/test_xi_train.py`, fit `make_objective_model` on a synthetic frame in which `d_pelo_mean` and `d_pelo_top3` are collinear and assert every `+1` stem's own-side sensitivity `2·w_d + w_t1 − w_t2` is ≥ 0 (fails on main); and in the harness, report H-4's probe split by axis — Elo only, rates only — beside the combined share, so the next definition change cannot hide a wrong sign behind a large term again. Whether the axis split also becomes a gate is a decision for the fix.
 
 ---
 
