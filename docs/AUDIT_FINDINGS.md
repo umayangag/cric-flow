@@ -520,6 +520,22 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
 
+### Batch 2 — the re-import, retrain and harness record
+
+Nine PRs — **IMPORT-05 (#302), EVAL-04 (#303), IMPORT-06 (#305), FEAT-01 (#306), FEAT-03 (#307), FEAT-02 (#308), EVAL-02 (#309), EVAL-01 (#310), EVAL-03 (#311)** — most of them re-import- or retrain-flagged. Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `da89f149`. This is that record. Steps ran in order: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make evaluate`.
+
+#### Step 1 — migrate
+
+Migrations `0019_ball_event_wicket.sql` (the `ball_event_wicket` child table; `ball_event.wicket_kind` / `player_out_id` dropped) and `0020_match_player_replacement.sql` (`match_player.is_replacement`) were in the repo but unapplied, and `ml/xi/sources.py` names both — so the rating pass, `retrain`, `evaluate`, `xi-parity` and as-of serving all failed on an undefined column or a missing relation until this ran.
+
+| | before | after |
+|---|---|---|
+| migration level | `0018_ball_event_extras_breakdown.sql` (18 applied) | `0020_match_player_replacement.sql` (20 applied) |
+
+Wall clock **10 s**. One table exists afterwards that did not before (`ball_event_wicket`), one column (`match_player.is_replacement`), and two columns are gone (`ball_event.wicket_kind`, `ball_event.player_out_id`).
+
+`0019` carries the first wicket of every delivery into the new table as it drops the columns, so a database migrated but not yet re-imported describes the same cricket it did before rather than none: **353,547 rows**, one per delivery that held a wicket. `0020`'s column defaults to false for every existing row, so **0 replacements** are flagged. The re-import is what writes the other wickets and the flags; until it runs, `make xi-parity` reports the difference, which is what step 3 measures.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
