@@ -135,12 +135,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 **Fix.** Pass `early_stopping=False` explicitly (the grid already controls `max_iter`), or `early_stopping=True` everywhere with a deterministic temporal split built by hand. Record `n_iter_` in the manifest. Test: assert `model.n_iter_ == max_iter` after `train_format` on a >10k-row synthetic frame.
 
-### EVAL-02 — Three seeds produce bit-identical models below 10k rows  **High**
-
-`train.py:231, 244-246`; `evaluate.py:191, 203-205`; `gates.py:243-245, 264-266, 319-321`. `random_state` in HGB only affects binning subsampling (n > 200k) and the early-stopping split. With early stopping off (T20I, ODI, TEST) the three seeds are identical, `display_auc_seed_sd = 0.0`, and gates X-3, B-7-display-monotone and X-2 that require a change to exceed "the control's seed-to-seed sd" have a zero floor that never binds. For T20 the "seed spread" is just the spread of the random early-stopping split.
-
-**Fix.** Either drop the seed loop, or make seeds do something (row bagging via bootstrap `sample_weight`), and base the noise floor on fold-level paired SE only.
-
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
@@ -543,6 +537,12 @@ The hyperparameter grid moved one format: TEST took `max_depth 3, learning_rate 
 #### What this batch is accepted on
 
 Parity — the acceptance test the two new counts were added to be — **passes on all seventeen counts**, including `drawn_or_tied_matches` and `runs_not_charged_to_bowler`, which could not agree before the re-import. The data moved exactly as the nine PRs predicted and nowhere else. Every harness gate that passed before still passes. The model numbers did not move outside noise, and the confound above means they could not have settled anything if they had. **No finding was fixed or worked around during this pass**, and nothing regressed.
+
+### EVAL-02 — Three seeds produce bit-identical models below 10k rows  **High**
+
+`train.py:231, 244-246`; `evaluate.py:191, 203-205`; `gates.py:243-245, 264-266, 319-321`. `random_state` in HGB only affects binning subsampling (n > 200k) and the early-stopping split. With early stopping off (T20I, ODI, TEST) the three seeds are identical, `display_auc_seed_sd = 0.0`, and gates X-3, B-7-display-monotone and X-2 that require a change to exceed "the control's seed-to-seed sd" have a zero floor that never binds. For T20 the "seed spread" is just the spread of the random early-stopping split.
+
+**Fix.** Either drop the seed loop, or make seeds do something (row bagging via bootstrap `sample_weight`), and base the noise floor on fold-level paired SE only. — PR #309. Route taken: the seed loop is dropped. The display model is one fit under `DISPLAY_RANDOM_STATE = 0` (the seed-0 model every run already saved, so the served artifact is bit-identical); `seeds`, `display.auc_sd`, `display_auc_seed_sd` and `display_auc_seed_sd_mean` are gone from the train report, the harness report, the manifest and the glossary, and the wire keys `display_auc_mean` / `display_brier_mean` are glossaried as the one fit's own score. `gates.py` annotates the six `decides` clauses that named the spread (X-3-stakes, B-7-display-monotone, the four X-2 families): each also required one fold-level paired standard error, which is what bound, so no recorded verdict moves; the eight experiment scripts fit once and their verdicts read the paired SE alone. H-14 is restated as the paired-SE floor (Hanley–McNeil on a single holdout). Confirmed on the model's own settings under sklearn 1.5.2: identical predictions at 2,000 and 9,999 rows, divergent only at 12,000 where early stopping switches on — which is EVAL-01's, and EVAL-01 is now a one-line change. Not retrain-flagged. Bagging was rejected: a bootstrap spread would be non-zero but answers no question the eleven paired folds do not already answer, and would change the served model.
 
 ### FEAT-01 — `exp_balls_faced` / `exp_balls_bowled` use the wrong denominator  **High · retrain**
 
