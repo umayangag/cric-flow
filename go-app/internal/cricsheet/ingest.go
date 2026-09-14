@@ -712,7 +712,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		allBowlBatches = append(allBowlBatches, bowlBatch)
 	}
 	// Resolve the squads each side picked (requires cache; done before tx).
-	matchPlayerRows, err := buildMatchPlayerRows(ctx, identity, info, mid, path, dateISO)
+	matchPlayerRows, err := buildMatchPlayerRows(ctx, identity, m, mid, path, dateISO)
 	if err != nil {
 		return err
 	}

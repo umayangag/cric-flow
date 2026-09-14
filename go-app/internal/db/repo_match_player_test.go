@@ -19,12 +19,13 @@ func TestReplaceMatchPlayersTx_WithRows_DeletesThenInsertsEveryRow(t *testing.T)
 	mock.ExpectExec("DELETE FROM match_player").
 		WithArgs(int64(7)).
 		WillReturnResult(pgxmock.NewResult("DELETE", 2))
+	// Four values per row, the replacement flag last: player 2 came in mid-match.
 	mock.ExpectExec("INSERT INTO match_player").
-		WithArgs(int64(7), int64(1), int64(10), int64(7), int64(2), int64(20)).
+		WithArgs(int64(7), int64(1), int64(10), false, int64(7), int64(2), int64(20), true).
 		WillReturnResult(pgxmock.NewResult("INSERT", 2))
 	rows := []db.MatchPlayer{
 		{MatchID: 7, PlayerID: 1, OppositionID: 10},
-		{MatchID: 7, PlayerID: 2, OppositionID: 20},
+		{MatchID: 7, PlayerID: 2, OppositionID: 20, IsReplacement: true},
 	}
 
 	// Act
@@ -86,7 +87,7 @@ func TestReplaceMatchPlayersTx_InsertFails_ReturnsErrorNamingTheRowCount(t *test
 		WithArgs(int64(7)).
 		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 	mock.ExpectExec("INSERT INTO match_player").
-		WithArgs(int64(7), int64(1), int64(10)).
+		WithArgs(int64(7), int64(1), int64(10), false).
 		WillReturnError(sentinel)
 
 	// Act

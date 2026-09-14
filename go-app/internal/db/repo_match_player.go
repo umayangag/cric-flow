@@ -8,11 +8,19 @@ import (
 )
 
 // MatchPlayer is one player a side picked for one match: a row of match_player.
+//
+// IsReplacement marks the member who joined after the match started -- a concussion
+// substitute, an impact player, a supersub -- so a reader that wants the eleven that
+// started can leave him out while the row still records that he played (migration 0020).
 type MatchPlayer struct {
-	MatchID      int64
-	PlayerID     int64
-	OppositionID int64
+	MatchID       int64
+	PlayerID      int64
+	OppositionID  int64
+	IsReplacement bool
 }
+
+// matchPlayerColumns is the number of values one match_player row is inserted with.
+const matchPlayerColumns = 4
 
 // ReplaceMatchPlayersTx makes match_player hold exactly rows for the given match.
 //
@@ -34,16 +42,17 @@ func ReplaceMatchPlayersTx(ctx context.Context, tx CopyFromTx, matchID int64, ro
 	// A squad is a couple of dozen rows at most, so one multi-row INSERT beats the
 	// temp-table-and-COPY dance the ball-by-ball batches need.
 	placeholders := make([]string, 0, len(rows))
-	args := make([]any, 0, len(rows)*3)
+	args := make([]any, 0, len(rows)*matchPlayerColumns)
 	for i := range rows {
-		base := i * 3
+		base := i * matchPlayerColumns
 		placeholders = append(
 			placeholders,
-			"($"+strconv.Itoa(base+1)+", $"+strconv.Itoa(base+2)+", $"+strconv.Itoa(base+3)+")",
+			"($"+strconv.Itoa(base+1)+", $"+strconv.Itoa(base+2)+", $"+strconv.Itoa(base+3)+
+				", $"+strconv.Itoa(base+4)+")",
 		)
-		args = append(args, rows[i].MatchID, rows[i].PlayerID, rows[i].OppositionID)
+		args = append(args, rows[i].MatchID, rows[i].PlayerID, rows[i].OppositionID, rows[i].IsReplacement)
 	}
-	sql := `INSERT INTO match_player (match_id, player_id, opposition_id) VALUES ` +
+	sql := `INSERT INTO match_player (match_id, player_id, opposition_id, is_replacement) VALUES ` +
 		strings.Join(placeholders, ", ")
 	if err := tx.Exec(ctx, sql, args...); err != nil {
 		return fmt.Errorf("insert %d match_player rows for match %d: %w", len(rows), matchID, err)

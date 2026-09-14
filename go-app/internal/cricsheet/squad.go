@@ -125,20 +125,63 @@ func SquadFromInfo(info Info) (members []SquadMember, ambiguous []string, err er
 	return members, ambiguous, nil
 }
 
-// buildMatchPlayerRows resolves a match's squads into match_player rows.
+// ReplacementPlayers returns the names of the players who joined a side after the match
+// started, in the order the file records them coming in.
+//
+// A replacement is the `in` of a replacements.match entry on a delivery (see
+// Replacements). The entries are read in playing order over every innings, and a player
+// who had already gone `out` of an earlier entry is not one: in the one such file in the
+// current archive (1234909, a covid replacement) the man who came in went back out and
+// the man he replaced came back, and the side that started is the one without the
+// stand-in. Every other entry in the archive is a plain swap, and the rule reads it as
+// "the man who came in".
+//
+// ml.xi.sources.replacement_keys is the same rule for the rating pass's archive path, so
+// both of its sources build the same eleven from one file; `make xi-parity` compares the
+// count.
+func (m *Match) ReplacementPlayers() []string {
+	replacements := make([]string, 0)
+	seen := map[string]bool{}
+	for i := range m.Innings {
+		for j := range m.Innings[i].Overs {
+			for k := range m.Innings[i].Overs[j].Deliveries {
+				d := m.Innings[i].Overs[j].Deliveries[k]
+				if d.Replacements == nil {
+					continue
+				}
+				for _, r := range d.Replacements.Match {
+					in, out := strings.TrimSpace(r.In), strings.TrimSpace(r.Out)
+					if in != "" && !seen[in] {
+						replacements = append(replacements, in)
+					}
+					seen[in], seen[out] = true, true
+				}
+			}
+		}
+	}
+	return replacements
+}
+
+// buildMatchPlayerRows resolves a match's squads into match_player rows, flagging the
+// members who came in as replacements.
 //
 // A file with no info.players yields no rows and a warning rather than an error: it is
 // a gap in the source data, not a corrupt file, and failing the import would lose the
 // ball-by-ball record over it. The win export excludes matches with no recorded squad,
 // so the gap stays visible where it matters instead of becoming a side of nobody.
+//
+// A replacement the squad does not list is logged and not invented: one file in the
+// current archive (1537342) spells the man who came in differently from the squad, so
+// that side stays a twelve and the rating pass counts it among the oversized.
 func buildMatchPlayerRows(
 	ctx context.Context,
 	resolver squadIDResolver,
-	info Info,
+	m *Match,
 	matchID int64,
 	path string,
 	dateISO string,
 ) ([]db.MatchPlayer, error) {
+	info := m.Info
 	members, ambiguous, err := SquadFromInfo(info)
 	if len(ambiguous) > 0 {
 		// Not an error: the source cannot say which side these played for, so they are
@@ -167,6 +210,10 @@ func buildMatchPlayerRows(
 		return nil, fmt.Errorf("read info.players: %w", err)
 	}
 
+	replaced := map[string]bool{}
+	for _, name := range m.ReplacementPlayers() {
+		replaced[name] = true
+	}
 	oppositionIDs := map[string]int64{}
 	rows := make([]db.MatchPlayer, 0, len(members))
 	for _, member := range members {
@@ -196,10 +243,24 @@ func buildMatchPlayerRows(
 			return nil, fmt.Errorf("get/create player %q for squad: %w", member.Player, err)
 		}
 		rows = append(rows, db.MatchPlayer{
-			MatchID:      matchID,
-			PlayerID:     playerID,
-			OppositionID: oppositionID,
+			MatchID:       matchID,
+			PlayerID:      playerID,
+			OppositionID:  oppositionID,
+			IsReplacement: replaced[member.Player],
 		})
+		delete(replaced, member.Player)
+	}
+	if len(replaced) > 0 {
+		unlisted := make([]string, 0, len(replaced))
+		for name := range replaced {
+			unlisted = append(unlisted, name)
+		}
+		sort.Strings(unlisted)
+		slog.Warn("cricsheet: replacement not named in info.players, side kept as listed",
+			slog.String("file", path),
+			slog.Int64("match_id", matchID),
+			slog.String("match_date", dateISO),
+			slog.String("players", strings.Join(unlisted, ", ")))
 	}
 	return rows, nil
 }

@@ -3,6 +3,7 @@ package cricsheet
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -224,7 +225,14 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}
 
 		// Act
-		rows, err := buildMatchPlayerRows(context.Background(), resolver, info, 99, "f.json", "2024-01-01")
+		rows, err := buildMatchPlayerRows(
+			context.Background(),
+			resolver,
+			&Match{Info: info},
+			99,
+			"f.json",
+			"2024-01-01",
+		)
 
 		// Assert
 		require.NoError(t, err)
@@ -244,7 +252,7 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}
 
 		// Act
-		_, err := buildMatchPlayerRows(context.Background(), resolver, info, 99, "f.json", "2024-01-01")
+		_, err := buildMatchPlayerRows(context.Background(), resolver, &Match{Info: info}, 99, "f.json", "2024-01-01")
 
 		// Assert
 		require.NoError(t, err)
@@ -259,7 +267,7 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 
 		// Act
 		rows, err := buildMatchPlayerRows(
-			context.Background(), resolver, Info{Teams: []string{"India"}}, 99, "f.json", "2024-01-01",
+			context.Background(), resolver, &Match{Info: Info{Teams: []string{"India"}}}, 99, "f.json", "2024-01-01",
 		)
 
 		// Assert
@@ -275,7 +283,7 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		resolver := &stubSquadResolver{}
 
 		// Act
-		rows, err := buildMatchPlayerRows(context.Background(), resolver, bad, 99, "f.json", "2024-01-01")
+		rows, err := buildMatchPlayerRows(context.Background(), resolver, &Match{Info: bad}, 99, "f.json", "2024-01-01")
 
 		// Assert
 		require.Error(t, err)
@@ -299,7 +307,14 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}
 
 		// Act
-		rows, err := buildMatchPlayerRows(context.Background(), resolver, namesake, 99, "f.json", "2024-01-01")
+		rows, err := buildMatchPlayerRows(
+			context.Background(),
+			resolver,
+			&Match{Info: namesake},
+			99,
+			"f.json",
+			"2024-01-01",
+		)
 
 		// Assert
 		require.NoError(t, err)
@@ -319,7 +334,14 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}
 
 		// Act
-		rows, err := buildMatchPlayerRows(context.Background(), resolver, info, 99, "f.json", "2024-01-01")
+		rows, err := buildMatchPlayerRows(
+			context.Background(),
+			resolver,
+			&Match{Info: info},
+			99,
+			"f.json",
+			"2024-01-01",
+		)
 
 		// Assert
 		require.ErrorIs(t, err, errStubResolver)
@@ -337,11 +359,191 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}
 
 		// Act
-		rows, err := buildMatchPlayerRows(context.Background(), resolver, info, 99, "f.json", "2024-01-01")
+		rows, err := buildMatchPlayerRows(
+			context.Background(),
+			resolver,
+			&Match{Info: info},
+			99,
+			"f.json",
+			"2024-01-01",
+		)
 
 		// Assert
 		require.ErrorIs(t, err, errStubResolver)
 		assert.Contains(t, err.Error(), `"Sri Lanka"`)
 		assert.Nil(t, rows)
 	})
+
+	t.Run("the man who came in is flagged and the eleven who started are not", func(t *testing.T) {
+		t.Parallel()
+		// Arrange: a twelve-man list whose twelfth, R Sharma, came in for V Kohli mid-match.
+		match := &Match{
+			Info: info,
+			Innings: []Innings{
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("R Sharma", "V Kohli"))),
+			},
+		}
+		resolver := &stubSquadResolver{
+			playerIDs:     map[string]int64{"V Kohli": 1, "R Sharma": 2, "K Mendis": 3},
+			oppositionIDs: map[string]int64{"India": 10, "Sri Lanka": 20},
+		}
+
+		// Act
+		rows, err := buildMatchPlayerRows(context.Background(), resolver, match, 99, "f.json", "2024-01-01")
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, []db.MatchPlayer{
+			{MatchID: 99, PlayerID: 1, OppositionID: 10},
+			{MatchID: 99, PlayerID: 2, OppositionID: 10, IsReplacement: true},
+			{MatchID: 99, PlayerID: 3, OppositionID: 20},
+		}, rows)
+	})
+
+	t.Run("a replacement the squad does not list flags nobody and costs nothing", func(t *testing.T) {
+		t.Parallel()
+		// Arrange: the archive's 1537342, where the man who came in is spelled one way in
+		// the entry and another in info.players.
+		match := &Match{
+			Info: info,
+			Innings: []Innings{
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("RMMP Rathnayake", "V Kohli"))),
+			},
+		}
+		resolver := &stubSquadResolver{
+			playerIDs:     map[string]int64{"V Kohli": 1, "R Sharma": 2, "K Mendis": 3},
+			oppositionIDs: map[string]int64{"India": 10, "Sri Lanka": 20},
+		}
+
+		// Act
+		rows, err := buildMatchPlayerRows(context.Background(), resolver, match, 99, "f.json", "2024-01-01")
+
+		// Assert
+		require.NoError(t, err)
+		for i := range rows {
+			assert.False(t, rows[i].IsReplacement, "row %d", i)
+		}
+		assert.Len(t, rows, 3)
+	})
+}
+
+// matchReplacement is one replacements.match entry: in for out.
+func matchReplacement(in, out string) MatchReplacement {
+	return MatchReplacement{In: in, Out: out, Team: "India", Reason: "concussion_substitute"}
+}
+
+// deliveryWithReplacements is one delivery carrying the given match replacements.
+func deliveryWithReplacements(entries ...MatchReplacement) Delivery {
+	return Delivery{
+		Batter:       "V Kohli",
+		Bowler:       "K Mendis",
+		NonStriker:   "R Sharma",
+		Replacements: &Replacements{Match: entries},
+	}
+}
+
+// inningsWithReplacements is one innings of one over holding the given deliveries.
+func inningsWithReplacements(deliveries ...Delivery) Innings {
+	return Innings{Team: "India", Overs: []Over{{Over: 0, Deliveries: deliveries}}}
+}
+
+func TestReplacementPlayers(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		match Match
+		want  []string
+	}{
+		{
+			name:  "a file with no replacements names nobody",
+			match: Match{Innings: []Innings{inningsWithReplacements(Delivery{Batter: "a"})}},
+			want:  []string{},
+		},
+		{
+			name: "a concussion substitute is the man who came in",
+			match: Match{Innings: []Innings{
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("R Sharma", "V Kohli"))),
+			}},
+			want: []string{"R Sharma"},
+		},
+		{
+			// 1234909 in the archive: a covid stand-in went back out and the man he stood
+			// in for came back. The side that started is the one without the stand-in.
+			name: "a player who went out and came back is not a replacement",
+			match: Match{Innings: []Innings{
+				inningsWithReplacements(
+					deliveryWithReplacements(matchReplacement("BG Lister", "MS Chapman")),
+					deliveryWithReplacements(matchReplacement("MS Chapman", "BG Lister")),
+				),
+			}},
+			want: []string{"BG Lister"},
+		},
+		{
+			name: "replacements are read from every innings in playing order",
+			match: Match{Innings: []Innings{
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("A12", "A1"))),
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("B12", "B1"))),
+			}},
+			want: []string{"A12", "B12"},
+		},
+		{
+			name: "the same entry twice names the player once",
+			match: Match{Innings: []Innings{
+				inningsWithReplacements(
+					deliveryWithReplacements(matchReplacement("A12", "A1")),
+					deliveryWithReplacements(matchReplacement("A12", "A1")),
+				),
+			}},
+			want: []string{"A12"},
+		},
+		{
+			name: "names are trimmed and an empty one is skipped",
+			match: Match{Innings: []Innings{
+				inningsWithReplacements(
+					deliveryWithReplacements(matchReplacement("  A12 ", "A1"), matchReplacement("", "A2")),
+				),
+			}},
+			want: []string{"A12"},
+		},
+		{
+			// A substitute finishing an injured bowler's over: the file records it under
+			// `role`, which is not decoded, and nobody's membership changes.
+			name:  "a delivery with a replacements object but no match entries names nobody",
+			match: Match{Innings: []Innings{inningsWithReplacements(deliveryWithReplacements())}},
+			want:  []string{},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got := tc.match.ReplacementPlayers()
+
+			// Assert
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestParse_ReadsADeliverysMatchReplacements(t *testing.T) {
+	t.Parallel()
+	// Arrange: the shape Cricsheet writes, a role entry beside the match entry.
+	const file = `{"info": {"teams": ["A", "B"]}, "innings": [{"team": "A", "overs": [{"over": 3, "deliveries": [
+		{"batter": "A1", "bowler": "B1", "non_striker": "A2", "runs": {"batter": 0, "extras": 0, "total": 0},
+		 "replacements": {"match": [{"in": "A12", "out": "A3", "reason": "concussion_substitute", "team": "A"}],
+		                  "role": [{"in": "B11", "reason": "injury", "role": "bowler"}]}}]}]}]}`
+
+	// Act
+	m, err := Parse(strings.NewReader(file))
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A12"}, m.ReplacementPlayers())
+	assert.Equal(t,
+		[]MatchReplacement{{In: "A12", Out: "A3", Team: "A", Reason: "concussion_substitute"}},
+		m.Innings[0].Overs[0].Deliveries[0].Replacements.Match)
 }

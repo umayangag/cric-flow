@@ -252,12 +252,36 @@ type Over struct {
 
 // Delivery represents a single ball with runs, extras and optional wicket info.
 type Delivery struct {
-	Batter     string          `json:"batter"`
-	Bowler     string          `json:"bowler"`
-	NonStriker string          `json:"non_striker"`
-	Runs       RunInfo         `json:"runs"`
-	Extras     ExtrasBreakdown `json:"extras"`
-	Wickets    *Wickets        `json:"wickets,omitempty"`
+	Batter       string          `json:"batter"`
+	Bowler       string          `json:"bowler"`
+	NonStriker   string          `json:"non_striker"`
+	Runs         RunInfo         `json:"runs"`
+	Extras       ExtrasBreakdown `json:"extras"`
+	Wickets      *Wickets        `json:"wickets,omitempty"`
+	Replacements *Replacements   `json:"replacements,omitempty"`
+}
+
+// Replacements is a delivery's `replacements` object: who came in at this ball, and why.
+//
+// Cricsheet keeps this on the delivery rather than in info because that is where it
+// happened; nothing in info says which of a twelve-man list joined after the start. Two
+// lists, and only Match is a change to the side: a `role` entry is a substitute finishing
+// an injured bowler's over or running for a batter, which changes nobody's membership
+// and is not read. See Match.ReplacementPlayers.
+type Replacements struct {
+	Match []MatchReplacement `json:"match"`
+}
+
+// MatchReplacement is one player joining a side after the match started, in the place of
+// another. Every one of the 1,364 entries in the current archive carries all four fields;
+// Reason is Cricsheet's word for it -- impact_player, concussion_substitute, supersub,
+// injury_substitute, covid_replacement, national_callup, national_release, unknown -- and
+// is read for the log line only: whatever the reason, the player who came in did not start.
+type MatchReplacement struct {
+	In     string `json:"in"`
+	Out    string `json:"out"`
+	Team   string `json:"team"`
+	Reason string `json:"reason"`
 }
 
 // ExtrasBreakdown is a delivery's extras by kind, as Cricsheet records them under
