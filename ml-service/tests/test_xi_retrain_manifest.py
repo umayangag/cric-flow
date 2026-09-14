@@ -9,6 +9,8 @@ telling them apart, and to saying why.
 
 from __future__ import annotations
 
+import json
+import os
 from typing import List
 
 import pandas as pd
@@ -63,6 +65,20 @@ def _written_manifest(built, tmp_path, cutoff: str) -> dict:
     return runs.read_manifest(written["run_dir"]).as_dict()
 
 
+def test_the_run_report_scores_the_display_model_once(built, tmp_path) -> None:
+    """EVAL-02: the run's own report carries one display fit's AUC and Brier -- the
+    served model's -- and no seed list or spread across seeds; the manifest's headline
+    is that number under its wire key."""
+    written = retrain(built, str(tmp_path), pd.Timestamp("2024-02-20"), formats=["T20"])
+
+    with open(os.path.join(written["run_dir"], "xi_win_report.json")) as fh:
+        format_report = json.load(fh)["formats"][0]
+    manifest = runs.read_manifest(written["run_dir"]).as_dict()
+    assert "seeds" not in format_report
+    assert set(format_report["display"]) == {"auc", "brier"}
+    assert manifest["metrics"]["T20"]["display_auc_mean"] == format_report["display"]["auc"]
+
+
 def test_a_run_with_no_holdout_still_names_the_formats_it_trained(built, tmp_path) -> None:
     """B-3, the measured case: a cutoff after the last match trains everything and scores
     nothing. The manifest names the format, carries its row counts, and says why the
@@ -108,7 +124,7 @@ def test_headline_metrics_and_notes_read_the_report_not_the_models() -> None:
                 "n_train": 900,
                 "n_holdout": 100,
                 "objective": {"auc": 0.72},
-                "display": {"auc_mean": 0.71},
+                "display": {"auc": 0.71, "brier": 0.22},
             },
             {
                 "format_code": "ODI",
@@ -148,7 +164,7 @@ def _summary_scoring(auc: float) -> dict:
                 "n_holdout": 100,
                 "holdout_positive_rate": 0.5,
                 "objective": {"auc": auc, "brier": 0.25},
-                "display": {"auc_mean": auc, "auc_sd": 0.0},
+                "display": {"auc": auc, "brier": 0.25},
                 "hyperparameters": {"params": {"max_iter": 100}, "reason": "baseline"},
             }
         ],

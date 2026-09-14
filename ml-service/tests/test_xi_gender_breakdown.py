@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from ml.xi import contract as C
-from ml.xi.train import gender_breakdown
+from ml.xi.train import _score_marginalised, gender_breakdown
 
 
 class _ConstantModel:
@@ -46,13 +46,13 @@ def holdout() -> pd.DataFrame:
 def test_gender_breakdown_reports_each_gender_separately(holdout) -> None:
     model = _ConstantModel()
 
-    out = gender_breakdown(model, [model], holdout)
+    out = gender_breakdown(model, model, holdout)
 
     assert set(out) == {"female", "male"}
     assert out["female"]["n_holdout"] == 60
     assert out["male"]["n_holdout"] == 60
     assert out["female"]["objective_auc"] > 0.5
-    assert out["male"]["display_auc_mean"] > 0.5
+    assert out["male"]["display_auc"] > 0.5
 
 
 def test_gender_breakdown_reports_the_count_but_no_auc_for_a_tiny_subset(holdout) -> None:
@@ -61,10 +61,10 @@ def test_gender_breakdown_reports_the_count_but_no_auc_for_a_tiny_subset(holdout
     small = pd.concat([holdout[holdout.gender == "male"], holdout[holdout.gender == "female"].head(5)])
     model = _ConstantModel()
 
-    out = gender_breakdown(model, [model], small)
+    out = gender_breakdown(model, model, small)
 
     assert out["female"] == {"n_holdout": 5}
-    assert "display_auc_mean" in out["male"]
+    assert "display_auc" in out["male"]
 
 
 def test_gender_breakdown_reports_the_count_but_no_auc_for_a_single_class_subset(holdout) -> None:
@@ -72,15 +72,20 @@ def test_gender_breakdown_reports_the_count_but_no_auc_for_a_single_class_subset
     one_sided.loc[one_sided.gender == "female", C.TARGET_COL] = 1.0
     model = _ConstantModel()
 
-    out = gender_breakdown(model, [model], one_sided)
+    out = gender_breakdown(model, model, one_sided)
 
     assert out["female"] == {"n_holdout": 60}
 
 
-def test_gender_breakdown_averages_the_display_seeds(holdout) -> None:
-    """Every reported number is a mean over at least three seeds with its spread (H-14)."""
-    models = [_ConstantModel(0), _ConstantModel(1), _ConstantModel(2)]
+def test_gender_breakdown_reports_the_one_display_fits_own_auc(holdout) -> None:
+    """The display model is one fit (EVAL-02): the breakdown carries its AUC on the
+    subset and no spread across seeds, which would be a spread of nothing."""
+    display = _ConstantModel(1)
 
-    out = gender_breakdown(_ConstantModel(0), models, holdout)
+    out = gender_breakdown(_ConstantModel(0), display, holdout)
 
-    assert out["female"]["display_auc_sd"] > 0.0
+    female = holdout[holdout.gender == "female"]
+    assert out["female"]["display_auc"] == pytest.approx(
+        _score_marginalised(display, female, C.DISPLAY_FEATURE_COLS)["auc"]
+    )
+    assert "display_auc_sd" not in out["female"]

@@ -9,9 +9,12 @@ from typing import Iterator, List
 import pandas as pd
 import pytest
 
+from ml.xi import contract as C
 from ml.xi import evaluate as ev
 from ml.xi import gates, glossary
+from ml.xi.train import _score_marginalised
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
+from tests.test_xi_train import synthetic_win_rows
 from tests.xi_perf_fixtures import fast_fits
 
 
@@ -58,10 +61,26 @@ def test_stats_is_none_when_no_fold_produced_the_number() -> None:
 def test_evaluate_win_window_reports_why_it_skipped() -> None:
     frame = pd.DataFrame({"match_date": [pd.Timestamp("2023-01-01")], "team1_wins": [1.0]})
 
-    fold, model, displays = ev._evaluate_win_window(frame, pd.Timestamp("2023-06-01"), pd.Timestamp("2023-09-01"))
+    fold, model, display = ev._evaluate_win_window(frame, pd.Timestamp("2023-06-01"), pd.Timestamp("2023-09-01"))
 
-    assert model is None and displays == []
+    assert model is None and display is None
     assert fold["skipped_reason"] == "insufficient training rows"
+
+
+def test_evaluate_win_window_fits_the_display_model_once_and_reports_no_seed_spread() -> None:
+    """EVAL-02: one display fit per window, its own score under the wire key, and no
+    spread across seeds -- the seeds were the same fit, so the number was a zero floor."""
+    rows = synthetic_win_rows(400)
+    cutoff, end = pd.Timestamp("2023-11-01"), pd.Timestamp("2024-02-01")
+
+    fold, objective, display = ev._evaluate_win_window(rows, cutoff, end)
+
+    evaluation = rows[(rows.match_date >= cutoff) & (rows.match_date < end)]
+    assert objective is not None and hasattr(display, "predict_proba")
+    assert "display_auc_seed_sd" not in fold
+    assert fold["display_auc_mean"] == pytest.approx(
+        _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)["auc"]
+    )
 
 
 def _no_cached_odds(tmp_path_factory) -> str:
@@ -139,6 +158,17 @@ def test_harness_reports_walk_forward_with_spread(harness_report) -> None:
     assert 0.0 < summary["objective_auc"]["mean"] < 1.0
     assert summary["display_auc"]["sd"] >= 0.0
     assert summary["base_rate_brier"]["mean"] > 0.0
+
+
+def test_harness_reports_no_spread_across_seeds(harness_report) -> None:
+    """The spread a difference is read against is the one over folds; the harness fits
+    each model once and names no seeds, so nothing it prints can be mistaken for a
+    seed-to-seed noise floor (EVAL-02)."""
+    summary = harness_report["formats"]["T20"]["walk_forward"]["summary"]
+
+    assert "seeds" not in harness_report
+    assert "display_auc_seed_sd_mean" not in summary
+    assert all("display_auc_seed_sd" not in fold for fold in harness_report["formats"]["T20"]["walk_forward"]["folds"])
 
 
 def test_harness_scores_the_locked_window_once_and_labels_it(harness_report) -> None:

@@ -14,9 +14,12 @@ Per format two models are fitted on rows before the cutoff and scored on rows at
 * display    -- monotone-constrained gradient boosting on XI + team-context columns.
                 Higher AUC; used for the probability shown to users.
 
-The report records, per format: AUC and Brier for both models over several seeds, the
-base-rate Brier, and the best single raw column's AUC -- a model that cannot beat its own
-best column by a clear margin is not being measured (S-3c).
+The report records, per format: AUC and Brier for both models, the base-rate Brier, and the
+best single raw column's AUC -- a model that cannot beat its own best column by a clear
+margin is not being measured (S-3c). Each model is fitted once: the display model's
+``random_state`` is not a source of replicate fits (EVAL-02, ``DISPLAY_RANDOM_STATE``), so
+there is no seed spread to report, and the noise a difference is read against is the
+harness's fold-level paired standard error (H-14).
 
 The same run fits the performance model (L2-B, ``ml.xi.performance``) per format on the
 player-match rows before the cutoff and scores it on the rows after it, per target beside
@@ -77,10 +80,18 @@ DISPLAY_GRID_MARGIN = 0.002
 # never used for a choice).
 GRID_VALIDATION_FRACTION = 0.2
 
+# The display model is fitted once, under one fixed random state. HistGradientBoosting's
+# ``random_state`` reaches nothing but the early-stopping validation split (which sklearn
+# switches on by itself above 10,000 rows -- EVAL-01) and the binning subsample above
+# 200,000 rows, so refitting under other seeds gave bit-identical models in every format
+# but T20 and, in T20, measured only the luck of that split. The three-seed loop that used
+# to sit here therefore reported a "seed spread" of exactly zero and called it a noise
+# floor (EVAL-02). The fixed value keeps the T20 fit reproducible; it is not a replicate.
+DISPLAY_RANDOM_STATE = 0
+
 
 def make_display_model(
     columns: List[str],
-    seed: int,
     params: Optional[Dict[str, float]] = None,
     constrain_team_context: bool = C.DISPLAY_CONTEXT_MONOTONE_KEPT,
 ) -> object:
@@ -93,12 +104,12 @@ def make_display_model(
         max_iter=int(settings["max_iter"]),
         l2_regularization=1.0,
         min_samples_leaf=40,
-        random_state=seed,
+        random_state=DISPLAY_RANDOM_STATE,
         monotonic_cst=C.monotone_directions(columns, constrain_team_context),
     )
 
 
-def choose_display_params(train: pd.DataFrame, seed: int = 0) -> Dict:
+def choose_display_params(train: pd.DataFrame) -> Dict:
     """Pick the display model's hyperparameters from ``DISPLAY_GRID``, inside the
     training rows.
 
@@ -123,7 +134,7 @@ def choose_display_params(train: pd.DataFrame, seed: int = 0) -> Dict:
     x_va, y_va = _xy(inner_valid, C.DISPLAY_FEATURE_COLS)
     scores = []
     for candidate in DISPLAY_GRID:
-        model = make_display_model(C.DISPLAY_FEATURE_COLS, seed, candidate).fit(x_tr, y_tr)
+        model = make_display_model(C.DISPLAY_FEATURE_COLS, candidate).fit(x_tr, y_tr)
         scores.append({"params": dict(candidate), "auc": float(roc_auc_score(y_va, model.predict_proba(x_va)[:, 1]))})
     baseline = scores[0]["auc"]
     best = max(scores[1:], key=lambda s: s["auc"], default=None)
@@ -171,7 +182,7 @@ def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, f
     return {"auc": float(roc_auc_score(y, p)), "brier": float(brier_score_loss(y, p))}
 
 
-def gender_breakdown(objective, display_models: Sequence, te: pd.DataFrame) -> Dict[str, Dict[str, float]]:
+def gender_breakdown(objective, display, te: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """Holdout discrimination split by the gender of the match.
 
     20% of the dataset is women's cricket, and until P-1 it shared team identities with
@@ -186,9 +197,7 @@ def gender_breakdown(objective, display_models: Sequence, te: pd.DataFrame) -> D
         entry: Dict[str, float] = {"n_holdout": int(len(rows))}
         if len(rows) >= 20 and rows[C.TARGET_COL].nunique() == 2:
             entry["objective_auc"] = _score_marginalised(objective, rows, C.XI_FEATURE_COLS)["auc"]
-            display_aucs = [_score_marginalised(m, rows, C.DISPLAY_FEATURE_COLS)["auc"] for m in display_models]
-            entry["display_auc_mean"] = float(np.mean(display_aucs))
-            entry["display_auc_sd"] = float(np.std(display_aucs))
+            entry["display_auc"] = _score_marginalised(display, rows, C.DISPLAY_FEATURE_COLS)["auc"]
         out[str(gender)] = entry
     return out
 
@@ -208,7 +217,6 @@ def train_format(
     frame: pd.DataFrame,
     format_code: str,
     cutoff: pd.Timestamp,
-    seeds: Sequence[int] = (0, 1, 2),
     gender_split_context: bool = False,
 ) -> tuple:
     """Fit both models for one format; return (FormatModels, report dict)."""
@@ -218,7 +226,6 @@ def train_format(
         "format_code": format_code,
         "n_train": int(len(tr)),
         "n_holdout": int(len(te)),
-        "seeds": list(seeds),
     }
     if len(tr) < 50 or tr[C.TARGET_COL].nunique() < 2:
         report["skipped_reason"] = "insufficient training rows"
@@ -228,26 +235,20 @@ def train_format(
     objective = make_objective_model().fit(x_obj_tr, y_tr)
     grid = choose_display_params(tr)
     report["hyperparameters"] = grid
-    display_models = [make_display_model(C.DISPLAY_FEATURE_COLS, s, grid["params"]).fit(x_dis_tr, y_tr) for s in seeds]
+    display = make_display_model(C.DISPLAY_FEATURE_COLS, grid["params"]).fit(x_dis_tr, y_tr)
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)
-        obj = _score(objective, x_obj_te, y_te)
-        dis = [_score(m, x_dis_te, y_te) for m in display_models]
         report.update(
             {
                 "holdout_positive_rate": float(y_te.mean()),
-                "objective": obj,
+                "objective": _score(objective, x_obj_te, y_te),
                 "objective_marginalised": _score_marginalised(objective, te, C.XI_FEATURE_COLS),
-                "display_marginalised": _score_marginalised(display_models[0], te, C.DISPLAY_FEATURE_COLS),
-                "display": {
-                    "auc_mean": float(np.mean([r["auc"] for r in dis])),
-                    "auc_sd": float(np.std([r["auc"] for r in dis])),
-                    "brier_mean": float(np.mean([r["brier"] for r in dis])),
-                },
+                "display": _score(display, x_dis_te, y_te),
+                "display_marginalised": _score_marginalised(display, te, C.DISPLAY_FEATURE_COLS),
                 "base_rate_brier": float(brier_score_loss(y_te, np.full(len(y_te), y_tr.mean()))),
                 "best_single_column": best_single_column(te, C.DISPLAY_FEATURE_COLS),
-                "by_gender": gender_breakdown(objective, display_models, te),
+                "by_gender": gender_breakdown(objective, display, te),
             }
         )
     else:
@@ -269,7 +270,7 @@ def train_format(
     models = FormatModels(
         format_code=format_code,
         objective=objective,
-        display=display_models[0],
+        display=display,
         objective_cols=list(C.XI_FEATURE_COLS),
         display_cols=list(C.DISPLAY_FEATURE_COLS),
         metadata=metadata,
@@ -329,7 +330,7 @@ def train_all(
                 "%s: objective AUC %s, display AUC %s -> %s",
                 fmt,
                 report.get("objective", {}).get("auc"),
-                report.get("display", {}).get("auc_mean"),
+                report.get("display", {}).get("auc"),
                 path,
             )
         else:

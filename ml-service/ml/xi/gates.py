@@ -39,9 +39,13 @@ nothing served. The clauses encode what the prose already says and nothing more:
 * A gate an experiment script runs (``report_path`` None) is evaluated by that script; its
   clause stays prose here.
 
-No standing clause is expressed against a seed-to-seed spread, so none depends on EVAL-02
-(the three seeds are bit-identical below 10k rows, so that spread is a zero floor); the
-experiment gates that do are the scripts' to fix.
+No clause anywhere is read against a seed-to-seed spread. The display model is one fit
+per window: its random seed reached only sklearn's early-stopping split, so the three
+"seeds" the harness used to fit were bit-identical below 10,000 rows and the spread they
+reported was a zero floor that never bound (EVAL-02). The experiment gates whose clause
+named that spread (X-3-stakes, B-7-display-monotone, the X-2 families) say so in place;
+each was in practice decided on the fold-level standard error of the paired difference,
+which is the noise floor every gate here reads (H-14).
 """
 
 from __future__ import annotations
@@ -398,9 +402,11 @@ GATES: Tuple[Gate, ...] = (
         "marginalisation over batting order, the labels; the objective, the performance model and the simulator "
         "are not refitted -- this is a display-model gate",
         decides="the family is kept only if, against the no-stakes arm on the same folds, the mean walk-forward "
-        "display AUC rises by more than both the control's own seed-to-seed standard deviation and one "
-        "fold-level standard error of the paired difference, in every format, with the swap-violation share of "
-        "the display surface still under H-4's 2 %. A recorded null ships nothing",
+        "display AUC rises by more than one fold-level standard error of the paired difference, in every "
+        "format, with the swap-violation share of the display surface still under H-4's 2 %. A recorded null "
+        "ships nothing. (As run, the clause also named the control's seed-to-seed standard deviation; EVAL-02 "
+        "found that spread to be identically zero -- the three seeds were the same fit -- so the standard error "
+        "was the floor that bound)",
         report_path=None,
     ),
     Gate(
@@ -419,8 +425,9 @@ GATES: Tuple[Gate, ...] = (
         "display swap-violation share falls by more than one fold-level standard error of the paired "
         "difference AND by at least a quarter of the control's own distance from H-4's 2 % line, so a fall "
         "inside the noise or a fall too small to matter is not a pass; and (b) display AUC falls by no more "
-        "than one fold-level standard error of the paired difference and no more than the control's "
-        "seed-to-seed standard deviation. Violations falling while AUC degrades past (b) does NOT ship on "
+        "than one fold-level standard error of the paired difference (as run, the clause also named the "
+        "control's seed-to-seed standard deviation, which EVAL-02 found identically zero: the three seeds were "
+        "the same fit). Violations falling while AUC degrades past (b) does NOT ship on "
         "this gate's judgement: it is a product trade-off between a coherent surface and discrimination, and "
         "is recorded with its fold table for the decision to be made deliberately. Neither moving is a "
         "recorded null, and the measurement stays either way",
@@ -475,8 +482,9 @@ GATES: Tuple[Gate, ...] = (
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
         decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
-        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
-        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "display AUC rises by more than one fold-level standard error of the paired difference (as run, the "
+        "clause also named the control's seed-to-seed standard deviation, which EVAL-02 found identically zero: "
+        "the three seeds were the same fit), with the display swap-violation share under H-4's 2 %; (b) in "
         "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
         "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
         "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
@@ -496,8 +504,9 @@ GATES: Tuple[Gate, ...] = (
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
         decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
-        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
-        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "display AUC rises by more than one fold-level standard error of the paired difference (as run, the "
+        "clause also named the control's seed-to-seed standard deviation, which EVAL-02 found identically zero: "
+        "the three seeds were the same fit), with the display swap-violation share under H-4's 2 %; (b) in "
         "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
         "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
         "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
@@ -517,8 +526,9 @@ GATES: Tuple[Gate, ...] = (
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
         decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
-        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
-        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "display AUC rises by more than one fold-level standard error of the paired difference (as run, the "
+        "clause also named the control's seed-to-seed standard deviation, which EVAL-02 found identically zero: "
+        "the three seeds were the same fit), with the display swap-violation share under H-4's 2 %; (b) in "
         "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
         "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
         "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "
@@ -538,8 +548,9 @@ GATES: Tuple[Gate, ...] = (
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
         decides="kept only if, against the control on the same folds: (a) in every format the mean walk-forward "
-        "display AUC rises by more than both the control's seed-to-seed standard deviation and one fold-level "
-        "standard error of the paired difference, with the display swap-violation share under H-4's 2 %; (b) in "
+        "display AUC rises by more than one fold-level standard error of the paired difference (as run, the "
+        "clause also named the control's seed-to-seed standard deviation, which EVAL-02 found identically zero: "
+        "the three seeds were the same fit), with the display swap-violation share under H-4's 2 %; (b) in "
         "T20 and ODI, with the family in the performance model, the simulated first-innings and chase 10-90 "
         "coverage stay within +/- 0.03 of the control's and the widths do not grow, on the day matches and on the "
         "night matches separately (H-22), with no headline pinball worse by more than 0.5 %; (c) in T20 and ODI, "

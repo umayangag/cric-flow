@@ -29,6 +29,16 @@ def test_every_entry_declares_the_copy_a_reader_needs() -> None:
         assert metric.better.strip(), metric.key
 
 
+def test_the_glossary_explains_no_spread_across_seeds() -> None:
+    """EVAL-02: the display model is one fit, so there is no seed spread to explain and
+    the entries that called one a noise floor are gone; what remains says the number is
+    the one fit's score."""
+    assert "display_auc_seed_sd" not in glossary.REGISTRY
+    assert "display_auc_seed_sd_mean" not in glossary.REGISTRY
+    assert "seed" not in glossary.REGISTRY["display_auc_mean"].name.lower()
+    assert "one display model" in glossary.REGISTRY["display_auc_mean"].explanation
+
+
 def test_no_key_is_both_a_metric_and_a_declared_non_metric() -> None:
     assert set(glossary.REGISTRY) & set(glossary.NON_METRIC_KEYS) == set()
 
@@ -98,7 +108,7 @@ def test_run_manifest_headline_metrics_are_glossaried() -> None:
                 "n_train": 900,
                 "n_holdout": 100,
                 "objective": {"auc": 0.72},
-                "display": {"auc_mean": 0.71},
+                "display": {"auc": 0.71, "brier": 0.22},
             }
         ]
     }

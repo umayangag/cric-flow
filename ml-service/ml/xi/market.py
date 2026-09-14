@@ -54,7 +54,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -343,13 +343,13 @@ def join_to_matches(
     return joined, counts
 
 
-def _display_probabilities(displays: Sequence, rows: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+def _display_probabilities(display: Any, rows: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     """The two display arms on the same rows: the served probability (marginalised over
-    the toss, averaged over the seeds) and the toss-aware one (read at the orientation
-    that actually happened, which is the market's information set)."""
-    served = np.mean([marginalised_probabilities(model, rows, C.DISPLAY_FEATURE_COLS) for model in displays], axis=0)
+    the toss) and the toss-aware one (read at the orientation that actually happened,
+    which is the market's information set)."""
+    served = marginalised_probabilities(display, rows, C.DISPLAY_FEATURE_COLS)
     features, _ = _xy(rows, C.DISPLAY_FEATURE_COLS)
-    toss_aware = np.mean([model.predict_proba(features)[:, 1] for model in displays], axis=0)
+    toss_aware = display.predict_proba(features)[:, 1]
     return served, toss_aware
 
 
@@ -441,11 +441,11 @@ class Benchmark:
         cutoff: pd.Timestamp,
         end: pd.Timestamp,
         rows: pd.DataFrame,
-        displays: Sequence,
+        display: Optional[Any],
     ) -> None:
         """Score one window: the harness's own evaluation rows, its own fitted display
-        models, restricted to the matches a closing price was joined to."""
-        if not len(displays) or not len(rows):
+        model, restricted to the matches a closing price was joined to."""
+        if display is None or not len(rows):
             return
         # The denominator of the format's coverage: matches the harness itself scored, so
         # a coverage share compares like with like.
@@ -454,7 +454,7 @@ class Benchmark:
         scored = rows[market.notna()]
         if not len(scored):
             return
-        served, toss_aware = _display_probabilities(displays, scored)
+        served, toss_aware = _display_probabilities(display, scored)
         self._windows.setdefault(format_code, []).append(
             _Window(
                 label=label,

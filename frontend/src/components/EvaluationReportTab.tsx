@@ -28,8 +28,8 @@ import { useEvaluationReport } from '../hooks/useEvaluationReport';
  * — which is what those models could be scored on, and also why the numbers never added up
  * to a verdict about the system. The harness runs rolling origins over every format and
  * writes one file (`make evaluate`); this tab reads it. There is no form, because there
- * is no choice for the browser to make: the folds, the locked window and the seeds are the
- * harness's, and a cutoff chosen here would be a choice made against the locked window.
+ * is no choice for the browser to make: the folds and the locked window are the harness's,
+ * and a cutoff chosen here would be a choice made against the locked window.
  */
 const EvaluationReportTab: React.FC = () => {
   const { report, loading, error, reload, formats, format, setFormat, formatReport } =
@@ -87,7 +87,6 @@ const EvaluationReportTab: React.FC = () => {
           variant="outlined"
           label={`${report.n_player_rows.toLocaleString()} player rows`}
         />
-        <Chip size="small" variant="outlined" label={`seeds ${report.seeds.join(', ')}`} />
       </Stack>
 
       <Alert severity={report.serving_parity.passed ? 'success' : 'error'} sx={{ mb: 3 }}>

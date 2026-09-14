@@ -15,7 +15,6 @@ const report = {
   source: 'PostgresSource',
   cutoffs: [],
   locked_start: '2025-09-01',
-  seeds: [0],
   n_rows: 1,
   n_player_rows: 1,
   formats: {

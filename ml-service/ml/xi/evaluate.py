@@ -5,7 +5,7 @@ window -- matches at or after ``LOCKED_START`` -- scored once per release and la
 such, never used for a choice. The locked window rotates once its data has guided a release
 decision (A-4): the spent window retires into the folds and the line moves to the date of
 the decision that read it, with both dates in the report so a number names its window. Per
-format it reports, with mean and spread over cutoffs (and seeds, where a model has one):
+format it reports, with mean and spread over cutoffs:
 
 * win-model objective and display AUC / Brier against the base rate;
 * the specific-XI-beyond-typical-XI delta and swap monotonicity (the selection gates
@@ -54,7 +54,7 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -123,7 +123,6 @@ LOCKED_ROTATION_REASON = (
     "spent as an untouched holdout; it retires into the walk-forward folds and the line moves "
     "to the P-7 merge date, which no decision has read past (A-4)"
 )
-DISPLAY_SEEDS: Tuple[int, ...] = (0, 1, 2)
 PARITY_LAST_N = 50
 # How many evaluation matches feed the swap-monotonicity probe per fold.
 SWAP_MAX_MATCHES = 50
@@ -167,10 +166,15 @@ def _stats(values: Sequence[Optional[float]]) -> Optional[Dict]:
 
 def _evaluate_win_window(
     format_frame: pd.DataFrame, cutoff: pd.Timestamp, end: pd.Timestamp
-) -> Tuple[Optional[Dict], Optional[object], List[object]]:
+) -> Tuple[Optional[Dict], Optional[object], Optional[object]]:
     """Win-model metrics for one (train < cutoff, eval [cutoff, end)) split; also returns
-    the fitted objective model for the selection metrics and the display models (one per
-    seed) for the simulator's consistency check."""
+    the fitted objective model for the selection metrics and the display model for the
+    simulator's consistency check.
+
+    Each model is fitted once. The display model's ``random_state`` is not a replicate
+    source (EVAL-02: refits under other seeds were bit-identical below sklearn's 10k-row
+    early-stopping threshold), so no seed spread is reported; the spread a difference is
+    read against is the one over folds, in the summary."""
     train = format_frame[format_frame.match_date < cutoff]
     evaluation = format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)]
     skip = {
@@ -181,16 +185,16 @@ def _evaluate_win_window(
     }
     if len(train) < MIN_TRAIN_ROWS or train[C.TARGET_COL].nunique() < 2:
         skip["skipped_reason"] = "insufficient training rows"
-        return skip, None, []
+        return skip, None, None
     if len(evaluation) < MIN_EVAL_ROWS or evaluation[C.TARGET_COL].nunique() < 2:
         skip["skipped_reason"] = "evaluation window too small or single-class"
-        return skip, None, []
+        return skip, None, None
     x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
     x_display, _ = _xy(train, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model().fit(x_objective, y_train)
-    displays = [make_display_model(C.DISPLAY_FEATURE_COLS, seed).fit(x_display, y_train) for seed in DISPLAY_SEEDS]
+    display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y_train)
     objective_scores = _score_marginalised(objective, evaluation, C.XI_FEATURE_COLS)
-    display_scores = [_score_marginalised(m, evaluation, C.DISPLAY_FEATURE_COLS) for m in displays]
+    display_scores = _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)
     y_eval = evaluation[C.TARGET_COL].to_numpy(dtype=float)
     base_rate_brier = float(np.mean((y_eval - y_train.mean()) ** 2))
     metrics = dict(skip)
@@ -200,13 +204,14 @@ def _evaluate_win_window(
             "train_positive_rate": float(y_train.mean()),
             "objective_auc": objective_scores["auc"],
             "objective_brier": objective_scores["brier"],
-            "display_auc_mean": float(np.mean([s["auc"] for s in display_scores])),
-            "display_auc_seed_sd": float(np.std([s["auc"] for s in display_scores])),
-            "display_brier_mean": float(np.mean([s["brier"] for s in display_scores])),
+            # The keys are the wire names the report's readers share with the run
+            # manifest and the market benchmark; each is the one display fit's score.
+            "display_auc_mean": display_scores["auc"],
+            "display_brier_mean": display_scores["brier"],
             "base_rate_brier": base_rate_brier,
         }
     )
-    return metrics, objective, displays
+    return metrics, objective, display
 
 
 @dataclass
@@ -214,15 +219,15 @@ class FoldOutcome:
     """One window's report and the fitted models later stages read.
 
     ``objective`` is what E5 scores the window's lineup pairs with, ``performance_model``
-    is what H-8 serves through the as-of path, and ``displays`` are the seeds' display
-    models -- which the market benchmark scores its joined matches with, so the market is
+    is what H-8 serves through the as-of path, and ``display`` is the window's display
+    model -- which the market benchmark scores its joined matches with, so the market is
     compared against the very model the fold reported and never a refitted lookalike.
     """
 
     report: Dict
     performance_model: Optional[PerformanceModels] = None
     objective: Optional[object] = None
-    displays: List[object] = field(default_factory=list)
+    display: Optional[object] = None
 
 
 def _evaluate_fold(
@@ -236,7 +241,7 @@ def _evaluate_fold(
     window_label: str = "fold",
 ) -> FoldOutcome:
     """One window's report, its performance model and its fitted objective."""
-    fold, objective, displays = _evaluate_win_window(format_frame, cutoff, end)
+    fold, objective, display = _evaluate_win_window(format_frame, cutoff, end)
     if objective is None:
         return FoldOutcome(report=fold)
     if benchmark is not None:
@@ -246,7 +251,7 @@ def _evaluate_fold(
             cutoff,
             end,
             format_frame[(format_frame.match_date >= cutoff) & (format_frame.match_date < end)],
-            displays,
+            display,
         )
     format_players = player_frame[player_frame.format_code == format_code]
     window_players = format_players[(format_players.match_date >= cutoff) & (format_players.match_date < end)]
@@ -254,10 +259,9 @@ def _evaluate_fold(
     fold["swap_monotonicity"] = selection_metrics.swap_monotonicity(
         objective, C.XI_FEATURE_COLS, window_players, format_code, max_matches=SWAP_MAX_MATCHES
     )
-    # B-7: the same probe on the surface a person watches. It gates nothing -- the seed-0
-    # display model is the one served, so it is the one probed.
+    # B-7: the same probe on the surface a person watches. It gates nothing.
     fold["display_swap_monotonicity"] = selection_metrics.display_swap_monotonicity(
-        displays[0], C.DISPLAY_FEATURE_COLS, window_matches, window_players, format_code, max_matches=SWAP_MAX_MATCHES
+        display, C.DISPLAY_FEATURE_COLS, window_matches, window_players, format_code, max_matches=SWAP_MAX_MATCHES
     )
     fold["specific_vs_typical"] = selection_metrics.specific_vs_typical(
         objective, C.XI_FEATURE_COLS, format_frame, cutoff, end
@@ -266,9 +270,9 @@ def _evaluate_fold(
     fold["performance"] = performance.report
     if performance.model is not None:
         fold["simulation"] = sim_harness.evaluate_window(
-            performance.model, displays, window_matches, window_players, format_code, fold["train_positive_rate"]
+            performance.model, display, window_matches, window_players, format_code, fold["train_positive_rate"]
         )
-    return FoldOutcome(report=fold, performance_model=performance.model, objective=objective, displays=displays)
+    return FoldOutcome(report=fold, performance_model=performance.model, objective=objective, display=display)
 
 
 def _summarize_folds(folds: List[Dict]) -> Dict:
@@ -289,7 +293,6 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
         "objective_auc": over_folds(lambda f: f["objective_auc"]),
         "objective_brier": over_folds(lambda f: f["objective_brier"]),
         "display_auc": over_folds(lambda f: f["display_auc_mean"]),
-        "display_auc_seed_sd_mean": over_folds(lambda f: f["display_auc_seed_sd"]),
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
         "display_swap_violation_share": over_folds(lambda f: nested(f, "display_swap_monotonicity", "violation_share")),
@@ -428,7 +431,6 @@ def evaluate(
         "cutoffs": list(WALK_FORWARD_CUTOFFS),
         "locked_start": LOCKED_START,
         "locked_window": locked_window(),
-        "seeds": list(DISPLAY_SEEDS),
         "gender_split_context": gender_split_context,
         "n_rows": int(len(result.frame)),
         "n_player_rows": int(len(result.player_frame)),

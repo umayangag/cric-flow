@@ -17,9 +17,9 @@ export function asRunMetadata(metadata: unknown): RunMetadata | null {
 /**
  * Spread measures, where less is better whatever the underlying quantity is.
  *
- * Checked *first*, and that ordering is load-bearing: a name like `display_auc_sd`
- * contains "auc" and would otherwise be read as higher-is-better — reporting a model
- * that got less consistent across seeds as an improvement.
+ * Checked *first*, and that ordering is load-bearing: a name like `cv_accuracy_std`
+ * contains "accuracy" and would otherwise be read as higher-is-better — reporting a
+ * model that got less consistent as an improvement.
  */
 const SPREAD = ['_std', 'stddev', 'variance', 'spread'];
 
