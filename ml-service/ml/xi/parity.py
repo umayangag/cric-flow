@@ -51,6 +51,7 @@ _COMPARED_COUNTS = (
     "dismissals",
     "namesake_sides",
     "oversized_squads",
+    "replacement_players",
     "unknown_player_keys",
     "player_keys",
     "team_keys",

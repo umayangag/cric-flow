@@ -163,6 +163,11 @@ class MatchRecord:
     team2: str
     venue: str
     gender: str
+    # The eleven each side started with: everyone the source lists for the side, less the
+    # replacements (FEAT-02). Cricsheet lists everyone who took the field, so a side that
+    # used a concussion substitute, an impact player or a supersub is listed as twelve;
+    # rating and aggregating the twelve is a train/serve mismatch (serving always
+    # aggregates eleven) and a post-start leak (a replacement is decided during the match).
     team1_players: List[str]
     team2_players: List[str]
     # The side the match went to: team1 / team2, or None for a no-result, a draw or a tie
@@ -185,6 +190,11 @@ class MatchRecord:
     # a fixture's stakes are a fact about its competition, not about the file it came in.
     # A record built for the serving path carries the unlabelled default.
     stakes: MatchStakes = UNLABELLED
+    # The keys of the players who joined either side after the match started -- the ones
+    # left out of ``team1_players`` / ``team2_players`` -- so the pass can count them and
+    # ``make xi-parity`` can compare the count across sources. Their deliveries stay in
+    # ``deliveries``: what they did is theirs, and the ledgers read it as anyone else's.
+    replacements: List[str] = field(default_factory=list)
 
     @property
     def outcome(self) -> Optional[float]:
@@ -415,6 +425,7 @@ def parse_cricsheet_file(
         return None
     outcome = info.get("outcome") or {}
     squad1, squad2 = _squads(players[team1], players[team2], registry)
+    squad1, squad2, replacements = _starting_elevens(squad1, squad2, replacement_keys(innings, registry))
     # Team *keys* become the club, and carry the gender; the squad lookups above and the
     # winner comparison below use the names the file actually carries, which is why the
     # mapping happens here and not when the names are read.
@@ -443,7 +454,58 @@ def parse_cricsheet_file(
         # Cricsheet writes a pool as a string in most files and as a bare number in the
         # rest; the importer normalises the same way (cricsheet.FlexibleTag).
         event_group="" if event.get("group") is None else str(event["group"]).strip(),
+        replacements=replacements,
     )
+
+
+def replacement_keys(innings: list, registry: dict) -> List[str]:
+    """The keys of the players who joined a side after the match started, in the order the
+    file records them coming in.
+
+    Cricsheet keeps a replacement where it happened: a ``replacements.match`` entry on the
+    delivery he came in at -- ``in``, ``out``, ``team``, ``reason`` -- not in ``info``, so
+    nothing in the twelve-man list says which of them joined late. The entries are read in
+    playing order over every innings, and a player who had already gone ``out`` of an
+    earlier entry is not a replacement: in the one such file in the archive (1234909, a
+    covid replacement) the stand-in went back out and the man he stood in for came back,
+    and the side that started is the one without the stand-in. A ``role`` entry -- a
+    substitute finishing an injured bowler's over -- changes nobody's membership and is
+    not read.
+
+    ``cricsheet.Match.ReplacementPlayers`` is the same rule for the go-app importer, which
+    writes it as ``match_player.is_replacement``; ``make xi-parity`` compares the count.
+    """
+    keys: List[str] = []
+    seen: set = set()
+    for inning in innings:
+        for over in inning.get("overs", []):
+            for ball in over.get("deliveries", []):
+                for entry in (ball.get("replacements") or {}).get("match", []):
+                    came_in = str(entry.get("in") or "").strip()
+                    went_out = str(entry.get("out") or "").strip()
+                    if came_in and came_in not in seen:
+                        keys.append(registry.get(came_in, "name:" + came_in))
+                    seen.update((came_in, went_out))
+    return keys
+
+
+def _starting_elevens(
+    squad1: Sequence[str], squad2: Sequence[str], replacements: Sequence[str]
+) -> Tuple[List[str], List[str], List[str]]:
+    """Both squads without their replacements, and the replacements that were found.
+
+    A replacement neither squad lists is logged and not invented: one file in the current
+    archive (1537342) spells the man who came in differently from the squad, so that side
+    stays a twelve and the pass counts it among the oversized -- the same reading the
+    importer gives it.
+    """
+    listed = set(squad1) | set(squad2)
+    found = [key for key in replacements if key in listed]
+    unlisted = [key for key in replacements if key not in listed]
+    if unlisted:
+        logger.warning("replacement not named in info.players, side kept as listed: %s", ", ".join(unlisted))
+    excluded = set(found)
+    return [k for k in squad1 if k not in excluded], [k for k in squad2 if k not in excluded], found
 
 
 def _match_number(value: object) -> Optional[int]:
@@ -604,8 +666,13 @@ def _player_key(alias: str) -> str:
     return f"COALESCE({alias}.external_id, 'name:' || {alias}.player_name)"
 
 
+# ``is_replacement`` (migration 0020, FEAT-02) marks the member who joined after the match
+# started; the eleven that started is the rows without it. A database migrated but not
+# yet re-imported holds false on every row, so it hands over the twelve, which ``make
+# xi-parity`` reports against the archive as ``oversized_squads`` and
+# ``replacement_players`` differing.
 _PLAYERS_SQL = f"""
-SELECT {_player_key("p")}, COALESCE(o.canonical_id, o.id)
+SELECT {_player_key("p")}, COALESCE(o.canonical_id, o.id), mp.is_replacement
 FROM match_player mp
 JOIN player p ON p.id = mp.player_id
 JOIN opposition o ON o.id = mp.opposition_id
@@ -713,8 +780,9 @@ class PostgresSource:
                 players = cur.fetchall()
                 cur.execute(_BALLS_SQL, (match_id,))
                 balls = cur.fetchall()
-            t1 = [key for key, opp in players if opp == team1_id]
-            t2 = [key for key, opp in players if opp == team2_id]
+            t1 = [key for key, opp, replacement in players if opp == team1_id and not replacement]
+            t2 = [key for key, opp, replacement in players if opp == team2_id and not replacement]
+            replacements = [key for key, _opp, replacement in players if replacement]
             if not t1 or not t2:
                 logger.warning("match %s has no recorded squad for a side; skipped", match_id)
                 self.counts.unusable += 1
@@ -738,6 +806,7 @@ class PostgresSource:
                 event_stage=row[10] or "",
                 event_group=row[11] or "",
                 stakes=stakes.get(str(match_id), UNLABELLED),
+                replacements=replacements,
             )
 
 

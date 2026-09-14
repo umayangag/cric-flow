@@ -55,6 +55,7 @@ def build(
     team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
+    replacement_players = 0
     runs_not_charged_to_bowler = 0
     deliveries_not_faced = 0
     dismissals = 0
@@ -66,6 +67,7 @@ def build(
         team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
+        replacement_players += len(match.replacements)
         runs_not_charged_to_bowler += _runs_not_charged_to_bowler(match)
         deliveries_not_faced += _deliveries_not_faced(match)
         dismissals += _dismissals(match)
@@ -110,6 +112,7 @@ def build(
         dismissals=dismissals,
         namesake_sides=namesake_sides,
         oversized_squads=oversized_squads,
+        replacement_players=replacement_players,
         unknown_player_keys=_unknown_player_keys(state),
         player_keys=len(state.players),
         team_keys=len(team_keys),
@@ -162,7 +165,8 @@ def _namesake_sides(match) -> int:
 
 
 def _oversized_squads(match) -> int:
-    """Sides of more than eleven: concussion and injury replacements, listed in full."""
+    """Sides still of more than eleven once the replacements are taken out: a source that
+    lists twelve and records no replacement for the twelfth (FEAT-02)."""
     return sum(1 for side in (match.team1_players, match.team2_players) if len(side) > 11)
 
 
