@@ -45,6 +45,7 @@ _COMPARED_COUNTS = (
     "matches_read",
     "undecided_matches",
     "drawn_or_tied_matches",
+    "decided_matches_without_deliveries",
     "runs_not_charged_to_bowler",
     "deliveries_not_faced",
     "dismissals",

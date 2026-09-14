@@ -419,6 +419,19 @@ across sources rather than gated by the doubling rule: it is a fact about the cr
 it goes from zero to roughly a quarter of all Tests the first time a database imported
 before migration `0017` is re-imported.
 
+It also counts `decided_matches_without_deliveries` (FEAT-03): matches with a recorded
+winner that the source handed over with no deliveries at all — a forfeit, a result awarded
+without play, or an importer that kept the match's result and squads and lost its ball
+events. Such a match used to yield twenty-two player rows labelled `runs=0`,
+`balls_faced=0`, `wickets=0` and a win row with `innings1_runs = 0` for E2 to score
+simulated totals against; the label is not "he scored nothing" but "nobody observed what
+he did". The pass now keeps the win row — its label is real — with the innings outcomes
+unobserved (`NaN`, which `simulator.complete_first_innings` never counts as complete), and
+builds no player rows. Zero on the current dataset from either source (every one of the
+22,905 archive files carries deliveries, and every match in the database has ball events),
+so it is **gated** by the doubling rule for the same reason as `unknown_player_keys`: one
+appearing is the importer losing ball events, not the cricket changing.
+
 The pass also counts `runs_not_charged_to_bowler` (FEAT-08): the byes, leg-byes and penalty
 runs over every delivery it read — the part of `runs_total` that `Deliveries.runs_bowler`
 leaves off the bowler. Both sources derive `runs_bowler` through one rule,
@@ -463,7 +476,11 @@ player-key sets; `drawn_or_tied_matches` is in that set, which is what makes the
 column part of the guarantee, and `runs_not_charged_to_bowler` (FEAT-08) and
 `deliveries_not_faced` (IMPORT-05) are in it for the same reason: a source that charges the
 bowler byes and leg-byes, or counts a wide as a ball faced, agrees with one that does not
-on every other count.
+on every other count. `decided_matches_without_deliveries` (FEAT-03) is in it because the
+two sources can genuinely differ here: the archive path drops a file with no innings as
+unusable, while the database offers a match with an innings row and no `ball_event` rows,
+and a database that lost one match's ball events agrees with the archive on every other
+count — the win row is built either way.
 
 ```bash
 make xi-parity                                    # defaults to data/go-app/cricsheet
@@ -499,8 +516,11 @@ and opponent-side aggregates, and venue context — joined with what the player 
 (balls faced — every delivery but a wide, IMPORT-05 — runs, fours, sixes, dismissals,
 actual batting position, balls bowled, wickets, runs conceded — the runs charged to the
 bowler, byes, leg-byes and penalties left to the innings, FEAT-08). Rows cover **all XI players**, never only those who batted: who got to bat
-is decided by the result, and a population selected by the outcome is a leak (H-20).
-`ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
+is decided by the result, and a population selected by the outcome is a leak (H-20). The
+one exception is a decided match with no deliveries at all (FEAT-03): its win row is built,
+because the label is real, but it has no player rows — a nought nobody observed is not a
+label — and its innings outcomes read `NaN`, so E2 never scores a simulated total against
+it. `ml/xi/rows.py` assembles the rows for both the training pass and the parity check, so the
 two cannot spell a column differently; the frame is never written to disk as a contract —
 `retrain` and the harness both consume it in memory. Since P-3 the rows also carry `catches`
 (each fielder named on a caught dismissal) and the sequence families
@@ -567,8 +587,10 @@ rate → P(0), P(1), P(2+)), and P(bats) / P(bowls). The point shown anywhere is
 the deliverable is a calibrated range and a ranking, because one innings is mostly noise
 (plan §1: within-match Spearman ≈ 0.3 for any predictor on the players who batted).
 
-**Population (H-20).** Every XI player of every decided match, with "did not bat" as 0 runs
-from 0 balls and "did not bowl" as 0 wickets. The old batting model trained on "who batted",
+**Population (H-20).** Every XI player of every decided match that has deliveries, with
+"did not bat" as 0 runs from 0 balls and "did not bowl" as 0 wickets; a decided match with
+no deliveries contributes no rows (FEAT-03), since nobody's nought was observed there. The
+old batting model trained on "who batted",
 which the result decides, and its headline MAE was pooled over five targets (S-3c); neither
 survives here. Two structures per target are available and were chosen on the walk-forward
 folds by pinball loss (plan P-3): `direct` — one gradient-boosting model per quantile (or a

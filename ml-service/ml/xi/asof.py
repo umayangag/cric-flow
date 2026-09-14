@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import math
 from datetime import date
 from typing import Callable, Dict, Iterator, List, Optional
 
@@ -168,7 +169,7 @@ def serving_parity(
         rebuilt_win, rebuilt_players = build_match_rows(state, match)
         expected = frame_rows[match.match_id]
         for col in win_cols:
-            diff = abs(float(rebuilt_win[col]) - float(getattr(expected, col)))
+            diff = _absolute_difference(float(rebuilt_win[col]), float(getattr(expected, col)))
             max_abs_difference = max(max_abs_difference, diff)
             if diff > PARITY_TOLERANCE:
                 mismatches.append(f"match {match.match_id} win column {col}: {diff:.3g}")
@@ -183,7 +184,7 @@ def serving_parity(
                 mismatches.append(f"match {match.match_id}: no frame row for {rebuilt['player_key']}")
                 continue
             for col in player_cols:
-                diff = abs(float(rebuilt[col]) - float(getattr(expected_row, col)))
+                diff = _absolute_difference(float(rebuilt[col]), float(getattr(expected_row, col)))
                 max_abs_difference = max(max_abs_difference, diff)
                 if diff > PARITY_TOLERANCE:
                     mismatches.append(f"match {match.match_id} player {rebuilt['player_key']} {col}: {diff:.3g}")
@@ -227,6 +228,15 @@ def serving_parity(
         "passed" if report["passed"] else f"FAILED ({len(mismatches)} mismatches)",
     )
     return report
+
+
+def _absolute_difference(rebuilt: float, expected: float) -> float:
+    """How far a rebuilt value is from the frame's. Two unobserved values agree: a decided
+    match with no deliveries carries NaN innings outcomes on both paths (FEAT-03), and
+    ``abs(nan - nan)`` would neither trip the tolerance nor register as agreement."""
+    if math.isnan(rebuilt) and math.isnan(expected):
+        return 0.0
+    return abs(rebuilt - expected)
 
 
 def _prediction_difference(model: PerformanceModels, rebuilt: pd.DataFrame, expected: pd.DataFrame) -> float:

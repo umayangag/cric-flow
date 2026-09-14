@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import numpy as np
@@ -9,10 +10,11 @@ import pandas as pd
 import pytest
 
 from ml.xi import contract as C
+from ml.xi import simulator
 from ml.xi.builder import build
 from ml.xi.ratings import RatingState
-from ml.xi.rows import match_actuals, player_feature_rows, serving_match
-from ml.xi.sources import batting_positions
+from ml.xi.rows import innings_outcomes, match_actuals, player_feature_rows, serving_match
+from ml.xi.sources import Deliveries, batting_positions
 from tests.xi_fixtures import ListSource, make_deliveries, make_match, xi
 
 
@@ -296,3 +298,38 @@ def test_a_batter_who_saw_only_wides_faced_no_ball() -> None:
 
     assert actuals["a0"]["balls_faced"] == 0
     assert actuals["a1"]["balls_faced"] == 1
+
+
+def test_innings_outcomes_are_unobserved_without_deliveries() -> None:
+    """FEAT-03: a match with no ball-by-ball data did not score nought; its innings were
+    not observed. The outcome columns read NaN, never 0, so E2 has nothing to score
+    simulated totals against."""
+    outcomes = innings_outcomes(make_match("m", 0, "A", xi("a"), xi("b"), Deliveries.empty()))
+
+    assert set(outcomes) == set(C.INNINGS_OUTCOME_COLS)
+    assert all(math.isnan(value) for value in outcomes.values())
+
+
+def test_a_decided_match_with_no_deliveries_yields_the_win_row_and_no_player_rows() -> None:
+    """FEAT-03: a result recorded without ball-by-ball data (a forfeit, an awarded match).
+    The win label is real and is kept; what each player did is unobserved rather than
+    zero, so there are no player rows, and the innings outcomes are unobserved too."""
+    t1, t2 = xi("a"), xi("b")
+    played = make_deliveries(["a0"] * 6, ["b5"] * 6, [4] * 6, [0] * 6)
+    source = ListSource(
+        [
+            make_match("played", 0, "A", t1, t2, played),
+            make_match("awarded", 1, "B", t1, t2, Deliveries.empty()),
+        ]
+    )
+
+    result = build(source)
+
+    frame = result.frame.set_index("match_id")
+    assert list(frame.index) == ["played", "awarded"]
+    assert frame.loc["awarded", C.TARGET_COL] == 0.0
+    assert frame.loc["awarded", C.INNINGS_OUTCOME_COLS].isna().all()
+    assert frame.loc["played", C.INNINGS_OUTCOME_COLS].notna().all()
+    assert set(result.player_frame.match_id) == {"played"}
+    assert list(simulator.complete_first_innings(result.frame)) == [False, False]
+    assert result.quality.decided_matches_without_deliveries == 1

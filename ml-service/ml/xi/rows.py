@@ -6,6 +6,12 @@ Both the training pass (``ml.xi.builder``) and the serving-parity check (H-8,
 yet folded the match in. Player rows cover ALL XI players -- never only those who batted
 or bowled, because who got to bat is decided by the result (H-20); a player without a
 delivery gets zero targets, which is what happened to them.
+
+The exception is a decided match with no deliveries at all -- a forfeit, a result awarded
+without play, a file that carries the outcome but no innings (FEAT-03). Its win label is
+real, so the win row is built; what each player did is unobserved rather than zero, so it
+has no player rows, and its innings outcomes read NaN rather than a nought that E2 would
+score simulated totals against.
 """
 
 from __future__ import annotations
@@ -85,11 +91,13 @@ def match_actuals(match: MatchRecord) -> Dict[str, Dict[str, float]]:
 def innings_outcomes(match: MatchRecord) -> Dict[str, float]:
     """What the first two innings did (``contract.INNINGS_OUTCOME_COLS``): runs, dismissals
     and deliveries. Outcome columns on the win row -- E2 scores simulated totals against
-    them -- and never an input."""
+    them -- and never an input. A match with no deliveries has unobserved innings, not
+    innings of nought: every column reads NaN, which ``simulator.complete_first_innings``
+    never counts as a complete innings."""
     d = match.deliveries
-    out = {col: 0.0 for col in C.INNINGS_OUTCOME_COLS}
     if not len(d):
-        return out
+        return {col: float("nan") for col in C.INNINGS_OUTCOME_COLS}
+    out = {col: 0.0 for col in C.INNINGS_OUTCOME_COLS}
     for number, inning in enumerate(np.unique(d.innings)[:2], start=1):
         mask = d.innings == inning
         out[f"innings{number}_runs"] = float(d.runs_total[mask].sum())
@@ -209,9 +217,15 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
 
 def build_match_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
     """The win-frame row and the player-match rows for one decided match, computed from
-    the state as of the match date. The caller guarantees the match is not folded in yet."""
+    the state as of the match date. The caller guarantees the match is not folded in yet.
+
+    A decided match with no deliveries yields the win row alone (FEAT-03): the label is a
+    fact, but a player row would label every player with a nought nobody observed.
+    """
     win_row, player_rows = player_feature_rows(state, match)
     win_row.update(innings_outcomes(match))
+    if not len(match.deliveries):
+        return win_row, []
     actuals = match_actuals(match)
     for row in player_rows:
         row.update(actuals.get(row["player_key"], _ZERO_ACTUALS))

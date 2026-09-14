@@ -50,6 +50,7 @@ def build(
     player_rows = []
     n_undecided = 0
     n_drawn_or_tied = 0
+    n_decided_without_deliveries = 0
     n_seen = 0
     team_keys = set()
     namesake_sides = 0
@@ -83,6 +84,7 @@ def build(
             win_row, match_player_rows = build_match_rows(state, match)
             rows.append(win_row)
             player_rows.extend(match_player_rows)
+            n_decided_without_deliveries += int(not len(match.deliveries))
         else:
             n_undecided += 1
             n_drawn_or_tied += int(match.drawn_or_tied)
@@ -102,6 +104,7 @@ def build(
         matches_read=counts.yielded,
         undecided_matches=n_undecided,
         drawn_or_tied_matches=n_drawn_or_tied,
+        decided_matches_without_deliveries=n_decided_without_deliveries,
         runs_not_charged_to_bowler=runs_not_charged_to_bowler,
         deliveries_not_faced=deliveries_not_faced,
         dismissals=dismissals,
@@ -117,11 +120,13 @@ def build(
         dead_rubber_matches=stakes_counts["dead"],
     )
     logger.info(
-        "rating pass: %d training rows, %d player-match rows, %d undecided matches, %d players "
+        "rating pass: %d training rows, %d player-match rows, %d undecided matches, "
+        "%d decided matches without deliveries, %d players "
         "(%d namesake sides, %d sides over eleven, %d unresolved player keys, %d with a date of birth)",
         len(frame),
         len(player_frame),
         n_undecided,
+        quality.decided_matches_without_deliveries,
         quality.player_keys,
         quality.namesake_sides,
         quality.oversized_squads,

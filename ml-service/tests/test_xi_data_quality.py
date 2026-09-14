@@ -252,6 +252,34 @@ def test_the_pass_counts_the_draws_and_the_ties_nobody_broke() -> None:
     assert result.quality.drawn_or_tied_matches == 2
 
 
+def test_the_pass_counts_decided_matches_with_no_deliveries() -> None:
+    """FEAT-03: a result recorded without ball-by-ball data. An undecided match without
+    deliveries is already an undecided match; the count is for the ones whose win label
+    is real and whose player rows would otherwise all have read zero."""
+    matches = [
+        _match("played", 0, ["a1"], ["b1"]),
+        replace(_match("awarded", 1, ["a1"], ["b1"]), deliveries=Deliveries.empty()),
+        replace(_match("abandoned", 2, ["a1"], ["b1"], winner=None, result="no result"), deliveries=Deliveries.empty()),
+    ]
+
+    result = build(_CountingSource(matches, SourceCounts(offered=3, yielded=3)))
+
+    assert result.quality.decided_matches_without_deliveries == 1
+    assert result.quality.undecided_matches == 1
+    assert list(result.frame.match_id) == ["played", "awarded"]
+    assert set(result.player_frame.match_id) == {"played"}
+
+
+def test_a_decided_match_without_deliveries_appearing_fails_the_gate() -> None:
+    """Zero on the current dataset from either source, which is what makes it worth
+    gating: one appearing is an importer that kept a result and lost its ball events."""
+    regressed = replace(_clean(), decided_matches_without_deliveries=1)
+
+    result = quality.check(regressed, previous=_clean().as_dict())
+
+    assert result.failures == ["decided_matches_without_deliveries was 0 and is now 1"]
+
+
 def test_a_source_that_reports_nothing_is_described_by_what_arrived() -> None:
     """Zeros would make the accounting identity hold vacuously, which is the opposite of
     what it is for."""
@@ -358,6 +386,23 @@ def test_parity_reports_a_result_only_one_source_reads() -> None:
 
     assert postgres.quality.undecided_matches == cricsheet.quality.undecided_matches == 2
     assert differences == ["drawn_or_tied_matches: postgres 0, cricsheet 2"]
+
+
+def test_parity_reports_a_match_whose_deliveries_only_one_source_holds() -> None:
+    """FEAT-03, the guarantee itself: a database that kept a match's result and squads
+    but lost its ball events agrees with the archive on every other count -- the win row
+    is built either way -- and the parity check must still fail, naming this one."""
+    from ml.xi.parity import compare
+
+    archive = [_match(f"m{i}", i, ["a1", "a2"], ["b1", "b2"]) for i in range(3)]
+    database = archive[:2] + [replace(archive[2], deliveries=Deliveries.empty())]
+    postgres = build(_CountingSource(database, SourceCounts(offered=3, yielded=3)))
+    cricsheet = build(_CountingSource(archive, SourceCounts(offered=3, yielded=3)))
+
+    differences = compare(postgres, cricsheet)
+
+    assert len(postgres.frame) == len(cricsheet.frame) == 3
+    assert differences == ["decided_matches_without_deliveries: postgres 1, cricsheet 0"]
 
 
 def test_parity_reports_a_player_key_only_one_source_has(two_passes) -> None:
