@@ -79,6 +79,15 @@ def test_the_run_report_scores_the_display_model_once(built, tmp_path) -> None:
     assert manifest["metrics"]["T20"]["display_auc_mean"] == format_report["display"]["auc"]
 
 
+def test_the_manifest_records_the_iterations_the_display_model_ran(built, tmp_path) -> None:
+    """EVAL-01: the manifest carries ``n_iter`` beside the grid's choice, and it is the
+    ``max_iter`` the grid chose -- the record that would have shown an early-stopped fit."""
+    manifest = _written_manifest(built, tmp_path, "2024-02-20")
+
+    chosen = manifest["hyperparameters"]["T20"]
+    assert chosen["n_iter"] == chosen["params"]["max_iter"]
+
+
 def test_a_run_with_no_holdout_still_names_the_formats_it_trained(built, tmp_path) -> None:
     """B-3, the measured case: a cutoff after the last match trains everything and scores
     nothing. The manifest names the format, carries its row counts, and says why the

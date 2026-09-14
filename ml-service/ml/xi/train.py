@@ -81,12 +81,12 @@ DISPLAY_GRID_MARGIN = 0.002
 GRID_VALIDATION_FRACTION = 0.2
 
 # The display model is fitted once, under one fixed random state. HistGradientBoosting's
-# ``random_state`` reaches nothing but the early-stopping validation split (which sklearn
-# switches on by itself above 10,000 rows -- EVAL-01) and the binning subsample above
-# 200,000 rows, so refitting under other seeds gave bit-identical models in every format
-# but T20 and, in T20, measured only the luck of that split. The three-seed loop that used
-# to sit here therefore reported a "seed spread" of exactly zero and called it a noise
-# floor (EVAL-02). The fixed value keeps the T20 fit reproducible; it is not a replicate.
+# ``random_state`` reaches nothing but the early-stopping validation split (off, below --
+# EVAL-01) and the binning subsample above 200,000 rows, so refitting under other seeds
+# gives bit-identical models; while early stopping still switched itself on in T20 the
+# seed measured only the luck of that split. The three-seed loop that used to sit here
+# therefore reported a "seed spread" of exactly zero and called it a noise floor
+# (EVAL-02). The fixed value is a record, not a replicate.
 DISPLAY_RANDOM_STATE = 0
 
 
@@ -104,6 +104,14 @@ def make_display_model(
         max_iter=int(settings["max_iter"]),
         l2_regularization=1.0,
         min_samples_leaf=40,
+        # Explicitly off, never sklearn's ``'auto'`` (EVAL-01). ``'auto'`` switches early
+        # stopping on above 10,000 rows with a random 10 % validation split, so the grid,
+        # which scores each candidate on the inner 80 % of a format's rows, fitted every
+        # candidate to its full ``max_iter`` and then the winner was refitted on all the
+        # rows -- above the line in T20 -- to a different, early-stopped iteration count
+        # on 90 % of them. With it off the model the grid scored is the model fitted,
+        # ``max_iter`` means what the grid says it means, and no row is held back.
+        early_stopping=False,
         random_state=DISPLAY_RANDOM_STATE,
         monotonic_cst=C.monotone_directions(columns, constrain_team_context),
     )
@@ -234,8 +242,11 @@ def train_format(
     x_dis_tr, _ = _xy(tr, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model().fit(x_obj_tr, y_tr)
     grid = choose_display_params(tr)
-    report["hyperparameters"] = grid
     display = make_display_model(C.DISPLAY_FEATURE_COLS, grid["params"]).fit(x_dis_tr, y_tr)
+    # The iterations the served model ran, beside the ``max_iter`` the grid chose: equal by
+    # construction now, and the number that would have shown an early-stopped fit from the
+    # record rather than from sklearn's defaults (EVAL-01). It reaches the run manifest.
+    report["hyperparameters"] = {**grid, "n_iter": int(display.n_iter_)}
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)
