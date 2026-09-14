@@ -79,7 +79,7 @@ def test_replacement_keys_names_the_man_who_came_in() -> None:
         _innings("X", _delivery("X0", "Y0"), _delivery("X0", "Y0", {"match": [{"in": "X11", "out": "X10", **_ENTRY}]}))
     ]
 
-    assert replacement_keys(innings, {"X11": "id_X11"}) == ["id_X11"]
+    assert replacement_keys(innings, {"X11": "id_X11"}) == [("X", "id_X11")]
 
 
 def test_replacement_keys_reads_a_swap_back_as_one_replacement() -> None:
@@ -90,7 +90,7 @@ def test_replacement_keys_reads_a_swap_back_as_one_replacement() -> None:
         _innings("Y", _delivery("Y0", "X0", {"match": [{"in": "MS Chapman", "out": "BG Lister", **_ENTRY}]})),
     ]
 
-    assert replacement_keys(innings, {}) == ["name:BG Lister"]
+    assert replacement_keys(innings, {}) == [("X", "name:BG Lister")]
 
 
 def test_replacement_keys_ignores_a_role_replacement() -> None:
@@ -127,7 +127,7 @@ def test_the_archive_path_keeps_a_side_whose_replacement_it_cannot_name(tmp_path
 
     assert len(record.team1_players) == 12
     assert record.replacements == []
-    assert any("replacement not named in info.players" in message for message in caplog.messages)
+    assert any("replacement not in the side's info.players" in message for message in caplog.messages)
 
 
 # ---------------------------------------------------------------------------
@@ -236,3 +236,18 @@ def test_a_record_carries_no_replacements_unless_told() -> None:
     record = _match("m0", 0, ["a1"], ["b1"])
 
     assert record.replacements == []
+
+
+def test_a_replacement_named_for_one_side_is_not_looked_for_in_the_other(tmp_path, caplog) -> None:
+    """The archive's 1537342: the entry names as the man who came in for X a player Y
+    lists. He started for Y and stays there; X stays a twelve, and the pass says so."""
+    players = _twelve_and_eleven()
+    doc = _doc(players, [_innings("X", _delivery("X0", "Y0", {"match": [{"in": "Y10", "out": "X10", **_ENTRY}]}))])
+
+    with caplog.at_level(logging.WARNING, logger="ml.xi.sources"):
+        record = _parse(tmp_path, doc)
+
+    assert len(record.team1_players) == 12
+    assert "id_Y10" in record.team2_players and len(record.team2_players) == 11
+    assert record.replacements == []
+    assert any("X: id_Y10" in message for message in caplog.messages)

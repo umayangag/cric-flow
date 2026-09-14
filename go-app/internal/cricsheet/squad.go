@@ -125,23 +125,25 @@ func SquadFromInfo(info Info) (members []SquadMember, ambiguous []string, err er
 	return members, ambiguous, nil
 }
 
-// ReplacementPlayers returns the names of the players who joined a side after the match
-// started, in the order the file records them coming in.
+// ReplacementPlayers returns the players who joined a side after the match started, each
+// with the side the file says he joined, in the order the file records them coming in.
 //
 // A replacement is the `in` of a replacements.match entry on a delivery (see
-// Replacements). The entries are read in playing order over every innings, and a player
-// who had already gone `out` of an earlier entry is not one: in the one such file in the
-// current archive (1234909, a covid replacement) the man who came in went back out and
-// the man he replaced came back, and the side that started is the one without the
-// stand-in. Every other entry in the archive is a plain swap, and the rule reads it as
-// "the man who came in".
+// Replacements), for the `team` the entry names. The entries are read in playing order
+// over every innings, and a player who had already gone `out` of an earlier entry is not
+// one: in the one such file in the current archive (1234909, a covid replacement) the man
+// who came in went back out and the man he replaced came back, and the side that started
+// is the one without the stand-in. Every other entry in the archive is a plain swap, and
+// the rule reads it as "the man who came in".
 //
-// ml.xi.sources.replacement_keys is the same rule for the rating pass's archive path, so
-// both of its sources build the same eleven from one file; `make xi-parity` compares the
-// count.
-func (m *Match) ReplacementPlayers() []string {
-	replacements := make([]string, 0)
-	seen := map[string]bool{}
+// The side is part of the answer, not a detail: one file (1537342) names as the man who
+// came in for one side a player listed for the other, and matching by name alone would
+// have flagged a starter of the wrong team. ml.xi.sources.replacement_keys is the same
+// rule for the rating pass's archive path, so both of its sources build the same eleven
+// from one file; `make xi-parity` compares the count.
+func (m *Match) ReplacementPlayers() []SquadMember {
+	replacements := make([]SquadMember, 0)
+	seen := map[SquadMember]bool{}
 	for i := range m.Innings {
 		for j := range m.Innings[i].Overs {
 			for k := range m.Innings[i].Overs[j].Deliveries {
@@ -150,8 +152,10 @@ func (m *Match) ReplacementPlayers() []string {
 					continue
 				}
 				for _, r := range d.Replacements.Match {
-					in, out := strings.TrimSpace(r.In), strings.TrimSpace(r.Out)
-					if in != "" && !seen[in] {
+					team := strings.TrimSpace(r.Team)
+					in := SquadMember{Team: team, Player: strings.TrimSpace(r.In)}
+					out := SquadMember{Team: team, Player: strings.TrimSpace(r.Out)}
+					if in.Player != "" && !seen[in] {
 						replacements = append(replacements, in)
 					}
 					seen[in], seen[out] = true, true
@@ -210,9 +214,9 @@ func buildMatchPlayerRows(
 		return nil, fmt.Errorf("read info.players: %w", err)
 	}
 
-	replaced := map[string]bool{}
-	for _, name := range m.ReplacementPlayers() {
-		replaced[name] = true
+	replaced := map[SquadMember]bool{}
+	for _, replacement := range m.ReplacementPlayers() {
+		replaced[replacement] = true
 	}
 	oppositionIDs := map[string]int64{}
 	rows := make([]db.MatchPlayer, 0, len(members))
@@ -246,17 +250,17 @@ func buildMatchPlayerRows(
 			MatchID:       matchID,
 			PlayerID:      playerID,
 			OppositionID:  oppositionID,
-			IsReplacement: replaced[member.Player],
+			IsReplacement: replaced[member],
 		})
-		delete(replaced, member.Player)
+		delete(replaced, member)
 	}
 	if len(replaced) > 0 {
 		unlisted := make([]string, 0, len(replaced))
-		for name := range replaced {
-			unlisted = append(unlisted, name)
+		for replacement := range replaced {
+			unlisted = append(unlisted, replacement.Team+": "+replacement.Player)
 		}
 		sort.Strings(unlisted)
-		slog.Warn("cricsheet: replacement not named in info.players, side kept as listed",
+		slog.Warn("cricsheet: replacement not in the side's info.players, side kept as listed",
 			slog.String("file", path),
 			slog.Int64("match_id", matchID),
 			slog.String("match_date", dateISO),

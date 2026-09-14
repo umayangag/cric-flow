@@ -425,7 +425,7 @@ def parse_cricsheet_file(
         return None
     outcome = info.get("outcome") or {}
     squad1, squad2 = _squads(players[team1], players[team2], registry)
-    squad1, squad2, replacements = _starting_elevens(squad1, squad2, replacement_keys(innings, registry))
+    squad1, squad2, replacements = _starting_elevens(team1, squad1, team2, squad2, replacement_keys(innings, registry))
     # Team *keys* become the club, and carry the gender; the squad lookups above and the
     # winner comparison below use the names the file actually carries, which is why the
     # mapping happens here and not when the names are read.
@@ -458,9 +458,9 @@ def parse_cricsheet_file(
     )
 
 
-def replacement_keys(innings: list, registry: dict) -> List[str]:
-    """The keys of the players who joined a side after the match started, in the order the
-    file records them coming in.
+def replacement_keys(innings: list, registry: dict) -> List[Tuple[str, str]]:
+    """The players who joined a side after the match started, as (team, key) pairs in the
+    order the file records them coming in.
 
     Cricsheet keeps a replacement where it happened: a ``replacements.match`` entry on the
     delivery he came in at -- ``in``, ``out``, ``team``, ``reason`` -- not in ``info``, so
@@ -472,38 +472,47 @@ def replacement_keys(innings: list, registry: dict) -> List[str]:
     substitute finishing an injured bowler's over -- changes nobody's membership and is
     not read.
 
-    ``cricsheet.Match.ReplacementPlayers`` is the same rule for the go-app importer, which
-    writes it as ``match_player.is_replacement``; ``make xi-parity`` compares the count.
+    The team is part of the answer: one file (1537342) names as the man who came in for
+    one side a player listed for the other, and matching by key alone would take a starter
+    off the wrong team. ``cricsheet.Match.ReplacementPlayers`` is the same rule for the
+    go-app importer, which writes it as ``match_player.is_replacement``; ``make xi-parity``
+    compares the count.
     """
-    keys: List[str] = []
+    pairs: List[Tuple[str, str]] = []
     seen: set = set()
     for inning in innings:
         for over in inning.get("overs", []):
             for ball in over.get("deliveries", []):
                 for entry in (ball.get("replacements") or {}).get("match", []):
-                    came_in = str(entry.get("in") or "").strip()
-                    went_out = str(entry.get("out") or "").strip()
-                    if came_in and came_in not in seen:
-                        keys.append(registry.get(came_in, "name:" + came_in))
+                    team = str(entry.get("team") or "").strip()
+                    came_in = (team, str(entry.get("in") or "").strip())
+                    went_out = (team, str(entry.get("out") or "").strip())
+                    if came_in[1] and came_in not in seen:
+                        pairs.append((team, registry.get(came_in[1], "name:" + came_in[1])))
                     seen.update((came_in, went_out))
-    return keys
+    return pairs
 
 
 def _starting_elevens(
-    squad1: Sequence[str], squad2: Sequence[str], replacements: Sequence[str]
+    team1: str,
+    squad1: Sequence[str],
+    team2: str,
+    squad2: Sequence[str],
+    replacements: Sequence[Tuple[str, str]],
 ) -> Tuple[List[str], List[str], List[str]]:
-    """Both squads without their replacements, and the replacements that were found.
+    """Both squads without their replacements, and the replacements that were found --
+    each looked for in the side the entry names, as the importer does.
 
-    A replacement neither squad lists is logged and not invented: one file in the current
-    archive (1537342) spells the man who came in differently from the squad, so that side
-    stays a twelve and the pass counts it among the oversized -- the same reading the
-    importer gives it.
+    A replacement its side does not list is logged and not invented: the one in the
+    current archive (1537342) names a player the other side lists, so his own side keeps
+    him and the side he was said to join stays a twelve, which the pass counts among the
+    oversized -- the same reading the importer gives it.
     """
-    listed = set(squad1) | set(squad2)
-    found = [key for key in replacements if key in listed]
-    unlisted = [key for key in replacements if key not in listed]
+    listed = {team1: set(squad1), team2: set(squad2)}
+    found = [key for team, key in replacements if key in listed.get(team, set())]
+    unlisted = [f"{team}: {key}" for team, key in replacements if key not in listed.get(team, set())]
     if unlisted:
-        logger.warning("replacement not named in info.players, side kept as listed: %s", ", ".join(unlisted))
+        logger.warning("replacement not in the side's info.players, side kept as listed: %s", ", ".join(unlisted))
     excluded = set(found)
     return [k for k in squad1 if k not in excluded], [k for k in squad2 if k not in excluded], found
 

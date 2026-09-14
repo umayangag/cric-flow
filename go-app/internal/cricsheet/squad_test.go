@@ -400,14 +400,13 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 		}, rows)
 	})
 
-	t.Run("a replacement the squad does not list flags nobody and costs nothing", func(t *testing.T) {
+	t.Run("a replacement the side does not list flags nobody and costs nothing", func(t *testing.T) {
 		t.Parallel()
-		// Arrange: the archive's 1537342, where the man who came in is spelled one way in
-		// the entry and another in info.players.
+		// Arrange: a name the entry gives that no side lists.
 		match := &Match{
 			Info: info,
 			Innings: []Innings{
-				inningsWithReplacements(deliveryWithReplacements(matchReplacement("RMMP Rathnayake", "V Kohli"))),
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("Someone Else", "V Kohli"))),
 			},
 		}
 		resolver := &stubSquadResolver{
@@ -424,6 +423,33 @@ func TestBuildMatchPlayerRows(t *testing.T) {
 			assert.False(t, rows[i].IsReplacement, "row %d", i)
 		}
 		assert.Len(t, rows, 3)
+	})
+
+	t.Run("a replacement named for one side is not looked for in the other", func(t *testing.T) {
+		t.Parallel()
+		// Arrange: the archive's 1537342, whose entry names as the man who came in for one
+		// side a player listed for the other. He started for his own side and stays.
+		match := &Match{
+			Info: info,
+			Innings: []Innings{
+				inningsWithReplacements(deliveryWithReplacements(matchReplacement("K Mendis", "V Kohli"))),
+			},
+		}
+		resolver := &stubSquadResolver{
+			playerIDs:     map[string]int64{"V Kohli": 1, "R Sharma": 2, "K Mendis": 3},
+			oppositionIDs: map[string]int64{"India": 10, "Sri Lanka": 20},
+		}
+
+		// Act
+		rows, err := buildMatchPlayerRows(context.Background(), resolver, match, 99, "f.json", "2024-01-01")
+
+		// Assert
+		require.NoError(t, err)
+		assert.Equal(t, []db.MatchPlayer{
+			{MatchID: 99, PlayerID: 1, OppositionID: 10},
+			{MatchID: 99, PlayerID: 2, OppositionID: 10},
+			{MatchID: 99, PlayerID: 3, OppositionID: 20},
+		}, rows)
 	})
 }
 
@@ -450,22 +476,23 @@ func inningsWithReplacements(deliveries ...Delivery) Innings {
 func TestReplacementPlayers(t *testing.T) {
 	t.Parallel()
 
+	india := func(player string) SquadMember { return SquadMember{Team: "India", Player: player} }
 	testCases := []struct {
 		name  string
 		match Match
-		want  []string
+		want  []SquadMember
 	}{
 		{
 			name:  "a file with no replacements names nobody",
 			match: Match{Innings: []Innings{inningsWithReplacements(Delivery{Batter: "a"})}},
-			want:  []string{},
+			want:  []SquadMember{},
 		},
 		{
-			name: "a concussion substitute is the man who came in",
+			name: "a concussion substitute is the man who came in, for the side he came in for",
 			match: Match{Innings: []Innings{
 				inningsWithReplacements(deliveryWithReplacements(matchReplacement("R Sharma", "V Kohli"))),
 			}},
-			want: []string{"R Sharma"},
+			want: []SquadMember{india("R Sharma")},
 		},
 		{
 			// 1234909 in the archive: a covid stand-in went back out and the man he stood
@@ -477,7 +504,7 @@ func TestReplacementPlayers(t *testing.T) {
 					deliveryWithReplacements(matchReplacement("MS Chapman", "BG Lister")),
 				),
 			}},
-			want: []string{"BG Lister"},
+			want: []SquadMember{india("BG Lister")},
 		},
 		{
 			name: "replacements are read from every innings in playing order",
@@ -485,7 +512,7 @@ func TestReplacementPlayers(t *testing.T) {
 				inningsWithReplacements(deliveryWithReplacements(matchReplacement("A12", "A1"))),
 				inningsWithReplacements(deliveryWithReplacements(matchReplacement("B12", "B1"))),
 			}},
-			want: []string{"A12", "B12"},
+			want: []SquadMember{india("A12"), india("B12")},
 		},
 		{
 			name: "the same entry twice names the player once",
@@ -495,7 +522,7 @@ func TestReplacementPlayers(t *testing.T) {
 					deliveryWithReplacements(matchReplacement("A12", "A1")),
 				),
 			}},
-			want: []string{"A12"},
+			want: []SquadMember{india("A12")},
 		},
 		{
 			name: "names are trimmed and an empty one is skipped",
@@ -504,14 +531,14 @@ func TestReplacementPlayers(t *testing.T) {
 					deliveryWithReplacements(matchReplacement("  A12 ", "A1"), matchReplacement("", "A2")),
 				),
 			}},
-			want: []string{"A12"},
+			want: []SquadMember{india("A12")},
 		},
 		{
 			// A substitute finishing an injured bowler's over: the file records it under
 			// `role`, which is not decoded, and nobody's membership changes.
 			name:  "a delivery with a replacements object but no match entries names nobody",
 			match: Match{Innings: []Innings{inningsWithReplacements(deliveryWithReplacements())}},
-			want:  []string{},
+			want:  []SquadMember{},
 		},
 	}
 
@@ -542,7 +569,7 @@ func TestParse_ReadsADeliverysMatchReplacements(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	assert.Equal(t, []string{"A12"}, m.ReplacementPlayers())
+	assert.Equal(t, []SquadMember{{Team: "A", Player: "A12"}}, m.ReplacementPlayers())
 	assert.Equal(t,
 		[]MatchReplacement{{In: "A12", Out: "A3", Team: "A", Reason: "concussion_substitute"}},
 		m.Innings[0].Overs[0].Deliveries[0].Replacements.Match)

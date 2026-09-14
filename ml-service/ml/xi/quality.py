@@ -118,7 +118,7 @@ class DataQuality:
     # over eleven; 1,342 of those carry a `replacements.match` entry naming the man who came
     # in, so the pass leaves him out and the side is an eleven. The 23 that do not (21 Syed
     # Mushtaq Ali Trophy 2022 sides of twelve, 2 Women's T20 Challenge 2018 sides of
-    # thirteen) and the one whose entry spells him differently from the squad (1537342)
+    # thirteen) and the one whose entry names a player the other side lists (1537342)
     # stay oversized and are what this counts. A sudden doubling would mean the squad parse
     # had started collecting somebody else, or a source had stopped seeing its replacements.
     oversized_squads: int = 0
