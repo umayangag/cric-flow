@@ -1213,7 +1213,7 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "n_samples": "how many draws the simulator took",
     "n_pairs": "a pair count",
     "n_features": "how many columns the model was fitted on",
-    "n_calibration": "how many rows were held back for calibration",
+    "n_calibration": "how many rows the calibration fold held; its members did not train on them, the served ones did",
     "pairs": "E5 pair counts, by fold and by window",
     "pairs_scored": "how many pairs the agreement was computed over",
     "agreed": "the numerator of the agreement rate",

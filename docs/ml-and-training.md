@@ -659,9 +659,22 @@ inside the walk-forward folds only, where it turned out flat (§ P-3 of the plan
 on three seeds, which enter through the early-stopping split, with the members' outputs
 averaged. Independently fitted quantiles can cross; they are sorted. When the harness finds a
 quantile target's coverage off nominal it is **recalibrated on a temporal fold** (H-5,
-`ml/xi/perf_calibration.py`): the last quarter of the training rows is held out of the fit,
-each level is mapped by an isotonic binned correction fitted there, and the members never
-see those rows (H-21). `performance.RECALIBRATED_TARGETS` records the decision.
+`ml/xi/perf_calibration.py`): members fitted on the rows before the last 92 days
+(`performance.CALIBRATION_DAYS`) predict those days, which they did not train on (H-21), and
+each level is mapped by an isotonic binned correction fitted on that residual.
+`performance.RECALIBRATED_TARGETS` records the decision.
+
+**Calibrate on the fold, refit on the full history (EVAL-03).** The fold members exist only
+to produce out-of-sample residuals — for the recalibration and for the simulator's shared
+match factor (below) — and are discarded; the members served are a second fit on every row,
+so the served quantiles read the same recent history as the ratings beside them instead of
+ending 92 days short of it. The run report records `train_to` (the served members' last row)
+beside `calibration_from` (the fold's first). The fold members differ from the served ones by
+the fold's rows alone (2–5 % of a format's history), and plan § 8.3 measured the two kinds
+of members side by side on the walk-forward folds — the same first-innings coverage, width
+and dispersion ratio to within 0.01 — which is what licenses reading the fold's residuals as
+the served members'. The cost is a second member fit per format, roughly doubling the
+performance fit (≈ 6 minutes over the four formats in the last run).
 
 **Measured by (H-12, H-22).** Per target and format, never pooled: within-match Spearman and
 top-3 hit for the ranking (using the mean for counts — a median of 0 cannot rank bowlers —
@@ -752,8 +765,9 @@ balls among those who batted (`simulator.runs_balls_copula_rho`, stored in the a
 draws can under-disperse totals. E2 measures it (PIT and the dispersion ratio of actual
 totals around the simulated mean); where needed, one multiplicative factor per draw, shared by
 both innings, is sampled from the **as-of residual distribution** — actual / simulated-mean
-first-innings totals on the last 92 days before the cutoff, the temporal calibration fold the
-members do not train on (H-21), deconvolved of the simulator's own dispersion — never a
+first-innings totals on the last 92 days before the cutoff, the temporal calibration fold,
+predicted by members that did not train on it (H-21; the members served are then refitted on
+every row — *Fitting* above), deconvolved of the simulator's own dispersion — never a
 hand-set CV. `simulator.SHARED_FACTOR` records the decision; §8.3 of the plan the before/after.
 The pool is **one per format**, and that is a known limitation, not an assumption: the same
 interval is too narrow for a day game and too wide for a night one (T20 first-innings
