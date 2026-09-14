@@ -10,6 +10,7 @@ import pytest
 from ml.xi.asof import AsOfRatings, AsOfServer, serving_parity
 from ml.xi.builder import build
 from ml.xi.ratings import RatingState
+from ml.xi.sources import Deliveries
 from tests.xi_fixtures import ListSource, make_deliveries, make_match, xi
 
 
@@ -98,6 +99,22 @@ def test_serving_parity_fails_on_a_corrupted_frame() -> None:
 
     assert not report["passed"]
     assert any("d_pelo_mean" in m for m in report["mismatches"])
+
+
+def test_serving_parity_passes_on_a_decided_match_with_no_deliveries() -> None:
+    """FEAT-03: such a match has a win row, no player rows and unobserved (NaN) innings
+    outcomes on both paths; the rebuild must agree with the frame rather than trip on
+    the NaN, and the match still counts as compared."""
+    matches = _matches([0, 1, 2, 3]) + [make_match("m4", 4, "A", xi("a"), xi("b"), Deliveries.empty())]
+    result = build(ListSource(matches))
+
+    report = serving_parity(ListSource(matches), result.frame, result.player_frame, last_n=3)
+
+    assert report["passed"], report["mismatches"]
+    assert report["matches_compared"] == 3
+    assert report["win_rows_compared"] == 3
+    assert report["player_rows_compared"] == 2 * 22
+    assert report["max_abs_difference"] == pytest.approx(0.0, abs=1e-12)
 
 
 def test_serving_parity_reports_matches_the_source_no_longer_yields() -> None:

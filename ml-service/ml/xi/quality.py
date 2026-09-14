@@ -42,6 +42,7 @@ BASELINE_NAME = "xi_data_quality_baseline.json"
 _GATED_COUNTS = (
     "unusable_matches",
     "undecided_matches",
+    "decided_matches_without_deliveries",
     "namesake_sides",
     "oversized_squads",
     "unknown_player_keys",
@@ -67,6 +68,17 @@ class DataQuality:
     # doubling rule: it is a fact about the cricket, and it goes from zero to a quarter of
     # all Tests the first time a pre-0017 database is re-imported.
     drawn_or_tied_matches: int = 0
+
+    # Decided matches the source handed over with no deliveries at all: a forfeit, a result
+    # awarded without play, or -- the case worth gating -- an importer that kept the match's
+    # result and squads and lost its ball events (FEAT-03). The pass keeps the win row,
+    # whose label is real, and builds no player rows and no innings outcomes, because
+    # "what he did" is unobserved and a nought would train the performance models on it.
+    # Zero on the current dataset from either source; gated by the doubling rule for the
+    # same reason as ``unknown_player_keys``, and compared across sources because the
+    # archive path drops a file with no innings while the database offers a match with an
+    # innings row and no balls, so the two can disagree here and nowhere else.
+    decided_matches_without_deliveries: int = 0
 
     # Byes, leg-byes and penalty runs over every delivery the pass read: the part of the
     # runs off the bat's end that the bowler is not charged (``Deliveries.runs_bowler``,
