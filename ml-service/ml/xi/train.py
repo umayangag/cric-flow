@@ -7,10 +7,13 @@ called. Nothing here knows about runs.
 
 Per format two models are fitted on rows before the cutoff and scored on rows at or after it:
 
-* objective  -- logistic regression on XI_FEATURE_COLS. Additive, so a hill-climb over XIs
-                sees a smooth surface and a one-player upgrade never lowers the score
-                (measured: <1% of upgrades move p by less than 0, vs 12% for unconstrained
-                boosting). This is what the optimiser maximises.
+* objective  -- logistic regression on XI_FEATURE_COLS, fitted under the contract's signs
+                (``contract.monotone_directions``, the same directions the display model
+                obeys): a coefficient on a ``+1`` stem cannot be negative, so the surface a
+                hill-climb over XIs sees is additive *and* monotone by construction -- a
+                one-player upgrade never lowers the score in either batting order. Before
+                FEAT-14 the fit was unconstrained and the T20I objective carried a negative
+                own-side weight on ``pelo_mean``. This is what the optimiser maximises.
 * display    -- monotone-constrained gradient boosting on XI + team-context columns.
                 Higher AUC; used for the probability shown to users.
 
@@ -36,7 +39,6 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -45,15 +47,25 @@ from ml.xi import contract as C
 from ml.xi import perf_baselines, perf_harness, quality
 from ml.xi.builder import BuildResult
 from ml.xi.performance import default_spec, fit_performance
+from ml.xi.signed_logistic import SignedLogisticRegression
 from ml.xi.store import FormatModels, save_models, save_performance, save_ratings
 
 logger = logging.getLogger(__name__)
 
 REPORT_NAME = "xi_win_report.json"
 
+#: The objective's inverse regularisation strength, unchanged since the model was first
+#: fitted; the bounds are the only thing FEAT-14 added to the fit.
+OBJECTIVE_C = 0.3
 
-def make_objective_model() -> object:
-    return make_pipeline(StandardScaler(), LogisticRegression(C=0.3, max_iter=3000))
+
+def make_objective_model(columns: List[str]) -> object:
+    """The selection objective: standardised inputs, then a logistic regression whose
+    coefficients are bounded by the contract's sign for each column (FEAT-14)."""
+    return make_pipeline(
+        StandardScaler(),
+        SignedLogisticRegression(signs=C.monotone_directions(columns), C=OBJECTIVE_C, max_iter=3000),
+    )
 
 
 # The whole hyperparameter search this pipeline has (§9.3): three points for the display
@@ -240,7 +252,7 @@ def train_format(
         return None, report
     x_obj_tr, y_tr = _xy(tr, C.XI_FEATURE_COLS)
     x_dis_tr, _ = _xy(tr, C.DISPLAY_FEATURE_COLS)
-    objective = make_objective_model().fit(x_obj_tr, y_tr)
+    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_obj_tr, y_tr)
     grid = choose_display_params(tr)
     display = make_display_model(C.DISPLAY_FEATURE_COLS, grid["params"]).fit(x_dis_tr, y_tr)
     # The iterations the served model ran, beside the ``max_iter`` the grid chose: equal by

@@ -191,7 +191,7 @@ def _evaluate_win_window(
         return skip, None, None
     x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
     x_display, _ = _xy(train, C.DISPLAY_FEATURE_COLS)
-    objective = make_objective_model().fit(x_objective, y_train)
+    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_objective, y_train)
     display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y_train)
     objective_scores = _score_marginalised(objective, evaluation, C.XI_FEATURE_COLS)
     display_scores = _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)
