@@ -98,6 +98,45 @@ func TestProjectedEleven_RefusesASideThatIsNotAnEleven(t *testing.T) {
 	}
 }
 
+// TestRefuseSharedPlayers_RefusesAProjectionWhoseTwoElevensShareAPlayer: both elevens are
+// the operator's own, so the module has nothing to pick a side with and refuses rather than
+// dropping him from one of them (GO-04, §8.7).
+func TestRefuseSharedPlayers_RefusesAProjectionWhoseTwoElevensShareAPlayer(t *testing.T) {
+	t.Parallel()
+	eleven := namedPlayers(11)
+	opposition := oppositionEleven()
+	opposition[4] = eleven[2]
+
+	err := auction.RefuseSharedPlayers(eleven, opposition)
+
+	var shared *auction.SharedPlayerError
+	require.ErrorAs(t, err, &shared)
+	assert.Equal(t, []auction.NamedPlayer{eleven[2]}, shared.Players)
+	assert.Contains(t, shared.Error(), "nobody plays both sides")
+	assert.Contains(t, shared.Error(), eleven[2].PlayerName)
+}
+
+func TestRefuseSharedPlayers_AcceptsTwoDifferentElevens(t *testing.T) {
+	t.Parallel()
+
+	err := auction.RefuseSharedPlayers(namedPlayers(11), oppositionEleven())
+
+	assert.NoError(t, err)
+}
+
+// oppositionEleven is an eleven of its own, sharing no player with namedPlayers.
+func oppositionEleven() []auction.NamedPlayer {
+	players := make([]auction.NamedPlayer, 0, 11)
+	for i := 1; i <= 11; i++ {
+		players = append(players, auction.NamedPlayer{
+			PlayerID:   int64(100 + i),
+			ExternalID: "opp" + string(rune('a'+i-1)),
+			PlayerName: "Opponent " + string(rune('A'+i-1)),
+		})
+	}
+	return players
+}
+
 func TestRegistryKeys_RefusesASideHoldingAPlayerTheRegistryDoesNotKnow(t *testing.T) {
 	t.Parallel()
 	side := namedPlayers(3)

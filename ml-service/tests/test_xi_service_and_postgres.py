@@ -21,6 +21,7 @@ from ml.xi.retrain import retrain
 from ml.xi.simulator import SimulationUnavailable
 from ml.xi.sources import Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
+from tests.xi_fixtures import xi
 from tests.xi_perf_fixtures import fast_fits
 
 
@@ -101,13 +102,13 @@ def test_status_lists_the_performance_formats(registry) -> None:
 def test_predict_performance_returns_distributions_for_both_elevens(registry, artifacts_dir) -> None:
     _, squad_a, squad_b, _ = artifacts_dir
     req = PerformancePredictRequest(
-        format="t20i", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11] + ["nosuchplayer"]
+        format="t20i", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:10] + ["nosuchplayer"]
     )
 
     res = xi_service.predict_performance(req, registry)
 
-    assert len(res.players) == 23 and res.innings_marginalised is True
-    assert [p.side for p in res.players] == [1] * 11 + [2] * 12
+    assert len(res.players) == 22 and res.innings_marginalised is True
+    assert [p.side for p in res.players] == [1] * 11 + [2] * 11
     assert res.unknown_player_ids == ["nosuchplayer"]
     first = res.players[0]
     assert first.player_id == squad_a[0]
@@ -149,7 +150,7 @@ def test_predict_performance_without_an_artifact_is_unavailable(registry) -> Non
 
     with pytest.raises(xi_service.XiUnavailable, match="no performance model"):
         xi_service.predict_performance(
-            PerformancePredictRequest(format="T20I", team1_player_ids=["a"], team2_player_ids=["b"]), registry
+            PerformancePredictRequest(format="T20I", team1_player_ids=xi("a"), team2_player_ids=xi("b")), registry
         )
 
 
@@ -350,7 +351,11 @@ def test_optimize_win_objective_requires_an_opponent_xi(registry, artifacts_dir)
 def test_optimize_infeasible_constraints_raise_value_error(registry, artifacts_dir) -> None:
     _, squad_a, _, matches = artifacts_dir
     req = XiOptimizeRequest(
-        format="T20I", pool_player_ids=squad_a[:5], opponent_player_ids=list(matches[-1].team2_players)
+        format="T20I",
+        pool_player_ids=squad_a,
+        opponent_player_ids=list(matches[-1].team2_players),
+        # Every place a bowling option and a keeper among them: a pool this size cannot.
+        constraints=XiConstraints(min_bowlers=11, require_keeper=True),
     )
     with pytest.raises(ValueError):
         xi_service.optimize(req, registry)
@@ -1010,7 +1015,9 @@ def test_simulate_reports_no_shared_factor_when_the_calibration_fitted_none(
 
 def test_simulate_refuses_a_format_without_an_innings_length(registry) -> None:
     with pytest.raises(SimulationUnavailable):
-        xi_service.simulate(SimulateRequest(format="TEST", team1_player_ids=["a"], team2_player_ids=["b"]), registry)
+        xi_service.simulate(
+            SimulateRequest(format="TEST", team1_player_ids=xi("a"), team2_player_ids=xi("b")), registry
+        )
 
 
 def test_a_numeric_player_id_is_refused_rather_than_silently_unrated() -> None:

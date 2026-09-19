@@ -118,6 +118,9 @@ func projectionMLService(
 			for _, key := range team1 {
 				players = append(players, map[string]any{
 					"player_id": key,
+					// The candidate's eleven is team1 on every projection, and his row is
+					// read by side as well as by id (GO-04).
+					"side": 1,
 					"runs": map[string]float64{
 						"q10": script.candidateRuns[0], "median": script.candidateRuns[1], "q90": script.candidateRuns[2],
 					},
@@ -476,6 +479,11 @@ func TestProjectAuctionCandidate_RefusesEveryStateThatCannotBeProjectedAndShowsN
 	unregistered := projectionAuction()
 	unregistered.LikelyXI[3].ExternalID = ""
 
+	// The candidate's own eleven and the opposition naming one player between them: an
+	// assumption that describes a match in which one man fields for both teams (GO-04).
+	sharedPlayer := projectionAuction()
+	sharedPlayer.Opposition.Players[5] = sharedPlayer.LikelyXI[1]
+
 	testCases := []struct {
 		name        string
 		record      auction.Auction
@@ -523,6 +531,14 @@ func TestProjectAuctionCandidate_RefusesEveryStateThatCannotBeProjectedAndShowsN
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    "XI_PLAYER_UNKNOWN",
 			wantMessage: "no registry id",
+		},
+		{
+			name:        "one player on both sides is refused rather than dropped from one of them",
+			record:      sharedPlayer,
+			body:        map[string]any{"player_id": 2},
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    "XI_PLAYER_ON_BOTH_SIDES",
+			wantMessage: "nobody plays both sides",
 		},
 		{
 			name:        "a candidate nobody listed is not in this room",

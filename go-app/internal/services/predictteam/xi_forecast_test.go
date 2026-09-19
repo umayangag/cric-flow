@@ -163,12 +163,13 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 		Players: []XIPerformancePlayer{
 			{
 				PlayerKey:    "a1",
+				Side:         Team1Side,
 				Runs:         XISimulatedRange{P10: 3, Median: 26, P90: 71},
 				BallsFaced:   XISimulatedRange{P10: 8, Median: 44, P90: 110},
 				RunsConceded: XISimulatedRange{P10: 10, Median: 33, P90: 60},
 				Wickets:      1.4,
 			},
-			{PlayerKey: "b1", Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
+			{PlayerKey: "b1", Side: Team2Side, Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
 		},
 	}}
 	result := resultWithOnePlayerEachSide()
@@ -210,8 +211,11 @@ func TestApplyMatchForecast_RefusesAForecastFromAnotherRunThanTheSelection(t *te
 			name: "the performance model answered from a new run",
 			apply: func(result *Result) error {
 				forecast := &XIPerformanceResult{
-					Served:  servedFromRunB,
-					Players: []XIPerformancePlayer{{PlayerKey: "a1"}, {PlayerKey: "b1"}},
+					Served: servedFromRunB,
+					Players: []XIPerformancePlayer{
+						{PlayerKey: "a1", Side: Team1Side},
+						{PlayerKey: "b1", Side: Team2Side},
+					},
 				}
 				return applyPerformanceForecast(context.Background(), &fakePerformance{result: forecast},
 					twoSidedFixture("TEST"), []string{"a1"}, []string{"b1"}, result)
@@ -243,7 +247,7 @@ func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T)
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
 		Served:  servedFromRunA,
-		Players: []XIPerformancePlayer{{PlayerKey: "a1", Runs: XISimulatedRange{Median: 26}}},
+		Players: []XIPerformancePlayer{{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}}},
 	}}
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
@@ -251,6 +255,50 @@ func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `no forecast for selected player "b1"`)
+}
+
+// TestApplyPerformanceForecast_ReadsEachSidesOwnRow: `/performance/predict` answers both
+// elevens in one flat list, so a row is identified by side *and* id. Keyed by id alone, a
+// player who appeared on both sides left one side reading the other's forecast (GO-04).
+func TestApplyPerformanceForecast_ReadsEachSidesOwnRow(t *testing.T) {
+	t.Parallel()
+	predictor := &fakePerformance{result: &XIPerformanceResult{
+		Served: servedFromRunA,
+		Players: []XIPerformancePlayer{
+			{PlayerKey: "shared", Side: Team1Side, Runs: XISimulatedRange{Median: 61}},
+			{PlayerKey: "shared", Side: Team2Side, Runs: XISimulatedRange{Median: 12}},
+		},
+	}}
+	result := &Result{
+		Team1: []SelectedPlayer{{PlayerID: 1, PlayerKey: "shared", PlayerName: "A"}},
+		Team2: []SelectedPlayer{{PlayerID: 2, PlayerKey: "shared", PlayerName: "B"}},
+	}
+
+	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
+		[]string{"shared"}, []string{"shared"}, result)
+
+	require.NoError(t, err)
+	assert.Equal(t, 61.0, result.Team1[0].Runs, "team1 reads team1's row")
+	assert.Equal(t, 12.0, result.Team2[0].Runs, "team2 reads team2's own, not whichever came last")
+}
+
+// TestApplyPerformanceForecast_RefusesARowFromTheWrongSide: the other side's eleven is not
+// this player's forecast, and filling his row from it would be unreadable.
+func TestApplyPerformanceForecast_RefusesARowFromTheWrongSide(t *testing.T) {
+	t.Parallel()
+	predictor := &fakePerformance{result: &XIPerformanceResult{
+		Served: servedFromRunA,
+		Players: []XIPerformancePlayer{
+			{PlayerKey: "a1", Side: Team1Side},
+			{PlayerKey: "b1", Side: Team1Side},
+		},
+	}}
+
+	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
+		[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `no forecast for selected player "b1" on side 2`)
 }
 
 func TestApplyPerformanceForecast_PropagatesTheFailure(t *testing.T) {
@@ -310,7 +358,11 @@ func TestWinnerFrom_NamesTheResolvedSideNotTheTypedName(t *testing.T) {
 
 func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), map[string]float64{"k2": 0.03}, nil)
+	players := newSelectedPlayers(
+		[]string{"k2", "k1"},
+		pool(1, 2, 3),
+		sideAnswers{Marginals: map[string]float64{"k2": 0.03}},
+	)
 
 	require.Len(t, players, 2)
 	assert.Equal(t, int64(2), players[0].PlayerID)
@@ -321,7 +373,7 @@ func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) 
 
 func TestNewSelectedPlayers_DropsAKeyNoPoolRowClaims(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), nil, nil)
+	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), sideAnswers{})
 
 	require.Len(t, players, 1, "a key with no pool row names nobody and is not invented")
 	assert.Equal(t, int64(1), players[0].PlayerID)

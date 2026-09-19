@@ -98,7 +98,7 @@ func TestNewSelectedPlayers_AttachesTheSelectionReasonForEveryPlayerThatHasOne(t
 		},
 	}
 
-	players := newSelectedPlayers([]string{"k1", "k2"}, rows, nil, reasons)
+	players := newSelectedPlayers([]string{"k1", "k2"}, rows, sideAnswers{Reasons: reasons})
 
 	require.Len(t, players, 2)
 	require.NotNil(t, players[0].SelectionReason)
@@ -115,8 +115,10 @@ func TestPinnedSelection_CarriesNoSelectionReasons(t *testing.T) {
 
 	selection := pinnedSelection(pinnedXI{team1Keys: []string{"k1"}, team2Keys: []string{"k4"}})
 
-	assert.Nil(t, selection.Reasons)
-	assert.Nil(t, selection.Marginals)
+	assert.Nil(t, selection.Team1Answers.Reasons)
+	assert.Nil(t, selection.Team2Answers.Reasons)
+	assert.Nil(t, selection.Team1Answers.Marginals)
+	assert.Nil(t, selection.Team2Answers.Marginals)
 }
 
 func TestSelectBothXIs_RatingOrderedSelectionCarriesReasonsWithNoAlternative(t *testing.T) {
@@ -126,10 +128,13 @@ func TestSelectBothXIs_RatingOrderedSelectionCarriesReasonsWithNoAlternative(t *
 	selection, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("TEST"))
 
 	require.NoError(t, err)
-	require.Len(t, selection.Reasons, 4, "both sides' reasons reach the response")
-	for key, reason := range selection.Reasons {
-		assert.Equal(t, 3, reason.PoolSize, key)
-		assert.Empty(t, reason.BestAlternativeKey, "nothing was maximised, so nothing was compared")
+	require.Len(t, selection.Team1Answers.Reasons, 2, "team1's reasons are team1's own")
+	require.Len(t, selection.Team2Answers.Reasons, 2, "team2's reasons are team2's own")
+	for _, answers := range []sideAnswers{selection.Team1Answers, selection.Team2Answers} {
+		for key, reason := range answers.Reasons {
+			assert.Equal(t, 3, reason.PoolSize, key)
+			assert.Empty(t, reason.BestAlternativeKey, "nothing was maximised, so nothing was compared")
+		}
 	}
 }
 
@@ -143,11 +148,14 @@ func TestSelectBothXIs_OptimisedSelectionCarriesTheLastRoundsReasons(t *testing.
 	selection, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
 
 	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"k1", "k3", "k4", "k6"}, keysOf(selection.Reasons),
+	assert.ElementsMatch(t, []string{"k1", "k3"}, keysOf(selection.Team1Answers.Reasons),
 		"the reasons describe the eleven that was served, not the seed it started from")
-	for key, reason := range selection.Reasons {
-		assert.NotEmpty(t, reason.BestAlternativeKey, key)
-		assert.InDelta(t, 0.005, reason.BestAlternativeGap, 1e-9, key)
+	assert.ElementsMatch(t, []string{"k4", "k6"}, keysOf(selection.Team2Answers.Reasons))
+	for _, answers := range []sideAnswers{selection.Team1Answers, selection.Team2Answers} {
+		for key, reason := range answers.Reasons {
+			assert.NotEmpty(t, reason.BestAlternativeKey, key)
+			assert.InDelta(t, 0.005, reason.BestAlternativeGap, 1e-9, key)
+		}
 	}
 }
 

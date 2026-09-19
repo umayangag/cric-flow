@@ -144,7 +144,8 @@ func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing
 		"a rating-ordered XI carries its format's reason",
 	)
 	assert.Contains(t, selection.Summary.Note, "H-17")
-	assert.Nil(t, selection.Marginals, "nothing was maximised, so no player has a margin")
+	assert.Nil(t, selection.Team1Answers.Marginals, "nothing was maximised, so no player has a margin")
+	assert.Nil(t, selection.Team2Answers.Marginals, "nothing was maximised, so no player has a margin")
 	assert.Equal(t, servedFromRunA, selection.Served, "the rating-ordered pick names the state it was read from")
 	require.Len(t, optimizer.calls, 2, "rating order does not depend on the opponent: one call per side")
 	for _, call := range optimizer.calls {
@@ -199,8 +200,10 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 	assert.Equal(t, SelectionObjectiveWin, selection.Summary.Objective)
 	assert.True(t, selection.Summary.Optimised)
 	assert.Empty(t, selection.Summary.Note)
-	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01, "k4": 0, "k6": 0.01}, selection.Marginals,
-		"both sides' marginal values reach the response")
+	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01}, selection.Team1Answers.Marginals,
+		"team1's marginal values are team1's own")
+	assert.Equal(t, map[string]float64{"k4": 0, "k6": 0.01}, selection.Team2Answers.Marginals,
+		"team2's marginal values are team2's own")
 	assert.Equal(t, servedFromRunA, selection.Served)
 
 	seeds := optimizer.calls[:2]
@@ -212,6 +215,25 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 	assert.Equal(t, []string{"k4", "k5"}, optimizer.calls[2].OpponentPlayerKeys)
 	// team2 then answers team1's *new* XI.
 	assert.Equal(t, []string{"k1", "k3"}, optimizer.calls[3].OpponentPlayerKeys)
+}
+
+// TestOptimizeSide_BansTheOpposingElevenFromTheSearch: no side may field a player the
+// other side is fielding, and the search is told so rather than left to the pool filter
+// upstream implying it (GO-04).
+func TestOptimizeSide_BansTheOpposingElevenFromTheSearch(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{
+		answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k3"}, {"k4", "k6"}, {"k1", "k3"}, {"k4", "k6"}},
+	}
+
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
+
+	require.NoError(t, err)
+	assert.Empty(t, optimizer.calls[0].MustExcludeKeys, "a seed plays against nobody, so it bans nobody")
+	assert.Equal(t, []string{"k4", "k5"}, optimizer.calls[2].MustExcludeKeys,
+		"team1's search may not field team2's eleven")
+	assert.Equal(t, []string{"k1", "k3"}, optimizer.calls[3].MustExcludeKeys,
+		"and team2's may not field team1's")
 }
 
 func TestSelectBothXIs_StopsAtAFixedPointRatherThanRunningEveryRound(t *testing.T) {
@@ -351,6 +373,21 @@ func TestPoolPlayerKeys_SendsRegistryIDsAndSkipsAPlayerWithout(t *testing.T) {
 
 	assert.Equal(t, []string{"2911de16", "a8c9f0b1"}, keys,
 		"the wire carries registry ids; a player the importer never matched cannot be selected")
+}
+
+// TestPoolPlayerKeys_OffersOnePersonOnce: two player rows can carry one registry id, and a
+// pool that offered him twice could have the search field him twice (SERVE-02).
+func TestPoolPlayerKeys_OffersOnePersonOnce(t *testing.T) {
+	t.Parallel()
+	rows := []db.PlayerPoolRow{
+		{PlayerID: 1, ExternalID: "2911de16"},
+		{PlayerID: 2, ExternalID: "a8c9f0b1"},
+		{PlayerID: 3, ExternalID: "2911de16", PlayerName: "imported twice"},
+	}
+
+	keys := poolPlayerKeys(rows)
+
+	assert.Equal(t, []string{"2911de16", "a8c9f0b1"}, keys)
 }
 
 // TestSelectBothXIs_SendsEachSidesMustIncludeLockOnEveryCall is B-10's fix at the seam it

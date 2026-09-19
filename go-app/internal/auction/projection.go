@@ -153,6 +153,43 @@ func ProjectedEleven(likelyXI []NamedPlayer, candidate NamedPlayer) ([]NamedPlay
 	return eleven, nil
 }
 
+// SharedPlayerError reports an assumption that puts one player on both sides of the
+// projected match.
+//
+// Both elevens are the operator's own: the likely eleven he named, the opposition he named,
+// and the candidate he is valuing. Where they overlap, the answer would be a match in which
+// one man fields for both teams -- and the projected output would be his own contribution
+// to the side he is projected against. Refused rather than resolved: this module has no
+// evidence to pick a side with (an auction is precisely the moment a player has no club),
+// and silently dropping him from one eleven would answer for an eleven nobody named (§8.7).
+type SharedPlayerError struct {
+	Players []NamedPlayer
+}
+
+func (e *SharedPlayerError) Error() string {
+	names := make([]string, 0, len(e.Players))
+	for _, player := range e.Players {
+		names = append(names, fmt.Sprintf("%s (id %d)", player.PlayerName, player.PlayerID))
+	}
+	return fmt.Sprintf(
+		"the likely eleven and the opposition both name %s, and nobody plays both sides; "+
+			"take him out of one of them", strings.Join(names, ", "))
+}
+
+// RefuseSharedPlayers refuses a projection whose two elevens share a player.
+func RefuseSharedPlayers(eleven, opposition []NamedPlayer) error {
+	var shared []NamedPlayer
+	for _, player := range eleven {
+		if holdsPlayer(opposition, player.PlayerID) {
+			shared = append(shared, player)
+		}
+	}
+	if len(shared) == 0 {
+		return nil
+	}
+	return &SharedPlayerError{Players: shared}
+}
+
 func holdsPlayer(players []NamedPlayer, playerID int64) bool {
 	for _, player := range players {
 		if player.PlayerID == playerID {

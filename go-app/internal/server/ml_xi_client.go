@@ -187,6 +187,12 @@ func (c *MLClient) OptimizeXI(
 	if mustInclude == nil {
 		mustInclude = []string{}
 	}
+	// The opposing eleven, where there is one: no search may field a player the other
+	// side is fielding (GO-04).
+	mustExclude := req.MustExcludeKeys
+	if mustExclude == nil {
+		mustExclude = []string{}
+	}
 	payload, err := json.Marshal(mlXIOptimizeRequest{
 		Format:            req.Format,
 		Objective:         req.Objective,
@@ -198,7 +204,7 @@ func (c *MLClient) OptimizeXI(
 			MinBowlers:    req.Constraints.MinBowlers,
 			RequireKeeper: req.Constraints.RequireKeeper,
 			MustInclude:   mustInclude,
-			MustExclude:   []string{},
+			MustExclude:   mustExclude,
 		},
 		MaxEvaluations: maxEvals,
 		AsOf:           asOfParam(req.AsOf),
@@ -477,7 +483,10 @@ type mlWicketDistribution struct {
 }
 
 type mlPerformancePlayer struct {
-	PlayerID     string               `json:"player_id"`
+	PlayerID string `json:"player_id"`
+	// Side is 1 for team1 and 2 for team2. Both elevens come back in one flat list, so it
+	// is the other half of a row's identity and was, until GO-04, read by nobody.
+	Side         int                  `json:"side"`
 	Runs         mlSimulatedRange     `json:"runs"`
 	BallsFaced   mlSimulatedRange     `json:"balls_faced"`
 	RunsConceded mlSimulatedRange     `json:"runs_conceded"`
@@ -528,6 +537,7 @@ func (c *MLClient) PredictPerformance(
 	for _, p := range out.Players {
 		players = append(players, predictteam.XIPerformancePlayer{
 			PlayerKey:     p.PlayerID,
+			Side:          p.Side,
 			Runs:          simulatedRange(p.Runs),
 			BallsFaced:    simulatedRange(p.BallsFaced),
 			RunsConceded:  simulatedRange(p.RunsConceded),

@@ -90,6 +90,13 @@ var retiredKeys = []retiredKey{
 			"extras-per-delivery rate",
 	},
 	{
+		Path:      "predictor.team_size",
+		RemovedIn: "SERVE-02",
+		Reason: "an eleven is eleven: every model behind the prediction path was fitted on " +
+			"elevens and ml-service refuses any other side size, so a configured size could " +
+			"only produce requests that are refused",
+	},
+	{
 		Path:      "predictor.simulation",
 		RemovedIn: "P-5",
 		Reason: "the Normal(mean, mean x CV) Monte Carlo is gone; the simulator draws from the " +

@@ -44,7 +44,8 @@ func TestChooseXIs_PinnedElevensAreScoredAsSentAndNothingIsSearched(t *testing.T
 			assert.Equal(t, SelectionObjectiveFixed, selection.Summary.Objective)
 			assert.False(t, selection.Summary.Optimised, "nothing was maximised")
 			assert.Contains(t, selection.Summary.Note, "Optimise")
-			assert.Nil(t, selection.Marginals, "no player carries a margin when nothing was searched")
+			assert.Nil(t, selection.Team1Answers.Marginals, "no player carries a margin when nothing was searched")
+			assert.Nil(t, selection.Team2Answers.Marginals, "no player carries a margin when nothing was searched")
 			assert.Equal(t, ServedRatings{}, selection.Served,
 				"the stamp comes from the calls that computed the numbers, never from a selection that made none")
 		})
@@ -106,6 +107,22 @@ func TestResolvePinnedXI_RefusesAPlayerTheSideCannotField(t *testing.T) {
 	require.ErrorAs(t, err, &unknown)
 	assert.Equal(t, []int64{99}, unknown.PlayerIDs,
 		"the id is named rather than dropped: the ten who resolved are not the eleven that was sent")
+}
+
+// TestResolvePinnedXI_RefusesTwoIdsThatAreOneRegisteredPlayer: two player rows can carry
+// one registry id, and the eleven they make is ten men to every model that reads it
+// (SERVE-02). It is refused rather than scored as an eleven.
+func TestResolvePinnedXI_RefusesTwoIdsThatAreOneRegisteredPlayer(t *testing.T) {
+	t.Parallel()
+	rows := []db.PlayerPoolRow{
+		{PlayerID: 1, ExternalID: "k1"},
+		{PlayerID: 2, ExternalID: "k1", PlayerName: "Imported twice"},
+	}
+
+	_, err := resolvePinnedXI(indiaMen, rows, []int64{1, 2}, 2)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "player ids 1 and 2 are the same registered player")
 }
 
 func TestResolvePinnedXI_RefusesAPlayerWithNoRegistryId(t *testing.T) {

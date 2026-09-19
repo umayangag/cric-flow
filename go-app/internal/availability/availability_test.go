@@ -144,7 +144,7 @@ func TestPoolVocabularyIsStable(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []string{"recency_window", "all_time", "manual"}, availability.PoolSources())
-	assert.Equal(t, []string{"user_flagged", "retired"}, availability.ExclusionReasons())
+	assert.Equal(t, []string{"user_flagged", "retired", "both_sides"}, availability.ExclusionReasons())
 	assert.Equal(t, "default", availability.DefaultActor)
 }
 
