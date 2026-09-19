@@ -7,6 +7,15 @@ name, and the archive's country votes (``venues.VenueFacts``) pick among them --
 is in New Zealand when New Zealand's sides play there. A venue that nothing places is
 recorded as ``unmappable`` with the reason, never guessed at.
 
+The votes are evidence, and the chooser reads them as such. A candidate in the top-voted
+country is supported. A candidate in a country the archive voted for less is a homonym
+until shown otherwise -- Bangalore Town, Sindh is not where India plays -- so it is refused
+whenever the top vote's lead is one chance would not produce, and kept, with the note
+saying so, when the lead is not evidence either way (an associate ground visited by
+everyone, a neutral venue, a one-series ground). A candidate in a country nobody voted
+for is read the same way -- silence against a weak top vote is not a contradiction and the
+candidate is kept with its note; silence against a strong one (five votes or more) is.
+
 The CSV is the curated table: rows already present are never rewritten by a run, so a
 hand correction survives, and a later run asks only about venues the file has no row for.
 """
@@ -15,10 +24,11 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 import os
 import time
 from dataclasses import asdict, dataclass, fields
-from typing import Dict, List, Mapping, Optional, Protocol, Sequence
+from typing import Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 import httpx
 
@@ -34,6 +44,24 @@ SOURCE = "open-meteo-geocoding"
 CANDIDATES_PER_QUERY = 10
 #: Seconds between geocoding calls; the service is free and asks for restraint, not speed.
 PAUSE_SECONDS = 0.2
+#: A candidate outside the archive's top-voted country is a conflict when the top country's
+#: lead over the candidate's country is one chance would not produce: a one-sided sign test
+#: on the two countries' votes, at this level. Over the whole curated table the test refuses
+#: every misplacement the archive had eleven or more votes against (Chinnaswamy 102 to 2,
+#: Mirpur 105 to 33, Providence 70 to 50) and cannot refuse a 2-to-1 one, which no reading
+#: of the votes could; those are placed by hand.
+CONFLICT_P_VALUE = 0.05
+
+#: How the archive's votes support a candidate's country, best first.
+SUPPORT_TOP = "top"
+SUPPORT_MINORITY = "minority"
+SUPPORT_UNVOTED = "unvoted"
+SUPPORT_CONFLICT = "conflict"
+_SUPPORT_RANK = {SUPPORT_TOP: 0, SUPPORT_MINORITY: 1, SUPPORT_UNVOTED: 2}
+
+NOTE_NO_VOTES = "no country vote; most populous place of that name"
+NOTE_UNVOTED = "country not among the archive's votes"
+NOTE_NO_PLACE = "no place found for any query"
 
 
 @dataclass(frozen=True)
@@ -108,13 +136,78 @@ class OpenMeteoGeocoding:
         ]
 
 
-def choose(candidates: Sequence[Candidate], votes: Sequence[str]) -> Optional[Candidate]:
-    """The candidate in the best-voted country, the most populous of those; with no vote
-    to go on, the most populous place of that name. None when there is nothing to choose."""
-    if not candidates:
+# --- The votes as evidence ----------------------------------------------------------------
+
+
+def format_votes(votes: Mapping[str, int]) -> str:
+    """The ``countries_voted`` column: ``BD:105 ZW:37 IN:33``, most votes first."""
+    return " ".join(f"{code}:{n}" for code, n in sorted(votes.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def parse_votes(text: str) -> Dict[str, int]:
+    """``format_votes`` read back; a column written before the counts were recorded raises,
+    because a row whose votes cannot be audited is not a curated row."""
+    out: Dict[str, int] = {}
+    for token in text.split():
+        code, _, count = token.partition(":")
+        if not count.isdigit():
+            raise ValueError(f"countries_voted carries no count for {code!r}: {text!r}")
+        out[code] = int(count)
+    return out
+
+
+def top_vote(votes: Mapping[str, int]) -> Tuple[str, int]:
+    """The best-voted country and its votes; ties broken by code so the answer is stable."""
+    return min(votes.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def lead_beyond_chance(top_votes: int, candidate_votes: int) -> bool:
+    """Whether ``top_votes`` against ``candidate_votes`` is a lead a fair coin would produce
+    with probability under ``CONFLICT_P_VALUE``: the one-sided sign test."""
+    tosses = top_votes + candidate_votes
+    at_most = sum(math.comb(tosses, k) for k in range(candidate_votes + 1))
+    return at_most / 2**tosses < CONFLICT_P_VALUE
+
+
+def support(country_code: str, votes: Mapping[str, int]) -> str:
+    """What the archive's votes say about a candidate in ``country_code``: ``top`` when no
+    country out-votes it, ``conflict`` when the top vote's lead over it is beyond chance
+    (zero votes included), else ``unvoted`` when nobody voted for it and ``minority``
+    when some did."""
+    if not votes:
+        return SUPPORT_TOP
+    mine = votes.get(country_code, 0)
+    _, best = top_vote(votes)
+    if mine == best:
+        return SUPPORT_TOP
+    if lead_beyond_chance(best, mine):
+        return SUPPORT_CONFLICT
+    return SUPPORT_UNVOTED if mine == 0 else SUPPORT_MINORITY
+
+
+def support_note(country_code: str, votes: Mapping[str, int]) -> str:
+    """The ``note`` a mapped row carries for its support: empty only for the top vote, so
+    every weaker placement is visible on the row itself."""
+    if not votes:
+        return NOTE_NO_VOTES
+    kind = support(country_code, votes)
+    if kind == SUPPORT_TOP:
+        return ""
+    if kind == SUPPORT_UNVOTED:
+        return NOTE_UNVOTED
+    code, best = top_vote(votes)
+    return f"country not the archive's top vote ({code} {best} to {votes[country_code]})"
+
+
+def choose(candidates: Sequence[Candidate], votes: Mapping[str, int]) -> Optional[Candidate]:
+    """The most populous candidate in the best-supported country -- the top vote, then a
+    country the top vote does not out-vote beyond chance, then a country nobody voted for.
+    A candidate the top vote conflicts with is never chosen, so a query whose every place
+    conflicts yields nothing and the next query is asked. None when nothing remains."""
+    supported = [c for c in candidates if support(c.country_code, votes) != SUPPORT_CONFLICT]
+    if not supported:
         return None
-    rank = {country: i for i, country in enumerate(votes)}
-    return min(candidates, key=lambda c: (rank.get(c.country_code, len(rank)), -c.population))
+    return min(supported, key=lambda c: (_SUPPORT_RANK[support(c.country_code, votes)], -c.population))
 
 
 def _queries(facts: VenueFacts) -> List[str]:
@@ -129,18 +222,25 @@ def _queries(facts: VenueFacts) -> List[str]:
     return out
 
 
+def _conflict_note(conflicts: Sequence[Candidate], votes: Mapping[str, int]) -> str:
+    code, best = top_vote(votes)
+    places = ", ".join(f"{c.name} ({c.country_code})" for c in conflicts)
+    return f"every candidate conflicts with the archive's top vote ({code} {best}): {places}"
+
+
 def locate(facts: VenueFacts, client: GeocodingClient) -> VenueLocation:
-    """One venue's row: the first query with a candidate decides."""
-    votes = facts.countries()
+    """One venue's row: the first query with a supported candidate decides. When every query
+    found only conflicting places the row is unmappable and its note names them."""
+    votes: Dict[str, int] = dict(facts.country_votes)
     tried: List[str] = []
+    conflicts: List[Candidate] = []
     for query in _queries(facts):
         tried.append(query)
-        chosen = choose(client.search(query), votes)
+        candidates = client.search(query)
+        chosen = choose(candidates, votes)
         if chosen is None:
+            conflicts.extend(c for c in candidates if support(c.country_code, votes) == SUPPORT_CONFLICT)
             continue
-        note = "" if not votes or chosen.country_code in votes else "country not among the archive's votes"
-        if not votes:
-            note = "no country vote; most populous place of that name"
         return VenueLocation(
             venue=facts.venue,
             venue_key=facts.key,
@@ -153,16 +253,16 @@ def locate(facts: VenueFacts, client: GeocodingClient) -> VenueLocation:
             latitude=chosen.latitude,
             longitude=chosen.longitude,
             timezone=chosen.timezone,
-            countries_voted=" ".join(votes),
-            note=note,
+            countries_voted=format_votes(votes),
+            note=support_note(chosen.country_code, votes),
         )
     return VenueLocation(
         venue=facts.venue,
         venue_key=facts.key,
         status=STATUS_UNMAPPABLE,
         query=" | ".join(tried),
-        countries_voted=" ".join(votes),
-        note="no place found for any query",
+        countries_voted=format_votes(votes),
+        note=_conflict_note(conflicts, votes) if conflicts else NOTE_NO_PLACE,
     )
 
 

@@ -85,8 +85,8 @@ def test_read_archive_indexes_fixtures_and_venue_facts(cricsheet_dir) -> None:
     assert by_id["1"].match_number == 11
     hamilton = facts[venues.venue_key("Seddon Park, Hamilton")]
     assert hamilton.city_hint() == "Hamilton"
-    assert hamilton.countries()[:2] == ["NZ", "ZA"]
-    assert facts[venues.venue_key("Wankhede Stadium, Mumbai")].countries() == ["IN"]
+    assert dict(hamilton.country_votes) == {"NZ": 1, "ZA": 1}
+    assert dict(facts[venues.venue_key("Wankhede Stadium, Mumbai")].country_votes) == {"IN": 1}
 
 
 def test_city_hint_falls_back_to_the_venue_name_then_to_nothing() -> None:
@@ -126,9 +126,132 @@ class _FakeGeocoder:
 def test_choose_prefers_the_voted_country_over_population() -> None:
     """Hamilton is in New Zealand when New Zealand's sides play there."""
     candidates = [_candidate("Hamilton", "CA", 500_000), _candidate("Hamilton", "NZ", 150_000)]
-    assert geocoding.choose(candidates, ["NZ"]).country_code == "NZ"
-    assert geocoding.choose(candidates, []).country_code == "CA"
-    assert geocoding.choose([], ["NZ"]) is None
+    assert geocoding.choose(candidates, {"NZ": 3}).country_code == "NZ"
+    assert geocoding.choose(candidates, {}).country_code == "CA"
+    assert geocoding.choose([], {"NZ": 3}) is None
+
+
+@pytest.mark.parametrize(
+    "top_votes, candidate_votes, beyond_chance",
+    [
+        (102, 2, True),  # M Chinnaswamy Stadium: India against the Sindh homonym
+        (105, 33, True),  # Shere Bangla National Stadium: Bangladesh against the Punjab homonym
+        (70, 50, True),  # Providence Stadium: Guyana against Rhode Island
+        (15, 3, True),  # National Cricket Stadium, Grenada: the West Indies against Wales
+        (11, 3, True),  # Coolidge Cricket Ground: Antigua against Arizona
+        (15, 7, False),  # Sportpark Het Schootsveld: a Dutch ground England's sides visit
+        (6, 2, False),  # Botswana Cricket Association Oval 2: not evidence either way
+        (21, 18, False),
+        (2, 1, False),
+        (1, 1, False),
+        (5, 0, True),  # Grenada's fifteen votes against Bermuda's none: silence is a conflict here
+        (4, 0, False),  # Sharjah's four against the Emirates' none: it is not
+    ],
+)
+def test_lead_beyond_chance_is_the_one_sided_sign_test(top_votes, candidate_votes, beyond_chance) -> None:
+    """A lead is a conflict only when a fair coin would produce it under CONFLICT_P_VALUE."""
+    assert geocoding.lead_beyond_chance(top_votes, candidate_votes) is beyond_chance
+
+
+def test_choose_refuses_a_homonym_in_a_country_the_top_vote_out_votes_beyond_chance() -> None:
+    """DATA-01: the only place named Bangalore the geocoder returned is Bangalore Town,
+    Sindh, and Pakistan carries 2 of the archive's votes to India's 102 -- the candidate is
+    a conflict, not a placement, and the query yields nothing."""
+    bangalore_town = _candidate("Bangalore Town", "PK", 20_000, admin1="Sindh")
+    mirpur = _candidate("Mīrpur", "IN", 40_000, admin1="Punjab")
+    assert geocoding.choose([bangalore_town], {"IN": 102, "PK": 2}) is None
+    assert geocoding.choose([mirpur], {"BD": 105, "IN": 33}) is None
+    assert geocoding.support("PK", {"IN": 102, "PK": 2}) == geocoding.SUPPORT_CONFLICT
+
+
+def test_choose_keeps_a_minority_country_the_top_vote_does_not_exclude_and_notes_it() -> None:
+    """Six Namibian votes to two Botswanan ones is not evidence against Gaborone, and the
+    row says how the votes fell."""
+    gaborone = _candidate("Gaborone", "BW", 230_000)
+    votes = {"NA": 6, "BW": 2}
+    assert geocoding.choose([gaborone], votes) is gaborone
+    assert geocoding.support("BW", votes) == geocoding.SUPPORT_MINORITY
+    assert geocoding.support_note("BW", votes) == "country not the archive's top vote (NA 6 to 2)"
+
+
+def test_choose_ranks_a_voted_for_country_over_one_nobody_voted_for() -> None:
+    """Against a weak top vote, silence is not a conflict -- but a country that did get a
+    vote outranks it, whatever the populations."""
+    gaborone = _candidate("Gaborone", "BW", 230_000)
+    homonym = _candidate("Gaborone", "ZZ", 900_000)
+    votes = {"NA": 4, "BW": 2}
+    assert geocoding.choose([homonym, gaborone], votes) is gaborone
+    assert geocoding.support("ZZ", votes) == geocoding.SUPPORT_UNVOTED
+    assert geocoding.support_note("ZZ", votes) == geocoding.NOTE_UNVOTED
+
+
+def test_choose_refuses_an_unvoted_country_when_the_top_vote_is_strong() -> None:
+    """DATA-01, second query: with Wales refused, 'St George's' answered Bermuda, which
+    nobody voted for -- fifteen West Indian votes against none is the same conflict."""
+    bermuda = _candidate("Saint George's Parish", "BM", 2_000)
+    votes = {"GD": 15, "JM": 15, "GB": 3}
+    assert geocoding.choose([bermuda], votes) is None
+    assert geocoding.support("BM", votes) == geocoding.SUPPORT_CONFLICT
+    assert geocoding.support("BM", {"NP": 4, "GB": 2}) == geocoding.SUPPORT_UNVOTED
+
+
+def test_support_treats_a_tied_top_vote_as_the_top_vote() -> None:
+    """The West Indies vote for every territory at once, so Bridgetown ties Kingston at the
+    top and is supported without a note."""
+    votes = {"JM": 48, "BB": 48, "GY": 48, "US": 28}
+    assert geocoding.support("BB", votes) == geocoding.SUPPORT_TOP
+    assert geocoding.support_note("BB", votes) == ""
+    assert geocoding.top_vote(votes) == ("BB", 48)
+
+
+def test_locate_records_a_venue_whose_every_candidate_conflicts_as_unmappable_with_the_places() -> None:
+    """The reason is on the row: which top vote refused which places."""
+    facts = venues.VenueFacts(venue="M Chinnaswamy Stadium")
+    facts.cities["Bangalore"] += 90
+    facts.country_votes.update({"IN": 102, "PK": 2})
+    client = _FakeGeocoder({"Bangalore": [_candidate("Bangalore Town", "PK", 20_000, admin1="Sindh")]})
+    located = geocoding.locate(facts, client)
+    assert located.status == geocoding.STATUS_UNMAPPABLE and not located.mapped
+    assert located.query == "Bangalore | M Chinnaswamy Stadium"
+    assert located.note == "every candidate conflicts with the archive's top vote (IN 102): Bangalore Town (PK)"
+    assert located.countries_voted == "IN:102 PK:2"
+
+
+def test_votes_column_round_trips_and_refuses_a_row_without_counts() -> None:
+    votes = {"BD": 105, "ZW": 37, "IN": 33, "AE": 5}
+    text = geocoding.format_votes(votes)
+    assert text == "BD:105 ZW:37 IN:33 AE:5"
+    assert geocoding.parse_votes(text) == votes
+    assert geocoding.parse_votes("") == {}
+    with pytest.raises(ValueError, match="carries no count"):
+        geocoding.parse_votes("IN AU GB")
+
+
+CURATED_TABLE = os.path.join(os.path.dirname(__file__), "..", "..", "reference-data", "venue-geocoding.csv")
+
+
+def _unsupported_rows(locations) -> list:
+    """Every mapped row that is neither hand-placed nor placed where its own votes allow,
+    or whose note does not say how its votes fall short."""
+    problems = []
+    for location in locations.values():
+        if location.note.startswith("hand-curated") or not location.mapped:
+            continue
+        votes = geocoding.parse_votes(location.countries_voted)
+        kind = geocoding.support(location.country_code, votes)
+        expected_note = geocoding.support_note(location.country_code, votes)
+        if kind == geocoding.SUPPORT_CONFLICT or location.note != expected_note:
+            problems.append(f"{location.venue!r} -> {location.country_code} [{kind}] note={location.note!r}")
+    return problems
+
+
+def test_curated_table_places_every_row_where_its_votes_allow_or_says_why() -> None:
+    """DATA-01 over the whole curated table: no row sits in a country the archive's top
+    vote out-votes beyond chance, and every row not in the top-voted country carries the
+    note that says so -- unless a hand placed it and wrote why."""
+    locations = geocoding.read_locations(CURATED_TABLE)
+    assert len(locations) > 800
+    assert _unsupported_rows(locations) == []
 
 
 def test_locate_uses_the_city_hint_then_the_venue_parts_then_records_unmappable() -> None:
@@ -142,16 +265,17 @@ def test_locate_uses_the_city_hint_then_the_venue_parts_then_records_unmappable(
         venues.VenueFacts(venue="Cobham Oval, Whangarei"),
         _FakeGeocoder({"Whangarei": [_candidate("Whangarei", "NZ", 1)]}),
     )
-    assert fallback.mapped and fallback.note.startswith("no country vote")
+    assert fallback.mapped and fallback.note == geocoding.NOTE_NO_VOTES
     nowhere = geocoding.locate(venues.VenueFacts(venue="Holkar Stadium"), _FakeGeocoder({}))
     assert nowhere.status == geocoding.STATUS_UNMAPPABLE and not nowhere.mapped
+    assert nowhere.note == geocoding.NOTE_NO_PLACE
 
 
 def test_locate_notes_a_country_the_archive_did_not_vote_for() -> None:
     facts = venues.VenueFacts(venue="Dubai International Cricket Stadium")
     facts.country_votes["PK"] += 1
     client = _FakeGeocoder({"Dubai International Cricket Stadium": [_candidate("Dubai", "AE", 1)]})
-    assert geocoding.locate(facts, client).note == "country not among the archive's votes"
+    assert geocoding.locate(facts, client).note == geocoding.NOTE_UNVOTED
 
 
 def test_locations_csv_round_trips_and_missing_file_is_empty(tmp_path) -> None:
