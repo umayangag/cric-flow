@@ -20,6 +20,18 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   hex string such as `2911de16` — never the numeric `player.player_id`. That is the key the
   rating state is built under (P-1), so a numeric id sent here matches nobody and every player
   comes back unrated (D-7a). A player whose row has no `external_id` cannot be sent.
+- **Side contract (SERVE-02):** every eleven these routes are given is **exactly eleven
+  distinct registry ids**, and no player is on both sides. `team1_player_ids` and
+  `team2_player_ids` (on `/xi/predict-win`, `/performance/predict` and `/simulate`) are each
+  refused with **422** at any other length, with a repeated id, or where the two lists
+  intersect; `pool_player_ids` must be distinct and at least eleven, and
+  `opponent_player_ids`, where given, is a full distinct eleven disjoint from the pool.
+  `constraints.team_size` is 11 and nothing else. Every model behind these routes was fitted
+  on elevens and every number they return aggregates one side into one row, so a nine-player
+  side used to come back with a plausible probability for a question nobody asked, a
+  duplicated pool id could be selected twice, and a player on both sides was read into both
+  aggregates — none of it visible on the response (§8.7). The message names the field and
+  what is wrong with it.
 - **POST /xi/optimize** — Body: `format`, `pool_player_ids`, `opponent_player_ids` (not read by `objective: "ratings"`), `team_is_team1`, `constraints` (`team_size`, `min_bowlers`, `require_keeper`, `must_include`, `must_exclude`), `max_evaluations`, optional `as_of`, and `objective` — `"win"` searches for the XI that maximises the objective model's P(win), `"ratings"` returns the rating-ordered pick and evaluates no model. Response: `selected_player_ids`, `objective`, `optimised`, `win_probability` (null in ratings mode), `evaluations`, `improved_over_seed`, `unknown_player_ids`, `marginal_values`. **503 `XI_MODEL_UNAVAILABLE`** when `objective: "win"` is asked for a format that is not offered an optimised selection — the message carries the format's reason from `ml.xi.optimizer.NOT_OPTIMISED_REASONS` (H-17: the objective does not rank, TEST; or E5: the objective has not shown it selects, plan §8.8) and the hint names `"ratings"`.
 - **POST /xi/predict-win** — Body: `format`, `team1_player_ids`, `team2_player_ids`, optional `team1_id` / `team2_id` / `venue_id` / `team1_bats_first` / `as_of`, and optional `team1_constraints` / `team2_constraints` (P1-2: check the eleven being scored against these instead of selecting under them). Response: `team1_win_probability` (the displayed probability), `objective_probability`, and `team1_constraint_check` / `team2_constraint_check` where constraints were sent — the eleven's size, its bowler count by the optimiser's own definition, whether it holds a keeper, the `must_include` ids it does not hold, and whether it `met` them all.
 - **Every prediction response** (`/xi/optimize`, `/xi/predict-win`, `/simulate`, `/performance/predict`) carries `served_ratings: {run_id, ratings_through}` — the run the answering store was loaded from and the last match date its ratings include, read off that store (P1-5). A live request against ratings older than `ml.ratings_max_age_days` is **503 `RATINGS_STALE`**, the message naming the date, the age and the limit and the hint the step that fixes it (H-11).
@@ -106,11 +118,15 @@ selection is the same code either way — the displayed probability is still
 re-score and an Optimise for the same eleven return the same numbers. A pinned player joins
 his side's pool whatever the window or the ledger says, the way a must-include id does.
 
-Four refusals, because a repaired eleven is not the eleven that was sent: a side that is
+Five refusals, because a repaired eleven is not the eleven that was sent: a side that is
 not a full XI is **`400 XI_INCOMPLETE`** (every model here aggregates a whole side, so a
 ten-man side would be a prediction for a match nobody plays), an id that names no player is
-**`400 XI_PLAYER_UNKNOWN`**, and naming the same player twice or pinning one side while
-leaving the other to be searched is a `400` naming what is wrong.
+**`400 XI_PLAYER_UNKNOWN`**, one player named for *both* sides — pinned in both elevens, or
+must-included on both — is **`400 XI_PLAYER_ON_BOTH_SIDES`** (GO-04: nobody plays both
+elevens, and taking him off one of them is a change the user can see, so it is theirs to
+make), and naming the same player twice or pinning one side while leaving the other to be
+searched is a `400` naming what is wrong. Two player rows that carry one `external_id` are
+one player to every model here, so pinning both is refused on the same ground.
 
 **The candidate pool (D-12).** Each side's XI is chosen out of the players who appeared for
 that club in that format within a **recency window** ending at `match_date` — twelve months
@@ -135,6 +151,26 @@ ml-service's **`422 OPTIMIZATION_CONSTRAINT_ERROR`** naming which constraint fai
 
 A pool with fewer than eleven players is **`400 POOL_TOO_SMALL`**, whose message names the
 window and whose hint names the two ways out.
+
+**One player, one side (GO-04).** Both pools are built from one player table by club, so a
+player who moved clubs inside the window is in both of them — franchise T20 with a
+twelve-month window is the ordinary case, not an edge one. He is in exactly one side's pool
+by the time anything is scored, and which one is decided in this order: a player the caller
+named for one side (a `team1_xi` / `team2_xi` pin, or an `extra_team1` / `extra_team2`
+must-include) stays there; otherwise the club he appeared for more recently keeps him; an
+exact tie, including two sides that both entered him by id with no appearance at all, keeps
+him with team1. Named for *both* sides, the request is refused (`XI_PLAYER_ON_BOTH_SIDES`)
+rather than resolved.
+
+The drop is never silent. He is in the losing side's `team1_pool` / `team2_pool`
+`excluded` list with `reason: "both_sides"`, his last appearance for that side, and a
+`detail` naming the side that kept him and the date it kept him on — the same shape the
+retirement ledger's exclusions take (§8.7). It is not a ledger flag, so there is nothing to
+undo: a caller who disagrees picks the candidates by hand (`team1_pool.players`), which the
+detail says. Dropping him can take a pool under eleven, and that is `POOL_TOO_SMALL` with
+its usual two ways out. The opposing eleven also reaches `/xi/optimize` as `must_exclude`,
+which changes no answer while the pools are disjoint and states the rule where the search
+can see it.
 
 **`GET /api/options/candidates?format=&club_id=`** (optionally `match_date`, `window_months`,
 `all_time`) is the list a manual pool is ticked out of: every candidate with `player_id`,
@@ -182,7 +218,7 @@ returns the sides that club has played, in the same shape.
 | `toss` | Which batting order the numbers assume: `team1_bats_first` (null where it was unknown and both orders were drawn), `honoured`, and a `note` where a named toss could not be used (P1-1) |
 | `scorecard` | Present only for a format with an innings length: `samples`, `toss_marginalised`, and `team1_innings` / `team2_innings` — named by side, not by batting position — each with the median-band `total`, its `extras` and the 10-90 range of the draws |
 | `constraints` | Present only where the caller pinned the elevens (P1-2): `team_size`, `min_bowlers` and `require_keeper` as they were asked for, and per side the `size`, the `bowlers` count, `has_keeper`, any `missing_must_include` players and whether the eleven `met` what was asked. The counts are ml-service's, measured on the eleven that was scored — nothing is repaired to satisfy them |
-| `team1_pool`, `team2_pool` | Which candidates each XI was chosen out of: `source` (`recency_window` / `all_time` / `manual`), the `window_months` and `since` it applied, the `size` it produced, and `retired_excluded` with the `excluded` players themselves — each with `reason` (`retired` / `user_flagged`) and `detail` |
+| `team1_pool`, `team2_pool` | Which candidates each XI was chosen out of: `source` (`recency_window` / `all_time` / `manual`), the `window_months` and `since` it applied, the `size` it produced, and `retired_excluded` with the `excluded` players themselves — each with `reason` (`retired` / `user_flagged` / `both_sides`) and `detail`. `retired_excluded` counts the ledger's exclusions only; a `both_sides` entry is the other side keeping a player both pools held (GO-04), and there is no flag behind it to undo |
 | `record` | Whether this answer went on the prediction record (P2-3): `stored`, and either the row's `id` and `issued_at` or the `reason` it was not stored. Always present |
 
 The scorecard lines and extras sum to the innings total by construction — they come from the
@@ -512,7 +548,10 @@ A P(win) beside a purchase is the XI-picking claim in another coat.
 the candidate in it is not eleven — a ten-man side, and equally a full eleven plus an
 outside candidate, which is twelve men — exactly as the predict path refuses one. **400
 `ASSUMPTIONS_INCOMPLETE`** where the likely eleven, the opposition or the grounds are
-unnamed. **400 `XI_PLAYER_UNKNOWN`** where a named player carries no registry id; the ten
+unnamed. **400 `XI_PLAYER_ON_BOTH_SIDES`** where the likely eleven and the opposition name
+one player between them: both elevens are the operator's own, this module has nothing to
+pick a side with, and dropping him from one would answer for an eleven nobody named
+(GO-04). **400 `XI_PLAYER_UNKNOWN`** where a named player carries no registry id; the ten
 who resolved are not scored, because that would answer for an eleven nobody named. **404
 `CANDIDATE_NOT_LISTED`** for a player this auction does not hold. **409
 `SERVED_RUN_CHANGED`** where a reload landed mid-assembly. **503 `RATINGS_STALE`** past

@@ -186,11 +186,21 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 				checks, stamp)
 		case "/performance/predict":
 			lines := make([]string, 0, 22)
-			for _, id := range append(body.Team1PlayerIDs, body.Team2PlayerIDs...) {
-				lines = append(lines, fmt.Sprintf(`{"player_id": %q, "side": 1, "p_bats": 1, "p_bowls": 0.5,
+			// Both elevens come back in one flat list, and each row says which side it is
+			// for: go-app reads it by (side, player_id) since GO-04, so a fake that put
+			// every row on side 1 would be answering a shape ml-service never sends.
+			sides := []struct {
+				number int
+				ids    []string
+			}{{number: 1, ids: body.Team1PlayerIDs}, {number: 2, ids: body.Team2PlayerIDs}}
+			for _, side := range sides {
+				for _, id := range side.ids {
+					lines = append(lines, fmt.Sprintf(`{"player_id": %q, "side": %d, "p_bats": 1, "p_bowls": 0.5,
 					"runs": {"q10": 3, "median": 26, "q90": 71}, "balls_faced": {"q10": 8, "median": 44, "q90": 110},
 					"runs_conceded": {"q10": 10, "median": 33, "q90": 60},
-					"wickets": {"expected": 1.4, "p0": 0.3, "p1": 0.4, "p2_plus": 0.3}, "catches_expected": 0.5}`, id))
+					"wickets": {"expected": 1.4, "p0": 0.3, "p1": 0.4, "p2_plus": 0.3}, "catches_expected": 0.5}`,
+						id, side.number))
+				}
 			}
 			_, _ = fmt.Fprintf(w, `{"players": [%s], "innings_marginalised": true, "unknown_player_ids": [], %s}`,
 				strings.Join(lines, ","), stamp)
