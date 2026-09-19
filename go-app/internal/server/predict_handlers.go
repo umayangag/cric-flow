@@ -379,6 +379,21 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// One player named on both sides is the caller having told us two contradictory things
+	// about him. Resolving it silently -- dropping him from one eleven, or from one pool --
+	// would move a player the user is looking at, so the request is refused and the choice
+	// stays theirs (GO-04, §8.7). A player who is merely in both *pools* is not this: he is
+	// resolved by recency and reported in the pool summary that lost him.
+	var sharedPlayer *predictteam.SharedPlayerError
+	if errors.As(err, &sharedPlayer) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "XI_PLAYER_ON_BOTH_SIDES",
+			Message: sharedPlayer.Error(),
+			Hint: "take him out of one side: a pinned eleven is edited in Play mode, " +
+				"and a must-include id is extra_team1 / extra_team2",
+		})
+		return
+	}
 	var unknownPlayer *predictteam.UnknownXIPlayerError
 	if errors.As(err, &unknownPlayer) {
 		writeJSON(w, http.StatusBadRequest, apiError{

@@ -23,7 +23,6 @@ func TestValidateTeamSettings(t *testing.T) {
 				c.Team.MinBowlers = 5
 				c.Team.DefaultBatters = 6
 				c.Team.DefaultBowlers = 5
-				c.Predictor.TeamSize = 11
 				return c
 			}(),
 			err: "",
@@ -33,20 +32,18 @@ func TestValidateTeamSettings(t *testing.T) {
 			cfg: func() *Config {
 				c := &Config{}
 				c.Team.MinBowlers = 0
-				c.Predictor.TeamSize = 11
 				return c
 			}(),
 			err: "min bowlers",
 		},
 		{
-			name: "team size < min bowlers",
+			name: "min bowlers above the eleven",
 			cfg: func() *Config {
 				c := &Config{}
-				c.Team.MinBowlers = 6
-				c.Predictor.TeamSize = 5
+				c.Team.MinBowlers = 12
 				return c
 			}(),
-			err: "team size",
+			err: "min bowlers must be <= 11",
 		},
 		{
 			name: "default bowlers < min bowlers",
@@ -54,7 +51,6 @@ func TestValidateTeamSettings(t *testing.T) {
 				c := &Config{}
 				c.Team.MinBowlers = 5
 				c.Team.DefaultBowlers = 3
-				c.Predictor.TeamSize = 11
 				return c
 			}(),
 			err: "default bowlers",
@@ -65,7 +61,6 @@ func TestValidateTeamSettings(t *testing.T) {
 				c := &Config{}
 				c.Team.MinBowlers = 5
 				c.Team.DefaultBatters = -1
-				c.Predictor.TeamSize = 11
 				return c
 			}(),
 			err: "default batters",

@@ -19,27 +19,90 @@ from __future__ import annotations
 from datetime import date
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# What an eleven is, everywhere in this module (SERVE-02).
+#
+# It is a constant rather than a caller's choice because every model behind these routes
+# was fitted on elevens and every number they return aggregates one side into one row: the
+# objective's XI features are means and counts over eleven, the display model reads the two
+# aggregates, and the simulator's innings ends at ten wickets whatever the side holds. A
+# nine-player side is therefore answerable -- arithmetic happens and a plausible number
+# comes back -- but it answers a different question from the one the caller asked, and
+# nothing on the response would say so. So it is refused at the boundary instead (§8.7).
+TEAM_SIZE = 11
 
 
 def _upper(v: Optional[str]) -> Optional[str]:
     return v if v is None or v == "" else v.strip().upper()
 
 
+def _refuse_repeats(ids: List[str], field_name: str) -> None:
+    """Refuse a side that names one player twice.
+
+    One player fills one place. A repeated id is not a bigger side: the optimiser's
+    ``key_index`` keeps the last position an id occupies, so a duplicated pool id can be
+    chosen twice for one eleven, and a duplicated eleven id is scored as two players.
+    """
+    seen: set = set()
+    repeated: set = set()
+    for player_id in ids:
+        if player_id in seen:
+            repeated.add(player_id)
+        seen.add(player_id)
+    if repeated:
+        repeated_ids = sorted(repeated)
+        raise ValueError(f"{field_name} names the same player more than once: {', '.join(repeated_ids)}")
+
+
+def _refuse_overlap(first: List[str], second: List[str], first_name: str, second_name: str) -> None:
+    """Refuse a player who appears on both sides of one match.
+
+    Nobody plays both elevens. Where he does, the side-level aggregates both read him, the
+    optimiser can pick him against himself, and go-app's per-id merges would have one
+    side's answer overwrite the other's (GO-04).
+    """
+    shared = sorted(set(first) & set(second))
+    if shared:
+        raise ValueError(f"{first_name} and {second_name} name the same player: {', '.join(shared)}")
+
+
+def _refuse_wrong_size(ids: List[str], field_name: str, team_size: int) -> None:
+    """Refuse a side that is not an eleven."""
+    if len(ids) != team_size:
+        raise ValueError(f"{field_name} holds {len(ids)} players and a side is scored as {team_size}")
+
+
 class XiConstraints(BaseModel):
-    team_size: int = Field(default=11, ge=1, le=15)
-    min_bowlers: int = Field(default=5, ge=0, le=11)
+    team_size: int = Field(
+        default=TEAM_SIZE,
+        description="Fixed at 11: every model behind these routes was fitted on elevens, so a "
+        "different size is refused rather than answered (SERVE-02)",
+    )
+    min_bowlers: int = Field(default=5, ge=0, le=TEAM_SIZE)
     require_keeper: bool = True
     must_include: List[str] = Field(default_factory=list)
     must_exclude: List[str] = Field(default_factory=list)
 
+    @field_validator("team_size")
+    def _only_eleven(cls, v: int) -> int:
+        if v != TEAM_SIZE:
+            raise ValueError(f"team_size is {TEAM_SIZE}: no other side size is supported by the served models")
+        return v
+
 
 class XiOptimizeRequest(BaseModel):
     format: str
-    pool_player_ids: List[str] = Field(..., min_length=1)
+    pool_player_ids: List[str] = Field(
+        ...,
+        min_length=TEAM_SIZE,
+        description="The candidates the eleven is chosen from: distinct registry ids, at least "
+        "team_size of them, and none of them on the opposing side",
+    )
     opponent_player_ids: List[str] = Field(
         default_factory=list,
-        description="The opposing XI the selection is made against; not read by objective='ratings'",
+        description="The opposing XI the selection is made against; not read by objective='ratings'. "
+        "Where it is given it is a full eleven, distinct, and disjoint from the pool",
     )
     objective: Literal["win", "ratings"] = Field(
         default="win",
@@ -59,6 +122,28 @@ class XiOptimizeRequest(BaseModel):
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
         return _upper(v) or ""
+
+    @model_validator(mode="after")
+    def _one_player_one_place(self) -> "XiOptimizeRequest":
+        """The pool is a set of distinct candidates, and the opponent is somebody else's eleven.
+
+        A pool that names one player twice can have him chosen twice for the same eleven;
+        a pool that overlaps the opponent's eleven optimises a side against itself. Both
+        are refused here rather than searched over, because the search reports neither.
+        """
+        _refuse_repeats(self.pool_player_ids, "pool_player_ids")
+        if len(self.pool_player_ids) < self.constraints.team_size:
+            raise ValueError(
+                f"pool_player_ids holds {len(self.pool_player_ids)} candidates and the eleven "
+                f"needs {self.constraints.team_size}"
+            )
+        # An empty opponent list is how objective='ratings' says "nobody is being played
+        # against"; where one is given it is an eleven, whichever objective reads it.
+        if self.opponent_player_ids:
+            _refuse_repeats(self.opponent_player_ids, "opponent_player_ids")
+            _refuse_wrong_size(self.opponent_player_ids, "opponent_player_ids", self.constraints.team_size)
+            _refuse_overlap(self.pool_player_ids, self.opponent_player_ids, "pool_player_ids", "opponent_player_ids")
+        return self
 
 
 class ServedRatings(BaseModel):
@@ -191,9 +276,24 @@ class PlayerRolesResponse(BaseModel):
 
 
 class XiWinRequest(BaseModel):
+    """Two elevens, by registry id.
+
+    Each side is exactly ``TEAM_SIZE`` distinct players and no player is on both. The
+    models these ids reach cannot express anything else: the objective and the display
+    model read per-side aggregates over eleven, the simulator's innings ends at ten
+    wickets however many players the side holds, and a player on both sides is read into
+    both aggregates. A short or doubled side is therefore answered rather than rejected by
+    the arithmetic -- with a number that looks like every other number -- which is why the
+    refusal is here (SERVE-02, §8.7).
+    """
+
     format: str
-    team1_player_ids: List[str] = Field(..., min_length=1)
-    team2_player_ids: List[str] = Field(..., min_length=1)
+    team1_player_ids: List[str] = Field(
+        ..., description=f"The side batting first, as {TEAM_SIZE} distinct registry ids"
+    )
+    team2_player_ids: List[str] = Field(
+        ..., description=f"The other side, as {TEAM_SIZE} distinct registry ids, none of them team1's"
+    )
     team1_id: Optional[int] = Field(
         default=None, description="opposition id of the side batting first (for team-level context)"
     )
@@ -217,6 +317,18 @@ class XiWinRequest(BaseModel):
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
         return _upper(v) or ""
+
+    @model_validator(mode="after")
+    def _two_elevens(self) -> "XiWinRequest":
+        """One player, one side, eleven of them -- checked on both sides and between them."""
+        for ids, field_name in (
+            (self.team1_player_ids, "team1_player_ids"),
+            (self.team2_player_ids, "team2_player_ids"),
+        ):
+            _refuse_wrong_size(ids, field_name, TEAM_SIZE)
+            _refuse_repeats(ids, field_name)
+        _refuse_overlap(self.team1_player_ids, self.team2_player_ids, "team1_player_ids", "team2_player_ids")
+        return self
 
 
 class XiConstraintCheck(BaseModel):

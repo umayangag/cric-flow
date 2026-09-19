@@ -44,7 +44,8 @@ func TestChooseXIs_PinnedElevensAreScoredAsSentAndNothingIsSearched(t *testing.T
 			assert.Equal(t, SelectionObjectiveFixed, selection.Summary.Objective)
 			assert.False(t, selection.Summary.Optimised, "nothing was maximised")
 			assert.Contains(t, selection.Summary.Note, "Optimise")
-			assert.Nil(t, selection.Marginals, "no player carries a margin when nothing was searched")
+			assert.Nil(t, selection.Team1Answers.Marginals, "no player carries a margin when nothing was searched")
+			assert.Nil(t, selection.Team2Answers.Marginals, "no player carries a margin when nothing was searched")
 			assert.Equal(t, ServedRatings{}, selection.Served,
 				"the stamp comes from the calls that computed the numbers, never from a selection that made none")
 		})

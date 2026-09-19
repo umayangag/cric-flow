@@ -147,15 +147,3 @@ func newSelectionReason(reason XISelectionReason, byKey map[string]db.PlayerPool
 	}
 	return out
 }
-
-// mergeSelectionReasons merges both sides' reasons; registry ids are unique across sides,
-// as they are for the marginal values beside them.
-func mergeSelectionReasons(sides ...map[string]XISelectionReason) map[string]XISelectionReason {
-	out := map[string]XISelectionReason{}
-	for _, side := range sides {
-		for key, reason := range side {
-			out[key] = reason
-		}
-	}
-	return out
-}

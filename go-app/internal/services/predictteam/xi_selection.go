@@ -124,6 +124,9 @@ type XIOptimizationRequest struct {
 	// holds them, no swap removes them, and a constraint set that cannot hold them is
 	// refused with its reason rather than quietly relaxed (B-10).
 	MustIncludeKeys []string
+	// MustExcludeKeys are the registry ids no eleven this search returns may hold. It
+	// carries the opposing eleven: nobody plays both sides (GO-04).
+	MustExcludeKeys []string
 	MaxEvaluations  int
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
 	// means the serving state through today.
@@ -145,16 +148,28 @@ type XIOptimizationResult struct {
 	Served ServedRatings
 }
 
+// sideAnswers is what one side's own search said about the players it picked: the marginal
+// value of each and the "why this player" state behind him, keyed by registry id.
+//
+// One of these per side rather than one map for both. A registry id identifies a *player*,
+// not a player-on-a-side, so a single map is only unambiguous while no player is in both
+// elevens — and that used to be an assumption rather than a fact (GO-04). It is a fact now,
+// enforced twice over, but the answers stay separated anyway: the cost is a struct, and the
+// failure it prevents is one side's card silently showing the other side's numbers.
+type sideAnswers struct {
+	Marginals map[string]float64
+	Reasons   map[string]XISelectionReason
+}
+
 // xiSelection is both chosen elevens, how they were chosen, and the rating state every
 // optimiser call that chose them was answered from.
 type xiSelection struct {
-	Team1Keys []string
-	Team2Keys []string
-	Summary   SelectionSummary
-	Marginals map[string]float64
-	// Reasons is the "why this player" state for both elevens, keyed by registry id.
-	Reasons map[string]XISelectionReason
-	Served  ServedRatings
+	Team1Keys    []string
+	Team2Keys    []string
+	Summary      SelectionSummary
+	Team1Answers sideAnswers
+	Team2Answers sideAnswers
+	Served       ServedRatings
 }
 
 // XIWinRequest is the Go-side payload for POST /xi/predict-win.
@@ -223,7 +238,8 @@ func selectByRatings(ctx context.Context, optimizer XISelectionOptimizer, fix fi
 		}
 	}
 	selection.Team1Keys, selection.Team2Keys = xi1.SelectedPlayerKeys, xi2.SelectedPlayerKeys
-	selection.Reasons = mergeSelectionReasons(xi1.SelectionReasons, xi2.SelectionReasons)
+	selection.Team1Answers = sideAnswers{Reasons: xi1.SelectionReasons}
+	selection.Team2Answers = sideAnswers{Reasons: xi2.SelectionReasons}
 	slog.InfoContext(ctx, "rating-ordered XIs selected", slog.String("format", fix.format))
 	return selection, nil
 }
@@ -238,9 +254,9 @@ func selectByRatings(ctx context.Context, optimizer XISelectionOptimizer, fix fi
 // optimisation already plays against an eleven.
 func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer, fix fixture) (xiSelection, error) {
 	selection := xiSelection{
-		Summary:   SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true},
-		Marginals: map[string]float64{},
-		Reasons:   map[string]XISelectionReason{},
+		Summary:      SelectionSummary{Objective: SelectionObjectiveWin, Optimised: true},
+		Team1Answers: sideAnswers{Marginals: map[string]float64{}, Reasons: map[string]XISelectionReason{}},
+		Team2Answers: sideAnswers{Marginals: map[string]float64{}, Reasons: map[string]XISelectionReason{}},
 	}
 	seed1, err := optimizeSide(ctx, optimizer, fix, SelectionObjectiveRatings, fix.pool1, nil, true)
 	if err != nil {
@@ -282,10 +298,10 @@ func selectByWinProbability(ctx context.Context, optimizer XISelectionOptimizer,
 		settled := sameXI(selection.Team1Keys, next1.SelectedPlayerKeys) &&
 			sameXI(selection.Team2Keys, next2.SelectedPlayerKeys)
 		selection.Team1Keys, selection.Team2Keys = next1.SelectedPlayerKeys, next2.SelectedPlayerKeys
-		selection.Marginals = mergeMarginals(next1.MarginalValues, next2.MarginalValues)
 		// The reasons come from the same round as the marginal values beside them, so the
 		// card and the headline describe one search against one opposing eleven.
-		selection.Reasons = mergeSelectionReasons(next1.SelectionReasons, next2.SelectionReasons)
+		selection.Team1Answers = sideAnswers{Marginals: next1.MarginalValues, Reasons: next1.SelectionReasons}
+		selection.Team2Answers = sideAnswers{Marginals: next2.MarginalValues, Reasons: next2.SelectionReasons}
 		if settled {
 			slog.InfoContext(ctx, "win-probability selection settled",
 				slog.String("format", fix.format), slog.Int("rounds", round))
@@ -320,8 +336,13 @@ func optimizeSide(
 		TeamIsTeam1:        isTeam1,
 		Constraints:        fix.constraints,
 		MustIncludeKeys:    fix.mustIncludeFor(isTeam1),
-		MaxEvaluations:     config.SelectionMaxWinProbEvalBudget(config.Load()),
-		AsOf:               fix.asOf,
+		// The opposing eleven is banned from this search outright. The pools are already
+		// disjoint by the time a search starts (GO-04), so this bans nobody the pool
+		// holds; it is here because the one thing the search must never do is field a man
+		// the other side is fielding, and a ban states that where a pool filter implies it.
+		MustExcludeKeys: opponentXI,
+		MaxEvaluations:  config.SelectionMaxWinProbEvalBudget(config.Load()),
+		AsOf:            fix.asOf,
 	})
 	if err != nil {
 		return nil, err
@@ -350,17 +371,6 @@ func sameXI(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// mergeMarginals merges both sides' marginal values; registry ids are unique across sides.
-func mergeMarginals(sides ...map[string]float64) map[string]float64 {
-	out := map[string]float64{}
-	for _, side := range sides {
-		for key, v := range side {
-			out[key] = v
-		}
-	}
-	return out
 }
 
 // NormalizeFormat is the one place a format string is folded, so the constant maps, the

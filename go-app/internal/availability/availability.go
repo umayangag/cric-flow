@@ -63,11 +63,20 @@ const (
 	// ReasonRetired is the stored fact: a flag that a criterion corroborated, so
 	// `player.is_retired` was raised and every pool honours it.
 	ReasonRetired = "retired"
+
+	// ReasonBothSides is the one exclusion the ledger has nothing to do with: this
+	// fixture's other side holds the same player, and nobody plays both elevens
+	// (GO-04). It happens whenever a recency window covers a transfer -- franchise
+	// T20 with a twelve-month window is the ordinary case -- and it is an exclusion
+	// rather than a refusal because the fixture is real and one of the two clubs is
+	// the one he actually plays for now. The detail says which side kept him and on
+	// what evidence, so the choice is visible and can be overridden by hand (§8.7).
+	ReasonBothSides = "both_sides"
 )
 
 // ExclusionReasons returns every exclusion reason a pool can report.
 func ExclusionReasons() []string {
-	return []string{ReasonUserFlagged, ReasonRetired}
+	return []string{ReasonUserFlagged, ReasonRetired, ReasonBothSides}
 }
 
 // DefaultActor is whose ledger applies when a request names no user.

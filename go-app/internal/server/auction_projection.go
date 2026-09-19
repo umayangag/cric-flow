@@ -484,16 +484,23 @@ func projectionSides(
 			Have: len(record.Opposition.Players), Need: auction.TeamSize,
 		}
 	}
+	if err := auction.RefuseSharedPlayers(eleven, record.Opposition.Players); err != nil {
+		return nil, nil, err
+	}
 	return eleven, record.Opposition, nil
 }
 
 // forecastFor picks the candidate's own row out of the two elevens' forecasts.
+//
+// The candidate's eleven is team1 on every projection, so his row is the one on side 1: the
+// response is one flat list for both sides, and matching on the registry id alone would let
+// an opposition row answer for him (GO-04).
 func forecastFor(
 	forecast *predictteam.XIPerformanceResult,
 	candidate auction.NamedPlayer,
 ) (*auctionCandidateForecast, error) {
 	for _, player := range forecast.Players {
-		if player.PlayerKey != candidate.ExternalID {
+		if player.PlayerKey != candidate.ExternalID || player.Side != predictteam.Team1Side {
 			continue
 		}
 		return &auctionCandidateForecast{
@@ -631,6 +638,16 @@ func respondAuctionProjectionErr(w http.ResponseWriter, auctionID string, err er
 			Message: incomplete.Error(),
 			Hint: "set the likely eleven with PUT /api/auctions/{id}/assumptions: ten named players " +
 				"and the candidate makes eleven, and the opposition is eleven of its own",
+		})
+		return
+	}
+	var sharedPlayer *auction.SharedPlayerError
+	if errors.As(err, &sharedPlayer) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "XI_PLAYER_ON_BOTH_SIDES",
+			Message: sharedPlayer.Error(),
+			Hint: "the likely eleven and the opposition are two different elevens; " +
+				"change one of them with PUT /api/auctions/{id}/assumptions",
 		})
 		return
 	}

@@ -144,7 +144,8 @@ func TestSelectBothXIs_TestFormatIsRatingOrderedAndMarkedNotOptimised(t *testing
 		"a rating-ordered XI carries its format's reason",
 	)
 	assert.Contains(t, selection.Summary.Note, "H-17")
-	assert.Nil(t, selection.Marginals, "nothing was maximised, so no player has a margin")
+	assert.Nil(t, selection.Team1Answers.Marginals, "nothing was maximised, so no player has a margin")
+	assert.Nil(t, selection.Team2Answers.Marginals, "nothing was maximised, so no player has a margin")
 	assert.Equal(t, servedFromRunA, selection.Served, "the rating-ordered pick names the state it was read from")
 	require.Len(t, optimizer.calls, 2, "rating order does not depend on the opponent: one call per side")
 	for _, call := range optimizer.calls {
@@ -199,8 +200,10 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 	assert.Equal(t, SelectionObjectiveWin, selection.Summary.Objective)
 	assert.True(t, selection.Summary.Optimised)
 	assert.Empty(t, selection.Summary.Note)
-	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01, "k4": 0, "k6": 0.01}, selection.Marginals,
-		"both sides' marginal values reach the response")
+	assert.Equal(t, map[string]float64{"k1": 0, "k3": 0.01}, selection.Team1Answers.Marginals,
+		"team1's marginal values are team1's own")
+	assert.Equal(t, map[string]float64{"k4": 0, "k6": 0.01}, selection.Team2Answers.Marginals,
+		"team2's marginal values are team2's own")
 	assert.Equal(t, servedFromRunA, selection.Served)
 
 	seeds := optimizer.calls[:2]

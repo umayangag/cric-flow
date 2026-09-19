@@ -41,7 +41,13 @@ type XIPerformanceRequest struct {
 // q90 on this path and deriving one from the probabilities would be an interval the model
 // never produced (P1-4's rule, applied to the one target that has no interval).
 type XIPerformancePlayer struct {
-	PlayerKey    string
+	PlayerKey string
+	// Side is 1 for team1 and 2 for team2, as ml-service reported it. It is half the
+	// identity of a row: the response is one flat list for both elevens, so a registry id
+	// alone names a row only while no player is on both sides -- which is now enforced
+	// (GO-04) and was, before that, an assumption that quietly gave one side the other's
+	// forecast.
+	Side         int
 	Runs         XISimulatedRange
 	BallsFaced   XISimulatedRange
 	RunsConceded XISimulatedRange
@@ -96,14 +102,11 @@ func applyPerformanceForecast(
 	if err := result.Adopt(forecast.Served); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
-	byKey := make(map[string]XIPerformancePlayer, len(forecast.Players))
-	for _, p := range forecast.Players {
-		byKey[p.PlayerKey] = p
-	}
-	if err := applyForecastToSide(result.Team1, byKey); err != nil {
+	byKey := forecastsBySidePlayer(forecast.Players)
+	if err := applyForecastToSide(result.Team1, Team1Side, byKey); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
-	if err := applyForecastToSide(result.Team2, byKey); err != nil {
+	if err := applyForecastToSide(result.Team2, Team2Side, byKey); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
 	}
 	// §8.7: the substitution is named on the wire, not only in this log line. The caller
@@ -121,14 +124,43 @@ func applyPerformanceForecast(
 	return nil
 }
 
+// The two sides as /performance/predict and /simulate number them.
+const (
+	Team1Side = 1
+	Team2Side = 2
+)
+
+// sidePlayerKey identifies one forecast row: which side it is for and which player.
+//
+// The registry id alone would not. `/performance/predict` answers both elevens in one flat
+// list, and a map keyed by id alone silently keeps whichever row came last for a player who
+// appeared twice (GO-04).
+type sidePlayerKey struct {
+	side      int
+	playerKey string
+}
+
+// forecastsBySidePlayer indexes the response's flat player list by side and registry id.
+func forecastsBySidePlayer(players []XIPerformancePlayer) map[sidePlayerKey]XIPerformancePlayer {
+	byKey := make(map[sidePlayerKey]XIPerformancePlayer, len(players))
+	for _, p := range players {
+		byKey[sidePlayerKey{side: p.Side, playerKey: p.PlayerKey}] = p
+	}
+	return byKey
+}
+
 // applyForecastToSide writes each player's median and 10-90 range. A player the response
 // does not carry is an error for the same reason it is in the simulator path: a row left
 // at zeros reads as a forecast of nothing rather than as a missing forecast.
-func applyForecastToSide(players []SelectedPlayer, byKey map[string]XIPerformancePlayer) error {
+func applyForecastToSide(
+	players []SelectedPlayer,
+	side int,
+	byKey map[sidePlayerKey]XIPerformancePlayer,
+) error {
 	for i := range players {
-		p, ok := byKey[players[i].PlayerKey]
+		p, ok := byKey[sidePlayerKey{side: side, playerKey: players[i].PlayerKey}]
 		if !ok {
-			return fmt.Errorf("no forecast for selected player %q", players[i].PlayerKey)
+			return fmt.Errorf("no forecast for selected player %q on side %d", players[i].PlayerKey, side)
 		}
 		players[i].Runs = p.Runs.Median
 		players[i].Balls = p.BallsFaced.Median

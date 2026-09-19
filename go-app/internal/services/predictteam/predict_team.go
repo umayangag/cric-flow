@@ -299,14 +299,17 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	if err != nil {
 		return nil, err
 	}
+	if err := refuseSharedSelection(selection.Team1Keys, selection.Team2Keys); err != nil {
+		return nil, err
+	}
 	selection.Summary.MustInclude = mustIncludeReport(input, fix, selection)
 
 	result := &Result{
 		ServedRatings:    selection.Served,
 		Team1Side:        newResolvedSide(fix.team1),
 		Team2Side:        newResolvedSide(fix.team2),
-		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Marginals, selection.Reasons),
-		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Marginals, selection.Reasons),
+		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Team1Answers),
+		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Team2Answers),
 		Selection:        selection.Summary,
 		Team1PoolSummary: fix.summary1,
 		Team2PoolSummary: fix.summary2,
@@ -439,6 +442,22 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		return fixture{}, err
 	}
 
+	// Both pools were loaded from one player table by club, so a player who moved clubs
+	// inside the window is in both of them. He leaves one of them here, before anything
+	// resolves a must-include id or scores an eleven (GO-04, shared_players.go).
+	side1 := newCandidateSide(team1, pool1, &summary1, input.ExtraTeam1, input.Team1XI)
+	side2 := newCandidateSide(team2, pool2, &summary2, input.ExtraTeam2, input.Team2XI)
+	if err := resolveSharedCandidates(&side1, &side2); err != nil {
+		return fixture{}, err
+	}
+	pool1, pool2 = side1.rows, side2.rows
+	if err := checkPoolSize(team1.Label(), len(pool1), constraints.Size, summary1); err != nil {
+		return fixture{}, err
+	}
+	if err := checkPoolSize(team2.Label(), len(pool2), constraints.Size, summary2); err != nil {
+		return fixture{}, err
+	}
+
 	mustInclude1, err := mustIncludeKeys(team1, pool1, input.ExtraTeam1)
 	if err != nil {
 		return fixture{}, err
@@ -520,10 +539,9 @@ func resolveSide(ctx context.Context, ref db.TeamRef, format, field string) (db.
 
 func resolveConstraints(input Input) Constraints {
 	cfg := config.Load()
+	// The size is a constant, not a setting: ml-service refuses any side that is not an
+	// eleven, because every model behind it was fitted on elevens (SERVE-02).
 	size := config.DefaultTeamSize
-	if cfg != nil && cfg.Predictor.TeamSize > 0 {
-		size = cfg.Predictor.TeamSize
-	}
 	minBowlers := input.MinBowlers
 	if minBowlers <= 0 {
 		minBowlers = config.DefaultMinBowlers
@@ -542,8 +560,7 @@ func resolveConstraints(input Input) Constraints {
 func newSelectedPlayers(
 	keys []string,
 	pool []db.PlayerPoolRow,
-	marginals map[string]float64,
-	reasons map[string]XISelectionReason,
+	answers sideAnswers,
 ) []SelectedPlayer {
 	byKey := make(map[string]db.PlayerPoolRow, len(pool))
 	for _, p := range pool {
@@ -557,11 +574,11 @@ func newSelectedPlayers(
 			continue
 		}
 		player := SelectedPlayer{PlayerID: row.PlayerID, PlayerKey: key, PlayerName: row.PlayerName}
-		if v, ok := marginals[key]; ok {
+		if v, ok := answers.Marginals[key]; ok {
 			value := v
 			player.MarginalValue = &value
 		}
-		if reason, ok := reasons[key]; ok {
+		if reason, ok := answers.Reasons[key]; ok {
 			resolved := newSelectionReason(reason, byKey)
 			player.SelectionReason = &resolved
 		}
@@ -587,12 +604,22 @@ func winnerFrom(team1Probability float64, team1, team2 db.TeamSide) string {
 // rating for a player it has never been told about under that name.
 func poolPlayerKeys(pool []db.PlayerPoolRow) []string {
 	keys := make([]string, 0, len(pool))
+	seen := make(map[string]bool, len(pool))
 	for _, p := range pool {
 		if p.ExternalID == "" {
 			slog.Warn("player has no registry id and cannot be selected",
 				slog.Int64("player_id", p.PlayerID), slog.String("player_name", p.PlayerName))
 			continue
 		}
+		// Two player rows can carry one registry id (two imports of one person). To the
+		// selection that is one candidate offered twice, and a pool that offers him twice
+		// can field him twice, so he is offered once (SERVE-02).
+		if seen[p.ExternalID] {
+			slog.Warn("two candidates share one registry id; the pool offers him once",
+				slog.Int64("player_id", p.PlayerID), slog.String("player_name", p.PlayerName))
+			continue
+		}
+		seen[p.ExternalID] = true
 		keys = append(keys, p.ExternalID)
 	}
 	return keys

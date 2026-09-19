@@ -24,18 +24,44 @@ function poolSentence(pool: PoolSummaryDTO, teamName: string): string {
   return `pool: played for ${teamName} in the last ${window} months (${pool.size} players)`;
 }
 
-/** The exclusion count, spelled only when there is one. */
+/**
+ * The exclusion counts, each spelled only when there is one.
+ *
+ * `retired_excluded` counts the ledger's exclusions and nothing else, so the players the
+ * other side kept are counted here from the list itself: two different filters, and a
+ * reader who saw one number for both would not know which had removed whom.
+ */
 function exclusionSentence(pool: PoolSummaryDTO): string {
-  if (pool.retired_excluded <= 0) return '';
-  const players = pool.retired_excluded === 1 ? 'player' : 'players';
-  return `, ${pool.retired_excluded} ${players} excluded as retired`;
+  const parts: string[] = [];
+  if (pool.retired_excluded > 0) {
+    const players = pool.retired_excluded === 1 ? 'player' : 'players';
+    parts.push(`${pool.retired_excluded} ${players} excluded as retired`);
+  }
+  const bothSides = (pool.excluded ?? []).filter((one) => one.reason === 'both_sides').length;
+  if (bothSides > 0) {
+    const players = bothSides === 1 ? 'player' : 'players';
+    parts.push(`${bothSides} ${players} kept by the other side`);
+  }
+  return parts.length ? `, ${parts.join(', ')}` : '';
 }
 
 /** Why one candidate was left out, in the words a person can act on. */
 function exclusionReason(excluded: PoolExcludedCandidate): string {
   const detail = excluded.detail ? ` — ${excluded.detail}` : '';
+  if (excluded.reason === 'both_sides') return `plays for the other side${detail}`;
   if (excluded.reason === 'retired') return `recorded as retired${detail}`;
   return 'you flagged him retired; nothing has corroborated it';
+}
+
+/**
+ * Whether an exclusion is one the user can withdraw here.
+ *
+ * Undo withdraws a retirement flag. A player the other side kept was never flagged, so
+ * there is nothing to withdraw — the way to overrule that one is to pick the candidates by
+ * hand, which is what his detail says.
+ */
+function canUndo(excluded: PoolExcludedCandidate): boolean {
+  return excluded.reason !== 'both_sides';
 }
 
 export type PoolSummaryProps = {
@@ -94,7 +120,7 @@ const PoolSummary: React.FC<PoolSummaryProps> = ({
                 last played {excluded.last_played}
               </Typography>
             )}
-            {onUndoExclusion && (
+            {onUndoExclusion && canUndo(excluded) && (
               <Button
                 size="small"
                 onClick={() => onUndoExclusion(excluded.player_id)}

@@ -26,9 +26,12 @@ func ValidateTeamSettings(cfg *Config) error {
 		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
 		return err
 	}
-	// If both TeamSize and MinBowlers are provided, TeamSize must be >= MinBowlers.
-	if cfg.Predictor.TeamSize > 0 && cfg.Team.MinBowlers > 0 && cfg.Predictor.TeamSize < cfg.Team.MinBowlers {
-		err := fmt.Errorf("team size must be >= min bowlers")
+	// An eleven cannot hold more bowling options than it holds players. The bound is the
+	// team size and the team size is 11: every model the constraint is checked against was
+	// fitted on elevens, and ml-service refuses any other side size outright (SERVE-02), so
+	// there is no configured size for this to be relative to.
+	if cfg.Team.MinBowlers > DefaultTeamSize {
+		err := fmt.Errorf("min bowlers must be <= %d, which is how many players an eleven holds", DefaultTeamSize)
 		slog.Error("config.ValidateTeamSettings failed", slog.Any("err", err))
 		return err
 	}

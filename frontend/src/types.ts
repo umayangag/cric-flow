@@ -230,8 +230,16 @@ export type TeamSideOption = {
 export const POOL_SOURCES = ['recency_window', 'all_time', 'manual'] as const;
 export type PoolSource = (typeof POOL_SOURCES)[number];
 
-/** Why the retirement ledger left a candidate out of the pool. */
-export const POOL_EXCLUSION_REASONS = ['user_flagged', 'retired'] as const;
+/**
+ * Why a candidate the window offered is not in the pool an XI was chosen out of.
+ *
+ * Two come from the retirement ledger and are the user's own to undo. `both_sides` is not
+ * the ledger at all: the fixture's other side holds the same player and nobody plays both
+ * elevens, so the side that played him less recently lost him (GO-04). It is shown for the
+ * same reason the other two are -- a filter that is not shown is indistinguishable from no
+ * filter (§8.7) -- but there is no flag behind it to withdraw.
+ */
+export const POOL_EXCLUSION_REASONS = ['user_flagged', 'retired', 'both_sides'] as const;
 export type PoolExclusionReason = (typeof POOL_EXCLUSION_REASONS)[number];
 
 /**

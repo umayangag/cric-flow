@@ -163,12 +163,13 @@ func TestApplyPerformanceForecast_WritesMediansAndRangesAndNoTotals(t *testing.T
 		Players: []XIPerformancePlayer{
 			{
 				PlayerKey:    "a1",
+				Side:         Team1Side,
 				Runs:         XISimulatedRange{P10: 3, Median: 26, P90: 71},
 				BallsFaced:   XISimulatedRange{P10: 8, Median: 44, P90: 110},
 				RunsConceded: XISimulatedRange{P10: 10, Median: 33, P90: 60},
 				Wickets:      1.4,
 			},
-			{PlayerKey: "b1", Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
+			{PlayerKey: "b1", Side: Team2Side, Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
 		},
 	}}
 	result := resultWithOnePlayerEachSide()
@@ -211,7 +212,7 @@ func TestApplyMatchForecast_RefusesAForecastFromAnotherRunThanTheSelection(t *te
 			apply: func(result *Result) error {
 				forecast := &XIPerformanceResult{
 					Served:  servedFromRunB,
-					Players: []XIPerformancePlayer{{PlayerKey: "a1"}, {PlayerKey: "b1"}},
+					Players: []XIPerformancePlayer{{PlayerKey: "a1", Side: Team1Side}, {PlayerKey: "b1", Side: Team2Side}},
 				}
 				return applyPerformanceForecast(context.Background(), &fakePerformance{result: forecast},
 					twoSidedFixture("TEST"), []string{"a1"}, []string{"b1"}, result)
@@ -243,7 +244,7 @@ func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T)
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
 		Served:  servedFromRunA,
-		Players: []XIPerformancePlayer{{PlayerKey: "a1", Runs: XISimulatedRange{Median: 26}}},
+		Players: []XIPerformancePlayer{{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}}},
 	}}
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
@@ -310,7 +311,7 @@ func TestWinnerFrom_NamesTheResolvedSideNotTheTypedName(t *testing.T) {
 
 func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), map[string]float64{"k2": 0.03}, nil)
+	players := newSelectedPlayers([]string{"k2", "k1"}, pool(1, 2, 3), sideAnswers{Marginals: map[string]float64{"k2": 0.03}})
 
 	require.Len(t, players, 2)
 	assert.Equal(t, int64(2), players[0].PlayerID)
@@ -321,7 +322,7 @@ func TestNewSelectedPlayers_NamesPlayersAndAttachesMarginalValues(t *testing.T) 
 
 func TestNewSelectedPlayers_DropsAKeyNoPoolRowClaims(t *testing.T) {
 	t.Parallel()
-	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), nil, nil)
+	players := newSelectedPlayers([]string{"k1", "ghost"}, pool(1, 2), sideAnswers{})
 
 	require.Len(t, players, 1, "a key with no pool row names nobody and is not invented")
 	assert.Equal(t, int64(1), players[0].PlayerID)

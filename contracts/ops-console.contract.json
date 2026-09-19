@@ -130,7 +130,8 @@
   ],
   "pool_exclusion_reasons": [
     "user_flagged",
-    "retired"
+    "retired",
+    "both_sides"
   ],
   "selection_roles": [
     "keeper",

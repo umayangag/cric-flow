@@ -118,6 +118,9 @@ func projectionMLService(
 			for _, key := range team1 {
 				players = append(players, map[string]any{
 					"player_id": key,
+					// The candidate's eleven is team1 on every projection, and his row is
+					// read by side as well as by id (GO-04).
+					"side": 1,
 					"runs": map[string]float64{
 						"q10": script.candidateRuns[0], "median": script.candidateRuns[1], "q90": script.candidateRuns[2],
 					},

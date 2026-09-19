@@ -32,9 +32,6 @@
     "default_batters": 6,
     "default_bowlers": 5
   },
-  "predictor": {
-    "team_size": 11
-  },
   "pool": {
     "recency_months": {
       "TEST": 12,

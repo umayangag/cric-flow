@@ -118,6 +118,7 @@ func resolvePinnedXI(team db.TeamSide, pool []db.PlayerPoolRow, ids []int64, tea
 	}
 	keys := make([]string, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
+	seenKeys := make(map[string]int64, len(ids))
 	var unknown []int64
 	for _, id := range ids {
 		if seen[id] {
@@ -129,6 +130,15 @@ func resolvePinnedXI(team db.TeamSide, pool []db.PlayerPoolRow, ids []int64, tea
 			unknown = append(unknown, id)
 			continue
 		}
+		// Two player ids can resolve to one registry id (two imports of one person). The
+		// eleven would be ten men to every model that reads it, so it is refused here
+		// rather than scored as an eleven (SERVE-02).
+		if other, doubled := seenKeys[row.ExternalID]; doubled {
+			return nil, fmt.Errorf(
+				"%s: player ids %d and %d are the same registered player, and one player fills one place",
+				label, other, id)
+		}
+		seenKeys[row.ExternalID] = id
 		keys = append(keys, row.ExternalID)
 	}
 	if len(unknown) > 0 {

@@ -88,9 +88,6 @@ type Config struct {
 		DefaultBatters int `json:"default_batters"`
 		DefaultBowlers int `json:"default_bowlers"`
 	} `json:"team"`
-	Predictor struct {
-		TeamSize int `json:"team_size"`
-	} `json:"predictor"`
 	Ops OpsConfig `json:"ops"`
 	// Pool is who may play: the default candidate pool's recency window and the
 	// retirement ledger's corroboration thresholds (D-12).
