@@ -262,6 +262,20 @@ except Exception as e:
 
 # ---------------------------------------------------------------------------
 # Route handlers — thin wrappers delegating to service modules
+#
+# Which ones are `async def` is a decision, not a habit (SERVE-01). FastAPI runs a plain
+# `def` handler on the threadpool and an `async def` one on the event loop itself, and
+# every handler below calls synchronous code: an optimise is up to 200k model
+# evaluations, a simulate 20k draws over 22 players, an as-of request a sequential sweep
+# of `ball_event`, a reload a directory of joblib files. Run on the loop, any of them
+# stops *everything* the process is doing -- including /health, so a container answering
+# a prediction reads as dead to its own liveness probe.
+#
+# So: anything that computes or touches the disk is `def`. What stays on the loop is the
+# three handlers that only read what is already in memory -- /health, /xi/status,
+# /xi/metric-glossary -- and they stay there on purpose. The threadpool is bounded (40
+# threads); a burst of slow predictions can take every one of them, and a liveness probe
+# that has to queue behind them for a thread is the same outage in a different place.
 # ---------------------------------------------------------------------------
 
 
@@ -284,7 +298,7 @@ async def health():
 
 
 @app.get("/artifacts/status")
-async def artifacts_status():
+def artifacts_status():
     """Every run on disk, which one `current` points at, and which one is loaded.
 
     It reports runs rather than a formats-by-model-kind matrix because a run is what an
@@ -334,7 +348,7 @@ def _run_to_publish(run: str) -> Optional[str]:
 
 
 @app.post("/admin/reload")
-async def admin_reload(request: Request, run: str = ""):
+def admin_reload(request: Request, run: str = ""):
     """Point `current` at a run and load it -- the `reload` pipeline step.
 
     ``?run=<id>`` names the run, which is how an operator swaps between two runs. With
@@ -499,7 +513,7 @@ async def admin_train_stop(request: Request, step: str = ""):
 
 
 @app.get("/admin/train/progress")
-async def admin_train_progress(request: Request, step: str = "", run_id: str = ""):
+def admin_train_progress(request: Request, step: str = "", run_id: str = ""):
     """Return live progress for a training step (ops plan O-3).
 
     `step` is a pipeline step id (`retrain`, `evaluate`). With no `run_id`
@@ -527,7 +541,7 @@ async def xi_status():
 
 
 @app.get("/xi/evaluate-report")
-async def xi_evaluate_report():
+def xi_evaluate_report():
     """L4's evaluation report: the walk-forward table, the locked window, per-target
     performance metrics with width beside coverage, the simulator's E2 section, the
     selection metrics and the train/serve parity check -- everything `make xi-evaluate`
@@ -548,7 +562,7 @@ async def xi_metric_glossary():
 
 
 @app.post("/xi/predict-win", response_model=XiWinResponse)
-async def xi_predict_win(request: XiWinRequest):
+def xi_predict_win(request: XiWinRequest):
     """P(team1 wins) for two elevens given by player id. team1 is the side batting first."""
     try:
         return xi_service.predict_win(request)
@@ -557,7 +571,7 @@ async def xi_predict_win(request: XiWinRequest):
 
 
 @app.post("/performance/predict", response_model=PerformancePredictResponse)
-async def performance_predict(request: PerformancePredictRequest):
+def performance_predict(request: PerformancePredictRequest):
     """Per-player performance distributions (L2-B) for two elevens given by player id:
     median and 10-90 range of runs, balls faced and runs conceded; P(bats) / P(bowls);
     wicket probabilities P(0), P(1), P(2+). Both batting orders are averaged unless
@@ -569,7 +583,7 @@ async def performance_predict(request: PerformancePredictRequest):
 
 
 @app.post("/xi/player-roles", response_model=PlayerRolesResponse)
-async def xi_player_roles(request: PlayerRolesRequest):
+def xi_player_roles(request: PlayerRolesRequest):
     """What the served as-of vectors say about a list of players: keeper, bowling option,
     or neither (P3-1).
 
@@ -589,7 +603,7 @@ async def xi_player_roles(request: PlayerRolesRequest):
 
 
 @app.post("/simulate", response_model=SimulateResponse)
-async def simulate(request: SimulateRequest):
+def simulate(request: SimulateRequest):
     """Draw the match from the performance model's forecasts for two elevens (L2-C): each
     side's total (median, 10-90), per-player ranges and the median-band scorecard that sums
     to the total, the margin, P(win) by simulation beside the display model's, and each
@@ -606,7 +620,7 @@ async def simulate(request: SimulateRequest):
 
 
 @app.post("/xi/optimize", response_model=XiOptimizeResponse)
-async def xi_optimize(request: XiOptimizeRequest):
+def xi_optimize(request: XiOptimizeRequest):
     """Pick the XI from a pool: ``objective="win"`` maximises P(win) against a fixed opponent
     XI, ``objective="ratings"`` returns the rating-ordered pick and maximises nothing.
 

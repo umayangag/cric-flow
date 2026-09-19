@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from app import xi_service
+from app import serving_compute, xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi import simulator
 from ml.xi.builder import build
@@ -20,6 +20,7 @@ from ml.xi.retrain import main as retrain_main
 from ml.xi.retrain import retrain
 from ml.xi.simulator import SimulationUnavailable
 from ml.xi.sources import Deliveries, MatchRecord, PostgresSource, _deliveries_from_rows
+from ml.xi.store import STATE_ARRAY_NAMES
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.xi_fixtures import xi
 from tests.xi_perf_fixtures import fast_fits
@@ -917,6 +918,104 @@ def test_store_as_of_past_date_serves_a_state_that_stops_there(artifacts_dir) ->
     assert store.state.last_date < as_of
     assert store.state.matches_seen < reg.store("T20I").state.matches_seen
     assert store.models is reg.store("T20I").models  # same fitted models, earlier ratings
+
+
+def test_an_as_of_store_is_a_snapshot_the_advancing_pass_cannot_change(artifacts_dir) -> None:
+    """SERVE-01: the pass folds matches into one ``RatingState`` in place, so a request
+    handed the live object watches its own ratings move when the next request advances the
+    pass -- silently, and on the threadpool with a reader half way through an array."""
+    reg, _, _, matches = _registry_with_as_of(artifacts_dir)
+    form_key = ("T20I", "7")
+
+    early = reg.store_as_of("T20I", matches[30].match_date)
+    seen, through = early.state.matches_seen, early.state.last_date
+    pelo, elo = np.copy(early.state.pelo), early.state.team_elo.get(form_key)
+    form = list(early.state.team_results.get(form_key, ()))
+    later = reg.store_as_of("T20I", matches[80].match_date)
+
+    assert later.state.matches_seen > seen, "the pass did advance, which is what makes this a test"
+    assert early.state.matches_seen == seen and early.state.last_date == through
+    np.testing.assert_array_equal(early.state.pelo, pelo)
+    assert early.state.team_elo.get(form_key) == elo
+    assert list(early.state.team_results.get(form_key, ())) == form, "a form list is appended to in place"
+
+
+def test_one_as_of_date_is_answered_from_one_snapshot(artifacts_dir) -> None:
+    """A backtest asks four surfaces about one fixture. They share the snapshot: identical
+    ratings by construction, and one copy of the state rather than four in flight."""
+    reg, _, _, matches = _registry_with_as_of(artifacts_dir)
+    as_of = matches[40].match_date
+
+    first = reg.store_as_of("T20I", as_of)
+    again = reg.store_as_of("T20I", as_of)
+
+    assert again is first
+
+
+def test_reloading_a_run_drops_the_as_of_snapshot(artifacts_dir) -> None:
+    """The snapshot belongs to the run that was serving when it was taken; a reload that
+    replaced the models must not leave a store pairing the new state with the old ones."""
+    out, _, _, matches = artifacts_dir
+    reg, _, _, _ = _registry_with_as_of(artifacts_dir)
+    as_of = matches[40].match_date
+    before = reg.store_as_of("T20I", as_of)
+
+    reg.reload(out)
+
+    assert reg.store_as_of("T20I", as_of) is not before
+
+
+def test_a_served_prediction_computes_with_one_thread_per_numeric_library(registry, artifacts_dir, monkeypatch) -> None:
+    """SERVE-01's bill, pinned on a real prediction rather than on the decorator: the
+    service functions carry the limit, so the whole answer -- rows, model, simulator draws
+    -- is computed with one thread per library. Measured, on the four serving paths
+    sequentially: optimize 268 -> 192 ms, predict-win 7.5 -> 1.8 ms, performance 265 -> 33
+    ms, simulate 390 -> 140 ms. Nothing the service does wants a thread per core."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    outside = serving_compute.library_thread_counts()
+    inside = []
+    stamp = xi_service._served_ratings
+    monkeypatch.setattr(
+        xi_service,
+        "_served_ratings",
+        lambda store: inside.extend(serving_compute.library_thread_counts()) or stamp(store),
+    )
+
+    xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11]), registry=registry
+    )
+
+    assert outside, "threadpoolctl found no library to control; this assertion would prove nothing"
+    assert inside == [1] * len(outside)
+
+
+def test_serving_an_as_of_request_never_writes_to_the_rating_state(artifacts_dir) -> None:
+    """The other half of SERVE-01: a read must be a read. ``_read_slots`` used to grow the
+    arrays for the reserved unrated column on the read path, which several threads sharing
+    one snapshot would race on. Every array is made read-only here, so any write on any of
+    the four surfaces raises instead of passing unnoticed."""
+    reg, squad_a, squad_b, matches = _registry_with_as_of(artifacts_dir)
+    as_of = matches[40].match_date
+    store = reg.store_as_of("T20I", as_of)
+    for name in STATE_ARRAY_NAMES:
+        getattr(store.state, name).flags.writeable = False
+    eleven = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], as_of=as_of)
+
+    xi_service.predict_win(XiWinRequest(**eleven), registry=reg)
+    xi_service.predict_performance(PerformancePredictRequest(**eleven), registry=reg)
+    xi_service.simulate(SimulateRequest(**eleven, n_samples=100), registry=reg)
+    xi_service.optimize(
+        XiOptimizeRequest(
+            format="T20I",
+            pool_player_ids=squad_a,
+            opponent_player_ids=squad_b[:11],
+            as_of=as_of,
+            constraints=XiConstraints(team_size=11, min_bowlers=3, require_keeper=False),
+        ),
+        registry=reg,
+    )
+
+    assert len(store.state.players) == len(reg.store_as_of("T20I", as_of).state.players)
 
 
 def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:

@@ -97,6 +97,81 @@ DEBUT_IMPACT, DEBUT_BALLS, DEBUT_WICKETS, DEBUT_MATCHES = 0, 1, 2, 3
 #: debutant of that age does with the ball, not where he bats.
 DEBUT_PRIOR_KEYS = ("exp_balls_faced", "bat_rate", "bat_wrate", "exp_balls_bowled", "bowl_rate", "bowl_wrate")
 
+# Everything the state is made of, named once. Three consumers read these tuples -- the
+# artifact writer and its refusal (``ml.xi.store``), and ``RatingState.snapshot`` -- and
+# an accumulator missing from them is a silent defect in all three at once: an array left
+# out of the artifact is D-6's IndexError, and one left out of the snapshot is a serving
+# read of a state another thread is still writing. ``test_xi_ratings`` walks a fresh
+# state's attributes and fails if any of them is absent here.
+#
+# The player/context split matters to the artifact check: a player array's last axis is
+# the player slot, so its width has to cover every registered key; a context array is
+# indexed by (group, format[, over]) and checking its width against the players would
+# refuse every healthy run.
+PLAYER_ARRAY_NAMES = (
+    "bat_rae",
+    "bat_balls",
+    "bat_wae",
+    "bowl_rse",
+    "bowl_balls",
+    "bowl_wae",
+    "career",
+    "career_all",
+    "keeper",
+    "pelo",
+    "bat_pos_sum",
+    "bat_pos_n",
+    "xi_n",
+    "xi_bat_balls",
+    "xi_bowl_balls",
+    "bat_ph_rae",
+    "bat_ph_balls",
+    "bowl_ph_rse",
+    "bowl_ph_balls",
+    "seq_num",
+    "seq_den",
+)  # fmt: skip
+
+CONTEXT_ARRAY_NAMES = (
+    "ctx_balls",
+    "ctx_runs",
+    "ctx_wickets",
+    "ctx_extras",
+    "ctx_deliveries",
+    "ctx_bowler_wickets",
+    "ctx_dismissals",
+    "ctx_full_innings_deliveries",
+    "ctx_full_innings",
+    "debut_bat",
+    "debut_bowl",
+)  # fmt: skip
+
+STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
+
+#: The keyed tables beside the arrays: team and venue state, the fixture-context sums
+#: (A-1) and the players' dates of birth (X-1b).
+STATE_TABLE_NAMES = (
+    "team_elo",
+    "team_results",
+    "head_to_head",
+    "venue_bat_first",
+    "team_venue_matches",
+    "venue_scoring",
+    "competition_scoring",
+    "birth_dates",
+)
+
+#: The tables whose values are mutated in place by ``update`` -- a result appended to a
+#: form list, a venue's bat-first pair incremented, a ground's scoring sums advanced. A
+#: snapshot has to copy the value as well as the mapping, or the copy moves with the pass.
+_TABLES_WITH_MUTABLE_VALUES = (
+    "team_results",
+    "head_to_head",
+    "venue_bat_first",
+    "venue_scoring",
+    "competition_scoring",
+)
+
 
 class RatingState:
     """All as-of state. Arrays are (format, player_slot); grown on demand.
@@ -216,6 +291,53 @@ class RatingState:
         unrated = len(self.players)
         self._ensure(unrated + 1)
         return self.players.read_slots(keys, unrated)
+
+    def reserve_read_capacity(self) -> None:
+        """Make room for the reserved unrated column now, so no read has to.
+
+        ``_read_slots`` grows the arrays when the reserved column is past their width,
+        which is a *write* on the read path: harmless while one thread reads, a data race
+        once several do (SERVE-01). A state that will be read concurrently -- one loaded
+        from an artifact, or a serving snapshot -- reserves the column once while it is
+        still private to one thread, after which every read is a pure read.
+        """
+        self._ensure(len(self.players) + 1)
+
+    def snapshot(self) -> "RatingState":
+        """An independent copy of this state: what a reader is handed while the pass that
+        produced it goes on advancing (SERVE-01).
+
+        The as-of pass mutates one state in place -- arrays, Elo tables, the form lists --
+        so handing a request the live object means its ratings change under it while it is
+        being read, and two requests a day apart can read the same numbers. Every array is
+        copied, and so is every table value the pass mutates rather than replaces; the
+        player index is copied too, so a later match cannot register a player into a state
+        a reader believes is finished.
+
+        The copy is a full ``RatingState`` and not a frozen shell: ``update`` would work on
+        it. What makes it safe to share is that nothing else holds a reference to it. The
+        price is the state's own size -- 24 MB of arrays and ~3.5 ms for a 13.5k-player
+        state, against an as-of sweep that folds thousands of matches -- which is why
+        ``XiRegistry`` keeps one snapshot per as-of date rather than one per request.
+        """
+        copy = RatingState(
+            gender_split_context=self.gender_split_context,
+            age_aware_cold_start=self.age_aware_cold_start,
+        )
+        copy.players = PlayerIndex(key_to_slot=dict(self.players.key_to_slot), keys=list(self.players.keys))
+        for name in STATE_ARRAY_NAMES:
+            setattr(copy, name, np.copy(getattr(self, name)))
+        for name in STATE_TABLE_NAMES:
+            source = getattr(self, name)
+            table = getattr(copy, name)
+            if name in _TABLES_WITH_MUTABLE_VALUES:
+                table.update({key: list(value) for key, value in source.items()})
+            else:
+                table.update(source)
+        copy.matches_seen = self.matches_seen
+        copy.last_date = self.last_date
+        copy.reserve_read_capacity()
+        return copy
 
     # -- reads ---------------------------------------------------------------------------
     def age_vectors(self, player_keys: Sequence[str], on: date) -> Dict[str, np.ndarray]:

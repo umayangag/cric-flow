@@ -173,6 +173,19 @@ longer raise a step to green that run history says is not done.
     `status: "ok"` is about the process. A service with no run loaded is alive, and
     `loaded: false` is how it says so — conflating the two is what let a box with no model
     report itself healthy.
+
+    It answers while the service is computing. The handler runs on the event loop and reads
+    only what is already in memory, and every route that computes or touches the disk runs
+    on the threadpool instead (SERVE-01) — so a probe during an optimise or a simulate is
+    answered in about a millisecond rather than waiting the whole of it out. Ten concurrent
+    simulates measured 4,110 ms for a single answered probe before that change and a median
+    of 2.6 ms over 32 probes after it.
+
+    Each served prediction computes with one thread per numeric library, which the log
+    records nowhere because it is not a per-request event; it is `app.serving_compute`, and
+    it is why several predictions at once no longer put twelve threads each on twelve
+    cores. The `retrain` and `evaluate` subprocesses are deliberately outside it and keep
+    every core.
   - **Consumers**:
     - Frontend `HealthTab` (latency + artifacts summary).
     - Operators verifying which models are in memory.

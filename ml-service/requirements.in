@@ -22,3 +22,7 @@ httpx
 psycopg2-binary
 python-dotenv
 psutil
+# Direct since SERVE-01: the serving process pins the numeric libraries to one thread per
+# request-carrying process (app.serving_compute). It arrives with scikit-learn anyway; it
+# is named here because this code imports it.
+threadpoolctl
