@@ -75,7 +75,9 @@ starlette==1.6.0
 structlog==26.1.0
     # via -r requirements.in
 threadpoolctl==3.6.0
-    # via scikit-learn
+    # via
+    #   -r requirements.in
+    #   scikit-learn
 typing-extensions==4.16.0
     # via
     #   anyio

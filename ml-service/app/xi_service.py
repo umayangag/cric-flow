@@ -46,6 +46,7 @@ from app.models.xi import (
     XiWinRequest,
     XiWinResponse,
 )
+from app.serving_compute import single_threaded
 from ml.config import get_ratings_max_age_days
 from ml.xi import glossary, runs, simulator
 from ml.xi import roles as R
@@ -445,6 +446,7 @@ def _constraints(c: XiConstraints) -> Constraints:
     )
 
 
+@single_threaded
 def optimize(req: XiOptimizeRequest, registry: XiRegistry = REGISTRY) -> XiOptimizeResponse:
     # The two policy checks come before the artifacts: whether a format is offered an
     # optimised selection is a rule (H-17), not a property of what happens to be loaded.
@@ -563,6 +565,7 @@ def _constraint_check(
     )
 
 
+@single_threaded
 def player_roles(req: PlayerRolesRequest, registry: XiRegistry = REGISTRY) -> PlayerRolesResponse:
     """What the served vectors say about each id asked for: keeper, bowling option, or
     neither (P3-1).
@@ -607,6 +610,7 @@ def player_roles(req: PlayerRolesRequest, registry: XiRegistry = REGISTRY) -> Pl
     )
 
 
+@single_threaded
 def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResponse:
     store = registry.store_as_of(req.format, req.as_of)
     t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
@@ -660,6 +664,7 @@ def _fixture_rows(store: XiStore, req: PerformancePredictRequest) -> tuple:
     return win_row, rows, unknown
 
 
+@single_threaded
 def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = REGISTRY) -> PerformancePredictResponse:
     """Per-player performance distributions for two elevens: the same feature rows the
     training frame is built from (``ml.xi.rows``), predicted by the format's L2-B model,
@@ -726,6 +731,7 @@ def _player_performance(rows: pd.DataFrame, prediction: Dict, i: int) -> PlayerP
     )
 
 
+@single_threaded
 def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateResponse:
     """Draw the match ``n_samples`` times from the format's L2-B forecasts for the two
     elevens (``ml.xi.simulator``): totals, per-player ranges, the median-band scorecard,

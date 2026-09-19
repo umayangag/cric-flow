@@ -15,6 +15,10 @@ and a blocked loop would prove nothing.
 from __future__ import annotations
 
 import importlib
+import json
+import pathlib
+import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -107,3 +111,85 @@ def test_health_answers_while_a_route_is_computing(tmp_path, monkeypatch, path, 
         f"{BLOCKING_SECONDS:.0f}s -- the handler is running on the event loop"
     )
     assert answered.status_code == status, "and the request that was held still gets its own answer"
+
+
+# ---------------------------------------------------------------------------
+# How much of the machine one prediction takes
+# ---------------------------------------------------------------------------
+
+#: Measured in a subprocess of its own, because every fact here is about a *process* and a
+#: thread inside it: what the machine gives a numeric library by default, what a serving
+#: call does to that on the threadpool thread it runs on, and what a child process of the
+#: service inherits -- the last being the mechanism by which a `retrain` subprocess would
+#: have been affected.
+_THREAD_PROBE = """
+import json, os, subprocess, sys, tempfile
+from concurrent.futures import ThreadPoolExecutor
+
+os.environ.setdefault("ML_SERVICE_OUTPUT_DIR", tempfile.mkdtemp(prefix="thread_probe_"))
+
+import numpy  # noqa: F401  -- the libraries the service computes with, loaded as it loads them
+import sklearn  # noqa: F401
+
+from app import serving_compute
+
+CHILD = (
+    "import json, numpy, sklearn, threadpoolctl;"
+    "print(json.dumps([i['num_threads'] for i in threadpoolctl.threadpool_info()]))"
+)
+report = {"default": serving_compute.library_thread_counts(), "thread_env": []}
+
+
+@serving_compute.single_threaded
+def one_served_call():
+    report["inside"] = serving_compute.library_thread_counts()
+    child = subprocess.run([sys.executable, "-c", CHILD], capture_output=True, text=True, check=True)
+    report["child"] = json.loads(child.stdout.strip().splitlines()[-1])
+    report["thread_env"] = sorted(name for name in os.environ if name.endswith("_NUM_THREADS"))
+
+
+# On a worker thread, never the main one: a request is served on the FastAPI threadpool,
+# and OpenMP's thread count is per-thread -- a limit applied on the import thread would
+# read as applied here and do nothing at all where the work happens.
+with ThreadPoolExecutor(max_workers=1) as pool:
+    pool.submit(one_served_call).result()
+report["after"] = serving_compute.library_thread_counts()
+print("PROBE" + json.dumps(report))
+"""
+
+
+@pytest.fixture(scope="module")
+def thread_probe() -> Dict[str, Any]:
+    """The thread counts before, during and after one serving call, the counts a child
+    process of it sees, and the environment -- all measured in one child process."""
+    completed = subprocess.run(
+        [sys.executable, "-c", _THREAD_PROBE],
+        capture_output=True,
+        text=True,
+        cwd=str(pathlib.Path(__file__).resolve().parents[1]),
+        check=True,
+    )
+    line = next(line for line in completed.stdout.splitlines() if line.startswith("PROBE"))
+    return json.loads(line[len("PROBE") :])
+
+
+def test_a_serving_call_computes_with_one_thread_per_numeric_library(thread_probe):
+    """SERVE-01's own bill. The routes now compute on the threadpool, so several
+    predictions run at once -- and numpy's BLAS and scikit-learn's OpenMP each start a
+    thread per core inside every call they are given, so N concurrent requests put N x
+    cores threads on cores and the machine spends its time switching between them. The
+    limit is applied on the thread that computes, which is the only place it reaches:
+    ``omp_set_num_threads`` is per-thread, and a limit applied at import measured no
+    better than none at all (four concurrent simulates: 7.59 s against 7.43 s)."""
+    assert thread_probe["default"], "threadpoolctl found no library to control; the probe proves nothing"
+    assert thread_probe["inside"] == [1] * len(thread_probe["default"])
+
+
+def test_the_limit_does_not_reach_a_subprocess_of_the_service(thread_probe):
+    """The half that protects the training path. `retrain` and `evaluate` run as
+    subprocesses, and scikit-learn's HistGradientBoosting is genuinely OpenMP-parallel:
+    single-threading a retrain by accident would be a worse bug than the one this fixes.
+    A child inherits the environment and cannot inherit a per-thread library setting,
+    which is exactly why the limit is not in the environment."""
+    assert thread_probe["thread_env"] == [], "a *_NUM_THREADS variable would be inherited by every training subprocess"
+    assert thread_probe["child"] == thread_probe["default"], "a child of the service keeps the machine's own default"

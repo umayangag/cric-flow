@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from app import xi_service
+from app import serving_compute, xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi import simulator
 from ml.xi.builder import build
@@ -963,6 +963,30 @@ def test_reloading_a_run_drops_the_as_of_snapshot(artifacts_dir) -> None:
     reg.reload(out)
 
     assert reg.store_as_of("T20I", as_of) is not before
+
+
+def test_a_served_prediction_computes_with_one_thread_per_numeric_library(registry, artifacts_dir, monkeypatch) -> None:
+    """SERVE-01's bill, pinned on a real prediction rather than on the decorator: the
+    service functions carry the limit, so the whole answer -- rows, model, simulator draws
+    -- is computed with one thread per library. Measured, on the four serving paths
+    sequentially: optimize 268 -> 192 ms, predict-win 7.5 -> 1.8 ms, performance 265 -> 33
+    ms, simulate 390 -> 140 ms. Nothing the service does wants a thread per core."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    outside = serving_compute.library_thread_counts()
+    inside = []
+    stamp = xi_service._served_ratings
+    monkeypatch.setattr(
+        xi_service,
+        "_served_ratings",
+        lambda store: inside.extend(serving_compute.library_thread_counts()) or stamp(store),
+    )
+
+    xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11]), registry=registry
+    )
+
+    assert outside, "threadpoolctl found no library to control; this assertion would prove nothing"
+    assert inside == [1] * len(outside)
 
 
 def test_serving_an_as_of_request_never_writes_to_the_rating_state(artifacts_dir) -> None:
