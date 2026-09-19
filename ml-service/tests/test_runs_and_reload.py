@@ -25,7 +25,14 @@ from ml.xi import contract as C
 from ml.xi import runs
 from ml.xi.ratings import RatingState
 from ml.xi.runs import RunArtifactsInvalid
-from ml.xi.store import STATE_ARRAY_NAMES, FormatModels, _state_to_payload, save_ratings, state_shape
+from ml.xi.store import (
+    PLAYER_ARRAY_NAMES,
+    STATE_ARRAY_NAMES,
+    FormatModels,
+    _state_to_payload,
+    save_ratings,
+    state_shape,
+)
 from tests.xi_fixtures import ListSource, xi
 
 
@@ -232,6 +239,28 @@ def test_an_array_narrower_than_the_players_it_names_is_refused(tmp_path):
 
     message = str(excinfo.value)
     assert "pelo has width 2, expected 5" in message
+
+
+def test_a_loaded_state_reserves_the_unrated_column_so_a_read_cannot_grow_it(tmp_path):
+    """SERVE-01's second half. ``_read_slots`` maps a key the state has never seen to one
+    reserved column past the last player, and grows the arrays to make room for it -- a
+    *write*, on the read path, which is harmless for one reader and a race for the several
+    the threadpool now runs. An artifact written by a state with no slack (its arrays
+    exactly as wide as the players it names) is the case that hits it; loading reserves the
+    column once, while the state is still private to the loading thread."""
+    directory = _write_run(tmp_path)
+    payload = _state_to_payload(_state(players=5))
+    payload["arrays"] = {
+        name: (array[..., : len(payload["keys"])].copy() if name in PLAYER_ARRAY_NAMES else array)
+        for name, array in payload["arrays"].items()
+    }
+    joblib.dump(payload, os.path.join(directory, "xi_ratings.joblib"))
+    state = xi_service.XiStore.load(directory).state
+    widths = {name: getattr(state, name).shape[-1] for name in PLAYER_ARRAY_NAMES}
+
+    state.side_vectors("T20", ["a-player-this-state-has-never-seen"])
+
+    assert {name: getattr(state, name).shape[-1] for name in PLAYER_ARRAY_NAMES} == widths
 
 
 def test_a_win_artifact_fitted_on_other_columns_is_refused_naming_them(tmp_path):

@@ -151,6 +151,12 @@ class XiRegistry:
         # (``store``, ``status``, ``freshness``) never takes it: each reads ``_served`` once.
         self._lock = threading.Lock()
         self._as_of_server: Optional[AsOfServer] = None
+        # The snapshot the as-of pass last produced, with the date it answers -- one
+        # snapshot per date, not per request. A backtest asks four surfaces about the same
+        # fixture (win, roles, performance, simulate), and they are entitled to identical
+        # ratings; keeping one frozen copy also bounds what several in-flight requests can
+        # hold, since a snapshot is the size of the state (~24 MB).
+        self._as_of_snapshot: Optional[tuple] = None
         # A seam, so tests can serve the as-of pass from an in-memory source.
         self.as_of_source_factory = _postgres_as_of_source
 
@@ -189,7 +195,7 @@ class XiRegistry:
                 # Not a refusal: the root holds no run at all, so nothing is what the disk
                 # says to serve, and what a restart would serve. Serving a run the disk no
                 # longer has would put `/xi/status` and `/artifacts/status` at odds.
-                self._served, self._as_of_server, self._error = None, None, None
+                self._served, self._as_of_server, self._as_of_snapshot, self._error = None, None, None, None
                 logger.info("xi.runs.absent", models_dir=models_dir, unloaded=serving)
                 return self.status().model_dump()
             directory = runs.run_dir(models_dir, target)
@@ -220,7 +226,7 @@ class XiRegistry:
             # one and nothing in between; the as-of pass was built for the old store's
             # context and goes with it.
             self._served = loaded
-            self._as_of_server = None
+            self._as_of_server, self._as_of_snapshot = None, None
             self._error = None
             logger.info(
                 "xi.artifacts.loaded",
@@ -252,6 +258,10 @@ class XiRegistry:
         view). ``None``, or a date past everything the loaded state holds, serves the
         loaded through-today state unchanged. The advancing pass is shared and sequential:
         a backtest walking matches in date order pays one sweep of the source in total.
+
+        The pass's own state never leaves this method: an as-of date is answered from a
+        snapshot of it (``_as_of_store``), because the pass keeps advancing and the routes
+        now run on the threadpool.
         """
         store = self.store(format_code)
         if as_of is None or store.covers_as_of(as_of):
@@ -266,13 +276,37 @@ class XiRegistry:
                 raise RatingsStale(freshness)
             return store
         with self._lock:
-            if self._as_of_server is None:
-                self._as_of_server = AsOfServer(
-                    self.as_of_source_factory, gender_split_context=store.state.gender_split_context
-                )
-            state = self._as_of_server.state_as_of(as_of)
-            logger.info("xi.as_of.served", as_of=str(as_of), players=len(state.players))
-            return store.with_state(state)
+            return self._as_of_store(store, as_of)
+
+    def _as_of_store(self, store: XiStore, as_of) -> XiStore:
+        """The served models over the ratings of ``as_of``'s eve. Call under ``_lock``.
+
+        What is handed back is a *snapshot* of the advancing pass, never the pass's own
+        state (SERVE-01). ``AsOfRatings`` folds matches into one ``RatingState`` in place,
+        so the live object is the wrong thing to hand a caller twice over: the next request
+        for a later date mutates the ratings the previous one is still reading -- arrays,
+        Elo, the form lists -- and once the routes run on the threadpool that is a torn
+        read rather than a stale one. The snapshot is taken here, under the same lock that
+        serialises the sweep, so nothing can advance between the two.
+
+        The snapshot is kept for the date it answers, so the several requests a backtest
+        makes about one fixture share one copy and read identical ratings. Re-asking a date
+        the pass has already left is what ``AsOfServer`` rebuilds from scratch for, and it
+        remains the expensive mistake it was; this only spares the repeat of the date the
+        pass is standing on.
+        """
+        if self._as_of_snapshot is not None and self._as_of_snapshot[0] == as_of:
+            logger.info("xi.as_of.served", as_of=str(as_of), snapshot="cached")
+            return self._as_of_snapshot[1]
+        if self._as_of_server is None:
+            self._as_of_server = AsOfServer(
+                self.as_of_source_factory, gender_split_context=store.state.gender_split_context
+            )
+        state = self._as_of_server.state_as_of(as_of).snapshot()
+        as_of_store = store.with_state(state)
+        self._as_of_snapshot = (as_of, as_of_store)
+        logger.info("xi.as_of.served", as_of=str(as_of), players=len(state.players), snapshot="new")
+        return as_of_store
 
     @property
     def models_dir(self) -> Optional[str]:

@@ -108,7 +108,10 @@ that stop strictly before the match — never on a state that already contains i
 and the retirement ledger, which describes who is available *now*, is not applied to that
 pool. A match today or later is a live request: no `as_of`, the through-today state, and
 H-11's freshness refusal. The first past-dated request after a reload pays for an as-of
-replay of the event store; requests in ascending date order share one pass.
+replay of the event store; requests in ascending date order share one pass. What the several
+calls of one fixture are served is a *snapshot* of that pass, taken for the date they name
+and shared between them: the pass keeps advancing as the backtest walks forward, and a
+request reading the pass's own state would watch its ratings move under it (SERVE-01).
 
 **Play mode: scoring an eleven the caller built (P1-2).** `team1_xi` / `team2_xi` name each
 side's eleven by `player_id`. Sent, the selection step is skipped and exactly those players

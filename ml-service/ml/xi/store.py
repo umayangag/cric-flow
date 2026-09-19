@@ -20,7 +20,14 @@ import numpy as np
 
 from ml.xi import contract as C
 from ml.xi.performance import PerformanceModels
-from ml.xi.ratings import RatingState, aggregate_side, xi_feature_vector
+from ml.xi.ratings import (
+    PLAYER_ARRAY_NAMES,
+    STATE_ARRAY_NAMES,
+    STATE_TABLE_NAMES,
+    RatingState,
+    aggregate_side,
+    xi_feature_vector,
+)
 from ml.xi.rows import serving_match, team_context_or_neutral
 from ml.xi.runs import RunArtifactsInvalid, read_manifest
 
@@ -28,70 +35,12 @@ logger = logging.getLogger(__name__)
 
 RATINGS_ARTIFACT = "xi_ratings.joblib"
 
-# The arrays the serving path reads, split by what their last axis is.
-#
-# They are named constants because they are the shape a run has to have: D-6 (§10.5) was
-# an artifact written before P-2, missing the nine arrays P-2 and P-3 added, which
-# ``_state_from_payload`` left at the constructor's initial width -- so the first request
-# touching a player past slot 1024 raised IndexError while /xi/status said loaded: true.
-#
-# The split matters to the check, not just to the reader. A player array's last axis is
-# the player slot, so its width has to cover every registered key; a context array is
-# indexed by (innings, format) or (innings, format, over), so its width says nothing
-# about players and checking it against them would refuse every healthy run.
-PLAYER_ARRAY_NAMES = (
-    "bat_rae",
-    "bat_balls",
-    "bat_wae",
-    "bowl_rse",
-    "bowl_balls",
-    "bowl_wae",
-    "career",
-    "career_all",
-    "keeper",
-    "pelo",
-    "bat_pos_sum",
-    "bat_pos_n",
-    "xi_n",
-    "xi_bat_balls",
-    "xi_bowl_balls",
-    "bat_ph_rae",
-    "bat_ph_balls",
-    "bowl_ph_rse",
-    "bowl_ph_balls",
-    "seq_num",
-    "seq_den",
-)  # fmt: skip
-
-CONTEXT_ARRAY_NAMES = (
-    "ctx_balls",
-    "ctx_runs",
-    "ctx_wickets",
-    "ctx_extras",
-    "ctx_deliveries",
-    "ctx_bowler_wickets",
-    "ctx_dismissals",
-    "ctx_full_innings_deliveries",
-    "ctx_full_innings",
-    "debut_bat",
-    "debut_bowl",
-)  # fmt: skip
-
-STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
-
-# The keyed tables beside the arrays: team and venue state, the fixture-context sums
-# (A-1) and the players' dates of birth (X-1b). Checked for presence the same way, for
-# the same reason.
-STATE_TABLE_NAMES = (
-    "team_elo",
-    "team_results",
-    "head_to_head",
-    "venue_bat_first",
-    "team_venue_matches",
-    "venue_scoring",
-    "competition_scoring",
-    "birth_dates",
-)
+# The state's own field lists (``ml.xi.ratings``) are what this module checks and writes:
+# one enumeration of the accumulators, beside the code that defines them, so an array
+# added to the rating pass cannot be left out of the artifact -- which is D-6 (§10.5), an
+# artifact written before P-2 whose missing arrays ``_state_from_payload`` left at the
+# constructor's initial width, so the first request touching a player past slot 1024 raised
+# IndexError while /xi/status said loaded: true.
 
 
 def model_artifact_name(format_code: str) -> str:
@@ -124,14 +73,7 @@ def _state_to_payload(state: RatingState) -> Dict:
         "gender_split_context": state.gender_split_context,
         "age_aware_cold_start": state.age_aware_cold_start,
         "arrays": {name: getattr(state, name) for name in STATE_ARRAY_NAMES},
-        "team_elo": dict(state.team_elo),
-        "team_results": dict(state.team_results),
-        "head_to_head": dict(state.head_to_head),
-        "venue_bat_first": dict(state.venue_bat_first),
-        "team_venue_matches": dict(state.team_venue_matches),
-        "venue_scoring": dict(state.venue_scoring),
-        "competition_scoring": dict(state.competition_scoring),
-        "birth_dates": dict(state.birth_dates),
+        **{name: dict(getattr(state, name)) for name in STATE_TABLE_NAMES},
         "matches_seen": state.matches_seen,
         "last_date": state.last_date,
     }
@@ -246,6 +188,10 @@ def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
         getattr(state, name).update(payload[name])
     state.matches_seen = payload["matches_seen"]
     state.last_date = payload["last_date"]
+    # Once, here, while the state is still private to the loading thread: every serving
+    # read of it afterwards runs on the FastAPI threadpool, and growing the arrays on the
+    # read path is a write several readers would race on (SERVE-01).
+    state.reserve_read_capacity()
     return state
 
 

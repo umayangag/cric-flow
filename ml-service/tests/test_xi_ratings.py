@@ -11,7 +11,13 @@ import pytest
 
 from ml.xi import contract as C
 from ml.xi.builder import build
-from ml.xi.ratings import RatingState, aggregate_side, match_features
+from ml.xi.ratings import (
+    STATE_ARRAY_NAMES,
+    STATE_TABLE_NAMES,
+    RatingState,
+    aggregate_side,
+    match_features,
+)
 from ml.xi.roles import ROLE_BOWLING_OPTION, count_bowling_options, roles_of
 from ml.xi.sources import Deliveries, MatchRecord
 
@@ -66,6 +72,41 @@ class _ListSource:
 
     def birth_dates(self):
         return {}
+
+
+def test_every_accumulator_the_pass_keeps_is_named_in_the_state_field_lists() -> None:
+    """Three things walk these tuples -- the artifact writer, its D-6 refusal and
+    ``snapshot`` -- so an accumulator missing from them is written by the pass and read
+    back by none of them: absent from the run on disk, and shared rather than copied with
+    the serving snapshot."""
+    state = RatingState()
+
+    arrays = {name for name, value in vars(state).items() if isinstance(value, np.ndarray)}
+    tables = {name for name, value in vars(state).items() if isinstance(value, dict)}
+
+    assert arrays == set(STATE_ARRAY_NAMES)
+    assert tables == set(STATE_TABLE_NAMES)
+
+
+def test_a_snapshot_keeps_the_ratings_it_was_taken_from() -> None:
+    """SERVE-01: the snapshot is what a serving request is handed while the pass that
+    produced it advances. Every accumulator has to be copied -- the arrays, the Elo tables
+    and the form lists the update appends to -- or the copy moves with the pass."""
+    t1, t2 = _xi("a"), _xi("b")
+    heavy = _deliveries([t1[0]] * 24, [t2[5]] * 24, [6] * 24, [0] * 24)
+    state = RatingState()
+    state.update(_match("m1", 0, "A", t1, t2, heavy))
+    frozen = state.snapshot()
+    before = {key: np.copy(value) for key, value in frozen.side_vectors("T20", t1).items()}
+
+    state.update(_match("m2", 1, "A", t1, t2, heavy))
+
+    assert state.matches_seen == 2 and frozen.matches_seen == 1
+    assert len(state.team_results[("T20", "A")]) == 2 and len(frozen.team_results[("T20", "A")]) == 1
+    after = frozen.side_vectors("T20", t1)
+    for key, value in before.items():
+        np.testing.assert_array_equal(after[key], value)
+    assert state.side_vectors("T20", t1)["career"][0] > before["career"][0], "the pass did move on"
 
 
 def test_features_are_as_of_and_never_see_their_own_match() -> None:
