@@ -347,9 +347,12 @@ paying twice.
   ground share a row). The geocoder was asked about the city Cricsheet names beside the
   venue (`info.city`, which the importer never stored) or, failing that, the venue name's
   own parts, and the sides that played there voted for the country — which is what makes
-  Hamilton New Zealand's and not Ontario's. 140 rows the geocoder placed wrongly or not at
-  all were then placed by hand, each with a `note` saying so; one ground stays
-  `unmappable` on purpose rather than guessed at. Rows already in the file are never
+  Hamilton New Zealand's and not Ontario's — and, since DATA-01, a candidate in a country
+  the top vote out-votes beyond chance is refused rather than taken (the counts are on the
+  row in `countries_voted`, and a row placed anywhere but the top-voted country says so in
+  its `note`). 112 rows the geocoder placed wrongly or not at all were then placed by hand,
+  each with a `note` saying so; a venue nothing places is written `unmappable` with the
+  reason rather than guessed at (today none is). Rows already in the file are never
   rewritten by a run, so a correction survives. ERA5 is a 0.25° reanalysis, so a ground's
   city places it as well as its gates would.
 - **One reduced day per (venue, match day)** — `reference-data/era5-venue-days.jsonl`: the
@@ -809,7 +812,7 @@ is expensive is the one tracked in git.
 | **Wikidata biographies** | `make restore-player-biographies` — rebuilds `player_biography` from `reference-data/`, with no network call | CC0, so a copy may be committed; re-acquiring is a rate-limited SPARQL pass over every player in the archive, which is the one cost worth never paying twice |
 | **Cricsheet people register** | Committed beside it as `reference-data/cricsheet-people-register.csv`; the same restore reads it | ODC-By permits redistribution with the licence made clear (it is, in `reference-data/README.md`). Without it the lookups key to nothing, so committing one and not the other would preserve neither |
 | **Betfair BBL/WBBL odds** | Re-download the season CSVs from `betfair-datascientists.github.io/data/dataListing/` into `data/market-odds/` (git-ignored), then `make evaluate MARKET_ODDS_DIR=data/market-odds` | **Not committed, deliberately: the page grants no licence at all.** Only the numbers derived from them — AUC, Brier, coverage — are published, in the harness report. The download is free and unmetered, so nothing is lost by re-fetching |
-| **Open-Meteo ERA5 days and venue coordinates** | `make restore-venue-weather` — rebuilds `venue.latitude/longitude/timezone/city/country` and `venue_weather` from `reference-data/venue-geocoding.csv` and `reference-data/era5-venue-days.jsonl`, with no network call | CC BY 4.0, so a copy may be committed with attribution; re-acquiring is ~4,600 paced archive calls over every venue's match days plus a hand-curated pass over 140 venues the geocoder placed wrongly or not at all, which is not a thing to do twice |
+| **Open-Meteo ERA5 days and venue coordinates** | `make restore-venue-weather` — rebuilds `venue.latitude/longitude/timezone/city/country` and `venue_weather` from `reference-data/venue-geocoding.csv` and `reference-data/era5-venue-days.jsonl`, with no network call | CC BY 4.0, so a copy may be committed with attribution; re-acquiring is ~4,600 paced archive calls over every venue's match days plus a hand-curated pass over 112 venues the geocoder placed wrongly or not at all, which is not a thing to do twice |
 | **Cricsheet match archive** | `POST /ops/data/fetch`, then extract and import (§ Acquiring a dataset) | No licence is stated at the source, so nothing that reproduces it is committed. It is also ~4 GB, which is not a thing to put in git even if the terms allowed it |
 
 ### Restoring the biographies
@@ -856,5 +859,9 @@ rows across 895 venue ids — the 19,561 snapshot keys, four spelling pairs of o
 each landing on both rows — every one with 24 hourly values and 7 prior-day totals, asking
 Open-Meteo nothing; a row read back (Wankhede Stadium, 2011-04-02) matches its snapshot
 line value for value. The live database was read for the venue names and not written.
+Re-verified on 2026-09-20 after DATA-01 re-placed 22 venues: the same command against the
+same scratch database placed all 896 venue rows and wrote 20,001 `venue_weather` rows with
+no network call, and `M Chinnaswamy Stadium` on 2007-06-06 read back matches its snapshot
+line value for value in `Asia/Kolkata`; the live database was not written.
 Note the default `WEATHER_CRICSHEET_DIR` is `data/go-app/cricsheet` relative to the
 repository; name it when the archive lives elsewhere.

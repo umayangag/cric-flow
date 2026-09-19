@@ -404,7 +404,7 @@ this plan's record updated. Then stop and hand over the push and PR commands.
 | X-1a | **acquired and measured** — DOB clears the gate (85.3 % of appearances; ≥ 80 % in every limited-overs format and gender **except women's T20 at 61.4 %**); style, handedness and career end are **recorded nulls** — Wikidata carries them for 265, 18 and 3 of 13,662 players. Coverage report and backfill shipped; the D-12 criteria are wired |
 | X-1b | **done — three recorded nulls, nothing shipped** — the **matchup** family is *not runnable for want of labels* (Wikidata: a batting hand for 18 and a bowling style for 265 of 13,662 players; the labelled confirmation of A-3's null; E5 not re-run, X-3 owns it); the **age** family moves the performance model's runs and wickets pinball by ~0.02 % on the deciding slices (T20 men +0.02 / +0.02 %, ODI +0.02 / −0.01 %), inside E1's band, women's T20 out of scope at 61.4 % and reported; the **age-aware cold start** keeps H-10 bounded and moves no player with history, and worsens the debut rows' pinball in every format (T20 −0.30 / −0.53 %, ODI −0.69 / −1.11 %). The date of birth now reaches every player row (`AGE_COLS`, missing = its own indicator) and both models read it only through flags that stay off; `make evaluate` after the choice reproduces A-4's baseline with H-8 parity 0.0 on both sources |
 | X-3 | **done — two recorded nulls, and one importer defect fixed** — the archive already held the stakes: Cricsheet's `info.event` carries `stage` and `group` and **the importer was dropping both** (migration `0011`, re-imported: 1,584 stages, 6,448 groups, the archive's own counts). `ml/xi/stakes.py` derives a stage label for **96.5 % of matches** (T20 97.7 %, T20I 96.9 %, ODI 95.4 %, TEST 93.0 %; 53 of the archive's 55 stage spellings recognised) and a dead-rubber flag only where a table is reconstructible as-of — **72.3 % of matches**, 2,212 dead rubbers, bilateral scorelines and leagues (per pool, because a pool is what a table is) whose playoff cut is observable, nothing guessed. **Use 1 (E5 hygiene) is a null:** **all five** T20 pair filters fail their re-derived bars, and four of the five move *below* the 0.5030 control — excluding dead rubbers 0.5014, excluding knockouts 0.4976, excluding both 0.4944, down-weighting 0.4993. Rotation noise was not masking selection signal, and the T20 scoping does not move. (Recorded because it nearly went the other way: the first cut of the arithmetic pooled a competition's groups into one table, on which the exclude-dead-rubbers arm "cleared" by 0.0006 against a standard error of 0.0117.) The control reproduces P-7's figures exactly on the pre-A-4 window (T20 0.4897/1,358, ODI 0.5618/429, T20I 0.5856/111). **Use 2 (a knockout flag in the display model) is a null:** ΔAUC +0.0000 in T20, ODI and TEST, +0.0021 ± 0.0010 in T20I alone, so `STAKES_FEATURES_KEPT` stays `False`; the gate's own swap clause was mis-specified against H-4's 2 % objective line, which the *control* display surface already fails at 3–7 %, and that is recorded. `make xi-parity`: the four new counts agree on both sources; `make evaluate` on Postgres afterwards has **H-8 parity 0.0** with `STAKES_COLS` compared, and reproduces X-1b's walk-forward table to four decimals in every format |
-| X-2 | **done — four recorded nulls; the data stays** — licence verified at the source (free, **non-commercial only**, CC BY 4.0; the pricing page's sentence governs the commercial plans), recorded in the register and beside P0-4's cost line. Acquired and **committed under `reference-data/`**: 892 of 892 venue keys placed (city-level, which is ERA5's own ~0.1° resolution; 140 by hand with provenance), 19,561 ERA5 venue-days with 0 misses covering 22,789 of 22,818 matches (99.9 %), session windows inferred by 164 documented rules (35.2 % of matches at night); `make restore-venue-weather` rebuilds `venue` coordinates and `venue_weather` (migration 0012) offline, verified on the scratch database (896 venues, 19,909 rows). **Gate (a), display AUC:** every family inside noise in T20, T20I and ODI (largest deciding move ODI humidity/temperature +0.0024 ± 0.0026; T20 rain −0.0008 ± 0.0005); TEST rain +0.0052 ± 0.0031 is the one reading past noise and fails the every-format clause. **Gates (b)/(c), simulator:** pinballs identical to three decimals in every arm, coverage within ±0.007 (T20) and one s.e. (ODI), widths within 0.6 runs, E2 within ±0.001 — nulls in both deciding formats; T20I not measurable per fold under the day/night split and recorded so. **One finding:** the H-22 split shows the control simulator too narrow by day and too wide at night (T20 first-innings coverage 0.734 vs 0.841, dispersion 1.10 vs 0.87; ODI 0.715 vs 0.932) — A-1's population mix and A-2's dispersion with the two populations named; no weather family touches it. Nothing ships; `ml/xi/` reads no weather column |
+| X-2 | **done — four recorded nulls; the data stays** — licence verified at the source (free, **non-commercial only**, CC BY 4.0; the pricing page's sentence governs the commercial plans), recorded in the register and beside P0-4's cost line. Acquired and **committed under `reference-data/`**: 892 of 892 venue keys placed (city-level, which is ERA5's own ~0.1° resolution; 112 by hand with provenance — 22 rows re-placed under DATA-01 on 2026-09-20, after which gate (a) re-run on the same code moved no family by more than 0.002 AUC: the four nulls stand), 19,653 ERA5 venue-days with 0 misses covering 22,905 of 22,905 matches, session windows inferred by 164 documented rules (35.0 % of matches at night); `make restore-venue-weather` rebuilds `venue` coordinates and `venue_weather` (migration 0012) offline, verified on the scratch database (896 venues, 19,909 rows). **Gate (a), display AUC:** every family inside noise in T20, T20I and ODI (largest deciding move ODI humidity/temperature +0.0024 ± 0.0026; T20 rain −0.0008 ± 0.0005); TEST rain +0.0052 ± 0.0031 is the one reading past noise and fails the every-format clause. **Gates (b)/(c), simulator:** pinballs identical to three decimals in every arm, coverage within ±0.007 (T20) and one s.e. (ODI), widths within 0.6 runs, E2 within ±0.001 — nulls in both deciding formats; T20I not measurable per fold under the day/night split and recorded so. **One finding:** the H-22 split shows the control simulator too narrow by day and too wide at night (T20 first-innings coverage 0.734 vs 0.841, dispersion 1.10 vs 0.87; ODI 0.715 vs 0.932) — A-1's population mix and A-2's dispersion with the two populations named; no weather family touches it. Nothing ships; `ml/xi/` reads no weather column |
 | D-12 | **fixed** — recency-bounded default pool, manual picking, the retirement ledger; measurement below |
 
 ### X-4 — the source review, the join, and what the numbers support
@@ -1075,6 +1075,27 @@ Old Deer Park. One ground, `F B Colony Ground`, was placed last from Wikipedia's
 row. **892 of 892 mapped.** City-level is the data's own resolution: the archive API snaps
 a request to a ~0.1° grid point, so a ground and its city centre share a cell.
 
+**Corrected under DATA-01 (2026-09-20; `AUDIT_FINDINGS.md` § 9).** The paragraph above
+overstated the automatic pass. The chooser ranked candidates by their country's *position*
+in the vote list, so where the geocoder returned no place in the top-voted country a homonym
+in a country that had merely visited won, silently: `M Chinnaswamy Stadium` sat at Bangalore
+Town, Sindh (India 102 votes to Pakistan's 2), `Shere Bangla National Stadium` at a Mīrpur in
+Punjab (Bangladesh 105 to India's 33), `Warner Park, Basseterre` at a St Kitts in South
+Australia (which put Australia's 14:00 rule on 21 ODIs and marked 18 of them night),
+`Providence Stadium, Guyana` in Rhode Island, and 602 venue-days carried another continent's
+hours and clock. The chooser now reads the votes as evidence — a candidate outside the
+top-voted country is refused when the top vote's lead over its country is beyond chance (a
+one-sided sign test at p < 0.05, zero votes included), kept with a note when it is not — and
+the vote counts are on every row so the rule is auditable offline. No fixed share separates
+right from wrong (Mirpur at 105 to 33 and Sheikh Zayed Stadium, Pakistan's home-away ground,
+at 58 to 29 are the same shape in the votes), so 20 of the 22 rows that moved were placed by
+hand with the reason on the row, and four correct rows the rule refuses (Sheikh Zayed and
+three associate grounds with only visitors' votes) keep their coordinates under a hand note.
+**112 rows are now hand-placed, 892 of 892 mapped**; 26 rows sit at a country centroid,
+which is DATA-02's finding, not this one. The 602 dropped days were fetched again at the
+corrected coordinates (182 calls, 0 misses), the restore re-verified on the scratch
+database, and the gate (a) table below re-run — see *Reading it*.
+
 **When the matches started.** Cricsheet carries no start times, so `ml/weather/sessions.py`
 infers a window per match from norms and records the rule that placed it: the league's
 usual hour (the earlier of a double-header from its match number: IPL 15:30/19:30, PSL
@@ -1112,40 +1133,55 @@ one (AUC up by more than both the control's seed-to-seed sd and one fold-level s
 paired difference, in every format, with the swap share under H-4's line). Three seeds;
 where the seed sd reads 0.0000 the fit is deterministic at that size, as X-3 found.
 
-| format | family | display AUC (control) | with family | Δ ± se | seed sd | Brier Δ | swap share (control → arm) | verdict |
-|---|---|---:|---:|---|---:|---|---:|---|
-| T20 | daynight | 0.7299 | 0.7307 | +0.0008 ± 0.0004 | 0.0008 | -0.0001 | 0.0478 → 0.0515 | inside noise; H-4 fails |
-| T20 | humidity_temperature | 0.7299 | 0.7304 | +0.0005 ± 0.0011 | 0.0008 | +0.0000 | 0.0478 → 0.0447 | inside noise; H-4 fails |
-| T20 | dew | 0.7299 | 0.7294 | -0.0005 ± 0.0007 | 0.0008 | +0.0002 | 0.0478 → 0.0477 | inside noise; H-4 fails |
-| T20 | rain | 0.7299 | 0.7291 | -0.0008 ± 0.0005 | 0.0008 | +0.0003 | 0.0478 → 0.0450 | inside noise; H-4 fails |
-| T20I | daynight | 0.7495 | 0.7492 | -0.0003 ± 0.0016 | 0.0000 | +0.0002 | 0.0684 → 0.0690 | inside noise; H-4 fails |
-| T20I | humidity_temperature | 0.7495 | 0.7470 | -0.0025 ± 0.0069 | 0.0000 | +0.0000 | 0.0684 → 0.0739 | inside noise; H-4 fails |
-| T20I | dew | 0.7495 | 0.7452 | -0.0043 ± 0.0034 | 0.0000 | +0.0006 | 0.0684 → 0.0719 | inside noise; H-4 fails |
-| T20I | rain | 0.7495 | 0.7490 | -0.0005 ± 0.0028 | 0.0000 | +0.0000 | 0.0684 → 0.0743 | inside noise; H-4 fails |
-| ODI | daynight | 0.7083 | 0.7063 | -0.0020 ± 0.0011 | 0.0000 | -0.0001 | 0.0307 → 0.0299 | inside noise; H-4 fails |
-| ODI | humidity_temperature | 0.7083 | 0.7107 | +0.0024 ± 0.0026 | 0.0000 | -0.0002 | 0.0307 → 0.0299 | inside noise; H-4 fails |
-| ODI | dew | 0.7083 | 0.7060 | -0.0024 ± 0.0018 | 0.0000 | +0.0008 | 0.0307 → 0.0305 | inside noise; H-4 fails |
-| ODI | rain | 0.7083 | 0.7095 | +0.0011 ± 0.0022 | 0.0000 | -0.0000 | 0.0307 → 0.0317 | inside noise; H-4 fails |
-| TEST | daynight | 0.6431 | 0.6431 | +0.0000 ± 0.0000 | 0.0000 | +0.0000 | 0.0616 → 0.0616 | inside noise; H-4 fails |
-| TEST | humidity_temperature | 0.6431 | 0.6465 | +0.0034 ± 0.0047 | 0.0000 | +0.0008 | 0.0616 → 0.0679 | inside noise; H-4 fails |
-| TEST | dew | 0.6431 | 0.6431 | +0.0000 ± 0.0000 | 0.0000 | +0.0000 | 0.0616 → 0.0616 | inside noise; H-4 fails |
-| TEST | rain | 0.6431 | 0.6482 | +0.0052 ± 0.0031 | 0.0000 | -0.0004 | 0.0616 → 0.0756 | beyond noise; H-4 fails |
+*The table as run on 2026-09-05 was computed on the coordinates DATA-01 found wrong and on
+the pre-audit display model (control AUC 0.7299 / 0.7495 / 0.7083 / 0.6431; swap share 3–7 %
+in the control, since removed by B-7's decision). It is superseded by the pair below, run
+on 2026-09-20 on the same code, frames and folds twice — once on the superseded coordinates
+and cache, once on the corrected ones — so the only thing that differs between the two
+halves is where 22 grounds are.*
 
-**Reading it.** No family moves the display AUC beyond noise in T20, T20I or ODI: the
-largest paired move in a deciding format is ODI humidity/temperature at +0.0024 ± 0.0026,
-under one standard error, and three of the four families carry a *negative* sign in at
-least one format. The one reading past the noise rule is **TEST rain, +0.0052 ± 0.0031**
-— under two standard errors, in the format with the fewest matches, on a family that
-reads −0.0008 ± 0.0005 in T20 — and the every-format clause disposes of it. TEST's day/night
-and dew rows read exactly +0.0000 because no first-class match is placed at night, so
-both columns are constant there and the fits identical. The swap-violation column is
-reported as the control → arm pair because the **control already fails H-4's 2 % line**
-(4.8 % T20, 6.8 % T20I, 3.1 % ODI, 6.2 % TEST — B-7's finding, mis-specified against the
-display surface, as X-3 recorded); what the families do to it is a delta of −0.003 to
-+0.006, except TEST rain, which worsens it by 0.014. **Gate (a): a recorded null for all
-four families.**
+| format | family | superseded: control | with family | Δ ± se | corrected: control | with family | Δ ± se | Δ moved by | verdict (corrected) |
+|---|---|---:|---:|---|---:|---:|---|---:|---|
+| T20 | daynight | 0.7308 | 0.7309 | +0.0002 ± 0.0003 | 0.7308 | 0.7309 | +0.0002 ± 0.0003 | +0.0000 | inside noise |
+| T20 | humidity_temperature | 0.7308 | 0.7315 | +0.0007 ± 0.0007 | 0.7308 | 0.7318 | +0.0010 ± 0.0006 | +0.0003 | beyond noise |
+| T20 | dew | 0.7308 | 0.7308 | -0.0000 ± 0.0005 | 0.7308 | 0.7300 | -0.0008 ± 0.0005 | -0.0007 | inside noise |
+| T20 | rain | 0.7308 | 0.7304 | -0.0003 ± 0.0003 | 0.7308 | 0.7302 | -0.0005 ± 0.0005 | -0.0002 | inside noise |
+| T20I | daynight | 0.7583 | 0.7552 | -0.0031 ± 0.0017 | 0.7583 | 0.7572 | -0.0011 ± 0.0018 | +0.0020 | inside noise |
+| T20I | humidity_temperature | 0.7583 | 0.7597 | +0.0014 ± 0.0046 | 0.7583 | 0.7591 | +0.0008 ± 0.0034 | -0.0006 | inside noise |
+| T20I | dew | 0.7583 | 0.7517 | -0.0066 ± 0.0031 | 0.7583 | 0.7514 | -0.0069 ± 0.0039 | -0.0003 | inside noise |
+| T20I | rain | 0.7583 | 0.7482 | -0.0101 ± 0.0032 | 0.7583 | 0.7484 | -0.0099 ± 0.0029 | +0.0002 | inside noise |
+| ODI | daynight | 0.7028 | 0.7067 | +0.0039 ± 0.0032 | 0.7028 | 0.7069 | +0.0041 ± 0.0038 | +0.0002 | beyond noise |
+| ODI | humidity_temperature | 0.7028 | 0.7079 | +0.0051 ± 0.0038 | 0.7028 | 0.7081 | +0.0053 ± 0.0039 | +0.0002 | beyond noise |
+| ODI | dew | 0.7028 | 0.7064 | +0.0036 ± 0.0032 | 0.7028 | 0.7072 | +0.0044 ± 0.0039 | +0.0008 | beyond noise |
+| ODI | rain | 0.7028 | 0.7063 | +0.0035 ± 0.0033 | 0.7028 | 0.7080 | +0.0052 ± 0.0041 | +0.0017 | beyond noise |
+| TEST | daynight | 0.6384 | 0.6384 | +0.0000 ± 0.0000 | 0.6384 | 0.6384 | +0.0000 ± 0.0000 | +0.0000 | inside noise |
+| TEST | humidity_temperature | 0.6384 | 0.6442 | +0.0059 ± 0.0042 | 0.6384 | 0.6426 | +0.0042 ± 0.0023 | -0.0017 | beyond noise |
+| TEST | dew | 0.6384 | 0.6384 | +0.0000 ± 0.0000 | 0.6384 | 0.6384 | +0.0000 ± 0.0000 | +0.0000 | inside noise |
+| TEST | rain | 0.6384 | 0.6383 | -0.0001 ± 0.0061 | 0.6384 | 0.6366 | -0.0018 ± 0.0053 | -0.0017 | inside noise |
 
-**Gates (b) and (c) — each family in the performance model, simulated.** A-1's arm: the
+**Reading it.** Correct coordinates move no family's paired Δ by more than 0.0020 (T20I
+day/night, −0.0031 → −0.0011); everything else moves by less than one tenth of a standard
+error's worth of AUC in the deciding formats. What the corrected run says is what the
+superseded one said: no family clears the every-format clause. T20I carries a *negative*
+sign on day/night, dew and rain in both halves (dew −0.0069 ± 0.0039, rain −0.0099 ±
+0.0029 on the corrected data); the ODI rows all read just past one standard error, which
+they already did on the superseded coordinates and did not on 2026-09-05, so that is the
+display model's change under EVAL-01/EVAL-02, not the grounds'; TEST's day/night and dew rows
+read exactly +0.0000 because no first-class match is placed at night, so both columns are
+constant there and the fits identical. The swap-share column is gone because the corrected
+display model reads no free column (B-7): the share is 0.0000 in every arm. **Gate (a): a
+recorded null for all four families, on the wrong coordinates and on the right ones.** A
+null that survives the correction is the stronger null; the 602 corrected venue-days were
+0.4 % of the frame, and the 30 matches whose night flag flipped (18 ODIs and 3 T20s at
+Warner Park to day, 8 T20s at Grenada to day, one T20 at Bready to night) were 0.1 %.
+
+**Gates (b) and (c) — each family in the performance model, simulated.** *Computed on
+2026-09-05 on the coordinates DATA-01 superseded and not re-run: the correction touched 602
+of 19,561 venue-days and 30 night flags, and gate (a) re-run on the same code moved no
+family by more than 0.002 AUC, which bounds what these tables could have moved by; the
+performance model has also changed since (EVAL-03, EVAL-09), so a re-run would measure the
+code as much as the grounds. The figures stand as the record of that run, not of today's.*
+A-1's arm: the
 performance model refitted per fold with the family injected as a fixture-context family
 (`contract.FIXTURE_CONTEXT_FAMILIES`, for the run only), the control's display models,
 the shared factor's fitting rule and the simulator's seeds held (common random numbers
@@ -1258,7 +1294,8 @@ summary reports `simulation.shared_factor_folds` — the count of folds with a f
 windows without one, and the totals over the calibrated folds alone — beside the pooled
 figure, so a reading like this one no longer needs the per-fold JSON to be made.
 
-**Verdict.** Four families, three gates each: **every one a recorded null**. Nothing ships:
+**Verdict.** Four families, three gates each: **every one a recorded null** — and gate (a)
+re-run on the corrected coordinates (DATA-01, 2026-09-20) reads the same way. Nothing ships:
 `ml/xi/` reads no weather column, no glossary entry is added, no wire literal changes
 (H-24 has nothing to record), H-8 parity is untouched because the rating pass is untouched,
 and `make evaluate` is not re-run because no choice was made that would change its rows.
