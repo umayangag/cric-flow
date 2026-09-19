@@ -255,10 +255,6 @@ class VenueFacts:
             return self.venue.rsplit(",", 1)[1].strip()
         return ""
 
-    def countries(self) -> List[str]:
-        """The countries voted for, most votes first."""
-        return [country for country, _ in self.country_votes.most_common()]
-
 
 def competition_countries(competition: str) -> Tuple[str, ...]:
     lowered = competition.casefold()
