@@ -37,14 +37,32 @@ K_TEAM_ELO = 24.0
 K_PLAYER_ELO = 12.0
 ELO_INITIAL = 1500.0
 MAX_OVER_INDEX = 100  # context baselines are indexed by over number, capped here
-# Expected legal balls bowled per match for a player to count as a bowling option.
-MIN_BOWLING_BALLS: Dict[str, int] = {"T20": 12, "T20I": 12, "ODI": 30, "TEST": 60}
+#: Expected balls bowled **per XI appearance** (``exp_balls_bowled``, every match the
+#: player was named for, bowled in or not -- FEAT-01) for a player to count as a bowling
+#: option. The bar is the one the pass has always applied, expressed in that unit
+#: (FEAT-15): 12 / 12 / 30 / 60 were set when the vector was balls per match *bowled in*,
+#: and read per appearance the same numbers were a far higher bar -- a frontline bowler
+#: who bowls his allocation in half his appearances sat exactly on the line, and a fifth
+#: of T20I sides read as short of five options. Derived from the population before any
+#: outcome was read, by prevalence: the old bar admitted 58.4 % / 54.2 % / 49.7 % / 47.5 %
+#: of the archive's XI appearances (T20 / T20I / ODI / TEST; 272,949 / 46,904 / 115,322 /
+#: 68,750 appearances with deliveries, 22,905 matches, 2026-09-19), so the new bar is the
+#: per-appearance quantile that admits the same share -- 3.30 / 3.81 / 18.97 / 40.34,
+#: rounded to whole balls. It is not the old number scaled by how often an option bowls
+#: (0.85 / 0.83 / 0.91 / 0.95 of appearances, which would give 10 / 10 / 27 / 57): the
+#: players the line decides bowl in about half their appearances, not 85 %, and that
+#: scaling leaves 12-28 % of real sides under five. On the decided sides since 2024 the
+#: share under five reads 3.2 / 3.9 / 12.8 / 12.5 % here against 4.3 / 4.8 / 17.3 / 15.8 %
+#: before FEAT-01 and 25.1 / 19.1 / 38.2 / 21.5 % on the old numbers in the new unit
+#: (``tests/fixtures/bowling_option_population.json`` holds a sample of those sides).
+MIN_BOWLING_BALLS: Dict[str, int] = {"T20": 3, "T20I": 4, "ODI": 19, "TEST": 40}
 
 
 def is_bowling_option(expected_balls_bowled, format_code: str):
-    """Whether a player's expected balls bowled make them a bowling option. Works on scalars
-    and arrays; the tolerance keeps a decayed ratio that is exactly the threshold on the
-    right side of it. This is the single definition the feature and the constraint share."""
+    """Whether a player's expected balls bowled per XI appearance make them a bowling
+    option. Works on scalars and arrays; the tolerance keeps a decayed ratio that is
+    exactly the threshold on the right side of it. This is the single definition the
+    feature and the constraint share."""
     return expected_balls_bowled >= MIN_BOWLING_BALLS[format_code] - 1e-6
 
 

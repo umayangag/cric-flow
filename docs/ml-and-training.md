@@ -337,7 +337,19 @@ bowler-credited wickets above expectation; forgotten at 0.9 per match, shrunk wi
 prior), expected involvement (`exp_balls_faced` / `exp_balls_bowled`: balls faced / bowled per
 **XI appearance** — every match the player was named for, batted or bowled in or not, the
 balls and the appearances forgotten on one clock; a tailender who batted once in ten reads a
-tenth of that innings, not the innings), experience, a keeper flag and a player Elo. **A
+tenth of that innings, not the innings), experience, a keeper flag and a player Elo. A
+player is a **bowling option** — the one predicate behind `n_bowlers`, `n_allrounders`, the
+roles a surface prints and the optimiser's bowling-cover constraint — when his expected
+balls bowled per appearance clear `contract.MIN_BOWLING_BALLS` (3 / 4 / 19 / 40 in T20 /
+T20I / ODI / TEST). Those numbers are the bar the pass applied before FEAT-01 (12 / 12 /
+30 / 60 balls per match *bowled in*) translated into the per-appearance unit by prevalence:
+the per-appearance quantile that admits the same share of the archive's XI appearances the
+old bar admitted, derived from the population before any outcome was read (FEAT-15; the
+derivation is recorded beside the constant). Read per appearance, the old numbers were a
+far higher bar — a frontline bowler who bowls his allocation in half his appearances sat
+on the line, and a fifth of T20I sides and a quarter of T20 sides read as short of five
+options; at the translated bar the share of decided sides since 2024 under five is back at
+3-4 % in the T20 formats and 13 % in ODI and TEST, against 4-5 % and 16-17 % before. **A
 side is the eleven that started** (FEAT-02): everyone the source lists for it less its
 replacements — the concussion substitute, impact player or supersub who came in after the
 start, whom Cricsheet lists with the rest and names in a `replacements.match` entry on the
