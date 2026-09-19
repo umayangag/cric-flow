@@ -168,6 +168,38 @@ def test_a_part_timer_with_one_spell_is_not_a_bowling_option() -> None:
     assert ROLE_BOWLING_OPTION in roles_of(v, 0, "T20")
 
 
+@pytest.mark.parametrize(
+    ("fmt", "allocation"),
+    [
+        ("T20", int(C.INNINGS_LEGAL_BALLS["T20"] * C.BOWLER_MAX_SHARE)),
+        ("T20I", int(C.INNINGS_LEGAL_BALLS["T20I"] * C.BOWLER_MAX_SHARE)),
+        ("ODI", int(C.INNINGS_LEGAL_BALLS["ODI"] * C.BOWLER_MAX_SHARE)),
+        ("TEST", 120),  # no allocation in the laws; twenty overs is a frontline bowler's day
+    ],
+)
+def test_a_frontline_bowler_bowling_his_allocation_in_half_his_appearances_is_a_bowling_option(
+    fmt: str, allocation: int
+) -> None:
+    """Ten appearances, his full allocation in the five older ones and nothing in the
+    latest: he reads under half the allocation per appearance, which is where the
+    per-match-bowled thresholds (12 / 30 / 60) put him exactly on or under the line once
+    FEAT-01 divided by every appearance. A bowler a captain turns to in half his matches
+    is a bowling option (FEAT-15)."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    frontline = t2[0]
+    for k in range(10):
+        bowlers = [frontline] * allocation if k % 2 == 0 else [t2[1]] * allocation
+        d = _deliveries([t1[0]] * allocation, bowlers, [1] * allocation, [0] * allocation)
+        state.update(_match(f"m{k}", k, "A", t1, t2, d, fmt=fmt))
+
+    v = state.side_vectors(fmt, [frontline])
+
+    assert v["exp_balls_bowled"][0] < allocation / 2, "the latest appearance, undecayed, is one he did not bowl in"
+    assert C.is_bowling_option(v["exp_balls_bowled"][0], fmt)
+    assert ROLE_BOWLING_OPTION in roles_of(v, 0, fmt)
+
+
 def test_a_ball_by_someone_not_named_for_the_match_is_nobodys_involvement() -> None:
     """A batter the deliveries name but neither eleven does has no appearance to divide
     by, so his balls land on no involvement numerator rather than on one with no clock."""
