@@ -217,6 +217,25 @@ func TestSelectBothXIs_LimitedOversOptimisesAgainstTheOpposingXI(t *testing.T) {
 	assert.Equal(t, []string{"k1", "k3"}, optimizer.calls[3].OpponentPlayerKeys)
 }
 
+// TestOptimizeSide_BansTheOpposingElevenFromTheSearch: no side may field a player the
+// other side is fielding, and the search is told so rather than left to the pool filter
+// upstream implying it (GO-04).
+func TestOptimizeSide_BansTheOpposingElevenFromTheSearch(t *testing.T) {
+	t.Parallel()
+	optimizer := &fakeOptimizer{
+		answers: [][]string{{"k1", "k2"}, {"k4", "k5"}, {"k1", "k3"}, {"k4", "k6"}, {"k1", "k3"}, {"k4", "k6"}},
+	}
+
+	_, err := selectBothXIs(context.Background(), optimizer, twoSidedFixture("T20I"))
+
+	require.NoError(t, err)
+	assert.Empty(t, optimizer.calls[0].MustExcludeKeys, "a seed plays against nobody, so it bans nobody")
+	assert.Equal(t, []string{"k4", "k5"}, optimizer.calls[2].MustExcludeKeys,
+		"team1's search may not field team2's eleven")
+	assert.Equal(t, []string{"k1", "k3"}, optimizer.calls[3].MustExcludeKeys,
+		"and team2's may not field team1's")
+}
+
 func TestSelectBothXIs_StopsAtAFixedPointRatherThanRunningEveryRound(t *testing.T) {
 	t.Parallel()
 	// Every call returns the seed, so round one settles.
@@ -354,6 +373,21 @@ func TestPoolPlayerKeys_SendsRegistryIDsAndSkipsAPlayerWithout(t *testing.T) {
 
 	assert.Equal(t, []string{"2911de16", "a8c9f0b1"}, keys,
 		"the wire carries registry ids; a player the importer never matched cannot be selected")
+}
+
+// TestPoolPlayerKeys_OffersOnePersonOnce: two player rows can carry one registry id, and a
+// pool that offered him twice could have the search field him twice (SERVE-02).
+func TestPoolPlayerKeys_OffersOnePersonOnce(t *testing.T) {
+	t.Parallel()
+	rows := []db.PlayerPoolRow{
+		{PlayerID: 1, ExternalID: "2911de16"},
+		{PlayerID: 2, ExternalID: "a8c9f0b1"},
+		{PlayerID: 3, ExternalID: "2911de16", PlayerName: "imported twice"},
+	}
+
+	keys := poolPlayerKeys(rows)
+
+	assert.Equal(t, []string{"2911de16", "a8c9f0b1"}, keys)
 }
 
 // TestSelectBothXIs_SendsEachSidesMustIncludeLockOnEveryCall is B-10's fix at the seam it

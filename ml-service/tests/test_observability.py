@@ -3,6 +3,8 @@ import os
 
 from fastapi.testclient import TestClient
 
+from tests.xi_fixtures import xi
+
 
 def _client(tmp_path):
     os.environ["ML_SERVICE_OUTPUT_DIR"] = str(tmp_path)
@@ -32,7 +34,7 @@ def test_error_payload_contains_request_id_on_400(tmp_path):
     resp = client.post(
         "/xi/optimize",
         headers={"X-Request-ID": rid},
-        json={"format": "TEST", "pool_player_ids": ["a1"], "opponent_player_ids": ["b1"]},
+        json={"format": "TEST", "pool_player_ids": xi("a"), "opponent_player_ids": xi("b")},
     )
     assert resp.status_code == 503
     detail = resp.json()["detail"]

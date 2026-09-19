@@ -26,7 +26,7 @@ from ml.xi import runs
 from ml.xi.ratings import RatingState
 from ml.xi.runs import RunArtifactsInvalid
 from ml.xi.store import STATE_ARRAY_NAMES, FormatModels, _state_to_payload, save_ratings, state_shape
-from tests.xi_fixtures import ListSource
+from tests.xi_fixtures import ListSource, xi
 
 
 class _ConstantModel:
@@ -565,7 +565,7 @@ def test_the_check_is_off_when_the_limit_is_zero(tmp_path, monkeypatch):
 
 
 def _live_win_request() -> XiWinRequest:
-    return XiWinRequest(format="T20", team1_player_ids=["player0"], team2_player_ids=["player1"])
+    return XiWinRequest(format="T20", team1_player_ids=xi("player"), team2_player_ids=xi("opponent"))
 
 
 def test_a_prediction_carries_the_same_run_and_date_the_status_reports(tmp_path, monkeypatch):
@@ -592,9 +592,9 @@ def test_optimize_carries_the_stamp_on_the_rating_ordered_path_too(tmp_path, mon
     res = xi_service.optimize(
         XiOptimizeRequest(
             format="T20",
-            pool_player_ids=[f"player{i}" for i in range(3)],
+            pool_player_ids=xi("player"),
             objective="ratings",
-            constraints=XiConstraints(team_size=3, min_bowlers=0, require_keeper=False),
+            constraints=XiConstraints(min_bowlers=0, require_keeper=False),
         ),
         registry,
     )
@@ -623,7 +623,7 @@ def test_optimize_refuses_a_live_request_against_stale_ratings(tmp_path, monkeyp
     registry = xi_service.XiRegistry()
     registry.reload(str(tmp_path))
 
-    request = XiOptimizeRequest(format="T20", pool_player_ids=[f"player{i}" for i in range(3)], objective="ratings")
+    request = XiOptimizeRequest(format="T20", pool_player_ids=xi("player"), objective="ratings")
     with pytest.raises(xi_service.XiUnavailable) as excinfo:
         xi_service.optimize(request, registry)
 

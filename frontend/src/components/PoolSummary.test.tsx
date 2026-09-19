@@ -91,6 +91,41 @@ describe('PoolSummary', () => {
     expect(onUndo).toHaveBeenCalledWith(7);
   });
 
+  // GO-04 at the surface: a player the other side kept is named with the reason and the
+  // evidence. There is no undo, because no flag was set — the way to overrule it is to
+  // pick the candidates by hand, which the detail says.
+  it('names a candidate the other side kept, with no undo to withdraw', () => {
+    const onUndo = vi.fn();
+    render(
+      <PoolSummary
+        pool={{
+          ...windowed,
+          size: 20,
+          excluded: [
+            {
+              player_id: 9,
+              player_name: 'Moved Player',
+              last_played: '2026-02-14',
+              reason: 'both_sides',
+              detail:
+                'also a candidate for Chennai Super Kings (men), whom he played for more recently (2026-07-19)',
+            },
+          ],
+        }}
+        teamName="Mumbai Indians (men)"
+        onUndoExclusion={onUndo}
+      />,
+    );
+
+    expect(screen.getByText('Moved Player')).toBeInTheDocument();
+    expect(screen.getByText(/1 player kept by the other side/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/plays for the other side/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/whom he played for more recently \(2026-07-19\)/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /undo/i })).not.toBeInTheDocument();
+  });
+
   // A flag nobody corroborated is one user's opinion, and the surface says exactly that
   // rather than implying a fact about the player.
   it('distinguishes a bare claim from the recorded fact', () => {

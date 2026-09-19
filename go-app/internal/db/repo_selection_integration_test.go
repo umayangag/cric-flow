@@ -104,8 +104,15 @@ type appearance struct {
 	on       string
 }
 
-// insertAppearance records one batting appearance for the club on that date.
+// insertAppearance records one batting appearance for the fixture's club on that date.
 func insertAppearance(ctx context.Context, t *testing.T, fixture poolFixture, a appearance) {
+	t.Helper()
+	insertAppearanceForClub(ctx, t, fixture, fixture.clubID, a)
+}
+
+// insertAppearanceForClub records the appearance for a named club, which is what a player
+// who moved needs: the same player, two clubs, two dates.
+func insertAppearanceForClub(ctx context.Context, t *testing.T, fixture poolFixture, clubID int64, a appearance) {
 	t.Helper()
 	require.NoError(t, Exec(ctx,
 		`INSERT INTO match (match_id, format_id, match_date, original_match_type)
@@ -113,10 +120,53 @@ func insertAppearance(ctx context.Context, t *testing.T, fixture poolFixture, a 
 	require.NoError(t, Exec(ctx,
 		`INSERT INTO match_inning
 		   (match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id)
-		 VALUES ($1, 1, $2, $2)`, a.matchID, fixture.clubID))
+		 VALUES ($1, 1, $2, $2)`, a.matchID, clubID))
 	require.NoError(t, Exec(ctx,
 		`INSERT INTO batting_data (match_id, inning_number, player_id) VALUES ($1, 1, $2)`,
 		a.matchID, a.playerID))
+}
+
+// TestListPlayerPoolByOpposition_APlayerWhoMovedClubsIsInBothPools_Integration is GO-04's
+// premise, in the tables.
+//
+// Nothing here is wrong: each club's pool is the set of players who appeared for *that*
+// club inside the window, and a player who moved in March appeared for both. The defect is
+// downstream, where the two pools were used as though they could not overlap — so this
+// pins the overlap itself, and the date each side has to decide on.
+func TestListPlayerPoolByOpposition_APlayerWhoMovedClubsIsInBothPools_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := setUpPoolFixture(t)
+	var otherClubID int64
+	require.NoError(t, Pool.QueryRow(fixture.ctx,
+		`INSERT INTO opposition (opposition_name, gender) VALUES ('Otherland', 'male') RETURNING id`).
+		Scan(&otherClubID))
+	moved := insertPlayer(fixture.ctx, t, "mov-1", "Moved Player")
+	insertAppearanceForClub(fixture.ctx, t, fixture, fixture.clubID, appearance{
+		matchID: 2001, playerID: moved, on: "2026-02-14",
+	})
+	insertAppearanceForClub(fixture.ctx, t, fixture, otherClubID, appearance{
+		matchID: 2002, playerID: moved, on: "2026-07-19",
+	})
+
+	query := func(clubID int64) PlayerPool {
+		pool, err := ListPlayerPoolByOpposition(fixture.ctx, PoolQuery{
+			FormatCode:   "ODI",
+			OppositionID: clubID,
+			Cutoff:       fixture.cutoff,
+			Since:        availability.WindowStart(fixture.cutoff, 12),
+			ApplyLedger:  true,
+		})
+		require.NoError(t, err)
+		return pool
+	}
+
+	oldClub, newClub := query(fixture.clubID), query(otherClubID)
+
+	assert.Contains(t, playerIDsOf(oldClub.Players), moved, "he played for this club inside the window")
+	assert.Contains(t, playerIDsOf(newClub.Players), moved, "and for this one, more recently")
+	assert.Equal(t, "2026-02-14", rowFor(t, oldClub.Players, moved).LastPlayed.Format(time.DateOnly))
+	assert.Equal(t, "2026-07-19", rowFor(t, newClub.Players, moved).LastPlayed.Format(time.DateOnly),
+		"the two dates are what decides which side keeps him (GO-04)")
 }
 
 // TestListPlayerPoolByOpposition_WindowIsHalfOpenAtTheCutoff_Integration pins the window

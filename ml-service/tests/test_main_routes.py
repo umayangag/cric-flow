@@ -9,6 +9,8 @@ import os
 
 from fastapi.testclient import TestClient
 
+from tests.xi_fixtures import xi
+
 
 def _app_client(tmp_path):
     """Load app with ML_SERVICE_OUTPUT_DIR set; return (app_module, client)."""
@@ -67,7 +69,9 @@ def test_metric_glossary_is_served_without_any_artifacts(tmp_path):
 def test_predict_win_without_a_model_is_unavailable_not_a_crash(tmp_path):
     _, client = _app_client(tmp_path)
 
-    resp = client.post("/xi/predict-win", json={"format": "T20", "team1_player_ids": ["a"], "team2_player_ids": ["b"]})
+    resp = client.post(
+        "/xi/predict-win", json={"format": "T20", "team1_player_ids": xi("a"), "team2_player_ids": xi("b")}
+    )
 
     assert resp.status_code == 503
     assert resp.json()["detail"]["code"] == "XI_MODEL_UNAVAILABLE"

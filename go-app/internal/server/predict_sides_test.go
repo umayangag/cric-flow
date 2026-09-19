@@ -186,6 +186,28 @@ func TestRespondPredictErr_APinnedPlayerTheSideCannotFieldIs400(t *testing.T) {
 	assert.Contains(t, body.Hint, "candidates")
 }
 
+// GO-04: a caller who names one player for both sides is told rather than silently
+// corrected. A user hand-building two elevens that share a player is looking at both of
+// them, and moving him off one would move numbers he did not touch (P1-4).
+func TestRespondPredictErr_OnePlayerNamedForBothSidesIs400(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	err := fmt.Errorf("resolve fixture: %w", &predictteam.SharedPlayerError{
+		Team1:   "Mumbai Indians (men)",
+		Team2:   "Chennai Super Kings (men)",
+		Players: []predictteam.SharedPlayer{{PlayerID: 7, PlayerName: "Moved Player"}},
+	})
+
+	respondPredictErr(rec, err)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "XI_PLAYER_ON_BOTH_SIDES", body.Code)
+	assert.Contains(t, body.Message, "Moved Player")
+	assert.Contains(t, body.Message, "nobody plays both elevens")
+	assert.Contains(t, body.Hint, "take him out of one side")
+}
+
 // B-10: a must-include id the side cannot field is a lock nothing can satisfy, and since
 // the ids are enforced the request is refused rather than answered with an eleven that
 // leaves the asked-for player out.
