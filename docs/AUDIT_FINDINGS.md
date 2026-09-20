@@ -885,6 +885,38 @@ FEAT-15 (#315) re-derived `MIN_BOWLING_BALLS` in the per-appearance unit (3 / 4 
 
 Every figure and every side count is the one FEAT-15 recorded, which is the expected outcome for a threshold derived from this population, on this population, after a re-import that moved no row — the prediction was a consistency check on the derivation surviving the pipeline, and it did. Against batch 2's numbers in the new unit (25.1 / 19.1 / 38.2 / 21.5 % under five; 5.03 / 5.11 / 4.64 / 5.03 mean) the served objective now reads sides that carry five bowlers as carrying five bowlers. The share under *four* — the level at which the optimiser's bowling-cover constraint has no eleven to reshape into — reads 1.4 / 1.0 / 3.5 / 4.2 %.
 
+#### Step 5 — `make reload`: the new run serves, and every older run is refused by name
+
+**The stack had to be rebuilt first, and the rebuild is a story of its own.** The running ML image (built 2026-09-19 16:18 UTC) predated EVAL-10 and EVAL-12 — its `runs.py` had no `dataset_digest` at all — so it was still serving `85ff133f` and could not have refused anything. Batch 2 declined to rebuild because it was not in the checkout the stack was built from; this pass was, so the rebuild was in scope. Three things then went wrong before any image existed, each recorded here because the next operator will meet them:
+
+1. **`make build-apps` hung for six minutes on `resolve image config for docker-image://docker.io/docker/dockerfile:1`**, and `docker pull` hung the same way while `curl` reached the registry and a container on the VM reached PyPI. The cause was the CLI, not the network: `~/.docker/config.json` names `credsStore: desktop`, and every `docker build` and `docker pull` spawns `docker-credential-desktop list` before it sends a byte; in this headless session each spawn hung forever (three were found stuck, one per attempt), while the same helper run directly with a closed stdin returned `{}` at once. Pointing `DOCKER_CONFIG` at a scratch directory with `{"auths":{}}` and `DOCKER_HOST` at the daemon's socket bypassed the helper and the build ran in 1 min 30 s.
+2. **There is no `.dockerignore` anywhere in the repository, and `docker-compose.yml` builds the ML image with `context: .`** — the repo root, under which `data/` weighs **22 GB** and `output/` **3.3 GB**. The legacy builder spent three minutes tarring that context into the daemon before it was stopped; BuildKit sends it lazily but still walks it, and the daemon's build cache stood at 24.98 GB (19.44 reclaimable) when measured. The Dockerfile copies five paths, all under `ml-service/`; a context holding just those is **1.0 MB**. **New finding (OPS), recorded and not fixed:** add a root `.dockerignore` excluding `data/`, `output/`, `.venv/`, `node_modules/` and `.git/`, or narrow the context.
+3. `go-app/Dockerfile.api` builds `FROM golang:1.26-alpine`, which is **not in the local image cache**, so the API image could not have been rebuilt without a working pull path.
+
+The images actually serving were then built and recreated by the operator directly (both containers created 18:22:15 UTC; the ML container runs `9c6ad26b…` with `GIT_SHA=acbc0fa0…`, this branch's head at the time, and its `runs.py` carries the digest code); the slim-context image built here (`eed100d3…`) landed on the `umayangag/cric-app-ml:latest` tag thirty seconds later and is not the one running — cosmetic, noted so nobody reads the tag as the container.
+
+**Before reload, on the rebuilt service:** `/health` → `loaded: false, run_id: null`, `error: "run 20260919T162357Z-85ff133f: manifest.json carries no dataset_digest, so nothing says what its dataset_sha is a digest of; it was written before the digest could see a squad or a delivery (EVAL-12) and cannot be loaded. Run make retrain …"`. That is the state the brief described — **no loadable run** — observed live: `current` still named `85ff133f` and the service refused it by name on start-up.
+
+**`make reload`** (no `RUN=`, so the newest run on disk) at 18:23:28 UTC → `{"status":"reloaded","loaded":true,"formats":["ODI","T20","T20I","TEST"],"performance_formats":[…same…],"players":13639,"ratings_through":"2026-09-09", …}`. After: `/health` → `loaded: true, run_id: 20260920T175255Z-71339c52`, ratings fresh (11 days old against a 14-day limit); `current_run.json` → `71339c52`; go-api's `/ops/status` → `current_run` and `loaded_run` both `71339c52`, `ml_health: true`. **A served run is restored.**
+
+**Every older run is refused by name**, in `/artifacts/status`'s listing, each with its reason:
+
+| run | refused for |
+|---|---|
+| `20260919T162357Z-85ff133f` (was serving) | no `dataset_digest` (EVAL-12) |
+| `20260914T121506Z-da5b6680` (batch 2) | no `dataset_digest` |
+| `20260913T142341Z-ab4caa13` (batch 1) | no `dataset_digest` |
+| `20260908T051956Z-626dc507`, `20260907T062657Z-6b16045e` | no `dataset_digest` |
+| `20260906T083819Z-36689f80`, `20260903T160602Z-0e1e39c2`, `20260903T154222Z-4e009a52`, `20260902T163535Z-739b9d62`, `20260902T102135Z-2818a6b7` | no `ratings_through` (P2-2, #280 — refused before this batch too) |
+
+Ten of twelve directories refused, each naming itself and the field it lacks; none silently skipped.
+
+**The twelfth directory is an orphan run, and it loads.** `20260920T165052Z-cb30121b` — noted in step 1 as a manifest-less directory holding one file — was by 17:46:58 UTC a complete run: every artifact, a manifest, `usable: true`, `git_sha 76e7a894…-dirty` (this branch's step-2 commit), `dataset_sha` **identical** to this pass's run (`7e301346…`). Its run id is 16:50:52 UTC, before this session existed: it is the detached retrain of an earlier attempt at this pass, which outlived the session that launched it and ran through this pass's re-import and parity steps unnoticed. Three things follow. It touched nothing — a retrain reads the database and writes only its own directory — and its digest equalling this pass's says the re-import it overlapped produced the same cricket row for row. It was not published: `reload` with no `RUN=` takes the newest run, which is this pass's. And it is a free determinism check — two runs of the same code on the same data — reported under step 6 below.
+
+##### EVAL-12's prediction, tested — **held**
+
+EVAL-12 (#323) recorded that the new run would carry a populated `dataset_digest` and a real `git_sha`, would load, and that old runs would stay refused by name. `dataset_digest` = `{scheme: matches+xi-outcomes+pass-counts/1, matches 21293, player_rows 468461, pass_counts 19, undecided_matches 1612}` with `dataset_sha 7e301346…` — a sha the old formula could not have produced, and one that differs from the `501c2488…` every run since batch 1 carried on the same 22,905 fixtures. `git_sha` = `ebd10a4c…`, a real commit, this branch's head when the manifest was written — with the `-dirty` suffix earned by two untracked directories (step 4's finding), which is the one blemish on this prediction: the sha is real and right, and the suffix is true to the rule and untrue to the tree. The run loaded on the first `reload`. Ten older runs are refused by name, above. Held.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
