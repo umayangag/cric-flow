@@ -444,9 +444,11 @@ that never bound. Nothing in the report now names a seed for the display model; 
 difference is read against is the fold-level paired standard error (H-14), and for a single
 holdout the Hanley–McNeil standard error `run_usability.py` computes. `display_auc_mean` and
 `display_brier_mean` keep their names — they are the wire keys the report, the run manifest and
-the Workbench share — and are the one fit's own score. The performance model's members still
-carry seeds: their early stopping is on explicitly, so the seed enters through the split. `POST /admin/reload` picks the artifacts up; `GET /xi/status`
-shows what is loaded.
+the Workbench share — and are the one fit's own score. The performance model is one fit too
+since EVAL-09 took its early-stopping split away (§ Player performance, *Fitting*): its
+`random_state` reaches nothing below 200,000 rows and the binning subsample alone above it,
+measured as bit-identical refits in T20I, ODI and TEST. `POST /admin/reload` picks the
+artifacts up; `GET /xi/status` shows what is loaded.
 
 **Serving:** `POST /xi/predict-win` and `POST /xi/optimize` take player ids, not feature maps.
 The optimiser (`ml/xi/optimizer.py`) seeds greedily, then steepest-ascent single swaps, then
@@ -719,9 +721,24 @@ both and averaged — unless the caller passes `team1_bats_first`, the same knob
 
 **Fitting.** `HistGradientBoostingRegressor` with quantile and Poisson losses and a
 classifier for involvement; a three-point grid (`performance.HYPERPARAMETER_GRID`) tuned
-inside the walk-forward folds only, where it turned out flat (§ P-3 of the plan); every fit
-on three seeds, which enter through the early-stopping split, with the members' outputs
-averaged. Independently fitted quantiles can cross; they are sorted. When the harness finds a
+inside the walk-forward folds only, where it turned out flat (§ P-3 of the plan); one fit per
+booster, for an iteration count **chosen on a temporal fold, then refitted on every row**
+(EVAL-09). sklearn's own early stopping drew a shuffled tenth of the rows as its validation
+set, and the eleven rows of one side share 44 of the model's 62 inputs (`own_*`, `opp_*`,
+`venue_*`, `elo_edge`, the innings), so ten match-mates of nearly every validation row were
+training rows and the stopping point was optimistic — measured on the archive at
+`f63bf83e`, the shuffled split let `p_bats` run to 236 of 300 iterations in TEST against an
+out-of-sample optimum at 5, and read `wickets` as still improving at 216 in T20 against 144.
+Now `performance.choose_iterations` fits each booster to `MAX_ITER` on the rows before the
+most recent tenth by date (`ITERATION_CHOICE_FRACTION`, cut at a match boundary so no
+match's rows land on both sides) and takes the iteration at which the booster's own loss —
+log loss, the pinball loss at its level, the Poisson deviance — on the rows after the cut
+is lowest; the served booster is a fresh fit on every row for exactly that count with
+`early_stopping=False`. The count is re-derived by every fit, so a retrain re-chooses it on
+the new rows and each harness window on its own, and the fit's metadata records the cut,
+the rows on each side and the count per booster (`fit.iteration_choice`) beside the counts
+the served boosters ran (`fit.iterations`). A history too short to cut runs the ceiling and
+says so. Independently fitted quantiles can cross; they are sorted. When the harness finds a
 quantile target's coverage off nominal it is **recalibrated on a temporal fold** (H-5,
 `ml/xi/perf_calibration.py`): members fitted on the rows before the last 92 days
 (`performance.CALIBRATION_DAYS`) predict those days, which they did not train on (H-21), and

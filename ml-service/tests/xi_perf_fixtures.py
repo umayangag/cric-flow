@@ -1,5 +1,5 @@
 """Shared setup for the performance-model tests: a small synthetic player frame and a
-fast fit configuration (one seed, few iterations) that the module-scoped fixtures apply
+fast fit configuration (a low iteration ceiling) that the module-scoped fixtures apply
 and undo themselves, since monkeypatch is function-scoped."""
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ FAST_MAX_ITER = 40
 
 @contextmanager
 def fast_fits() -> Iterator[None]:
-    """One seed and a short boosting run: enough to exercise every path, not to be good."""
-    original = (P.DEFAULT_SEEDS, P.MAX_ITER)
-    P.DEFAULT_SEEDS, P.MAX_ITER = (0,), FAST_MAX_ITER
+    """A short boosting run: enough to exercise every path, not to be good."""
+    original = P.MAX_ITER
+    P.MAX_ITER = FAST_MAX_ITER
     try:
         yield
     finally:
-        P.DEFAULT_SEEDS, P.MAX_ITER = original
+        P.MAX_ITER = original
 
 
 def synthetic_player_frame(n_matches: int = 160) -> pd.DataFrame:
