@@ -756,6 +756,16 @@ Parity — the acceptance test at the data layer — **passes on all twenty-one 
 
 **The batch is not accepted clean.** `make evaluate` exits 1, `gates.passed` is **false**, and **H-4 fails in T20I at 0.0230 against a 0.02 line** with the violation count tripled there and quintupled in T20 while ODI and TEST did not move at all. That is the batch's one red gate, it is a change in behaviour rather than noise, and its cause is not established. Two further verdicts flipped without failing a gate (E2 in ODI, the sign of TEST's specific-vs-typical delta). Separately, **`make reload` failed and the run is unpublished** because the deployed service predates the batch. None of these was fixed or worked around here, and no threshold was touched.
 
+### Batch 3 — the re-import, retrain and harness record
+
+Eleven PRs — **FEAT-14 (#314), FEAT-15 (#315), SERVE-02 + GO-04 (#316), SERVE-01 (#317), DATA-01 (#318), EVAL-05 (#319), EVAL-06 (#320), EVAL-08 (#321), EVAL-09 (#322), EVAL-12 (#323), EVAL-10 (#324)** — four of them retrain-flagged (FEAT-14, FEAT-15, EVAL-09, and EVAL-12 by way of D-6: it made `dataset_digest` a required manifest field, so every run on disk is refused and there was **no loadable run** when this pass began). Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `926a924d`. This is that record. Steps ran in order: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make serving-parity` → `make evaluate`. Three predictions were recorded by fixers before the run — EVAL-09's, FEAT-15's and EVAL-12's — and each is tested against the numbers below.
+
+#### Step 1 — migrate: nothing to apply
+
+The migration level was verified against the database, not quoted. Before anything ran: `select (select count(*) from match), (select count(*) from player_biography), (select max(version) from schema_migrations)` → **22905 | 13662 | 0020_match_player_replacement.sql**, and the eight import tables read exactly batch 2's after-figures (`ball_event` 11,578,345 · `ball_event_wicket` 353,571 · `match_inning` 50,465 · `match_player` 505,287 · `player` 13,694 · `batting_data` 434,001 · `bowling_data` 299,460 · `fielding_data` 176,576 · 1,362 replacement flags). `make migrate`: `files_total 20, applied 0, skipped 20, seen 20` in 1.5 s — the repo holds twenty migrations and the database had all twenty. No PR in this batch added one.
+
+Two things noted on the way in, neither a change to the data. **`/ops/status`'s `table_stats` are planner estimates, not counts**: it reported `ball_event` 11,643,465 and `ball_event_wicket` 353,022 against exact counts of 11,578,345 and 353,571 — the numbers a reader should not carry into a record. And `output/ml-service/runs/20260920T165052Z-cb30121b/` held a lone `xi_win_T20.joblib` (17:08 UTC today) and no manifest — the remains of a retrain killed part-way, one of this pass's earlier attempts; it was left in place so the loader's handling of a manifest-less directory could be read in step 5.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
