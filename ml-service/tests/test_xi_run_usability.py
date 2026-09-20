@@ -15,14 +15,20 @@ from ml.xi import run_usability
 from ml.xi.runs import RunManifest
 
 
-def _scored(format_code: str, auc: float, n_holdout: int = 400, positive_rate: float = 0.5) -> Dict:
+def _scored(
+    format_code: str, auc: float, n_holdout: int = 400, positive_rate: float = 0.5, toss_aware_auc: float = 0.7
+) -> Dict:
+    """One scored format as ``train_all`` reports it: the served (marginalised) reading at
+    ``auc``, and a toss-aware reading beside it that the gate must not read."""
     return {
         "format_code": format_code,
         "n_train": 4000,
         "n_holdout": n_holdout,
         "holdout_positive_rate": positive_rate,
-        "objective": {"auc": auc, "brier": 0.22},
-        "display": {"auc": auc + 0.02, "brier": 0.22},
+        "objective_marginalised": {"auc": auc, "brier": 0.22},
+        "objective_toss_aware": {"auc": toss_aware_auc, "brier": 0.22},
+        "display_marginalised": {"auc": auc + 0.02, "brier": 0.22},
+        "display_toss_aware": {"auc": toss_aware_auc + 0.02, "brier": 0.22},
     }
 
 
@@ -56,6 +62,23 @@ def test_an_objective_not_above_the_base_rate_makes_the_run_unusable(auc: float)
         "T20": f"objective holdout AUC {auc:.4f} is not above the base rate's 0.5 on 400 holdout rows: "
         "the objective does not rank"
     }
+
+
+def test_the_gate_judges_the_served_reading_not_the_toss_aware_one() -> None:
+    """EVAL-05: the manifest quotes the marginalised AUC as ``objective_auc`` and compares
+    it against the served run's, so that is the number the gate judges. A toss-aware
+    reading under the base rate beside a served one above it leaves the run usable, and
+    the reverse does not."""
+    ranks_as_served = run_usability.decide(
+        {"formats": [_scored("T20", 0.70, toss_aware_auc=0.45)]}, "2025-09-01", served=None
+    )
+    ranks_only_toss_aware = run_usability.decide(
+        {"formats": [_scored("T20", 0.45, toss_aware_auc=0.70)]}, "2025-09-01", served=None
+    )
+
+    assert ranks_as_served.usable is True
+    assert ranks_only_toss_aware.usable is False
+    assert "0.4500 is not above the base rate" in ranks_only_toss_aware.reasons["T20"]
 
 
 def test_a_format_the_run_did_not_score_is_not_judged() -> None:

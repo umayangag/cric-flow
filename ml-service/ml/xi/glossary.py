@@ -90,6 +90,17 @@ AUC_EXPLANATION = (
     "Of two random opposing claims, how often the model ranks the actual winner higher. "
     "0.5 is a coin flip and 1.0 is perfect."
 )
+# The win models' headline scores are the served reading, whichever report carries them
+# (EVAL-05): the run manifest and the harness's walk-forward folds score the probability
+# marginalised over the toss, because that is the number the optimiser maximises and
+# `/xi/predict-win` answers with when nobody has said who bats first. The manifest used to
+# quote the model read at the batting order that actually happened, under the same key.
+SERVED_READING = (
+    " Scored as served: the probability averaged over both batting orders, because the toss is "
+    "unknown when the model is asked. The same quantity under the same key in the run manifest "
+    "and the walk-forward report; the toss-aware reading is in the run report and, for the "
+    "displayed model, the market benchmark."
+)
 AUC_BAND = (
     "0.50 chance; 0.55 weak; 0.65+ useful (H-17's selection line); 0.70-0.75 is this system's "
     "measured range and the practical ceiling for cricket. Treat above 0.80 as a red flag for "
@@ -180,7 +191,7 @@ METRICS: Tuple[Metric, ...] = (
     Metric(
         key="objective_auc",
         name="Objective AUC",
-        explanation="The value the optimiser maximises when it picks an eleven. " + AUC_EXPLANATION,
+        explanation="The value the optimiser maximises when it picks an eleven. " + AUC_EXPLANATION + SERVED_READING,
         band=AUC_BAND,
         better=HIGHER,
         scale=AUC_SCALE,
@@ -188,7 +199,9 @@ METRICS: Tuple[Metric, ...] = (
     Metric(
         key="display_auc",
         name="Display AUC",
-        explanation="The same measure for the probability a user is actually shown. " + AUC_EXPLANATION,
+        explanation="The same measure for the probability a user is actually shown. "
+        + AUC_EXPLANATION
+        + SERVED_READING,
         band=AUC_BAND,
         better=HIGHER,
         scale=AUC_SCALE,
@@ -203,7 +216,7 @@ METRICS: Tuple[Metric, ...] = (
         name="Display AUC",
         explanation=(
             "The same measure for the probability a user is actually shown, from the one display "
-            "model fitted for the window. " + AUC_EXPLANATION
+            "model fitted for the window. " + AUC_EXPLANATION + SERVED_READING
         ),
         band=AUC_BAND,
         better=HIGHER,
@@ -212,7 +225,7 @@ METRICS: Tuple[Metric, ...] = (
     Metric(
         key="objective_brier",
         name="Objective Brier",
-        explanation="The objective's probability, scored rather than ranked. " + BRIER_EXPLANATION,
+        explanation="The objective's probability, scored rather than ranked. " + BRIER_EXPLANATION + SERVED_READING,
         band=BRIER_BAND,
         better=LOWER,
         scale=BRIER_SCALE,
@@ -220,7 +233,7 @@ METRICS: Tuple[Metric, ...] = (
     Metric(
         key="display_brier_mean",
         name="Display Brier",
-        explanation="The displayed probability, scored rather than ranked. " + BRIER_EXPLANATION,
+        explanation="The displayed probability, scored rather than ranked. " + BRIER_EXPLANATION + SERVED_READING,
         band=BRIER_BAND,
         better=LOWER,
         scale=BRIER_SCALE,

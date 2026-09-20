@@ -74,7 +74,10 @@ def decide(summary: Dict, cutoff: str, served: Optional[RunManifest]) -> Usabili
     not judged; ``format_notes`` says why it carries no number."""
     reasons: Dict[str, str] = {}
     for report in summary.get("formats", []):
-        objective = report.get("objective")
+        # The served reading -- marginalised over the toss -- is the one the manifest
+        # quotes as ``objective_auc`` and the one the served run's is compared against, so
+        # it is the one judged here; the toss-aware score beside it is not (EVAL-05).
+        objective = report.get("objective_marginalised")
         if objective is None:
             continue
         format_code = report["format_code"]

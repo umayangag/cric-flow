@@ -107,8 +107,8 @@ def test_run_manifest_headline_metrics_are_glossaried() -> None:
                 "format_code": "T20",
                 "n_train": 900,
                 "n_holdout": 100,
-                "objective": {"auc": 0.72},
-                "display": {"auc": 0.71, "brier": 0.22},
+                "objective_marginalised": {"auc": 0.72},
+                "display_marginalised": {"auc": 0.71, "brier": 0.22},
             }
         ]
     }

@@ -21,7 +21,14 @@ from sklearn.metrics import roc_auc_score
 from ml.xi import contract as C
 from ml.xi import selection_metrics
 from ml.xi.builder import build
-from ml.xi.train import _xy, make_display_model, make_objective_model, own_side_sensitivities, train_format
+from ml.xi.train import (
+    _score_marginalised,
+    _xy,
+    make_display_model,
+    make_objective_model,
+    own_side_sensitivities,
+    train_format,
+)
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 
 SWAP_COLUMNS = ("team_elo_diff", "team_form_diff", "venue_fam_diff", "team_h2h")
@@ -86,7 +93,9 @@ def test_train_format_fits_every_iteration_the_grid_chose_above_the_early_stoppi
 
 def test_train_format_fits_the_display_model_once_and_reports_that_fits_score() -> None:
     """The report carries the served display model's own AUC and Brier -- the shape the
-    objective's entry has -- and no seed list or spread across seeds."""
+    objective's entry has -- and no seed list or spread across seeds. The toss-aware
+    block is the model read at the actual batting order; the marginalised one beside it
+    is the served reading the manifest quotes (EVAL-05)."""
     rows = synthetic_win_rows(400)
     cutoff = pd.Timestamp("2024-01-01")
 
@@ -94,10 +103,13 @@ def test_train_format_fits_the_display_model_once_and_reports_that_fits_score() 
 
     holdout = rows[rows.match_date >= cutoff]
     x_holdout, y_holdout = _xy(holdout, C.DISPLAY_FEATURE_COLS)
-    served_auc = roc_auc_score(y_holdout, models.display.predict_proba(x_holdout)[:, 1])
+    toss_aware_auc = roc_auc_score(y_holdout, models.display.predict_proba(x_holdout)[:, 1])
     assert "seeds" not in report
-    assert set(report["display"]) == {"auc", "brier"}
-    assert report["display"]["auc"] == pytest.approx(served_auc)
+    assert set(report["display_toss_aware"]) == {"auc", "brier"}
+    assert report["display_toss_aware"]["auc"] == pytest.approx(toss_aware_auc)
+    assert report["display_marginalised"]["auc"] == pytest.approx(
+        _score_marginalised(models.display, holdout, C.DISPLAY_FEATURE_COLS)["auc"]
+    )
     assert set(report["by_gender"]["male"]) == {"n_holdout", "objective_auc", "display_auc"}
 
 
@@ -178,4 +190,4 @@ def test_train_format_fits_the_objective_under_the_contract() -> None:
     assert models.objective_cols == list(C.XI_FEATURE_COLS)
     assert not any(column.endswith("_pelo_std") for column in models.objective_cols)
     _assert_sensitivities_carry_the_contract(own_side_sensitivities(models.objective, models.objective_cols))
-    assert set(report["objective"]) == {"auc", "brier"}
+    assert set(report["objective_marginalised"]) == {"auc", "brier"}
