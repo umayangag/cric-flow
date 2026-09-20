@@ -794,6 +794,33 @@ Two things noted on the way in, neither a change to the data. **`/ops/status`'s 
 
 The three synthetic `player` rows with ids 1–3 (no match or ball rows) are **not** cleared by a re-import — the importer upserts what the archive names and deletes nothing it does not name. Out of scope here, recorded as asked.
 
+#### Step 3 — `make xi-parity`: **passes** on every compared count — and one uncompared count disagrees
+
+`make export-birth-dates` wrote 6,967 players first (the operator note from batches 1 and 2, still required), then `make xi-parity` ran two rating passes: Postgres in 3 min 58 s, the archive in 1 min 24 s, exit 0 in **5 min 23 s** (17:43:30–17:48:53 UTC). Both passes produce the same **21,293** training rows and **468,461** player-match rows — batch 2's figures, unchanged. The archive path logged the same two namesake keys (`119678fd`, `efcb778e`) and the 1537342 replacement warning as batch 2.
+
+| count | postgres | cricsheet |
+|---|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 |
+| drawn_or_tied_matches | 1,121 | 1,121 |
+| decided_matches_without_deliveries | 0 | 0 |
+| runs_not_charged_to_bowler | 234,322 | 234,322 |
+| **runs_scored** (EVAL-12, #323 — new, *not compared*) | **9,345,813** | **9,345,815** |
+| deliveries_not_faced | 202,331 | 202,331 |
+| dismissals | 353,063 | 353,063 |
+| namesake_sides / unknown_player_keys | 0 | 0 |
+| oversized_squads | 24 | 24 |
+| replacement_players | 1,362 | 1,362 |
+| player_keys / team_keys | 13,639 / 522 | 13,639 / 522 |
+| players_with_birth_date | 6,955 | 6,955 |
+| matches_with_stage_label / knockout | 22,101 / 1,420 | 22,101 / 1,420 |
+| reconstructible_table / dead_rubber | 16,587 / 2,215 | 16,587 / 2,215 |
+
+`source parity: the database and the archive agree`. Every one of the twenty counts in `_COMPARED_COUNTS` agrees, as do the training-row and player-row totals, and every figure is batch 2's figure — which is the right answer for a re-import that moved no row.
+
+**A new finding, recorded and not fixed — B-17 has claimed its first count.** The table prints twenty-two rows and the check compares twenty. `out_of_scope_matches` is left out on purpose (the two sources filter at different points, and the code says so). `runs_scored` is left out by omission: EVAL-12 (#323) added it to `DataQuality` as the digest's cover for undecided matches, and did not add it to `_COMPARED_COUNTS` — exactly the failure mode `docs/BUG_BACKLOG.md` B-17 describes ("a count added to the dataclass is compared only if someone remembers to add it there — the opposite of what the docstring says"). And it is the one count that disagrees: **postgres 9,345,813, cricsheet 9,345,815**, a difference of **2 runs**, which the check reports as agreement and exit 0. The 2 runs are known cricket: match **514034**'s fourth innings — one delivery, a no-ball off which the batter scored one, `runs.total` 2 in the archive — the innings batch 2's step 2 found `ball_event` does not hold at all (`ball_event_emit.go`'s `if totalLegal == 0 { continue }`). `match_inning` records that innings as 2 runs off 0 legal balls; the rating pass reads `ball_event`, so the Postgres pass is 2 runs short of the archive, and the archive is right. Two consequences worth stating. (1) Parity's verdict is true of the twenty counts it compares and untrue of the cricket: a check whose docstring promises "every comparable count" has, in its first run after a count was added, missed the one that differs. (2) `dataset_digest` folds `runs_scored` in, so a run built from Postgres and a run built from the archive over the same 22,905 files now carry **different digests** — which means `make serving-parity CRICSHEET_DIR=…` against a Postgres-trained run will be refused as "trained on other cricket" until either the one-innings gap is closed or the digest and the parity check agree on what counts. Neither is fixed here. B-17 (the docstring and the tuple) and the 514034 gap (batch 2's "B-17 candidate", the ball-event emitter) are two defects with one visible symptom; both stay open, and this is the evidence the backlog entry lacked — a real count, uncompared, disagreeing.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
