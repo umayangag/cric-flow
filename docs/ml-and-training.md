@@ -138,6 +138,24 @@ game (§1 of the re-architecture plan), and no amount of search moves it.
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): the manifest's headline metrics are `objective_auc` and `display_auc_mean`; `n_train` and `n_holdout` beside them are declared counts, not metrics.
 
+**One key, one quantity** (EVAL-05). Both headline numbers are the *served* reading: the
+probability marginalised over the toss — the mean of team1-bats-first and team2-bats-first —
+because that is what the optimiser maximises (`XiStore.objective_probability`) and what
+`/xi/predict-win` answers when the caller does not say who bats first. The harness reports the
+same quantity under the same keys in every walk-forward fold, so a manifest's `objective_auc`
+and a fold's are one number. Until EVAL-05 the manifest quoted the model read at the batting
+order that actually happened under the harness's key, so `objective_auc` meant two things
+depending on which file wrote it. On the one scored run on record (cutoff 2025-09-01) the two
+readings differ by −0.0002 T20, +0.0013 T20I, −0.0062 ODI and −0.0075 TEST (toss-aware minus
+marginalised): inside one standard error of the AUC in every format, and the marginalised
+reading is the *higher* one in three of four, so the toss-aware headline was not optimistic —
+it was a different number. The run report (`xi_win_report.json`) carries both readings per
+model, named `objective_marginalised` / `objective_toss_aware` and `display_marginalised` /
+`display_toss_aware`; nothing in it is called plain `objective` any more. Manifests written
+before this carry the toss-aware reading under `objective_auc`; the only scored one predates
+`ratings_through` and is already refused by the loader, and every cadence run since was trained
+at today's cutoff and scored nothing, so no loadable manifest's headline changed meaning.
+
 **A run is a directory, and `current` is a pointer to one** (H-16):
 
 ```
@@ -187,6 +205,7 @@ judge them.
 feature join, an inverted label — was written, listed and served by the next `reload` exactly
 as a sound one. Retrain now evaluates two clauses per format it scored and writes the result
 into the manifest as `usable` with `unusable_reasons` per format: the objective's holdout AUC
+(the served, toss-marginalised reading the manifest quotes — EVAL-05)
 must be above the base rate's 0.5 (a constant predictor's AUC — an objective not above it does
 not rank, and a run with nothing to select on in a format is not published); and, **only when
 the run `current` points at was trained at the same cutoff** — the same holdout — this run's

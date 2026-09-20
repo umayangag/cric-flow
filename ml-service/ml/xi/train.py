@@ -281,13 +281,21 @@ def train_format(
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)
+        # Each model is scored twice and both readings are named (EVAL-05). The
+        # ``_marginalised`` block is the served quantity -- the optimiser and
+        # ``/xi/predict-win`` average both batting orders because the toss is unknown when
+        # they are asked -- and it is what the manifest quotes, under the same glossary
+        # keys the harness reports the same quantity under. The ``_toss_aware`` block reads
+        # the model at the order that actually happened, as the market benchmark does; it
+        # used to be called plain ``objective`` / ``display`` and reach the manifest as
+        # ``objective_auc``, so one key named two quantities depending on who wrote it.
         report.update(
             {
                 "holdout_positive_rate": float(y_te.mean()),
-                "objective": _score(objective, x_obj_te, y_te),
                 "objective_marginalised": _score_marginalised(objective, te, C.XI_FEATURE_COLS),
-                "display": _score(display, x_dis_te, y_te),
+                "objective_toss_aware": _score(objective, x_obj_te, y_te),
                 "display_marginalised": _score_marginalised(display, te, C.DISPLAY_FEATURE_COLS),
+                "display_toss_aware": _score(display, x_dis_te, y_te),
                 "base_rate_brier": float(brier_score_loss(y_te, np.full(len(y_te), y_tr.mean()))),
                 "best_single_column": best_single_column(te, C.DISPLAY_FEATURE_COLS),
                 "by_gender": gender_breakdown(objective, display, te),
@@ -369,10 +377,10 @@ def train_all(
         if models is not None:
             path = save_models(models, artifacts_dir)
             logger.info(
-                "%s: objective AUC %s, display AUC %s -> %s",
+                "%s: objective AUC %s, display AUC %s (marginalised over the toss, as served) -> %s",
                 fmt,
-                report.get("objective", {}).get("auc"),
-                report.get("display", {}).get("auc"),
+                report.get("objective_marginalised", {}).get("auc"),
+                report.get("display_marginalised", {}).get("auc"),
                 path,
             )
         else:

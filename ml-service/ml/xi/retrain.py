@@ -56,6 +56,13 @@ def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
     and ``format_notes`` says why the rest is missing. The rest of the report stays in the
     report -- a manifest that copies everything is a second copy to fall out of step.
 
+    Both numbers are the served reading: the probability marginalised over the toss,
+    which is what the optimiser maximises and what ``/xi/predict-win`` answers when the
+    caller does not say who bats first. The harness reports the same quantity under the
+    same keys, so a manifest's ``objective_auc`` and a walk-forward fold's are one number
+    (EVAL-05); until then the manifest quoted the toss-aware reading under the harness's
+    key. The toss-aware scores stay in the run report, named as such.
+
     The names are glossary keys (``ml.xi.glossary``), because the Workbench renders these
     metrics by key and looks their explanation up: a headline metric named anything else
     would reach a surface with nothing to say about itself.
@@ -65,13 +72,19 @@ def headline_metrics(summary: Dict) -> Dict[str, Dict[str, float]]:
         if "skipped_reason" in report:
             continue  # no model was fitted, so there is nothing for this format to be usable as
         entry: Dict[str, float] = {"n_train": report["n_train"], "n_holdout": report["n_holdout"]}
-        if "objective" in report:
-            entry["objective_auc"] = report["objective"]["auc"]
+        if _scored(report):
+            entry["objective_auc"] = report["objective_marginalised"]["auc"]
             # The key is the wire name the Workbench and the harness share; since EVAL-02
             # the display model is one fit, so the value is its AUC and nothing is averaged.
-            entry["display_auc_mean"] = report["display"]["auc"]
+            entry["display_auc_mean"] = report["display_marginalised"]["auc"]
         out[report["format_code"]] = entry
     return out
+
+
+def _scored(report: Dict) -> bool:
+    """Whether a format's report carries holdout numbers: the served reading is the one
+    the manifest and the usability gate read, so its presence is what "scored" means."""
+    return "objective_marginalised" in report
 
 
 def format_notes(summary: Dict) -> Dict[str, str]:
@@ -92,7 +105,7 @@ def format_notes(summary: Dict) -> Dict[str, str]:
             notes[report["format_code"]] = (
                 f"not trained: {report['skipped_reason']} ({report['n_train']} rows before the cutoff)"
             )
-        elif "objective" not in report:
+        elif not _scored(report):
             notes[report["format_code"]] = (
                 f"trained on {report['n_train']} rows but not scored: "
                 f"{report.get('holdout_note', 'no holdout metrics were reported')} "
