@@ -16,10 +16,14 @@ from typing import List
 import pandas as pd
 import pytest
 
+from ml.xi import evaluate as evaluate_module
 from ml.xi import retrain as retrain_module
 from ml.xi import runs
+from ml.xi import train as train_module
 from ml.xi.builder import build
 from ml.xi.retrain import format_notes, headline_metrics, retrain
+from ml.xi.train import train_format
+from tests.test_xi_train import synthetic_win_rows
 from tests.xi_fixtures import ListSource, make_deliveries, make_match, xi
 
 TEAM_ONE, TEAM_TWO = xi("a"), xi("b")
@@ -170,6 +174,49 @@ def test_headline_metrics_and_notes_read_the_report_not_the_models() -> None:
         "no discrimination numbers (0 rows at or after the cutoff)"
     )
     assert notes["TEST"] == "not trained: insufficient training rows (12 rows before the cutoff)"
+
+
+# --- EVAL-05: one key, one quantity, whichever writer wrote it -------------------------
+
+
+def _pin_the_display_grid_to_its_incumbent(monkeypatch) -> None:
+    """The harness fits the display model at the grid's incumbent and never runs the grid
+    (EVAL-06); that is not this test's subject, so both writers are held to the same
+    display fit and only the scoring can differ."""
+    incumbent = {"params": dict(train_module.DISPLAY_GRID[0]), "reason": "pinned for the test", "scores": []}
+    monkeypatch.setattr(train_module, "choose_display_params", lambda train: incumbent)
+
+
+def test_the_manifest_headline_is_the_number_the_harness_reports_under_the_same_key(monkeypatch) -> None:
+    """EVAL-05: ``objective_auc`` and ``display_auc_mean`` reach the run manifest from
+    ``train_format``'s report and the harness report from ``_evaluate_win_window``. On the
+    same rows, the same cutoff and the same fits the two must be one number: the manifest
+    used to score the actual batting order while the harness scored the served,
+    toss-marginalised probability, so the same glossary key named two quantities."""
+    _pin_the_display_grid_to_its_incumbent(monkeypatch)
+    rows = synthetic_win_rows(400)
+    cutoff, end = pd.Timestamp("2024-01-01"), rows.match_date.max() + pd.Timedelta(days=1)
+
+    _, report = train_format(rows, "T20", cutoff)
+    fold, _, _ = evaluate_module._evaluate_win_window(rows, cutoff, end)
+    manifest_metrics = headline_metrics({"formats": [report]})["T20"]
+
+    assert manifest_metrics["objective_auc"] == fold["objective_auc"]
+    assert manifest_metrics["display_auc_mean"] == fold["display_auc_mean"]
+
+
+def test_the_run_report_names_both_readings_of_each_model(monkeypatch) -> None:
+    """The toss-aware score stays in the report, under a name that says so, beside the
+    served one the manifest quotes; nothing in the report is called plain ``objective``
+    any more, because that name was the one that meant two things."""
+    _pin_the_display_grid_to_its_incumbent(monkeypatch)
+    rows = synthetic_win_rows(400)
+
+    _, report = train_format(rows, "T20", pd.Timestamp("2024-01-01"))
+
+    assert "objective" not in report and "display" not in report
+    for block in ("objective_marginalised", "objective_toss_aware", "display_marginalised", "display_toss_aware"):
+        assert set(report[block]) == {"auc", "brier"}, block
 
 
 # --- EVAL-04: a retrain refuses to publish a run whose objective does not rank ---------
