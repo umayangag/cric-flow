@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 import pandas as pd
 
