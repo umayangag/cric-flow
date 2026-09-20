@@ -13,7 +13,7 @@ COV_MIN?=94
 REQUIREMENTS_FILE?=requirements.txt
 
 .PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload venue-weather
-.PHONY: xi-parity export-birth-dates docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
+.PHONY: xi-parity serving-parity export-birth-dates docker-build docker-run clean fmt fmt-check init lint lint-check check-reachability test test-integration test-e2e
 .PHONY: coverage coverage-check ci ci-setup help list _install_test_tools _install_ruff
 
 all: run
@@ -57,6 +57,13 @@ retrain: venv
 # one JSON report (xi_evaluate_report.json) and touches no artifact `current` points at.
 evaluate: venv
 	$(PY) -m ml.xi.evaluate $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(BIRTH_DATES),--birth-dates "$(BIRTH_DATES)",) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(GENDER_SPLIT_CONTEXT),--gender-split-context,) $(if $(MARKET_ODDS_DIR),--market-odds-dir "$(MARKET_ODDS_DIR)",)
+
+# Serving parity of a run on disk (H-8, EVAL-10): load the run `current` names (or RUN=)
+# through XiStore.load and hold what it serves to a fresh pass over its own data. Refuses a
+# run the loader refuses, and one trained on other cricket than the source now holds.
+# Usage: make serving-parity [RUN=<run_id>] [XI_OUT=<artifacts root>]
+serving-parity: venv
+	$(PY) -m ml.xi.asof $(if $(CRICSHEET_DIR),--cricsheet-dir "$(CRICSHEET_DIR)",--postgres) $(if $(BIRTH_DATES),--birth-dates "$(BIRTH_DATES)",) $(if $(XI_OUT),--out "$(XI_OUT)",) $(if $(RUN),--run "$(RUN)",)
 
 # Check the database against the Cricsheet archive: both rating sources are supposed to
 # describe the same cricket, and twice they did not (H-15). Needs both, so it is not part
@@ -188,6 +195,7 @@ help:
 	@echo
 	@echo "[Validate & Test]"
 	@echo "  xi-parity          Compare both rating sources (CRICSHEET_DIR=...)"
+	@echo "  serving-parity     H-8 for a run on disk against a fresh pass (RUN=<run_id>, default current)"
 	@echo "  export-birth-dates Write the database's dates of birth as the CSV the archive path reads (BIRTH_DATES=...)"
 	@echo "  test               Run pytest"
 	@echo "  coverage           Run pytest with coverage (xml + term)"

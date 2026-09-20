@@ -1275,6 +1275,8 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "win_rows_compared": "how many win rows the parity check rebuilt",
     "performance_predictions_compared": "how many predictions the parity check rebuilt",
     "simulations_compared": "how many simulated innings the parity check rebuilt",
+    "served_probabilities_compared": "how many matches' served display and objective probabilities the parity check compared with the frame",
+    "artifact_probabilities_compared": "how many matches' probabilities from the loaded artifact the parity check compared with the freshly folded state",
     "by_changes": "pair counts split by how many players changed",
     # X-4's join: how many closing quotes there were and what became of each.
     "rows_read": "how many odds rows the cached files held",

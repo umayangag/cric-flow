@@ -12,6 +12,7 @@ import pytest
 from ml.xi import contract as C
 from ml.xi import evaluate as ev
 from ml.xi import gates, glossary
+from ml.xi.asof import ROUND_TRIP_RUN_ID
 from ml.xi.train import _score_marginalised
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 from tests.test_xi_train import synthetic_win_rows
@@ -142,13 +143,16 @@ def test_an_empty_locked_window_says_so_rather_than_scoring_noise(freshly_rotate
     assert locked["skipped_reason"] == "evaluation window too small or single-class"
 
 
-def test_parity_falls_back_to_the_last_fold_model_when_the_window_is_empty(freshly_rotated_report) -> None:
-    """H-8 keeps a model to serve while a rotated window fills (A-4)."""
+def test_parity_falls_back_to_the_last_fold_models_when_the_window_is_empty(freshly_rotated_report) -> None:
+    """H-8 keeps models to serve while a rotated window fills (A-4): the last fold's
+    performance model and its win models alike, each window named."""
     parity = freshly_rotated_report["serving_parity"]
 
     assert freshly_rotated_report["formats"]["T20"]["parity_model_window"] == "2023-05-01"
+    assert freshly_rotated_report["formats"]["T20"]["parity_win_model_window"] == "2023-05-01"
     assert parity["passed"], parity["mismatches"]
     assert parity["performance_predictions_compared"] == ev.PARITY_LAST_N * 22
+    assert parity["served_probabilities_compared"] == ev.PARITY_LAST_N
 
 
 def test_harness_reports_walk_forward_with_spread(harness_report) -> None:
@@ -187,12 +191,20 @@ def test_harness_report_carries_the_window_and_its_rotation(harness_report) -> N
     assert window["reason"].strip()
 
 
-def test_harness_serving_parity_passes_for_rows_and_performance_predictions(harness_report) -> None:
+def test_harness_serving_parity_passes_for_rows_served_probabilities_and_performance(harness_report) -> None:
+    """H-8 serves from a store round-tripped through a run directory (EVAL-10): the
+    locked window's win and performance models, the report naming both windows, and the
+    served probabilities compared as-of and from the loaded artifact on every match."""
     parity = harness_report["serving_parity"]
 
     assert parity["passed"], parity["mismatches"]
+    assert parity["run_id"] == ROUND_TRIP_RUN_ID
     assert parity["matches_compared"] == ev.PARITY_LAST_N
+    assert parity["served_probabilities_compared"] == ev.PARITY_LAST_N
+    assert parity["artifact_probabilities_compared"] == ev.PARITY_LAST_N
     assert parity["performance_predictions_compared"] == ev.PARITY_LAST_N * 22
+    assert harness_report["formats"]["T20"]["parity_win_model_window"] == harness_report["locked_start"]
+    assert harness_report["formats"]["T20"]["parity_model_window"] == harness_report["locked_start"]
 
 
 def test_harness_reports_selection_metrics_per_fold(harness_report) -> None:

@@ -140,7 +140,7 @@ per format and gender — is on the Ops tab beside the dataset registry and comm
 **docs/player-biography-coverage.md**. The rating pass reads one column of it — the date of
 birth, which puts a player's age at the match date on every player row (X-1b) — and an
 offline run against the archive reads the same dates from the CSV `make export-birth-dates
-BIRTH_DATES=<path>` writes (`BIRTH_DATES=` on `make retrain` / `evaluate` / `xi-parity`).
+BIRTH_DATES=<path>` writes (`BIRTH_DATES=` on `make retrain` / `evaluate` / `xi-parity` / `serving-parity`).
 Whether any model *uses* the age was decided on the walk-forward folds: see
 **docs/EXTERNAL_DATA_PLAN.md** § X-1b. See **docs/config-and-data.md** § Player biographies.
 
