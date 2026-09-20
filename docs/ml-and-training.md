@@ -48,7 +48,9 @@ artifacts root names the run being served. See *Runs, manifests and staleness* b
 - **One feature computation:** training rows and serving rows come from the same code
   (`ml.xi.rows`) over the same rating state, which is what makes the two paths compute the
   same function of the same eleven names. The harness re-derives the last 50 matches through
-  the as-of serving path and fails the run on any difference (H-8).
+  the as-of serving path — from a store written to a run directory and loaded back the way
+  `reload` loads one — and fails the run on any difference in the rows or in the served
+  probabilities (H-8, EVAL-10).
 - **Input normalization (X):** the objective model is a `StandardScaler` + logistic regression
   pipeline, fitted on training rows only and saved with the model. The display model is a
   monotone-constrained gradient booster and needs none.
@@ -601,6 +603,26 @@ non-zero if any count or the player-key sets differ. It needs the archive as wel
 database, which is why it is a separate command rather than part of a retrain. Run it after
 changing the importer or either source.
 
+### Serving parity (`make serving-parity`)
+
+The other direction of the same question: does the run the service serves compute what a
+fresh pass over its own data says? `python -m ml.xi.asof` loads the run `current` names (or
+`RUN=<run_id>`) through `XiStore.load` — so a run this code cannot serve is refused by name,
+D-6 — runs the rating pass, and holds what the store serves for the last 50 matches to the
+harness's tolerance: the rows, the display and objective probabilities as a backtest is
+answered (the store over the as-of state) and as a live request is answered (the loaded
+through-today state, against the same models over the freshly folded state), the performance
+predictions and the simulator's draws. It refuses (exit 2) a run whose `dataset_sha` is not
+the source's, because a through-today comparison against other cricket would measure the
+data and not the artifact; it exits 1 on a difference. It costs a rating pass plus the as-of
+sweep — about eight minutes on the full database — and is the command to run after a reload
+that should have changed nothing.
+
+```bash
+make serving-parity                 # the run `current` names, against the database
+make serving-parity RUN=<run_id>    # a named run under the artifacts root
+```
+
 The harness's parity check (H-8) is the other half of the same idea and found a fifth
 difference in P-3: the Postgres source read deliveries in `ball_seq` order, which counts
 legal balls only, so a wide shared its number with the ball before it and their order was
@@ -1041,8 +1063,18 @@ on a temporal fold for the locked window (H-5); the simulator (E2) — simulated
 against the display model's, totals coverage and width, margins, latency, with E2's display
 rule decided on the folds; and the natural experiment for selection (E5, below). It ends
 with the train/serve parity check (H-8): the last 50 matches rebuilt from the as-of serving
-path and compared with the training frame — rows, performance predictions and simulator
-draws at a fixed seed alike — and the run fails if they differ.
+path and compared with the training frame — rows, the served display and objective
+probabilities, performance predictions and simulator draws at a fixed seed alike — and the
+run fails if they differ. The store it serves from is not the models in memory: the locked
+window's win and performance models and the pass's final state are written as a run
+directory and loaded back through `XiStore.load` (`round_trip_store`), so the artifact
+contract — the rating payload's arrays, the win artifacts' column lists, the performance
+pickles — is what is under test, a run this code cannot serve is refused by name (D-6), and
+the numbers compared are the ones the routes answer with (EVAL-10). The served probabilities
+are compared twice: as a backtest is answered, from the store over the as-of state, against
+the harness's marginalised score of the frame's row; and as a live request is answered, from
+the loaded through-today state, against the same models over the state the as-of pass ends
+on — which is the only comparison that can see an accumulator the payload does not carry.
 
 **The display surface's swap share (B-7).** H-4 holds the *objective* to under 2 % of
 one-player upgrades lowering P(win), and it measures 0.0–0.8 %. The display model — the
@@ -1162,8 +1194,9 @@ window rotates, on the following rule.
   numbers, which is the correct answer and not a failure. It fills as `make import` runs on
   cadence. Read nothing from it until it has enough matches to be worth a sentence — the folds
   are where the numbers are meanwhile. While it is too small to fit a model, the train/serve
-  parity check (H-8) serves the most recent fold's performance model instead, and each format's
-  `parity_model_window` names which window fitted the model it compared.
+  parity check (H-8) serves the most recent fold's models instead, and each format's
+  `parity_model_window` (the performance model) and `parity_win_model_window` (the win models)
+  name which window fitted what it compared.
 
 The current window was declared on **2026-09-02**, at the P-7 merge date, because every model
 choice of the P-0…P-7 migration consulted the previous window (matches ≥ 2025-09-01). That
