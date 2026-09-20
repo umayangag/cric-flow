@@ -872,6 +872,19 @@ EVAL-09 (#322) recorded before the run: per-booster `fit.iterations` move materi
 
 **Something the prediction did not foresee: three q0.1 boosters chose one iteration.** `runs_q0.1`, `balls_faced_q0.1` and `runs_conceded_q0.1` chose **1** in T20, T20I and ODI (and `runs_conceded_q0.1` in TEST); the 0.1-quantile of a player's runs is 0 for most of the eleven, so the pinball loss at that level is minimised by the initial constant and every further tree only hurts on the temporal fold. That is the honest optimum for that loss, not a fault in the choice; but a booster of one tree is a constant, and the interval's lower bound is now a format-wide floor rather than a per-player prediction. At the other end `runs_conceded_q0.5` chose **300 — the ceiling — in T20 and T20I**, so that booster wanted more than `MAX_ITER` allows. Both are new facts about the model this batch ships and neither is EVAL-09's failure; whether the coverage gate notices is step 7's question. These booster names did not exist in batch 2's report (it recorded one count per target, `runs`, `balls_faced`, …), which is P-3's distributional model (`_q0.1/_q0.5/_q0.9`) now recorded per level, so the two columns of the table above are not comparable for the regressors and are not compared.
 
+##### FEAT-15's prediction, tested — **held, to the decimal**
+
+FEAT-15 (#315) re-derived `MIN_BOWLING_BALLS` in the per-appearance unit (3 / 4 / 19 / 40) and recorded before this run that the share of decided sides since 2024 with fewer than five bowling options would return to ~**3.2 / 3.9 / 12.8 / 12.5 %** (T20 / T20I / ODI / TEST) with mean options **6.65 / 6.14 / 5.55 / 5.39**. The repo's own test reads a 150-side sample per format; this pass measured the whole population instead — every decided side since 2024-01-01 in one rating pass over the re-imported database, `t1_n_bowlers` and `t2_n_bowlers` on the training frame, the same `is_bowling_option` the objective reads:
+
+| fmt | decided sides since 2024 | share under five | predicted | mean options | predicted |
+|---|---:|---:|---:|---:|---:|
+| T20 | 8,932 | **3.20 %** | 3.2 % | **6.653** | 6.65 |
+| T20I | 888 | **3.94 %** | 3.9 % | **6.135** | 6.14 |
+| ODI | 2,264 | **12.81 %** | 12.8 % | **5.551** | 5.55 |
+| TEST | 904 | **12.50 %** | 12.5 % | **5.386** | 5.39 |
+
+Every figure and every side count is the one FEAT-15 recorded, which is the expected outcome for a threshold derived from this population, on this population, after a re-import that moved no row — the prediction was a consistency check on the derivation surviving the pipeline, and it did. Against batch 2's numbers in the new unit (25.1 / 19.1 / 38.2 / 21.5 % under five; 5.03 / 5.11 / 4.64 / 5.03 mean) the served objective now reads sides that carry five bowlers as carrying five bowlers. The share under *four* — the level at which the optimiser's bowling-cover constraint has no eleven to reshape into — reads 1.4 / 1.0 / 3.5 / 4.2 %.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
