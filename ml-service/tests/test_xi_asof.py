@@ -220,6 +220,15 @@ def test_the_round_trip_refuses_a_state_that_consumed_no_matches(tmp_path) -> No
         round_trip_store(RatingState(), {}, {}, str(tmp_path / "run"))
 
 
+def test_the_round_trip_refuses_to_serve_no_win_model_at_all(tmp_path, honest_run) -> None:
+    """A store with no win model is not a store the routes could answer from, and the
+    manifest refusal it would otherwise turn into names the wrong thing."""
+    _, result, _ = honest_run
+
+    with pytest.raises(ValueError, match="no format fitted a win model"):
+        round_trip_store(result.state, {}, {}, str(tmp_path / "run"))
+
+
 def test_a_win_artifact_carrying_the_pre_b7_display_columns_passes_the_row_check_but_cannot_be_served(
     tmp_path, honest_run
 ) -> None:

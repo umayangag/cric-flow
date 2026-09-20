@@ -348,6 +348,8 @@ def round_trip_store(
     """
     if state.last_date is None:
         raise ValueError("the rating state consumed no matches, so there is no run to round-trip")
+    if not win_models:
+        raise ValueError("no format fitted a win model, so there is nothing for the parity check to serve")
     os.makedirs(directory, exist_ok=True)
     save_ratings(state, directory)
     for models in win_models.values():
