@@ -89,6 +89,15 @@ class DataQuality:
     # cricket and not gated: it reads zero until a pre-0018 database is re-imported.
     runs_not_charged_to_bowler: int = 0
 
+    # Runs off every delivery the pass read (``Deliveries.runs_total``), the extras
+    # included. The count the three around it are differences from, and the only one that
+    # moves when a source rewrites what a ball scored without changing how it was charged.
+    # It is here because the dataset digest folds these counts in (EVAL-12): an undecided
+    # match produces no row for the digest to read, so this aggregate is the only thing
+    # that sees a re-import rewriting the scorecard of a draw. A fact about the cricket
+    # and not gated -- it grows with every import.
+    runs_scored: int = 0
+
     # Wides over every delivery the pass read: the deliveries no batter faced
     # (``Deliveries.faced``, IMPORT-05). Here for the same reason as the runs count: a
     # source that counts every delivery as faced agrees with the other on every other

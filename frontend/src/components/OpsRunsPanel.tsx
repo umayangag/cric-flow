@@ -3,6 +3,7 @@ import { Chip, Stack, Typography } from '@mui/material';
 import { RATINGS_STALE_CODE } from '../types';
 import SectionCard from './common/SectionCard';
 import StatusPill from './common/StatusPill';
+import { shortCommit } from '../utils/format';
 import {
   asObj,
   freshnessPillState,
@@ -105,7 +106,7 @@ const OpsRunsPanel: React.FC<{ data: OpsStatus }> = ({ data }) => {
                     {run.ratings_through && (
                       <Chip size="small" label={`ratings through ${run.ratings_through}`} />
                     )}
-                    {run.git_sha && <Chip size="small" label={run.git_sha.slice(0, 7)} />}
+                    {run.git_sha && <Chip size="small" label={shortCommit(run.git_sha)} />}
                     {run.has_manifest === false && <StatusPill state="error" label="no manifest" />}
                     {run.has_manifest !== false && run.refused && (
                       <StatusPill state="error" label="cannot be loaded" />

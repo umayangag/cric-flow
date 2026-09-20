@@ -149,6 +149,7 @@ if it is not `fresh`):
 | | Where |
 |---|---|
 | The run manifest — id, cutoff, `dataset_sha`, git sha, the hyperparameters chosen and why | `output/ml-service/runs/<id>/manifest.json`, or `GET /ops/status` → `artifacts` |
+| What it would take to build the run again — the source, the library versions, the model constants, what the dataset sha covers | `runs/<id>/manifest.json` → `source`, `library_versions`, `model_params`, `performance_spec`, `dataset_digest` |
 | The report's counts — rows, player rows, undecided, the data-quality block | `runs/<id>/xi_win_report.json` |
 | The freshness verdict — `fresh`, `age_days`, `ratings_through` | `GET /api/ml/xi-status` → `ratings` |
 | That the run being served is the run just built | `/ops/status` → `artifacts.current_run` = `loaded_run` |

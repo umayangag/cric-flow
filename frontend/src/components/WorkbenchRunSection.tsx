@@ -14,7 +14,7 @@ import SectionCard from './common/SectionCard';
 import KeyValueList from './common/KeyValueList';
 import JsonCollapse from './common/JsonCollapse';
 import { MetricLabel } from './common/MetricInfo';
-import { formatMetricValue } from '../utils/format';
+import { formatMetricValue, shortCommit } from '../utils/format';
 import type { ApiError } from '../lib/apiError';
 import type { XiStatusResponse } from '../types';
 import { servedFreshnessLabel } from '../utils/opsStatusHelpers';
@@ -138,7 +138,7 @@ const WorkbenchRunSection: React.FC<Props> = ({ status, freshness, loading, erro
             { label: 'Ratings through (manifest)', value: status.manifest?.ratings_through ?? '—' },
             { label: 'Freshness', value: servedFreshnessLabel(freshness.served) },
             { label: 'Dataset sha', value: status.manifest?.dataset_sha?.slice(0, 16) ?? '—' },
-            { label: 'Commit', value: status.manifest?.git_sha?.slice(0, 7) ?? '—' },
+            { label: 'Commit', value: shortCommit(status.manifest?.git_sha) },
             { label: 'Players rated', value: String(status.players) },
           ]}
         />

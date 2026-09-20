@@ -208,7 +208,8 @@ def test_registry_survives_a_corrupt_artifact(tmp_path) -> None:
             cutoff="2025-09-01",
             ratings_through="2025-08-31",
             dataset_sha="",
-            git_sha="",
+            git_sha=runs.UNKNOWN,
+            dataset_digest={"scheme": runs.DATASET_DIGEST_SCHEME, "matches": 0},
         ),
     )
     reg = xi_service.XiRegistry()

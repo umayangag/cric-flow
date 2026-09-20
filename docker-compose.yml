@@ -79,6 +79,11 @@ services:
     build:
       context: .
       dockerfile: ml-service/Dockerfile
+      args:
+        # The commit the image is built from. The Makefile exports it from the checkout;
+        # a build outside make leaves it empty and a run built in this image then records
+        # its commit as `unknown` rather than as a blank (EVAL-12).
+        GIT_SHA: ${GIT_SHA:-}
     image: umayangag/cric-app-ml:latest
     container_name: cric-ml-service
     depends_on:

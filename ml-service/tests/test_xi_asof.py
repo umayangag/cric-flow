@@ -333,7 +333,7 @@ def _published_run(tmp_path, result, models, matches) -> str:
     path = runs.manifest_path(directory)
     with open(path) as fh:
         raw = json.load(fh)
-    raw["dataset_sha"] = runs.dataset_sha(result.match_keys())
+    raw["dataset_sha"], raw["dataset_digest"] = result.dataset_digest()
     with open(path, "w") as fh:
         json.dump(raw, fh)
     runs.set_current(str(tmp_path), ROUND_TRIP_RUN_ID)

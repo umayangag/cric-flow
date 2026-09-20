@@ -197,12 +197,52 @@ output/ml-service/
 ```
 
 `manifest.json` carries the run id, when it was created, the cutoff, **`ratings_through`**,
-the dataset sha (a digest of the matches the pass consumed — computed from what was read,
+the dataset sha (a digest of the cricket the pass consumed — computed from what was read,
 because ml-service does not mount the dataset directory), the git sha, the rating params, the
 hyperparameters the grid chose *and why* with the iterations the display model ran (`n_iter`),
 the run's headline metrics per format, and the rating state's shape. It is written **last**, so a directory only becomes a run once
 everything it names is on disk: a retrain that dies half-way leaves wreckage the loader never
 selects and `/artifacts/status` lists as "no manifest".
+
+**Could this run be built again?** (EVAL-12) Six fields answer it, and until EVAL-12 two of
+them answered it wrongly and four were not there.
+
+- **`git_sha`** — the commit the code came from. It is read from the checkout first (with
+  `-dirty` appended when the tree carried uncommitted changes, because a clean sha over a
+  dirty tree names code that was never committed), from the `GIT_SHA` environment variable
+  second, and failing both it records the word `unknown`. The second route is what the
+  serving image needs: the image carries neither the version-control binary nor a repository
+  directory, so `git rev-parse` fails inside it and every run built through `/admin/train/*`
+  used to record an empty string — which renders on every surface exactly as a field that is
+  not there does. `make` passes the checkout's commit to `docker compose`, which bakes it in
+  as a build argument; a bare `docker build` should pass
+  `--build-arg GIT_SHA=$(git rev-parse HEAD)`.
+- **`dataset_sha` and `dataset_digest`** — the sha is over three kinds of line: one per
+  decided match (identity, sides, venue, label), one per player-match row (who was in the XI
+  and what the deliveries did to him), and one per pass-level count, which are summed over
+  *every* match read and are the only cover for undecided matches, since those produce no
+  row. Before EVAL-12 it hashed `match_id|match_date` of the decided matches alone, so a
+  re-import that rewrote every squad and every delivery produced a byte-identical sha — which
+  is the whole use the field has. Measured on the full archive (21,293 matches, 468,461
+  player-match rows): **0.96 s**, against a 216 s rating pass. `dataset_digest` names the
+  scheme and the row counts, so two shas are only ever compared when they were computed the
+  same way. What it still cannot see: a change *inside* one undecided match that leaves the
+  pass totals alone — closing that would mean digesting every delivery, which is the one scan
+  this avoids.
+- **`source`** — `PostgresSource` or `CricsheetJsonSource`. The two have disagreed before
+  (FEAT-04, IMPORT-05/06), so which one a run read is part of building it again.
+- **`library_versions`** — python plus scikit-learn, numpy, scipy, pandas and joblib. Pinning
+  the commit without these does not reproduce a fit.
+- **`model_params`** — the win models' constants the grid never varies: the objective's `C`
+  and iteration ceiling, the display model's `l2_regularization`, `min_samples_leaf`,
+  `early_stopping` and `random_state`, the grid's margin and validation fraction. The grid's
+  *choice* stays in `hyperparameters` and is not restated here.
+- **`performance_spec`** — the performance model's `FitSpec` per format, quoted from the run's
+  own report so the two cannot fall out of step.
+
+`dataset_digest` is **required**: a manifest without it was written when the digest could not
+see a squad or a delivery, so its sha answers a different question, and the loader refuses the
+run by name rather than inviting a comparison of two numbers that do not mean the same thing.
 
 **`cutoff` and `ratings_through` are two dates** (P2-2). The cutoff is the training boundary
 the operator asked for — today, for a refresh — and rows at or after it are the holdout.
@@ -284,7 +324,7 @@ the Lab answers nothing until a run is built. Nothing does that for you — inge
 hand (`docs/PRODUCT_ROADMAP.md` § 2, route (a)), and a scheduled cadence retrains on its
 rhythm, not on a merge. `manifest.git_sha` records which code wrote a run, so whether a run
 predates a change is read off the manifest or `/artifacts/status` without loading it. It has
-happened five times:
+happened six times:
 
 - **X-1b (#257)** — the rating payload gained the `birth_dates` table and the `debut_bat` /
   `debut_bowl` arrays; a payload without them is refused.
@@ -294,6 +334,10 @@ happened five times:
   sign-bounded fit; a win artifact whose `objective_cols` still carry them is refused.
 - **P2-2 (#280)** — the manifest gained the required `ratings_through`; a manifest without it
   is refused.
+- **EVAL-12** — the manifest gained the required `dataset_digest`; a manifest without it is
+  refused, because its `dataset_sha` was computed by a formula that could not see a squad or a
+  delivery change and is not comparable with this code's. Every run on disk at the merge is
+  refused by name, in the listing and on `/artifacts/status`; the remedy is the usual retrain.
 - **B-11 (#285, and again in §8.15)** — `SimulatorCalibration` gained `chase_dispersion`, and
   §8.15 widened it: the field now holds either of two classes (`ChaseDispersion` or
   `CorrelatedChaseDispersion`, behind the `ChaseDispersionTerm` protocol) and

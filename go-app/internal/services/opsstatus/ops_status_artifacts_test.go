@@ -104,9 +104,11 @@ func TestBuildArtifactsSection_FallsBackToTheRunsOnDisk(t *testing.T) {
 	root := t.TempDir()
 	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
 		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "ratings_through": "2025-08-31", "git_sha": "abc1234",
+		"dataset_digest": map[string]any{"scheme": "matches+xi-outcomes+pass-counts/1"},
 	})
 	writeRun(t, root, "20260902T090000Z-22222222", map[string]any{
 		"run_id": "20260902T090000Z-22222222", "cutoff": "2025-09-01", "ratings_through": "2025-08-31", "git_sha": "def5678",
+		"dataset_digest": map[string]any{"scheme": "matches+xi-outcomes+pass-counts/1"},
 	})
 
 	section, mlOK := opsstatus.BuildArtifactsSection(client, root)
@@ -132,6 +134,7 @@ func TestBuildArtifactsSection_AManifestWithoutRatingsThroughIsListedAsRefused(t
 	root := t.TempDir()
 	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
 		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "git_sha": "abc1234",
+		"dataset_digest": map[string]any{"scheme": "matches+xi-outcomes+pass-counts/1"},
 	})
 
 	section, _ := opsstatus.BuildArtifactsSection(client, root)
@@ -142,6 +145,30 @@ func TestBuildArtifactsSection_AManifestWithoutRatingsThroughIsListedAsRefused(t
 	assert.NotContains(t, runs[0], "ratings_through")
 	assert.Contains(t, runs[0]["refused"], "20260901T090000Z-11111111")
 	assert.Contains(t, runs[0]["refused"], "ratings_through")
+}
+
+// TestBuildArtifactsSection_AManifestWithoutDatasetDigestIsListedAsRefused mirrors the
+// second refusal ml-service applies (EVAL-12): a run written when the dataset digest read
+// the id and date of each decided match and nothing else carries a sha that answers a
+// different question from this code's, so it cannot be loaded. The fallback scan has to
+// say so, or it reports as loadable a run the live listing refuses.
+func TestBuildArtifactsSection_AManifestWithoutDatasetDigestIsListedAsRefused(t *testing.T) {
+	client := mlServiceStub(t,
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) },
+		func(w http.ResponseWriter) { w.WriteHeader(http.StatusServiceUnavailable) })
+	root := t.TempDir()
+	writeRun(t, root, "20260901T090000Z-11111111", map[string]any{
+		"run_id": "20260901T090000Z-11111111", "cutoff": "2025-09-01", "ratings_through": "2025-08-31",
+		"git_sha": "abc1234",
+	})
+
+	section, _ := opsstatus.BuildArtifactsSection(client, root)
+
+	runs := section["runs"].([]map[string]any)
+	require.Len(t, runs, 1)
+	assert.Equal(t, true, runs[0]["has_manifest"])
+	assert.Contains(t, runs[0]["refused"], "20260901T090000Z-11111111")
+	assert.Contains(t, runs[0]["refused"], "dataset_digest")
 }
 
 // TestBuildArtifactsSection_ADirectoryWithNoManifestIsNotARun: H-16's question in its

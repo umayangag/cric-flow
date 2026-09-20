@@ -9,6 +9,12 @@ APP_SERVICES:=go-api ml-service
 FRONTEND_PORT ?= 5173
 # Absolute path to ml-service virtualenv bin (used where Python is needed from root)
 ML_VENV_BIN := $(abspath ml-service/.venv/bin)
+# The commit the images are built from, passed to docker compose as a build argument and
+# baked into the ml-service image (EVAL-12). A run built inside that image has no checkout
+# to ask which code wrote it -- there is neither a version-control binary nor a repository
+# directory in it -- so without this its manifest records the commit as `unknown`. Empty
+# outside a checkout, which is exactly the case the manifest then reports honestly.
+export GIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null)
 
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
