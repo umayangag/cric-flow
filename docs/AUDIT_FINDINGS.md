@@ -766,6 +766,34 @@ The migration level was verified against the database, not quoted. Before anythi
 
 Two things noted on the way in, neither a change to the data. **`/ops/status`'s `table_stats` are planner estimates, not counts**: it reported `ball_event` 11,643,465 and `ball_event_wicket` 353,022 against exact counts of 11,578,345 and 353,571 — the numbers a reader should not carry into a record. And `output/ml-service/runs/20260920T165052Z-cb30121b/` held a lone `xi_win_T20.joblib` (17:08 UTC today) and no manifest — the remains of a retrain killed part-way, one of this pass's earlier attempts; it was left in place so the loader's handling of a manifest-less directory could be read in step 5.
 
+#### Step 2 — the whole-archive re-import: nothing moved, and that is the answer
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12. Wall clock **3 min 16 s** (17:39:44–17:43:00 UTC, first file to `cricsheet-importer finished successfully`). **Zero errors**; **28 warnings**, the same three kinds as batch 2 with the same counts — 25 × "file name is not a Cricsheet match id, deriving one", 2 × "player named on both teams, omitted from both squads" (1130677, KV Sharma), 1 × "replacement not in the side's info.players, side kept as listed" (1537342, Dambulla Sixers: RMMP Rathnayake) — and 110 `super_over_innings` notes, as in batch 1 and 2.
+
+| | before | after |
+|---|---|---|
+| `match` / `player_biography` / migration | 22905 / 13662 / `0020_match_player_replacement.sql` | **22905 / 13662 / `0020_match_player_replacement.sql`** |
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,578,345 | 11,578,345 | 0 |
+| `ball_event_wicket` | 353,571 | 353,571 | 0 |
+| `match_inning` | 50,465 | 50,465 | 0 |
+| `batting_data` | 434,001 | 434,001 | 0 |
+| `bowling_data` | 299,460 | 299,460 | 0 |
+| `fielding_data` | 176,576 | 176,576 | 0 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `match_player` where `is_replacement` | 1,362 | 1,362 | 0 |
+| `player` | 13,694 | 13,694 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+| `match` with non-null `result` | 1,723 | 1,723 | 0 |
+| `sum(batting_data.balls)` | 11,376,015 | 11,376,015 | 0 |
+
+**Not a row moved, in any table.** That is the expected result stated in advance rather than discovered: no PR in this batch touched `go-app/internal/cricsheet` or a migration, so the importer that ran is batch 2's importer over batch 2's archive, and IMPORT-03's idempotence (#295) is what makes a rewrite reproduce the same 11,578,345 deliveries rather than duplicate them. The re-import was still run rather than skipped, because § 1 rule 6 says the pass runs the whole pipeline, and because "nothing changed" is a measurement when it is measured and an assumption when it is not. The one-ball B-17 residue at match 514034 (batch 2, step 2) is still there: `sum(batting_data.balls)` reads 11,376,015 against the rule's 11,376,014.
+
+The three synthetic `player` rows with ids 1–3 (no match or ball rows) are **not** cleared by a re-import — the importer upserts what the archive names and deletes nothing it does not name. Out of scope here, recorded as asked.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
