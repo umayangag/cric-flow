@@ -323,6 +323,22 @@ def _proba(objective: Optional[object]) -> Optional[natural_experiment.Proba]:
     return lambda x: objective.predict_proba(x)[:, 1]
 
 
+def locked_recalibration(requested: Tuple[str, ...], model: Optional[PerformanceModels]) -> Dict[str, List[str]]:
+    """What H-5 asked the locked window for, and what that window could deliver.
+
+    The two differ when the window's calibration fold is too thin to carry a binned
+    empirical quantile (``performance._fit_recalibration``) or when the window fitted no
+    performance model at all. ``recalibrated_targets`` -- the gate's own report path --
+    carries what was *applied*, so its number never claims a correction that was not made,
+    and the shortfall is named beside it rather than being left in a log (plan 8.7)."""
+    applied = sorted(model.calibration) if model is not None else []
+    return {
+        "recalibration_requested": list(requested),
+        "recalibrated_targets": applied,
+        "recalibration_skipped": sorted(set(requested) - set(applied)),
+    }
+
+
 def evaluate_format(
     format_code: str,
     frame: pd.DataFrame,
@@ -363,7 +379,7 @@ def evaluate_format(
     )
     locked, locked_model = locked_outcome.report, locked_outcome.performance_model
     locked["note"] = locked_note()
-    locked["recalibrated_targets"] = list(recalibrate)
+    locked.update(locked_recalibration(recalibrate, locked_model))
     e5 = natural_experiment.evaluate_format(
         format_code,
         pairs,

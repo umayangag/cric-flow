@@ -101,11 +101,37 @@ def test_recalibration_moves_coverage_toward_nominal_and_stays_monotone() -> Non
     after = np.mean(y <= corrected[:, 2])
     assert before < 0.8
     assert after == pytest.approx(0.9, abs=0.03)
-    for knots in calibration.knots_y:
-        assert np.all(np.diff(knots) >= 0)
+    grid = np.linspace(0.0, float(predicted.max()), 200)
+    for isotonic_map in calibration.maps:
+        assert np.all(np.diff(isotonic_map.predict(grid)) >= 0)
     assert np.all(np.diff(corrected, axis=1) >= 0)
 
 
 def test_recalibration_refuses_a_fold_too_small_to_bin() -> None:
     with pytest.raises(ValueError, match="rows"):
         QuantileRecalibration.fit(np.zeros((10, 3)), np.zeros(10))
+
+
+def test_recalibration_reads_a_repeated_prediction_from_every_row_that_shares_it() -> None:
+    """EVAL-08: the targets are zero-inflated, so a predicted q10 is exactly 0 for a large
+    block of rows (``performance`` clips the quantiles at 0). Cutting that block into
+    equal-frequency bins gives several bins the same bin mean -- repeated knots, at which
+    ``np.interp`` is undefined and silently returned the last of them. Here seven of ten
+    bins sit at a predicted 0; one holds the only rows whose outcome is 100, so the last
+    repeated knot reads 100 while the pooled 0.1 quantile over every zero-predicted row
+    is 0. The map must read the pooled one."""
+    predicted = np.zeros((400, 1))
+    predicted[280:, 0] = np.arange(1.0, 121.0)
+    y = np.zeros(400)
+    y[240:280] = 100.0
+    y[280:] = np.arange(1.0, 121.0)
+
+    calibration = QuantileRecalibration.fit(predicted, y, levels=(0.1,))
+    corrected = calibration.apply(predicted)
+
+    tied = predicted[:, 0] == 0.0
+    assert tied.sum() == 280
+    assert np.quantile(y[tied], 0.1) == 0.0
+    np.testing.assert_allclose(corrected[tied, 0], 0.0)
+    grid = np.linspace(0.0, float(predicted.max()), 200)
+    assert np.all(np.diff(calibration.maps[0].predict(grid)) >= 0)

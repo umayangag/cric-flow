@@ -226,6 +226,34 @@ def test_harness_reports_the_performance_model_beside_its_baselines(harness_repo
     summary = t20["walk_forward"]["summary"]["performance"]["targets"]["runs"]
     assert summary["vs_career_mean"]["pinball"]["n_folds"] >= 1
     assert t20["locked"]["recalibrated_targets"] == list(t20["locked"]["performance"]["fit"]["spec"]["recalibrate"])
+    assert t20["locked"]["recalibration_skipped"] == []
+
+
+class _CalibratedModel:
+    """Only what ``locked_recalibration`` reads off a fitted performance model."""
+
+    def __init__(self, calibration: dict) -> None:
+        self.calibration = calibration
+
+
+def test_a_locked_window_that_could_not_recalibrate_says_so_beside_the_request() -> None:
+    """EVAL-08, plan 8.7: H-5 names the targets, but a calibration fold too thin to fit a
+    correction -- or a locked window that fitted no model at all -- delivers fewer. The
+    gate's own path carries what was applied, never the request, and the shortfall is
+    named rather than left in a log."""
+    requested = ("runs", "wickets")
+
+    applied = ev.locked_recalibration(requested, _CalibratedModel({"runs": object(), "wickets": object()}))
+    partial = ev.locked_recalibration(requested, _CalibratedModel({"runs": object()}))
+    no_model = ev.locked_recalibration(requested, None)
+
+    assert applied == {
+        "recalibration_requested": ["runs", "wickets"],
+        "recalibrated_targets": ["runs", "wickets"],
+        "recalibration_skipped": [],
+    }
+    assert partial["recalibrated_targets"] == ["runs"] and partial["recalibration_skipped"] == ["wickets"]
+    assert no_model["recalibrated_targets"] == [] and no_model["recalibration_skipped"] == ["runs", "wickets"]
 
 
 def test_harness_reports_the_leak_canary(harness_report) -> None:

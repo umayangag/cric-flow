@@ -475,6 +475,16 @@ class PerformancePredictResponse(BaseModel):
     venue_context: VenueContext = Field(
         ..., description="What the served state knows about the ground these rows were built with (P3-2)"
     )
+    recalibrated_targets: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Which of these quantile forecasts the answering model corrects on a temporal fold (H-5). "
+            "A target is absent either because its coverage was nominal and no correction was asked for, "
+            "or because the model's calibration fold was too thin to fit one -- in both cases the "
+            "quantiles here are the model's raw output, and a caller must not read them as corrected "
+            "(plan §8.7). The run's report says which of the two it was"
+        ),
+    )
     served_ratings: ServedRatings
 
 

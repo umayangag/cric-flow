@@ -33,8 +33,12 @@ nothing served. The clauses encode what the prose already says and nothing more:
 * H-4 and H-8 are unconditional: the objective's swap-violation share under 2 % in every
   format, and parity passed.
 * H-5's clause decides an *action* the harness already takes (``perf_harness
-  .recalibration_needed`` names the targets and the locked window recalibrates exactly
-  those), so there is nothing for it to refuse; H-22 compares against the previous release,
+  .recalibration_needed`` names the targets and the locked window recalibrates those it
+  has a fold for), so there is nothing for it to refuse; the report carries the request,
+  what was applied and what was skipped, so a reader can see the difference (EVAL-08).
+  Whether a skipped correction should *fail* a run is a threshold this gate does not yet
+  carry, deliberately: it would be a new failure mode, not a clause the prose already
+  states. H-22 compares against the previous release,
   which one report does not carry; H-2 and X-4 inform. They carry no threshold and say so.
 * A gate an experiment script runs (``report_path`` None) is evaluated by that script; its
   clause stays prose here.
@@ -246,7 +250,9 @@ GATES: Tuple[Gate, ...] = (
         varies="the quantile level (0.1 / 0.9) and the target",
         fixed="the evaluation rows, the fold's performance model",
         decides="each level's exceedance sits between its strict and inclusive rate +/- 0.03, else the target is "
-        "recalibrated on a temporal fold for the locked window",
+        "recalibrated on a temporal fold for the locked window -- and where that window's fold is too thin to "
+        "carry a binned empirical quantile, or fitted no model at all, the target goes uncorrected and is named "
+        "in locked.recalibration_skipped beside the request in locked.recalibration_requested",
         report_path="locked.recalibrated_targets",
     ),
     Gate(
@@ -396,9 +402,10 @@ GATES: Tuple[Gate, ...] = (
         id="X-3-stakes",
         name="Match stakes in the display model",
         varies="whether the display model reads the two stakes columns (STAKES_COLS: the knockout flag and the "
-        "stage-known indicator) beyond XI_FEATURE_COLS + TEAM_CONTEXT_COLS -- one fit per arm per fold per seed",
+        "stage-known indicator) beyond XI_FEATURE_COLS + TEAM_CONTEXT_COLS -- one fit per arm per fold",
         fixed="the rows (one frame, the stakes columns on every win row, both arms read the same rows), the "
-        "eleven quarterly cutoffs, the three display seeds, the hyperparameters, the monotone constraints, the "
+        "eleven quarterly cutoffs, the display model's one fit per window (EVAL-02 replaced the three-seed "
+        "loop, whose members were bit-identical), the hyperparameters, the monotone constraints, the "
         "marginalisation over batting order, the labels; the objective, the performance model and the simulator "
         "are not refitted -- this is a display-model gate",
         decides="the family is kept only if, against the no-stakes arm on the same folds, the mean walk-forward "
@@ -414,9 +421,9 @@ GATES: Tuple[Gate, ...] = (
         name="Monotone team context in the display model",
         varies="whether the display model's three directional team-context columns "
         "(team_elo_diff, team_form_diff, venue_fam_diff) carry a +1 monotone constraint or the 0 they "
-        "carry today -- one fit per arm per fold per seed",
-        fixed="the rows (one frame, both arms read the same rows), the eleven quarterly cutoffs, the three "
-        "display seeds, the hyperparameters, the columns the model reads (DISPLAY_FEATURE_COLS is unchanged), "
+        "carry today -- one fit per arm per fold",
+        fixed="the rows (one frame, both arms read the same rows), the eleven quarterly cutoffs, the display "
+        "model's one fit per window, the hyperparameters, the columns the model reads (DISPLAY_FEATURE_COLS is unchanged), "
         "the constraints on every XI column, the marginalisation over batting order, the swap probe (the same "
         "50 evaluation matches per fold, one player's five ratings raised by one population sd, the team "
         "context held at the fixture's values), the labels; the objective, the performance model and the "
@@ -439,8 +446,9 @@ GATES: Tuple[Gate, ...] = (
         varies="whether the display model reads t1_pelo_std and t2_pelo_std -- the spread of player Elo across "
         "an eleven, the only column in DISPLAY_FEATURE_COLS that a one-player upgrade moves and the monotone "
         "contract leaves free (measured: it moves on 100 % of upgrades in every format, and no constrained "
-        "column ever moves against its direction) -- one fit per arm per fold per seed",
-        fixed="the rows, the eleven quarterly cutoffs, the three display seeds, the hyperparameters, every "
+        "column ever moves against its direction) -- one fit per arm per fold",
+        fixed="the rows, the eleven quarterly cutoffs, the display model's one fit per window, the "
+        "hyperparameters, every "
         "other column and its constraint, the marginalisation over batting order, the swap probe, the labels; "
         "the objective keeps the column and is not refitted -- H-4 is measured on a linear model that does not "
         "have this problem",
@@ -474,10 +482,11 @@ GATES: Tuple[Gate, ...] = (
         id="X-2-daynight",
         name="Day/night flag in the win and performance models",
         varies="whether the display model and the performance model read the day/night flag (wx_night) -- a fact about the schedule inferred per match from the documented session rules, not a weather reading beyond the "
-        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
-        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "cutoffs, the display model's one fit per window and the performance seeds, the hyperparameters, the "
+        "monotone constraints, "
         "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
@@ -496,10 +505,11 @@ GATES: Tuple[Gate, ...] = (
         id="X-2-humidity-temperature",
         name="Pre-match humidity and temperature",
         varies="whether the display model and the performance model read the pre-match humidity and temperature (wx_pre_humidity, wx_pre_temp_c, the mean of the three ERA5 hours before the inferred start) with wx_known beyond the "
-        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
-        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "cutoffs, the display model's one fit per window and the performance seeds, the hyperparameters, the "
+        "monotone constraints, "
         "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
@@ -518,10 +528,11 @@ GATES: Tuple[Gate, ...] = (
         id="X-2-dew",
         name="Dew-likelihood proxy",
         varies="whether the display model and the performance model read the dew proxy (wx_dew_proxy: the night flag times the pre-match relative humidity) with wx_known beyond the "
-        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
-        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "cutoffs, the display model's one fit per window and the performance seeds, the hyperparameters, the "
+        "monotone constraints, "
         "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",
@@ -540,10 +551,11 @@ GATES: Tuple[Gate, ...] = (
         id="X-2-rain",
         name="Rain that has fallen before the match",
         varies="whether the display model and the performance model read the rain already fallen (wx_rain_prior_day_mm: the day before plus the match day's hours before the start; wx_rain_prior_week_mm: the seven days before) with wx_known beyond the "
-        "columns each reads today -- one display fit per arm per fold per seed, one performance fit per arm per fold",
+        "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
-        "cutoffs, the three display seeds and the performance seeds, the hyperparameters, the monotone constraints, "
+        "cutoffs, the display model's one fit per window and the performance seeds, the hyperparameters, the "
+        "monotone constraints, "
         "the shared factor's fitting rule, the display models the simulator is scored against (the control's, "
         "fitted once per fold and shared by the arms), the simulator, its draw count and its seeds (common random "
         "numbers across arms), the labels; every column is fixed before the first ball (H-21)",

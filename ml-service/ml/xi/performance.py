@@ -40,6 +40,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostin
 
 from ml.xi import contract as C
 from ml.xi import simulator
+from ml.xi.perf_calibration import MIN_ROWS as MIN_RECALIBRATION_ROWS
 from ml.xi.perf_calibration import QuantileRecalibration
 from ml.xi.perf_metrics import QUANTILE_LEVELS
 
@@ -551,6 +552,37 @@ def _calibration_fold(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> Tu
     return fold_rows, calibration_rows
 
 
+def _fit_recalibration(
+    fold_model: "PerformanceModels", calibration_rows: pd.DataFrame, format_code: str, spec: FitSpec
+) -> Dict[str, QuantileRecalibration]:
+    """The quantile corrections ``spec.recalibrate`` asks for, fitted on the fold the
+    model did not train on -- or nothing at all when that fold is thinner than a binned
+    empirical quantile can be read off (``perf_calibration.MIN_ROWS``).
+
+    Refusing the correction is the right call on a fold that thin: ten bins of a hundred
+    rows estimate a 0.1 quantile from ten outcomes each, and the map would be noise
+    applied to every served forecast. But shipping the uncorrected quantiles is a
+    substitution, so the caller records which targets went uncorrected and every surface
+    that reports the model names them (plan §8.7)."""
+    if not spec.recalibrate:
+        return {}
+    if len(calibration_rows) < MIN_RECALIBRATION_ROWS:
+        logger.warning(
+            "%s: the calibration fold holds %d rows, fewer than the %d a recalibration needs; "
+            "%s keep their uncorrected quantiles",
+            format_code,
+            len(calibration_rows),
+            MIN_RECALIBRATION_ROWS,
+            ", ".join(spec.recalibrate),
+        )
+        return {}
+    fitted = {}
+    for target in spec.recalibrate:
+        raw = fold_model.predict_marginalised(calibration_rows)[target]["quantiles"]
+        fitted[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
+    return fitted
+
+
 def _fit_fold_parts(
     fold_rows: pd.DataFrame,
     calibration_rows: pd.DataFrame,
@@ -563,9 +595,7 @@ def _fit_fold_parts(
     recalibration (H-5) and the simulator's calibration (P-4) read the residuals. These
     members are discarded afterwards; the served ones are refitted on every row."""
     fold_model = PerformanceModels(format_code, spec, _fit_members(fold_rows, spec), {}, {})
-    for target in spec.recalibrate:
-        raw = fold_model.predict_marginalised(calibration_rows)[target]["quantiles"]
-        fold_model.calibration[target] = QuantileRecalibration.fit(raw, calibration_rows[target].to_numpy(dtype=float))
+    fold_model.calibration.update(_fit_recalibration(fold_model, calibration_rows, format_code, spec))
     simulation = (
         _fit_simulator_calibration(
             fold_model, calibration_rows, match_frame, spec.chase_response, spec.chase_dispersion
@@ -619,6 +649,11 @@ def fit_performance(
         "format_code": format_code,
         "n_train": int(len(rows)),
         "n_calibration": int(len(calibration_rows)),
+        # H-5, and plan §8.7: which targets this model's quantiles are corrected for, and
+        # which the spec asked for and did not get because the fold could not carry one.
+        # A quantile that was never recalibrated must not read like one that was.
+        "recalibrated": sorted(calibration),
+        "recalibration_skipped": sorted(set(spec.recalibrate) - set(calibration)),
         "train_from": rows.match_date.min().date().isoformat(),
         "train_to": rows.match_date.max().date().isoformat(),
         # The fold the recalibration and the shared factor were fitted on; its members saw

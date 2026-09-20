@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from ml.xi import contract as C
+from ml.xi import perf_calibration
 from ml.xi import performance as P
 from ml.xi.perf_calibration import QuantileRecalibration
 from tests.xi_perf_fixtures import fast_fits, synthetic_player_frame
@@ -386,3 +387,27 @@ def test_a_history_too_short_to_hold_out_the_fold_fits_once_on_every_row_and_war
     assert [date for date, _ in fits] == [train.match_date.max()]
     assert model.calibration == {} and model.metadata["n_calibration"] == 0
     assert "no recalibration or shared factor is fitted" in caplog.text
+
+
+def test_a_calibration_fold_too_thin_to_recalibrate_is_named_rather_than_fatal(frame) -> None:
+    """EVAL-08: a sparse format's 92-day fold can hold fewer rows than a binned empirical
+    quantile can be read off. The fit called ``QuantileRecalibration.fit`` unguarded, so
+    the ValueError it raises below ``MIN_ROWS`` aborted the whole run. It now ships the
+    uncorrected quantiles and records which targets went uncorrected."""
+    train = frame[frame.match_date < pd.Timestamp("2023-05-01")]
+    fold = train[train.match_date >= _calibration_fold_start(train)]
+    thin = pd.concat(
+        [train[train.match_date < _calibration_fold_start(train)], fold[fold.match_date == fold.match_date.max()]]
+    )
+
+    with fast_fits():
+        model = P.fit_performance(
+            thin, "T20", P.default_spec(recalibrate=("runs",), targets=("runs",), shared_factor=False)
+        )
+
+    assert 0 < model.metadata["n_calibration"] < perf_calibration.MIN_ROWS
+    assert model.calibration == {}
+    assert model.metadata["recalibrated"] == []
+    assert model.metadata["recalibration_skipped"] == ["runs"]
+    quantiles = model.predict_marginalised(thin.tail(20))["runs"]["quantiles"]
+    assert np.all(np.diff(quantiles, axis=1) >= 0)
