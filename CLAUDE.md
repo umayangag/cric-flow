@@ -32,7 +32,8 @@ Act as a **senior software architect** and **machine learning / data analysis ex
   manifest) and publishes nothing; `reload` points `current` at a run and loads it. There is no
   precompute step, no export step and no auto-tune: hyperparameters are a three-point grid
   inside `retrain`, recorded per run in `manifest.json`. `evaluate` is the L4 harness, optional
-  and ~54 minutes, and is where a choice-facing number comes from. See `docs/ml-and-training.md`
+  and ~2 h 10 min (2 h 05 measured after EVAL-03's second member fit, plus EVAL-06's 177 s
+  display grid), and is where a choice-facing number comes from. See `docs/ml-and-training.md`
   § The pipeline, and `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md` for the evidence behind any
   number the system claims.
 - For data analysis, think about distributions, outliers, confounders, and experiment design;

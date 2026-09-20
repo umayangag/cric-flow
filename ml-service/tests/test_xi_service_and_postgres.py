@@ -16,6 +16,7 @@ from app import serving_compute, xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi import simulator
 from ml.xi.builder import build
+from ml.xi.perf_calibration import QuantileRecalibration
 from ml.xi.retrain import main as retrain_main
 from ml.xi.retrain import retrain
 from ml.xi.simulator import SimulationUnavailable
@@ -144,6 +145,30 @@ def test_predict_performance_reports_the_venue_the_model_actually_read(registry,
     assert res.venue_context.venue_n == 0.0
     assert res.venue_context.venue_bf_rate == pytest.approx(0.5)
     assert res.venue_context.neutral is True
+
+
+def test_predict_performance_says_which_quantiles_the_answering_model_corrects(registry, artifacts_dir) -> None:
+    """EVAL-08, plan 8.7: a quantile that was never recalibrated must not be
+    indistinguishable from one that was, so the answer names the targets this model's own
+    calibration carries -- none of them where the fold was too thin to fit one, or where
+    H-5 asked for none."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    req = PerformancePredictRequest(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11])
+
+    rng = np.random.RandomState(0)
+    fitted = QuantileRecalibration.fit(
+        np.sort(rng.uniform(0.0, 50.0, size=(300, 3)), axis=1), rng.uniform(0.0, 50.0, size=300)
+    )
+
+    uncorrected = xi_service.predict_performance(req, registry)
+    registry._served.store.performance["T20I"].calibration["runs"] = fitted
+    corrected = xi_service.predict_performance(req, registry)
+
+    assert uncorrected.recalibrated_targets == []
+    assert corrected.recalibrated_targets == ["runs"]
+    first = corrected.players[0].runs
+    assert first.q10 <= first.median <= first.q90
+    assert first.median != uncorrected.players[0].runs.median
 
 
 def test_predict_performance_without_an_artifact_is_unavailable(registry) -> None:

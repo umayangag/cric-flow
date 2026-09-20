@@ -685,6 +685,10 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
         innings_marginalised=req.team1_bats_first is None,
         unknown_player_ids=unknown,
         venue_context=_venue_context(rows),
+        # Read off the model that answered, as the simulator's shared factor is: what a
+        # caller needs is whether *these* quantiles were corrected, not what the code
+        # currently asks for.
+        recalibrated_targets=sorted(model.calibration),
         served_ratings=_served_ratings(store),
     )
 

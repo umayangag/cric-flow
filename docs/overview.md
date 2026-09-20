@@ -152,7 +152,7 @@ if it is not `fresh`):
 | The report's counts — rows, player rows, undecided, the data-quality block | `runs/<id>/xi_win_report.json` |
 | The freshness verdict — `fresh`, `age_days`, `ratings_through` | `GET /api/ml/xi-status` → `ratings` |
 | That the run being served is the run just built | `/ops/status` → `artifacts.current_run` = `loaded_run` |
-| The harness verdicts, **which a retrain does not refit** | `make evaluate` (~54 min), then the Evaluation tab |
+| The harness verdicts, **which a retrain does not refit** | `make evaluate` (~2 h 10 min), then the Evaluation tab |
 
 **A scheduled run carries no holdout metrics, by construction.** The plan runs the retrain at
 go-app's default cutoff, which is today: rows at or after it are the holdout, and there are no
@@ -163,7 +163,7 @@ should do; it means the run cannot also be the thing that scores itself, and the
 from `make evaluate` instead. Recorded as B-3 in `docs/BUG_BACKLOG.md`, because a run summary
 that renders blank is weak evidence even when the run is fine.
 
-The last row is the one to watch. `make evaluate` is not in the cadence — it costs ~54 minutes
+The last row is the one to watch. `make evaluate` is not in the cadence — it costs ~2 h 10 min
 against the chain's 12 — but the verdicts it produces are the ones new data can flip, and the
 plan's §4 says which are power-limited rather than model-limited: T20I's 111-pair walk-forward
 E5, and the women's-holdout question (H-7). More matches is their only cure, so the point of a

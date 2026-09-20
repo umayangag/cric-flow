@@ -84,9 +84,12 @@ rebuild.** A rebuilt container against the runs already on disk is exactly the r
 § Runs, manifests and staleness describes, which also lists the merges that have done this.
 
 **Why evaluate is separate from both.** The harness refits every model per fold per format:
-measured on the full database it takes ~67 minutes over the eleven folds the rotation left
-(A-4; it was ~54 over seven), against a whole pipeline that runs in a fraction of that. Folding it into every retrain would make the pipeline unrunnable at any
-sensible cadence. What a retrain records is its *own* holdout report — the numbers the models
+measured on the full database it takes **~2 h 10 min**: measured at 2 h 05 min on the full database once EVAL-03 gave every format a second member fit, plus EVAL-06's measured 177 s for the display grid the harness now runs in every window over the eleven folds the
+rotation left (A-4), against a whole pipeline that runs in a fraction of that. The figure has
+moved twice and both moves are fits the harness did not use to do, so budget the current one:
+it was ~54 minutes over seven folds, ~67 over eleven, and 2 h 05 once the performance members
+were fitted on the fold *and* on the full history. Folding it into every retrain would make
+the pipeline unrunnable at any sensible cadence. What a retrain records is its *own* holdout report — the numbers the models
 it just fitted produced — and the manifest names it, so nothing quotes a measurement of a
 different run.
 
@@ -725,6 +728,15 @@ quantile target's coverage off nominal it is **recalibrated on a temporal fold**
 each level is mapped by an isotonic binned correction fitted on that residual.
 `performance.RECALIBRATED_TARGETS` records the decision.
 
+A fold too thin to carry that correction gets none. Below `perf_calibration.MIN_ROWS` a binned
+empirical quantile is ten outcomes a bin, so the fit is refused and the target keeps its
+uncorrected quantiles — and because that is a substitution nobody could otherwise see (plan
+§ 8.7), it is named rather than logged: the run report carries `locked.recalibration_requested`
+beside `locked.recalibrated_targets` and `locked.recalibration_skipped`, the fit's metadata
+carries `recalibrated` and `recalibration_skipped`, and `POST /performance/predict` answers with
+`recalibrated_targets` read off the model that served it. Before EVAL-08 the thin fold raised
+instead, which aborted the whole two-hour `evaluate` run.
+
 **Calibrate on the fold, refit on the full history (EVAL-03).** The fold members exist only
 to produce out-of-sample residuals — for the recalibration and for the simulator's shared
 match factor (below) — and are discarded; the members served are a second fit on every row,
@@ -1161,7 +1173,8 @@ the evidence (mean objective AUC ≥ 0.65, E5 at or above its derived bar, the s
 adding more than zero over the typical one) and fails the run when it does not, while a format
 already scoped off is what the rule asks for; E2 is the same shape for the simulated headline
 (served only within tolerance); H-4 is unconditional, under 2 % in every format the folds
-scored; H-8 is `passed`. H-5's clause decides a recalibration the harness already applies, H-22
+scored; H-8 is `passed`. H-5's clause decides a recalibration the harness already applies where the
+fold can carry one — and names the targets it could not, rather than refusing the run — H-22
 compares against the previous release, and H-2 and X-4 inform, so they carry no threshold and
 say so; a gate a script runs is the script's to evaluate. On the batch-1 report every standing
 gate passes under these clauses (T20I and ODI served at 0.761 / 0.670 with E5 passing; swap
