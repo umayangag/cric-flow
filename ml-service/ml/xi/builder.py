@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from ml.xi import contract as C
+from ml.xi import runs
 from ml.xi.biography import count_known
 from ml.xi.quality import DataQuality
 from ml.xi.ratings import RatingState
@@ -26,14 +27,118 @@ class BuildResult:
     n_undecided: int  # matches folded into the state but not usable as a training row
     quality: DataQuality  # what the pass dropped and what it found odd (H-15)
 
-    def match_keys(self) -> List[str]:
-        """The identity of every match the pass consumed, for the dataset digest.
+    def dataset_digest(self) -> Tuple[str, Dict[str, Any]]:
+        """The digest of the cricket this pass consumed, and what the digest covered.
 
-        Read off the training frame rather than counted, so two runs agree exactly when
-        they walked the same cricket -- a re-import that changes one match's date changes
-        the digest.
+        It used to read ``match_id|match_date`` off each decided match and nothing else.
+        That answers "the same list of fixtures?", which is not the question a run's
+        provenance has to answer: a re-import that rewrote every squad and every delivery
+        -- the thing this repository does routinely -- left the fixture list untouched and
+        so produced a byte-identical sha (EVAL-12). Two runs trained on different cricket
+        could not be told apart, which is the whole use the field has.
+
+        So three kinds of line go in, and each closes one of the holes:
+
+        * one per decided match: its identity, the sides, the venue and the label the win
+          models train on, so a changed result or a re-pointed team is visible;
+        * one per player-match row: who was in the XI and what the deliveries did to him
+          (``DIGEST_PLAYER_COLS``), so a changed squad changes the set of lines and a
+          changed delivery changes a line;
+        * one per pass-level count (``DIGEST_PASS_COUNTS``), which are summed over *every*
+          match the pass read -- the undecided ones included. Those produce no rows at all
+          yet still fold into the ratings, so without this last kind a re-import that
+          touched only draws would again be invisible.
+
+        All of it is already in memory when the pass ends; nothing is re-read and no
+        delivery is scanned a second time (0.96 s on the full archive, against a 216 s
+        pass). The numeric columns are cast to one dtype before they are rendered, so the
+        digest cannot move because pandas inferred ``int64`` one day and ``float64`` the
+        next.
+
+        What it still cannot see: an undecided match is covered only by those pass-level
+        totals, not match by match, because the pass keeps no row for one. A re-import that
+        moved runs between two players inside a single draw and changed nothing else would
+        pass. Closing that would mean digesting every delivery the pass reads, which is the
+        one scan this deliberately avoids; the aggregate is what a re-import -- which
+        changes a definition and therefore the totals -- actually trips.
         """
-        return [f"{row.match_id}|{row.match_date}" for row in self.frame.itertuples(index=False)]
+        match_lines = _digest_lines(
+            "match",
+            self.frame.match_id,
+            self.frame.match_date.dt.strftime("%Y-%m-%d"),
+            self.frame.format_code,
+            self.frame.gender,
+            self.frame.team1,
+            self.frame.team2,
+            self.frame.venue,
+            self.frame[C.TARGET_COL].astype("float64"),
+        )
+        player_lines = _digest_lines(
+            "xi",
+            self.player_frame.match_id,
+            self.player_frame.player_key,
+            *(self.player_frame[column].astype("float64") for column in DIGEST_PLAYER_COLS),
+        )
+        counts = self.quality.as_dict()
+        pass_lines = [f"pass|{name}|{counts[name]}" for name in DIGEST_PASS_COUNTS]
+        coverage: Dict[str, Any] = {
+            "scheme": runs.DATASET_DIGEST_SCHEME,
+            "matches": int(len(self.frame)),
+            "player_rows": int(len(self.player_frame)),
+            "pass_counts": len(pass_lines),
+            "undecided_matches": int(self.n_undecided),
+        }
+        return runs.dataset_sha([*match_lines, *player_lines, *pass_lines]), coverage
+
+
+#: What the dataset digest reads off each player-match row, beside the match and the player:
+#: everything the deliveries did to him. A re-import that changes a squad changes the set of
+#: rows; one that changes a delivery changes these numbers. The as-of feature columns are
+#: deliberately left out -- they are a function of the ratings, so digesting them would make
+#: the digest of the data partly a digest of the model (EVAL-12).
+DIGEST_PLAYER_COLS: Tuple[str, ...] = ("side", *C.PLAYER_MATCH_TARGET_COLS)
+
+#: The pass-level counts the digest folds in (``ml.xi.quality``). Every one of them is
+#: summed over every match the pass read, undecided matches included, which is the only
+#: cover the digest has for matches that fold into the ratings without producing a row.
+#: Listed rather than derived from ``DataQuality``'s fields so that a count added there
+#: does not silently change what a digest means; what is deliberately left out is the
+#: source's own bookkeeping (how many files it offered, skipped and could not use), which
+#: differs between the archive and the database for identical cricket.
+DIGEST_PASS_COUNTS: Tuple[str, ...] = (
+    "matches_read",
+    "undecided_matches",
+    "drawn_or_tied_matches",
+    "decided_matches_without_deliveries",
+    "runs_scored",
+    "runs_not_charged_to_bowler",
+    "deliveries_not_faced",
+    "dismissals",
+    "namesake_sides",
+    "oversized_squads",
+    "replacement_players",
+    "unknown_player_keys",
+    "player_keys",
+    "team_keys",
+    "players_with_birth_date",
+    "matches_with_stage_label",
+    "knockout_matches",
+    "matches_with_reconstructible_table",
+    "dead_rubber_matches",
+)
+
+
+def _digest_lines(kind: str, *columns: pd.Series) -> List[str]:
+    """One ``|``-separated line per row of ``columns``, built vectorised.
+
+    A Python loop over the half-million player-match rows is the only part of the digest
+    that could cost anything measurable; pandas' string concatenation keeps the whole
+    digest inside a second on the full archive.
+    """
+    joined = pd.Series(kind, index=columns[0].index, dtype="object")
+    for column in columns:
+        joined = joined + "|" + column.astype(str)
+    return joined.tolist()
 
 
 META_COLS: List[str] = ["match_id", "match_date", "format_code", "gender", "team1", "team2", "venue", C.TARGET_COL]
@@ -66,6 +171,7 @@ def build(
     oversized_squads = 0
     replacement_players = 0
     runs_not_charged_to_bowler = 0
+    runs_scored = 0
     deliveries_not_faced = 0
     dismissals = 0
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
@@ -78,6 +184,7 @@ def build(
         oversized_squads += _oversized_squads(match)
         replacement_players += len(match.replacements)
         runs_not_charged_to_bowler += _runs_not_charged_to_bowler(match)
+        runs_scored += _runs_scored(match)
         deliveries_not_faced += _deliveries_not_faced(match)
         dismissals += _dismissals(match)
         stakes_counts["stage"] += int(match.stakes.stage_known)
@@ -117,6 +224,7 @@ def build(
         drawn_or_tied_matches=n_drawn_or_tied,
         decided_matches_without_deliveries=n_decided_without_deliveries,
         runs_not_charged_to_bowler=runs_not_charged_to_bowler,
+        runs_scored=runs_scored,
         deliveries_not_faced=deliveries_not_faced,
         dismissals=dismissals,
         namesake_sides=namesake_sides,
@@ -185,6 +293,12 @@ def _runs_not_charged_to_bowler(match) -> int:
     count is exact."""
     deliveries = match.deliveries
     return int(round(float((deliveries.runs_total - deliveries.runs_bowler).sum())))
+
+
+def _runs_scored(match) -> int:
+    """The match's runs off the bat's end, extras included (``Deliveries.runs_total``).
+    Whole runs on every source, so the count is exact."""
+    return int(round(float(match.deliveries.runs_total.sum())))
 
 
 def _deliveries_not_faced(match) -> int:

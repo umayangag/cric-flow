@@ -31,11 +31,13 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import subprocess
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from importlib import metadata
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,53 @@ MANIFEST_NAME = "manifest.json"
 #: same code works on every filesystem the service is deployed to, and so the answer to
 #: "which run is current?" is readable without following anything.
 CURRENT_POINTER_NAME = "current_run.json"
+
+#: What a provenance field records when its answer cannot be established. The empty string
+#: it replaces rendered as a blank on every surface that reads a manifest, which is what
+#: "this manifest does not carry the field" also renders as -- so a run built where no
+#: commit could be read was indistinguishable from one built before the field existed
+#: (EVAL-12, §8.7). A word that is not a sha says which of the two it is, and says it in
+#: the one place the answer is read.
+UNKNOWN = "unknown"
+
+#: Appended to the commit when the working tree the run was built from carries uncommitted
+#: changes. The commit alone does not then name the code that ran, and quoting it as if it
+#: did is the same defect as quoting "" as if it were an answer.
+DIRTY_SUFFIX = "-dirty"
+
+#: Environment variable naming the commit, for an environment that has no repository to
+#: ask. The serving image is exactly that: ``ml-service/Dockerfile`` copies the sources in
+#: and carries neither the version-control binary nor the repository directory, so every
+#: run built through ``/admin/train/*`` recorded ``git_sha=""`` until the Dockerfile began
+#: baking this in as a build argument (EVAL-12).
+GIT_SHA_ENV = "GIT_SHA"
+
+#: The libraries whose version decides what a fit produces: the estimators, the array and
+#: frame semantics they run on, and the serialiser the artifacts are written with. Pinning
+#: the code without pinning these does not reproduce a run -- a scikit-learn minor release
+#: is free to change a splitter's tie-breaking, and the artifact would differ with the same
+#: commit and the same data.
+RECORDED_LIBRARIES = ("scikit-learn", "numpy", "scipy", "pandas", "joblib")
+
+#: What ``dataset_sha`` is a digest of, named and numbered so two runs' digests are only
+#: ever compared when they were computed the same way. Before EVAL-12 the digest read the
+#: id and date of each decided match and nothing else, so a re-import that rewrote every
+#: squad and every delivery produced a byte-identical sha.
+DATASET_DIGEST_SCHEME = "matches+xi-outcomes+pass-counts/1"
+
+#: The scheme a run that never walked a source records instead. The block is *present*, so
+#: such a run is not mistaken for one written before the digest existed and refused for it;
+#: the scheme says there was no dataset to digest. The H-8 round trip
+#: (``ml.xi.asof.round_trip_store``) is the case: it writes models it already holds in
+#: memory, and the caller -- not the run -- holds the source. §8.7 again: "there was no
+#: dataset" and "this field did not exist yet" are different answers and must not render
+#: as the same blank.
+NO_DATASET_SCHEME = "no-dataset"
+
+
+def no_dataset_digest(reason: str) -> Dict[str, Any]:
+    """The ``dataset_digest`` block for a run built without reading a source."""
+    return {"scheme": NO_DATASET_SCHEME, "reason": reason}
 
 
 class RunArtifactsInvalid(Exception):
@@ -87,6 +136,13 @@ class RunManifest:
     It is required, and the loader asserts it against the state (``XiStore.load``): a
     manifest without it, or one that disagrees with the state it describes, is refused
     by name rather than served with a date read from somewhere else (§8.7).
+
+    The provenance half -- ``git_sha``, ``source``, ``dataset_digest``,
+    ``library_versions``, ``model_params``, ``performance_spec`` -- is what EVAL-12 added,
+    and it answers one question the rest cannot: could this run be built again? The
+    ``hyperparameters`` block is the display grid's *choice* (EVAL-06) and stays the only
+    record of it; ``model_params`` carries the constants the grid never varies, which lived
+    only as literals in ``ml.xi.train``.
     """
 
     run_id: str
@@ -95,6 +151,24 @@ class RunManifest:
     ratings_through: str
     dataset_sha: str
     git_sha: str
+    #: What the digest covered, so two ``dataset_sha`` values are only compared when they
+    #: were computed the same way. Required: a manifest without it was written when the
+    #: digest could not see a squad or a delivery, so its sha answers a different question
+    #: from this one's and ``read_manifest`` refuses the run by name.
+    dataset_digest: Dict[str, Any] = field(default_factory=dict)
+    #: The rating pass's source class -- ``PostgresSource`` or ``CricsheetJsonSource``.
+    #: The two read the same cricket by different routes and have differed before (FEAT-04,
+    #: IMPORT-05/06), so which one a run was built from is part of building it again.
+    source: str = ""
+    #: Library name -> version for the packages a fit's output depends on
+    #: (``RECORDED_LIBRARIES``), plus ``python``.
+    library_versions: Dict[str, str] = field(default_factory=dict)
+    #: The win models' fixed constants (``ml.xi.train.win_model_params``): the objective's
+    #: regularisation and the display model's settings the grid does not choose.
+    model_params: Dict[str, Any] = field(default_factory=dict)
+    #: format code -> the performance model's ``FitSpec`` for that format, quoted from the
+    #: run's own report so the two cannot fall out of step.
+    performance_spec: Dict[str, Any] = field(default_factory=dict)
     rating_params: Dict[str, Any] = field(default_factory=dict)
     hyperparameters: Dict[str, Any] = field(default_factory=dict)
     metrics: Dict[str, Any] = field(default_factory=dict)
@@ -159,43 +233,103 @@ def manifest_path(directory: str) -> str:
     return os.path.join(directory, MANIFEST_NAME)
 
 
-def git_sha() -> str:
-    """The commit the running code came from, or "" when it cannot be established.
-
-    Empty rather than a guess: a manifest that names the wrong commit is worse than one
-    that admits it does not know, because only the first is quoted with confidence.
-    """
+def _version_control_output(*args: str) -> Optional[str]:
+    """Run a read-only version-control command in this file's directory, or None if the
+    tool is absent or the directory is not a checkout. Absence is normal -- the serving
+    image has neither -- so it is logged at debug and answered by the environment instead."""
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            ["git", *args],
             cwd=os.path.dirname(os.path.abspath(__file__)),
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover - environment dependent
-        logger.warning("runs.git_sha.failed error=%s", exc)
-        return ""
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug("runs.git.absent args=%s error=%s", args, exc)
+        return None
     if out.returncode != 0:
-        logger.warning("runs.git_sha.unavailable stderr=%s", out.stderr.strip())
-        return ""
+        logger.debug("runs.git.failed args=%s stderr=%s", args, out.stderr.strip())
+        return None
     return out.stdout.strip()
 
 
-def dataset_sha(match_keys: List[str]) -> str:
-    """A digest of the matches the rating pass consumed.
+def git_sha() -> str:
+    """The commit the running code came from, or ``UNKNOWN`` when nothing can say.
+
+    Three answers are tried in the order of how much they know. The checkout is asked
+    first, because it cannot be stale: it reports the commit this very file is at, and
+    appends ``DIRTY_SUFFIX`` when the tree has uncommitted changes, since a clean sha over
+    a dirty tree names code that was never committed. The ``GIT_SHA`` environment variable
+    is asked second, for an environment with no checkout to ask -- the serving image, where
+    the Dockerfile bakes the building commit in as a build argument. Failing both, the
+    answer is the word ``UNKNOWN`` and a warning, never the empty string: an empty field is
+    read as an absent one, and a run whose commit is unrecorded has to say so where it is
+    read rather than only in the log that scrolled past (§8.7).
+    """
+    sha = _version_control_output("rev-parse", "HEAD")
+    if sha:
+        dirty = _version_control_output("status", "--porcelain")
+        suffix = DIRTY_SUFFIX if dirty else ""
+        if dirty:
+            logger.warning(
+                "runs.git_sha.dirty sha=%s -- the tree this run was built from has uncommitted changes, "
+                "so the commit alone does not name the code that ran",
+                sha,
+            )
+        return f"{sha}{suffix}"
+    from_environment = os.environ.get(GIT_SHA_ENV, "").strip()
+    if from_environment:
+        logger.info("runs.git_sha.from_environment %s=%s", GIT_SHA_ENV, from_environment)
+        return from_environment
+    logger.warning(
+        "runs.git_sha.unknown -- no checkout to ask and %s is unset, so this run records its commit as %r. "
+        "Build the image with --build-arg %s=$(git rev-parse HEAD), or set %s in the environment.",
+        GIT_SHA_ENV,
+        UNKNOWN,
+        GIT_SHA_ENV,
+        GIT_SHA_ENV,
+    )
+    return UNKNOWN
+
+
+def library_versions() -> Dict[str, str]:
+    """The interpreter and the libraries a fit's output depends on (``RECORDED_LIBRARIES``).
+
+    A library that is not installed records ``UNKNOWN`` rather than being left out, for the
+    same reason ``git_sha`` does: a key missing from the block reads as "this manifest is
+    old", while a key present and unknown reads as "this run could not tell you".
+    """
+    versions: Dict[str, str] = {"python": platform.python_version()}
+    for name in RECORDED_LIBRARIES:
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            logger.warning("runs.library_versions.missing package=%s", name)
+            versions[name] = UNKNOWN
+    return versions
+
+
+def dataset_sha(entries: Iterable[str]) -> str:
+    """A digest of the cricket the rating pass consumed, over the lines ``entries`` yields.
 
     It is computed from what was read rather than copied from the archive's checksum
     because ml-service does not mount the dataset directory: the question it has to be
-    able to answer is "were these two runs trained on the same cricket?", and the list
-    of match identities the pass actually walked answers it exactly, on either source.
+    able to answer is "were these two runs trained on the same cricket?", on either source.
+
+    Order-independent by construction -- the lines are sorted before hashing -- because the
+    answer must not depend on the order the pass happened to walk the matches in, and the
+    count is folded in so that a line repeated is not a line absent. What goes into the
+    lines is ``ml.xi.retrain.dataset_digest``'s decision; this only hashes them.
     """
+    lines = sorted(entries)
     digest = hashlib.sha256()
-    for key in sorted(match_keys):
-        digest.update(key.encode("utf-8"))
+    digest.update(f"scheme={DATASET_DIGEST_SCHEME}\n".encode("utf-8"))
+    for line in lines:
+        digest.update(line.encode("utf-8"))
         digest.update(b"\n")
-    digest.update(f"n={len(match_keys)}".encode("utf-8"))
+    digest.update(f"n={len(lines)}".encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -237,6 +371,18 @@ def read_manifest(directory: str) -> RunManifest:
             f"run {raw['run_id']}: {MANIFEST_NAME} carries no ratings_through, so the date its data runs "
             f"through is not written down; it was written before the field existed and cannot be loaded. "
             f"Run `make retrain` to produce a run that records its date."
+        )
+    if not raw.get("dataset_digest"):
+        # Written before EVAL-12. Its dataset_sha is a digest of the id and date of each
+        # decided match and nothing else, so it reads the same over a re-import that
+        # rewrote every squad and every delivery -- it answers a different question from
+        # this code's sha, and comparing the two would answer neither. Its git_sha is "" on
+        # any run built in the serving image, which has no checkout to ask. Nothing is
+        # backfilled (§10.5, and `ratings_through` above): an older run is retrained.
+        raise RunArtifactsInvalid(
+            f"run {raw['run_id']}: {MANIFEST_NAME} carries no dataset_digest, so nothing says what its "
+            f"dataset_sha is a digest of; it was written before the digest could see a squad or a delivery "
+            f"(EVAL-12) and cannot be loaded. Run `make retrain` to produce a run that records its provenance."
         )
     known = {f for f in RunManifest.__dataclass_fields__}  # noqa: SIM118 - dataclass field names
     return RunManifest(**{k: v for k, v in raw.items() if k in known})

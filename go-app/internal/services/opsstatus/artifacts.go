@@ -123,6 +123,15 @@ func describeRunDir(dir, name string) map[string]any {
 		out["refused"] = "run " + name + ": " + manifestName + " carries no ratings_through, so the date its data " +
 			"runs through is not written down; it was written before the field existed and cannot be loaded"
 	}
+	// The second refusal ml-service applies (EVAL-12), mirrored for the same reason as the
+	// first: this scan cannot load anything, but the fallback listing has to answer the
+	// same question the live one does, and a run reported as loadable that ml-service will
+	// refuse is worse than no listing at all.
+	if digest, ok := manifest["dataset_digest"].(map[string]any); !ok || len(digest) == 0 {
+		out["refused"] = "run " + name + ": " + manifestName + " carries no dataset_digest, so nothing says what " +
+			"its dataset_sha is a digest of; it was written before the digest could see a squad or a delivery " +
+			"(EVAL-12) and cannot be loaded"
+	}
 	return out
 }
 

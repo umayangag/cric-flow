@@ -92,6 +92,7 @@ def _write_run(
             ratings_through=manifest_ratings_through or state.last_date.isoformat(),
             dataset_sha="abc123",
             git_sha="deadbee",
+            dataset_digest={"scheme": runs.DATASET_DIGEST_SCHEME, "matches": 1, "player_rows": 2},
             state_shape=state_shape(state),
             formats=["T20"],
             usable=not unusable_reasons,
@@ -299,6 +300,42 @@ def test_a_manifest_without_ratings_through_is_refused_naming_the_run(tmp_path):
     assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
     assert "ratings_through" in message
     assert "make retrain" in message
+
+
+# --- EVAL-12: the manifest says what its dataset sha is a digest of ------------------
+
+
+def test_a_manifest_without_dataset_digest_is_refused_naming_the_run(tmp_path):
+    """A run written before EVAL-12 carries a dataset_sha over the id and date of each
+    decided match and nothing else, so it reads the same across a re-import that rewrote
+    every squad and every delivery. Nothing backfills it (§10.5): the reader refuses the
+    run by name, so the two shas are never compared as if they answered one question."""
+    directory = _write_run(tmp_path)
+    _rewrite_manifest_without(directory, "dataset_digest")
+
+    with pytest.raises(RunArtifactsInvalid) as excinfo:
+        xi_service.XiStore.load(directory)
+
+    message = str(excinfo.value)
+    assert "20260902T101500Z-ab12cd34" in message, "the refusal names the run"
+    assert "dataset_digest" in message
+
+
+def test_a_run_refused_for_its_digest_is_listed_with_the_reason_and_never_published(tmp_path):
+    """The refusal reaches the operator where they look for it: the run stays in the
+    listing with the reason, a reload with no run named skips it, and publishing it by
+    name raises rather than pointing `current` at a run nothing can load (§8.7)."""
+    directory = _write_run(tmp_path)
+    _rewrite_manifest_without(directory, "dataset_digest")
+
+    listed = runs.list_runs(str(tmp_path))
+
+    assert listed[0]["run_id"] == "20260902T101500Z-ab12cd34"
+    assert listed[0]["has_manifest"] is True
+    assert "dataset_digest" in listed[0]["refused"]
+    assert runs.newest_run_id(str(tmp_path)) is None
+    with pytest.raises(RunArtifactsInvalid, match="dataset_digest"):
+        runs.set_current(str(tmp_path), "20260902T101500Z-ab12cd34")
 
 
 def test_a_manifest_that_disagrees_with_its_state_is_refused_naming_both_dates(tmp_path):

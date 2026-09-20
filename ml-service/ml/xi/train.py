@@ -57,6 +57,9 @@ REPORT_NAME = "xi_win_report.json"
 #: The objective's inverse regularisation strength, unchanged since the model was first
 #: fitted; the bounds are the only thing FEAT-14 added to the fit.
 OBJECTIVE_C = 0.3
+#: The solver's iteration ceiling. High enough that the bounded fit converges rather than
+#: being stopped, so it is a guard and not a hyperparameter.
+OBJECTIVE_MAX_ITER = 3000
 
 
 def make_objective_model(columns: List[str]) -> object:
@@ -64,7 +67,7 @@ def make_objective_model(columns: List[str]) -> object:
     coefficients are bounded by the contract's sign for each column (FEAT-14)."""
     return make_pipeline(
         StandardScaler(),
-        SignedLogisticRegression(signs=C.monotone_directions(columns), C=OBJECTIVE_C, max_iter=3000),
+        SignedLogisticRegression(signs=C.monotone_directions(columns), C=OBJECTIVE_C, max_iter=OBJECTIVE_MAX_ITER),
     )
 
 
@@ -120,6 +123,42 @@ GRID_VALIDATION_FRACTION = 0.2
 # (EVAL-02). The fixed value is a record, not a replicate.
 DISPLAY_RANDOM_STATE = 0
 
+# What the display model is fitted under whatever the grid picks. Named here rather than
+# spelled inline in the constructor because a number that decides what is fitted and lives
+# only in this file cannot be read back off the run it produced: these reach the manifest
+# through ``win_model_params`` (EVAL-12), beside the grid's choice rather than inside it.
+#
+# ``early_stopping`` is explicitly off, never sklearn's ``'auto'`` (EVAL-01). ``'auto'``
+# switches early stopping on above 10,000 rows with a random 10 % validation split, so the
+# grid, which scores each candidate on the inner 80 % of a format's rows, fitted every
+# candidate to its full ``max_iter`` and then the winner was refitted on all the rows --
+# above the line in T20 -- to a different, early-stopped iteration count on 90 % of them.
+# With it off the model the grid scored is the model fitted, ``max_iter`` means what the
+# grid says it means, and no row is held back.
+DISPLAY_FIXED_PARAMS: Dict[str, object] = {
+    "l2_regularization": 1.0,
+    "min_samples_leaf": 40,
+    "early_stopping": False,
+    "random_state": DISPLAY_RANDOM_STATE,
+}
+
+
+def win_model_params() -> Dict[str, object]:
+    """The constants both win models are fitted under, for the run manifest (EVAL-12).
+
+    Not the grid's choice -- ``hyperparameters`` is the only record of that (EVAL-06) --
+    but the levers it never varies: without them a reader knows which of three grid points
+    was picked and nothing about the model it was picked for.
+    """
+    return {
+        "objective_C": OBJECTIVE_C,
+        "objective_max_iter": OBJECTIVE_MAX_ITER,
+        "display_fixed": dict(DISPLAY_FIXED_PARAMS),
+        "display_grid_margin": DISPLAY_GRID_MARGIN,
+        "display_grid_validation_fraction": GRID_VALIDATION_FRACTION,
+        "display_context_monotone": C.DISPLAY_CONTEXT_MONOTONE_KEPT,
+    }
+
 
 def make_display_model(
     columns: List[str],
@@ -133,18 +172,8 @@ def make_display_model(
         max_depth=int(settings["max_depth"]),
         learning_rate=float(settings["learning_rate"]),
         max_iter=int(settings["max_iter"]),
-        l2_regularization=1.0,
-        min_samples_leaf=40,
-        # Explicitly off, never sklearn's ``'auto'`` (EVAL-01). ``'auto'`` switches early
-        # stopping on above 10,000 rows with a random 10 % validation split, so the grid,
-        # which scores each candidate on the inner 80 % of a format's rows, fitted every
-        # candidate to its full ``max_iter`` and then the winner was refitted on all the
-        # rows -- above the line in T20 -- to a different, early-stopped iteration count
-        # on 90 % of them. With it off the model the grid scored is the model fitted,
-        # ``max_iter`` means what the grid says it means, and no row is held back.
-        early_stopping=False,
-        random_state=DISPLAY_RANDOM_STATE,
         monotonic_cst=C.monotone_directions(columns, constrain_team_context),
+        **DISPLAY_FIXED_PARAMS,
     )
 
 

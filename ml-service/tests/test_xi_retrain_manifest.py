@@ -349,3 +349,42 @@ def test_the_manifest_records_the_date_the_pass_consumed_through_beside_the_cuto
     assert manifest["ratings_through"] == built.state.last_date.isoformat()
     assert manifest["cutoff"] == "2024-06-01"
     assert manifest["ratings_through"] != manifest["cutoff"]
+
+
+# --- EVAL-12: what it takes to build the run again ----------------------------------
+
+
+def test_the_manifest_records_what_it_takes_to_build_the_run_again(built, tmp_path) -> None:
+    """The provenance fields the audit found missing, on a run that actually wrote them:
+    which source the pass read, what the dataset sha is a digest of, the versions the fit
+    ran under, the win-model constants and the performance model's spec."""
+    manifest = _written_manifest(built, tmp_path, "2024-02-20")
+
+    assert manifest["source"] == "ListSource"
+    assert manifest["dataset_digest"]["scheme"] == runs.DATASET_DIGEST_SCHEME
+    assert manifest["dataset_digest"]["player_rows"] > 0
+    assert manifest["library_versions"]["scikit-learn"]
+    assert manifest["library_versions"]["python"]
+    assert manifest["model_params"]["objective_C"] == train_module.OBJECTIVE_C
+    assert manifest["model_params"]["display_fixed"] == train_module.DISPLAY_FIXED_PARAMS
+    assert manifest["performance_spec"]["T20"]["n_features"] > 0
+
+
+def test_the_win_model_constants_do_not_restate_the_grids_choice(built, tmp_path) -> None:
+    """One enumeration each: ``hyperparameters`` is the only record of what the grid
+    picked (EVAL-06), and ``model_params`` carries only the levers it never varies."""
+    manifest = _written_manifest(built, tmp_path, "2024-02-20")
+
+    chosen = manifest["hyperparameters"]["T20"]["params"]
+    assert set(chosen) == {"max_depth", "learning_rate", "max_iter"}
+    assert not set(manifest["model_params"]["display_fixed"]).intersection(chosen)
+
+
+def test_the_manifest_quotes_the_performance_spec_the_report_recorded(built, tmp_path) -> None:
+    """One computation quoted twice, not two that can disagree: the manifest's spec is
+    the object the run's own report carries."""
+    written = retrain(built, str(tmp_path), pd.Timestamp("2024-02-20"), formats=["T20"])
+
+    with open(os.path.join(written["run_dir"], "xi_win_report.json")) as fh:
+        reported = json.load(fh)["formats"][0]["performance"]["fit"]["spec"]
+    assert written["manifest"]["performance_spec"]["T20"] == reported

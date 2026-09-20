@@ -154,3 +154,23 @@ export function shortDigest(sha256: string | null | undefined): string {
   if (!sha256) return MISSING;
   return sha256.length <= 12 ? sha256 : sha256.slice(0, 12);
 }
+
+/** What a run manifest records when it could not establish the commit that built it. */
+export const UNKNOWN_COMMIT = 'unknown';
+
+/**
+ * A run's commit, abbreviated for a chip or a table cell.
+ *
+ * Three states, three readings, because two of them used to look alike: a manifest with
+ * no commit at all renders as `MISSING`, a run that could not establish one says so in
+ * words, and a real commit is its first seven characters (with `-dirty` kept, because a
+ * commit that does not name the code that ran must not read as one that does). Slicing
+ * the sentinel blindly would print `unknow`, which reads as a commit and is not one
+ * (EVAL-12).
+ */
+export function shortCommit(sha: string | null | undefined): string {
+  if (!sha) return MISSING;
+  if (sha === UNKNOWN_COMMIT) return UNKNOWN_COMMIT;
+  const [commit, ...rest] = sha.split('-');
+  return [commit.slice(0, 7), ...rest].join('-');
+}

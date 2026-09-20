@@ -36,7 +36,7 @@ from ml.xi import contract as C
 from ml.xi import glossary, run_usability, runs
 from ml.xi.builder import BuildResult, build
 from ml.xi.store import state_shape
-from ml.xi.train import REPORT_NAME, train_all
+from ml.xi.train import REPORT_NAME, train_all, win_model_params
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,20 @@ def chosen_hyperparameters(summary: Dict) -> Dict[str, Dict]:
     }
 
 
+def performance_specs(summary: Dict) -> Dict[str, Dict]:
+    """The performance model's ``FitSpec`` per format, quoted from the run's own report.
+
+    Read out of the summary rather than rebuilt from ``default_spec`` so the manifest and
+    the report cannot disagree about what was fitted: one computation, quoted twice. A
+    format whose performance model was skipped has no spec and appears here not at all.
+    """
+    return {
+        report["format_code"]: report["performance"]["fit"]["spec"]
+        for report in summary.get("formats", [])
+        if report.get("performance", {}).get("fit", {}).get("spec")
+    }
+
+
 def retrain(
     result: BuildResult,
     artifacts_dir: str,
@@ -158,6 +172,7 @@ def retrain(
         # A state that consumed no matches has no date to record and nothing to serve;
         # writing it as a run would list something the loader must then refuse.
         raise ValueError(f"retrain: run {run_id} consumed no matches, so there is no ratings_through to record")
+    digest_sha, digest_coverage = result.dataset_digest()
     manifest = runs.RunManifest(
         run_id=run_id,
         created_at=datetime.now(timezone.utc).isoformat(),
@@ -166,8 +181,17 @@ def retrain(
         # "as of" -- beside the boundary the operator asked for (P2-2). The loader
         # asserts it against the state, so the manifest cannot drift from the joblib.
         ratings_through=result.state.last_date.isoformat(),
-        dataset_sha=runs.dataset_sha(result.match_keys()),
+        dataset_sha=digest_sha,
         git_sha=runs.git_sha(),
+        # What the sha is a digest of, so two runs' shas are only ever compared when they
+        # were computed the same way; and the rest of what it takes to build this run
+        # again -- the source it read, the versions it ran under, and the constants the
+        # models were fitted with (EVAL-12).
+        dataset_digest=digest_coverage,
+        source=result.quality.source,
+        library_versions=runs.library_versions(),
+        model_params=win_model_params(),
+        performance_spec=performance_specs(summary),
         rating_params={
             "decay_per_match": C.DECAY_PER_MATCH,
             "prior_balls": C.PRIOR_BALLS,

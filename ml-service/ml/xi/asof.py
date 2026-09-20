@@ -342,9 +342,12 @@ def round_trip_store(
     service makes one and never the objects still in memory.
 
     The manifest carries what the loader asserts -- the run id, the date the state runs
-    through and the state's shape -- and blanks for what a round trip does not have: no
-    cutoff, because nothing was held out, and no dataset digest, because the caller holds
-    the source. The directory is the caller's to discard.
+    through and the state's shape -- and says, rather than blanks, what a round trip does
+    not have: no cutoff, because nothing was held out, and no dataset digest, because the
+    caller holds the source and this writes models already in memory. The digest block is
+    still written, naming that absence (``runs.no_dataset_digest``): the loader requires
+    one, and a run that never had a dataset must not be refused as though it were a run
+    written before the digest existed (EVAL-12). The directory is the caller's to discard.
     """
     if state.last_date is None:
         raise ValueError("the rating state consumed no matches, so there is no run to round-trip")
@@ -363,7 +366,10 @@ def round_trip_store(
             created_at=datetime.now(timezone.utc).isoformat(),
             cutoff="",
             ratings_through=state.last_date.isoformat(),
-            dataset_sha="",
+            dataset_sha=runs.UNKNOWN,
+            dataset_digest=runs.no_dataset_digest(
+                "a harness round trip: the models were already in memory and no source was walked"
+            ),
             git_sha=runs.git_sha(),
             state_shape=state_shape(state),
             formats=sorted(win_models),
@@ -490,7 +496,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         gender_split_context=store.state.gender_split_context,
         age_aware_cold_start=store.state.age_aware_cold_start,
     )
-    fresh_sha = runs.dataset_sha(result.match_keys())
+    fresh_sha, _ = result.dataset_digest()
     if fresh_sha != store.manifest.dataset_sha:
         logger.error(
             "run %s was trained on dataset %s but the source now holds %s (%d matches); a through-today "

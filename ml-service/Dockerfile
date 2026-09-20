@@ -29,5 +29,13 @@ COPY ml-service/config.default.json .
 COPY ml-service/config.json .
 COPY ml-service/app ./app
 COPY ml-service/ml ./ml
+# Which commit these sources are. Nothing in the image can work it out: there is no
+# version-control binary and no repository directory, so `git rev-parse` fails and every
+# run built through /admin/train/* recorded an empty commit (EVAL-12). The build knows,
+# so the build tells it. Last, after the COPYs, so changing it rebuilds nothing above.
+# docker-compose passes it through from the Makefile; a bare `docker build` should pass
+# `--build-arg GIT_SHA=$(git rev-parse HEAD)`. Left unset, the manifest records `unknown`.
+ARG GIT_SHA=""
+ENV GIT_SHA=${GIT_SHA}
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
