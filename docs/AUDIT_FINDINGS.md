@@ -756,6 +756,242 @@ Parity — the acceptance test at the data layer — **passes on all twenty-one 
 
 **The batch is not accepted clean.** `make evaluate` exits 1, `gates.passed` is **false**, and **H-4 fails in T20I at 0.0230 against a 0.02 line** with the violation count tripled there and quintupled in T20 while ODI and TEST did not move at all. That is the batch's one red gate, it is a change in behaviour rather than noise, and its cause is not established. Two further verdicts flipped without failing a gate (E2 in ODI, the sign of TEST's specific-vs-typical delta). Separately, **`make reload` failed and the run is unpublished** because the deployed service predates the batch. None of these was fixed or worked around here, and no threshold was touched.
 
+### Batch 3 — the re-import, retrain and harness record
+
+Eleven PRs — **FEAT-14 (#314), FEAT-15 (#315), SERVE-02 + GO-04 (#316), SERVE-01 (#317), DATA-01 (#318), EVAL-05 (#319), EVAL-06 (#320), EVAL-08 (#321), EVAL-09 (#322), EVAL-12 (#323), EVAL-10 (#324)** — four of them retrain-flagged (FEAT-14, FEAT-15, EVAL-09, and EVAL-12 by way of D-6: it made `dataset_digest` a required manifest field, so every run on disk is refused and there was **no loadable run** when this pass began). Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `926a924d`. This is that record. Steps ran in order: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make serving-parity` → `make evaluate`. Three predictions were recorded by fixers before the run — EVAL-09's, FEAT-15's and EVAL-12's — and each is tested against the numbers below.
+
+#### Step 1 — migrate: nothing to apply
+
+The migration level was verified against the database, not quoted. Before anything ran: `select (select count(*) from match), (select count(*) from player_biography), (select max(version) from schema_migrations)` → **22905 | 13662 | 0020_match_player_replacement.sql**, and the eight import tables read exactly batch 2's after-figures (`ball_event` 11,578,345 · `ball_event_wicket` 353,571 · `match_inning` 50,465 · `match_player` 505,287 · `player` 13,694 · `batting_data` 434,001 · `bowling_data` 299,460 · `fielding_data` 176,576 · 1,362 replacement flags). `make migrate`: `files_total 20, applied 0, skipped 20, seen 20` in 1.5 s — the repo holds twenty migrations and the database had all twenty. No PR in this batch added one.
+
+Two things noted on the way in, neither a change to the data. **`/ops/status`'s `table_stats` are planner estimates, not counts**: it reported `ball_event` 11,643,465 and `ball_event_wicket` 353,022 against exact counts of 11,578,345 and 353,571 — the numbers a reader should not carry into a record. And `output/ml-service/runs/20260920T165052Z-cb30121b/` held a lone `xi_win_T20.joblib` (17:08 UTC today) and no manifest — the remains of a retrain killed part-way, one of this pass's earlier attempts; it was left in place so the loader's handling of a manifest-less directory could be read in step 5.
+
+#### Step 2 — the whole-archive re-import: nothing moved, and that is the answer
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12. Wall clock **3 min 16 s** (17:39:44–17:43:00 UTC, first file to `cricsheet-importer finished successfully`). **Zero errors**; **28 warnings**, the same three kinds as batch 2 with the same counts — 25 × "file name is not a Cricsheet match id, deriving one", 2 × "player named on both teams, omitted from both squads" (1130677, KV Sharma), 1 × "replacement not in the side's info.players, side kept as listed" (1537342, Dambulla Sixers: RMMP Rathnayake) — and 110 `super_over_innings` notes, as in batch 1 and 2.
+
+| | before | after |
+|---|---|---|
+| `match` / `player_biography` / migration | 22905 / 13662 / `0020_match_player_replacement.sql` | **22905 / 13662 / `0020_match_player_replacement.sql`** |
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,578,345 | 11,578,345 | 0 |
+| `ball_event_wicket` | 353,571 | 353,571 | 0 |
+| `match_inning` | 50,465 | 50,465 | 0 |
+| `batting_data` | 434,001 | 434,001 | 0 |
+| `bowling_data` | 299,460 | 299,460 | 0 |
+| `fielding_data` | 176,576 | 176,576 | 0 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `match_player` where `is_replacement` | 1,362 | 1,362 | 0 |
+| `player` | 13,694 | 13,694 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+| `match` with non-null `result` | 1,723 | 1,723 | 0 |
+| `sum(batting_data.balls)` | 11,376,015 | 11,376,015 | 0 |
+
+**Not a row moved, in any table.** That is the expected result stated in advance rather than discovered: no PR in this batch touched `go-app/internal/cricsheet` or a migration, so the importer that ran is batch 2's importer over batch 2's archive, and IMPORT-03's idempotence (#295) is what makes a rewrite reproduce the same 11,578,345 deliveries rather than duplicate them. The re-import was still run rather than skipped, because § 1 rule 6 says the pass runs the whole pipeline, and because "nothing changed" is a measurement when it is measured and an assumption when it is not. The one-ball B-17 residue at match 514034 (batch 2, step 2) is still there: `sum(batting_data.balls)` reads 11,376,015 against the rule's 11,376,014.
+
+The three synthetic `player` rows with ids 1–3 (no match or ball rows) are **not** cleared by a re-import — the importer upserts what the archive names and deletes nothing it does not name. Out of scope here, recorded as asked.
+
+#### Step 3 — `make xi-parity`: **passes** on every compared count — and one uncompared count disagrees
+
+`make export-birth-dates` wrote 6,967 players first (the operator note from batches 1 and 2, still required), then `make xi-parity` ran two rating passes: Postgres in 3 min 58 s, the archive in 1 min 24 s, exit 0 in **5 min 23 s** (17:43:30–17:48:53 UTC). Both passes produce the same **21,293** training rows and **468,461** player-match rows — batch 2's figures, unchanged. The archive path logged the same two namesake keys (`119678fd`, `efcb778e`) and the 1537342 replacement warning as batch 2.
+
+| count | postgres | cricsheet |
+|---|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 |
+| drawn_or_tied_matches | 1,121 | 1,121 |
+| decided_matches_without_deliveries | 0 | 0 |
+| runs_not_charged_to_bowler | 234,322 | 234,322 |
+| **runs_scored** (EVAL-12, #323 — new, *not compared*) | **9,345,813** | **9,345,815** |
+| deliveries_not_faced | 202,331 | 202,331 |
+| dismissals | 353,063 | 353,063 |
+| namesake_sides / unknown_player_keys | 0 | 0 |
+| oversized_squads | 24 | 24 |
+| replacement_players | 1,362 | 1,362 |
+| player_keys / team_keys | 13,639 / 522 | 13,639 / 522 |
+| players_with_birth_date | 6,955 | 6,955 |
+| matches_with_stage_label / knockout | 22,101 / 1,420 | 22,101 / 1,420 |
+| reconstructible_table / dead_rubber | 16,587 / 2,215 | 16,587 / 2,215 |
+
+`source parity: the database and the archive agree`. Every one of the twenty counts in `_COMPARED_COUNTS` agrees, as do the training-row and player-row totals, and every figure is batch 2's figure — which is the right answer for a re-import that moved no row.
+
+**A new finding, recorded and not fixed — B-17 has claimed its first count.** The table prints twenty-two rows and the check compares twenty. `out_of_scope_matches` is left out on purpose (the two sources filter at different points, and the code says so). `runs_scored` is left out by omission: EVAL-12 (#323) added it to `DataQuality` as the digest's cover for undecided matches, and did not add it to `_COMPARED_COUNTS` — exactly the failure mode `docs/BUG_BACKLOG.md` B-17 describes ("a count added to the dataclass is compared only if someone remembers to add it there — the opposite of what the docstring says"). And it is the one count that disagrees: **postgres 9,345,813, cricsheet 9,345,815**, a difference of **2 runs**, which the check reports as agreement and exit 0. The 2 runs are known cricket: match **514034**'s fourth innings — one delivery, a no-ball off which the batter scored one, `runs.total` 2 in the archive — the innings batch 2's step 2 found `ball_event` does not hold at all (`ball_event_emit.go`'s `if totalLegal == 0 { continue }`). `match_inning` records that innings as 2 runs off 0 legal balls; the rating pass reads `ball_event`, so the Postgres pass is 2 runs short of the archive, and the archive is right. Two consequences worth stating. (1) Parity's verdict is true of the twenty counts it compares and untrue of the cricket: a check whose docstring promises "every comparable count" has, in its first run after a count was added, missed the one that differs. (2) `dataset_digest` folds `runs_scored` in, so a run built from Postgres and a run built from the archive over the same 22,905 files now carry **different digests** — which means `make serving-parity CRICSHEET_DIR=…` against a Postgres-trained run will be refused as "trained on other cricket" until either the one-innings gap is closed or the digest and the parity check agree on what counts. Neither is fixed here. B-17 (the docstring and the tuple) and the 514034 gap (batch 2's "B-17 candidate", the ball-event emitter) are two defects with one visible symptom; both stay open, and this is the evidence the backlog entry lacked — a real count, uncompared, disagreeing.
+
+#### Step 4 — `make retrain`: a run with provenance, and the iteration counts EVAL-09 predicted
+
+`make retrain CUTOFF=2026-09-20` — **10 min 34 s** (17:49:16–17:59:50 UTC; rating pass 3 min 38 s, models 6 min 55 s), exit 0, `data_quality_failures: []`. That is **30 % under batch 2's 15 min 2 s** on the same 22,905 matches, and the whole of the saving is in the performance fits (below).
+
+| | |
+|---|---|
+| run id | **`20260920T175255Z-71339c52`** |
+| cutoff | 2026-09-20 |
+| ratings through | 2026-09-09 (13,639 players) |
+| `dataset_sha` | `7e301346aa3d…` (batch 2: `501c24882251…`) |
+| `dataset_digest` | `{scheme: matches+xi-outcomes+pass-counts/1, matches 21293, player_rows 468461, pass_counts 19, undecided_matches 1612}` |
+| `git_sha` | `ebd10a4c1bebcfd61fea3301bc6c451cd8f32c74-dirty` (see below) |
+| `source` | `PostgresSource` |
+| `library_versions` | python 3.12.14 · scikit-learn 1.5.2 · numpy 1.26.4 · scipy 1.11.4 · pandas 2.1.4 · joblib 1.6.0 |
+| `model_params` | objective `C` 0.3 / `max_iter` 3000; display `l2_regularization` 1.0, `min_samples_leaf` 40, `early_stopping` false, `random_state` 0; grid margin 0.002, validation fraction 0.2 |
+| training rows | T20 12,130 · ODI 4,995 · TEST 2,095 · T20I 2,073 (batch 2's, unchanged) |
+| player-match rows | 468,461 (unchanged) |
+| `usable` / `unusable_reasons` | **true** / `{}` |
+
+**The retrain's own log carries D-6 refusing the served run by name**, as EVAL-12 said it would: `ERROR retrain: the served run 20260919T162357Z-85ff133f cannot be read, so no regression comparison is made: run 20260919T162357Z-85ff133f: manifest.json carries no dataset_digest … cannot be loaded. Run make retrain to produce a run that records its provenance.` The regression comparison against the previous run therefore did not happen this once — the first run after a digest change has nothing comparable to read, and the log says so rather than comparing two incomparable shas.
+
+**`git_sha` reads `-dirty` on a tree with no uncommitted change to any tracked file — a new finding, recorded and not fixed.** `git status --porcelain --untracked-files=no` was empty before and after the run; the only entries in `git status --porcelain` were two untracked, unignored directories (`.claude/worktree-notes-archive/`, `.codex/`), neither of which holds code the retrain imported. `runs.py:273` reads `git status --porcelain` whole, so any untracked file anywhere under the checkout marks the run dirty. The suffix's stated purpose — "a clean sha over a dirty tree names code that was never committed" — is right, and an untracked `.py` under `ml/` *would* be such code; but an untracked notes directory is not, and on a developer box with editor state this rule will fire on nearly every run, which turns a warning that should be rare into one that is ignored. The commit itself is real and correct: `ebd10a4c` is this branch's head, whose only difference from `926a924d` is `docs/AUDIT_FINDINGS.md` (65 added lines, this record); the code that ran is main's. Recorded as a candidate fix (`--untracked-files=no`, or a path filter under `ml-service/`), not made here.
+
+**No headline metric, and why (EVAL-05, #319).** Every format reports `objective AUC None, display AUC None` and `n_holdout: 0`, with `format_notes` saying "trained on N rows but not scored: … 0 rows at or after the cutoff". The cutoff is today and the archive ends 2026-09-09, exactly batch 2's situation; EVAL-05 made the manifest headline the served, toss-marginalised score *on the holdout*, and there is no holdout. `usable` is true because nothing disqualified it. The choice-facing numbers come from step 7.
+
+**The grid moved nothing, again.** All four formats kept `max_depth 3, learning_rate 0.04, max_iter 300` on "no candidate beat the incumbent by more than 0.002" with `n_iter: 300`; the inner-split incumbents read T20 0.7402, T20I 0.7555, ODI and TEST as recorded in the manifest.
+
+##### EVAL-09's prediction, tested
+
+EVAL-09 (#322) recorded before the run: per-booster `fit.iterations` move materially — involvement classifiers from ~300 toward 150–240, T20 wickets from ~216 toward 120–145; `iteration_choice` appears in every fit; fit time falls by roughly 40 %; headline performance metrics within fold noise, any visible gain on `p_bats` / `p_bowls`. The first three are testable here (the fourth is a harness question, step 7). Batch 2's figures are the mean over its three seeds' early-stopped members; batch 3's are the one served booster's count, chosen on the most recent tenth of training rows by date.
+
+| fmt | booster | batch 2 | **batch 3** | predicted band | in band? |
+|---|---|---:|---:|---|---|
+| T20 | `p_bats` | 300 | **276** | 150–240 | no (fell, but less) |
+| T20 | `p_bowls` | 300 | **251** | 150–240 | no (fell, but less) |
+| T20I | `p_bats` | 300 | **84** | 150–240 | no (fell further) |
+| T20I | `p_bowls` | 178 | **117** | 150–240 | no (fell further) |
+| ODI | `p_bats` | 300 | **127** | 150–240 | no (fell further) |
+| ODI | `p_bowls` | 245 | **176** | 150–240 | **yes** |
+| TEST | `p_bats` | 263 | **44** | 150–240 | no (fell further) |
+| TEST | `p_bowls` | 172 | **127** | 150–240 | no (fell further) |
+| T20 | `wickets` | 155 | **122** | 120–145 | **yes** |
+
+**Direction held in all nine; the band held in two.** Every involvement classifier chose fewer iterations than its early-stopped predecessor ran, which is the mechanism EVAL-09 named (the shuffled tenth was optimistic, so the stop came late); but the fall is smaller than predicted in T20 (276 / 251, the one format with a quarter-million rows) and larger everywhere else — T20I's `p_bats` at 84, TEST's at 44. The T20 wickets count lands inside its band. The "~216" EVAL-09 quoted for T20 wickets was its own one-seed measurement; batch 2's served mean was 155, so the reference the band was set against was not the served number. Read plainly: the prediction was right about *what* would happen and wrong about *how much* in seven of nine cases.
+
+`iteration_choice` **appears in every fit** — four of four — with the cut recorded: T20 chosen on 26,753 rows from 2026-01-14 (fitted on 240,124), T20I 4,576 from 2025-07-22, ODI 11,064 from 2025-08-08, TEST 4,642 from 2025-05-16.
+
+**Fit time fell 41 %, as predicted:** T20 290.9 s → **185.4 s** (−36 %), T20I 91.6 → **54.6** (−40 %), ODI 155.0 → **85.3** (−45 %), TEST 109.3 → **56.1** (−49 %); 646.8 s → 381.4 s over the four formats. `n_train`, `n_calibration`, `train_to` and `calibration_from` are identical to batch 2's in every format, so this is the same fit on the same rows, one member and a choice fit instead of three members fitted twice.
+
+**Something the prediction did not foresee: three q0.1 boosters chose one iteration.** `runs_q0.1`, `balls_faced_q0.1` and `runs_conceded_q0.1` chose **1** in T20, T20I and ODI (and `runs_conceded_q0.1` in TEST); the 0.1-quantile of a player's runs is 0 for most of the eleven, so the pinball loss at that level is minimised by the initial constant and every further tree only hurts on the temporal fold. That is the honest optimum for that loss, not a fault in the choice; but a booster of one tree is a constant, and the interval's lower bound is now a format-wide floor rather than a per-player prediction. At the other end `runs_conceded_q0.5` chose **300 — the ceiling — in T20 and T20I**, so that booster wanted more than `MAX_ITER` allows. Both are new facts about the model this batch ships and neither is EVAL-09's failure; whether the coverage gate notices is step 7's question. These booster names did not exist in batch 2's report (it recorded one count per target, `runs`, `balls_faced`, …), which is P-3's distributional model (`_q0.1/_q0.5/_q0.9`) now recorded per level, so the two columns of the table above are not comparable for the regressors and are not compared.
+
+##### FEAT-15's prediction, tested — **held, to the decimal**
+
+FEAT-15 (#315) re-derived `MIN_BOWLING_BALLS` in the per-appearance unit (3 / 4 / 19 / 40) and recorded before this run that the share of decided sides since 2024 with fewer than five bowling options would return to ~**3.2 / 3.9 / 12.8 / 12.5 %** (T20 / T20I / ODI / TEST) with mean options **6.65 / 6.14 / 5.55 / 5.39**. The repo's own test reads a 150-side sample per format; this pass measured the whole population instead — every decided side since 2024-01-01 in one rating pass over the re-imported database, `t1_n_bowlers` and `t2_n_bowlers` on the training frame, the same `is_bowling_option` the objective reads:
+
+| fmt | decided sides since 2024 | share under five | predicted | mean options | predicted |
+|---|---:|---:|---:|---:|---:|
+| T20 | 8,932 | **3.20 %** | 3.2 % | **6.653** | 6.65 |
+| T20I | 888 | **3.94 %** | 3.9 % | **6.135** | 6.14 |
+| ODI | 2,264 | **12.81 %** | 12.8 % | **5.551** | 5.55 |
+| TEST | 904 | **12.50 %** | 12.5 % | **5.386** | 5.39 |
+
+Every figure and every side count is the one FEAT-15 recorded, which is the expected outcome for a threshold derived from this population, on this population, after a re-import that moved no row — the prediction was a consistency check on the derivation surviving the pipeline, and it did. Against batch 2's numbers in the new unit (25.1 / 19.1 / 38.2 / 21.5 % under five; 5.03 / 5.11 / 4.64 / 5.03 mean) the served objective now reads sides that carry five bowlers as carrying five bowlers. The share under *four* — the level at which the optimiser's bowling-cover constraint has no eleven to reshape into — reads 1.4 / 1.0 / 3.5 / 4.2 %.
+
+#### Step 5 — `make reload`: the new run serves, and every older run is refused by name
+
+**The stack had to be rebuilt first, and the rebuild is a story of its own.** The running ML image (built 2026-09-19 16:18 UTC) predated EVAL-10 and EVAL-12 — its `runs.py` had no `dataset_digest` at all — so it was still serving `85ff133f` and could not have refused anything. Batch 2 declined to rebuild because it was not in the checkout the stack was built from; this pass was, so the rebuild was in scope. Three things then went wrong before any image existed, each recorded here because the next operator will meet them:
+
+1. **`make build-apps` hung for six minutes on `resolve image config for docker-image://docker.io/docker/dockerfile:1`**, and `docker pull` hung the same way while `curl` reached the registry and a container on the VM reached PyPI. The cause was the CLI, not the network: `~/.docker/config.json` names `credsStore: desktop`, and every `docker build` and `docker pull` spawns `docker-credential-desktop list` before it sends a byte; in this headless session each spawn hung forever (three were found stuck, one per attempt), while the same helper run directly with a closed stdin returned `{}` at once. Pointing `DOCKER_CONFIG` at a scratch directory with `{"auths":{}}` and `DOCKER_HOST` at the daemon's socket bypassed the helper and the build ran in 1 min 30 s.
+2. **There is no `.dockerignore` anywhere in the repository, and `docker-compose.yml` builds the ML image with `context: .`** — the repo root, under which `data/` weighs **22 GB** and `output/` **3.3 GB**. The legacy builder spent three minutes tarring that context into the daemon before it was stopped; BuildKit sends it lazily but still walks it, and the daemon's build cache stood at 24.98 GB (19.44 reclaimable) when measured. The Dockerfile copies five paths, all under `ml-service/`; a context holding just those is **1.0 MB**. **New finding (OPS), recorded and not fixed:** add a root `.dockerignore` excluding `data/`, `output/`, `.venv/`, `node_modules/` and `.git/`, or narrow the context.
+3. `go-app/Dockerfile.api` builds `FROM golang:1.26-alpine`, which is **not in the local image cache**, so the API image could not have been rebuilt without a working pull path.
+
+The images actually serving were then built and recreated by the operator directly (both containers created 18:22:15 UTC; the ML container runs `9c6ad26b…` with `GIT_SHA=acbc0fa0…`, this branch's head at the time, and its `runs.py` carries the digest code); the slim-context image built here (`eed100d3…`) landed on the `umayangag/cric-app-ml:latest` tag thirty seconds later and is not the one running — cosmetic, noted so nobody reads the tag as the container.
+
+**Before reload, on the rebuilt service:** `/health` → `loaded: false, run_id: null`, `error: "run 20260919T162357Z-85ff133f: manifest.json carries no dataset_digest, so nothing says what its dataset_sha is a digest of; it was written before the digest could see a squad or a delivery (EVAL-12) and cannot be loaded. Run make retrain …"`. That is the state the brief described — **no loadable run** — observed live: `current` still named `85ff133f` and the service refused it by name on start-up.
+
+**`make reload`** (no `RUN=`, so the newest run on disk) at 18:23:28 UTC → `{"status":"reloaded","loaded":true,"formats":["ODI","T20","T20I","TEST"],"performance_formats":[…same…],"players":13639,"ratings_through":"2026-09-09", …}`. After: `/health` → `loaded: true, run_id: 20260920T175255Z-71339c52`, ratings fresh (11 days old against a 14-day limit); `current_run.json` → `71339c52`; go-api's `/ops/status` → `current_run` and `loaded_run` both `71339c52`, `ml_health: true`. **A served run is restored.**
+
+**Every older run is refused by name**, in `/artifacts/status`'s listing, each with its reason:
+
+| run | refused for |
+|---|---|
+| `20260919T162357Z-85ff133f` (was serving) | no `dataset_digest` (EVAL-12) |
+| `20260914T121506Z-da5b6680` (batch 2) | no `dataset_digest` |
+| `20260913T142341Z-ab4caa13` (batch 1) | no `dataset_digest` |
+| `20260908T051956Z-626dc507`, `20260907T062657Z-6b16045e` | no `dataset_digest` |
+| `20260906T083819Z-36689f80`, `20260903T160602Z-0e1e39c2`, `20260903T154222Z-4e009a52`, `20260902T163535Z-739b9d62`, `20260902T102135Z-2818a6b7` | no `ratings_through` (P2-2, #280 — refused before this batch too) |
+
+Ten of twelve directories refused, each naming itself and the field it lacks; none silently skipped.
+
+**The twelfth directory is an orphan run, and it loads.** `20260920T165052Z-cb30121b` — noted in step 1 as a manifest-less directory holding one file — was by 17:46:58 UTC a complete run: every artifact, a manifest, `usable: true`, `git_sha 76e7a894…-dirty` (this branch's step-2 commit), `dataset_sha` **identical** to this pass's run (`7e301346…`). Its run id is 16:50:52 UTC, before this session existed: it is the detached retrain of an earlier attempt at this pass, which outlived the session that launched it and ran through this pass's re-import and parity steps unnoticed. Three things follow. It touched nothing — a retrain reads the database and writes only its own directory — and its digest equalling this pass's says the re-import it overlapped produced the same cricket row for row. It was not published: `reload` with no `RUN=` takes the newest run, which is this pass's. And it is a free determinism check — two runs of the same code on the same data — reported under step 6 below.
+
+##### EVAL-12's prediction, tested — **held**
+
+EVAL-12 (#323) recorded that the new run would carry a populated `dataset_digest` and a real `git_sha`, would load, and that old runs would stay refused by name. `dataset_digest` = `{scheme: matches+xi-outcomes+pass-counts/1, matches 21293, player_rows 468461, pass_counts 19, undecided_matches 1612}` with `dataset_sha 7e301346…` — a sha the old formula could not have produced, and one that differs from the `501c2488…` every run since batch 1 carried on the same 22,905 fixtures. `git_sha` = `ebd10a4c…`, a real commit, this branch's head when the manifest was written — with the `-dirty` suffix earned by two untracked directories (step 4's finding), which is the one blemish on this prediction: the sha is real and right, and the suffix is true to the rule and untrue to the tree. The run loaded on the first `reload`. Ten older runs are refused by name, above. Held.
+
+#### Step 6 — `make serving-parity` (EVAL-10, #324): **1.11e-16, passed**
+
+The run `current` names (`71339c52`), loaded through `XiStore.load` the way `reload` loads it, against a fresh pass over the database: **50 matches, 1,100 player rows, 50 served probabilities, 50 from the loaded artifact, 1,100 performance predictions, 49 simulations, max abs difference 1.11e-16, passed**, exit 0. Wall clock **7 min 4 s** (18:23:57–18:31:01 UTC; rating pass 3 min 35 s, second pass and comparisons 3 min 27 s) against EVAL-10's 7 min 58 s on the old run. The 1.11e-16 is half the 2.22e-16 EVAL-10 measured — the same one-ULP `team_h2h` asymmetry it explained, on a different set of last-50 matches — and it sits eight orders of magnitude under the 1e-9 tolerance. The run's digest equalled the pass's, so the check was not refused as "trained on other cricket"; a run built from the archive would have been (step 3).
+
+##### A free determinism check, and a new finding: T20's served performance model depends on the physical order of `match_player`
+
+The orphan run of step 5 (`cb30121b`) and this pass's run (`71339c52`) were built by the same code on the same cricket — identical `dataset_sha`, identical `state_shape`, identical grid scores to six decimals in all four formats (T20 0.740196, T20I 0.755528, ODI 0.670620, TEST 0.618198). Their performance boosters chose **identical iteration counts in T20I, ODI and TEST — and different ones in T20**: `p_bats` 201 vs 276, `p_bowls` 265 vs 251, `catches` 189 vs 255, `balls_faced_q0.9` 297 vs 175, `runs_q0.5` 196 vs 238, four more by smaller amounts. Two runs that should be one model are two models in one format.
+
+The mechanism fits three facts exactly. (1) `RANDOM_STATE = 0` is fixed and, as `performance.py:96-99` says, reaches "only … the binning subsample above 200,000 rows" — and T20 is the one format above that line (`n_fit` 240,124 for the choice, 266,877 served; the next largest is ODI at 98,824). Under a fixed seed the subsample is a fixed set of *row indices*, so which rows define the bin thresholds depends on the order the rows arrive in. (2) The Postgres source's XI query (`sources.py:684-688`, `SELECT … FROM match_player mp … WHERE mp.match_id = %s`) has **no `ORDER BY`**, so a side's eleven — and therefore the eleven player-match rows per side in the performance frame — arrive in physical row order; the matches themselves are ordered `(match_date, match_id)` and are not the problem. (3) The orphan's rating pass read `match_player` before and during this pass's re-import, which rewrote every row of it (IMPORT-03's delete-and-reinsert); this pass read it afterwards. Same rows, different physical order, different rows in the binning subsample, different fit, different argmin over a flat loss curve. The digest cannot see it because `runs.dataset_sha` sorts its lines before hashing — order-independence is its design, and here it is why two runs with one digest are not one model. Below 200,000 rows every row defines the bins and the fit is order-invariant, which is why the other three formats agree to the iteration.
+
+This is the same species as the ball-order defect P-3 fixed in `ball_event` (the comment at `sources.py:699-701` records that ordering by `ball_seq` "left their relative order to the query planner"), now on the squad query. It is not a harness or gate question — parity compares a run against a pass in one process, where the order is whatever it is on both sides — and it is not a batch-3 regression: EVAL-02 (#309) recorded the binning draw as the one thing a seed does not fix, and the order sensitivity was always beneath it. **Recorded, not fixed.** Candidate fix: `ORDER BY mp.id` (or the batting order the importer knows) on the XI query, and the archive path's equivalent (`sources.py:623` sorts matches, not the eleven), so that the frame's row order is a function of the cricket; then a second run on the same digest would reproduce T20's counts too. Until then a T20 retrain is not reproducible to the iteration, and any T20 performance number quoted between two runs of identical code carries this as unmeasured noise.
+
+#### Step 7 — `make evaluate`: the batch's acceptance test — **every gate passes**, and batch 2's red gate is green
+
+**1 h 19 min 49 s** (18:31:40–19:51:29 UTC), launched detached and polled; report written in full, `make evaluate` **exited 0**. That is **36 % under batch 2's 2 h 5 min 42 s** and under the ~2 h 10 min every doc now quotes: T20's eleven folds took 33 minutes against batch 2's 52, and the saving is EVAL-09's — one performance member and a choice fit per fold instead of three early-stopped members fitted twice. The same 11 cutoffs, the same locked window (from 2026-09-02, rotated on 2026-09-02), `n_rows` **21,293** and `n_player_rows` **468,461** on both sides, so — as in batch 2 — the two reports were built from the same matches and the deltas are the batch's code and nothing else.
+
+##### The gates: `passed: true`
+
+```
+"gates": {"passed": true, "problems": []}
+```
+
+Every one of the 30 registry entries stands as it did in batch 2 (no gate added, none removed). The ten with a threshold, each with its number:
+
+| gate | threshold | batch 2 | **batch 3** | result |
+|---|---|---|---|---|
+| **H-4** swap monotonicity | share of one-player upgrades that lower P(win) **< 0.02** in every format the folds scored | T20 0.0099 · **T20I 0.0230 ❌** · ODI 0.0000 · TEST 0.0052 | **T20 0.0000 · T20I 0.0000 · ODI 0.0000 · TEST 0.0000** | **passes** |
+| H-17 objective ranks | mean walk-forward objective AUC ≥ 0.65 where an optimised selection is served (T20I, ODI) | T20I 0.7670 · ODI 0.6733 | **T20I 0.7659 · ODI 0.6744** | passes |
+| specific-vs-typical | AUC(specific) − AUC(typical) > 0 where served | T20I +0.0224 · ODI +0.0145 | **T20I +0.0209 · ODI +0.0144** | passes |
+| E5 lineup-only | `passes_derived_bar` where served | T20I 0.5677 vs 0.4691 · ODI 0.5565 vs 0.4964 | **T20I 0.5633 vs 0.4691 · ODI 0.5565 vs 0.4964** | passes |
+| E2 simulated P(win) | within 0.01 Brier of the display where the simulation is the headline (it is not, in any format) | — | T20 +0.0014 · T20I +0.0064 · **ODI +0.0116 (over, not served)** · TEST none | passes (not binding) |
+| H-8 serving parity | `passed` is true | 0.0 | **1.11e-16**, 50 matches, 1,100 player rows, 50 served / 50 artifact probabilities, 1,100 performance predictions, 49 simulations | passes |
+| H-5 recalibration | `locked.recalibrated_targets` | `[]` | `[]` in every format | passes (nothing recalibrated) |
+| H-22 performance | walk-forward performance summary present | present | present, every format | passes |
+| H-2 leak canary | `test_control_suspects` | 3 | **the same 3** (T20 `team_h2h` 0.6534 / test 0.5317; T20I `d_pelo_min` 0.7032 / 0.5303; T20I `team_h2h` 0.7293 / 0.5317) — identical to four decimals, as they must be on an unchanged frame | passes |
+| X-4 market benchmark | formats block present | present | present (T20 185 of 4,466 matches joined; TEST 0 of 443) | passes |
+
+**H-4 goes from batch 2's one red gate to zero violations in every format**, on the same upgrade counts:
+
+| fmt | share batch 2 → 3 | upgrades | **violations batch 2 → 3** |
+|---|---|---:|---:|
+| T20 | 0.0099 → **0.0000** | 6,050 → 6,050 | **60 → 0** |
+| T20I | 0.0230 ❌ → **0.0000** | 4,631 → 4,631 | **103 → 0** |
+| ODI | 0.0000 → 0.0000 | 5,665 → 5,665 | 0 → 0 |
+| TEST | 0.0052 → **0.0000** | 4,807 → 4,807 | **24 → 0** |
+
+This is FEAT-14 (#314) doing exactly what its title says — the objective is fitted under the contract's signs, so a one-player upgrade cannot lower P(win) by construction — and it is the mechanism batch 2's record asked for rather than a tolerance: the 0.02 line stands as written, the display swap share stays 0.0000 in every format as it was, and the number of upgrades tested did not move by one. **No threshold was adjusted.**
+
+**Two things in the decisions worth reading, neither a gate.** (1) **T20 misses its E5 bar by 0.0006**: agreement 0.5091 over 2,465 pairs against a derived bar of 0.5097 (batch 2: 0.5043 against 0.5126) — the objective moved toward the bar and the bar moved toward it, and T20 stays scoped off (P-7), as the log says: "optimised selection not served in T20 … fails". A T20 selection is still not served and this pass changes nothing there; it records that the miss is now inside one standard error (0.0101). (2) **ODI's simulated P(win) sits 0.0116 over the display, past the 0.01 tolerance, as it did in batch 2 (0.0114)** — E2 does not bind because the display model is the headline in every format, but the number has now been over the line twice and the simulator is not what it was in batch 2 either: EVAL-08 (#321) now refuses to fit the chase response where the calibration fold holds under 30 complete first innings, and it did so in **T20I (14) and ODI (24)** on the locked window, so "the simulator ships without a shared factor, a chase response or a chase dispersion" there. That is EVAL-08's guard working as written, on real folds, and it is why the ODI E2 delta is unchanged rather than better.
+
+##### The headline
+
+Before is batch 2's run `20260914T121506Z-da5b6680`; after is this run. Walk-forward means over the same 11 folds (10 in T20I), with each format's across-fold standard deviation on the *after* column, and the movement expressed in units of that sd:
+
+| fmt | objective AUC | fold sd | move / sd | display AUC | fold sd | move / sd |
+|---|---|---:|---:|---|---:|---:|
+| T20 | 0.6980 → **0.6966** (−0.0015) | 0.0385 | **0.04** | 0.7295 → **0.7294** (−0.0001) | 0.0481 | 0.00 |
+| T20I | 0.7670 → **0.7659** (−0.0011) | 0.0399 | **0.03** | 0.7618 → **0.7624** (+0.0006) | 0.0485 | 0.01 |
+| ODI | 0.6733 → **0.6744** (+0.0011) | 0.0683 | **0.02** | 0.7110 → **0.7074** (−0.0036) | 0.0739 | 0.05 |
+| TEST | 0.6114 → **0.6105** (−0.0009) | 0.1041 | **0.01** | 0.6286 → **0.6331** (+0.0046) | 0.0977 | 0.05 |
+
+**No movement exceeds its own fold sd; none reaches a twentieth of it.** The largest objective move is T20's −0.0015 at 0.04 sd; the largest display move is TEST's +0.0046 at 0.05 sd. Objective Brier moved by at most 0.0004 (T20 0.2179 → 0.2183, T20I 0.1954 → 0.1954, ODI 0.2261 → 0.2258, TEST 0.2406 → 0.2408) against base-rate Briers that did not move. Batch 2's fold sds were 0.0386 / 0.0441 / 0.0729 / 0.1135; the brief's "T20I 0.7687" is not in either report — batch 2's T20I objective AUC is 0.7670 in its report and in its record, and that is what the comparison uses. The three things this batch changed in the objective's inputs — FEAT-14's monotone fit, FEAT-15's bowling-option threshold (which moved `n_bowlers` by most of a bowler on a quarter of sides), and nothing else — cost it nothing measurable in discrimination while removing every swap violation. The locked window (52 T20 and 24 ODI matches since 2026-09-02, never used for a choice) reads T20 0.7793 → 0.7881 and ODI 0.7413 → 0.7622, too few matches to be more than consistent.
+
+##### EVAL-09's fourth clause, tested — **held**
+
+The prediction's last clause was that the performance headline metrics move within fold noise, with any visible gain on `p_bats` / `p_bowls`. Walk-forward means of the model's within-match Spearman, pinball loss and 80 % interval coverage, twenty targets across the four formats, each movement in units of its own fold sd: **every one of the sixty movements is inside 0.7 sd, fifty-four of them inside 0.25 sd.** The largest are T20 catches Spearman 0.0379 → 0.1495 (+0.68 sd, a target whose ranking signal was near zero), T20I balls-faced coverage 0.8827 → 0.8895 (+0.64 sd) and T20I runs-conceded Spearman 0.8199 → 0.8250 (+0.53 sd); everything on runs, balls faced and wickets is within 0.1 sd in every format (T20 runs Spearman 0.5440 → 0.5431, pinball 2.9184 → 2.9188, coverage 0.8973 → 0.8965). The q0.1 boosters that chose one iteration in step 4 did not move the interval's coverage: it reads 0.90 / 0.90 / 0.95 / 0.91 / 0.96 on T20's five targets as it did. The harness reports no `p_bats` / `p_bowls` headline of its own, so the "visible gain" clause has nothing to be read against; the nearest thing, the involvement-conditioned Spearman on runs, reads 0.3401 → 0.3389 (T20), 0.3595 → 0.3596 (T20I), 0.3523 → 0.3522 (ODI), 0.4367 → 0.4385 (TEST) — flat. Within fold noise, as predicted; the gain, if any, is not visible here.
+
+##### What this batch is accepted on, and what it is not
+
+Parity passes on every compared count; the run loads, serves and round-trips at 1.11e-16; **`gates.passed` is true with no problem listed, and H-4 — batch 2's red gate — is at zero violations in every format** on the same upgrades. The headline discrimination is unchanged to within a twentieth of a fold sd in every format. Of the three predictions, **FEAT-15's held to the decimal, EVAL-12's held, and EVAL-09's held in direction and in fit time (−41 %) and in the performance metrics, but not in the size of the iteration fall** (one of eight involvement classifiers inside its 150–240 band; T20's fell less than predicted, the other three formats' fell further). **The batch is accepted.**
+
+Five things it is *not* accepted clean of, none fixed here: (1) `runs_scored`, added by EVAL-12, is not in `_COMPARED_COUNTS` and is the one count that disagrees between the sources — by the 2 runs of 514034's missing fourth innings — so B-17 and the ball-emitter gap now have a live symptom, and a Postgres-built run and an archive-built run of the same files carry different digests; (2) `git_sha` reads `-dirty` on untracked notes directories; (3) T20's served performance model is not reproducible across runs of the same code on the same digest because the XI query has no `ORDER BY` and T20 alone sits above sklearn's 200,000-row binning subsample; (4) there is no `.dockerignore`, the ML image's build context is the 25 GB repo root, and on this box every `docker build`/`pull` hangs on the `desktop` credential helper; (5) three q0.1 boosters are one-tree constants and two q0.5 boosters hit the 300 ceiling. Beside them, an orphan run `cb30121b` from an earlier attempt sits on disk, loadable and unpublished. The one-ball B-17 residue, the E2 ODI overshoot and the T20 E5 miss carry over unchanged.
+
+Closing count triple, 19:53 UTC: **22905 | 13662 | 0020_match_player_replacement.sql** — the database this pass began with.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
