@@ -166,7 +166,7 @@ def retrain(
         # "as of" -- beside the boundary the operator asked for (P2-2). The loader
         # asserts it against the state, so the manifest cannot drift from the joblib.
         ratings_through=result.state.last_date.isoformat(),
-        dataset_sha=runs.dataset_sha(_match_keys(result)),
+        dataset_sha=runs.dataset_sha(result.match_keys()),
         git_sha=runs.git_sha(),
         rating_params={
             "decay_per_match": C.DECAY_PER_MATCH,
@@ -217,16 +217,6 @@ def served_run_manifest(artifacts_dir: str) -> Optional[runs.RunManifest]:
     except runs.RunArtifactsInvalid as exc:
         logger.error("retrain: the served run %s cannot be read, so no regression comparison is made: %s", current, exc)
         return None
-
-
-def _match_keys(result: BuildResult) -> List[str]:
-    """The identity of every match the pass consumed, for the dataset digest.
-
-    Read off the training frame rather than counted, so two runs agree exactly when they
-    walked the same cricket -- a re-import that changes one match's date changes the sha.
-    """
-    frame = result.frame
-    return [f"{row.match_id}|{row.match_date}" for row in frame.itertuples(index=False)]
 
 
 def parse_cutoff(value: str) -> pd.Timestamp:

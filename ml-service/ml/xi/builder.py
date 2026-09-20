@@ -26,6 +26,15 @@ class BuildResult:
     n_undecided: int  # matches folded into the state but not usable as a training row
     quality: DataQuality  # what the pass dropped and what it found odd (H-15)
 
+    def match_keys(self) -> List[str]:
+        """The identity of every match the pass consumed, for the dataset digest.
+
+        Read off the training frame rather than counted, so two runs agree exactly when
+        they walked the same cricket -- a re-import that changes one match's date changes
+        the digest.
+        """
+        return [f"{row.match_id}|{row.match_date}" for row in self.frame.itertuples(index=False)]
+
 
 META_COLS: List[str] = ["match_id", "match_date", "format_code", "gender", "team1", "team2", "venue", C.TARGET_COL]
 

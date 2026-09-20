@@ -1,5 +1,5 @@
-"""As-of serving: the rating state as it stood before a date, and the proof it matches
-the training frame (H-8).
+"""As-of serving: the rating state as it stood before a date, and the proof that what is
+served matches the training frame (H-8).
 
 The serving artifact holds ratings through today, which is what a live prediction wants
 and what a backtest must not have -- its team Elo above all carries the results of the
@@ -10,26 +10,43 @@ every match strictly before ``d`` folded in, nothing at ``d`` or after -- provab
 because asking for a date the state has already passed raises instead of guessing.
 Ascending queries share one pass, so a chronological backtest costs one sweep of the
 source, not one per match.
+
+``serving_parity`` is the proof, and since EVAL-10 it reaches the artifact: the store it
+serves from has been written to a run directory and loaded back through ``XiStore.load``,
+so the rating payload, the win artifacts' column lists and the performance pickles are the
+ones under test, and the numbers compared are the ones the routes answer with --
+``display_probability`` and ``objective_probability`` -- not only the rows they are built
+from.
+
+    python -m ml.xi.asof --postgres                # the run `current` points at
+    python -m ml.xi.asof --postgres --run <run_id> # a named run under the artifacts root
+
+checks a run on disk against a fresh pass over its own data (``make serving-parity``).
 """
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import logging
 import math
-from datetime import date
-from typing import Callable, Dict, Iterator, List, Optional
+import os
+import sys
+from datetime import date, datetime, timezone
+from typing import Callable, Dict, Iterator, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
 
 from ml.xi import contract as C
-from ml.xi import simulator
+from ml.xi import runs, simulator
 from ml.xi.biography import BirthDates
 from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
 from ml.xi.sources import MatchRecord, MatchSource
+from ml.xi.store import FormatModels, XiStore, save_models, save_performance, save_ratings, state_shape
+from ml.xi.train import marginalised_probabilities
 
 logger = logging.getLogger(__name__)
 
@@ -116,20 +133,39 @@ def serving_parity(
     player_frame: pd.DataFrame,
     last_n: int = 50,
     gender_split_context: bool = False,
-    performance_models: Optional[Dict[str, PerformanceModels]] = None,
+    store: Optional[XiStore] = None,
 ) -> Dict:
-    """Rebuild the last ``last_n`` matches' rows from the as-of serving path and compare
-    them with the training frame's rows (H-8).
+    """Rebuild the last ``last_n`` matches from the as-of serving path and compare what is
+    served with the training frame (H-8).
 
     The training pass and ``AsOfRatings`` evolve their states through different code --
     day-close buffering there, a strict date threshold here -- so agreement is a real
     check on both, while the row assembly is shared (``ml.xi.rows``) so the two cannot
-    even in principle spell a column differently (the D-4 defect class).
+    even in principle spell a column differently (the D-4 defect class). That is the row
+    comparison, and on its own it compares ``rows.py`` with ``rows.py`` (EVAL-10).
 
-    With ``performance_models`` (per format) the check extends to what is served: the
-    model's pre-toss prediction for the rebuilt rows must equal its prediction for the
-    frame's rows, output by output, and so must the simulator's draws from them at a fixed
-    seed (every total and every player's runs).
+    ``store`` is what makes the check reach the artifact. It must have come through
+    ``XiStore.load`` -- ``round_trip_store`` for models still in memory -- so a run this
+    code cannot serve has already been refused by name (D-6) before anything is compared.
+    With it, three more things are held to the tolerance for the same matches:
+
+    * the served probabilities -- ``display_probability``, the number ``/xi/predict-win``
+      shows, and ``objective_probability``, the number ``/xi/optimize`` maximises -- from
+      the store over the as-of state, exactly as ``XiRegistry`` answers a backtest, against
+      ``marginalised_probabilities`` of the artifact's models on the frame's own row. This
+      is where the store's row assembly (``row.get(c, 0.0)`` over the artifact's own column
+      list, ``serving_match`` stamped with the state's date) and the artifact's column
+      contract meet the training frame, which the loader's list cannot check;
+    * the same two probabilities from the loaded through-today state, as a live request is
+      answered, against the same models over the state the as-of pass ends on -- the same
+      cricket, folded by different code and round-tripped through the artifact on one side
+      only. A payload that does not carry an accumulator the served number reads (the D-6
+      shape, one level above the list ``_check_payload_shape`` walks) shows here and
+      nowhere else, because the as-of comparison replaces the loaded state;
+    * the performance model's pre-toss prediction for the rebuilt rows against its
+      prediction for the frame's rows, output by output, and the simulator's draws from
+      them at a fixed seed (every total and every player's runs) -- from the store's own
+      loaded performance artifact.
     """
     ordered = frame.sort_values(["match_date", "match_id"], kind="stable")
     wanted = list(ordered.match_id.tail(last_n))
@@ -154,9 +190,12 @@ def serving_parity(
     player_rows_compared = 0
     predictions_compared = 0
     simulations_compared = 0
+    served_probabilities_compared = 0
+    artifact_probabilities_compared = 0
     max_abs_difference = 0.0
     mismatches: List[str] = []
-    performance_models = performance_models or {}
+    performance_models: Dict[str, PerformanceModels] = store.performance if store is not None else {}
+    served_fixtures: List[MatchRecord] = []
 
     matches_for_lookup, matches_for_state = itertools.tee(source.iter_matches())
     asof = AsOfRatings(_IteratorSource(matches_for_state, source.birth_dates()), gender_split_context)
@@ -189,6 +228,16 @@ def serving_parity(
                 if diff > PARITY_TOLERANCE:
                     mismatches.append(f"match {match.match_id} player {rebuilt['player_key']} {col}: {diff:.3g}")
             player_rows_compared += 1
+        if store is not None and store.has_format(match.format_code):
+            served_fixtures.append(match)
+            served = _served_probabilities(store.with_state(state), match)
+            from_frame = _frame_probabilities(store.models[match.format_code], expected)
+            for name, value in served.items():
+                diff = abs(value - from_frame[name])
+                max_abs_difference = max(max_abs_difference, diff)
+                if diff > PARITY_TOLERANCE:
+                    mismatches.append(f"match {match.match_id} served {name} vs the frame: {diff:.3g}")
+            served_probabilities_compared += 1
         model = performance_models.get(match.format_code)
         if model is not None and expected_players is not None and rebuilt_players:
             diff = _prediction_difference(model, pd.DataFrame(rebuilt_players), expected_players)
@@ -207,27 +256,118 @@ def serving_parity(
 
     if matches_compared < len(wanted_set):
         mismatches.append(f"source yielded {matches_compared} of {len(wanted_set)} matches the frame holds")
+
+    if store is not None and served_fixtures:
+        # The loaded through-today state against the state the pass ends on: the rest of
+        # the source folded in, so both stand at the same date and a live request to
+        # either would be stamped the same.
+        rebuilt = store.with_state(asof.state_as_of(date.max))
+        for match in served_fixtures:
+            loaded, fresh = _served_probabilities(store, match), _served_probabilities(rebuilt, match)
+            for name, value in loaded.items():
+                diff = abs(value - fresh[name])
+                max_abs_difference = max(max_abs_difference, diff)
+                if diff > PARITY_TOLERANCE:
+                    mismatches.append(f"match {match.match_id} {name} from the loaded artifact: {diff:.3g}")
+            artifact_probabilities_compared += 1
+
     report = {
         "matches_compared": matches_compared,
         "win_rows_compared": win_rows_compared,
         "player_rows_compared": player_rows_compared,
+        "served_probabilities_compared": served_probabilities_compared,
+        "artifact_probabilities_compared": artifact_probabilities_compared,
         "performance_predictions_compared": predictions_compared,
         "simulations_compared": simulations_compared,
+        "run_id": None if store is None or store.manifest is None else store.manifest.run_id,
         "max_abs_difference": float(max_abs_difference),
         "mismatches": mismatches[:20],
         "passed": not mismatches,
     }
     logger.info(
-        "serving parity (H-8): %d matches, %d player rows, %d performance predictions, %d simulations, "
-        "max diff %.3g, %s",
+        "serving parity (H-8): %d matches, %d player rows, %d served probabilities, %d from the loaded artifact, "
+        "%d performance predictions, %d simulations, max diff %.3g, %s",
         matches_compared,
         player_rows_compared,
+        served_probabilities_compared,
+        artifact_probabilities_compared,
         predictions_compared,
         simulations_compared,
         max_abs_difference,
         "passed" if report["passed"] else f"FAILED ({len(mismatches)} mismatches)",
     )
     return report
+
+
+def _served_probabilities(store: XiStore, match: MatchRecord) -> Dict[str, float]:
+    """The two numbers the routes answer with for the match's fixture, toss unknown, from
+    the store's own row assembly: the display probability ``/xi/predict-win`` shows and
+    the objective ``/xi/optimize`` maximises. The keys are the frame's player keys, which
+    are the registry ids go-app sends (``xi_service._keys`` is the identity)."""
+    fmt = match.format_code
+    return {
+        "display probability": store.display_probability(
+            fmt, match.team1_players, match.team2_players, match.team1, match.team2, match.venue
+        ),
+        "objective probability": store.objective_probability(
+            fmt, store.side_vectors(fmt, match.team1_players), store.side_vectors(fmt, match.team2_players)
+        ),
+    }
+
+
+def _frame_probabilities(models: FormatModels, expected) -> Dict[str, float]:
+    """The same two numbers from the frame's row of the match, as the harness scores
+    them: both batting orders averaged over the contract's column lists."""
+    row = pd.DataFrame([expected._asdict()])
+    return {
+        "display probability": float(marginalised_probabilities(models.display, row, C.DISPLAY_FEATURE_COLS)[0]),
+        "objective probability": float(marginalised_probabilities(models.objective, row, C.XI_FEATURE_COLS)[0]),
+    }
+
+
+#: The run id a harness round trip writes under; never published, and named so a refusal
+#: quoting it reads as what it is.
+ROUND_TRIP_RUN_ID = "h8-round-trip"
+
+
+def round_trip_store(
+    state: RatingState,
+    win_models: Dict[str, FormatModels],
+    performance_models: Dict[str, PerformanceModels],
+    directory: str,
+) -> XiStore:
+    """Write the state and models as a run directory and load them back through
+    ``XiStore.load``: the artifact contract end to end, the way ``retrain`` writes and
+    ``reload`` reads, so the store the parity check serves from is a store the way the
+    service makes one and never the objects still in memory.
+
+    The manifest carries what the loader asserts -- the run id, the date the state runs
+    through and the state's shape -- and blanks for what a round trip does not have: no
+    cutoff, because nothing was held out, and no dataset digest, because the caller holds
+    the source. The directory is the caller's to discard.
+    """
+    if state.last_date is None:
+        raise ValueError("the rating state consumed no matches, so there is no run to round-trip")
+    os.makedirs(directory, exist_ok=True)
+    save_ratings(state, directory)
+    for models in win_models.values():
+        save_models(models, directory)
+    for format_code, model in performance_models.items():
+        save_performance(model, format_code, directory)
+    runs.write_manifest(
+        directory,
+        runs.RunManifest(
+            run_id=ROUND_TRIP_RUN_ID,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            cutoff="",
+            ratings_through=state.last_date.isoformat(),
+            dataset_sha="",
+            git_sha=runs.git_sha(),
+            state_shape=state_shape(state),
+            formats=sorted(win_models),
+        ),
+    )
+    return XiStore.load(directory)
 
 
 def _absolute_difference(rebuilt: float, expected: float) -> float:
@@ -282,3 +422,95 @@ def _simulation_difference(
         largest = max(largest, float(np.max(np.abs(team_a.total - team_b.total))))
         largest = max(largest, float(np.max(np.abs(team_a.runs - team_b.runs))))
     return largest
+
+
+def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--cricsheet-dir", help="directory of Cricsheet JSON files")
+    src.add_argument("--postgres", action="store_true", help="read the go-app database (POSTGRES_* env vars)")
+    p.add_argument(
+        "--birth-dates",
+        default=None,
+        help="archive path only: CSV of player_key,birth_date written by `python -m ml.xi.biography --export`",
+    )
+    p.add_argument("--out", default=None, help="artifacts root (default: ml.config.default_artifacts_dir())")
+    p.add_argument("--run", default=None, help="run id under the artifacts root (default: the run `current` names)")
+    p.add_argument("--last-n", type=int, default=50, help="how many of the most recent matches to compare")
+    return p.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Check a run on disk against a fresh pass over its own data: exit 0 when parity
+    holds, 1 when it does not, 2 when the run cannot be checked -- refused by the loader,
+    or trained on other cricket than the source now holds, in which case the through-today
+    comparison would measure the data and not the artifact, so it is not run."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    args = _parse_args(argv)
+    from ml.xi.builder import build
+
+    if args.cricsheet_dir:
+        from ml.xi.sources import CricsheetJsonSource
+        from ml.xi.train import _international_teams_from_config
+
+        international_teams = _international_teams_from_config()
+
+        def source_factory() -> MatchSource:
+            return CricsheetJsonSource(args.cricsheet_dir, international_teams, birth_dates_path=args.birth_dates)
+
+    else:
+        from ml.db import get_db_connection
+        from ml.xi.sources import PostgresSource
+
+        connection = get_db_connection()
+
+        def source_factory() -> MatchSource:
+            return PostgresSource(connection)
+
+    artifacts_dir = args.out
+    if artifacts_dir is None:
+        from ml.config import default_artifacts_dir
+
+        artifacts_dir = default_artifacts_dir()
+    run_id = args.run or runs.read_current(artifacts_dir)
+    if run_id is None:
+        logger.error("no run named and nothing published under %s; name one with --run", artifacts_dir)
+        return 2
+    try:
+        store = XiStore.load(runs.run_dir(artifacts_dir, run_id))
+    except runs.RunArtifactsInvalid as exc:
+        logger.error("run %s cannot be served, so there is nothing to compare: %s", run_id, exc)
+        return 2
+
+    result = build(
+        source_factory(),
+        progress=lambda i: logger.info("rating pass: %d matches", i),
+        gender_split_context=store.state.gender_split_context,
+        age_aware_cold_start=store.state.age_aware_cold_start,
+    )
+    fresh_sha = runs.dataset_sha(result.match_keys())
+    if fresh_sha != store.manifest.dataset_sha:
+        logger.error(
+            "run %s was trained on dataset %s but the source now holds %s (%d matches); a through-today "
+            "comparison would measure the data, not the artifact. Retrain, then check the new run.",
+            run_id,
+            store.manifest.dataset_sha[:12],
+            fresh_sha[:12],
+            len(result.frame),
+        )
+        return 2
+    report = serving_parity(
+        source_factory(),
+        result.frame,
+        result.player_frame,
+        last_n=args.last_n,
+        gender_split_context=store.state.gender_split_context,
+        store=store,
+    )
+    for mismatch in report["mismatches"]:
+        logger.error("serving parity: %s", mismatch)
+    return 0 if report["passed"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
