@@ -1291,8 +1291,6 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "matches_joined": "how many of those a closing price was joined to",
     # Inputs and configuration, not results.
     "seed": "the random seed a simulation was run under",
-    "seeds": "the random seeds the performance model's members were fitted under (they enter through "
-    "its early-stopping split); the display model is one fit and has none",
     "replicates": "how many null replicates the derived bar was simulated from",
     "bar_quantile": "which quantile of the null the bar is taken at",
     "tolerance": "E2's configured tolerance, not a measurement",

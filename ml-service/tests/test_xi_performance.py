@@ -115,7 +115,7 @@ def test_fit_produces_every_output_in_range(fitted, frame) -> None:
         assert np.all(np.diff(q, axis=1) >= 0) and np.all(q >= 0)
     wickets = prediction["wickets"]
     np.testing.assert_allclose(wickets["p0"] + wickets["p1"] + wickets["p2plus"], 1.0)
-    assert fitted.metadata["n_train"] > 0 and fitted.metadata["spec"]["seeds"] == [0]
+    assert fitted.metadata["n_train"] > 0 and "seeds" not in fitted.metadata["spec"]
 
 
 def test_marginalised_prediction_is_the_mean_of_both_innings(fitted, frame) -> None:
@@ -204,8 +204,8 @@ def _record_member_fits(monkeypatch) -> list:
     fits: list = []
     original = P._fit_member
 
-    def recording(x, rows, spec, seed):
-        member = original(x, rows, spec, seed)
+    def recording(x, rows, spec, iterations):
+        member = original(x, rows, spec, iterations)
         fits.append((rows.match_date.max(), member))
         return member
 
@@ -329,7 +329,7 @@ def test_fold_parts_read_members_that_did_not_see_the_fold_and_the_served_member
     with fast_fits():
         model = P.fit_performance(train, "T20", P.default_spec(shared_factor=True), matches)
 
-    assert len(fits) == 2  # one seed: the fold members, then the served ones
+    assert len(fits) == 2  # the fold members, then the served ones (the iteration choice fits no member)
     (fold_last_date, fold_member), (served_last_date, served_member) = fits
     assert fold_last_date < _calibration_fold_start(train)
     assert served_last_date == train.match_date.max()
@@ -411,3 +411,96 @@ def test_a_calibration_fold_too_thin_to_recalibrate_is_named_rather_than_fatal(f
     assert model.metadata["recalibration_skipped"] == ["runs"]
     quantiles = model.predict_marginalised(thin.tail(20))["runs"]["quantiles"]
     assert np.all(np.diff(quantiles, axis=1) >= 0)
+
+
+# --- EVAL-09: the iteration count is chosen on rows after the fit, never on a shuffle ------
+
+
+def _fitted_boosters(member: P.SeedMember):
+    """Every sklearn estimator a member holds, under the key its iteration count is recorded by."""
+    for part, clf in member.involvement.items():
+        yield f"p_{part}", clf
+    for target, fitted in member.quantile_direct.items():
+        for q, est in zip(P.QUANTILE_LEVELS, fitted):
+            yield f"{target}_q{q:g}", est
+    for target, fitted in member.quantile_conditional.items():
+        for q, est in zip(P.CONDITIONAL_LEVELS, fitted):
+            yield f"{target}_q{q:g}", est
+    for target, est in member.count_rate.items():
+        yield target, est
+
+
+def test_the_iteration_choice_split_is_temporal_and_never_puts_a_match_on_both_sides(frame) -> None:
+    """EVAL-09: sklearn's own early-stopping split drew a shuffled tenth of the rows, so the
+    ten match-mates of a validation row -- sharing its side's 44 context columns -- were
+    training rows. The choice fold is the most recent tenth by date, cut at a match
+    boundary: every match is wholly on one side, and the later side comes after the earlier."""
+    train = frame[frame.match_date < pd.Timestamp("2023-05-01")]
+
+    earlier, later = P._temporal_choice_split(train)
+
+    assert earlier.sum() + later.sum() == len(train) and not np.any(earlier & later)
+    assert set(train.match_id[earlier]).isdisjoint(train.match_id[later])
+    assert train.match_date[earlier].max() < train.match_date[later].min()
+    assert later.sum() >= P.ITERATION_CHOICE_FRACTION * len(train) > 0
+    assert (train.match_id.value_counts()[train.match_id[later].unique()] == 22).all()  # whole matches, both sides
+
+
+def test_every_served_booster_runs_its_chosen_count_with_sklearn_early_stopping_off(fitted) -> None:
+    """The served fit is a fresh fit on every row for exactly the count chosen on the
+    temporal fold, with no validation split of its own; a booster the fold was too thin to
+    choose for runs the ceiling. On main every booster carried ``early_stopping=True``."""
+    choice = fitted.metadata["iteration_choice"]
+
+    boosters = dict(_fitted_boosters(fitted.members[0]))
+
+    assert choice["reason"] == "each booster's own loss on the rows after the cut"
+    assert set(choice["chosen"]) <= set(boosters) and choice["chosen"]  # something was chosen
+    assert choice["n_fit"] + choice["n_choice"] == fitted.metadata["n_train"]
+    assert 1 <= min(choice["chosen"].values()) and max(choice["chosen"].values()) <= choice["max_iter"]
+    fitted_boosters = {key: est for key, est in boosters.items() if not isinstance(est, P.ConstantEstimator)}
+    assert fitted_boosters and set(fitted_boosters) >= set(choice["chosen"])
+    for key, est in fitted_boosters.items():
+        assert est.early_stopping is False, key
+        assert est.n_iter_ == choice["chosen"].get(key, choice["max_iter"]), key
+    assert fitted.metadata["iterations"] == {key: est.n_iter_ for key, est in boosters.items()}
+    assert len(fitted.members) == 1
+
+
+def test_the_chosen_count_is_where_the_boosters_own_loss_on_the_later_rows_is_lowest(frame) -> None:
+    """Reproduced for P(bats) with sklearn directly: a classifier fitted to the ceiling on
+    the rows before the cut, its log loss on the rows after it read off staged
+    predictions, and the chosen count is the iteration that loss is lowest at."""
+    from sklearn.metrics import log_loss
+
+    train = frame[frame.match_date < pd.Timestamp("2023-05-01")]
+    spec = P.default_spec(shared_factor=False)
+    earlier, later = P._temporal_choice_split(train)
+    x = P.design_matrix(train, spec.feature_cols)
+    label = (train.balls_faced.to_numpy() > 0).astype(int)
+
+    with fast_fits():
+        choice = P.choose_iterations(train, "T20", spec)
+        reference = P.HistGradientBoostingClassifier(
+            max_iter=P.MAX_ITER, random_state=P.RANDOM_STATE, early_stopping=False, **spec.hyperparameters
+        ).fit(x[earlier], label[earlier])
+    curve = [log_loss(label[later], p[:, 1], labels=[0, 1]) for p in reference.staged_predict_proba(x[later])]
+
+    assert choice.iterations["p_bats"] == int(np.argmin(curve)) + 1
+    assert choice.record["chosen"] == choice.iterations
+    assert choice.record["choice_from"] == train.match_date[later].min().date().isoformat()
+
+
+def test_a_history_too_short_to_cut_runs_the_ceiling_everywhere_and_warns(frame, caplog) -> None:
+    last_dates = sorted(frame.match_date.unique())[-20:]
+    train = frame[frame.match_date.isin(last_dates)]
+    _, later = P._temporal_choice_split(train)
+    assert later.sum() < P.MIN_FIT_ROWS <= len(train)  # enough to fit, not enough for its tenth to choose on
+
+    with fast_fits(), caplog.at_level("WARNING"):
+        model = P.fit_performance(train, "T20", P.default_spec(shared_factor=False, targets=("runs",)))
+
+    assert model.metadata["iteration_choice"]["reason"] == "too few rows to choose on"
+    assert model.metadata["iteration_choice"]["chosen"] == {}
+    assert "every booster runs 40 iterations" in caplog.text
+    assert {est.n_iter_ for _, est in _fitted_boosters(model.members[0])} == {40}

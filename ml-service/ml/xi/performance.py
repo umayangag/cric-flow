@@ -21,9 +21,14 @@ aggregates, venue context, the Elo edge, the kept fixture-context families (A-1:
 ground's and the competition's as-of scoring level), the player's age at the match date if
 gate X-1b kept it, and the innings (bat first / chase). The innings
 is the toss, not the result; it is marginalised at prediction -- predict under both and
-average -- unless the caller knows it (the same knob the win model has). Every fit is
-repeated over three seeds, which enter through the early-stopping split, and the members'
-outputs are averaged.
+average -- unless the caller knows it (the same knob the win model has).
+
+Each booster's iteration count is chosen on the most recent tenth of the training rows
+by date, cut at a match boundary, by the booster's own loss there (EVAL-09) -- then it is
+refitted on every row for exactly that count with sklearn's early stopping off. The
+eleven rows of one side share 44 of the 62 inputs, so sklearn's shuffled validation
+tenth was a near-copy of the training rows and the point it stopped at was optimistic;
+the choice fold's rows come after every row the choice fit saw, as the served rows will.
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from sklearn.metrics import log_loss, mean_pinball_loss, mean_poisson_deviance
 
 from ml.xi import contract as C
 from ml.xi import simulator
@@ -79,10 +85,19 @@ HYPERPARAMETER_GRID: Dict[str, Dict[str, float]] = {
     "large": {"learning_rate": 0.1, "max_leaf_nodes": 63, "min_samples_leaf": 50, "l2_regularization": 0.0},
 }
 DEFAULT_HYPERPARAMETERS = "medium"
+#: The ceiling on any booster's iterations; the count each one runs is chosen below it.
 MAX_ITER = 300
-#: Seeds enter here: which tenth of the training rows early stopping watches.
-EARLY_STOPPING: Dict[str, Any] = {"early_stopping": True, "validation_fraction": 0.1, "n_iter_no_change": 20}
-DEFAULT_SEEDS: Tuple[int, ...] = (0, 1, 2)
+#: EVAL-09: the most recent share of the training rows, by date and cut at a match
+#: boundary, that each booster's iteration count is chosen on -- the same tenth sklearn's
+#: early stopping used to draw at random from among rows whose match-mates it trained on.
+#: The choice fit sees only the rows before it; the served fit is then a fresh fit on every
+#: row for the chosen count, with early stopping off (``choose_iterations``).
+ITERATION_CHOICE_FRACTION = 0.1
+#: The one random state the boosters run under. ``HistGradientBoosting``'s random state
+#: reaches only the early-stopping split -- off here -- and the binning subsample above
+#: 200,000 rows (EVAL-02), so repeated fits under other seeds are the same model below that
+#: line and differ by the binning draw alone above it. There is nothing to average over.
+RANDOM_STATE = 0
 #: Structure per target, decided on the walk-forward folds by pinball loss (plan §5.3):
 #: two-part only where it beat direct by more than 0.5 % in every format -- wickets (1.0 %
 #: T20, 0.9 % ODI); for runs it was a tie (0.2 % / -0.05 %) at three times the fits.
@@ -105,7 +120,6 @@ class FitSpec:
     feature_cols: Tuple[str, ...]
     hyperparameters: Mapping[str, float]
     structure: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_STRUCTURE))
-    seeds: Tuple[int, ...] = DEFAULT_SEEDS
     recalibrate: Tuple[str, ...] = RECALIBRATED_TARGETS
     hyperparameters_name: str = DEFAULT_HYPERPARAMETERS
     # Experiments fit a subset of targets; production fits them all.
@@ -134,7 +148,6 @@ class FitSpec:
             "hyperparameters": self.hyperparameters_name,
             "hyperparameter_values": dict(self.hyperparameters),
             "structure": dict(self.structure),
-            "seeds": list(self.seeds),
             "recalibrate": list(self.recalibrate),
             "targets": list(self.targets),
             "shared_factor": self.shared_factor,
@@ -166,7 +179,6 @@ def default_spec(
     joint_format: bool = False,
     hyperparameters: str = DEFAULT_HYPERPARAMETERS,
     structure: Optional[Mapping[str, str]] = None,
-    seeds: Optional[Sequence[int]] = None,
     recalibrate: Optional[Sequence[str]] = None,
     targets: Optional[Sequence[str]] = None,
     shared_factor: Optional[bool] = None,
@@ -176,13 +188,12 @@ def default_spec(
     age: bool = C.AGE_FEATURES_KEPT,
 ) -> FitSpec:
     """The production spec, with the module's decided defaults read at call time so a
-    test can shrink the seeds without rebinding every caller."""
+    test can change one without rebinding every caller."""
     return FitSpec(
         feature_cols=tuple(C.performance_feature_cols(sequence_families, joint_format, fixture_context_families, age)),
         hyperparameters=HYPERPARAMETER_GRID[hyperparameters],
         hyperparameters_name=hyperparameters,
         structure=dict(structure or DEFAULT_STRUCTURE),
-        seeds=tuple(DEFAULT_SEEDS if seeds is None else seeds),
         recalibrate=tuple(RECALIBRATED_TARGETS if recalibrate is None else recalibrate),
         targets=tuple(targets) if targets is not None else tuple(t.name for t in TARGETS),
         shared_factor=simulator.SHARED_FACTOR if shared_factor is None else bool(shared_factor),
@@ -262,14 +273,21 @@ def count_distribution(zero_inflation: np.ndarray, rate: np.ndarray) -> Dict[str
 # --- fitting --------------------------------------------------------------------------
 
 
-def _regressor(loss: str, seed: int, hyperparameters: Mapping[str, float], quantile: Optional[float] = None):
+def _regressor(loss: str, hyperparameters: Mapping[str, float], max_iter: int, quantile: Optional[float] = None):
     return HistGradientBoostingRegressor(
-        loss=loss, quantile=quantile, max_iter=MAX_ITER, random_state=seed, **EARLY_STOPPING, **hyperparameters
+        loss=loss,
+        quantile=quantile,
+        max_iter=max_iter,
+        random_state=RANDOM_STATE,
+        early_stopping=False,
+        **hyperparameters,
     )
 
 
-def _classifier(seed: int, hyperparameters: Mapping[str, float]):
-    return HistGradientBoostingClassifier(max_iter=MAX_ITER, random_state=seed, **EARLY_STOPPING, **hyperparameters)
+def _classifier(hyperparameters: Mapping[str, float], max_iter: int):
+    return HistGradientBoostingClassifier(
+        max_iter=max_iter, random_state=RANDOM_STATE, early_stopping=False, **hyperparameters
+    )
 
 
 class ConstantEstimator:
@@ -290,60 +308,168 @@ class ConstantEstimator:
         return np.column_stack([1.0 - p, p])
 
 
-def _fit_count(x: np.ndarray, y: np.ndarray, seed: int, hyperparameters: Mapping[str, float]):
-    if y.sum() <= 0:
-        return ConstantEstimator(0.0)
-    return _regressor("poisson", seed, hyperparameters).fit(x, y)
+@dataclass(frozen=True)
+class Booster:
+    """One of a member's gradient-boosted estimators: what it predicts, the rows it is
+    fitted on (its population, H-20) and the outcome it is fitted to. The one enumeration
+    (``boosters``) feeds both the iteration choice and the fit, so the population a count
+    is chosen on is the population it is then fitted on."""
+
+    key: str  # "p_bats", "runs_q0.5", "wickets": the name its iteration count is recorded under
+    kind: str  # "involvement" (a classifier) | "quantile" | "count" (Poisson)
+    name: str  # the involvement part, or the target
+    mask: np.ndarray  # the rows of its population
+    y: np.ndarray  # its label (0 / 1) or outcome on every row; read through ``mask``
+    quantile: Optional[float] = None
 
 
-def _fit_involvement(x: np.ndarray, label: np.ndarray, seed: int, hyperparameters: Mapping[str, float]):
-    if label.all() or not label.any():
-        return ConstantEstimator(float(label.mean()))
-    return _classifier(seed, hyperparameters).fit(x, label.astype(int))
+def boosters(rows: pd.DataFrame, spec: FitSpec) -> List[Booster]:
+    """Every booster a member holds under ``spec``, in the order their fitted estimators are
+    kept: the involvement classifiers, then per target one regressor per level (or one
+    Poisson regressor), on the unconditional rows or -- two-part -- on the involved ones."""
+    involved = {part: rows[col].to_numpy() > 0 for part, col in INVOLVEMENT_COLS.items()}
+    everyone = np.ones(len(rows), dtype=bool)
+    out = [
+        Booster(f"p_{part}", "involvement", part, everyone, involved[part].astype(int))
+        for part in spec.involvement_parts
+    ]
+    for t in spec.target_specs:
+        structure = spec.structure[t.name]
+        if structure == "two_part" and t.involvement is None:
+            raise ValueError(f"{t.name} has no involvement part; only 'direct' is possible")
+        mask = involved[t.involvement] if structure == "two_part" else everyone
+        if mask.sum() < MIN_FIT_ROWS:
+            raise ValueError(f"{t.name}: {int(mask.sum())} rows to fit on, need {MIN_FIT_ROWS}")
+        y = rows[t.name].to_numpy(dtype=float)
+        if t.kind == "quantile":
+            levels = CONDITIONAL_LEVELS if structure == "two_part" else QUANTILE_LEVELS
+            out.extend(Booster(f"{t.name}_q{q:g}", "quantile", t.name, mask, y, q) for q in levels)
+        else:
+            out.append(Booster(t.name, "count", t.name, mask, y))
+    return out
+
+
+def _fit_booster(booster: Booster, x: np.ndarray, hyperparameters: Mapping[str, float], max_iter: int):
+    """The booster fitted on its population for exactly ``max_iter`` iterations -- or a
+    constant, when the population cannot support a fit (everyone involved, or nobody; a
+    count that is zero on every row)."""
+    y = booster.y[booster.mask]
+    if booster.kind == "involvement":
+        if y.all() or not y.any():
+            return ConstantEstimator(float(y.mean()))
+        return _classifier(hyperparameters, max_iter).fit(x[booster.mask], y)
+    if booster.kind == "count":
+        if y.sum() <= 0:
+            return ConstantEstimator(0.0)
+        return _regressor("poisson", hyperparameters, max_iter).fit(x[booster.mask], y)
+    return _regressor("quantile", hyperparameters, max_iter, quantile=booster.quantile).fit(x[booster.mask], y)
+
+
+def _staged_loss(booster: Booster, model: Any, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """The booster's own training loss on ``(x, y)`` after each iteration it ran: log
+    loss for a classifier, the pinball loss at its level for a quantile, the Poisson
+    deviance for a count."""
+    if booster.kind == "involvement":
+        return np.array([log_loss(y, p[:, 1], labels=[0, 1]) for p in model.staged_predict_proba(x)])
+    if booster.kind == "count":
+        return np.array([mean_poisson_deviance(y, np.maximum(p, 1e-9)) for p in model.staged_predict(x)])
+    return np.array([mean_pinball_loss(y, p, alpha=booster.quantile) for p in model.staged_predict(x)])
+
+
+def _temporal_choice_split(rows: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+    """Masks of the rows the choice fit trains on and the later rows it is scored on: the
+    most recent ``ITERATION_CHOICE_FRACTION`` of the rows by date. A match has one date, so
+    the cut falls at a match boundary and no match's rows land on both sides."""
+    dates = rows.match_date.to_numpy()
+    boundary = np.sort(dates)[int(len(dates) * (1.0 - ITERATION_CHOICE_FRACTION))]
+    later = dates >= boundary
+    return ~later, later
+
+
+@dataclass(frozen=True)
+class IterationChoice:
+    """Per booster, the iteration count it is fitted for, and the record of how that was
+    chosen -- the fit's metadata carries it, so a run says on what evidence."""
+
+    iterations: Dict[str, int]
+    record: Dict[str, Any]
+
+
+def choose_iterations(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> IterationChoice:
+    """EVAL-09: each booster's iteration count, chosen where the served model will be used
+    -- on rows after every row it was fitted on. The choice fit runs to ``MAX_ITER`` on the
+    rows before the temporal cut and the count is the iteration at which its own loss on
+    the rows after the cut is lowest. A booster whose population is too thin on either side
+    to read a loss curve off, or that the earlier rows cannot support at all, runs
+    ``MAX_ITER``; so does every booster when the history is too short to cut."""
+    earlier, later = _temporal_choice_split(rows)
+    record: Dict[str, Any] = {
+        "max_iter": MAX_ITER,
+        "fraction": ITERATION_CHOICE_FRACTION,
+        "n_fit": int(earlier.sum()),
+        "n_choice": int(later.sum()),
+        "choice_from": rows.match_date[later].min().date().isoformat() if later.any() else None,
+    }
+    if earlier.sum() < MIN_FIT_ROWS or later.sum() < MIN_FIT_ROWS:
+        logger.warning(
+            "%s: %d rows before the iteration-choice cut and %d after, need %d each; every booster runs %d iterations",
+            format_code,
+            earlier.sum(),
+            later.sum(),
+            MIN_FIT_ROWS,
+            MAX_ITER,
+        )
+        return IterationChoice({}, {**record, "reason": "too few rows to choose on", "chosen": {}})
+    x = design_matrix(rows, spec.feature_cols)
+    chosen: Dict[str, int] = {}
+    for booster in boosters(rows, spec):
+        fit_mask, choice_mask = booster.mask & earlier, booster.mask & later
+        if fit_mask.sum() < MIN_FIT_ROWS or choice_mask.sum() < MIN_FIT_ROWS:
+            continue
+        model = _fit_booster(replace(booster, mask=fit_mask), x, spec.hyperparameters, MAX_ITER)
+        if isinstance(model, ConstantEstimator):
+            continue
+        curve = _staged_loss(booster, model, x[choice_mask], booster.y[choice_mask])
+        chosen[booster.key] = int(np.argmin(curve)) + 1
+    logger.info(
+        "%s: iterations chosen on %d rows from %s: %s", format_code, record["n_choice"], record["choice_from"], chosen
+    )
+    return IterationChoice(
+        chosen, {**record, "reason": "each booster's own loss on the rows after the cut", "chosen": chosen}
+    )
 
 
 @dataclass
 class SeedMember:
-    """One seed's fitted estimators."""
+    """One fitted set of estimators. There is one per model: ``seed`` is the random state
+    it ran under, which reaches only the binning subsample above 200,000 rows (see
+    ``RANDOM_STATE``). The name is the artifact's; a run fitted before EVAL-09 still
+    loads."""
 
     seed: int
     involvement: Dict[str, Any]  # "bats" / "bowls" -> classifier on the unconditional rows
     quantile_direct: Dict[str, List[Any]]  # target -> one regressor per QUANTILE_LEVELS
     quantile_conditional: Dict[str, List[Any]]  # target -> one regressor per CONDITIONAL_LEVELS
     count_rate: Dict[str, Any]  # target -> Poisson regressor (all rows, or the involved rows)
-    iterations: Dict[str, int]  # estimator name -> boosting iterations used
+    iterations: Dict[str, int]  # booster key -> boosting iterations run
 
 
-def _fit_member(x: np.ndarray, rows: pd.DataFrame, spec: FitSpec, seed: int) -> SeedMember:
-    hp = spec.hyperparameters
-    involved = {part: rows[col].to_numpy() > 0 for part, col in INVOLVEMENT_COLS.items()}
-    iterations: Dict[str, int] = {}
-    involvement = {}
-    for part in spec.involvement_parts:
-        clf = _fit_involvement(x, involved[part], seed, hp)
-        involvement[part] = clf
-        iterations[f"p_{part}"] = int(clf.n_iter_)
-    quantile_direct: Dict[str, List[Any]] = {}
-    quantile_conditional: Dict[str, List[Any]] = {}
-    count_rate: Dict[str, Any] = {}
-    for t in spec.target_specs:
-        y = rows[t.name].to_numpy(dtype=float)
-        structure = spec.structure[t.name]
-        if structure == "two_part" and t.involvement is None:
-            raise ValueError(f"{t.name} has no involvement part; only 'direct' is possible")
-        mask = involved[t.involvement] if structure == "two_part" else np.ones(len(rows), dtype=bool)
-        if mask.sum() < MIN_FIT_ROWS:
-            raise ValueError(f"{t.name}: {int(mask.sum())} rows to fit on, need {MIN_FIT_ROWS}")
-        if t.kind == "quantile":
-            levels = CONDITIONAL_LEVELS if structure == "two_part" else QUANTILE_LEVELS
-            fitted = [_regressor("quantile", seed, hp, quantile=q).fit(x[mask], y[mask]) for q in levels]
-            (quantile_conditional if structure == "two_part" else quantile_direct)[t.name] = fitted
-            iterations[t.name] = int(np.mean([m.n_iter_ for m in fitted]))
+def _fit_member(x: np.ndarray, rows: pd.DataFrame, spec: FitSpec, iterations: Mapping[str, int]) -> SeedMember:
+    """Every booster fitted on ``rows`` for the count ``iterations`` names for it --
+    ``MAX_ITER`` for one it does not name."""
+    member = SeedMember(RANDOM_STATE, {}, {}, {}, {}, {})
+    for booster in boosters(rows, spec):
+        fitted = _fit_booster(booster, x, spec.hyperparameters, iterations.get(booster.key, MAX_ITER))
+        member.iterations[booster.key] = int(fitted.n_iter_)
+        if booster.kind == "involvement":
+            member.involvement[booster.name] = fitted
+        elif booster.kind == "count":
+            member.count_rate[booster.name] = fitted
+        elif spec.structure[booster.name] == "two_part":
+            member.quantile_conditional.setdefault(booster.name, []).append(fitted)
         else:
-            est = _fit_count(x[mask], y[mask], seed, hp)
-            count_rate[t.name] = est
-            iterations[t.name] = int(est.n_iter_)
-    return SeedMember(seed, involvement, quantile_direct, quantile_conditional, count_rate, iterations)
+            member.quantile_direct.setdefault(booster.name, []).append(fitted)
+    return member
 
 
 def _predict_member(member: SeedMember, x: np.ndarray, spec: FitSpec) -> Dict[str, Any]:
@@ -419,9 +545,9 @@ class PerformanceModels:
         return self._finalize(_average(both))
 
     @property
-    def iterations(self) -> Dict[str, float]:
-        names = self.members[0].iterations
-        return {name: float(np.mean([m.iterations[name] for m in self.members])) for name in names}
+    def iterations(self) -> Dict[str, int]:
+        """Per booster, the iterations the served model ran."""
+        return dict(self.members[0].iterations)
 
 
 def _temporal_calibration_split(rows: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -529,9 +655,8 @@ def _fit_simulator_calibration(
     return fold
 
 
-def _fit_members(rows: pd.DataFrame, spec: FitSpec) -> List[SeedMember]:
-    x = design_matrix(rows, spec.feature_cols)
-    return [_fit_member(x, rows, spec, seed) for seed in spec.seeds]
+def _fit_members(rows: pd.DataFrame, spec: FitSpec, iterations: Mapping[str, int]) -> List[SeedMember]:
+    return [_fit_member(design_matrix(rows, spec.feature_cols), rows, spec, iterations)]
 
 
 def _calibration_fold(rows: pd.DataFrame, format_code: str, spec: FitSpec) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -589,12 +714,13 @@ def _fit_fold_parts(
     format_code: str,
     spec: FitSpec,
     match_frame: Optional[pd.DataFrame],
+    iterations: Mapping[str, int],
 ) -> Tuple[Dict[str, QuantileRecalibration], FoldCalibration]:
     """The parts fitted on the calibration fold's residuals: members fitted on the rows
     before the fold predict the fold, which they did not train on (H-21), and the quantile
     recalibration (H-5) and the simulator's calibration (P-4) read the residuals. These
     members are discarded afterwards; the served ones are refitted on every row."""
-    fold_model = PerformanceModels(format_code, spec, _fit_members(fold_rows, spec), {}, {})
+    fold_model = PerformanceModels(format_code, spec, _fit_members(fold_rows, spec, iterations), {}, {})
     fold_model.calibration.update(_fit_recalibration(fold_model, calibration_rows, format_code, spec))
     simulation = (
         _fit_simulator_calibration(
@@ -610,17 +736,19 @@ def fit_performance(
     rows: pd.DataFrame, format_code: str, spec: FitSpec, match_frame: Optional[pd.DataFrame] = None
 ) -> PerformanceModels:
     """Fit the format's model on ``rows`` (the training population, every XI player) under
-    ``spec``: one member per seed, fitted on every row, and -- for the targets
-    ``spec.recalibrate`` names -- a quantile recalibration fitted on the last
+    ``spec``: each booster's iteration count chosen on the most recent tenth of the rows
+    (``choose_iterations``), one member fitted on every row for those counts, and -- for
+    the targets ``spec.recalibrate`` names -- a quantile recalibration fitted on the last
     ``CALIBRATION_DAYS`` of the rows against members that did not train on them. The
     simulator's calibration comes from the same rows: the runs-balls copula from every row
     and, under ``spec.shared_factor``, the shared match factor from the calibration fold,
     which needs the win rows (``match_frame``).
 
-    Calibrate on the fold, refit on the full history: the fold-fitted parts must read
-    residuals the members could not have learned, and the served members must read the
-    most recent rows -- the ratings they serve beside already do. The fold members differ
-    from the served ones only by the fold's rows (2-5 % of a format's history)."""
+    Choose and calibrate on rows after the ones fitted, refit on the full history: the
+    iteration choice and the fold-fitted parts must read rows the fit could not have
+    learned, and the served members must read the most recent rows -- the ratings they
+    serve beside already do. The fold members differ from the served ones only by the
+    fold's rows (2-5 % of a format's history)."""
     if len(rows) < MIN_FIT_ROWS:
         raise ValueError(f"{format_code}: {len(rows)} training rows, need {MIN_FIT_ROWS}")
     if spec.shared_factor and match_frame is None:
@@ -635,13 +763,14 @@ def fit_performance(
     if spec.chase_dispersion != "none" and not spec.shared_factor:
         raise ValueError(f"{format_code}: the chase dispersion needs the shared match factor")
     started = time.perf_counter()
+    choice = choose_iterations(rows, format_code, spec)
     fold_rows, calibration_rows = _calibration_fold(rows, format_code, spec)
     calibration, fold = (
-        _fit_fold_parts(fold_rows, calibration_rows, format_code, spec, match_frame)
+        _fit_fold_parts(fold_rows, calibration_rows, format_code, spec, match_frame, choice.iterations)
         if len(calibration_rows)
         else ({}, FoldCalibration())
     )
-    model = PerformanceModels(format_code, spec, _fit_members(rows, spec), calibration, {})
+    model = PerformanceModels(format_code, spec, _fit_members(rows, spec, choice.iterations), calibration, {})
     model.simulation = simulator.calibrate(
         rows, fold.shared_factor, fold.chase_response, fold.chase_dispersion, fold.chase_sample
     )
@@ -660,7 +789,10 @@ def fit_performance(
         # only the rows before it.
         "calibration_from": calibration_rows.match_date.min().date().isoformat() if len(calibration_rows) else None,
         "spec": spec.as_dict(),
+        # What the served boosters ran, and the choice that fixed it (EVAL-09): the cut, the
+        # rows on each side of it and the count each booster's own loss picked there.
         "iterations": model.iterations,
+        "iteration_choice": choice.record,
         "simulation": model.simulation.as_dict(),
         "fit_seconds": round(time.perf_counter() - started, 1),
     }
