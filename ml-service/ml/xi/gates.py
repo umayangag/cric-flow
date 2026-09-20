@@ -274,9 +274,11 @@ GATES: Tuple[Gate, ...] = (
     Gate(
         id="H-8",
         name="Train / serve parity",
-        varies="the code path: the training pass or the as-of serving path",
-        fixed="the last 50 matches, their elevens, the performance model, the simulator seed",
-        decides="max abs difference <= 1e-9 across rows, predictions and draws, else the run fails",
+        varies="the code path: the training pass, or the as-of serving path over the win and performance "
+        "artifacts written to a run directory and loaded back through XiStore.load",
+        fixed="the last 50 matches, their elevens, the fitted models, the simulator seed",
+        decides="max abs difference <= 1e-9 across rows, the served display and objective probabilities "
+        "(as-of and from the loaded artifact), performance predictions and draws, else the run fails",
         report_path=REPORT_SCOPE + "serving_parity.passed",
         threshold=Threshold(rule="passed is true", failure=_h8_failure),
     ),

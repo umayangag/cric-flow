@@ -40,6 +40,7 @@ SOURCE_ROOTS = ("app", "ml")
 #                       (run_training_subprocess) and by the Makefiles
 #   ml.xi.evaluate      invoked by `make evaluate`
 #   ml.xi.parity        invoked by `make xi-parity`
+#   ml.xi.asof          invoked by `make serving-parity` (also imported by ml.xi.evaluate)
 #
 # Keep this in step with the `-m ml.` call sites; the check fails loudly if an
 # entrypoint listed here no longer exists on disk.
@@ -52,6 +53,7 @@ MODULE_ENTRYPOINTS = (
 # everything they pull in are live. Value is the command that runs them.
 SCRIPT_ENTRYPOINTS: Dict[str, str] = {
     "ml.xi.parity": "make xi-parity",
+    "ml.xi.asof": "make serving-parity",
     "ml.xi.evaluate": "make evaluate",
     "ml.xi.biography": "make export-birth-dates",
     "ml.weather.backfill": "make restore-venue-weather",

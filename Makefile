@@ -13,7 +13,7 @@ ML_VENV_BIN := $(abspath ml-service/.venv/bin)
 .PHONY: dev-up dev-up-with-frontend dev-down dev-destroy dev-purge dev-rebuild dev-rebuild-nocache
 .PHONY: logs api migrate output-dirs
 .PHONY: go-test go-test-int ml-serve ml-install
-.PHONY: retrain evaluate reload xi-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies restore-player-biographies venue-weather restore-venue-weather
+.PHONY: retrain evaluate reload xi-parity serving-parity export-birth-dates full-pipeline cadence cadence-dry-run player-biographies restore-player-biographies venue-weather restore-venue-weather
 .PHONY: fmt fmt-check fmt-go fmt-py lint lint-go lint-py lint-frontend install-hooks gen-architecture-map gen-architecture-map-check init init-go init-py cricsheet-import
 .PHONY: up-all build-apps build-apps-nocache recreate-apps help help-all list
 .PHONY: ci ci-go ci-ml seed-fixtures e2e-backtest-smoke migrate-local frontend-stop
@@ -130,6 +130,12 @@ reload:
 evaluate:
 	set -a; [ -f .env ] && . ./.env; set +a; \
 	$(MAKE) -C ml-service evaluate $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(BIRTH_DATES),BIRTH_DATES="$(abspath $(BIRTH_DATES))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",) $(if $(GENDER_SPLIT_CONTEXT),GENDER_SPLIT_CONTEXT=1,) $(if $(MARKET_ODDS_DIR),MARKET_ODDS_DIR="$(abspath $(MARKET_ODDS_DIR))",)
+
+# Serving parity of a run on disk (H-8): what the run `current` names (or RUN=) serves,
+# loaded the way reload loads it, against a fresh pass over the database. See ml-service/Makefile.
+serving-parity:
+	set -a; [ -f .env ] && . ./.env; set +a; \
+	$(MAKE) -C ml-service serving-parity $(if $(RUN),RUN="$(RUN)",) $(if $(CRICSHEET_DIR),CRICSHEET_DIR="$(abspath $(CRICSHEET_DIR))",) $(if $(BIRTH_DATES),BIRTH_DATES="$(abspath $(BIRTH_DATES))",) $(if $(XI_OUT),XI_OUT="$(abspath $(XI_OUT))",)
 
 # Compare the database against the Cricsheet archive (H-15). See ml-service/Makefile.
 XI_PARITY_DIR ?= data/go-app/cricsheet
@@ -568,6 +574,7 @@ help:
 	@echo "  reload             Point current at a run and load it (RUN=<id> optional)"
 	@echo "  evaluate           L4 harness: walk-forward + locked window, one JSON report"
 	@echo "  xi-parity          Check the database against the Cricsheet archive (H-15; XI_PARITY_DIR=)"
+	@echo "  serving-parity     H-8 for the served run (or RUN=) against a fresh pass over the database"
 	@echo "  export-birth-dates Write the database's dates of birth as the CSV an archive-path run reads (BIRTH_DATES=)"
 	@echo
 	@echo "[Testing & CI]"

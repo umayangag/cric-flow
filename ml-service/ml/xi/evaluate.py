@@ -54,6 +54,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -73,11 +74,12 @@ from ml.xi import (
     sim_harness,
     simulator,
 )
-from ml.xi.asof import serving_parity
+from ml.xi.asof import round_trip_store, serving_parity
 from ml.xi.builder import build
 from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
+from ml.xi.store import FormatModels
 from ml.xi.train import _score_marginalised, _xy, fit_display_model_as_shipped, make_objective_model
 
 logger = logging.getLogger(__name__)
@@ -339,29 +341,56 @@ def locked_recalibration(requested: Tuple[str, ...], model: Optional[Performance
     }
 
 
+@dataclass
+class ParityModels:
+    """What H-8 serves for one format, and which window fitted each: the win models the
+    routes answer with and the performance model the simulator draws from. The locked
+    window's when it fitted them, else the last fold's that did, so H-8 always has a
+    model to serve while a freshly rotated window is still too small to score (A-4)."""
+
+    win: Optional[FormatModels] = None
+    win_window: Optional[str] = None
+    performance: Optional[PerformanceModels] = None
+    performance_window: Optional[str] = None
+
+
+def _win_models(format_code: str, outcome: FoldOutcome) -> Optional[FormatModels]:
+    """The window's fitted win models as the artifact ``retrain`` writes them, so the
+    round trip serves the same shape a run does."""
+    if outcome.objective is None:
+        return None
+    return FormatModels(
+        format_code=format_code,
+        objective=outcome.objective,
+        display=outcome.display,
+        objective_cols=list(C.XI_FEATURE_COLS),
+        display_cols=list(C.DISPLAY_FEATURE_COLS),
+        metadata={"window": outcome.report.get("cutoff")},
+    )
+
+
 def evaluate_format(
     format_code: str,
     frame: pd.DataFrame,
     player_frame: pd.DataFrame,
     pairs: Sequence[natural_experiment.LineupPair] = (),
     benchmark: Optional[market.Benchmark] = None,
-) -> Tuple[Dict, Optional[PerformanceModels]]:
-    """The format's walk-forward folds and its locked window; also returns the performance
-    model the parity check serves through the as-of path -- the locked window's, or the last
-    fold that fitted one while a freshly rotated window is still too small to score (A-4),
-    so H-8 always has a model to serve. ``pairs`` are E5's lineup pairs (all formats;
-    filtered here), already carrying the previous eleven's as-of aggregates. ``benchmark``,
-    when given, is handed each window's display models to score X-4's market arm beside
-    them; it reads and decides nothing else."""
+) -> Tuple[Dict, ParityModels]:
+    """The format's walk-forward folds and its locked window; also returns the models the
+    parity check serves through the as-of path (``ParityModels``). ``pairs`` are E5's
+    lineup pairs (all formats; filtered here), already carrying the previous eleven's
+    as-of aggregates. ``benchmark``, when given, is handed each window's display models
+    to score X-4's market arm beside them; it reads and decides nothing else."""
     format_frame = frame[frame.format_code == format_code]
     folds: List[Dict] = []
     fold_objectives: List[Tuple[pd.Timestamp, pd.Timestamp, Optional[natural_experiment.Proba]]] = []
-    latest_fold_model: Optional[PerformanceModels] = None
-    latest_fold_cutoff: Optional[pd.Timestamp] = None
+    parity = ParityModels()
     for cutoff, end in fold_windows():
         outcome = _evaluate_fold(format_code, format_frame, player_frame, cutoff, end, benchmark=benchmark)
         if outcome.performance_model is not None:
-            latest_fold_model, latest_fold_cutoff = outcome.performance_model, cutoff
+            parity.performance, parity.performance_window = outcome.performance_model, cutoff.date().isoformat()
+        if outcome.objective is not None:
+            parity.win, parity.win_window = _win_models(format_code, outcome), cutoff.date().isoformat()
         folds.append(outcome.report)
         fold_objectives.append((cutoff, end, _proba(outcome.objective)))
     summary = _summarize_folds(folds)
@@ -388,17 +417,17 @@ def evaluate_format(
         C.XI_FEATURE_COLS,
         served=format_code in OPTIMISED_SELECTION_FORMATS,
     )
-    parity_model = locked_model if locked_model is not None else latest_fold_model
+    if locked_model is not None:
+        parity.performance, parity.performance_window = locked_model, LOCKED_START
+    if locked_outcome.objective is not None:
+        parity.win, parity.win_window = _win_models(format_code, locked_outcome), LOCKED_START
     return {
         "n_matches": int(len(format_frame)),
         "walk_forward": {"folds": folds, "summary": summary},
         "locked": locked,
-        # Which window fitted the model H-8 serves, so a parity number names its model.
-        "parity_model_window": (
-            LOCKED_START
-            if locked_model is not None
-            else (latest_fold_cutoff.date().isoformat() if latest_fold_cutoff is not None else None)
-        ),
+        # Which window fitted each model H-8 serves, so a parity number names its models.
+        "parity_model_window": parity.performance_window,
+        "parity_win_model_window": parity.win_window,
         # E2's rule, applied to the folds only; what the serving path does is the constant
         # ``simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED``, set from this by hand.
         "simulation_decision": {
@@ -411,7 +440,7 @@ def evaluate_format(
         # ``optimizer.OPTIMISED_SELECTION_FORMATS``, set from this by hand (plan §8.8).
         "e5_lineup_only": e5,
         "selection_decision": e5["decision"],
-    }, parity_model
+    }, parity
 
 
 def _market_benchmark(source: MatchSource, frame: pd.DataFrame, market_odds_dir: Optional[str]) -> market.Benchmark:
@@ -468,24 +497,33 @@ def evaluate(
     # X-4: the market arm, joined once and scored inside each fold beside that fold's own
     # display models. It informs and decides nothing, and nothing else in the run reads it.
     benchmark = _market_benchmark(source, result.frame, market_odds_dir)
-    locked_models: Dict[str, PerformanceModels] = {}
+    win_models: Dict[str, FormatModels] = {}
+    performance_models: Dict[str, PerformanceModels] = {}
     for format_code in C.FORMAT_CODES:
         logger.info("evaluating %s", format_code)
-        report["formats"][format_code], model = evaluate_format(
+        report["formats"][format_code], parity_models = evaluate_format(
             format_code, result.frame, player_frame, pairs, benchmark=benchmark
         )
-        if model is not None:
-            locked_models[format_code] = model
+        if parity_models.win is not None:
+            win_models[format_code] = parity_models.win
+        if parity_models.performance is not None:
+            performance_models[format_code] = parity_models.performance
     report["market_benchmark"] = benchmark.report(C.FORMAT_CODES)
     logger.info("serving parity (H-8): rebuilding the last %d matches from the as-of path", PARITY_LAST_N)
-    report["serving_parity"] = serving_parity(
-        parity_source_factory(),
-        result.frame,
-        result.player_frame,
-        last_n=PARITY_LAST_N,
-        gender_split_context=gender_split_context,
-        performance_models=locked_models,
-    )
+    # The models are served from a run directory written and loaded back the way retrain
+    # and reload do it, never from the objects in memory (EVAL-10): a run this code
+    # cannot serve is refused here by name (D-6), and the numbers compared are the ones
+    # the routes answer with.
+    with tempfile.TemporaryDirectory(prefix="h8-round-trip-") as directory:
+        store = round_trip_store(result.state, win_models, performance_models, directory)
+        report["serving_parity"] = serving_parity(
+            parity_source_factory(),
+            result.frame,
+            result.player_frame,
+            last_n=PARITY_LAST_N,
+            gender_split_context=gender_split_context,
+            store=store,
+        )
     # H-23: the report carries every gate's varied / fixed / decides triple, and is checked
     # against the registry -- a gate printed without one is a defect of the report -- and
     # every standing gate's clause is evaluated on the number the report carries, so a
