@@ -186,6 +186,27 @@ def choose_display_params(train: pd.DataFrame) -> Dict:
     }
 
 
+def fit_display_model_as_shipped(train: pd.DataFrame) -> Tuple[object, Dict]:
+    """The display model the recipe produces from these training rows: the grid's pick,
+    fitted on all of them, with the record of the choice.
+
+    Both writers fit through here -- ``train_format`` for the run that ships and the
+    harness's ``_evaluate_win_window`` for every walk-forward window -- so the model the
+    harness measures is the model a retrain at that cutoff would have served. The harness
+    used to fit grid point 0 regardless (EVAL-06), which left a format whose grid picked
+    another point with no walk-forward evidence for the model it served.
+
+    The record carries the pick, the reason, every candidate's inner-split score and the
+    iterations the fit ran (equal to the chosen ``max_iter`` by construction, EVAL-01); it
+    reaches the run manifest under ``hyperparameters`` and each harness window under the
+    same key.
+    """
+    grid = choose_display_params(train)
+    x_train, y_train = _xy(train, C.DISPLAY_FEATURE_COLS)
+    display = make_display_model(C.DISPLAY_FEATURE_COLS, grid["params"]).fit(x_train, y_train)
+    return display, {**grid, "n_iter": int(display.n_iter_)}
+
+
 def _xy(frame: pd.DataFrame, cols: List[str]):
     return frame[cols].fillna(0.0).to_numpy(dtype=float), frame[C.TARGET_COL].to_numpy(dtype=float)
 
@@ -270,14 +291,8 @@ def train_format(
         report["skipped_reason"] = "insufficient training rows"
         return None, report
     x_obj_tr, y_tr = _xy(tr, C.XI_FEATURE_COLS)
-    x_dis_tr, _ = _xy(tr, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_obj_tr, y_tr)
-    grid = choose_display_params(tr)
-    display = make_display_model(C.DISPLAY_FEATURE_COLS, grid["params"]).fit(x_dis_tr, y_tr)
-    # The iterations the served model ran, beside the ``max_iter`` the grid chose: equal by
-    # construction now, and the number that would have shown an early-stopped fit from the
-    # record rather than from sklearn's defaults (EVAL-01). It reaches the run manifest.
-    report["hyperparameters"] = {**grid, "n_iter": int(display.n_iter_)}
+    display, report["hyperparameters"] = fit_display_model_as_shipped(tr)
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)

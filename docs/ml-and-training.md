@@ -100,7 +100,9 @@ different run.
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): none — the chosen values are inputs, and `hyperparameters` is declared a non-metric so the completeness gate does not ask anyone to explain a learning rate.
 
-There is one search, it is three points wide, and it runs inside `retrain`.
+There is one search, it is three points wide, and it runs inside `retrain` — and inside every
+window the harness scores, because the grid is part of the recipe and the harness measures
+the recipe (EVAL-06, below).
 
 `ml.xi.train.DISPLAY_GRID` holds three settings for the display model (depth, learning rate,
 iterations). Each is fitted on the first 80 % of the training rows *by date* and scored on the
@@ -109,6 +111,26 @@ hyperparameter cannot see the rows the run is scored on (H-19). The incumbent (t
 display model has always been fitted with) keeps its place unless a candidate beats it by more
 than `DISPLAY_GRID_MARGIN` = 0.002 AUC: differences under the noise floor are not evidence
 (H-14), and a grid that reshuffles the model on 0.001 every release is a source of drift.
+
+**The harness fits the model the grid would ship (EVAL-06).** `train_format` and the
+harness's `_evaluate_win_window` fit the display model through one function,
+`fit_display_model_as_shipped`: run the grid on the window's training rows, fit the pick on all
+of them, record the choice. Each walk-forward fold and the locked window therefore carry a
+`hyperparameters` record — pick, reason, every candidate's inner-split score, `n_iter` — under
+the same key the run manifest uses, and the walk-forward `display_auc` describes the model a
+retrain at that cutoff would have served. Before this the harness fitted grid point 0
+regardless, so a format whose retrain had picked another point had walk-forward evidence for
+a model it never served — and that was not hypothetical: TEST picked point 1 in five of the
+ten manifests on disk, and on the harness's own windows the grid moves off point 0 in **nine
+of T20I's twelve** (measured on the full database at `7652a0e8`; T20 and ODI never, TEST
+once). The grid costs the harness **177 s over the 48 windows** on that measurement (T20
+6.7 s per window, T20I 6.3 s, ODI and TEST under 1 s, taken while a test run shared the
+cores, so an upper bound) — about 2.5 % of a two-hour run. Where the grid moved in T20I, the
+pick's out-of-window AUC against the incumbent's read +0.012, +0.011, +0.004, 0.000, −0.003,
+−0.009, −0.009, −0.023 on windows of 23–57 matches: the grid is not buying anything the
+harness can resolve there, and the margin of 0.002 sits well under the noise of a
+~350-row inner split. That is a finding about the grid, recorded in `docs/AUDIT_FINDINGS.md`
+under EVAL-06's entry; the harness now reports it every run instead of hiding it.
 
 **The model the grid scored is the model fitted (EVAL-01).** `make_display_model` passes
 `early_stopping=False` explicitly. sklearn's default is `'auto'`, which switches early stopping

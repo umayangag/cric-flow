@@ -179,24 +179,47 @@ def test_headline_metrics_and_notes_read_the_report_not_the_models() -> None:
     assert notes["TEST"] == "not trained: insufficient training rows (12 rows before the cutoff)"
 
 
+# --- EVAL-06: the harness measures the display model the grid would ship ---------------
+
+#: The grid's settings a fitted display model carries, so two fits can be compared by the
+#: configuration they were made under rather than by their predictions.
+GRID_SETTINGS = ("max_depth", "learning_rate", "max_iter")
+
+
+def _grid_settings(model) -> dict:
+    params = model.get_params()
+    return {key: params[key] for key in GRID_SETTINGS}
+
+
+def test_the_harness_fits_the_display_model_the_grid_would_ship(monkeypatch) -> None:
+    """EVAL-06: the harness used to fit the display model at grid point 0 whatever the grid
+    would have chosen, so a format whose retrain picked another point had walk-forward
+    numbers for a model it never served. Under a grid whose incumbent is a one-stump model
+    the grid must move, and the harness window must be fitted at the pick, record it under
+    the manifest's key, and carry the same configuration ``train_format`` ships."""
+    one_stump, incumbent = {"max_depth": 1, "learning_rate": 0.001, "max_iter": 1}, dict(train_module.DISPLAY_GRID[0])
+    monkeypatch.setattr(train_module, "DISPLAY_GRID", (one_stump, incumbent))
+    rows = synthetic_win_rows(400)
+    cutoff, end = pd.Timestamp("2024-01-01"), rows.match_date.max() + pd.Timedelta(days=1)
+
+    models, report = train_format(rows, "T20", cutoff)
+    fold, _, harness_display = evaluate_module._evaluate_win_window(rows, cutoff, end)
+
+    assert report["hyperparameters"]["params"] == incumbent, "the grid moved off its (crippled) incumbent"
+    assert fold["hyperparameters"] == report["hyperparameters"], "the window records the pick the manifest records"
+    assert _grid_settings(harness_display) == _grid_settings(models.display) == incumbent
+
+
 # --- EVAL-05: one key, one quantity, whichever writer wrote it -------------------------
 
 
-def _pin_the_display_grid_to_its_incumbent(monkeypatch) -> None:
-    """The harness fits the display model at the grid's incumbent and never runs the grid
-    (EVAL-06); that is not this test's subject, so both writers are held to the same
-    display fit and only the scoring can differ."""
-    incumbent = {"params": dict(train_module.DISPLAY_GRID[0]), "reason": "pinned for the test", "scores": []}
-    monkeypatch.setattr(train_module, "choose_display_params", lambda train: incumbent)
-
-
-def test_the_manifest_headline_is_the_number_the_harness_reports_under_the_same_key(monkeypatch) -> None:
+def test_the_manifest_headline_is_the_number_the_harness_reports_under_the_same_key() -> None:
     """EVAL-05: ``objective_auc`` and ``display_auc_mean`` reach the run manifest from
     ``train_format``'s report and the harness report from ``_evaluate_win_window``. On the
     same rows, the same cutoff and the same fits the two must be one number: the manifest
     used to score the actual batting order while the harness scored the served,
-    toss-marginalised probability, so the same glossary key named two quantities."""
-    _pin_the_display_grid_to_its_incumbent(monkeypatch)
+    toss-marginalised probability, so the same glossary key named two quantities. Both
+    writers run the grid on the same training rows (EVAL-06), so nothing is pinned."""
     rows = synthetic_win_rows(400)
     cutoff, end = pd.Timestamp("2024-01-01"), rows.match_date.max() + pd.Timedelta(days=1)
 
@@ -208,11 +231,10 @@ def test_the_manifest_headline_is_the_number_the_harness_reports_under_the_same_
     assert manifest_metrics["display_auc_mean"] == fold["display_auc_mean"]
 
 
-def test_the_run_report_names_both_readings_of_each_model(monkeypatch) -> None:
+def test_the_run_report_names_both_readings_of_each_model() -> None:
     """The toss-aware score stays in the report, under a name that says so, beside the
     served one the manifest quotes; nothing in the report is called plain ``objective``
     any more, because that name was the one that meant two things."""
-    _pin_the_display_grid_to_its_incumbent(monkeypatch)
     rows = synthetic_win_rows(400)
 
     _, report = train_format(rows, "T20", pd.Timestamp("2024-01-01"))

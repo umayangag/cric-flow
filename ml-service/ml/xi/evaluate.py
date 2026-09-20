@@ -78,7 +78,7 @@ from ml.xi.builder import build
 from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
-from ml.xi.train import _score_marginalised, _xy, make_display_model, make_objective_model
+from ml.xi.train import _score_marginalised, _xy, fit_display_model_as_shipped, make_objective_model
 
 logger = logging.getLogger(__name__)
 
@@ -190,9 +190,11 @@ def _evaluate_win_window(
         skip["skipped_reason"] = "evaluation window too small or single-class"
         return skip, None, None
     x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
-    x_display, _ = _xy(train, C.DISPLAY_FEATURE_COLS)
     objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_objective, y_train)
-    display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x_display, y_train)
+    # The grid runs here as it runs in a retrain, on this window's training rows, so the
+    # display model scored is the one a run at this cutoff would ship (EVAL-06); the
+    # window records the pick beside its numbers, under the manifest's key.
+    display, hyperparameters = fit_display_model_as_shipped(train)
     objective_scores = _score_marginalised(objective, evaluation, C.XI_FEATURE_COLS)
     display_scores = _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)
     y_eval = evaluation[C.TARGET_COL].to_numpy(dtype=float)
@@ -209,6 +211,7 @@ def _evaluate_win_window(
             "display_auc_mean": display_scores["auc"],
             "display_brier_mean": display_scores["brier"],
             "base_rate_brier": base_rate_brier,
+            "hyperparameters": hyperparameters,
         }
     )
     return metrics, objective, display
