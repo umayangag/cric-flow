@@ -821,6 +821,57 @@ The three synthetic `player` rows with ids 1–3 (no match or ball rows) are **n
 
 **A new finding, recorded and not fixed — B-17 has claimed its first count.** The table prints twenty-two rows and the check compares twenty. `out_of_scope_matches` is left out on purpose (the two sources filter at different points, and the code says so). `runs_scored` is left out by omission: EVAL-12 (#323) added it to `DataQuality` as the digest's cover for undecided matches, and did not add it to `_COMPARED_COUNTS` — exactly the failure mode `docs/BUG_BACKLOG.md` B-17 describes ("a count added to the dataclass is compared only if someone remembers to add it there — the opposite of what the docstring says"). And it is the one count that disagrees: **postgres 9,345,813, cricsheet 9,345,815**, a difference of **2 runs**, which the check reports as agreement and exit 0. The 2 runs are known cricket: match **514034**'s fourth innings — one delivery, a no-ball off which the batter scored one, `runs.total` 2 in the archive — the innings batch 2's step 2 found `ball_event` does not hold at all (`ball_event_emit.go`'s `if totalLegal == 0 { continue }`). `match_inning` records that innings as 2 runs off 0 legal balls; the rating pass reads `ball_event`, so the Postgres pass is 2 runs short of the archive, and the archive is right. Two consequences worth stating. (1) Parity's verdict is true of the twenty counts it compares and untrue of the cricket: a check whose docstring promises "every comparable count" has, in its first run after a count was added, missed the one that differs. (2) `dataset_digest` folds `runs_scored` in, so a run built from Postgres and a run built from the archive over the same 22,905 files now carry **different digests** — which means `make serving-parity CRICSHEET_DIR=…` against a Postgres-trained run will be refused as "trained on other cricket" until either the one-innings gap is closed or the digest and the parity check agree on what counts. Neither is fixed here. B-17 (the docstring and the tuple) and the 514034 gap (batch 2's "B-17 candidate", the ball-event emitter) are two defects with one visible symptom; both stay open, and this is the evidence the backlog entry lacked — a real count, uncompared, disagreeing.
 
+#### Step 4 — `make retrain`: a run with provenance, and the iteration counts EVAL-09 predicted
+
+`make retrain CUTOFF=2026-09-20` — **10 min 34 s** (17:49:16–17:59:50 UTC; rating pass 3 min 38 s, models 6 min 55 s), exit 0, `data_quality_failures: []`. That is **30 % under batch 2's 15 min 2 s** on the same 22,905 matches, and the whole of the saving is in the performance fits (below).
+
+| | |
+|---|---|
+| run id | **`20260920T175255Z-71339c52`** |
+| cutoff | 2026-09-20 |
+| ratings through | 2026-09-09 (13,639 players) |
+| `dataset_sha` | `7e301346aa3d…` (batch 2: `501c24882251…`) |
+| `dataset_digest` | `{scheme: matches+xi-outcomes+pass-counts/1, matches 21293, player_rows 468461, pass_counts 19, undecided_matches 1612}` |
+| `git_sha` | `ebd10a4c1bebcfd61fea3301bc6c451cd8f32c74-dirty` (see below) |
+| `source` | `PostgresSource` |
+| `library_versions` | python 3.12.14 · scikit-learn 1.5.2 · numpy 1.26.4 · scipy 1.11.4 · pandas 2.1.4 · joblib 1.6.0 |
+| `model_params` | objective `C` 0.3 / `max_iter` 3000; display `l2_regularization` 1.0, `min_samples_leaf` 40, `early_stopping` false, `random_state` 0; grid margin 0.002, validation fraction 0.2 |
+| training rows | T20 12,130 · ODI 4,995 · TEST 2,095 · T20I 2,073 (batch 2's, unchanged) |
+| player-match rows | 468,461 (unchanged) |
+| `usable` / `unusable_reasons` | **true** / `{}` |
+
+**The retrain's own log carries D-6 refusing the served run by name**, as EVAL-12 said it would: `ERROR retrain: the served run 20260919T162357Z-85ff133f cannot be read, so no regression comparison is made: run 20260919T162357Z-85ff133f: manifest.json carries no dataset_digest … cannot be loaded. Run make retrain to produce a run that records its provenance.` The regression comparison against the previous run therefore did not happen this once — the first run after a digest change has nothing comparable to read, and the log says so rather than comparing two incomparable shas.
+
+**`git_sha` reads `-dirty` on a tree with no uncommitted change to any tracked file — a new finding, recorded and not fixed.** `git status --porcelain --untracked-files=no` was empty before and after the run; the only entries in `git status --porcelain` were two untracked, unignored directories (`.claude/worktree-notes-archive/`, `.codex/`), neither of which holds code the retrain imported. `runs.py:273` reads `git status --porcelain` whole, so any untracked file anywhere under the checkout marks the run dirty. The suffix's stated purpose — "a clean sha over a dirty tree names code that was never committed" — is right, and an untracked `.py` under `ml/` *would* be such code; but an untracked notes directory is not, and on a developer box with editor state this rule will fire on nearly every run, which turns a warning that should be rare into one that is ignored. The commit itself is real and correct: `ebd10a4c` is this branch's head, whose only difference from `926a924d` is `docs/AUDIT_FINDINGS.md` (65 added lines, this record); the code that ran is main's. Recorded as a candidate fix (`--untracked-files=no`, or a path filter under `ml-service/`), not made here.
+
+**No headline metric, and why (EVAL-05, #319).** Every format reports `objective AUC None, display AUC None` and `n_holdout: 0`, with `format_notes` saying "trained on N rows but not scored: … 0 rows at or after the cutoff". The cutoff is today and the archive ends 2026-09-09, exactly batch 2's situation; EVAL-05 made the manifest headline the served, toss-marginalised score *on the holdout*, and there is no holdout. `usable` is true because nothing disqualified it. The choice-facing numbers come from step 7.
+
+**The grid moved nothing, again.** All four formats kept `max_depth 3, learning_rate 0.04, max_iter 300` on "no candidate beat the incumbent by more than 0.002" with `n_iter: 300`; the inner-split incumbents read T20 0.7402, T20I 0.7555, ODI and TEST as recorded in the manifest.
+
+##### EVAL-09's prediction, tested
+
+EVAL-09 (#322) recorded before the run: per-booster `fit.iterations` move materially — involvement classifiers from ~300 toward 150–240, T20 wickets from ~216 toward 120–145; `iteration_choice` appears in every fit; fit time falls by roughly 40 %; headline performance metrics within fold noise, any visible gain on `p_bats` / `p_bowls`. The first three are testable here (the fourth is a harness question, step 7). Batch 2's figures are the mean over its three seeds' early-stopped members; batch 3's are the one served booster's count, chosen on the most recent tenth of training rows by date.
+
+| fmt | booster | batch 2 | **batch 3** | predicted band | in band? |
+|---|---|---:|---:|---|---|
+| T20 | `p_bats` | 300 | **276** | 150–240 | no (fell, but less) |
+| T20 | `p_bowls` | 300 | **251** | 150–240 | no (fell, but less) |
+| T20I | `p_bats` | 300 | **84** | 150–240 | no (fell further) |
+| T20I | `p_bowls` | 178 | **117** | 150–240 | no (fell further) |
+| ODI | `p_bats` | 300 | **127** | 150–240 | no (fell further) |
+| ODI | `p_bowls` | 245 | **176** | 150–240 | **yes** |
+| TEST | `p_bats` | 263 | **44** | 150–240 | no (fell further) |
+| TEST | `p_bowls` | 172 | **127** | 150–240 | no (fell further) |
+| T20 | `wickets` | 155 | **122** | 120–145 | **yes** |
+
+**Direction held in all nine; the band held in two.** Every involvement classifier chose fewer iterations than its early-stopped predecessor ran, which is the mechanism EVAL-09 named (the shuffled tenth was optimistic, so the stop came late); but the fall is smaller than predicted in T20 (276 / 251, the one format with a quarter-million rows) and larger everywhere else — T20I's `p_bats` at 84, TEST's at 44. The T20 wickets count lands inside its band. The "~216" EVAL-09 quoted for T20 wickets was its own one-seed measurement; batch 2's served mean was 155, so the reference the band was set against was not the served number. Read plainly: the prediction was right about *what* would happen and wrong about *how much* in seven of nine cases.
+
+`iteration_choice` **appears in every fit** — four of four — with the cut recorded: T20 chosen on 26,753 rows from 2026-01-14 (fitted on 240,124), T20I 4,576 from 2025-07-22, ODI 11,064 from 2025-08-08, TEST 4,642 from 2025-05-16.
+
+**Fit time fell 41 %, as predicted:** T20 290.9 s → **185.4 s** (−36 %), T20I 91.6 → **54.6** (−40 %), ODI 155.0 → **85.3** (−45 %), TEST 109.3 → **56.1** (−49 %); 646.8 s → 381.4 s over the four formats. `n_train`, `n_calibration`, `train_to` and `calibration_from` are identical to batch 2's in every format, so this is the same fit on the same rows, one member and a choice fit instead of three members fitted twice.
+
+**Something the prediction did not foresee: three q0.1 boosters chose one iteration.** `runs_q0.1`, `balls_faced_q0.1` and `runs_conceded_q0.1` chose **1** in T20, T20I and ODI (and `runs_conceded_q0.1` in TEST); the 0.1-quantile of a player's runs is 0 for most of the eleven, so the pinball loss at that level is minimised by the initial constant and every further tree only hurts on the temporal fold. That is the honest optimum for that loss, not a fault in the choice; but a booster of one tree is a constant, and the interval's lower bound is now a format-wide floor rather than a per-player prediction. At the other end `runs_conceded_q0.5` chose **300 — the ceiling — in T20 and T20I**, so that booster wanted more than `MAX_ITER` allows. Both are new facts about the model this batch ships and neither is EVAL-09's failure; whether the coverage gate notices is step 7's question. These booster names did not exist in batch 2's report (it recorded one count per target, `runs`, `balls_faced`, …), which is P-3's distributional model (`_q0.1/_q0.5/_q0.9`) now recorded per level, so the two columns of the table above are not comparable for the regressors and are not compared.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
