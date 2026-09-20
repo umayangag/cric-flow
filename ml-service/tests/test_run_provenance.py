@@ -14,7 +14,10 @@ established" it is, and the digest sees the cricket rather than the fixture list
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import List, Optional
+
+import pandas as pd
 
 from ml.xi import builder as builder_module
 from ml.xi import contract as C
@@ -50,10 +53,15 @@ def _match(
     return make_match(f"m{index}", index, winner, team_one, team_two, deliveries)
 
 
-def _digest(matches) -> str:
-    """The dataset sha a retrain would record for this history."""
-    sha, _ = build(ListSource(matches)).dataset_digest()
-    return sha
+def _dataset_sha(matches, directory) -> str:
+    """The dataset sha a retrain actually writes for this history, read back off the
+    manifest. Read through the pipeline rather than off the digest helper so the question
+    is the one an operator asks -- "do these two runs say they saw the same cricket?" --
+    and not "is this function implemented"."""
+    written = retrain_module.retrain(
+        build(ListSource(matches)), str(directory), pd.Timestamp("2024-06-01"), formats=["T20"]
+    )
+    return written["manifest"]["dataset_sha"]
 
 
 def _decided_match_keys(matches) -> List[str]:
@@ -68,20 +76,36 @@ def _decided_match_keys(matches) -> List[str]:
 
 
 def test_the_commit_is_unknown_rather_than_blank_where_no_checkout_can_be_asked(monkeypatch) -> None:
-    """The serving image's case: no version-control binary and no repository directory, so
-    the checkout cannot answer. The manifest must say so in a word, not with a blank."""
-    monkeypatch.setattr(runs, "_version_control_output", lambda *args: None)
-    monkeypatch.delenv(runs.GIT_SHA_ENV, raising=False)
+    """The serving image's case, patched at the boundary the image actually fails at: the
+    version-control binary is not installed, so the call raises before it can answer.
 
-    assert runs.git_sha() == runs.UNKNOWN
-    assert runs.git_sha() != "", "an empty commit reads as an absent field, which is the defect"
+    The environment variable is spelled out rather than read off the module so that this
+    test asks the same question of any version of ``git_sha``: does a run built where no
+    commit can be established record the fact, or a blank that every surface renders
+    exactly as "this manifest does not carry the field"?
+    """
+
+    def no_version_control(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(runs.subprocess, "run", no_version_control)
+    monkeypatch.delenv("GIT_SHA", raising=False)
+
+    recorded = runs.git_sha()
+
+    assert recorded != "", "an empty commit is read as an absent field, which is the defect"
+    assert recorded == runs.UNKNOWN
 
 
 def test_the_commit_comes_from_the_environment_where_there_is_no_checkout(monkeypatch) -> None:
     """What the Dockerfile's build argument buys: the image has no checkout, but the build
     knew the commit and baked it in, so the run records it."""
-    monkeypatch.setattr(runs, "_version_control_output", lambda *args: None)
-    monkeypatch.setenv(runs.GIT_SHA_ENV, "  0123456789abcdef  ")
+
+    def no_version_control(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(runs.subprocess, "run", no_version_control)
+    monkeypatch.setenv("GIT_SHA", "  0123456789abcdef  ")
 
     assert runs.git_sha() == "0123456789abcdef"
 
@@ -98,7 +122,9 @@ def test_the_checkout_outranks_the_environment(monkeypatch) -> None:
 def test_a_commit_over_uncommitted_changes_says_so(monkeypatch) -> None:
     """A clean sha over a dirty tree names code that was never committed, which is the
     same false confidence as quoting an empty string."""
-    monkeypatch.setattr(runs, "_version_control_output", lambda *args: " M ml/xi/runs.py" if args[0] == "status" else "beefcafe")
+    monkeypatch.setattr(
+        runs, "_version_control_output", lambda *args: " M ml/xi/runs.py" if args[0] == "status" else "beefcafe"
+    )
 
     assert runs.git_sha() == f"beefcafe{runs.DIRTY_SUFFIX}"
 
@@ -112,44 +138,81 @@ def test_the_library_versions_name_the_interpreter_and_the_estimators() -> None:
     assert all(value for value in versions.values()), "an unresolved version records the word, never a blank"
 
 
+def test_asking_a_checkout_that_is_not_there_answers_nothing_rather_than_raising(monkeypatch) -> None:
+    """The serving image's two failure modes, at the level they actually happen: the
+    binary is missing (the image), or it runs and reports that this is no checkout."""
+
+    def missing(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(runs.subprocess, "run", missing)
+    assert runs._version_control_output("rev-parse", "HEAD") is None
+
+    monkeypatch.setattr(
+        runs.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=128, stdout="", stderr="not a repository"),
+    )
+    assert runs._version_control_output("rev-parse", "HEAD") is None
+
+
+def test_a_library_that_is_not_installed_records_the_word_not_a_blank(monkeypatch) -> None:
+    """The same rule as the commit: a version that could not be established says so, and
+    a reader is never left to decide whether a blank means old or unknown."""
+
+    def absent(name: str) -> str:
+        raise runs.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(runs.metadata, "version", absent)
+
+    versions = runs.library_versions()
+
+    assert versions["numpy"] == runs.UNKNOWN
+    assert versions["python"], "the interpreter is always known"
+
+
 # --- the dataset digest ----------------------------------------------------------------
 
 
-def test_a_re_imported_squad_is_invisible_to_the_decided_match_list_and_not_to_the_digest() -> None:
+def test_a_re_imported_squad_is_invisible_to_the_decided_match_list_and_not_to_the_digest(tmp_path) -> None:
     """The defect, exactly: an import that swaps a player into an XI leaves every decided
     match's id and date untouched, so the old digest could not tell the two apart."""
     before = [_match(k) for k in range(6)]
     after = [_match(k) for k in range(6)]
     after[3] = _match(3, team_one=[*TEAM_ONE[:10], "substitute"])
 
-    assert _decided_match_keys(before) == _decided_match_keys(after), "the fixture list is identical -- that is the point"
-    assert _digest(before) != _digest(after)
+    assert _decided_match_keys(before) == _decided_match_keys(after), (
+        "the fixture list is identical -- that is the point"
+    )
+    assert _dataset_sha(before, tmp_path / "before") != _dataset_sha(after, tmp_path / "after")
 
 
-def test_a_re_imported_delivery_is_invisible_to_the_decided_match_list_and_not_to_the_digest() -> None:
+def test_a_re_imported_delivery_is_invisible_to_the_decided_match_list_and_not_to_the_digest(tmp_path) -> None:
     """The same for the ball events: the same fixtures, the same XIs, different cricket."""
     before = [_match(k) for k in range(6)]
     after = [_match(k) for k in range(6)]
     after[2] = _match(2, runs_per_ball=5)
 
     assert _decided_match_keys(before) == _decided_match_keys(after)
-    assert _digest(before) != _digest(after)
+    assert _dataset_sha(before, tmp_path / "before") != _dataset_sha(after, tmp_path / "after")
 
 
-def test_a_re_imported_undecided_match_changes_the_digest() -> None:
+def test_a_re_imported_undecided_match_changes_the_digest(tmp_path) -> None:
     """An undecided match produces no training row at all, yet still folds into the
     ratings every prediction is made from. The pass-level counts are what covers it."""
     before = [*[_match(k) for k in range(5)], _match(5, winner=None)]
     after = [*[_match(k) for k in range(5)], _match(5, winner=None, runs_per_ball=4)]
 
     assert _decided_match_keys(before) == _decided_match_keys(after)
-    assert _digest(before) != _digest(after)
+    assert _dataset_sha(before, tmp_path / "before") != _dataset_sha(after, tmp_path / "after")
 
 
-def test_the_same_cricket_digests_the_same_twice() -> None:
+def test_the_same_cricket_digests_the_same_twice(tmp_path) -> None:
     """The other half of the property: the digest must not move on its own, or it answers
     "different data" every time it is asked."""
-    assert _digest([_match(k) for k in range(6)]) == _digest([_match(k) for k in range(6)])
+    assert _dataset_sha([_match(k) for k in range(6)], tmp_path / "once") == _dataset_sha(
+        [_match(k) for k in range(6)], tmp_path / "again"
+    )
 
 
 def test_the_digest_says_what_it_covered() -> None:

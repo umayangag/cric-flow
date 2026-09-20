@@ -9,6 +9,7 @@ import {
   formatPercent,
   formatRate,
   formatWhen,
+  shortCommit,
   shortDigest,
 } from './format';
 
@@ -88,5 +89,26 @@ describe('shortDigest', () => {
     expect(shortDigest('a'.repeat(64))).toBe('a'.repeat(12));
     expect(shortDigest('abc')).toBe('abc');
     expect(shortDigest(undefined)).toBe(MISSING);
+  });
+});
+
+describe('shortCommit', () => {
+  it('abbreviates a commit to seven characters', () => {
+    expect(shortCommit('deadbeefcafe1234')).toBe('deadbee');
+  });
+
+  it('keeps a run built from a dirty tree readable as one', () => {
+    expect(shortCommit('deadbeefcafe1234-dirty')).toBe('deadbee-dirty');
+  });
+
+  it('says a commit could not be established rather than slicing the word', () => {
+    // `unknown`.slice(0, 7) is `unknow`, which reads as a commit and is not one: the
+    // manifest records the word precisely so the surface can say so (EVAL-12).
+    expect(shortCommit('unknown')).toBe('unknown');
+  });
+
+  it('renders a manifest that carries no commit at all as absent', () => {
+    expect(shortCommit(undefined)).toBe(MISSING);
+    expect(shortCommit('')).toBe(MISSING);
   });
 });
