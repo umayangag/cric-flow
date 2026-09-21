@@ -104,7 +104,7 @@ func applyPerformanceForecast(
 		Team2PlayerKeys: xi2,
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
-		VenueID:         fix.venueID,
+		VenueID:         fix.venue.VenueID,
 		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
 		MatchDate:       fix.matchDate,

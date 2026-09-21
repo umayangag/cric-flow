@@ -338,6 +338,21 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// A venue this database does not hold is the request naming a ground nobody can
+	// score at. It is refused rather than dropped: the alternative -- predicting without
+	// the venue, or at a venue row invented on the spot -- answers a question the caller
+	// did not ask and says nothing about having done so (GO-08, §8.7). Leaving `venue`
+	// out entirely is a different request and is still answered.
+	var unknownVenue *predictteam.UnknownVenueError
+	if errors.As(err, &unknownVenue) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "VENUE_NOT_FOUND",
+			Message: unknownVenue.Error(),
+			Hint: "venue names come from GET /api/options/venues; " +
+				"leave `venue` out to be answered without one",
+		})
+		return
+	}
 	// A pool too small to field an XI is the caller's scope being too narrow, not a
 	// failure here, and after D-12 the recency window is the likely cause. The refusal
 	// names the window and the two ways out, because both are the user's to choose.
