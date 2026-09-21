@@ -66,16 +66,6 @@ def _env_csv(name: str, default: tuple[str, ...]) -> List[str]:
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
-
-
 @dataclass
 class MLServiceSettings:
     """Process-wide configuration for the ML service.
@@ -87,7 +77,6 @@ class MLServiceSettings:
 
     enable_hot_reload: bool
     admin_api_key: str
-    max_concurrent_training_jobs: int
     frontend_origin_raw: str
     cors_allow_methods: List[str]
     cors_allow_headers: List[str]
@@ -107,7 +96,6 @@ def load_ml_service_settings() -> MLServiceSettings:
 
     enable_hot_reload = _env_bool("ENABLE_HOT_RELOAD", default=False)
     admin_api_key = (os.environ.get("ADMIN_API_KEY") or "").strip()
-    max_concurrent_training_jobs = max(1, _env_int("MAX_CONCURRENT_TRAINING_JOBS", default=1))
     frontend_origin_raw = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")
     cors_allow_methods = _env_csv("CORS_ALLOW_METHODS", DEFAULT_CORS_ALLOW_METHODS)
     cors_allow_headers = _env_csv("CORS_ALLOW_HEADERS", DEFAULT_CORS_ALLOW_HEADERS)
@@ -115,7 +103,6 @@ def load_ml_service_settings() -> MLServiceSettings:
     return MLServiceSettings(
         enable_hot_reload=enable_hot_reload,
         admin_api_key=admin_api_key,
-        max_concurrent_training_jobs=max_concurrent_training_jobs,
         frontend_origin_raw=frontend_origin_raw,
         cors_allow_methods=cors_allow_methods,
         cors_allow_headers=cors_allow_headers,

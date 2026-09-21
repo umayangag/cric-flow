@@ -60,6 +60,19 @@ API contracts (Go and ML), the prediction and evaluation surfaces, and the ops s
   cutoff. It publishes nothing; `/admin/reload` does that.
 - **POST /admin/train/evaluate** — Run L4 and write its report. Touches no artifact `current`
   points at.
+- **One run per step.** A second `retrain` while a `retrain` is running is refused **409
+  `TRAIN_ALREADY_RUNNING`**, and the message names the run it is refusing for — the step, its
+  pid and how long it has been going — with the hint saying to wait or to
+  `POST /admin/train/stop?step=<step>` (§8.7). Two runs of one step are not merely two handles
+  in a registry: they write the same cross-run data-quality baseline at the artifacts root
+  (H-15), and progress and results are published per *step*, so `/admin/train/progress` and the
+  summary on the response would carry whichever run wrote last (SERVE-06). `retrain` and
+  `evaluate` share no such file and may overlap.
+- **POST /admin/train/stop?step=** — Stop the training subprocess of one step, or of every step.
+  200 with `stopped` naming the steps whose process this call signalled and watched exit — empty
+  when nothing was running, which is a normal answer. A run that finished on its own before the
+  signal landed is not in the list and keeps the outcome it earned: reporting it as stopped
+  would answer its caller **409 `TRAIN_STOPPED`** for a run that succeeded (SERVE-06).
 
 **Every XI endpoint refuses a stale live request.** A request with no `as_of` against ratings
 older than `ml.ratings_max_age_days` (default 14) answers **503 `RATINGS_STALE`**, with a hint

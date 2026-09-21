@@ -86,11 +86,18 @@ def test_cors_env_csv_override(monkeypatch):
     assert settings.cors_allow_headers == ["Content-Type", "X-API-Key"]
 
 
-def test_env_int_invalid_returns_default(monkeypatch):
-    """_env_int returns default when env value is not an integer."""
-    from app.settings import _env_int, load_ml_service_settings
+def test_settings_carry_no_training_concurrency_knob(monkeypatch):
+    """How many training jobs may run is not a number an operator sets (SERVE-06).
 
-    monkeypatch.setenv("MAX_CONCURRENT_TRAINING_JOBS", "not_a_number")
-    assert _env_int("MAX_CONCURRENT_TRAINING_JOBS", default=4) == 4
+    `MAX_CONCURRENT_TRAINING_JOBS` bounded HTTP requests, not runs: above 1 it let two
+    retrains write the same data-quality baseline and publish progress under the same
+    step, and at 1 it queued the second request behind a ten-minute run instead of
+    answering it. The rule that replaced it -- one run per step, the second refused by
+    name -- is not configurable, so the setting is gone rather than left to read as if
+    it still decided something.
+    """
+    from app.settings import load_ml_service_settings
+
+    monkeypatch.setenv("MAX_CONCURRENT_TRAINING_JOBS", "4")
     settings = load_ml_service_settings()
-    assert settings.max_concurrent_training_jobs == 1
+    assert not hasattr(settings, "max_concurrent_training_jobs")
