@@ -169,13 +169,9 @@ func applyXISimulation(
 	if len(sim.Team1.Players) == 0 || len(sim.Team2.Players) == 0 {
 		return fmt.Errorf("simulate match: the simulator returned no players")
 	}
-	// The toss the draws used has to be the toss that was asked for. A known toss answered
-	// by marginalised draws -- or the reverse -- is the request being silently changed, and
-	// `toss_marginalised` is the one field that can catch it (§8.7).
-	if sim.TossMarginalised != (fix.team1BatsFirst == nil) {
-		return fmt.Errorf(
-			"simulate match: the toss was %s but the simulator reports toss_marginalised=%t",
-			tossDescription(fix.team1BatsFirst), sim.TossMarginalised)
+	if err := refuseTossMismatch(
+		"simulate match", fix.team1BatsFirst, sim.TossMarginalised, "toss_marginalised"); err != nil {
+		return err
 	}
 	// The headline is E2's choice, made on the folds and served as a constant. An
 	// unrecognised source would put a number on screen with no honest label for it.
@@ -195,7 +191,7 @@ func applyXISimulation(
 		return fmt.Errorf("simulate match: %w", err)
 	}
 	result.Forecast = ForecastSummary{Source: forecastSourceSimulator}
-	result.Toss = tossApplied(fix.team1BatsFirst)
+	result.Toss = tossRead(fix.team1BatsFirst)
 	result.Scorecard = &Scorecard{
 		Samples:          sim.Samples,
 		TossMarginalised: sim.TossMarginalised,

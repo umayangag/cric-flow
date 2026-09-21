@@ -331,6 +331,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
+		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
 	}
 	// A pinned eleven is checked against the constraints on the call that scores it, so
@@ -341,6 +342,10 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	win, err := service.PredictMatchWinXI(ctx, winRequest)
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
+	}
+	if err := refuseTossMismatch(
+		"win probability", fix.team1BatsFirst, win.TossMarginalised, "toss_marginalised"); err != nil {
+		return nil, err
 	}
 	if err := result.Adopt(win.Served); err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
@@ -382,9 +387,6 @@ func applyMatchForecast(
 	if FormatHasInningsLength(fix.format) {
 		return applyXISimulation(ctx, service, fix, xi1, xi2, result)
 	}
-	// A named toss cannot be honoured without an innings to bat in, and the response says
-	// so rather than returning numbers that quietly ignored it (§8.7).
-	result.Toss = tossNotSimulated(fix.team1BatsFirst)
 	return applyPerformanceForecast(ctx, service, fix, xi1, xi2, result)
 }
 

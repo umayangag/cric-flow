@@ -17,6 +17,7 @@ import {
   SELECTION_ROLES,
   SIMULATOR_POPULATIONS,
   TEAM_GENDERS,
+  TOSS_READINGS,
   TRACK_RECORD_METRIC_KEYS,
   WIN_PROBABILITY_SOURCES,
 } from '../types';
@@ -63,6 +64,8 @@ type Contract = {
   /** The model behind the headline probability, and behind the per-player numbers (H-24, P1-4). */
   win_probability_sources: string[];
   forecast_sources: string[];
+  /** Which of the two readings a prediction's probabilities are (H-24, GO-07). */
+  toss_readings: string[];
   /** How an eleven was arrived at, as the prediction record stores it (H-24, P2-3). */
   selection_objectives: string[];
   /** The one freshness vocabulary, and the code a refused prediction carries (H-24, P2-1). */
@@ -230,6 +233,19 @@ describe('ops console contract', () => {
       [...contract.win_probability_sources].sort(),
     );
     expect([...FORECAST_SOURCES].sort()).toEqual([...contract.forecast_sources].sort());
+  });
+
+  /**
+   * The toss readings are the contract's too (H-24, GO-07).
+   *
+   * Since the serving path forwards a named toss, the same fixture is answered with the
+   * toss-aware probability or the marginalised one depending on what the caller said, and
+   * they differ by 0.04 on average in TEST. The Lab labels the card off this value, so a
+   * reading the UI cannot spell would be a probability on screen with no statement of
+   * which of the two it is.
+   */
+  it('spells the toss readings the way the backend does', () => {
+    expect([...TOSS_READINGS].sort()).toEqual([...contract.toss_readings].sort());
   });
 
   /**

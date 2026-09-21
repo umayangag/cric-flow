@@ -691,6 +691,11 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
     return XiWinResponse(
         team1_win_probability=display,
         objective_probability=objective,
+        # Which of the two readings the displayed probability is, reported rather than left
+        # to be inferred from the request (§8.7, as `/simulate` and `/performance/predict`
+        # already report theirs). `objective_probability` has no toss-aware reading to
+        # report: its model reads eleven aggregates and no batting order.
+        toss_marginalised=req.team1_bats_first is None,
         team1_constraint_check=_constraint_check(store, req.format, t1, req.team1_constraints),
         team2_constraint_check=_constraint_check(store, req.format, t2, req.team2_constraints),
         served_ratings=_served_ratings(store),

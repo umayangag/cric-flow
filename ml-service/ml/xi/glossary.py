@@ -92,14 +92,22 @@ AUC_EXPLANATION = (
 )
 # The win models' headline scores are the served reading, whichever report carries them
 # (EVAL-05): the run manifest and the harness's walk-forward folds score the probability
-# marginalised over the toss, because that is the number the optimiser maximises and
+# marginalised over the toss, because that is what the optimiser maximises and what
 # `/xi/predict-win` answers with when nobody has said who bats first. The manifest used to
 # quote the model read at the batting order that actually happened, under the same key.
+#
+# Since GO-07 the serving path forwards a named toss, so `/xi/predict-win` answers the
+# *toss-aware* reading whenever the caller names one — a different quantity, 0.04 apart on
+# average in TEST and up to 0.14 — and these scores do not describe it. Which reading a
+# response holds is on the response (`toss_marginalised`); which reading these scores hold
+# is this sentence.
 SERVED_READING = (
-    " Scored as served: the probability averaged over both batting orders, because the toss is "
-    "unknown when the model is asked. The same quantity under the same key in the run manifest "
-    "and the walk-forward report; the toss-aware reading is in the run report and, for the "
-    "displayed model, the market benchmark."
+    " Scored as served: the probability averaged over both batting orders. That is what the "
+    "optimiser maximises, and what `/xi/predict-win` answers with when the caller names no toss "
+    "— a caller who names one is answered the toss-aware reading instead, which this score does "
+    "not describe. The same quantity under the same key in the run manifest and the walk-forward "
+    "report; the toss-aware reading is in the run report and, for the displayed model, the "
+    "market benchmark."
 )
 AUC_BAND = (
     "0.50 chance; 0.55 weak; 0.65+ useful (H-17's selection line); 0.70-0.75 is this system's "

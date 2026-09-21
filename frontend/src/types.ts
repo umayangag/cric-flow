@@ -156,16 +156,29 @@ export type PredictInningsTotal = {
 };
 
 /**
- * Which batting order the numbers assume (P1-1).
+ * Which of the two readings a prediction's probabilities are, exactly as the wire spells
+ * it (H-24, GO-07).
  *
- * `team1_bats_first` is null where the toss was unknown and both orders were drawn, which
- * is the default. `honoured` is false where a named toss could not be used — a format with
- * no innings length has no batting order to fix — and `note` says why, because an input
- * that was dropped has to be visible on the answer (§8.7).
+ * `marginalised` averages both batting orders and is what the optimiser maximises and what
+ * the run manifest and the walk-forward report score; `toss_aware` reads the batting order
+ * the caller named. They are two different numbers — 0.04 apart on average in TEST, 0.14 at
+ * most — so which one is on screen has to be said, not inferred.
+ */
+export const TOSS_READINGS = ['toss_aware', 'marginalised'] as const;
+export type TossReading = (typeof TOSS_READINGS)[number];
+
+/**
+ * Which batting order the numbers were read at (P1-1, GO-07).
+ *
+ * `team1_bats_first` is null where the toss was unknown and both orders were read, which is
+ * the default. `reading` names the resulting quantity, and is derived from what each model
+ * reported having done rather than from the request — a model that answered a different
+ * batting order from the one asked for is refused, not labelled (§8.7). `note` is present
+ * on a toss-aware answer and says what in it still did not read the toss.
  */
 export type PredictTossSummary = {
   team1_bats_first: boolean | null;
-  honoured: boolean;
+  reading: TossReading;
   note?: string;
 };
 

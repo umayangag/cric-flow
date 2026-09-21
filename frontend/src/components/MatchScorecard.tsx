@@ -46,14 +46,14 @@ type Props = {
 };
 
 /**
- * What the card says the toss was.
+ * What the card says the toss was, and which reading the numbers under it therefore are.
  *
- * The label is read off the response, not off the control the user last touched: a known
- * toss has to read as known, and a request that could not be honoured has to read as one
- * that was not (§8.7).
+ * The label is read off the response's `reading`, not off the control the user last
+ * touched and not off the echoed toss: the two readings are different quantities, and the
+ * chip is where a reader learns which of them is on screen (§8.7).
  */
 function tossLabel(toss: PredictTossSummary, team1: string, team2: string): string {
-  if (toss.team1_bats_first === null) return 'toss unknown: both batting orders averaged';
+  if (toss.reading === 'marginalised') return 'toss unknown: both batting orders averaged';
   return `toss: ${toss.team1_bats_first ? team1 : team2} bats first`;
 }
 
@@ -66,7 +66,7 @@ function tossLabel(toss: PredictTossSummary, team1: string, team2: string): stri
  * as well, because then it is known.
  */
 function inningsLabel(team: string, toss: PredictTossSummary, isTeam1: boolean): string {
-  if (toss.team1_bats_first === null) return `${team} innings`;
+  if (toss.reading === 'marginalised') return `${team} innings`;
   const first = toss.team1_bats_first === isTeam1;
   return `${team} (batting ${first ? 'first' : 'second'})`;
 }
@@ -231,8 +231,8 @@ const MatchScorecard: React.FC<Props> = ({
           {readOf}
         </Typography>
       )}
-      {!toss.honoured && toss.note && (
-        <Typography variant="caption" color="warning.main" component="div" sx={{ mb: 1 }}>
+      {toss.note && (
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
           {toss.note}
         </Typography>
       )}
