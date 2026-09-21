@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
 	tmocks "github.com/umayangag/cric-flow/go-app/internal/cricsheet/mocks"
@@ -130,6 +131,9 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 	)
 
 	t.Run("stops_at_first_DB_error", func(t *testing.T) {
+		// Settlement runs after the failure now, so the run still asks for the display
+		// names to be written (IMPORT-07); what it must not do is keep importing files.
+		mdb.EXPECT().UpdatePlayerDisplayNames(mock.Anything, mock.Anything).Return(nil).Maybe()
 		// Ingest uses db.RunInTx for writes; inject a tx that fails on first Exec (UpsertMatch).
 		failingTx := &failingTx{err: fmt.Errorf("db error")}
 		cricsheet.SetRunInTxFn(func(ctx context.Context, inner func(context.Context, db.CopyFromTx) error) error {
