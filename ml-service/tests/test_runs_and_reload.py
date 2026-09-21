@@ -58,14 +58,17 @@ def _write_run(
     run_id: str = "20260902T101500Z-ab12cd34",
     *,
     last_date: date | None = None,
+    cutoff: date | None = None,
     manifest_ratings_through: str | None = None,
     unusable_reasons: dict[str, str] | None = None,
 ) -> str:
     """A complete, loadable run: ratings, one format's models, and a manifest.
 
     ``manifest_ratings_through`` overrides the date the manifest records; by default it
-    is the state's own, which is what ``retrain`` writes. ``unusable_reasons`` writes the
-    run as one its retrain judged not usable (EVAL-04)."""
+    is the state's own, which is what ``retrain`` writes. ``cutoff`` is the boundary the
+    run's data was built to -- H-11's quantity since SERVE-03 -- and defaults to the
+    state's own date, which is the pair a retrain run at the archive's own date writes.
+    ``unusable_reasons`` writes the run as one its retrain judged not usable (EVAL-04)."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
     state = _state(last_date=last_date)
@@ -88,7 +91,7 @@ def _write_run(
         runs.RunManifest(
             run_id=run_id,
             created_at="2026-09-02T10:15:00+00:00",
-            cutoff="2025-09-01",
+            cutoff=(cutoff or state.last_date).isoformat(),
             ratings_through=manifest_ratings_through or state.last_date.isoformat(),
             dataset_sha="abc123",
             git_sha="deadbee",
@@ -357,7 +360,7 @@ def test_a_loaded_run_status_stamp_and_manifest_carry_one_date(tmp_path, monkeyp
     the state) and the manifest summary (off the file) -- are the same date, because the
     loader asserted it before any of them could be read."""
     monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
-    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    _write_run(tmp_path, last_date=date(2026, 8, 30), cutoff=date(2025, 9, 1))
     registry = xi_service.XiRegistry()
     registry.reload(str(tmp_path))
 
@@ -567,7 +570,7 @@ def test_fresh_ratings_pass_the_staleness_check(tmp_path, monkeypatch):
     freshness = registry.freshness()
 
     assert freshness.fresh is True
-    assert freshness.age_days == 2
+    assert freshness.data_age_days == 2
     assert freshness.code is None
 
 
@@ -822,7 +825,7 @@ def test_a_live_prediction_against_stale_ratings_is_a_503_with_the_code_on_the_w
     detail = resp.json()["detail"]
     assert detail["code"] == "RATINGS_STALE"
     assert stale_through.isoformat() in detail["message"]
-    assert "40 days old, limit 14" in detail["message"]
+    assert "40 days ago, limit 14" in detail["message"]
     assert "retrain" in detail["hint"]
 
 

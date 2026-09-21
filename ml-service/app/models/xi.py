@@ -377,12 +377,34 @@ class RatingsFreshness(BaseModel):
     ``/xi/status`` used to report ``ratings_through`` and leave the reader to work out
     whether that was recent enough. The rule is a number in config, so the service is the
     one that should apply it -- and the same verdict is what a prediction request is
-    refused on, so there is one answer rather than two that can disagree."""
+    refused on, so there is one answer rather than two that can disagree.
+
+    The verdict is measured from ``data_through`` -- the run's own training boundary --
+    and *not* from ``ratings_through``, the last match it folded in (SERVE-03). The two
+    are different quantities and only the first is a fact about the pipeline: the second
+    is a fact about the cricket calendar, and a fortnight between Tests is not a fault.
+    Measuring the wrong one made the refusal unclearable, because the step its hint names
+    cannot move a date that no match moved. Both dates are reported so a reader can see
+    the archive's own lag between them without the verdict being taken on it.
+    """
 
     fresh: bool
-    age_days: Optional[int] = None
+    data_age_days: Optional[int] = Field(
+        default=None,
+        description="Days from the run's data boundary (`data_through`) to today -- the quantity "
+        "compared against `max_age_days`. Absent when nothing is loaded",
+    )
     max_age_days: int
-    ratings_through: Optional[str] = None
+    data_through: Optional[str] = Field(
+        default=None,
+        description="The run manifest's cutoff: the date the run's data was built to, and what "
+        "`data_age_days` counts from",
+    )
+    ratings_through: Optional[str] = Field(
+        default=None,
+        description="The last match the run folded in. Reported, never the verdict: in an "
+        "off-season it moves for reasons no retrain can change",
+    )
     code: Optional[str] = Field(
         default=None,
         description="RATINGS_STALE when a live prediction would be refused; absent when it would not",
@@ -411,7 +433,55 @@ class XiStatusResponse(BaseModel):
 
 class PerformancePredictRequest(XiWinRequest):
     """The same inputs as a win prediction: both elevens by id, the format, optional team
-    and venue ids for context, the toss once known, and ``as_of`` for backtests."""
+    and venue ids for context, the toss once known, and ``as_of`` for backtests -- plus
+    the two facts about the fixture itself that the feature rows are computed from.
+
+    ``match_date`` is *when the fixture is played*, which is not ``as_of`` (which ratings
+    to read) and is certainly not the date of the last match in the state, which is what
+    the serving path stamped on every fixture until SERVE-04. Every date-dependent
+    feature -- each player's age, and the age-aware cold start's band for a debutant --
+    is read at this date, so a fixture next month was being aged as of last month's
+    cricket.
+
+    ``gender`` picks the context baseline the fixture's scoring rates come from. It
+    matters only where the run was built with the gender split on, and there omitting it
+    reads the men's group for a women's fixture (SERVE-01); with the split off there is
+    one group and it reads the same either way.
+    """
+
+    match_date: Optional[date] = Field(
+        default=None,
+        description="The day the fixture is played, which every date-dependent feature is read at. "
+        "Omitted, the fixture is dated `as_of` if that was given and today otherwise; the response's "
+        "`fixture` block says which of the three answered",
+    )
+    gender: Optional[Literal["male", "female"]] = Field(
+        default=None,
+        description="Which context baseline the fixture's scoring rates are read from. Only read where "
+        "the run was built with the gender split on",
+    )
+
+
+class ServedFixture(BaseModel):
+    """The fixture the rows were actually computed for -- the date and the context group,
+    as resolved, beside where each came from (SERVE-04, §8.7).
+
+    A caller who sends no ``match_date`` still gets one, because the features cannot be
+    computed without a date. What §8.7 forbids is that substitution being invisible: a
+    prediction dated by default must say so on the wire, so a reader can tell "the fixture
+    I asked about" from "today, because you did not say".
+    """
+
+    match_date: str
+    match_date_source: Literal["request", "as_of", "today"] = Field(
+        description="'request' when the caller sent `match_date`, 'as_of' when the backtest date "
+        "dated the fixture, 'today' when neither was given and the service supplied the date"
+    )
+    gender: Optional[str] = Field(
+        default=None,
+        description="The context group the fixture read, as the caller named it. Absent where the "
+        "caller named none, which reads the unsplit baseline",
+    )
 
 
 class PerformanceRange(BaseModel):
@@ -486,6 +556,9 @@ class PerformancePredictResponse(BaseModel):
         ),
     )
     served_ratings: ServedRatings
+    fixture: ServedFixture = Field(
+        ..., description="The fixture these rows were computed for, and where its date came from (SERVE-04)"
+    )
 
 
 class SimulateRequest(PerformancePredictRequest):
@@ -593,3 +666,6 @@ class SimulateResponse(BaseModel):
     )
     unknown_player_ids: List[str] = Field(default_factory=list)
     served_ratings: ServedRatings
+    fixture: ServedFixture = Field(
+        ..., description="The fixture these draws were computed for, and where its date came from (SERVE-04)"
+    )

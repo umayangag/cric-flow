@@ -171,13 +171,15 @@ def test_both_services_match_on_the_same_selection_roles(contract) -> None:
 
 
 def _stale_verdict(days_old: int) -> Any:
-    """A verdict on a state that is `days_old` days behind, as ``freshness()`` builds one."""
-    through = date.today() - timedelta(days=days_old)
+    """A verdict on a run whose data boundary is `days_old` days back, as ``freshness()``
+    builds one (SERVE-03)."""
+    boundary = date.today() - timedelta(days=days_old)
     return xi_service.RatingsFreshness(
         fresh=False,
-        age_days=days_old,
+        data_age_days=days_old,
         max_age_days=14,
-        ratings_through=through.isoformat(),
+        data_through=boundary.isoformat(),
+        ratings_through=boundary.isoformat(),
         code="RATINGS_STALE",
     )
 
@@ -198,10 +200,15 @@ def test_the_status_verdict_reports_the_same_published_code(contract, monkeypatc
     contract's."""
     monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
     registry = xi_service.XiRegistry()
-    # The verdict reads one thing off the loaded store: how far its ratings run. A stub
-    # store is the smallest arrangement that puts a date there without a run on disk.
+    # The verdict reads two dates off the loaded store: the boundary its data was built to
+    # (the manifest's cutoff, which it is taken on) and the last match it folded in. A stub
+    # store is the smallest arrangement that puts both there without a run on disk.
+    boundary = date.today() - timedelta(days=40)
     registry._served = xi_service.ServedRun(
-        store=SimpleNamespace(state=SimpleNamespace(last_date=date.today() - timedelta(days=40))),
+        store=SimpleNamespace(
+            state=SimpleNamespace(last_date=boundary),
+            manifest=SimpleNamespace(cutoff=boundary.isoformat()),
+        ),
         report=None,
         directory="",
     )

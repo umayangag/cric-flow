@@ -29,7 +29,7 @@ def test_health_reports_that_nothing_is_loaded(tmp_path):
     assert data["loaded"] is False
     assert data["run_id"] is None
     assert data["ratings"]["fresh"] is False, "no ratings is not fresh ratings"
-    assert data["ratings"]["age_days"] is None, "and it has no age, rather than an invented one"
+    assert data["ratings"]["data_age_days"] is None, "and it has no age, rather than an invented one"
 
 
 def test_artifacts_status_lists_no_runs(tmp_path):

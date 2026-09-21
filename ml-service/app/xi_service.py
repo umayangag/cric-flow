@@ -27,6 +27,7 @@ from app.models.xi import (
     PlayerRolesResponse,
     PlayerSelectionReasonModel,
     RatingsFreshness,
+    ServedFixture,
     ServedRatings,
     SimulatedMargin,
     SimulatedPlayer,
@@ -91,21 +92,48 @@ class XiUnavailable(Exception):
         self.payload = error_payload(code=code, message=message, hint=hint)
 
 
+def _parse_manifest_date(value: str) -> Optional[date]:
+    """A date the manifest wrote, or ``None`` when it wrote something that is not one.
+
+    ``None`` is a refusal, never a default: the freshness verdict is taken on this date,
+    so a manifest that cannot name it leaves nothing to take a verdict on, and guessing
+    one would be the substitution §8.7 exists to forbid.
+    """
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        logger.error("xi.freshness.unreadable_cutoff", cutoff=value)
+        return None
+
+
 class RatingsStale(XiUnavailable):
-    """H-11: the ratings are older than the configured limit, so a live prediction is
-    refused rather than answered.
+    """H-11: the run's data boundary is further back than the configured limit, so a live
+    prediction is refused rather than answered.
 
     It is a refusal, not a warning, because the alternative is the failure this plan
     keeps meeting: a number that looks like every other number and is quietly describing
     a squad from a month ago. The code is machine-readable so an operator's tooling can
     act on it without parsing prose, and the message names the step that fixes it.
+
+    The message names both dates and the format that was refused (§8.7): what was stale is
+    the run's boundary, and the date of its last match is beside it so a reader can tell
+    "nobody has retrained" from "the archive is behind", which are different jobs.
     """
 
-    def __init__(self, freshness: RatingsFreshness):
+    def __init__(self, freshness: RatingsFreshness, format_code: Optional[str] = None):
+        subject = "no prediction" if format_code is None else f"no {format_code} prediction"
+        if freshness.data_through is None:
+            message = f"{subject}: the served run does not record the date its data was built to"
+        else:
+            message = (
+                f"{subject}: the served run's data was built to {freshness.data_through} "
+                f"({freshness.data_age_days} days ago, limit {freshness.max_age_days}); "
+                f"its last match is {freshness.ratings_through}"
+            )
         super().__init__(
-            f"ratings run through {freshness.ratings_through} "
-            f"({freshness.age_days} days old, limit {freshness.max_age_days})",
-            hint="run the retrain step, then reload -- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate",
+            message,
+            hint="import the latest matches, then run the retrain step and reload "
+            "-- or raise XI_RATINGS_MAX_AGE_DAYS if this is deliberate",
             code="RATINGS_STALE",
         )
 
@@ -274,7 +302,7 @@ class XiRegistry:
             # harness for a reason that does not describe it.
             freshness = self.freshness()
             if not freshness.fresh:
-                raise RatingsStale(freshness)
+                raise RatingsStale(freshness, format_code)
             return store
         with self._lock:
             return self._as_of_store(store, as_of)
@@ -327,24 +355,58 @@ class XiRegistry:
         return None if served is None else served.run_id
 
     def freshness(self, today: Optional[date] = None) -> RatingsFreshness:
-        """H-11's verdict on the loaded state.
+        """H-11's verdict on the loaded run: how long ago the run's data boundary was.
 
-        With nothing loaded there is no state to be stale, so the verdict is "not fresh"
+        The quantity is ``today - manifest.cutoff`` (SERVE-03). The cutoff is the date
+        the run's data was built to -- what the operator asked for, and what `retrain`
+        stamps with the day it was run -- so the age is "how long since this pipeline
+        last took the archive in", which is the only thing the hint's "retrain" can move.
+
+        It is deliberately *not* ``today - state.last_date``, the date of the last match
+        folded in, which is what this measured until SERVE-03. That date belongs to the
+        cricket calendar, not to the pipeline: between seasons it walks away from today on
+        its own, so a run retrained this morning was refused with a hint to retrain --
+        which would produce a run with the same date and be refused again. On the dev box
+        the archive itself runs eleven days behind the calendar, so the refusal was not
+        hypothetical; it was three days out. It failed the other way too: a run built to a
+        boundary years back was called fresh whenever the archive it read happened to hold
+        a recent match, because the rating pass folds in every match it is offered whatever
+        the cutoff says.
+
+        There is one verdict per run and not one per format, because a run has one cutoff.
+        Nothing in the artifacts dates a *format's* data except the last match played in
+        it, which is the quantity this stopped measuring; the question "has anything been
+        imported that the served run never saw?" is per format and is answered in go-app,
+        which is the component that can see the archive (`opsstatus.RetrainDue`).
+
+        With nothing loaded there is no run to be stale, so the verdict is "not fresh"
         with no age: the request will be refused for the other reason, and inventing an
         age would be inventing a fact.
         """
         limit = get_ratings_max_age_days()
         served = self._served
-        through = served.store.state.last_date if served is not None else None
-        if through is None:
-            return RatingsFreshness(fresh=False, age_days=None, max_age_days=limit, ratings_through=None)
-        age = ((today or date.today()) - through).days
+        manifest = None if served is None else served.store.manifest
+        boundary = _parse_manifest_date(manifest.cutoff) if manifest is not None else None
+        ratings_through = None if served is None else served.store.state.last_date
+        if boundary is None:
+            # A loaded run whose boundary cannot be read has no age, so it cannot be shown
+            # fresh and is refused -- unless the limit is zero, which turns H-11 off
+            # altogether and must turn off every refusal it makes, not merely the dated one.
+            refused = served is not None and limit > 0
+            return RatingsFreshness(
+                fresh=not refused and served is not None,
+                max_age_days=limit,
+                ratings_through=None if ratings_through is None else ratings_through.isoformat(),
+                code="RATINGS_STALE" if refused else None,
+            )
+        age = ((today or date.today()) - boundary).days
         fresh = limit <= 0 or age <= limit
         return RatingsFreshness(
             fresh=fresh,
-            age_days=age,
+            data_age_days=age,
             max_age_days=limit,
-            ratings_through=through.isoformat(),
+            data_through=boundary.isoformat(),
+            ratings_through=None if ratings_through is None else ratings_through.isoformat(),
             code=None if fresh else "RATINGS_STALE",
         )
 
@@ -640,9 +702,35 @@ def _optional_str(value: Optional[int]) -> Optional[str]:
     return None if value is None else str(value)
 
 
-def _fixture_rows(store: XiStore, req: PerformancePredictRequest) -> tuple:
+def served_fixture(req: PerformancePredictRequest, today: Optional[date] = None) -> ServedFixture:
+    """Which day the fixture is played on, and where that date came from (SERVE-04).
+
+    ``match_date`` is what the caller asked about. Failing that, a backtest's ``as_of``
+    dates the fixture -- go-app sets it to the match's own day for a played match, so the
+    two are the same date there -- and failing both, today.
+
+    The date the serving path used to stamp, ``state.last_date``, is in none of those
+    three: it is the last match the *state* holds, which on the dev box is eleven days
+    behind today and further behind any fixture worth asking about. Every date-dependent
+    feature was therefore read at a date nobody named. The source is reported beside the
+    date because a fixture dated by default has to be legible as one (§8.7).
+    """
+    if req.match_date is not None:
+        resolved, source = req.match_date, "request"
+    elif req.as_of is not None:
+        resolved, source = req.as_of, "as_of"
+    else:
+        resolved, source = today or date.today(), "today"
+    return ServedFixture(match_date=resolved.isoformat(), match_date_source=source, gender=req.gender)
+
+
+def _fixture_rows(store: XiStore, req: PerformancePredictRequest, fixture: ServedFixture) -> tuple:
     """The fixture's win row and player rows from the serving state -- the same assembly
-    the training frame uses (``ml.xi.rows``) -- and the ids the state has never seen."""
+    the training frame uses (``ml.xi.rows``) -- and the ids the state has never seen.
+
+    ``fixture`` is resolved by the caller and passed in, not resolved here, so the rows
+    and the block the response carries cannot describe two different days.
+    """
     t1, t2 = _keys(req.team1_player_ids), _keys(req.team2_player_ids)
     unknown = [
         pid
@@ -656,7 +744,8 @@ def _fixture_rows(store: XiStore, req: PerformancePredictRequest) -> tuple:
         _optional_str(req.team1_id),
         _optional_str(req.team2_id),
         _optional_str(req.venue_id),
-        store.state.last_date,
+        date.fromisoformat(fixture.match_date),
+        fixture.gender or "",
     )
     win_row, player_rows = player_feature_rows(store.state, match)
     rows = pd.DataFrame(player_rows)
@@ -670,7 +759,8 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
     training frame is built from (``ml.xi.rows``), predicted by the format's L2-B model,
     averaged over both batting orders unless the toss is known."""
     store, model = registry.performance(req.format, req.as_of)
-    _, rows, unknown = _fixture_rows(store, req)
+    fixture = served_fixture(req)
+    _, rows, unknown = _fixture_rows(store, req, fixture)
     if req.team1_bats_first is None:
         prediction = model.predict_marginalised(rows)
     else:
@@ -679,12 +769,20 @@ def predict_performance(req: PerformancePredictRequest, registry: XiRegistry = R
             rows["side"] = 3 - rows.side
         prediction = model.predict_oriented(rows, None)
     players = [_player_performance(rows, prediction, i) for i in range(len(rows))]
-    logger.info("performance.predict.done", format=req.format, players=len(players), unknown=len(unknown))
+    logger.info(
+        "performance.predict.done",
+        format=req.format,
+        players=len(players),
+        unknown=len(unknown),
+        match_date=fixture.match_date,
+        match_date_source=fixture.match_date_source,
+    )
     return PerformancePredictResponse(
         players=players,
         innings_marginalised=req.team1_bats_first is None,
         unknown_player_ids=unknown,
         venue_context=_venue_context(rows),
+        fixture=fixture,
         # Read off the model that answered, as the simulator's shared factor is: what a
         # caller needs is whether *these* quantiles were corrected, not what the code
         # currently asks for.
@@ -746,10 +844,11 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
             f"format {req.format!r} has no innings length; the simulator runs for {list(simulator.SIMULATED_FORMATS)}"
         )
     store, model = registry.performance(req.format, req.as_of)
-    win_row, rows, unknown = _fixture_rows(store, req)
-    fixture = simulator.fixtures_from_rows(rows, pd.DataFrame([win_row]), model.predict_oriented)[0]
+    stamp = served_fixture(req)
+    win_row, rows, unknown = _fixture_rows(store, req, stamp)
+    drawn = simulator.fixtures_from_rows(rows, pd.DataFrame([win_row]), model.predict_oriented)[0]
     draws = simulator.simulate_match(
-        fixture.team1, fixture.team2, fixture.context, req.n_samples, req.seed, req.team1_bats_first, model.simulation
+        drawn.team1, drawn.team2, drawn.context, req.n_samples, req.seed, req.team1_bats_first, model.simulation
     )
     summary = simulator.summarize(draws)
     display = store.display_probability(
@@ -772,6 +871,8 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
         team1_total=round(summary["team1"]["total"]["median"], 1),
         team2_total=round(summary["team2"]["total"]["median"], 1),
         unknown=len(unknown),
+        match_date=stamp.match_date,
+        match_date_source=stamp.match_date_source,
     )
     return SimulateResponse(
         format=req.format,
@@ -801,6 +902,7 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
         shared_factor=model.simulation is not None and model.simulation.shared_factor is not None,
         unknown_player_ids=unknown,
         served_ratings=_served_ratings(store),
+        fixture=stamp,
     )
 
 
