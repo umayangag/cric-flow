@@ -452,6 +452,37 @@ def test_predict_win_with_and_without_context(registry, artifacts_dir) -> None:
     assert plain.objective_probability == pytest.approx(ctx.objective_probability), "context never enters the objective"
 
 
+def test_predict_win_reports_which_reading_it_answered(registry, artifacts_dir) -> None:
+    """The response says whether the displayed probability read the toss or averaged both
+    orders, so a caller does not have to re-read its own request to know which of the two
+    quantities it is holding (GO-07, plan §8.7)."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+    t1, t2 = list(last.team1_players), list(last.team2_players)
+
+    marginal = xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2), registry
+    )
+    bats_first = xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, team1_bats_first=True), registry
+    )
+    chases = xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, team1_bats_first=False), registry
+    )
+
+    assert marginal.toss_marginalised is True
+    assert bats_first.toss_marginalised is False and chases.toss_marginalised is False
+    # The marginalised reading is the average of the two oriented ones, which is what makes
+    # them three different numbers rather than one under three labels.
+    assert marginal.team1_win_probability == pytest.approx(
+        0.5 * (bats_first.team1_win_probability + chases.team1_win_probability)
+    )
+    # The objective has no batting-order feature, so it is the same number either way and
+    # the reading never describes it.
+    assert marginal.objective_probability == pytest.approx(bats_first.objective_probability)
+    assert marginal.objective_probability == pytest.approx(chases.objective_probability)
+
+
 def test_predict_win_reports_no_constraint_check_when_none_was_asked_for(registry, artifacts_dir) -> None:
     """The optimised path sends no constraints, and gets no check back."""
     _, _, _, matches = artifacts_dir

@@ -134,7 +134,7 @@ function prediction(
     record: { stored: true, id: 'f0f8f1a4-0f0e-4a6b-9b6f-2c5d4a1e0003' },
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
-    toss: { team1_bats_first: null, honoured: true },
+    toss: { team1_bats_first: null, reading: 'marginalised' },
     team1_pool: defaultPool,
     team2_pool: defaultPool,
     ...overrides,
@@ -331,7 +331,7 @@ describe('TeamLabTab', () => {
   // The surface says which toss the numbers assume, read off the response rather than off
   // the control the user last touched.
   it('names the toss the answer assumed', () => {
-    renderWithResult(prediction({ toss: { team1_bats_first: true, honoured: true } }));
+    renderWithResult(prediction({ toss: { team1_bats_first: true, reading: 'toss_aware' } }));
 
     expect(screen.getByText('toss: India (women) bats first')).toBeInTheDocument();
   });
@@ -746,9 +746,18 @@ describe('TeamLabTab', () => {
     // Each toss state is a different answer, and each carries its label, its ranges and
     // its date off the response.
     it.each([
-      [{ team1_bats_first: null, honoured: true }, 'toss unknown: both batting orders averaged'],
-      [{ team1_bats_first: true, honoured: true }, 'toss: India (women) bats first'],
-      [{ team1_bats_first: false, honoured: true }, 'toss: Australia (women) bats first'],
+      [
+        { team1_bats_first: null, reading: 'marginalised' as const },
+        'toss unknown: both batting orders averaged',
+      ],
+      [
+        { team1_bats_first: true, reading: 'toss_aware' as const },
+        'toss: India (women) bats first',
+      ],
+      [
+        { team1_bats_first: false, reading: 'toss_aware' as const },
+        'toss: Australia (women) bats first',
+      ],
     ])('names the toss state %j off the answer, with the ranges and the date', (toss, label) => {
       renderWithResult(prediction({ toss, scorecard }));
 
