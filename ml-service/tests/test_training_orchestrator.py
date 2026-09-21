@@ -216,3 +216,14 @@ def test_run_evaluate_does_not_pass_the_cutoff_to_the_harness(monkeypatch) -> No
 
     assert calls["module"] == "ml.xi.evaluate"
     assert calls["extra_args"] == ["--postgres", "--out", "/models"]
+
+
+def test_step_for_module_names_the_step_or_falls_back_to_the_module() -> None:
+    """A refusal quotes a step, not an import path -- and never a wrong step.
+
+    A module no step claims has no step name to give, so it is reported as itself
+    rather than as whichever step happened to be first.
+    """
+    assert training_orchestrator.step_for_module("ml.xi.retrain") == "retrain"
+    assert training_orchestrator.step_for_module("ml.xi.evaluate") == "evaluate"
+    assert training_orchestrator.step_for_module("ml.no.such.module") == "ml.no.such.module"

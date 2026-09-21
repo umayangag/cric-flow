@@ -259,6 +259,19 @@ _INSTANT_MODULE = "timeit"
 _INSTANT_ARGS = ["-n", "1", "-r", "1", "pass"]
 
 
+class _RecordingLogger:
+    """Enough of the service logger to read back what a stop said it did."""
+
+    def __init__(self) -> None:
+        self.infos: List[tuple[str, Dict[str, Any]]] = []
+
+    def info(self, event: str, **fields: Any) -> None:
+        self.infos.append((event, fields))
+
+    def warning(self, event: str, **fields: Any) -> None:  # pragma: no cover - not this path
+        self.infos.append((event, fields))
+
+
 @pytest.fixture
 def instant_training_module(monkeypatch):
     """Point the retrain step at a module that exits at once, and hand back its name."""
@@ -338,14 +351,18 @@ def test_a_stop_that_arrives_after_the_run_finished_stops_nothing() -> None:
     finished = subprocess.Popen([sys.executable, "-c", "raise SystemExit(0)"], start_new_session=True)
     finished.wait()
     run = training_orchestrator._processes.start(training_orchestrator.TRAINING_MODULES["retrain"], lambda: finished)
+    logger = _RecordingLogger()
 
     try:
-        stopped = training_orchestrator.stop_training("retrain")
+        stopped = training_orchestrator.stop_training("retrain", logger)
     finally:
         training_orchestrator._processes.finish(run)
 
     assert stopped == [], "there was nothing to stop: the run had already finished"
     assert not run.stopped, "a run that finished on its own keeps the outcome it earned"
+    assert any("nothing to stop" in event for event, _ in logger.infos), (
+        "the operator's log has to say a stop found the run already finished, not go quiet"
+    )
 
 
 def test_a_run_that_finished_before_the_stop_is_not_reported_as_stopped(instant_training_module, monkeypatch) -> None:
