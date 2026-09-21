@@ -930,6 +930,8 @@ def _simulated_side(side: Dict, team_side: int, total_draws: Optional[List[float
                 side=team_side,
                 p_bats=p["p_bats"],
                 p_bowls=p["p_bowls"],
+                batted_share=p["batted_share"],
+                bowled_share=p["bowled_share"],
                 runs=PerformanceRange(**p["runs"]),
                 balls_faced=PerformanceRange(**p["balls_faced"]),
                 wickets=PerformanceRange(**p["wickets"]),

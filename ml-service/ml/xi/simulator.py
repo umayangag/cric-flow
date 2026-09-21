@@ -703,6 +703,13 @@ def _conditional_level(p_involved: np.ndarray, u: np.ndarray) -> np.ndarray:
     return 1.0 - p_involved + p_involved * u
 
 
+def _likelihood_rank(p_bats: np.ndarray) -> np.ndarray:
+    """Each slot's rank by P(bats), 0 for the most likely; ties keep slot order."""
+    rank = np.empty(len(p_bats), dtype=int)
+    rank[np.argsort(-p_bats, kind="stable")] = np.arange(len(p_bats))
+    return rank
+
+
 def _expected_strike_rate(side: SideForecast, order: np.ndarray) -> np.ndarray:
     """Runs per ball a batter is expected to score given that he bats: the conditional
     medians' ratio, falling back to the side's mean where a forecast has no runs."""
@@ -740,12 +747,23 @@ def _distribute_remainder(runs: np.ndarray, balls: np.ndarray, remainder: np.nda
     batted = balls > 0
     depth = batted.sum(axis=1)
     rows = np.arange(len(balls))
-    last = np.maximum(depth - 1, 0)
-    previous = np.maximum(depth - 2, 0)
+    # The pair are the last two who batted in slot order, found through the mask: the
+    # batters are not a prefix of the order, since who bats is decided by P(bats) and a
+    # less likely batter can sit above a more likely one (SERVE-05).
+    last = _last_batter(batted)
+    without_last = batted.copy()
+    without_last[rows, last] = False
+    previous = np.where(depth >= 2, _last_batter(without_last), last)
     to_previous = np.where(depth >= 2, np.rint(remainder * 0.5), 0.0)
     for index, extra_balls in ((previous, to_previous), (last, remainder - to_previous)):
         balls[rows, index] += extra_balls
         runs[rows, index] += np.rint(extra_balls * rate[index])
+
+
+def _last_batter(batted: np.ndarray) -> np.ndarray:
+    """Per draw, the slot of the last batter in slot order (slot 0 where nobody batted)."""
+    k = batted.shape[1]
+    return np.where(batted.any(axis=1), k - 1 - np.argmax(batted[:, ::-1], axis=1), 0)
 
 
 def _first_innings_constraints(
@@ -831,9 +849,14 @@ def batting_innings(
     order = side.batting_order
     k = len(order)
     p_bats = side.p_bats[order]
-    # Depth: one uniform per draw; the first B batters in slot order bat, at least two.
+    # Depth: one uniform per draw sets how deep the innings goes -- the D = #{P(bats) > u}
+    # players most likely to bat do, at least two, and they bat in slot order. Who bats is
+    # decided by P(bats), not by the slot: the D most likely form a nested set as u falls,
+    # so each realises exactly his own P(bats). Taking the first D slots instead made a
+    # player realise the D-th largest P(bats) of the side rather than his own wherever the
+    # classifier's P(bats) is not monotone down `exp_bat_position` (SERVE-05).
     depth = np.clip((p_bats[None, :] > rng.random((n, 1))).sum(axis=1), min(2, k), k)
-    bats = np.arange(k)[None, :] < depth[:, None]
+    bats = _likelihood_rank(p_bats)[None, :] < depth[:, None]
     u_balls, u_runs = _coupled_uniforms(rng, n, k, rho)
     balls = quantile_function(side.balls[order], _conditional_level(p_bats[None, :], u_balls))
     runs = quantile_function(side.runs[order], _conditional_level(p_bats[None, :], u_runs))
@@ -966,6 +989,12 @@ class TeamDraws:
     wickets_lost: np.ndarray
     deliveries: np.ndarray
     untruncated_total: np.ndarray
+    #: L2-B's P(bats) / P(bowls) the draws were made from, (k,), mixed over the orientations
+    #: played (half each with the toss unknown): the same numbers ``/performance/predict``
+    #: reports for the eleven, carried so the summary can show them beside the realised
+    #: shares rather than substituting one for the other (SERVE-05, §8.7).
+    forecast_p_bats: np.ndarray
+    forecast_p_bowls: np.ndarray
 
 
 @dataclass
@@ -982,7 +1011,15 @@ class MatchDraws:
 
 def _empty_team(keys: np.ndarray, n: int) -> TeamDraws:
     k = len(keys)
-    return TeamDraws(keys, *(np.zeros((n, k)) for _ in range(5)), *(np.zeros(n) for _ in range(5)))
+    return TeamDraws(
+        keys, *(np.zeros((n, k)) for _ in range(5)), *(np.zeros(n) for _ in range(5)), np.zeros(k), np.zeros(k)
+    )
+
+
+def _add_forecast(team: TeamDraws, forecast: SideForecast, weight: float) -> None:
+    """Accumulate the orientation's P(bats) / P(bowls) at the weight it is played under."""
+    team.forecast_p_bats += weight * forecast.p_bats
+    team.forecast_p_bowls += weight * forecast.p_bowls
 
 
 def _fill(team: TeamDraws, rows: np.ndarray, batting: InningsDraws, bowling: BowlingDraws) -> None:
@@ -1015,10 +1052,17 @@ def simulate_match(
     out1, out2 = _empty_team(team1.bat_first.player_keys, n), _empty_team(team2.bat_first.player_keys, n)
     for team1_first in (True, False):
         rows = np.flatnonzero(first_flags == team1_first)
-        if not len(rows):
-            continue
         first, second = (team1, team2) if team1_first else (team2, team1)
         first_out, second_out = (out1, out2) if team1_first else (out2, out1)
+        # The forecast the summary reports is the toss mix the draws are made under --
+        # half each way when unknown -- not the realised share of draws, so it equals
+        # ``/performance/predict``'s marginalised answer exactly, whatever ``n`` is.
+        if team1_bats_first is None or team1_bats_first == team1_first:
+            weight = 0.5 if team1_bats_first is None else 1.0
+            _add_forecast(first_out, first.bat_first, weight)
+            _add_forecast(second_out, second.when_chasing, weight)
+        if not len(rows):
+            continue
         factor = shared_factor.sample(rng, len(rows)) if shared_factor is not None else None
         rho = calibration.runs_balls_rho
         innings1 = batting_innings(rng, first.bat_first, context, len(rows), rho, factor=factor)
@@ -1074,8 +1118,15 @@ def summarize_team(team: TeamDraws) -> Dict[str, Any]:
         players.append(
             {
                 "player_key": key,
-                "p_bats": float((team.balls[:, i] > 0).mean()),
-                "p_bowls": float((team.bowled_balls[:, i] > 0).mean()),
+                # The forecast the draws were made from and the share of draws that
+                # realised it are two numbers, reported as two: the deliveries budget and
+                # the chase end innings before the forecast's depth, and the bowling draft
+                # tops bowlers up past P(bowls), so the shares are not the forecasts and
+                # must not be served under their name (SERVE-05, §8.7).
+                "p_bats": float(team.forecast_p_bats[i]),
+                "p_bowls": float(team.forecast_p_bowls[i]),
+                "batted_share": float((team.balls[:, i] > 0).mean()),
+                "bowled_share": float((team.bowled_balls[:, i] > 0).mean()),
                 "runs": _range(team.runs[:, i]),
                 "balls_faced": _range(team.balls[:, i]),
                 "wickets": _range(team.wickets[:, i]),

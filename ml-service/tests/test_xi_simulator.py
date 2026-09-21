@@ -641,3 +641,86 @@ def test_carrying_the_calibration_sample_changes_no_draw() -> None:
     np.testing.assert_array_equal(control.team1.total, carried.team1.total)
     np.testing.assert_array_equal(control.team2.total, carried.team2.total)
     np.testing.assert_array_equal(control.winner, carried.winner)
+
+
+# --- SERVE-05: who bats is decided by P(bats), not by the slot -----------------------
+
+
+def _side_with_p_bats(p_bats, balls_median: float = 6.0) -> S.SideForecast:
+    """An eleven in slot order 1..11 whose P(bats) is whatever the test says -- monotone
+    down the order or not -- with every batter's balls and runs given batting the same."""
+    k = len(p_bats)
+    p = np.asarray(p_bats, dtype=float)
+    balls = np.column_stack([np.full(k, 0.0), np.full(k, balls_median), np.full(k, balls_median * 2.0)])
+    return S.SideForecast(
+        player_keys=np.array([f"slot{i + 1}" for i in range(k)], dtype=object),
+        exp_bat_position=np.arange(1, k + 1, dtype=float),
+        exp_balls_bowled=np.zeros(k),
+        p_bats=p,
+        p_bowls=np.zeros(k),
+        runs=balls * 1.2,
+        balls=balls,
+        conceded=np.zeros((k, 3)),
+        wickets_mean=np.zeros(k),
+    )
+
+
+UNBOUNDED = S.MatchContext("T20", extras_per_ball=0.0, innings_deliveries=1e6, bowler_wicket_share=0.9)
+
+
+def test_each_batter_realises_his_own_p_bats_whatever_the_order_says() -> None:
+    """SERVE-05: the classifier's P(bats) is not monotone down ``exp_bat_position`` (it
+    is not in 94 % of real sides). Batting the first D slots made the slot with 0.4 bat
+    whenever the innings reached it -- the D-th largest P(bats) of the side, 0.7 here --
+    so the simulator's own batted share contradicted the forecast it was drawn from. With
+    no deliveries budget and no target, the share of draws each player bats must be his
+    own P(bats), the two most likely always batting."""
+    p_bats = [1.0, 1.0, 0.9, 0.4, 0.7, 0.6, 0.5, 0.3, 0.2, 0.1, 0.05]
+    side = _side_with_p_bats(p_bats)
+
+    innings = S.batting_innings(np.random.default_rng(0), side, UNBOUNDED, 20000, rho=0.0)
+
+    batted = innings.balls > 0
+    realised = batted.mean(axis=0)
+    np.testing.assert_allclose(realised, p_bats, atol=0.012)
+    assert realised[3] < 0.42  # the 0.4 slot no longer bats at the 0.7 slot's rate
+    # The structure survives: as the uniform falls the batters form a nested set, so no
+    # draw has a less likely batter in without every more likely one.
+    rank = S._likelihood_rank(np.asarray(p_bats))
+    np.testing.assert_array_equal(batted, rank[None, :] < batted.sum(axis=1)[:, None])
+
+
+def test_the_not_out_pair_are_the_last_two_who_batted_in_slot_order() -> None:
+    """The not-out pair, who face the innings' unused deliveries, are the last two who
+    actually batted in slot order -- not the slots at positions D-1 and D-2, which are
+    somebody else once the batters are no longer a prefix of the order."""
+    p_bats = [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    side = _side_with_p_bats(p_bats, balls_median=3.0)
+    context = S.MatchContext("T20", extras_per_ball=0.0, innings_deliveries=120.0, bowler_wicket_share=0.9)
+
+    innings = S.batting_innings(np.random.default_rng(1), side, context, 500, rho=0.0)
+
+    assert not (innings.balls[:, 2] > 0).any()  # P(bats) = 0 never bats, whatever slot he holds
+    assert (innings.balls.sum(axis=1) == 120.0).all()  # ten batters at 3 balls fall short; the remainder is faced
+    # The remainder went to slots 10 and 11 (the last two who batted), never to slot 3.
+    assert (innings.balls[:, 9] > 3.0 * 2.0).all() and (innings.balls[:, 10] > 3.0 * 2.0).all()
+
+
+def test_the_summary_reports_the_forecast_it_drew_from_beside_the_realised_share() -> None:
+    """§8.7: the simulator's ``p_bats`` / ``p_bowls`` are L2-B's forecasts -- exact, the
+    toss mix applied -- and the shares the draws realised are named as shares, so the two
+    surfaces answer the same question with the same number and the difference between
+    forecast and realisation is visible rather than substituted."""
+    team1, team2 = _teams()
+
+    known = S.summarize(S.simulate_match(team1, team2, CONTEXT, n=301, seed=0, team1_bats_first=True))
+    unknown = S.summarize(S.simulate_match(team1, team2, CONTEXT, n=301, seed=0, team1_bats_first=None))
+
+    for players, forecast in ((known["team1"]["players"], team1.bat_first), (known["team2"]["players"], team2.chasing)):
+        assert [p["p_bats"] for p in players] == pytest.approx(forecast.p_bats.tolist(), abs=1e-12)
+        assert [p["p_bowls"] for p in players] == pytest.approx(forecast.p_bowls.tolist(), abs=1e-12)
+    marginal = 0.5 * (team1.bat_first.p_bats + team1.chasing.p_bats)
+    assert [p["p_bats"] for p in unknown["team1"]["players"]] == pytest.approx(marginal.tolist(), abs=1e-12)
+    shares = [p["batted_share"] for p in known["team1"]["players"]]
+    assert all(0.0 <= s <= 1.0 for s in shares) and shares[0] == 1.0 and shares[-1] < shares[0]
+    assert all(0.0 <= p["bowled_share"] <= 1.0 for p in known["team1"]["players"])

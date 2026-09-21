@@ -1301,3 +1301,24 @@ def test_postgres_balls_read_the_wides_and_not_is_legal() -> None:
 
     assert "be.extras_wides" in _BALLS_SQL
     assert "is_legal" not in _BALLS_SQL
+
+
+def test_simulate_reports_the_same_p_bats_as_performance_predict_for_the_same_eleven(registry, artifacts_dir) -> None:
+    """SERVE-05 / H-8: two surfaces, one question, one number. The simulator's ``p_bats``
+    and ``p_bowls`` are the classifier's forecasts the draws were made from, so they equal
+    ``/performance/predict``'s for the same eleven and toss -- known and marginalised --
+    and the share of draws that realised them is served as ``batted_share`` /
+    ``bowled_share``, not under the forecast's name."""
+    base = _eleven_against_eleven(artifacts_dir)
+    for toss in (True, None):
+        request = SimulateRequest(**base, team1_bats_first=toss, n_samples=301, seed=2)
+
+        simulated = xi_service.simulate(request, registry)
+        predicted = xi_service.predict_performance(PerformancePredictRequest(**request.model_dump()), registry)
+
+        forecast = {(p.side, p.player_id): p for p in predicted.players}
+        for player in simulated.team1.players + simulated.team2.players:
+            expected = forecast[(player.side, player.player_id)]
+            assert player.p_bats == pytest.approx(expected.p_bats, abs=1e-12)
+            assert player.p_bowls == pytest.approx(expected.p_bowls, abs=1e-12)
+            assert 0.0 <= player.batted_share <= 1.0 and 0.0 <= player.bowled_share <= 1.0

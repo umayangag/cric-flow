@@ -591,10 +591,34 @@ class SimulatedScorecardLine(BaseModel):
 
 
 class SimulatedPlayer(BaseModel):
+    """One player's line of the simulation. ``p_bats`` / ``p_bowls`` are the L2-B forecasts
+    the draws were made from -- the same numbers ``/performance/predict`` reports for this
+    eleven and toss -- and ``batted_share`` / ``bowled_share`` are what the draws realised.
+    They differ, and the difference is the simulator's own dynamics: the deliveries budget
+    and the chase end an innings before the forecast's depth, and the bowling draft tops
+    bowlers up until the side can deliver the innings. Serving the realised share under the
+    forecast's name was SERVE-05; §8.7 wants the substitution visible, so both are here."""
+
     player_id: str
     side: int = Field(..., description="1 = team1, 2 = team2")
-    p_bats: float = Field(..., ge=0, le=1, description="Share of draws in which the player batted")
-    p_bowls: float = Field(..., ge=0, le=1)
+    p_bats: float = Field(
+        ..., ge=0, le=1, description="L2-B's P(bats) the draws were made from; equals /performance/predict's"
+    )
+    p_bowls: float = Field(
+        ..., ge=0, le=1, description="L2-B's P(bowls) the draws were made from; equals /performance/predict's"
+    )
+    batted_share: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Share of draws in which the player faced a ball: p_bats after the innings' dynamics",
+    )
+    bowled_share: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Share of draws in which the player bowled: p_bowls after the bowling draft's top-up",
+    )
     runs: PerformanceRange
     balls_faced: PerformanceRange
     wickets: PerformanceRange
