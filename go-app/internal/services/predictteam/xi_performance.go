@@ -35,6 +35,11 @@ type XIPerformanceRequest struct {
 	// ml-service builds is read at it, so it is sent whether or not the match is a
 	// backtest (SERVE-04).
 	MatchDate time.Time
+	// Gender is the fixture's, which picks the context baseline its scoring rates are read
+	// from (SERVE-04). Both sides are the same gender — a cross-gender fixture is refused
+	// before this is built — and an unrecognised value is left empty, which reads the
+	// unsplit baseline rather than being sent for ml-service to reject.
+	Gender string
 }
 
 // XIPerformancePlayer is one player's forecast: the median of each target with its 10-90
@@ -100,6 +105,7 @@ func applyPerformanceForecast(
 		VenueID:         fix.venueID,
 		AsOf:            fix.asOf,
 		MatchDate:       fix.matchDate,
+		Gender:          fix.gender,
 	})
 	if err != nil {
 		return fmt.Errorf("performance forecast: %w", err)

@@ -316,6 +316,50 @@ func TestPerformanceAndSimulatePayloads_CarryTheFixtureDate(t *testing.T) {
 	}
 }
 
+// SERVE-04, the other half: the fixture's context group reaches ml-service too.
+//
+// `serving_match` stamped `gender=""` on every fixture, which is context group 0 — the
+// men's group where a run was built with the gender split on. go-app resolves both sides
+// and refuses a cross-gender fixture, so it has exactly one gender to name.
+func TestPerformancePayload_CarriesTheFixtureGender(t *testing.T) {
+	t.Parallel()
+
+	response := `{"players":[],"innings_marginalised":true,
+	  "venue_context":{"venue_bf_rate":0.5,"venue_n":0,"neutral":true},
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+
+	testCases := []struct {
+		name      string
+		gender    string
+		wantField bool
+	}{
+		{name: "a women's fixture names the women's baseline", gender: "female", wantField: true},
+		{name: "a men's fixture names its own", gender: "male", wantField: true},
+		{name: "no gender is no field, and reads the unsplit baseline", gender: "", wantField: false},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, captured := xiCaptureServer(t, response)
+
+			_, err := client.PredictPerformance(context.Background(), predictteam.XIPerformanceRequest{
+				Format:          "T20I",
+				Team1PlayerKeys: []string{"a1"},
+				Team2PlayerKeys: []string{"b1"},
+				Gender:          tc.gender,
+			})
+
+			require.NoError(t, err)
+			value, present := (*captured)["gender"]
+			assert.Equal(t, tc.wantField, present)
+			if tc.wantField {
+				assert.Equal(t, tc.gender, value)
+			}
+		})
+	}
+}
+
 // Play mode's constraint check rides on the call that scores the eleven (P1-2): the
 // request carries the constraints only where the caller pinned an eleven, and the check
 // that comes back describes that same eleven.

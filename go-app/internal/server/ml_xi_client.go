@@ -332,8 +332,11 @@ type mlSimulateRequest struct {
 	// date-dependent feature at (SERVE-04). Omitting it lets ml-service date the fixture
 	// itself, which it reports as such; this client always knows the date and sends it.
 	MatchDate string `json:"match_date,omitempty"`
-	NSamples  int    `json:"n_samples,omitempty"`
-	Seed      int    `json:"seed"`
+	// Gender picks the context baseline the fixture's scoring rates are read from; empty
+	// is the unsplit baseline and is omitted.
+	Gender   string `json:"gender,omitempty"`
+	NSamples int    `json:"n_samples,omitempty"`
+	Seed     int    `json:"seed"`
 }
 
 type mlSimulatedRange struct {
@@ -407,6 +410,7 @@ func (c *MLClient) SimulateMatchXI(
 		Team1BatsFirst: req.Team1BatsFirst,
 		AsOf:           dateParam(req.AsOf),
 		MatchDate:      dateParam(req.MatchDate),
+		Gender:         req.Gender,
 		NSamples:       req.Samples,
 		Seed:           req.Seed,
 	})
@@ -479,6 +483,7 @@ type mlPerformanceRequest struct {
 	// simulate payload: the rows behind both answers are built from the same fixture and
 	// must be dated identically.
 	MatchDate string `json:"match_date,omitempty"`
+	Gender    string `json:"gender,omitempty"`
 }
 
 // mlWicketDistribution is the wicket count's distribution (app/models/xi.py
@@ -536,6 +541,7 @@ func (c *MLClient) PredictPerformance(
 		Team1BatsFirst: req.Team1BatsFirst,
 		AsOf:           dateParam(req.AsOf),
 		MatchDate:      dateParam(req.MatchDate),
+		Gender:         req.Gender,
 	})
 	if err != nil {
 		return nil, err

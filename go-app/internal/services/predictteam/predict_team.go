@@ -285,6 +285,10 @@ type fixture struct {
 	// and is zero for a live request; ml-service used to have neither and dated every
 	// fixture by the last match in its own state, which the archive leaves days behind.
 	matchDate time.Time
+	// gender is the fixture's, and both sides carry it: a cross-gender fixture is refused
+	// above, so there is one gender to name. It picks the context baseline ml-service reads
+	// the fixture's scoring rates from (SERVE-04).
+	gender string
 	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
 	team1BatsFirst *bool
 	// pinned holds both elevens where the caller built them (Play mode); isPinned says
@@ -486,12 +490,29 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		mustInclude2:   mustInclude2,
 		asOf:           input.AsOf,
 		matchDate:      input.MatchDate,
+		gender:         servedGender(team1.Gender),
 		team1BatsFirst: input.Team1BatsFirst,
 	}
 	if err := applyPinnedXIs(&fix, input); err != nil {
 		return fixture{}, err
 	}
 	return fix, nil
+}
+
+// servedGender is the fixture gender ml-service will accept, or empty.
+//
+// ml-service names the two context groups the rating pass builds, and anything else is a
+// value it would refuse the whole request over. A row whose gender the archive never
+// recorded is therefore sent as no gender at all, which reads the unsplit baseline — the
+// behaviour every request had before SERVE-04 — rather than turning a prediction into a
+// 422 over a field that only matters where the gender split is on.
+func servedGender(gender string) string {
+	switch gender {
+	case "male", "female":
+		return gender
+	default:
+		return ""
+	}
 }
 
 // applyPinnedXIs resolves both pinned elevens, where the caller sent them.
