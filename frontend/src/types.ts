@@ -951,6 +951,22 @@ export type FoldStat = {
   mean: number;
   sd: number;
   n_folds: number;
+  /** EVAL-11: how many gates have read the folds this summary averaged — the comparisons
+   * a development number sits under. Absent on a bare holdout figure. */
+  gates_consulted?: number;
+};
+
+/** EVAL-11: the holdout season's record, beside the locked window's numbers. */
+export type HoldoutRecord = {
+  n_matches: number;
+  first_match: string | null;
+  last_match: string | null;
+  season_start: string;
+  season_end: string;
+  season_days: number;
+  days_covered: number;
+  season_complete: boolean;
+  gates_consulted: number;
 };
 
 /** One walk-forward fold, or the locked window in the same shape. */
@@ -958,6 +974,8 @@ export type EvaluationFold = {
   cutoff: string;
   end: string;
   n_train: number;
+  /** The locked window only: what the holdout holds and how much of its season has accrued. */
+  holdout?: HoldoutRecord;
   n_eval: number;
   skipped_reason?: string;
   objective_auc?: number;
@@ -1266,6 +1284,9 @@ export type EvaluationReport = {
     previous_start: string;
     reason: string;
     retired_into_folds: string[];
+    /** EVAL-11: the season the holdout accrues from the line, and the day it completes. */
+    season_days?: number;
+    season_end?: string;
   };
   n_rows: number;
   n_player_rows: number;

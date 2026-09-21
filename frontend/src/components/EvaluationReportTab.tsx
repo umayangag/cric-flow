@@ -81,6 +81,13 @@ const EvaluationReportTab: React.FC = () => {
             label={`window rotated ${report.locked_window.rotated_on}, from ${report.locked_window.previous_start}`}
           />
         )}
+        {report.locked_window?.season_end && (
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`holdout season to ${report.locked_window.season_end}`}
+          />
+        )}
         <Chip size="small" variant="outlined" label={`${report.n_rows.toLocaleString()} matches`} />
         <Chip
           size="small"

@@ -14,7 +14,13 @@ import {
 import type { EvaluationFold, EvaluationFormatReport } from '../types';
 import { MetricLabel } from './common/MetricInfo';
 import MetricValue from './common/MetricValue';
-import { foldWindow, formatShare, formatStat } from '../utils/evaluationReport';
+import {
+  foldProvenance,
+  foldWindow,
+  formatShare,
+  formatStat,
+  holdoutSeason,
+} from '../utils/evaluationReport';
 
 /**
  * The walk-forward table (H-19): one row per rolling origin, then the locked window.
@@ -22,7 +28,9 @@ import { foldWindow, formatShare, formatStat } from '../utils/evaluationReport';
  * The locked window is labelled and set apart because it is scored once per release and
  * never used for a choice. Showing it in the same table as the folds is the point — the
  * folds are where decisions are made, and the reader should be able to see whether the
- * locked figures sit inside their spread.
+ * locked figures sit inside their spread. The two surfaces are named where the numbers
+ * are (EVAL-11): the mean row says how many gates have read the folds, and the holdout
+ * row says how much of its season has accrued and that no gate read it.
  */
 const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ report }) => {
   const { folds, summary } = report.walk_forward;
@@ -96,7 +104,12 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
                 <TableCell>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <span>{foldWindow(fold.cutoff, fold.end)}</span>
-                    {locked && <Chip size="small" color="primary" label="locked" />}
+                    {locked && <Chip size="small" color="primary" label="holdout" />}
+                    {locked && fold.holdout && (
+                      <Typography variant="caption" color="text.secondary">
+                        {holdoutSeason(fold.holdout)}
+                      </Typography>
+                    )}
                   </Stack>
                 </TableCell>
                 <TableCell align="right">{fold.n_train.toLocaleString()}</TableCell>
@@ -130,8 +143,13 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
             <TableRow>
               <TableCell colSpan={3}>
                 <Typography variant="body2" fontWeight={600}>
-                  Mean over folds
+                  Mean over folds — development surface
                 </Typography>
+                {foldProvenance(summary.objective_auc) && (
+                  <Typography variant="caption" color="text.secondary">
+                    {foldProvenance(summary.objective_auc)}
+                  </Typography>
+                )}
               </TableCell>
               <TableCell align="right">
                 <MetricValue metricKey="objective_auc" value={summary.objective_auc} />
