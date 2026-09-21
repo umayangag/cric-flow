@@ -237,14 +237,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 ## 6. go-app prediction path, track record and ops
 
-### GO-08 — Venue lookup failure swallowed  **Medium**
-
-`predict_team.go:406-411`: `if id, verr := GetVenueID(...); verr == nil { venueID = id }` — a typo, unknown venue or DB error yields a "no venue" prediction with nothing on the wire saying so. **Fix.** `400 VENUE_NOT_FOUND` on miss, propagate other errors, echo `venue: {resolved: false}`.
-
-### GO-09 — `match_date` with a UTC offset truncated in UTC  **Medium**
-
-`predict_handlers.go:393-402` accepts RFC3339 with offset; `predict_team.go:389`, `candidates.go:77`, `repo_selection.go:101, 115` use `MatchDate.Truncate(24h)` (UTC); `prediction_record.go:137` stores the untruncated value (pgx encodes `date` from Y/M/D in the value's own location). `2025-03-01T22:00:00-05:00` → cutoff 03-02, so the pool includes matches played *on* 1 March — including the fixture itself if imported. **Fix.** Normalise once in the handler to `time.Date(y, m, d, 0,0,0,0, UTC)` from the parsed value's own Y/M/D.
-
 ### GO-10 — Predicted winner at exactly 0.5 differs between served answer and track record  **Low**
 
 `predict_team.go:573-583` (`>= 0.5` → team1) vs `trackrecord/build.go:115-122` (`> 0.5` → team1); each comment claims the other's rule. **Fix.** One helper.
@@ -330,6 +322,24 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### GO-08 — Venue lookup failure swallowed  **Medium** — PR #332
+
+`predict_team.go:406-411`: `if id, verr := GetVenueID(...); verr == nil { venueID = id }` — a typo, unknown venue or DB error yields a "no venue" prediction with nothing on the wire saying so. **Fix.** `400 VENUE_NOT_FOUND` on miss, propagate other errors, echo `venue: {resolved: false}`.
+
+**Confirmed on `main` (`e94313ec`), and worse than the spec.** `db.GetGlobalCache().GetVenueID` calls `GetOrCreateVenue`, an `INSERT … ON CONFLICT DO UPDATE … RETURNING id`, so an unknown venue is *created* by a read-path request and returned as though it had been found: the prediction then runs at a ground with no history, not at no ground. Running the new integration test against `main` leaves `venue(1, 'No Such Ground')` and an `issued_prediction` recorded against it. The `verr == nil` swallow proper is what hid a real database failure. Reachable from the UI today: the venue field is a `freeSolo` autocomplete whose `onInputChange` writes every keystroke into the request. Not yet hit in the archive — 896 venue rows, none unreferenced by a match.
+
+**Fixed.** `db.FindVenueIDByName` reads and never writes; `resolveVenue` keeps the outcomes apart and all four are distinguishable on the wire: no venue named is `200` with `venue: {"resolved": false, "note": …}` (the field is optional and an absent one is legitimate); a venue that is held is `200` with `venue: {"resolved": true, "venue_id", "name"}`; a name this database does not hold is `400 VENUE_NOT_FOUND`; a lookup failure propagates as itself. The match is on `venue_name`, exactly — folding spellings together is IMPORT-08 and DATA-02, left alone.
+
+### GO-09 — `match_date` with a UTC offset truncated in UTC  **Medium** — PR #332
+
+`predict_handlers.go:393-402` accepts RFC3339 with offset; `predict_team.go:389`, `candidates.go:77`, `repo_selection.go:101, 115` use `MatchDate.Truncate(24h)` (UTC); `prediction_record.go:137` stores the untruncated value (pgx encodes `date` from Y/M/D in the value's own location). `2025-03-01T22:00:00-05:00` → cutoff 03-02, so the pool includes matches played *on* 1 March — including the fixture itself if imported. **Fix.** Normalise once in the handler to `time.Date(y, m, d, 0,0,0,0, UTC)` from the parsed value's own Y/M/D.
+
+**The mechanism is real; the direction is inverted, and self-inclusion is unreachable.** pgx encodes a `date` parameter from the value's *own* year/month/day (`pgtype/date.go:164`), which the finding states and then reads the wrong way. `Truncate(24 * time.Hour)` rounds the instant down to midnight UTC and leaves the zone alone, so `2025-03-01T01:00:00-05:00` becomes `2025-02-28T19:00:00-05:00` and reaches Postgres as **28 February** — verified against `cricket_data` (`select $1::date` returns `2025-02-28`). The truncated cutoff is therefore always the fixture's own day or the one before it, and the pool predicate is `m.match_date < $2`, so the fixture's own day can never enter its own pool. The real defect is the opposite: a whole day of history dropped from the window, and a `since` on the wire off by a day. Measured on the archive — 4,821 of 5,983 match dates have at least one match the day before, and over T20I fixtures since 2024, 26 of 893 fixture-sides would lose at least one player from the pool entirely (53 players) if the cutoff slips a day. No stored prediction was affected: all 26 in `issued_prediction` carry a bare `YYYY-MM-DD`, and the UI's `<input type="date">` cannot send anything else.
+
+**The stored record was the correct one.** `prediction_record.go` stores the untruncated value, whose own Y/M/D is the caller's day, and the track record reads that stored date for the exact-date fixture match, the superseding rule and `days_past_match_date` — so the disagreement was a correct stored date against a wrong pool cutoff, not a scoring defect.
+
+**Fixed.** `availability.CalendarDay` — midnight UTC of the value's own date — is applied once in `parseMatchDate` and replaces every `Truncate(24 * time.Hour)` on a caller-supplied date in `poolQueryFor`, `ListPlayerPoolByOpposition`, `ListPlayerRowsByID` and the candidates handler.
 
 ### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium** — PR #331
 
