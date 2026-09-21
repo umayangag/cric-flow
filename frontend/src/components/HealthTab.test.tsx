@@ -35,8 +35,9 @@ describe('HealthTab', () => {
       opsStatusWith({
         status: 'fresh',
         fresh: true,
-        age_days: 2,
+        data_age_days: 1,
         max_age_days: 14,
+        data_through: '2026-09-06',
         ratings_through: '2026-09-05',
         code: null,
       }),
@@ -93,7 +94,9 @@ describe('HealthTab', () => {
     render(<HealthTab />);
     await waitFor(() => {
       expect(
-        screen.getByText(/ratings through 2026-09-05 \(2 days old, limit 14\)/),
+        screen.getByText(
+          /data built to 2026-09-06 \(1 days ago, limit 14\); last match 2026-09-05/,
+        ),
       ).toBeInTheDocument();
     });
   });

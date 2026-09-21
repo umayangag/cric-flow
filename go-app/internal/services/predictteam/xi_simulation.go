@@ -27,6 +27,9 @@ type XISimulationRequest struct {
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
 	// means the serving state through today.
 	AsOf time.Time
+	// MatchDate is the day the fixture is played, which every date-dependent feature in
+	// the rows the draws come from is read at (SERVE-04).
+	MatchDate time.Time
 	// Samples is the draw count; zero lets the ML service use its default (2000).
 	Samples int
 	Seed    int
@@ -154,6 +157,7 @@ func applyXISimulation(
 		VenueID:         fix.venueID,
 		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
+		MatchDate:       fix.matchDate,
 	})
 	if err != nil {
 		return fmt.Errorf("simulate match: %w", err)

@@ -74,8 +74,13 @@ export type OpsArtifacts = {
 export type ServedFreshness = {
   status: FreshnessStatus;
   fresh: boolean;
-  age_days: number | null;
+  /** Days from `data_through` to today — the quantity ml-service compared to the limit. */
+  data_age_days: number | null;
   max_age_days: number | null;
+  /** The served run's cutoff: the date its data was built to, and what the age counts from. */
+  data_through: string | null;
+  /** The last match the run folded in. Shown, never the verdict: between seasons it walks
+   * away from today on its own, and no retrain can move it (SERVE-03). */
   ratings_through: string | null;
   code: string | null;
 };
@@ -113,8 +118,9 @@ export const UNKNOWN_FRESHNESS: OpsFreshness = {
   served: {
     status: 'unknown',
     fresh: false,
-    age_days: null,
+    data_age_days: null,
     max_age_days: null,
+    data_through: null,
     ratings_through: null,
     code: null,
   },
@@ -138,8 +144,9 @@ export function readFreshness(data: unknown): OpsFreshness {
     served: {
       status: readFreshnessStatus(served.status),
       fresh: served.fresh === true,
-      age_days: readNumber(served.age_days) ?? null,
+      data_age_days: readNumber(served.data_age_days) ?? null,
       max_age_days: readNumber(served.max_age_days) ?? null,
+      data_through: typeof served.data_through === 'string' ? served.data_through : null,
       ratings_through: typeof served.ratings_through === 'string' ? served.ratings_through : null,
       code: typeof served.code === 'string' ? served.code : null,
     },
@@ -204,10 +211,13 @@ export function freshnessPillState(
 export function servedFreshnessLabel(served: ServedFreshness): string {
   switch (served.status) {
     case 'fresh':
-      return `ratings through ${served.ratings_through} (${served.age_days} days old, limit ${served.max_age_days})`;
+      return (
+        `data built to ${served.data_through} (${served.data_age_days} days ago, ` +
+        `limit ${served.max_age_days}); last match ${served.ratings_through}`
+      );
     case 'stale':
       return (
-        `ratings through ${served.ratings_through} — ${served.age_days} days old, ` +
+        `data built to ${served.data_through} — ${served.data_age_days} days ago, ` +
         `past the limit of ${served.max_age_days}: ${served.code ?? 'refused'}`
       );
     case 'not_loaded':

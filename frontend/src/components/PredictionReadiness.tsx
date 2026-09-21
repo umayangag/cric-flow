@@ -58,15 +58,16 @@ const PredictionReadiness: React.FC<Props> = ({ status }) => {
       )}
       {stale && (
         <Typography variant="body2" component="div">
-          The loaded run&apos;s ratings are older than the limit —{' '}
+          The loaded run&apos;s data was built to {served.data_through ?? 'an unknown date'}, which
+          is {served.data_age_days ?? '?'} days ago against a limit of {served.max_age_days ?? '?'}.
+          Its last match is{' '}
           <RatingsAsOf
             served={{
               ratings_through: served.ratings_through ?? 'an unknown date',
               run_id: loadedRun,
             }}
-          />{' '}
-          — which is {served.age_days ?? '?'} days old against a limit of{' '}
-          {served.max_age_days ?? '?'}. A live prediction is refused with{' '}
+          />
+          . A live prediction is refused with{' '}
           <strong>{served.code ?? RATINGS_STALE_CODE}</strong> rather than answered from a squad
           that has moved on.
         </Typography>

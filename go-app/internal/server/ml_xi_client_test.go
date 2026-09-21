@@ -15,11 +15,11 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 )
 
-func TestAsOfParam_RendersADateAndOmitsTheZeroTime(t *testing.T) {
+func TestDateParam_RendersADateAndOmitsTheZeroTime(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, "", asOfParam(time.Time{}))
-	assert.Equal(t, "2025-09-01", asOfParam(time.Date(2025, 9, 1, 14, 30, 0, 0, time.UTC)))
+	assert.Equal(t, "", dateParam(time.Time{}))
+	assert.Equal(t, "2025-09-01", dateParam(time.Date(2025, 9, 1, 14, 30, 0, 0, time.UTC)))
 }
 
 // xiCaptureServer answers any /xi/* POST with the given body and records the request JSON.
@@ -217,6 +217,103 @@ func TestSimulateMatchXI_MapsTheResponseAndSendsTheFixture(t *testing.T) {
 	assert.InDelta(t, 0.6, result.HeadlineTeam1WinProbability, 1e-9)
 	assert.Equal(t, "display", result.HeadlineSource)
 	assert.Equal(t, servedFromTheDevRun, result.Served)
+}
+
+// SERVE-04: the fixture's own date reaches ml-service.
+//
+// Until this, no request model carried one, so ml-service dated every fixture by the last
+// match in its own rating state — twelve days behind today on the dev box, and further for
+// any fixture worth asking about. go-app has always held the date the caller typed
+// (`Input.MatchDate`); it simply never sent it. Both payloads carry it, because the rows
+// behind a simulation and behind a performance prediction are the same rows and must be
+// dated identically.
+func TestPerformanceAndSimulatePayloads_CarryTheFixtureDate(t *testing.T) {
+	t.Parallel()
+
+	matchDate := time.Date(2026, 10, 21, 0, 0, 0, 0, time.UTC)
+	simulateResponse := `{"format":"T20","n_samples":300,"seed":0,"toss_marginalised":true,
+	  "team1":{"total":{"q10":130,"median":158,"q90":186,"mean":158.4,"sd":21.0,"scorecard":157.9},
+	           "extras_scorecard":7.5,"extras_spread_share":0.02,
+	           "wickets_lost":{"q10":3,"median":6,"q90":9},"players":[]},
+	  "team2":{"total":{"q10":120,"median":150,"q90":180,"mean":150.1,"sd":22.0,"scorecard":150.2},
+	           "extras_scorecard":7.1,"extras_spread_share":0.02,
+	           "wickets_lost":{"q10":3,"median":6,"q90":9},"players":[]},
+	  "win_probability":{"simulated":0.57,"p_tie":0.01,"display":0.6,"headline":0.6,"headline_source":"display"},
+	  "margin":{"p_bat_first_wins":0.5,"p_chaser_wins":0.49,"p_tie":0.01},
+	  "unknown_player_ids":[],
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+	performanceResponse := `{"players":[],"innings_marginalised":true,
+	  "venue_context":{"venue_bf_rate":0.5,"venue_n":0,"neutral":true},
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+
+	testCases := []struct {
+		name      string
+		response  string
+		call      func(*MLClient, time.Time) error
+		wantField bool
+		wantValue string
+	}{
+		{
+			name:     "a simulated fixture is dated by the caller",
+			response: simulateResponse,
+			call: func(client *MLClient, day time.Time) error {
+				_, err := client.SimulateMatchXI(context.Background(), predictteam.XISimulationRequest{
+					Format:          "T20",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					MatchDate:       day,
+					Samples:         300,
+				})
+				return err
+			},
+			wantField: true,
+			wantValue: "2026-10-21",
+		},
+		{
+			name:     "a performance prediction is dated by the caller",
+			response: performanceResponse,
+			call: func(client *MLClient, day time.Time) error {
+				_, err := client.PredictPerformance(context.Background(), predictteam.XIPerformanceRequest{
+					Format:          "T20",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					MatchDate:       day,
+				})
+				return err
+			},
+			wantField: true,
+			wantValue: "2026-10-21",
+		},
+		{
+			name:     "no date is no field, and ml-service says it dated the fixture itself",
+			response: performanceResponse,
+			call: func(client *MLClient, _ time.Time) error {
+				_, err := client.PredictPerformance(context.Background(), predictteam.XIPerformanceRequest{
+					Format:          "T20",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+				})
+				return err
+			},
+			wantField: false,
+		},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, captured := xiCaptureServer(t, tc.response)
+
+			err := tc.call(client, matchDate)
+
+			require.NoError(t, err)
+			value, present := (*captured)["match_date"]
+			assert.Equal(t, tc.wantField, present)
+			if tc.wantField {
+				assert.Equal(t, tc.wantValue, value)
+			}
+		})
+	}
 }
 
 // Play mode's constraint check rides on the call that scores the eleven (P1-2): the

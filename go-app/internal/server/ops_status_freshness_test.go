@@ -63,14 +63,14 @@ func TestFreshnessVerdictIsTheSameOnBothSurfaces(t *testing.T) {
 		{
 			name: "fresh",
 			verdict: map[string]any{
-				"fresh": true, "age_days": 2, "max_age_days": 14,
+				"fresh": true, "data_age_days": 2, "max_age_days": 14, "data_through": "2026-09-05",
 				"ratings_through": "2026-09-02", "code": nil,
 			},
 		},
 		{
 			name: "stale under a lowered limit",
 			verdict: map[string]any{
-				"fresh": false, "age_days": 5, "max_age_days": 3,
+				"fresh": false, "data_age_days": 5, "max_age_days": 3, "data_through": "2026-09-02",
 				"ratings_through": "2026-09-02", "code": "RATINGS_STALE",
 			},
 		},
@@ -100,7 +100,10 @@ func TestFreshnessVerdictIsTheSameOnBothSurfaces(t *testing.T) {
 			labVerdict, ok := xi["ratings"].(map[string]any)
 			require.True(t, ok, "/api/ml/xi-status must carry H-11's verdict")
 
-			for _, field := range []string{"fresh", "age_days", "max_age_days", "ratings_through", "code"} {
+			fields := []string{
+				"fresh", "data_age_days", "max_age_days", "data_through", "ratings_through", "code",
+			}
+			for _, field := range fields {
 				assert.Equal(t, labVerdict[field], served[field],
 					"the Ops badge and the Lab's readiness notice must read the same %s", field)
 			}
@@ -115,7 +118,7 @@ func TestFreshnessVerdictIsTheSameOnBothSurfaces(t *testing.T) {
 // with the verdict again.
 func TestOpsStatusCarriesOneFreshnessObject(t *testing.T) {
 	oneStoreMLService(t, map[string]any{
-		"fresh": true, "age_days": 1, "max_age_days": 14,
+		"fresh": true, "data_age_days": 1, "max_age_days": 14, "data_through": "2026-09-06",
 		"ratings_through": "2026-09-06", "code": nil,
 	}, "20260906T101500Z-ab12cd34")
 	app := &App{}

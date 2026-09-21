@@ -18,8 +18,9 @@ const P0_4_STATE = {
     served: {
       status: 'fresh',
       fresh: true,
-      age_days: 2,
+      data_age_days: 1,
       max_age_days: 14,
+      data_through: '2026-09-03',
       ratings_through: '2026-09-02',
       code: null,
     },
@@ -40,8 +41,9 @@ const STALE_STATE = {
     served: {
       status: 'stale',
       fresh: false,
-      age_days: 5,
+      data_age_days: 5,
       max_age_days: 3,
+      data_through: '2026-09-02',
       ratings_through: '2026-09-02',
       code: 'RATINGS_STALE',
     },
@@ -63,7 +65,9 @@ describe('FreshnessCard', () => {
     render(<FreshnessCard freshness={readFreshness(P0_4_STATE)} formats={FORMATS} />);
 
     expect(
-      screen.getByText(/ratings through 2026-09-02 \(2 days old, limit 14\)/),
+      screen.getByText(
+        /data built to 2026-09-03 \(1 days ago, limit 14\); last match 2026-09-02/,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/2026-08-27 · 8d ago · 2,857 matches/)).toBeInTheDocument();
     expect(screen.queryByText(/🕒 stale/)).not.toBeInTheDocument();

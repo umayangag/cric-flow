@@ -341,10 +341,12 @@ def test_a_decided_match_with_no_deliveries_yields_the_win_row_and_no_player_row
 
 
 def test_serving_rows_age_the_players_at_the_fixture_date_not_the_states() -> None:
-    """The serving path stamped ``state.last_date`` on every fixture, so a match played
-    next month was aged as of the last match the state had folded in (SERVE-04). The two
-    dates are twelve days apart on the dev box and further on any fixture worth asking
-    about, and ``age`` is read at whichever date the record carries."""
+    """What the wrong stamp costs (SERVE-04). The row assembly always honoured the date
+    on the record; it was the serving path that handed it ``state.last_date``, so a match
+    played next month was aged as of the last match the state had folded in. The two dates
+    are twelve days apart on the dev box -- 0.033 years of age -- and forty-two days apart
+    for a fixture a month out. This measures that; the service-level tests in
+    ``test_xi_service_and_postgres`` are what pin the date reaching here."""
     source = _two_match_source()
     state = build(source).state
     for key in xi("a") + xi("b"):

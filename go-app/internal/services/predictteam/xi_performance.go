@@ -31,6 +31,10 @@ type XIPerformanceRequest struct {
 	// — and the auction's projection sets it where the operator asks a toss-known question.
 	Team1BatsFirst *bool
 	AsOf           time.Time
+	// MatchDate is the day the fixture is played. Every date-dependent feature in the row
+	// ml-service builds is read at it, so it is sent whether or not the match is a
+	// backtest (SERVE-04).
+	MatchDate time.Time
 }
 
 // XIPerformancePlayer is one player's forecast: the median of each target with its 10-90
@@ -95,6 +99,7 @@ func applyPerformanceForecast(
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
 		AsOf:            fix.asOf,
+		MatchDate:       fix.matchDate,
 	})
 	if err != nil {
 		return fmt.Errorf("performance forecast: %w", err)

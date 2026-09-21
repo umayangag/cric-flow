@@ -280,6 +280,11 @@ type fixture struct {
 	mustInclude1 []string
 	mustInclude2 []string
 	asOf         time.Time
+	// matchDate is the day the fixture is played, which is the date every date-dependent
+	// feature is read at (SERVE-04). It is not asOf, which chooses *which ratings* answer
+	// and is zero for a live request; ml-service used to have neither and dated every
+	// fixture by the last match in its own state, which the archive leaves days behind.
+	matchDate time.Time
 	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
 	team1BatsFirst *bool
 	// pinned holds both elevens where the caller built them (Play mode); isPinned says
@@ -480,6 +485,7 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		mustInclude1:   mustInclude1,
 		mustInclude2:   mustInclude2,
 		asOf:           input.AsOf,
+		matchDate:      input.MatchDate,
 		team1BatsFirst: input.Team1BatsFirst,
 	}
 	if err := applyPinnedXIs(&fix, input); err != nil {
