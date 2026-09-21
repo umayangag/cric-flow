@@ -1091,7 +1091,11 @@ rows carry the same ages the database run's do; without it every age reads as un
 the run says so.
 The window's start date and the date it was last rotated travel in the report
 (`locked_start`, `locked_window`) and on every locked figure's label, so a reader can tell
-which window a number came from — see *Rotating the locked window* below.
+which window a number came from — see *Rotating the locked window* below. The two surfaces
+are also told apart where the number is (EVAL-11): every summary over folds is
+`{mean, sd, n_folds, gates_consulted}` — the last being how many registered gates have read
+the folds, 29 of 30 today — and a holdout figure is a bare value under `locked`, beside a
+`holdout` record saying how much of the season has accrued and that no gate consulted it.
 Per format it reports, with mean ± spread over cutoffs (and seeds where a model has one):
 objective/display AUC and Brier against the base rate; the specific-XI-beyond-typical-XI
 delta and swap monotonicity (the selection gates that replace P-0's winner accuracy), and
@@ -1242,9 +1246,40 @@ window rotates, on the following rule.
   `parity_model_window` (the performance model) and `parity_win_model_window` (the win models)
   name which window fitted what it compared.
 
+- **The holdout is a season, and the folds cannot reach it (EVAL-11).** A line that moves to
+  the date of the last decision leaves a window only as old as the time since that decision
+  — on 2026-09-20 it held 52 T20, 24 ODI, 9 TEST and 3 T20I matches, days rather than a
+  window, while all ~30 gates had been decided on the same eleven folds. So the window is
+  now defined as a **season**: `LOCKED_SEASON_DAYS` (365) of matches accruing from the line,
+  with `season_end` in the report's `locked_window` block and, per format, a `holdout`
+  record beside the locked numbers (`n_matches`, `days_covered`, `season_complete`,
+  `gates_consulted: 0`). A release verdict on the holdout is due when the season is
+  complete *and unread*; until then the record says so and the folds remain the only
+  numbers. Three properties of the code keep it untouched rather than a convention: the
+  fold path is handed a frame that ends at the line, so nothing computed in a fold can reach
+  a holdout row; `fold_windows()` refuses a cutoff at or past the line, so a rotation cannot
+  extend the folds into the holdout and no experiment script (all of which take their
+  windows from it) can obtain a window there; and a gate whose `Threshold` would read the
+  `locked` node is refused when it is registered (`ml/xi/gates.py`). Rotating before the
+  season completes is still the honest response to a window that has been read — but the
+  record then shows a season that never completed, rather than a holdout that was.
+- **What the holdout can and cannot certify.** Its models are trained on the development
+  rows only (the locked window trains before `LOCKED_START` under the same cutoff rule as
+  every fold), so a holdout number is the score of the *selection procedure* — the features,
+  the model classes, the thresholds and the scoping chosen on the folds — on data none of
+  those choices consulted. It does not certify the served run's own weights, which
+  `retrain` fits through today (the served run's manifest carries its own holdout report
+  at its cutoff); and at one season it is thin where the game is thin — a full season of
+  the archive holds roughly 1,700 T20, 390 ODI, 190 T20I and 160 TEST decided matches, so
+  it can decide H-17 in T20I (mean 0.766 against 0.65, Hanley–McNeil SE ≈ 0.04), is
+  marginal in ODI (0.674 against 0.65, SE ≈ 0.03), and cannot decide E5 anywhere (about 40
+  T20I and 160 ODI pairs a year against an agreement-minus-bar of 0.06–0.09 at SE
+  0.04–0.08). A holdout that cannot decide a gate is named so, not read as a pass.
+
 The current window was declared on **2026-09-02**, at the P-7 merge date, because every model
 choice of the P-0…P-7 migration consulted the previous window (matches ≥ 2025-09-01). That
-window is now the last four walk-forward folds (2025-09, 2025-12, 2026-03, 2026-06).
+window is now the last four walk-forward folds (2025-09, 2025-12, 2026-03, 2026-06). Its
+season completes on **2027-09-02**.
 
 **Gate registry (H-23, `ml/xi/gates.py`).** Every gate the report prints — H-17's AUC line,
 swap monotonicity, specific-vs-typical, E5, E2, the quantile coverage, width beside coverage,

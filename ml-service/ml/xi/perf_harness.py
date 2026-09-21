@@ -20,6 +20,7 @@ import pandas as pd
 
 from ml.xi import contract as C
 from ml.xi import perf_baselines, perf_metrics
+from ml.xi.folds import summarise_over_folds
 from ml.xi.perf_calibration import coverage_off_nominal
 from ml.xi.performance import (
     INVOLVEMENT_COLS,
@@ -223,6 +224,7 @@ def summarize_folds(folds: List[Dict]) -> Any:
     if isinstance(sample, dict):
         return {key: summarize_folds([f.get(key) for f in present if isinstance(f, dict)]) for key in sample}
     if isinstance(sample, (int, float)) and not isinstance(sample, bool):
-        values = [float(f) for f in present if isinstance(f, (int, float)) and not isinstance(f, bool)]
-        return {"mean": float(np.mean(values)), "sd": float(np.std(values)), "n_folds": len(values)}
+        return summarise_over_folds(
+            [float(f) for f in present if isinstance(f, (int, float)) and not isinstance(f, bool)]
+        )
     return sample

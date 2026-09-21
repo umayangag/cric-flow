@@ -40,7 +40,7 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
         },
       ],
       summary: {
-        objective_auc: { mean: 0.72, sd: 0.01, n_folds: 7 },
+        objective_auc: { mean: 0.72, sd: 0.01, n_folds: 7, gates_consulted: 29 },
         display_auc: { mean: 0.747, sd: 0.012, n_folds: 7 },
         base_rate_brier: { mean: 0.25, sd: 0.002, n_folds: 7 },
         swap_violation_share: { mean: 0.003, sd: 0.001, n_folds: 7 },
@@ -89,6 +89,17 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
       objective_auc: 0.723,
       display_auc_mean: 0.751,
       note: 'locked window (H-19): scored once per release, never used for a choice',
+      holdout: {
+        n_matches: 332,
+        first_match: '2026-09-02',
+        last_match: '2026-09-20',
+        season_start: '2026-09-02',
+        season_end: '2027-09-02',
+        season_days: 365,
+        days_covered: 19,
+        season_complete: false,
+        gates_consulted: 0,
+      },
       recalibrated_targets: [],
       performance: {
         targets: {
@@ -184,6 +195,8 @@ function report(overrides: Partial<EvaluationReport> = {}): EvaluationReport {
       previous_start: '2025-09-01',
       reason: 'the migration read the previous window',
       retired_into_folds: ['2025-09-01', '2025-12-01'],
+      season_days: 365,
+      season_end: '2027-09-02',
     },
     n_rows: 22734,
     n_player_rows: 463818,
@@ -206,7 +219,21 @@ describe('EvaluationReportTab', () => {
     await waitFor(() => expect(screen.getByText('Walk-forward')).toBeInTheDocument());
     expect(screen.getByText('2024-01-01 → 2024-04-01')).toBeInTheDocument();
     expect(screen.getByText('2026-09-02 → today')).toBeInTheDocument();
-    expect(screen.getByText('locked')).toBeInTheDocument();
+    expect(screen.getByText('holdout')).toBeInTheDocument();
+  });
+
+  it('names the surface beside every number: the folds read by gates, the holdout by none (EVAL-11)', async () => {
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Mean over folds — development surface')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('over 7 folds, read by 29 gates')).toBeInTheDocument();
+    expect(
+      screen.getByText('19 of 365 season days, incomplete, read by no gate'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('holdout season to 2027-09-02')).toBeInTheDocument();
   });
 
   it('says which window a number came from and when the line last moved', async () => {

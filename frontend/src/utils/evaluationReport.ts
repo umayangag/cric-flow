@@ -1,4 +1,4 @@
-import type { FoldStat } from '../types';
+import type { FoldStat, HoldoutRecord } from '../types';
 
 /**
  * The report's numeric leaves come in two shapes: a bare number on a single fold (the
@@ -25,6 +25,24 @@ export function formatStat(value: ReportNumber, digits = 3): string {
   const spread = statSpread(value);
   const point = mean.toFixed(digits);
   return spread == null ? point : `${point} ± ${spread.toFixed(digits)}`;
+}
+
+/**
+ * EVAL-11: where a fold summary came from — "over 11 folds, read by 29 gates" — rendered
+ * beside the number so a development figure is never mistaken for a holdout one. Absent
+ * for a bare number, which is a single window's figure.
+ */
+export function foldProvenance(value: ReportNumber): string | null {
+  if (value == null || typeof value === 'number') return null;
+  const folds = `over ${value.n_folds} fold${value.n_folds === 1 ? '' : 's'}`;
+  return value.gates_consulted == null ? folds : `${folds}, read by ${value.gates_consulted} gates`;
+}
+
+/** EVAL-11: the holdout's own label — "19 of 365 season days, incomplete, read by no gate". */
+export function holdoutSeason(record: HoldoutRecord): string {
+  const accrued = `${record.days_covered} of ${record.season_days} season days`;
+  const state = record.season_complete ? 'complete' : 'incomplete';
+  return `${accrued}, ${state}, read by no gate`;
 }
 
 /** A share as a percentage: "0.4%". */

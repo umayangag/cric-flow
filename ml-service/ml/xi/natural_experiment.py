@@ -42,6 +42,7 @@ import pandas as pd
 
 from ml.xi import contract as C
 from ml.xi.asof import AsOfRatings
+from ml.xi.folds import summarise_over_folds
 from ml.xi.ratings import aggregate_side, xi_feature_vector
 from ml.xi.sources import MatchSource
 
@@ -403,16 +404,7 @@ def evaluate_format(
             "development": int(sum(f["pairs"] for f in folds)),
             "locked": len(locked_pairs),
         },
-        "walk_forward": {
-            "folds": folds,
-            "summary": {
-                "agreement": (
-                    {"mean": float(np.mean(rates)), "sd": float(np.std(rates)), "n_folds": len(rates)}
-                    if rates
-                    else None
-                )
-            },
-        },
+        "walk_forward": {"folds": folds, "summary": {"agreement": summarise_over_folds(rates)}},
         "development": development,
         "locked": locked,
         "decision": decision,

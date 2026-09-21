@@ -4,8 +4,19 @@ Rolling-origin walk-forward for every number a choice may be based on, plus the 
 window -- matches at or after ``LOCKED_START`` -- scored once per release and labeled as
 such, never used for a choice. The locked window rotates once its data has guided a release
 decision (A-4): the spent window retires into the folds and the line moves to the date of
-the decision that read it, with both dates in the report so a number names its window. Per
-format it reports, with mean and spread over cutoffs:
+the decision that read it, with both dates in the report so a number names its window.
+
+The folds are the development surface and the locked window is the holdout, and the
+report keeps the two apart by construction rather than by convention (EVAL-11). The
+folds are scored from the development rows alone -- ``evaluate_format`` hands the fold
+path a frame that ends at ``LOCKED_START``, so nothing computed in a fold can reach a
+holdout row; ``fold_windows`` refuses a cutoff inside the holdout, so a rotation cannot
+extend the folds into it and no experiment script can obtain a window there; and a gate
+whose threshold would read the ``locked`` node is refused at registration
+(``ml.xi.gates``). The holdout is a season (``LOCKED_SEASON_DAYS``) that accrues from the
+line: its record beside its numbers says how much has accrued and that no gate read it,
+and every fold summary carries how many gates consulted the folds (``ml.xi.folds``).
+Per format it reports, with mean and spread over cutoffs:
 
 * win-model objective and display AUC / Brier against the base rate;
 * the specific-XI-beyond-typical-XI delta and swap monotonicity (the selection gates
@@ -76,6 +87,7 @@ from ml.xi import (
 )
 from ml.xi.asof import round_trip_store, serving_parity
 from ml.xi.builder import build
+from ml.xi.folds import summarise_over_folds
 from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
@@ -125,6 +137,11 @@ LOCKED_ROTATION_REASON = (
     "spent as an untouched holdout; it retires into the walk-forward folds and the line moves "
     "to the P-7 merge date, which no decision has read past (A-4)"
 )
+#: The holdout is a season, not the days since the last decision (EVAL-11): it accrues from
+#: ``LOCKED_START`` for this many days of matches before a release verdict can rest on it.
+#: A rotation before it completes is honest -- the window was spent -- but the report then
+#: records that no season ever completed unread, rather than pretending one did.
+LOCKED_SEASON_DAYS = 365
 PARITY_LAST_N = 50
 # How many evaluation matches feed the swap-monotonicity probe per fold.
 SWAP_MAX_MATCHES = 50
@@ -134,36 +151,69 @@ MIN_EVAL_ROWS = 20
 
 
 def fold_windows() -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
-    boundaries = [pd.Timestamp(c) for c in WALK_FORWARD_CUTOFFS] + [pd.Timestamp(LOCKED_START)]
+    """The walk-forward windows, ending where the holdout begins. A cutoff at or past
+    ``LOCKED_START`` is refused: a fold there would score holdout rows, which is the one
+    thing the folds may never do (EVAL-11), and every experiment script takes its windows
+    from here."""
+    locked_start = pd.Timestamp(LOCKED_START)
+    inside_holdout = [c for c in WALK_FORWARD_CUTOFFS if pd.Timestamp(c) >= locked_start]
+    if inside_holdout:
+        raise ValueError(
+            f"walk-forward cutoffs {inside_holdout} sit at or past the holdout line {LOCKED_START}; "
+            "the folds end where the holdout begins, and a rotation moves LOCKED_START before it extends them"
+        )
+    boundaries = [pd.Timestamp(c) for c in WALK_FORWARD_CUTOFFS] + [locked_start]
     return list(zip(boundaries[:-1], boundaries[1:]))
+
+
+def locked_season_end() -> pd.Timestamp:
+    """The date the holdout season is complete: ``LOCKED_SEASON_DAYS`` after the line."""
+    return pd.Timestamp(LOCKED_START) + pd.Timedelta(days=LOCKED_SEASON_DAYS)
 
 
 def locked_window() -> Dict[str, object]:
     """The locked window as the report carries it: where the line is now, when it was last
-    moved, and which window the folds absorbed when it moved (H-19, A-4)."""
+    moved, which window the folds absorbed when it moved (H-19, A-4), and the season it
+    has to accrue before a release verdict can rest on it (EVAL-11)."""
     return {
         "start": LOCKED_START,
         "rotated_on": LOCKED_ROTATED_ON,
         "previous_start": LOCKED_PREVIOUS_START,
         "reason": LOCKED_ROTATION_REASON,
         "retired_into_folds": [c for c in WALK_FORWARD_CUTOFFS if c >= LOCKED_PREVIOUS_START],
+        "season_days": LOCKED_SEASON_DAYS,
+        "season_end": locked_season_end().date().isoformat(),
     }
 
 
 def locked_note() -> str:
     """The label every locked-window number carries, naming the window it came from."""
     return (
-        f"locked window from {LOCKED_START} (H-19): scored once per release, never used for a "
-        f"choice; rotated on {LOCKED_ROTATED_ON} from {LOCKED_PREVIOUS_START}, which is now in the folds"
+        f"locked window from {LOCKED_START} (H-19): the holdout, scored once per release, never used for a "
+        f"choice, read by no gate; rotated on {LOCKED_ROTATED_ON} from {LOCKED_PREVIOUS_START}, which is now "
+        "in the folds"
     )
 
 
-def _stats(values: Sequence[Optional[float]]) -> Optional[Dict]:
-    """Mean and spread over folds, ignoring folds that could not produce the number."""
-    present = [v for v in values if v is not None]
-    if not present:
-        return None
-    return {"mean": float(np.mean(present)), "sd": float(np.std(present)), "n_folds": len(present)}
+def holdout_record(format_frame: pd.DataFrame) -> Dict[str, object]:
+    """What the holdout holds for one format, beside its numbers: its matches, how much of
+    the season has accrued, and that no gate consulted it (EVAL-11). ``days_covered`` is
+    measured from the matches present, not the clock, so a report says what it scored."""
+    start, end = pd.Timestamp(LOCKED_START), locked_season_end()
+    rows = format_frame[format_frame.match_date >= start]
+    last = rows.match_date.max() if len(rows) else None
+    days_covered = 0 if last is None else min(int((last - start).days) + 1, LOCKED_SEASON_DAYS)
+    return {
+        "n_matches": int(len(rows)),
+        "first_match": None if last is None else rows.match_date.min().date().isoformat(),
+        "last_match": None if last is None else last.date().isoformat(),
+        "season_start": LOCKED_START,
+        "season_end": end.date().isoformat(),
+        "season_days": LOCKED_SEASON_DAYS,
+        "days_covered": days_covered,
+        "season_complete": days_covered >= LOCKED_SEASON_DAYS,
+        "gates_consulted": 0,
+    }
 
 
 def _evaluate_win_window(
@@ -284,7 +334,7 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
     scored = [f for f in folds if "objective_auc" in f]
 
     def over_folds(path: Callable[[Dict], Optional[float]]) -> Optional[Dict]:
-        return _stats([path(f) for f in scored])
+        return summarise_over_folds([path(f) for f in scored])
 
     def nested(fold: Dict, *keys: str) -> Optional[float]:
         node = fold
@@ -382,11 +432,18 @@ def evaluate_format(
     as-of aggregates. ``benchmark``, when given, is handed each window's display models
     to score X-4's market arm beside them; it reads and decides nothing else."""
     format_frame = frame[frame.format_code == format_code]
+    # EVAL-11: the folds are scored from the development rows alone. Nothing computed in a
+    # fold can reach a holdout row because the frame it is handed ends at the line; only
+    # the locked window's own call below sees the whole frame, and it trains on the rows
+    # before the line under the same cutoff rule every fold obeys.
+    locked_start = pd.Timestamp(LOCKED_START)
+    development_frame = format_frame[format_frame.match_date < locked_start]
+    development_players = player_frame[player_frame.match_date < locked_start]
     folds: List[Dict] = []
     fold_objectives: List[Tuple[pd.Timestamp, pd.Timestamp, Optional[natural_experiment.Proba]]] = []
     parity = ParityModels()
     for cutoff, end in fold_windows():
-        outcome = _evaluate_fold(format_code, format_frame, player_frame, cutoff, end, benchmark=benchmark)
+        outcome = _evaluate_fold(format_code, development_frame, development_players, cutoff, end, benchmark=benchmark)
         if outcome.performance_model is not None:
             parity.performance, parity.performance_window = outcome.performance_model, cutoff.date().isoformat()
         if outcome.objective is not None:
@@ -400,7 +457,7 @@ def evaluate_format(
         format_code,
         format_frame,
         player_frame,
-        pd.Timestamp(LOCKED_START),
+        locked_start,
         pd.Timestamp.max,
         recalibrate,
         benchmark=benchmark,
@@ -408,12 +465,13 @@ def evaluate_format(
     )
     locked, locked_model = locked_outcome.report, locked_outcome.performance_model
     locked["note"] = locked_note()
+    locked["holdout"] = holdout_record(format_frame)
     locked.update(locked_recalibration(recalibrate, locked_model))
     e5 = natural_experiment.evaluate_format(
         format_code,
         pairs,
         fold_objectives,
-        (pd.Timestamp(LOCKED_START), _proba(locked_outcome.objective)),
+        (locked_start, _proba(locked_outcome.objective)),
         C.XI_FEATURE_COLS,
         served=format_code in OPTIMISED_SELECTION_FORMATS,
     )
@@ -473,6 +531,8 @@ def evaluate(
     )
     player_frame = perf_baselines.add_baseline_predictors(result.player_frame)
     dev_start, dev_end = pd.Timestamp(WALK_FORWARD_CUTOFFS[0]), pd.Timestamp(LOCKED_START)
+    # The canary decides which columns get reviewed, so it reads development rows only.
+    development_frame = result.frame[result.frame.match_date < dev_end]
     # E5's pairs, with the previous eleven read from the as-of serving path at the later
     # match's date: one advancing pass over the source, before any fold is scored.
     pairs = natural_experiment.build_pairs(result.frame, result.player_frame)
@@ -490,7 +550,7 @@ def evaluate(
         "n_rows": int(len(result.frame)),
         "n_player_rows": int(len(result.player_frame)),
         "data_quality": result.quality.as_dict(),
-        "leak_canary": selection_metrics.leak_canary(result.frame, dev_start, dev_end),
+        "leak_canary": selection_metrics.leak_canary(development_frame, dev_start, dev_end),
         "e5_previous_elevens": previous_elevens,
         "formats": {},
     }
@@ -661,12 +721,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         objective = summary.get("objective_auc")
         if objective:
             logger.info(
-                "%-5s walk-forward objective AUC %.3f ± %.3f over %d folds",
+                "%-5s walk-forward objective AUC %.3f ± %.3f over %d folds (development surface, read by %d gates)",
                 format_code,
                 objective["mean"],
                 objective["sd"],
                 objective["n_folds"],
+                objective["gates_consulted"],
             )
+        holdout = entry["locked"].get("holdout", {})
+        logger.info(
+            "%-5s holdout from %s: %d matches, %d of %d season days accrued, read by no gate%s",
+            format_code,
+            LOCKED_START,
+            holdout.get("n_matches", 0),
+            holdout.get("days_covered", 0),
+            LOCKED_SEASON_DAYS,
+            "" if holdout.get("season_complete") else " -- the season is incomplete, a verdict on it is not due",
+        )
         _log_performance(format_code, summary.get("performance"))
         decision = report["formats"][format_code]["simulation_decision"]
         if "delta_brier_mean" in decision:

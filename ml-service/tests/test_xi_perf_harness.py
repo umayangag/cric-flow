@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from ml.xi import contract as C
+from ml.xi import gates
 from ml.xi import perf_harness as H
 from ml.xi import performance as P
 from tests.xi_perf_fixtures import fast_fits, synthetic_player_frame
@@ -70,7 +71,12 @@ def test_summarize_folds_keeps_nesting_and_drops_missing_leaves() -> None:
 
     summary = H.summarize_folds(folds)
 
-    assert summary["targets"]["runs"]["model"]["pinball"] == {"mean": 2.0, "sd": 1.0, "n_folds": 2}
+    assert summary["targets"]["runs"]["model"]["pinball"] == {
+        "mean": 2.0,
+        "sd": 1.0,
+        "n_folds": 2,
+        "gates_consulted": gates.folds_consulted_count(),
+    }
     assert summary["targets"]["runs"]["model"]["interval"]["width_80"]["mean"] == 4.0
     assert summary["targets"]["runs"]["headline"] is True
 
