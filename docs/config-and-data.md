@@ -761,6 +761,16 @@ not their only copy.
 not block a training run. `POST /ops/pipeline/stop` stops everything by default, or one
 lane with `?lane=data`.
 
+**The lane lock lives in the database, not in the process.** A step claims its lane in one
+transaction that takes a Postgres advisory lock on the lane, re-reads whether any command
+in that lane is `IN_PROGRESS`, and inserts its own row — so two claimants that arrive
+together are serialised by the database rather than by luck. It was a `SELECT` followed by
+an unguarded `INSERT`, and two `POST /ops/pipeline/run/retrain` inside one round trip both
+started (GO-06). An in-process mutex would not have been enough: `cmd/cricsheet-importer`
+takes the same lane from a *separate process* against the same database. A claim that
+cannot be made — the database unreachable, the transaction refused — now refuses the run
+rather than being logged and treated as a free lane.
+
 **A stop stops the work, not just the bookkeeping.** Stopping the compute lane asks
 ml-service to terminate its training subprocess (`POST /admin/train/stop`) and waits for it
 to be gone before answering; the reply's `training_stopped` names the steps whose process

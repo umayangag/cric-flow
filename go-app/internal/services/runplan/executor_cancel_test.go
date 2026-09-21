@@ -80,6 +80,7 @@ func (e errStore) Finish(context.Context, int, State, error) error    { return n
 func (e errStore) Active(context.Context) (int, State, bool, error) {
 	return 0, State{}, false, e.activeErr
 }
+
 func (e errStore) Latest(context.Context) (int, State, bool, error) { return 0, State{}, false, nil }
 
 func fixedNow() time.Time { return time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC) }

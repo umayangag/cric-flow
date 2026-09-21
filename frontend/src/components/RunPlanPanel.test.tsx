@@ -2,7 +2,7 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import React from 'react';
-import RunPlanPanel from './RunPlanPanel';
+import RunPlanPanel, { planOutcomeLabel } from './RunPlanPanel';
 import type { RunPlanState } from '../types';
 
 const mockRunPlan = vi.fn();
@@ -196,5 +196,24 @@ describe('RunPlanPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Import')).toBeInTheDocument());
     expect(screen.queryByText(/network blip/)).not.toBeInTheDocument();
+  });
+
+  // A run somebody stopped, a run that broke and a run that finished all used to read
+  // "not running", so the console could not tell an operator which had happened.
+  it.each([
+    ['CANCELLED', ' — stopped'],
+    ['FAILED', ' — failed'],
+    ['COMPLETED', ' — completed'],
+  ] as const)('says how a %s plan ended', (outcome, label) => {
+    expect(planOutcomeLabel({ ...STOPPED, outcome })).toBe(label);
+  });
+
+  it('says nothing about the outcome while the plan is still going', () => {
+    expect(planOutcomeLabel({ ...RUNNING, outcome: 'CANCELLED' })).toBe('');
+  });
+
+  it('falls back to "not running" for a run that recorded no outcome', () => {
+    expect(planOutcomeLabel(STOPPED)).toBe(' — not running');
+    expect(planOutcomeLabel(null)).toBe(' — not running');
   });
 });

@@ -146,16 +146,28 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 	opts := &cricsheet.Options{
 		PlaceholdersFielding: body.PlaceholdersFielding,
 	}
-	if busy, _ := pipeline.LaneBusy(r.Context(), "cricsheet-import"); busy {
+	// Fail closed: a database hiccup while asking "is the lane free?" used to be
+	// discarded with `_` and answered as free, which let a second import start beside
+	// the first (GO-06). RunJob's own claim is the real lock; this is the pre-flight
+	// 409, and it refuses when it cannot tell.
+	busy, laneErr := pipeline.LaneBusy(r.Context(), "cricsheet-import")
+	if laneErr != nil {
+		slog.Error("import: checking the lane failed", slog.Any("err", laneErr))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "could not check whether another pipeline step is running",
+		})
+		return
+	}
+	if busy {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": pipeline.ErrPipelineBusy.Error()})
 		return
 	}
 	slog.Info("import: request accepted, starting background job", slog.String("dir", dir))
 	importLane := pipelinesvc.Steps().LaneForCommand("cricsheet-import")
 	jobCtx, cancel := context.WithCancel(a.JobContext())
-	a.SetJobCancel(importLane, cancel)
-	go func() {
-		defer a.ClearJobCancel(importLane)
+	releaseLane := a.SetJobCancel(importLane, cancel)
+	a.RunBackgroundJob(func() {
+		defer releaseLane()
 		slog.Info("cricsheet import job started", slog.String("dir", dir))
 		runErr := pipeline.RunJob(
 			jobCtx,
@@ -172,7 +184,7 @@ func (a *App) importCricSheetHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			slog.Info("cricsheet import job completed successfully", slog.String("dir", dir))
 		}
-	}()
+	})
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "started"})
 }
 

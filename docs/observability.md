@@ -79,7 +79,7 @@ in between. A run plan is the server-side executor that closes that asymmetry.
 | Endpoint | |
 |---|---|
 | `POST /ops/pipeline/run-plan` | A named plan or an explicit step list, never both. An empty body means `full` |
-| `GET /ops/pipeline/plan` | The latest plan, running or not, with `resume_from` |
+| `GET /ops/pipeline/plan` | The latest plan, running or not, with `resume_from` and, once it has ended, `outcome` |
 | `POST /ops/pipeline/stop` | Stops the plan, the step it is on, **and the training process on ml-service** |
 
 - **Named plans are derived from the step registry**, not written out: `full` is every
@@ -91,6 +91,17 @@ in between. A run plan is the server-side executor that closes that asymmetry.
   surface and carries no `Requires`. There is no longer a `tune` plan: the grid runs
   inside `retrain`, so searching and training cannot be run in the order that throws the
   artifacts away.
+- **A stopped plan says so, and the next one starts immediately.** `outcome` is
+  `COMPLETED`, `FAILED` or `CANCELLED`, and the plan's `data_migrations` row carries the
+  same verdict — a run the operator stopped is not a run that broke, and run history that
+  conflated them made "has this ever failed?" unanswerable. The outcome is recorded
+  through a context detached from the plan's own, so cancelling the plan does not also
+  cancel the write that records the cancellation (GO-05); before that the row stayed
+  `IN_PROGRESS` and every later plan was answered `409` until the 24-hour stale sweep.
+  The same holds on SIGTERM: shutdown waits for the in-flight jobs to record their
+  outcome before the pool closes. A process killed outright (`SIGKILL`, an OOM kill, a
+  host that goes away) still leaves an `IN_PROGRESS` row, and that is what
+  `TRACKING_STALE_CANCEL_AGE` and the startup sweep are for.
 - **`refresh` is the scheduled cadence** (A-5): `import` followed by `retrain-only`, so
   fetch → extract → import → retrain → reload. It is composed from the two plans rather
   than written out, and it exists because those two being separate is what lets them come

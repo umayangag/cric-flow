@@ -17,32 +17,52 @@ import (
 // just the step it happens to be on (ops plan R-1). Cancelling only the step would
 // stop that step and then start the next one, which is not what "stop" means.
 type planCancel struct {
-	mu     sync.Mutex
-	cancel context.CancelFunc
+	mu      sync.Mutex
+	running *planRun
 }
 
-func (p *planCancel) set(cancel context.CancelFunc) {
+// planRun is one plan's registration. Behind a pointer so it has an identity a release
+// can compare against: function values are not comparable in Go.
+type planRun struct{ cancel context.CancelFunc }
+
+// set registers the plan starting now and returns the release func that deregisters
+// it. Call release in a defer when the plan goroutine exits.
+//
+// Release clears this registration and no other. `clear()` used to null whatever was
+// stored, so a second plan that started, was refused as "already running" and exited
+// deregistered the plan that was actually running — leaving it with no way to be
+// stopped (GO-06). A plan already registered therefore keeps its place, and the
+// refused plan's release is a no-op.
+func (p *planCancel) set(cancel context.CancelFunc) func() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.cancel = cancel
+	if p.running != nil {
+		slog.Warn("run plan: a plan is already registered as stoppable; keeping it")
+		return func() {}
+	}
+	registration := &planRun{cancel: cancel}
+	p.running = registration
+	return func() { p.release(registration) }
 }
 
-func (p *planCancel) clear() {
+func (p *planCancel) release(registration *planRun) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.cancel = nil
+	if p.running == registration {
+		p.running = nil
+	}
 }
 
 // stop cancels the running plan and reports whether there was one.
 func (p *planCancel) stop() bool {
 	p.mu.Lock()
-	cancel := p.cancel
-	p.cancel = nil
+	registration := p.running
+	p.running = nil
 	p.mu.Unlock()
-	if cancel == nil {
+	if registration == nil {
 		return false
 	}
-	cancel()
+	registration.cancel()
 	return true
 }
 
@@ -78,8 +98,8 @@ func (a *App) runPlanStepWith(ctx context.Context, step pipelinesvc.Step, req St
 	defer cancel()
 	// Registered per-lane as well, so /ops/pipeline/stop without a lane stops the
 	// step in flight and not only the plan around it.
-	a.SetJobCancel(lane, cancel)
-	defer a.ClearJobCancel(lane)
+	releaseLane := a.SetJobCancel(lane, cancel)
+	defer releaseLane()
 
 	slog.Info("run plan: step starting", slog.String("step", step.ID))
 	return pipeline.RunJob(stepCtx, job.Command, job.Args, job.Timeout, job.Run)
@@ -95,11 +115,11 @@ func (a *App) runPlanStepWith(ctx context.Context, step pipelinesvc.Step, req St
 // skipping anything that had ever succeeded on this box.
 func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step, prior *runplan.State) {
 	planCtx, cancel := context.WithCancel(a.JobContext())
-	a.planCancel.set(cancel)
+	releasePlan := a.planCancel.set(cancel)
 
-	go func() {
+	a.RunBackgroundJob(func() {
 		defer cancel()
-		defer a.planCancel.clear()
+		defer releasePlan()
 
 		executor := a.newPlanExecutor()
 		var err error
@@ -113,7 +133,7 @@ func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step, prior *runplan
 			return
 		}
 		slog.Info("run plan: completed", slog.String("plan", plan))
-	}()
+	})
 }
 
 // StartImportPlan begins the acquire-and-import plan in the background.
@@ -124,11 +144,11 @@ func (a *App) StartRunPlan(plan string, steps []pipelinesvc.Step, prior *runplan
 // a plan rather than by its handler.
 func (a *App) StartImportPlan(steps []pipelinesvc.Step, skip map[string]string, req StepRequest) {
 	planCtx, cancel := context.WithCancel(a.JobContext())
-	a.planCancel.set(cancel)
+	releasePlan := a.planCancel.set(cancel)
 
-	go func() {
+	a.RunBackgroundJob(func() {
 		defer cancel()
-		defer a.planCancel.clear()
+		defer releasePlan()
 
 		executor := a.newPlanExecutor()
 		executor.Run = func(ctx context.Context, step pipelinesvc.Step) error {
@@ -139,7 +159,7 @@ func (a *App) StartImportPlan(steps []pipelinesvc.Step, skip map[string]string, 
 			return
 		}
 		slog.Info("import plan: completed")
-	}()
+	})
 }
 
 // StopRunPlan cancels the plan in flight and reports whether there was one.

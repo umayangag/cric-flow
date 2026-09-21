@@ -43,6 +43,27 @@ function planCaption(plan: string): string {
   return `${description} Optional steps (Evaluate) are not included — run those yourself.`;
 }
 
+/**
+ * What to say about a plan that is not running.
+ *
+ * It used to say "not running" whatever had happened, so a run somebody stopped, a run
+ * that broke on its data-quality gate and a run that finished all read the same. The
+ * backend now says which of the three it was; this is where the operator sees it.
+ */
+export function planOutcomeLabel(state: RunPlanState | null): string {
+  if (state?.running) return '';
+  switch (state?.outcome) {
+    case 'COMPLETED':
+      return ' — completed';
+    case 'FAILED':
+      return ' — failed';
+    case 'CANCELLED':
+      return ' — stopped';
+    default:
+      return ' — not running';
+  }
+}
+
 /** One step's row: where it got to, and why not when it failed. */
 const PlanStepRow: React.FC<{ step: RunPlanStep }> = ({ step }) => {
   // go-app already formats an ml-service precondition as `CODE: message — hint`
@@ -222,9 +243,9 @@ const RunPlanPanel: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
             <Typography variant="body2" color="text.secondary">
               Plan <strong>{state?.plan}</strong>
-              {/* A plan that is not running is history, and saying so stops a finished
-                  run being mistaken for a stalled one. */}
-              {!running && ' — not running'}
+              {/* A plan that is not running is history, and saying how it ended stops a
+                  stopped run being mistaken for one that broke. */}
+              {planOutcomeLabel(state)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               {finished} / {steps.length}
