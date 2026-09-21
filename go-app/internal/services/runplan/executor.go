@@ -138,9 +138,10 @@ func (e *Executor) run(
 	defer func() {
 		state.FinishedAt = e.timestamp()
 		state.Outcome = OutcomeFor(err)
-		writeCtx, cancelWrite := recordingContext(ctx)
-		defer cancelWrite()
-		if finishErr := e.Store.Finish(writeCtx, id, state.Clone(), err); finishErr != nil {
+		finishErr := whileDetachedFrom(ctx, func(writeCtx context.Context) error {
+			return e.Store.Finish(writeCtx, id, state.Clone(), err)
+		})
+		if finishErr != nil {
 			slog.Warn("run plan: recording the outcome failed", slog.Int("id", id), slog.Any("err", finishErr))
 		}
 	}()
@@ -220,9 +221,10 @@ func (e *Executor) markRemaining(state *State, from int, status StepStatus) {
 // are running regardless, and abandoning a working pipeline because a status write
 // failed would be the wrong trade.
 func (e *Executor) save(ctx context.Context, id int, state State) {
-	writeCtx, cancel := recordingContext(ctx)
-	defer cancel()
-	if err := e.Store.Save(writeCtx, id, state.Clone()); err != nil {
+	err := whileDetachedFrom(ctx, func(writeCtx context.Context) error {
+		return e.Store.Save(writeCtx, id, state.Clone())
+	})
+	if err != nil {
 		slog.Warn("run plan: saving state failed", slog.Int("id", id), slog.Any("err", err))
 	}
 }
@@ -232,9 +234,9 @@ func (e *Executor) save(ctx context.Context, id int, state State) {
 // that waits on a pool being drained delays the shutdown it is racing.
 const recordingTimeout = 5 * time.Second
 
-// recordingContext is the context a plan's bookkeeping writes use.
+// whileDetachedFrom runs a bookkeeping write on a context detached from the plan's own.
 //
-// Detached from the plan's own context on purpose (GO-05). The three writes that
+// Detached on purpose (GO-05). The three writes that
 // record a cancellation — the two `save` calls on the cancellation paths and the
 // deferred `Finish` — were made through the very context that had just been
 // cancelled, so pgx refused each of them with `context canceled` and only a warning
@@ -243,8 +245,10 @@ const recordingTimeout = 5 * time.Second
 // caught up. The outcome of a cancellation is precisely what has to be recorded, so
 // the write outlives the cancellation that caused it. This is the same trade
 // `tracking.CaptureExit` already makes for a single step.
-func recordingContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), recordingTimeout)
+func whileDetachedFrom(ctx context.Context, write func(context.Context) error) error {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordingTimeout)
+	defer cancel()
+	return write(writeCtx)
 }
 
 func (e *Executor) gate(ctx context.Context, stepID string) (bool, string) {
