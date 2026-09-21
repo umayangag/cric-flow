@@ -87,7 +87,7 @@ and are recorded per run in `manifest.json`, not configured here.
 
 - `inputs.training_subprocess_timeout_sec` — max time for a `/admin/train/*` subprocess
   (default 604800 = 7 days; a retrain is minutes, an evaluate is under an hour, and the
-  deadline exists so a hung one does not hold the semaphore forever).
+  deadline exists so a hung one does not hold its step's slot forever).
 - `outputs.artifacts_dir` — the artifacts root, holding `runs/` and `current_run.json`.
 - `ml.formats` — the format codes to train and serve. Checked against go-app's canonical list
   by `make frontend-backend-sync-check`.
@@ -95,8 +95,7 @@ and are recorded per run in `manifest.json`, not configured here.
   refused with `RATINGS_STALE`. `XI_RATINGS_MAX_AGE_DAYS` overrides it; 0 turns the check off.
 
 **Environment:** `ML_SERVICE_CONFIG`, `ML_SERVICE_OUTPUT_DIR`, `MODELS_DIR`, `ENABLE_HOT_RELOAD`,
-`ADMIN_API_KEY`, `XI_RATINGS_MAX_AGE_DAYS`, `MAX_CONCURRENT_TRAINING_JOBS`,
-`ML_MARKET_ODDS_DIR`.
+`ADMIN_API_KEY`, `XI_RATINGS_MAX_AGE_DAYS`, `ML_MARKET_ODDS_DIR`.
 
 **Cached market odds (X-4), not a model input.** `make evaluate` looks for closing-odds CSVs
 in `data/market-odds/` at the repository root — `ML_MARKET_ODDS_DIR`, or

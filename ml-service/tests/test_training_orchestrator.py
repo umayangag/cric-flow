@@ -44,6 +44,7 @@ class FakePopen:
         self.pid = -1  # no such process, so a signal falls through harmlessly
         self._stdout, self._stderr = stdout, stderr
         self._raise_timeout = raise_timeout
+        self._running = True
         self.signals: List[int] = []
         self.calls: Dict[str, Any] = {}
 
@@ -51,12 +52,22 @@ class FakePopen:
         self.calls["timeout"] = timeout
         if self._raise_timeout:
             raise training_orchestrator.subprocess.TimeoutExpired(cmd="ml.xi.retrain", timeout=timeout or 0)
+        self._running = False
         return self._stdout, self._stderr
 
     def send_signal(self, sig: int) -> None:
         self.signals.append(sig)
 
+    def poll(self) -> Optional[int]:
+        """None until the process has been waited on, as `Popen.poll` does.
+
+        A stop asks this before it signals anything: a run that has already exited is
+        nothing to stop, and saying otherwise reports a success as a stop (SERVE-06).
+        """
+        return None if self._running else self.returncode
+
     def wait(self, timeout: Optional[float] = None) -> int:
+        self._running = False
         return self.returncode
 
 
@@ -107,7 +118,7 @@ def test_run_training_subprocess_deregisters_the_process_when_it_finishes(monkey
 
     training_orchestrator.run_training_subprocess("ml.xi.retrain")
 
-    assert training_orchestrator._processes.running_modules() == []
+    assert training_orchestrator._processes.running_steps() == []
 
 
 def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
@@ -122,7 +133,7 @@ def test_run_training_subprocess_timeout_raises(monkeypatch) -> None:
     # A run abandoned on timeout is killed rather than left behind, which is the same
     # orphan D-11 was about arriving by a different route.
     assert process.signals, "a timed-out subprocess must still be terminated"
-    assert training_orchestrator._processes.running_modules() == []
+    assert training_orchestrator._processes.running_steps() == []
 
 
 def test_run_training_subprocess_failure_raises(monkeypatch) -> None:
@@ -205,3 +216,14 @@ def test_run_evaluate_does_not_pass_the_cutoff_to_the_harness(monkeypatch) -> No
 
     assert calls["module"] == "ml.xi.evaluate"
     assert calls["extra_args"] == ["--postgres", "--out", "/models"]
+
+
+def test_step_for_module_names_the_step_or_falls_back_to_the_module() -> None:
+    """A refusal quotes a step, not an import path -- and never a wrong step.
+
+    A module no step claims has no step name to give, so it is reported as itself
+    rather than as whichever step happened to be first.
+    """
+    assert training_orchestrator.step_for_module("ml.xi.retrain") == "retrain"
+    assert training_orchestrator.step_for_module("ml.xi.evaluate") == "evaluate"
+    assert training_orchestrator.step_for_module("ml.no.such.module") == "ml.no.such.module"

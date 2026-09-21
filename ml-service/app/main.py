@@ -130,42 +130,33 @@ _settings = app_settings.load_ml_service_settings()
 
 ENABLE_HOT_RELOAD = _settings.enable_hot_reload
 ADMIN_API_KEY = _settings.admin_api_key
-MAX_CONCURRENT_TRAINING_JOBS = _settings.max_concurrent_training_jobs
-
-_training_semaphore: Optional[asyncio.Semaphore] = None
-
-
-def _get_training_semaphore() -> asyncio.Semaphore:
-    global _training_semaphore
-    if _training_semaphore is None:
-        _training_semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRAINING_JOBS)
-    return _training_semaphore
 
 
 async def _run_training_step(step: str, func: Any, *args: Any) -> None:
-    """Run one training step in a worker thread, holding its compute slot until the
+    """Run one training step in a worker thread, holding its step slot until the
     subprocess is really gone.
 
     Both halves matter, and D-11 got both wrong. `asyncio.to_thread` hands back a future
     the event loop can cancel, but cancelling it does not touch the thread and certainly
     does not touch the subprocess the thread is waiting on: when go-app dropped its
-    request, the `async with` exited, the semaphore was released, and the compute lane
-    read as free while `ml.xi.retrain` was still writing -- so a second retrain started
-    then would have run beside the first.
+    request, the lane read as free while `ml.xi.retrain` was still writing -- so a second
+    retrain started then would have run beside the first.
 
     Shielding the task keeps the thread's own future alive when this coroutine is
     cancelled, which gives us somewhere to stand: stop the process, wait for the thread
-    to notice, and only then let the semaphore go.
+    to notice it is gone, and only then let this coroutine finish. The step's slot is
+    held by `training_orchestrator` for exactly that span -- it is released in the worker
+    thread once the subprocess has been waited on -- so a second run of the same step is
+    refused for as long as the first one is alive, cancelled request or not (SERVE-06).
     """
-    async with _get_training_semaphore():
-        task = asyncio.create_task(asyncio.to_thread(func, *args))
-        try:
-            await asyncio.shield(task)
-        except asyncio.CancelledError:
-            logger.info("admin.train.cancelled", step=step)
-            await asyncio.to_thread(training_orchestrator.stop_training, step, logger)
-            await asyncio.wait({task})
-            raise
+    task = asyncio.create_task(asyncio.to_thread(func, *args))
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        logger.info("admin.train.cancelled", step=step)
+        await asyncio.to_thread(training_orchestrator.stop_training, step, logger)
+        await asyncio.wait({task})
+        raise
 
 
 def _verify_admin_api_key(request: Request) -> None:
@@ -423,6 +414,33 @@ def _require_admin_train(step: str, fail_message: str):
             _verify_admin_api_key(request)
             try:
                 response = await f(request, *args, **kwargs)
+            except training_orchestrator.TrainingAlreadyRunning as e:
+                # The refusal names the run it is refusing for: which step, which process,
+                # how long it has been going, and what to do about it. "409" on its own
+                # leaves the operator to go and find out whether anything is running at
+                # all, which is the surface this service is supposed to be the answer to
+                # (§8.7).
+                logger.info(
+                    "admin.train.rejected",
+                    step=step,
+                    reason="already_running",
+                    running_step=e.step,
+                    pid=e.pid,
+                    started_at=e.started_at,
+                    elapsed_sec=round(e.elapsed_sec, 1),
+                )
+                raise HTTPException(
+                    status_code=409,
+                    detail=_error_payload(
+                        code="TRAIN_ALREADY_RUNNING",
+                        message=f"Refused: {e}",
+                        hint=(
+                            f"This service runs one {e.step} at a time -- two would write the same "
+                            f"data-quality baseline and publish progress under the same step. Wait for "
+                            f"it, or stop it with POST /admin/train/stop?step={e.step}."
+                        ),
+                    ),
+                ) from e
             except training_orchestrator.TrainingStopped as e:
                 # A Stop is an operator doing their job, not this service breaking. It is
                 # logged as the event it is, with no stack trace, and answered 409 rather

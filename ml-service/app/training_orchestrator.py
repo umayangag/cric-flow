@@ -5,8 +5,9 @@ models, the performance models, the report and the run manifest) and ``evaluate`
 (``ml.xi.evaluate`` -- L4 at a cutoff, touching no artifact ``current`` points at).
 
 Handlers in main.py validate HTTP input and call these functions; they do not embed
-subprocess or env logic. Concurrency (semaphore) remains in main so async boundaries
-stay clear.
+subprocess or env logic. Concurrency lives here rather than in main, because the rule
+is about what a step writes and not about how many HTTP requests are in flight: one
+run per step at a time, and a second one refused with the running one named (SERVE-06).
 """
 
 from __future__ import annotations
@@ -16,7 +17,9 @@ import signal
 import subprocess
 import sys
 import threading
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional
 
 # Logger type: any object with info, warning, error, debug
 Logger = Any
@@ -29,6 +32,19 @@ TRAINING_MODULES: Dict[str, str] = {
 }
 
 
+def step_for_module(module: str) -> str:
+    """The pipeline step a module belongs to, for messages an operator reads.
+
+    The registry keys on the module because that is what a subprocess runs, but nobody
+    outside this file speaks in modules: a refusal that named `ml.xi.retrain` would be
+    telling an operator about an import path when what they pressed was Retrain.
+    """
+    for step, step_module in TRAINING_MODULES.items():
+        if step_module == module:
+            return step
+    return module
+
+
 class TrainingStopped(ValueError):
     """A training run ended because someone asked it to.
 
@@ -37,6 +53,26 @@ class TrainingStopped(ValueError):
     `admin.train.failed` with a stack trace sends whoever reads the log looking for a bug
     that is not there -- which is the same species of untruth as D-11 itself.
     """
+
+
+class TrainingAlreadyRunning(Exception):
+    """A second run of a step was refused because that step is already running.
+
+    Deliberately not a ValueError: a ValueError from a training call means the run broke
+    and is answered 500, and this is neither a break nor this service's fault. It carries
+    the running run so the refusal can name it -- which step, which process, and how long
+    it has been going -- rather than being a bare status code the operator has to go and
+    interpret somewhere else (§8.7).
+    """
+
+    def __init__(self, step: str, pid: int, started_at: str, elapsed_sec: float) -> None:
+        self.step = step
+        self.pid = pid
+        self.started_at = started_at
+        self.elapsed_sec = elapsed_sec
+        super().__init__(
+            f"a {step} is already running in this service (pid {pid}, started {started_at}, {elapsed_sec:.0f}s ago)"
+        )
 
 
 # How long a stopped process is given to exit on SIGTERM before SIGKILL. A retrain's
@@ -53,13 +89,46 @@ def ml_service_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(_ml.__file__)))
 
 
-class _TrainingProcesses:
-    """The training subprocesses this service currently has running, by module.
+@dataclass
+class LiveRun:
+    """One training subprocess, and what this service knows about it while it runs.
+
+    ``stopped`` belongs to the run rather than to the step, because that is the question
+    the worker thread actually asks: not "was a retrain stopped at some point" but "was
+    *my* process signalled". A flag hung on the step answers the first question and gets
+    used for the second, which is how a run that finished on its own came to be reported
+    as stopped.
+    """
+
+    module: str
+    process: subprocess.Popen
+    started_at: datetime
+    stopped: bool = False
+
+    @property
+    def step(self) -> str:
+        return step_for_module(self.module)
+
+    def elapsed_sec(self) -> float:
+        return (datetime.now(timezone.utc) - self.started_at).total_seconds()
+
+
+class _TrainingRuns:
+    """The training subprocess this service has running, at most one per step.
 
     It exists because of D-11: go-app's Stop cancelled its own HTTP request and reported
     `{"cancelled": 1}`, while `ml.xi.retrain` carried on inside this container burning CPU
     with nothing holding a handle to it. A process nobody can address is a process nobody
     can stop, and "cancelled" was a claim about it that was not true.
+
+    One run per step is the rule, not an implementation detail of the bookkeeping. Two
+    retrains of the same step do not merely share a dictionary key: they write the same
+    cross-run data-quality baseline at the artifacts root (H-15), and the progress and
+    result channels go-app polls are addressed by *step* -- `latest_for_step` returns
+    whichever of the two wrote most recently, so the console would show one run's progress
+    under the other's name and `train_response` could hand a run's caller the other run's
+    summary (SERVE-06). Making the second run addressable would have left all of that in
+    place; refusing it is what removes it.
 
     Every method is safe to call from the worker threads that run the steps and from the
     event loop thread that serves the stop request.
@@ -67,39 +136,71 @@ class _TrainingProcesses:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._live: Dict[str, subprocess.Popen] = {}
-        self._stopped: set[str] = set()
+        self._live: Dict[str, LiveRun] = {}
 
-    def register(self, module: str, process: subprocess.Popen) -> None:
-        with self._lock:
-            self._live[module] = process
-            self._stopped.discard(module)
+    def start(self, module: str, spawn: Callable[[], subprocess.Popen]) -> LiveRun:
+        """Claim the step's slot and spawn its process, or refuse.
 
-    def unregister(self, module: str) -> None:
-        with self._lock:
-            self._live.pop(module, None)
+        The process is created *inside* the lock that claims the slot, so there is no
+        instant in which a run is claimed but not yet addressable -- a stop arriving in
+        that window would otherwise be answered "nothing is running" about a retrain that
+        was about to start, which is D-11's lie in miniature.
 
-    def was_stopped(self, module: str) -> bool:
-        """Whether this module's last run ended because someone asked it to."""
+        Raises TrainingAlreadyRunning when this step is already running.
+        """
         with self._lock:
-            return module in self._stopped
+            running = self._live.get(module)
+            if running is not None:
+                raise TrainingAlreadyRunning(
+                    step=running.step,
+                    pid=running.process.pid,
+                    started_at=running.started_at.isoformat(),
+                    elapsed_sec=running.elapsed_sec(),
+                )
+            run = LiveRun(module=module, process=spawn(), started_at=datetime.now(timezone.utc))
+            self._live[module] = run
+            return run
 
-    def running_modules(self) -> List[str]:
+    def finish(self, run: LiveRun) -> None:
+        """Release the step's slot, if this run is still the one holding it."""
         with self._lock:
-            return list(self._live)
+            if self._live.get(run.module) is run:
+                del self._live[run.module]
+
+    def running_steps(self) -> List[str]:
+        """The steps this service currently has a training subprocess for."""
+        with self._lock:
+            return [run.step for run in self._live.values()]
 
     def stop(self, module: str, logger: Optional[Logger] = None) -> bool:
-        """Terminate one module's process and *wait for it to be gone*.
+        """Terminate one step's process and *wait for it to be gone*.
 
         The wait is the point. Returning as soon as the signal is sent would move the
         lie one layer along -- this service would then be the one claiming a stop it had
         not confirmed. Returns False when there was nothing to stop.
+
+        A run that has already exited is nothing to stop, even though its slot has not
+        been released yet: the worker thread frees that after `communicate` returns, and
+        a stop landing in between used to mark the run stopped and turn a ten-minute
+        retrain that *succeeded* into `TrainingStopped` and a 409 (SERVE-06). The
+        narrower race -- an exit between the check and the signal -- is settled on the
+        exit status rather than guessed at: a process that died on our signal reports a
+        negative returncode, and one that finished on its own reports what it exited
+        with.
         """
         with self._lock:
-            process = self._live.get(module)
-            if process is None:
+            run = self._live.get(module)
+            if run is None:
                 return False
-            self._stopped.add(module)
+            if run.process.poll() is not None:
+                if logger:
+                    logger.info(
+                        "pipeline: nothing to stop; the training subprocess had already finished",
+                        module=module,
+                        returncode=run.process.returncode,
+                    )
+                return False
+            process = run.process
 
         # The child runs in its own session (start_new_session below), so signalling the
         # group reaches the model-fitting workers it spawned. Orphaned workers were half
@@ -116,9 +217,17 @@ class _TrainingProcesses:
                 )
             _signal_group(process, signal.SIGKILL)
             process.wait()
+        died_on_our_signal = process.returncode is not None and process.returncode < 0
+        with self._lock:
+            run.stopped = died_on_our_signal
+        outcome = (
+            "pipeline: training subprocess stopped"
+            if died_on_our_signal
+            else "pipeline: the training subprocess finished before the stop reached it"
+        )
         if logger:
-            logger.info("pipeline: training subprocess stopped", module=module, returncode=process.returncode)
-        return True
+            logger.info(outcome, module=module, returncode=process.returncode)
+        return died_on_our_signal
 
 
 def _signal_group(process: subprocess.Popen, sig: int) -> None:
@@ -136,15 +245,17 @@ def _signal_group(process: subprocess.Popen, sig: int) -> None:
             pass
 
 
-_processes = _TrainingProcesses()
+_processes = _TrainingRuns()
 
 
 def stop_training(step: str = "", logger: Optional[Logger] = None) -> List[str]:
     """Stop the training subprocess of one step, or of every step when none is named.
 
     Returns the steps actually stopped -- an empty list when nothing was running, which
-    is a true answer and not an error. Each name in it is a process this call watched
-    exit, so a caller may report it as stopped without qualifying the claim.
+    is a true answer and not an error. Each name in it is a process this call signalled
+    and watched exit, so a caller may report it as stopped without qualifying the claim.
+    A step whose run finished on its own before the signal landed is *not* in the list:
+    nothing was stopped, and the run keeps the outcome it earned (SERVE-06).
     """
     step = (step or "").strip()
     if step and step not in TRAINING_MODULES:
@@ -165,6 +276,9 @@ def run_training_subprocess(
 ) -> None:
     """Run a training module as subprocess; raises ValueError on non-zero exit or timeout.
 
+    Raises TrainingAlreadyRunning, before anything is spawned, when this service is
+    already running that module -- there is one run per step (see `_TrainingRuns`).
+
     Timeout from ml.config.get_training_subprocess_timeout_sec (env TRAINING_SUBPROCESS_TIMEOUT_SEC).
     Sets SKIP_PIPELINE_TRACKING=1. extra_env is merged into subprocess env.
     """
@@ -174,13 +288,6 @@ def run_training_subprocess(
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
-    if logger:
-        logger.info(
-            "pipeline: starting training subprocess",
-            module=module,
-            extra_args=extra_args or [],
-            cwd=root,
-        )
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
     # Force subprocess to load config from ml-service root so MLQA/tuning use the same config as the server.
     config_path = os.path.join(root, "config.json")
@@ -193,16 +300,30 @@ def run_training_subprocess(
     # keeps its handle on its own stack, which is why a stop had nothing to stop (D-11).
     # start_new_session puts the child at the head of its own process group, so stopping it
     # reaches the workers it spawns.
-    proc = subprocess.Popen(
-        cmd,
-        cwd=root,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
+    run = _processes.start(
+        module,
+        lambda: subprocess.Popen(
+            cmd,
+            cwd=root,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        ),
     )
-    _processes.register(module, proc)
+    proc = run.process
+    # Logged once the process exists, and with its pid: announcing a start before the slot
+    # is claimed writes "starting" for a run that is then refused, and leaves the log
+    # claiming something that did not happen.
+    if logger:
+        logger.info(
+            "pipeline: starting training subprocess",
+            module=module,
+            extra_args=extra_args or [],
+            cwd=root,
+            pid=proc.pid,
+        )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_sec)
     except subprocess.TimeoutExpired as e:
@@ -215,11 +336,13 @@ def run_training_subprocess(
         _processes.stop(module, logger)
         raise ValueError(f"Training timed out after {timeout_sec}s") from e
     finally:
-        _processes.unregister(module)
+        _processes.finish(run)
     # A run that ended because someone asked it to is not a failure, and reporting
     # "Training failed (exit -15)" would send whoever reads the log looking for a bug that
-    # is not there.
-    if _processes.was_stopped(module):
+    # is not there. The question is asked of *this* run: a stop that arrived after it had
+    # already exited stopped nothing, and answering it 409 would report a success as a
+    # stop (SERVE-06).
+    if run.stopped:
         if logger:
             logger.info("pipeline: training subprocess stopped on request", module=module)
         raise TrainingStopped("Training stopped on request")

@@ -151,10 +151,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 ## 4. Simulator, optimizer and serving (`ml-service/ml/xi/`, `ml-service/app/`)
 
-### SERVE-06 — Training process registry keyed by module  **Medium**
-
-`app/training_orchestrator.py:73-80, 205, 218`; `settings.py:110` allows `MAX_CONCURRENT_TRAINING_JOBS > 1`. Two `/admin/train/retrain` calls: the first becomes unaddressable by `stop_training`, and whichever finishes first unregisters the survivor's handle. `stop()` marks `_stopped` before checking whether the process already exited (lines 98-102), so a stop racing a natural exit turns a success into `TrainingStopped` and a 409. **Fix.** Key by `Popen.pid` (or refuse a second run of the same module); treat `process.poll() is not None` as nothing to stop.
-
 ### SERVE-07 — `AsOfRatings` is built without `age_aware_cold_start`  **Medium (latent)**
 
 `asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
@@ -346,6 +342,20 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### SERVE-06 — Training process registry keyed by module  **Medium** — PR #329
+
+`app/training_orchestrator.py:73-80, 205, 218`; `settings.py:110` allows `MAX_CONCURRENT_TRAINING_JOBS > 1`. Two `/admin/train/retrain` calls: the first becomes unaddressable by `stop_training`, and whichever finishes first unregisters the survivor's handle. `stop()` marks `_stopped` before checking whether the process already exited (lines 98-102), so a stop racing a natural exit turns a success into `TrainingStopped` and a 409. **Fix.** Key by `Popen.pid` (or refuse a second run of the same module); treat `process.poll() is not None` as nothing to stop.
+
+**Confirmed, both halves, against `main` before anything was changed.** Two processes registered under `ml.xi.retrain`, then a stop: `stop_training("retrain") -> ['retrain']` with the **first process still alive** — it was unaddressable, and whichever run finished first deregistered the other. A process that had already exited **0**, then a stop: `stop_training -> ['retrain']`, `was_stopped -> True`; end to end through `run_training_subprocess`, with the worker thread held in the window between the child exiting and the slot being released, `main` raises `TrainingStopped` for a subprocess that exited 0, which the endpoint answers **409 `TRAIN_STOPPED`**. A retrain that succeeded, reported as stopped.
+
+**The entry's two routes are not interchangeable, and what they collide on decides it.** Two retrains of one step share more than a dictionary key: `xi_data_quality_baseline.json` at the artifacts root — H-15's *cross-run* baseline, read by the gate in `train_all` and rewritten non-atomically by `retrain.main`, so both runs gate against the same older counts and the survivor is whichever exited last — and the progress and result channels, which are addressed by **step**: `/admin/train/progress?step=retrain` (go-app polls it and sends no `run_id`) returns `latest_for_step`, the newest-mtime file of *either* run, and `train_response` reads `latest_result_for_step`, so a run's caller can be handed the other run's summary, which go-app persists into `data_migrations.metadata`. The run directory is the one thing that does not collide (`new_run_id` = UTC stamp + `uuid4().hex[:8]`), and `current` is moved by `reload`, not by `retrain`. **Keying by pid would have made a broken thing addressable**, so the second run is refused instead: `_TrainingRuns.start` claims the step's slot and spawns the process under one lock, and the endpoints answer **409 `TRAIN_ALREADY_RUNNING`** naming the run they are refusing for — step, pid, how long it has been going — with the stop URL in the hint (§8.7). `retrain` and `evaluate` write different root files and publish under different step names, so they may still overlap.
+
+**The stop no longer lies about an exit.** A process whose `poll()` is not `None` is nothing to stop even though its slot is still held, and the narrower race — an exit between the check and the signal — is settled on the exit status rather than guessed at: a process that died on our signal reports a negative `returncode`. The stopped flag moved from the step to the **run**, which is the question the worker thread actually asks.
+
+**`MAX_CONCURRENT_TRAINING_JOBS` is removed, not fixed.** With one run per step the only thing it could decide is whether the two distinct steps overlap, and there are two steps; at 1 it queued the second request behind a ten-minute run instead of answering it, and go-app's 30-minute client timeout cancels such a request without the queued step ever starting. `docker-compose.yml` defaulted it to **4**, so the configuration this finding describes is the one the containerised path shipped with. D-11's compute-lane property survives and is stronger: the slot is released in the worker thread after the subprocess has been waited on, and unlike a counting semaphore it actually refuses the second retrain.
+
+**Pinned by** `test_a_second_run_of_a_step_is_refused_and_names_the_one_already_running`, `test_the_retrain_endpoint_refuses_a_second_run_by_naming_the_first`, `test_a_stop_that_arrives_after_the_run_finished_stops_nothing` and `test_a_run_that_finished_before_the_stop_is_not_reported_as_stopped` — all deterministic: the child is waited on *before* the stop is asked for, and the worker thread is parked inside the window by a `finish` that waits for the test. No real retrain runs: a stdlib module that exits in milliseconds stands in for the training module, so the orchestrator's own path runs end to end. Not retrain-flagged.
 
 ### SERVE-05 — Simulator batting depth contradicts per-player `p_bats`  **Medium** — PR #328
 
