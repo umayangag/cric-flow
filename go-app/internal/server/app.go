@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/umayangag/cric-flow/go-app/internal/auction"
@@ -40,7 +41,7 @@ type App struct {
 	auctionLookups auctionLookups
 	jobContext     context.Context // cancelled on shutdown so pipeline jobs can exit gracefully
 
-	// jobCancels holds one cancel func per lane, for the job running in that lane.
+	// jobCancels holds one registration per lane, for the job running in that lane.
 	//
 	// This used to be a single slot, which was correct only while one global lock
 	// meant one job. Acquisition has its own lane (ops plan F-2) precisely so a
@@ -49,7 +50,11 @@ type App struct {
 	// uncancellable, and Stop cancels whichever job wrote the slot last. Keying by
 	// lane makes the structure say what the lanes already promised.
 	jobCancelsMu sync.Mutex
-	jobCancels   map[pipelinesvc.Lane]context.CancelFunc
+	jobCancels   map[pipelinesvc.Lane]*laneJob
+
+	// backgroundJobs counts the goroutines started behind a 202 that still have run
+	// history to write. Shutdown waits on it before the pool closes (GO-05).
+	backgroundJobs sync.WaitGroup
 
 	// planCancel stops a run plan as a whole, which is a different thing from
 	// stopping the step it is currently on (ops plan R-1).
@@ -79,28 +84,93 @@ func (a *App) JobContext() context.Context {
 	return context.Background()
 }
 
-// SetJobCancel stores the cancel func for the job starting in a lane. Call when
-// starting a job; the lane comes from the step's registry entry.
-func (a *App) SetJobCancel(lane pipelinesvc.Lane, cancel context.CancelFunc) {
+// laneJob is one lane's registered job. The cancel func lives behind a pointer so a
+// registration has an identity: function values are not comparable in Go, so there is
+// no other way for a job to ask "is the thing stored here still mine?".
+type laneJob struct{ cancel context.CancelFunc }
+
+// SetJobCancel registers the cancel func for the job starting in a lane and returns
+// the release func that deregisters it. Call release in a defer when the job goroutine
+// exits; the lane comes from the step's registry entry.
+//
+// Release clears this registration and no other. It used to be an unconditional
+// `delete(a.jobCancels, lane)` paired with an unconditional `a.jobCancels[lane] =
+// cancel`, so two jobs racing into the same lane traded places: the second overwrote
+// the first's cancel func on the way in and deleted the survivor's on the way out, and
+// Stop then cancelled neither (GO-06).
+//
+// A lane that already holds a live registration keeps it. The lane belongs to whoever
+// claimed it, the second job is refused by pipeline.RunJob, and its release is a no-op
+// so every caller can defer it unconditionally.
+func (a *App) SetJobCancel(lane pipelinesvc.Lane, cancel context.CancelFunc) func() {
 	if a == nil {
-		return
+		return func() {}
 	}
 	a.jobCancelsMu.Lock()
 	defer a.jobCancelsMu.Unlock()
 	if a.jobCancels == nil {
-		a.jobCancels = map[pipelinesvc.Lane]context.CancelFunc{}
+		a.jobCancels = map[pipelinesvc.Lane]*laneJob{}
 	}
-	a.jobCancels[lane] = cancel
+	if held := a.jobCancels[lane]; held != nil {
+		slog.Warn("pipeline: lane already has a cancellable job; keeping the one that claimed it",
+			slog.String("lane", string(lane)))
+		return func() {}
+	}
+	registration := &laneJob{cancel: cancel}
+	a.jobCancels[lane] = registration
+	return func() { a.releaseJobCancel(lane, registration) }
 }
 
-// ClearJobCancel forgets the lane's cancel func. Call in defer when the job goroutine exits.
-func (a *App) ClearJobCancel(lane pipelinesvc.Lane) {
-	if a == nil {
-		return
-	}
+// releaseJobCancel forgets the lane's registration, but only if it is still the one
+// the caller made.
+func (a *App) releaseJobCancel(lane pipelinesvc.Lane, registration *laneJob) {
 	a.jobCancelsMu.Lock()
 	defer a.jobCancelsMu.Unlock()
-	delete(a.jobCancels, lane)
+	if a.jobCancels[lane] == registration {
+		delete(a.jobCancels, lane)
+	}
+}
+
+// RunBackgroundJob starts fn in a goroutine that shutdown will wait for.
+//
+// Every one of these is the tail of a request that has already answered 202, and each
+// one owns a data_migrations row it has to close out. Shutdown cancelled them and then
+// closed the pool without waiting, so the write that would have recorded the
+// cancellation met a closed pool and the row stayed IN_PROGRESS (GO-05).
+func (a *App) RunBackgroundJob(fn func()) {
+	if a == nil {
+		go fn()
+		return
+	}
+	a.backgroundJobs.Add(1)
+	go func() {
+		defer a.backgroundJobs.Done()
+		fn()
+	}()
+}
+
+// WaitForBackgroundJobs blocks until every background job has returned, or until ctx
+// is done. It reports whether they all finished.
+//
+// Called during shutdown between cancelling the job context and closing the pool, so a
+// cancelled run records its outcome while there is still a database to record it in.
+// If the wait times out the pool closes anyway — a shutdown that hangs on a job that
+// will not stop is worse than a row the startup sweep will tidy.
+func (a *App) WaitForBackgroundJobs(ctx context.Context) bool {
+	if a == nil {
+		return true
+	}
+	done := make(chan struct{})
+	go func() {
+		a.backgroundJobs.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // CancelJobsInLanes cancels the running job in each named lane and reports how many
@@ -119,8 +189,8 @@ func (a *App) CancelJobsInLanes(lanes ...pipelinesvc.Lane) int {
 	}
 	fns := make([]context.CancelFunc, 0, len(lanes))
 	for _, lane := range lanes {
-		if fn, ok := a.jobCancels[lane]; ok {
-			fns = append(fns, fn)
+		if job := a.jobCancels[lane]; job != nil {
+			fns = append(fns, job.cancel)
 			delete(a.jobCancels, lane)
 		}
 	}

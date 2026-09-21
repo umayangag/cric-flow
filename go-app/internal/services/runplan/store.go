@@ -17,20 +17,32 @@ import (
 // its own cleanup and its own answer to "what is running right now?".
 type TrackingStore struct{}
 
-// Create records a starting plan and returns its run id.
+// Create records a starting plan and returns its run id, or ErrPlanRunning if one is
+// already in flight.
+//
+// The check and the insert are one transaction under an advisory lock, the same claim a
+// pipeline step makes for its lane. `Active` followed by an unguarded insert left the
+// same window GO-06 names for steps: two `POST /ops/pipeline/run-plan` inside one round
+// trip both read "nothing running" and both started, each overwriting the other's
+// bookkeeping. A plan is in no lane, so it contends on its own key rather than a lane's.
 func (s TrackingStore) Create(ctx context.Context, plan string, state State) (int, error) {
-	args, err := json.Marshal(map[string]any{"plan": plan, "steps": stepIDs(state)})
-	if err != nil {
-		return 0, fmt.Errorf("encode plan args: %w", err)
+	tracker, err := tracking.StartExclusive(
+		ctx,
+		PlanCommand,
+		map[string]any{"plan": plan, "steps": stepIDs(state)},
+		tracking.AdvisoryKeyFor(PlanCommand),
+		[]string{PlanCommand},
+	)
+	switch {
+	case errors.Is(err, tracking.ErrRunConflict):
+		return 0, ErrPlanRunning
+	case err != nil:
+		return 0, fmt.Errorf("claim the plan: %w", err)
 	}
-	id, err := tracking.CreateMigration(ctx, PlanCommand, args)
-	if err != nil {
-		return 0, err
+	if saveErr := s.Save(ctx, tracker.ID, state); saveErr != nil {
+		return tracker.ID, saveErr
 	}
-	if saveErr := s.Save(ctx, id, state); saveErr != nil {
-		return id, saveErr
-	}
-	return id, nil
+	return tracker.ID, nil
 }
 
 // Save updates the state of an in-flight plan without touching its status.
@@ -53,10 +65,13 @@ func (TrackingStore) Finish(ctx context.Context, id int, state State, runErr err
 		return fmt.Errorf("encode plan state: %w", err)
 	}
 
-	switch {
-	case runErr == nil:
+	// The row's status and the state's own Outcome come from one decision (OutcomeFor),
+	// so run history and the plan payload cannot disagree about whether a run was
+	// stopped or broke.
+	switch OutcomeFor(runErr) {
+	case OutcomeCompleted:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusCompleted, encoded, "")
-	case errors.Is(runErr, context.Canceled), errors.Is(runErr, context.DeadlineExceeded):
+	case OutcomeCancelled:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusCancelled, encoded, runErr.Error())
 	default:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusFailed, encoded, runErr.Error())

@@ -1476,6 +1476,16 @@ export type RunPlanState = {
   steps?: RunPlanStep[];
   started_at?: string;
   finished_at?: string;
+  /**
+   * How the run ended. Absent while it is still going, and absent for a run that
+   * ended before the backend recorded this.
+   *
+   * Reported rather than inferred from the step list: a plan whose last step reads
+   * CANCELLED could have been stopped by the operator or could have had its final
+   * step time out, and "was this stopped, or did it break?" is the first question
+   * asked of a pipeline that did not finish.
+   */
+  outcome?: 'COMPLETED' | 'FAILED' | 'CANCELLED';
   /** Where a resume would start. Absent while the plan is running. */
   resume_from?: string;
   /** The plan names the backend accepts. */

@@ -237,14 +237,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 ## 6. go-app prediction path, track record and ops
 
-### GO-05 — Cancelled run plan can never record its outcome  **Medium**
-
-`services/runplan/executor.go:130-135, 144-147, 179-184` call `Store.Finish(ctx, …)` / `save(ctx, …)` with the already-cancelled plan ctx; pgx returns `context canceled`, only logged. `pipeline_handlers.go:40-49` cancels compute-lane rows but `pipeline-plan` is in no lane (`executor.go:14-19`). The row stays `IN_PROGRESS`; `TrackingStore.Active` reports running; `run_plan_handlers.go:61` and `Executor.run:120` answer 409 until `TRACKING_STALE_CANCEL_AGE` (24h). Same on SIGTERM (`cmd/api/main.go:130`, then `db.Close()`). **Fix.** `context.WithoutCancel(ctx)` with a short timeout for `save` / `Finish` (as `tracking.CaptureExit` already does); include `runplan.PlanCommand` in the stop's cancel set.
-
-### GO-06 — Lane lock is check-then-insert; cancel funcs overwritten  **Medium**
-
-`internal/pipeline/job.go:52-62` (`LaneBusy` SELECT then `tracking.Start` INSERT, no lock; on `LaneBusy` *error* it proceeds as not busy); `server/app.go:74-84` `a.jobCancels[lane] = cancel` unconditional; `run_plan.go:96-102, 125-131` `planCancel.set` / deferred `clear()` clears whoever is stored. Two `POST /ops/pipeline/run/retrain` within one round-trip both start; stop cancels neither. **Fix.** Per-lane `sync.Mutex` across check+insert, or a partial unique index on `data_migrations (command) WHERE status='IN_PROGRESS'` / `pg_try_advisory_lock`; compare-and-clear for cancel funcs.
-
 ### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium**
 
 `ml_xi_client.go:100-114` (`mlXIWinRequest`) and `:453-461` (`mlPerformanceRequest`) omit `team1_bats_first`, which `models/xi.py:155-157, 253` accept and `xi_service.py:540, 586-597` use. For TEST (non-simulated) the headline P(win) and per-player numbers are toss-marginalised even when the caller sent the toss, and the response's `honoured: false` note blames the format. `objective_probability` / constraint checks are toss-blind everywhere. **Fix.** Add `Team1BatsFirst *bool` to both structs and thread `fix.team1BatsFirst` through.
@@ -342,6 +334,22 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### GO-05 — Cancelled run plan can never record its outcome  **Medium**  — PR #330
+
+`services/runplan/executor.go:130-135, 144-147, 179-184` call `Store.Finish(ctx, …)` / `save(ctx, …)` with the already-cancelled plan ctx; pgx returns `context canceled`, only logged. `pipeline_handlers.go:40-49` cancels compute-lane rows but `pipeline-plan` is in no lane (`executor.go:14-19`). The row stays `IN_PROGRESS`; `TrackingStore.Active` reports running; `run_plan_handlers.go:61` and `Executor.run:120` answer 409 until `TRACKING_STALE_CANCEL_AGE` (24h). Same on SIGTERM (`cmd/api/main.go:130`, then `db.Close()`). **Fix.** `context.WithoutCancel(ctx)` with a short timeout for `save` / `Finish` (as `tracking.CaptureExit` already does); include `runplan.PlanCommand` in the stop's cancel set.
+
+**Both confirmed against `main` (`fb88eb89`) before anything changed**, at the lines named. Fixed together because they are one machine: the executor's bookkeeping writes, the lane's tracking rows and the cancel registries. GO-05: the `save`/`Finish` writes now run on a context detached from the plan's (`context.WithoutCancel` + 5 s), `runplan.PlanCommand` is always in the Stop's cancel set, and shutdown drains the background jobs before `db.Close()`. GO-06: the lane claim is one transaction taking `pg_advisory_xact_lock` on the lane, re-reading it and inserting the row — **in the database, not a `sync.Mutex`, because `cmd/cricsheet-importer` takes the same lane from a separate process**; the run plan claims itself the same way on its own key; the registries compare before they clear. Four fail-opens closed (`LaneBusy` in `RunJob` and in the import handler, `Store.Active` in `Executor.run` and in `runPlanStartHandler`). `UpdateMigrationStatus` keeps existing metadata rather than nulling it. § 8.7: the run's ending is `COMPLETED` / `FAILED` / `CANCELLED` in the row **and** as `outcome` on `GET /ops/pipeline/plan`, both from one decision. Demonstrated on `cricket_flow_test`: a SIGTERM'd plan leaves `CANCELLED | context canceled | outcome CANCELLED` and the next plan starts in the same second, not in 24 hours. A SIGKILLed process still leaves an `IN_PROGRESS` row for the startup stale sweep. Not retrain-flagged.
+
+---
+
+### GO-06 — Lane lock is check-then-insert; cancel funcs overwritten  **Medium**  — PR #330
+
+`internal/pipeline/job.go:52-62` (`LaneBusy` SELECT then `tracking.Start` INSERT, no lock; on `LaneBusy` *error* it proceeds as not busy); `server/app.go:74-84` `a.jobCancels[lane] = cancel` unconditional; `run_plan.go:96-102, 125-131` `planCancel.set` / deferred `clear()` clears whoever is stored. Two `POST /ops/pipeline/run/retrain` within one round-trip both start; stop cancels neither. **Fix.** Per-lane `sync.Mutex` across check+insert, or a partial unique index on `data_migrations (command) WHERE status='IN_PROGRESS'` / `pg_try_advisory_lock`; compare-and-clear for cancel funcs.
+
+**Both confirmed against `main` (`fb88eb89`) before anything changed**, at the lines named. Fixed together because they are one machine: the executor's bookkeeping writes, the lane's tracking rows and the cancel registries. GO-05: the `save`/`Finish` writes now run on a context detached from the plan's (`context.WithoutCancel` + 5 s), `runplan.PlanCommand` is always in the Stop's cancel set, and shutdown drains the background jobs before `db.Close()`. GO-06: the lane claim is one transaction taking `pg_advisory_xact_lock` on the lane, re-reading it and inserting the row — **in the database, not a `sync.Mutex`, because `cmd/cricsheet-importer` takes the same lane from a separate process**; the run plan claims itself the same way on its own key; the registries compare before they clear. Four fail-opens closed (`LaneBusy` in `RunJob` and in the import handler, `Store.Active` in `Executor.run` and in `runPlanStartHandler`). `UpdateMigrationStatus` keeps existing metadata rather than nulling it. § 8.7: the run's ending is `COMPLETED` / `FAILED` / `CANCELLED` in the row **and** as `outcome` on `GET /ops/pipeline/plan`, both from one decision. Demonstrated on `cricket_flow_test`: a SIGTERM'd plan leaves `CANCELLED | context canceled | outcome CANCELLED` and the next plan starts in the same second, not in 24 hours. A SIGKILLed process still leaves an `IN_PROGRESS` row for the startup stale sweep. Not retrain-flagged.
+
+---
 
 ### SERVE-06 — Training process registry keyed by module  **Medium** — PR #329
 

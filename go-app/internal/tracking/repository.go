@@ -11,16 +11,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-func CreateMigration(ctx context.Context, command string, args json.RawMessage) (int, error) {
-	var id int
-	err := db.QueryRow(ctx, `
-		INSERT INTO data_migrations (command, args, status, started_at)
-		VALUES ($1, $2, $3, NOW())
-		RETURNING id
-	`, command, args, StatusInProgress).Scan(&id)
-	return id, err
-}
-
 func UpdateMigrationStatus(
 	ctx context.Context,
 	id int,
@@ -34,9 +24,15 @@ func UpdateMigrationStatus(
 		errMsgPtr = &errorMsg
 	}
 
+	// COALESCE, not a plain assignment: several callers end a run without having any
+	// metadata of their own to write (Tracker.Fail, Tracker.Cancel, and the Stop
+	// endpoint's CancelInProgressMigrations all pass nil). A plain assignment made
+	// those calls erase what the run had already recorded — for a run plan, the whole
+	// step-by-step state, so a stopped plan came back from the database with nothing
+	// to show for itself. Passing nil now means "leave what is there".
 	return db.Exec(ctx, `
 		UPDATE data_migrations
-		SET status = $2, completed_at = NOW(), metadata = $3, error_message = $4
+		SET status = $2, completed_at = NOW(), metadata = COALESCE($3, metadata), error_message = $4
 		WHERE id = $1
 	`, id, status, metadata, errMsgPtr)
 }

@@ -11,18 +11,23 @@
 //
 // # State transitions
 //
-//   - Created: Start (CreateMigration) inserts a row with status IN_PROGRESS.
+//   - Created: StartExclusive inserts a row with status IN_PROGRESS, inside one
+//     transaction that first takes a Postgres advisory lock on the resource the run
+//     contends for and re-reads whether anything already holds it. The check and the
+//     insert are one thing on purpose (GO-06): as two statements, two requests in the
+//     same round trip both read "free" and both started.
 //   - Completed: UpdateMigrationStatus(..., StatusCompleted, ...) or Tracker.Complete.
 //   - Failed: UpdateMigrationStatus(..., StatusFailed, ...) or Tracker.Fail.
 //   - Cancelled: UpdateMigrationStatus(..., StatusCancelled, ...), Tracker.Cancel,
 //     CancelInProgressMigration (user stop), or CancelStaleInProgressMigrations (startup).
 //
-// Only one run may be IN_PROGRESS per command in practice; the pipeline layer
-// enforces "at most one pipeline step running globally" via HasInProgressForAnyCommand.
+// Only one run may be IN_PROGRESS per lane; StartExclusive is what enforces it, and
+// HasInProgressForAnyCommand is the advisory pre-flight handlers use to answer 409
+// before starting anything.
 //
 // # Where runs are created and updated
 //
-//   - Created: pipeline.RunJob (via Tracker from tracking.Start), CLI export/train steps.
+//   - Created: pipeline.RunJob and runplan.TrackingStore.Create, both via StartExclusive.
 //   - Updated: Tracker.Complete / Fail / Cancel; CaptureExit (defer); CancelInProgressMigration;
 //     CancelStaleRuns (on API startup).
 //   - Surfaced: GetInProgressMigrations, GetRecentMigrations, GetMigrationsPaginated;
