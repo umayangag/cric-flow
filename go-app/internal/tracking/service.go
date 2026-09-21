@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"log/slog"
 	"time"
 
@@ -36,6 +37,20 @@ const advisoryLockClass int64 = 0x63726963 // "cric"
 // advisoryLockFor places a caller's key inside that namespace.
 func advisoryLockFor(key uint32) int64 {
 	return advisoryLockClass<<32 | int64(key)
+}
+
+// AdvisoryKeyFor derives the lock key a named exclusive resource contends for.
+//
+// Derived from the name rather than configured, so a new lane or a new kind of run
+// arrives with its own lock instead of sharing one by omission. FNV-1a because it is in
+// the standard library, deterministic across processes and builds, and the key only has
+// to be stable and well spread — a collision would serialise two resources
+// unnecessarily, not corrupt anything.
+func AdvisoryKeyFor(name string) uint32 {
+	digest := fnv.New32a()
+	// hash.Hash32.Write never returns an error, which is why this one is discarded.
+	_, _ = digest.Write([]byte(name))
+	return digest.Sum32()
 }
 
 // claimTimeout bounds the whole claim. The advisory lock is held only for the length

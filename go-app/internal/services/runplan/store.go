@@ -3,6 +3,7 @@ package runplan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -16,20 +17,32 @@ import (
 // its own cleanup and its own answer to "what is running right now?".
 type TrackingStore struct{}
 
-// Create records a starting plan and returns its run id.
+// Create records a starting plan and returns its run id, or ErrPlanRunning if one is
+// already in flight.
+//
+// The check and the insert are one transaction under an advisory lock, the same claim a
+// pipeline step makes for its lane. `Active` followed by an unguarded insert left the
+// same window GO-06 names for steps: two `POST /ops/pipeline/run-plan` inside one round
+// trip both read "nothing running" and both started, each overwriting the other's
+// bookkeeping. A plan is in no lane, so it contends on its own key rather than a lane's.
 func (s TrackingStore) Create(ctx context.Context, plan string, state State) (int, error) {
-	args, err := json.Marshal(map[string]any{"plan": plan, "steps": stepIDs(state)})
-	if err != nil {
-		return 0, fmt.Errorf("encode plan args: %w", err)
+	tracker, err := tracking.StartExclusive(
+		ctx,
+		PlanCommand,
+		map[string]any{"plan": plan, "steps": stepIDs(state)},
+		tracking.AdvisoryKeyFor(PlanCommand),
+		[]string{PlanCommand},
+	)
+	switch {
+	case errors.Is(err, tracking.ErrRunConflict):
+		return 0, ErrPlanRunning
+	case err != nil:
+		return 0, fmt.Errorf("claim the plan: %w", err)
 	}
-	id, err := tracking.CreateMigration(ctx, PlanCommand, args)
-	if err != nil {
-		return 0, err
+	if saveErr := s.Save(ctx, tracker.ID, state); saveErr != nil {
+		return tracker.ID, saveErr
 	}
-	if saveErr := s.Save(ctx, id, state); saveErr != nil {
-		return id, saveErr
-	}
-	return id, nil
+	return tracker.ID, nil
 }
 
 // Save updates the state of an in-flight plan without touching its status.

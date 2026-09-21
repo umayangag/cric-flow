@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"runtime/debug"
 	"time"
@@ -32,18 +31,11 @@ func LaneBusy(ctx context.Context, command string) (bool, error) {
 	return tracking.HasInProgressForAnyCommand(ctx, registry.CommandsInLane(lane))
 }
 
-// LaneLockKey is the advisory-lock key a lane's claimants contend for.
-//
-// Derived from the lane's name rather than configured, so a lane added to the registry
-// arrives with its own lock instead of sharing one by omission. FNV-1a because it is
-// in the standard library, deterministic across processes and builds, and the key only
-// has to be stable and well spread — a collision between two lanes would serialise
-// them unnecessarily, not corrupt anything.
+// LaneLockKey is the advisory-lock key a lane's claimants contend for. The lane's own
+// name is what identifies it, so a lane added to the registry arrives with its own lock
+// rather than sharing one by omission.
 func LaneLockKey(lane steps.Lane) uint32 {
-	digest := fnv.New32a()
-	// hash.Hash32.Write never returns an error, which is why this one is discarded.
-	_, _ = digest.Write([]byte(lane))
-	return digest.Sum32()
+	return tracking.AdvisoryKeyFor(string(lane))
 }
 
 // JobFunc runs a pipeline step. It returns (exitMeta, err). On success, exitMeta is

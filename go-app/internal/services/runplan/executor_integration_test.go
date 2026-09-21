@@ -131,3 +131,47 @@ func TestCancellingTheRowKeepsThePlanState_Integration(t *testing.T) {
 	require.True(t, ok, "cancelling the row must not erase the plan it describes")
 	assert.Equal(t, StatusRunning, restored.Steps[0].Status)
 }
+
+// TestConcurrentPlanStartsStartExactlyOnePlan_Integration is GO-06's shape applied to
+// the plan's own claim: `Active` followed by an unguarded insert let two
+// `POST /ops/pipeline/run-plan` inside one round trip both start, each overwriting the
+// other's bookkeeping. Create now claims under the same advisory lock a step's lane
+// uses, so the losers are refused rather than admitted.
+func TestConcurrentPlanStartsStartExactlyOnePlan_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	setupPlanDB(t)
+	ctx := context.Background()
+
+	const claimants = 8
+	results := make(chan error, claimants)
+	state := NewState(PlanRetrainOnly, mustResolve(t, "retrain"), "2026-09-21T12:00:00Z")
+	for i := 0; i < claimants; i++ {
+		go func() {
+			_, err := TrackingStore{}.Create(ctx, PlanRetrainOnly, state)
+			results <- err
+		}()
+	}
+
+	claimed, refused := 0, 0
+	for i := 0; i < claimants; i++ {
+		countClaim(t, <-results, &claimed, &refused)
+	}
+	assert.Equal(t, 1, claimed, "exactly one plan may be started")
+	assert.Equal(t, claimants-1, refused)
+
+	var rows int
+	require.NoError(t, db.QueryRow(ctx, `
+		SELECT COUNT(*)::int FROM data_migrations WHERE command = $1
+	`, PlanCommand).Scan(&rows))
+	assert.Equal(t, 1, rows, "exactly one plan row may exist")
+}
+
+func countClaim(t *testing.T, err error, claimed, refused *int) {
+	t.Helper()
+	if err == nil {
+		*claimed++
+		return
+	}
+	require.ErrorIs(t, err, ErrPlanRunning, "a refused plan says so rather than failing oddly")
+	*refused++
+}
