@@ -766,7 +766,9 @@ transaction that takes a Postgres advisory lock on the lane, re-reads whether an
 in that lane is `IN_PROGRESS`, and inserts its own row — so two claimants that arrive
 together are serialised by the database rather than by luck. It was a `SELECT` followed by
 an unguarded `INSERT`, and two `POST /ops/pipeline/run/retrain` inside one round trip both
-started (GO-06). An in-process mutex would not have been enough: `cmd/cricsheet-importer`
+started (GO-06). A run plan claims itself the same way on its own key — it is in no
+lane by design, so two `POST /ops/pipeline/run-plan` had the identical window. An
+in-process mutex would not have been enough: `cmd/cricsheet-importer`
 takes the same lane from a *separate process* against the same database. A claim that
 cannot be made — the database unreachable, the transaction refused — now refuses the run
 rather than being logged and treated as a free lane.
