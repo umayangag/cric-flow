@@ -143,10 +143,15 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 			return
 		}
 		var body struct {
-			AsOf             string   `json:"as_of"`
-			PoolPlayerIDs    []string `json:"pool_player_ids"`
-			Team1PlayerIDs   []string `json:"team1_player_ids"`
-			Team2PlayerIDs   []string `json:"team2_player_ids"`
+			AsOf           string   `json:"as_of"`
+			PoolPlayerIDs  []string `json:"pool_player_ids"`
+			Team1PlayerIDs []string `json:"team1_player_ids"`
+			Team2PlayerIDs []string `json:"team2_player_ids"`
+			// Team1BatsFirst is echoed back through `toss_marginalised` and
+			// `innings_marginalised`, because that is what ml-service does: a fake that
+			// always claimed to have marginalised would be answering a shape the real
+			// service never sends, and go-app refuses the pair when they disagree (GO-07).
+			Team1BatsFirst   *bool `json:"team1_bats_first"`
 			Team1Constraints *struct {
 				MinBowlers    int      `json:"min_bowlers"`
 				RequireKeeper bool     `json:"require_keeper"`
@@ -157,6 +162,7 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 		if asOf != nil {
 			asOf.record(body.AsOf)
 		}
+		marginalised := body.Team1BatsFirst == nil
 		switch r.URL.Path {
 		case "/xi/optimize":
 			selected, err := json.Marshal(body.PoolPlayerIDs[:11])
@@ -182,8 +188,9 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 					missing, len(body.Team2PlayerIDs), body.Team1Constraints.MinBowlers,
 					body.Team1Constraints.RequireKeeper)
 			}
-			_, _ = fmt.Fprintf(w, `{"team1_win_probability": 0.6, "objective_probability": 0.55, %s %s}`,
-				checks, stamp)
+			_, _ = fmt.Fprintf(w,
+				`{"team1_win_probability": 0.6, "objective_probability": 0.55, "toss_marginalised": %t, %s %s}`,
+				marginalised, checks, stamp)
 		case "/performance/predict":
 			lines := make([]string, 0, 22)
 			// Both elevens come back in one flat list, and each row says which side it is
@@ -202,8 +209,8 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 						id, side.number))
 				}
 			}
-			_, _ = fmt.Fprintf(w, `{"players": [%s], "innings_marginalised": true, "unknown_player_ids": [], %s}`,
-				strings.Join(lines, ","), stamp)
+			_, _ = fmt.Fprintf(w, `{"players": [%s], "innings_marginalised": %t, "unknown_player_ids": [], %s}`,
+				strings.Join(lines, ","), marginalised, stamp)
 		default:
 			t.Errorf("unexpected ml-service call %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -495,4 +502,70 @@ func TestPredictTeamSelectionHandler_StaleRatingsAreRefusedWith503RatingsStale_I
 	assert.Contains(t, body.Message, "limit 14")
 	assert.Contains(t, body.Hint, "retrain")
 	assert.NotContains(t, rec.Body.String(), "win_probability", "a refusal carries no number")
+}
+
+// GO-07 end to end: a TEST request that names the toss is answered at that batting order,
+// and the answer says so.
+//
+// TEST has no innings length, so this path never reaches the simulator -- the headline is
+// the display model's and the per-player numbers are L2-B's quantiles, and both read the
+// batting order. Until this fix the toss stopped at go-app's request structs, so the
+// prediction was the reading averaged over both orders and the response said the format was
+// to blame. On the served run the two readings are 0.04 apart in TEST, and up to 0.14.
+func TestPredictTeamSelectionHandler_ANamedTossIsReadAndTheAnswerSaysSo_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+
+	testCases := []struct {
+		name        string
+		tossField   string
+		wantReading string
+		wantNote    bool
+	}{
+		{
+			name:        "no toss is the marginalised reading",
+			tossField:   "",
+			wantReading: "marginalised",
+			wantNote:    false,
+		},
+		{
+			name:        "team1 bats first is the toss-aware reading",
+			tossField:   `,"team1_bats_first":true`,
+			wantReading: "toss_aware",
+			wantNote:    true,
+		},
+		{
+			name:        "team2 bats first is the toss-aware reading too",
+			tossField:   `,"team1_bats_first":false`,
+			wantReading: "toss_aware",
+			wantNote:    true,
+		},
+	}
+
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := seedPredictFixture(t)
+			app := &App{mlClient: scriptedMLService(t, nil)}
+			rec := httptest.NewRecorder()
+			request := jsonPredictRequest(fmt.Sprintf(
+				`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q%s}`,
+				fixture.team1ID, fixture.team2ID, fixture.matchDate, testCase.tossField))
+
+			app.predictTeamSelectionHandler(rec, request)
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var payload struct {
+				Toss struct {
+					Team1BatsFirst *bool  `json:"team1_bats_first"`
+					Reading        string `json:"reading"`
+					Note           string `json:"note"`
+				} `json:"toss"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			assert.Equal(t, testCase.wantReading, payload.Toss.Reading)
+			assert.Equal(t, testCase.wantNote, payload.Toss.Note != "")
+			assert.NotContains(t, payload.Toss.Note, "no innings length",
+				"the format is not why anything here is toss-blind")
+		})
+	}
 }
