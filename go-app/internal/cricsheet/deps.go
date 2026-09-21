@@ -17,7 +17,7 @@ type CricsheetDB interface {
 	GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, error)
 	GetOrCreatePlayer(ctx context.Context, externalID, name, nameAsOf string) (int64, string, error)
 	UpdatePlayerDisplayNames(ctx context.Context, names []db.PlayerDisplayName) error
-	ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (int, error)
+	ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (db.TeamLineageReport, error)
 	UpsertBatting(ctx context.Context, b *db.Batting) error
 	UpsertBattingBatch(ctx context.Context, rows []db.Batting) error
 	UpsertBowling(ctx context.Context, b *db.Bowling) error
@@ -81,7 +81,7 @@ func (realDB) UpdatePlayerDisplayNames(ctx context.Context, names []db.PlayerDis
 	return db.UpdatePlayerDisplayNames(ctx, names)
 }
 
-func (realDB) ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (int, error) {
+func (realDB) ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (db.TeamLineageReport, error) {
 	return db.ApplyTeamLineage(ctx, renames)
 }
 

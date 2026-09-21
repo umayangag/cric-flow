@@ -39,22 +39,22 @@ func (_m *MockCricsheetDB) EXPECT() *MockCricsheetDB_Expecter {
 }
 
 // ApplyTeamLineage provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (int, error) {
+func (_mock *MockCricsheetDB) ApplyTeamLineage(ctx context.Context, renames []db.TeamRename) (db.TeamLineageReport, error) {
 	ret := _mock.Called(ctx, renames)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ApplyTeamLineage")
 	}
 
-	var r0 int
+	var r0 db.TeamLineageReport
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) (int, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) (db.TeamLineageReport, error)); ok {
 		return returnFunc(ctx, renames)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []db.TeamRename) db.TeamLineageReport); ok {
 		r0 = returnFunc(ctx, renames)
 	} else {
-		r0 = ret.Get(0).(int)
+		r0 = ret.Get(0).(db.TeamLineageReport)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, []db.TeamRename) error); ok {
 		r1 = returnFunc(ctx, renames)
@@ -94,12 +94,12 @@ func (_c *MockCricsheetDB_ApplyTeamLineage_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *MockCricsheetDB_ApplyTeamLineage_Call) Return(n int, err error) *MockCricsheetDB_ApplyTeamLineage_Call {
-	_c.Call.Return(n, err)
+func (_c *MockCricsheetDB_ApplyTeamLineage_Call) Return(teamLineageReport db.TeamLineageReport, err error) *MockCricsheetDB_ApplyTeamLineage_Call {
+	_c.Call.Return(teamLineageReport, err)
 	return _c
 }
 
-func (_c *MockCricsheetDB_ApplyTeamLineage_Call) RunAndReturn(run func(ctx context.Context, renames []db.TeamRename) (int, error)) *MockCricsheetDB_ApplyTeamLineage_Call {
+func (_c *MockCricsheetDB_ApplyTeamLineage_Call) RunAndReturn(run func(ctx context.Context, renames []db.TeamRename) (db.TeamLineageReport, error)) *MockCricsheetDB_ApplyTeamLineage_Call {
 	_c.Call.Return(run)
 	return _c
 }
