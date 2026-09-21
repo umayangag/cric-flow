@@ -29,15 +29,19 @@ import (
 // side of that name; where it holds two, the request is refused rather than resolved by
 // guess (D-10).
 type Input struct {
-	Format        string     `json:"format"`
-	Team1         db.TeamRef `json:"team1"`
-	Team2         db.TeamRef `json:"team2"`
-	Venue         string     `json:"venue,omitempty"` // venue name; empty = unknown venue
-	MatchDate     time.Time  `json:"match_date"`
-	ExtraTeam1    []int64    `json:"extra_team1,omitempty"` // extra player IDs for team1 (e.g. IPL auction)
-	ExtraTeam2    []int64    `json:"extra_team2,omitempty"` // extra player IDs for team2
-	MinBowlers    int        `json:"min_bowlers,omitempty"` // default from config
-	RequireKeeper bool       `json:"require_keeper,omitempty"`
+	Format string     `json:"format"`
+	Team1  db.TeamRef `json:"team1"`
+	Team2  db.TeamRef `json:"team2"`
+	Venue  string     `json:"venue,omitempty"` // venue name; empty = no venue named
+	// MatchDate is the day the fixture is played. It is a calendar day, not an instant:
+	// everything downstream reads a day from it -- the pool's cutoff, the as-of date, the
+	// `match_date` ml-service is sent, the `date` the issued prediction is stored in --
+	// and the day is taken from the value's own zone (GO-09).
+	MatchDate     time.Time `json:"match_date"`
+	ExtraTeam1    []int64   `json:"extra_team1,omitempty"` // extra player IDs for team1 (e.g. IPL auction)
+	ExtraTeam2    []int64   `json:"extra_team2,omitempty"` // extra player IDs for team2
+	MinBowlers    int       `json:"min_bowlers,omitempty"` // default from config
+	RequireKeeper bool      `json:"require_keeper,omitempty"`
 	// Team1BatsFirst is the toss, when it is known: true where team1 bats first, false
 	// where team2 does. Nil is the default and means unknown, which is the marginalised
 	// behaviour the simulator has always had — half the draws each way.
@@ -224,8 +228,11 @@ type Result struct {
 	Forecast       ForecastSummary       `json:"forecast"`
 	WinProbability WinProbabilitySummary `json:"win_probability"`
 	// Toss says which batting order the numbers assume, and whether a named one was used.
-	Toss      TossSummary `json:"toss"`
-	Scorecard *Scorecard  `json:"scorecard,omitempty"`
+	Toss TossSummary `json:"toss"`
+	// Venue says which venue every model read, or that none was named. A venue the caller
+	// named and this database does not hold is refused rather than reported here (GO-08).
+	Venue     VenueSummary `json:"venue"`
+	Scorecard *Scorecard   `json:"scorecard,omitempty"`
 	// Team1PoolSummary and Team2PoolSummary say which candidates each XI was chosen out
 	// of: the window, the size, and every player the ledger excluded (D-12).
 	Team1PoolSummary PoolSummary `json:"team1_pool"`
@@ -268,7 +275,10 @@ type XIService interface {
 type fixture struct {
 	format       string
 	team1, team2 db.TeamSide
-	venueID      int64
+	// venue is the venue the answer was produced at, resolved once here and reported on
+	// the wire so an unresolved one is never mistaken for a fixture nobody named a ground
+	// for (GO-08).
+	venue        VenueSummary
 	pool1, pool2 []db.PlayerPoolRow
 	summary1     PoolSummary
 	summary2     PoolSummary
@@ -320,6 +330,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team1:            newSelectedPlayers(selection.Team1Keys, fix.pool1, selection.Team1Answers),
 		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Team2Answers),
 		Selection:        selection.Summary,
+		Venue:            fix.venue,
 		Team1PoolSummary: fix.summary1,
 		Team2PoolSummary: fix.summary2,
 	}
@@ -372,7 +383,7 @@ func newWinRequest(fix fixture, selection xiSelection) XIWinRequest {
 		Team2PlayerKeys: selection.Team2Keys,
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
-		VenueID:         fix.venueID,
+		VenueID:         fix.venue.VenueID,
 		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
 	}
@@ -411,7 +422,9 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		slog.Error("predictteam.PredictTeams validation failed", slog.Any("err", err))
 		return fixture{}, err
 	}
-	cutoff := input.MatchDate.Truncate(24 * time.Hour)
+	// The pool's cutoff is the fixture's own calendar day, derived where the query is
+	// built so that both sides and the candidate list agree on it (GO-09).
+	cutoff := input.MatchDate
 
 	team1, err := resolveSide(ctx, input.Team1, format, "team1")
 	if err != nil {
@@ -428,11 +441,9 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		return fixture{}, err
 	}
 
-	var venueID int64
-	if input.Venue != "" {
-		if id, verr := db.GetGlobalCache().GetVenueID(ctx, input.Venue); verr == nil {
-			venueID = id
-		}
+	venue, err := resolveVenue(ctx, input.Venue, productionVenueLookup)
+	if err != nil {
+		return fixture{}, err
 	}
 
 	constraints := resolveConstraints(input)
@@ -493,7 +504,7 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 		format:         format,
 		team1:          team1,
 		team2:          team2,
-		venueID:        venueID,
+		venue:          venue,
 		pool1:          pool1,
 		pool2:          pool2,
 		summary1:       summary1,

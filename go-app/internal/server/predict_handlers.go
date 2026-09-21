@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 	"github.com/umayangag/cric-flow/go-app/internal/services/predictteam"
 	"github.com/umayangag/cric-flow/go-app/internal/teams"
@@ -219,19 +220,11 @@ func buildPredictInput(body predictTeamRequest, matchDate time.Time, actor strin
 // chose (GO-01). Naming the match date as as-of is what makes the answer unable to see the
 // result; the pool's cutoff already is the match date, so the two agree.
 func asOfFor(matchDate, now time.Time) time.Time {
-	matchDay := calendarDay(matchDate)
-	if matchDay.Before(calendarDay(now.UTC())) {
+	matchDay := availability.CalendarDay(matchDate)
+	if matchDay.Before(availability.CalendarDay(now.UTC())) {
 		return matchDay
 	}
 	return time.Time{}
-}
-
-// calendarDay is midnight UTC of t's own calendar date -- the date as the caller wrote it,
-// not the date the same instant falls on in UTC. A match is keyed by the date it was played
-// on, which is how the rating pass keys it too.
-func calendarDay(t time.Time) time.Time {
-	year, month, day := t.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
 // predictTeamSelectionHandler handles POST /api/predict/team-selection.
@@ -345,6 +338,21 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 		})
 		return
 	}
+	// A venue this database does not hold is the request naming a ground nobody can
+	// score at. It is refused rather than dropped: the alternative -- predicting without
+	// the venue, or at a venue row invented on the spot -- answers a question the caller
+	// did not ask and says nothing about having done so (GO-08, §8.7). Leaving `venue`
+	// out entirely is a different request and is still answered.
+	var unknownVenue *predictteam.UnknownVenueError
+	if errors.As(err, &unknownVenue) {
+		writeJSON(w, http.StatusBadRequest, apiError{
+			Code:    "VENUE_NOT_FOUND",
+			Message: unknownVenue.Error(),
+			Hint: "venue names come from GET /api/options/venues; " +
+				"leave `venue` out to be answered without one",
+		})
+		return
+	}
 	// A pool too small to field an XI is the caller's scope being too narrow, not a
 	// failure here, and after D-12 the recency window is the likely cause. The refusal
 	// names the window and the two ways out, because both are the user's to choose.
@@ -431,13 +439,22 @@ func respondPredictErr(w http.ResponseWriter, err error) {
 	respondErr(w, err)
 }
 
+// parseMatchDate reads the day a fixture is played on, in either accepted spelling, and
+// returns it as midnight UTC of that day.
+//
+// The normalisation happens here, once, because this is the only place a caller's zone is
+// still visible. Downstream the date is a day and nothing else: it is the pool's cutoff,
+// the as-of date, the `match_date` ml-service reads, and the `date` column the issued
+// prediction is stored in. Carrying the instant instead made those disagree -- the pool
+// cutoff came out a day early on a negative offset while the stored record kept the day
+// the caller wrote (GO-09).
 func parseMatchDate(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
+		return availability.CalendarDay(t), nil
 	}
 	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t, nil
+		return availability.CalendarDay(t), nil
 	}
 	return time.Time{}, errors.New("invalid date format")
 }

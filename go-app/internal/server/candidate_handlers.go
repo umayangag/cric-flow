@@ -76,7 +76,7 @@ func (a *App) candidatesHandler(w http.ResponseWriter, r *http.Request) {
 func parseCandidatesDate(raw string) (time.Time, *apiError) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return time.Now().UTC().Truncate(24 * time.Hour), nil
+		return availability.CalendarDay(time.Now().UTC()), nil
 	}
 	parsed, err := parseMatchDate(raw)
 	if err != nil {

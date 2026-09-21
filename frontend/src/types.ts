@@ -378,6 +378,20 @@ export type PredictConstraintReport = {
   team2: PredictConstraintStatus;
 };
 
+/**
+ * Which venue the answer was produced at (GO-08).
+ *
+ * `resolved` is false only where no venue was named -- the fixture was read without one,
+ * and `note` says so. A venue that was named and could not be found is a refusal
+ * (`VENUE_NOT_FOUND`), not an unresolved answer.
+ */
+export type PredictVenueSummary = {
+  resolved: boolean;
+  venue_id?: number;
+  name?: string;
+  note?: string;
+};
+
 export type PredictTeamSelectionResponse = PredictServedRatings & {
   /** The sides that were actually scored, echoed back whether or not the request was clear. */
   team1_side: TeamSideOption;
@@ -390,6 +404,8 @@ export type PredictTeamSelectionResponse = PredictServedRatings & {
   win_probability: PredictWinProbability;
   /** Which batting order the numbers were produced under, and whether a named one was used. */
   toss: PredictTossSummary;
+  /** Which venue every model read, or that none was named. */
+  venue: PredictVenueSummary;
   scorecard?: PredictScorecard;
   /** Which candidates each XI was chosen out of, and who the ledger excluded (D-12). */
   team1_pool: PoolSummary;

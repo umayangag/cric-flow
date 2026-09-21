@@ -129,6 +129,25 @@ func TestRespondPredictErr_AmbiguousNameIs400NamingBothSides(t *testing.T) {
 	assert.Contains(t, body.Hint, "club_id")
 }
 
+// A named venue this database does not hold is refused, and the refusal names the way
+// out: pick a venue the options endpoint offers, or send none. Before GO-08 the lookup
+// swallowed its own failures and the caller got a 200 whose numbers had been produced
+// without the ground it asked about -- or at a venue row the lookup had just created.
+func TestRespondPredictErr_UnknownVenueIs400NamingTheVenue(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+	err := &predictteam.UnknownVenueError{Name: "Lords"}
+
+	respondPredictErr(rec, err)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "VENUE_NOT_FOUND", body.Code)
+	assert.Contains(t, body.Message, "Lords")
+	assert.Contains(t, body.Hint, "/api/options/venues")
+	assert.Contains(t, body.Hint, "without one")
+}
+
 func TestRespondPredictErr_CrossGenderFixtureIs400(t *testing.T) {
 	t.Parallel()
 	rec := httptest.NewRecorder()

@@ -157,49 +157,53 @@ func boolPtr(v bool) *bool {
 	return &v
 }
 
-func TestParseMatchDate(t *testing.T) {
+// A match date is a day, and the day is the one the caller wrote -- not the day the same
+// instant falls on in UTC. An offset-bearing value used to travel on as an instant: the
+// pool cutoff was then taken off the truncated instant and came out a day early, while the
+// stored prediction kept the caller's day, so the two disagreed about which day the
+// fixture was (GO-09).
+func TestParseMatchDate_AcceptedSpellings_ReturnTheCallersCalendarDayInUTC(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name    string
-		input   string
-		want    time.Time
-		wantErr bool
+		name  string
+		input string
+		want  time.Time
 	}{
 		{
-			name:  "rfc3339_full",
+			name:  "a UTC timestamp keeps its day",
 			input: "2025-06-15T10:30:00Z",
-			want:  time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC),
+			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			name:  "rfc3339_with_offset",
+			name:  "a positive offset keeps the day it was written with",
 			input: "2025-06-15T10:30:00+05:30",
-			want:  time.Date(2025, 6, 15, 10, 30, 0, 0, time.FixedZone("", 5*3600+30*60)),
+			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			name:  "date_only_yyyy_mm_dd",
+			name:  "an evening in the Americas is that evening's day, not the next one in UTC",
+			input: "2025-03-01T22:00:00-05:00",
+			want:  time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:  "a small hour in the Americas is that day, not the one truncation lands on",
+			input: "2025-03-01T01:00:00-05:00",
+			want:  time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:  "a morning east of UTC is that morning's day, not the previous one",
+			input: "2025-03-02T05:00:00+09:00",
+			want:  time.Date(2025, 3, 2, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name:  "a bare date is already the day",
 			input: "2025-06-15",
 			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
 		},
 		{
-			name:  "whitespace_trimmed",
+			name:  "surrounding whitespace is trimmed",
 			input: "  2025-06-15  ",
 			want:  time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name:    "empty_string",
-			input:   "",
-			wantErr: true,
-		},
-		{
-			name:    "invalid_format",
-			input:   "15/06/2025",
-			wantErr: true,
-		},
-		{
-			name:    "partial_date",
-			input:   "2025-06",
-			wantErr: true,
 		},
 	}
 
@@ -207,13 +211,36 @@ func TestParseMatchDate(t *testing.T) {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := parseMatchDate(tc.input)
-			if tc.wantErr {
-				require.Error(t, err)
-				return
-			}
+
 			require.NoError(t, err)
-			assert.True(t, tc.want.Equal(got), "expected %v, got %v", tc.want, got)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, time.UTC, got.Location(), "the day is carried in UTC")
+		})
+	}
+}
+
+func TestParseMatchDate_UnreadableValue_ReturnsError(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		input string
+	}{
+		{name: "empty string", input: ""},
+		{name: "a day-first spelling", input: "15/06/2025"},
+		{name: "a month without a day", input: "2025-06"},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseMatchDate(tc.input)
+
+			require.Error(t, err)
 		})
 	}
 }

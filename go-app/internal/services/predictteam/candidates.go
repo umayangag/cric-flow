@@ -14,7 +14,8 @@ import (
 type CandidatesInput struct {
 	Format string
 	Team   db.TeamRef
-	// MatchDate is the fixture the pool is for; the window ends here.
+	// MatchDate is the fixture the pool is for; the window ends at its calendar day,
+	// which is read from the value's own zone (GO-09).
 	MatchDate time.Time
 	// Request is the scope: the recency window by default, all-time when asked. A manual
 	// pick means nothing here — this list is what a manual pick is made from.
@@ -74,7 +75,9 @@ func Candidates(ctx context.Context, input CandidatesInput) (*CandidatesResult, 
 	if err != nil {
 		return nil, err
 	}
-	cutoff := input.MatchDate.Truncate(24 * time.Hour)
+	// The window ends at the fixture's own calendar day; poolQueryFor derives it, so the
+	// list a user ticks from is bounded exactly as a prediction's pool would be (GO-09).
+	cutoff := input.MatchDate
 
 	flags, err := poolFlags(ctx, input.Actor)
 	if err != nil {

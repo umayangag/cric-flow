@@ -123,6 +123,24 @@ objective, whose model reads per-side aggregates over eleven and has no batting-
 and the constraint checks count roles. The response's `toss.reading` names which of the two
 quantities came back, and its `note` names the toss-blind part.
 
+**A named venue is resolved or the request is refused (GO-08).** `venue` is optional: leave
+it out and the fixture is read without one, which the answer says in
+`venue: {"resolved": false, "note": ...}`. Send one and it is looked up by its exact name —
+the string `/api/options/venues` offers — and the answer names what was used in
+`venue: {"resolved": true, "venue_id": …, "name": …}`. A name this database does not hold is
+**`400 VENUE_NOT_FOUND`**. It used to be none of those: the lookup was a *get-or-create*, so
+a typo inserted a venue row and the prediction ran at a ground with no history behind it,
+while a database failure fell through to no venue at all — three different things reaching
+the caller as one 200 with nothing on the wire about any of them.
+
+**A `match_date` is a calendar day, in whatever zone it is written (GO-09).** An
+offset-bearing value is read as the day the caller wrote: `2025-03-01T01:00:00-05:00` is the
+first of March everywhere downstream — the pool's cutoff, the `as_of`, the `match_date`
+ml-service reads, and the date the issued prediction is stored under. It used to be
+truncated to a multiple of 24 hours, which is midnight UTC of a *neighbouring* day, so that
+request bounded the pool at 28 February and silently dropped the previous day's matches from
+the window while the stored record kept the first of March.
+
 **A played match is a backtest (GO-01).** A `match_date` before today (UTC) is sent to
 ml-service as `as_of` on every call the prediction makes, so the sides are rated on ratings
 that stop strictly before the match — never on a state that already contains its result —

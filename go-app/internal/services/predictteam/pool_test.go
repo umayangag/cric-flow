@@ -31,6 +31,62 @@ func TestPoolQueryFor_DefaultsToTheMeasuredRecencyWindow(t *testing.T) {
 	assert.True(t, query.ApplyLedger)
 }
 
+// TestPoolQueryFor_OffsetBearingMatchDate_BoundsTheWindowByTheCallersCalendarDay pins
+// GO-09. The cutoff used to be the match date truncated to a multiple of 24 hours, which
+// is midnight UTC of some other day: `2025-03-01T01:00:00-05:00` truncated to
+// `2025-02-28T19:00:00-05:00`, and pgx encodes a `date` parameter from the value's own
+// year/month/day, so the pool was bounded at 28 February. The window then silently
+// dropped the day before the fixture -- and the stored prediction, which keeps the
+// caller's own day, disagreed with it about which day the fixture was.
+func TestPoolQueryFor_OffsetBearingMatchDate_BoundsTheWindowByTheCallersCalendarDay(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		matchDate time.Time
+		wantDay   time.Time
+		wantSince string
+	}{
+		{
+			name:      "a small hour west of UTC is still the first of March",
+			matchDate: time.Date(2025, 3, 1, 1, 0, 0, 0, time.FixedZone("EST", -5*3600)),
+			wantDay:   time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+			wantSince: "2024-06-01",
+		},
+		{
+			name:      "an evening west of UTC is not the next day in UTC",
+			matchDate: time.Date(2025, 3, 1, 22, 0, 0, 0, time.FixedZone("EST", -5*3600)),
+			wantDay:   time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+			wantSince: "2024-06-01",
+		},
+		{
+			name:      "a morning east of UTC is not the previous day",
+			matchDate: time.Date(2025, 3, 2, 5, 0, 0, 0, time.FixedZone("JST", 9*3600)),
+			wantDay:   time.Date(2025, 3, 2, 0, 0, 0, 0, time.UTC),
+			wantSince: "2024-06-02",
+		},
+		{
+			name:      "a bare day is unchanged",
+			matchDate: time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+			wantDay:   time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+			wantSince: "2024-06-01",
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			query, summary := poolQueryFor("T20I", 43, tc.matchDate, PoolRequest{}, nil, true)
+
+			assert.Equal(t, tc.wantDay, query.Cutoff, "the cutoff is the caller's own calendar day")
+			assert.Equal(t, tc.wantSince, summary.Since, "the window starts a whole number of months before it")
+			assert.Equal(t, time.UTC, query.Since.Location())
+		})
+	}
+}
+
 // TestPoolQueryFor_AllTimeIsAskedForExplicitly keeps the widening a decision. There is no
 // way to reach the unbounded pool by leaving a parameter out.
 func TestPoolQueryFor_AllTimeIsAskedForExplicitly(t *testing.T) {

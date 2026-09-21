@@ -49,7 +49,8 @@ func seedPredictFixture(t *testing.T) predictFixture {
 		issued_prediction,
 		player_status_event, player_status, player_biography,
 		ball_event_wicket, ball_event, match_player, batting_data, bowling_data,
-		fielding_data, fielding_event, match_inning, match, player, opposition RESTART IDENTITY`))
+		fielding_data, fielding_event, match_inning, match, player, opposition,
+		venue_weather, venue RESTART IDENTITY`))
 
 	formatID, err := db.GetOrCreateMatchFormat(ctx, "TEST")
 	require.NoError(t, err)
@@ -282,6 +283,154 @@ func TestPredictTeamSelectionHandler_SendsAsOfForAPlayedMatchOnly_Integration(t 
 			}
 		})
 	}
+}
+
+// GO-08 end to end: a venue the caller named and this database does not hold is refused,
+// and nothing is written. The lookup used to be a get-or-create, so this request inserted
+// a venue row and then predicted at a ground with no history behind it, answering 200 as
+// though the venue had been found.
+func TestPredictTeamSelectionHandler_AnUnknownVenueIsRefusedAndCreatesNothing_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	app := &App{mlClient: scriptedMLService(t, nil)}
+	rec := httptest.NewRecorder()
+	request := jsonPredictRequest(fmt.Sprintf(
+		`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q,"venue":"No Such Ground"}`,
+		fixture.team1ID, fixture.team2ID, fixture.matchDate))
+
+	app.predictTeamSelectionHandler(rec, request)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	var body struct {
+		Code string `json:"code"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, "VENUE_NOT_FOUND", body.Code)
+	assert.Zero(t, countVenuesNamed(t, "No Such Ground"),
+		"a request that names a venue must never create one")
+}
+
+// The other two outcomes, on the wire: a venue that is held is named in the answer, and a
+// request that names none says the fixture was read without one. Before GO-08 the response
+// carried no venue at all, so the two were indistinguishable.
+func TestPredictTeamSelectionHandler_TheAnswerNamesTheVenueItRead_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+	venueID := insertVenue(t, "Testland Oval")
+
+	testCases := []struct {
+		name         string
+		venue        string
+		wantResolved bool
+		wantVenueID  int64
+		wantName     string
+		wantNote     string
+	}{
+		{
+			name:         "a venue that is held",
+			venue:        `,"venue":"Testland Oval"`,
+			wantResolved: true,
+			wantVenueID:  venueID,
+			wantName:     "Testland Oval",
+		},
+		{
+			name:     "no venue named",
+			venue:    "",
+			wantNote: "no venue was named; every model read this fixture without one",
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			app := &App{mlClient: scriptedMLService(t, nil)}
+			rec := httptest.NewRecorder()
+			request := jsonPredictRequest(fmt.Sprintf(
+				`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q%s}`,
+				fixture.team1ID, fixture.team2ID, fixture.matchDate, tc.venue))
+
+			app.predictTeamSelectionHandler(rec, request)
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var payload struct {
+				Venue struct {
+					Resolved bool   `json:"resolved"`
+					VenueID  int64  `json:"venue_id"`
+					Name     string `json:"name"`
+					Note     string `json:"note"`
+				} `json:"venue"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			assert.Equal(t, tc.wantResolved, payload.Venue.Resolved)
+			assert.Equal(t, tc.wantVenueID, payload.Venue.VenueID)
+			assert.Equal(t, tc.wantName, payload.Venue.Name)
+			assert.Equal(t, tc.wantNote, payload.Venue.Note)
+		})
+	}
+}
+
+// GO-09 end to end: the same day written two ways is answered the same way. The seeded
+// match is played on 2026-06-01 and is the only history either side has, so a fixture on
+// the 2nd holds it in the pool -- unless the cutoff slips a day, which is what truncating
+// an offset-bearing instant did. The offset spelling was then answered with an empty pool.
+func TestPredictTeamSelectionHandler_AnOffsetBearingMatchDateKeepsThePreviousDay_Integration(
+	t *testing.T,
+) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := seedPredictFixture(t)
+
+	testCases := []struct {
+		name      string
+		matchDate string
+	}{
+		{name: "the bare day", matchDate: "2026-06-02"},
+		{name: "the same day written five hours behind UTC", matchDate: "2026-06-02T01:00:00-05:00"},
+		{name: "the same day written nine hours ahead of UTC", matchDate: "2026-06-02T22:00:00+09:00"},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			app := &App{mlClient: scriptedMLService(t, nil)}
+			rec := httptest.NewRecorder()
+			request := jsonPredictRequest(fmt.Sprintf(
+				`{"format":"TEST","team1_id":%d,"team2_id":%d,"match_date":%q,
+				  "team1_pool":{"window_months":12},"team2_pool":{"window_months":12}}`,
+				fixture.team1ID, fixture.team2ID, tc.matchDate))
+
+			app.predictTeamSelectionHandler(rec, request)
+
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var payload struct {
+				Team1Pool struct {
+					Size  int    `json:"size"`
+					Since string `json:"since"`
+				} `json:"team1_pool"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			assert.Equal(t, 11, payload.Team1Pool.Size, "the previous day's match is in the window")
+			assert.Equal(t, "2025-06-02", payload.Team1Pool.Since)
+		})
+	}
+}
+
+// insertVenue adds one venue the prediction path can resolve, and returns its id.
+func insertVenue(t *testing.T, name string) int64 {
+	t.Helper()
+	var id int64
+	require.NoError(t, db.Pool.QueryRow(context.Background(),
+		`INSERT INTO venue (venue_name) VALUES ($1) RETURNING id`, name).Scan(&id))
+	return id
+}
+
+// countVenuesNamed reports how many venue rows carry this name, so a test can say that a
+// refused request wrote nothing.
+func countVenuesNamed(t *testing.T, name string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, db.Pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM venue WHERE venue_name = $1`, name).Scan(&count))
+	return count
 }
 
 func TestPredictTeamSelectionHandler_AServedPredictionCarriesItsDateAndRun_Integration(t *testing.T) {

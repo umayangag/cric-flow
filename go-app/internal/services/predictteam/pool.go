@@ -141,10 +141,13 @@ func poolQueryFor(
 	flags map[int64]availability.Flag,
 	applyLedger bool,
 ) (db.PoolQuery, PoolSummary) {
+	// The cutoff is the fixture's own calendar day, whatever zone the caller wrote it in:
+	// the window is [start, cutoff) over a `date` column, so an instant carrying a UTC
+	// offset has to become a day before any of this arithmetic runs (GO-09).
 	query := db.PoolQuery{
 		FormatCode:   format,
 		OppositionID: clubID,
-		Cutoff:       cutoff,
+		Cutoff:       availability.CalendarDay(cutoff),
 		ApplyLedger:  applyLedger,
 	}
 	if applyLedger {
@@ -158,7 +161,7 @@ func poolQueryFor(
 	if months <= 0 {
 		months = availability.WindowMonths(config.Load(), format)
 	}
-	query.Since = availability.WindowStart(cutoff, months)
+	query.Since = availability.WindowStart(query.Cutoff, months)
 	summary.Source = availability.SourceRecencyWindow
 	summary.WindowMonths = months
 	summary.Since = query.Since.Format(time.DateOnly)

@@ -10,6 +10,68 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 )
 
+// TestCalendarDay_TakesTheDayFromTheValuesOwnZone is what `Truncate(24 * time.Hour)`
+// could not do (GO-09). Truncate rounds the instant down to midnight UTC and leaves the
+// value in its own zone, so a date written east or west of UTC came out as a neighbouring
+// day once pgx encoded it from that value's own year/month/day.
+func TestCalendarDay_TakesTheDayFromTheValuesOwnZone(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		when time.Time
+		want time.Time
+	}{
+		{
+			name: "a small hour five behind UTC",
+			when: time.Date(2025, 3, 1, 1, 0, 0, 0, time.FixedZone("EST", -5*3600)),
+			want: time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a late evening five behind UTC",
+			when: time.Date(2025, 3, 1, 22, 0, 0, 0, time.FixedZone("EST", -5*3600)),
+			want: time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a morning nine ahead of UTC",
+			when: time.Date(2025, 3, 2, 5, 0, 0, 0, time.FixedZone("JST", 9*3600)),
+			want: time.Date(2025, 3, 2, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a half-hour offset",
+			when: time.Date(2025, 6, 15, 23, 45, 0, 0, time.FixedZone("IST", 5*3600+1800)),
+			want: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a midday in UTC",
+			when: time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC),
+			want: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "a day that is already midnight UTC is unchanged",
+			when: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+			want: time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "the zero time stays zero",
+			when: time.Time{},
+			want: time.Time{},
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := availability.CalendarDay(tc.when)
+
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, time.UTC, got.Location())
+		})
+	}
+}
+
 // TestWindowStart_ClampsMonthArithmeticAtTheCutoffBoundary pins the arithmetic the whole
 // default pool hangs on.
 //
