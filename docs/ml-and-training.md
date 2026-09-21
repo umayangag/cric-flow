@@ -926,7 +926,15 @@ the rates are running sums over matches before it.
 **The innings sample.** A player's three quantiles become a quantile function (piecewise
 linear through zero and the fitted levels, exponential tail above 0.9 with the (q50, q90)
 scale). The batting side is authoritative: order by `exp_bat_position`; one uniform per draw
-against each P(bats) sets how deep the innings goes (at least two bat); each batter draws
+against each P(bats) sets how deep the innings goes (at least two bat), and the D players who
+bat are the D most likely to — not the first D slots — so each realises exactly his own
+P(bats) and they bat in slot order. The two orders are not the same thing: `exp_bat_position`
+is the decayed mean of the positions a player batted at, shrunk toward 7, so a rarely-batting
+player sits at the prior; the classifier's P(bats) is the marginal over the innings' length
+and his position, and it is not monotone down the slot order in 94 % of real sides (SERVE-05,
+measured on the served run over 166 sides). Taking the first D slots made the player at
+slot j realise the side's j-th largest P(bats) rather than his own — mean |gap| 0.021, 5 % of
+players off by more than 0.10, one by 0.50. Each batter then draws
 runs and balls *given that he bats* from the upper P(bats) part of his distribution; the
 balls budget is the as-of deliveries per full innings — the batter at which it is crossed
 keeps the remainder at his sampled strike rate, and when the sum falls short the not-out
@@ -939,6 +947,13 @@ balls × as-of rate; the bowler-credited share of the wickets by balls × wicket
 bowlers' figures sum to the innings by construction and their own L2-B medians are not
 reproduced — that would be a second estimate of the innings, and the whole point of taking the
 batting side as authoritative is that there is only one. Toss unknown: half the draws each way, each with the matching forecasts (H-3).
+On the wire, `/simulate` reports each player's `p_bats` / `p_bowls` as the forecasts the draws
+were made from — the same numbers `/performance/predict` returns — and the share of draws that
+realised them as `batted_share` / `bowled_share`. The two are different numbers and are served
+as two: on the served run the batted share runs 0.14 below P(bats) on average (0.2–0.3 for
+slots 7–11), because the deliveries budget and the chase end the innings before the forecast's
+depth — a classifier trained on real innings has already priced both, so the simulator applies
+them twice (B-20, recorded in `docs/BUG_BACKLOG.md`; not SERVE-05).
 
 **Runs and balls are coupled, not identical.** The first build drew a batter's runs and balls
 from one uniform; with every strike rate fixed and the balls budget enforced, the side total's
