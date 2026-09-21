@@ -109,6 +109,25 @@ func WindowMonths(cfg *config.Config, formatCode string) int {
 	return config.DefaultPoolRecencyMonthsFallback
 }
 
+// CalendarDay is midnight UTC of t's own calendar date -- the date as the caller wrote
+// it, not the date the same instant falls on in UTC.
+//
+// A match is keyed by the day it was played on, and that day is a property of the fixture
+// rather than of any timezone: `match.match_date` is a `date`, the rating pass keys on a
+// date, and a caller writing `2025-03-01T01:00:00-05:00` means the first of March.
+//
+// It exists because `t.Truncate(24 * time.Hour)` is not that day and cannot be made into
+// it. Truncate rounds the *instant* down to a multiple of 24h since the zero time, which
+// is midnight UTC, and leaves the value in its own zone; pgx then encodes a `date`
+// parameter from the value's own year/month/day. So `2025-03-01T01:00:00-05:00` truncates
+// to `2025-02-28T19:00:00-05:00` and reaches Postgres as 28 February -- a pool cutoff a
+// day before the fixture, silently dropping the previous day's matches from the window
+// while the stored prediction records the first of March (GO-09).
+func CalendarDay(t time.Time) time.Time {
+	year, month, day := t.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
 // WindowStart returns the first match date a recency-bounded pool accepts: the cutoff
 // less `months` months, so the window is [start, cutoff) -- half-open at the cutoff
 // because the cutoff is the match being predicted and its own result may not be read.

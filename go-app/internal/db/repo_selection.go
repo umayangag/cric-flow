@@ -98,7 +98,10 @@ func ListPlayerPoolByOpposition(ctx context.Context, q PoolQuery) (PlayerPool, e
 	if err != nil {
 		return PlayerPool{}, err
 	}
-	cutoffDate := q.Cutoff.Truncate(24 * time.Hour)
+	// Both bounds are the caller's calendar day, not the instant truncated: pgx encodes a
+	// `date` parameter from the value's own year/month/day, so a cutoff carrying a UTC
+	// offset would otherwise reach Postgres as the day before (GO-09).
+	cutoffDate := availability.CalendarDay(q.Cutoff)
 
 	// Players who have batted or bowled for this team (opposition) in matches before cutoff.
 	// batting_team_opposition_id = team that batted (batters in batting_data play for that team);
@@ -112,7 +115,7 @@ func ListPlayerPoolByOpposition(ctx context.Context, q PoolQuery) (PlayerPool, e
 	// migration 0009), which it was not when the predicate `is_retired = 0` was added.
 	var since any
 	if !q.Since.IsZero() {
-		since = q.Since.Truncate(24 * time.Hour)
+		since = availability.CalendarDay(q.Since)
 	}
 	rows, err := Pool.Query(ctx, `
 		WITH club AS (
@@ -237,7 +240,7 @@ func ListPlayerRowsByID(
 	if err != nil {
 		return nil, err
 	}
-	return listPlayerRowsByFormatID(ctx, formatID, oppID, cutoff.Truncate(24*time.Hour), playerIDs)
+	return listPlayerRowsByFormatID(ctx, formatID, oppID, availability.CalendarDay(cutoff), playerIDs)
 }
 
 // listPlayerRowsByFormatID is ListPlayerRowsByID with the format already resolved, so
