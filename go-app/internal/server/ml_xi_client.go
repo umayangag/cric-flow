@@ -207,7 +207,7 @@ func (c *MLClient) OptimizeXI(
 			MustExclude:   mustExclude,
 		},
 		MaxEvaluations: maxEvals,
-		AsOf:           asOfParam(req.AsOf),
+		AsOf:           dateParam(req.AsOf),
 	})
 	if err != nil {
 		return nil, err
@@ -242,7 +242,7 @@ func (c *MLClient) PredictMatchWinXI(
 		VenueID:          optionalID(req.VenueID),
 		Team1Constraints: constraintPayload(req.Team1Constraints),
 		Team2Constraints: constraintPayload(req.Team2Constraints),
-		AsOf:             asOfParam(req.AsOf),
+		AsOf:             dateParam(req.AsOf),
 	})
 	if err != nil {
 		return nil, err
@@ -259,13 +259,14 @@ func (c *MLClient) PredictMatchWinXI(
 	}, nil
 }
 
-// asOfParam renders an as-of date for the wire; the zero time means "through today"
-// and is omitted.
-func asOfParam(asOf time.Time) string {
-	if asOf.IsZero() {
+// dateParam renders a calendar date for the wire. The zero time is "not given" and is
+// omitted: on `as_of` that means "ratings through today", and on `match_date` it means
+// "date the fixture yourself", which ml-service reports having done (SERVE-04).
+func dateParam(day time.Time) string {
+	if day.IsZero() {
 		return ""
 	}
-	return asOf.Format("2006-01-02")
+	return day.Format("2006-01-02")
 }
 
 func optionalID(id int64) *int64 {
@@ -327,8 +328,15 @@ type mlSimulateRequest struct {
 	VenueID        *int64   `json:"venue_id,omitempty"`
 	Team1BatsFirst *bool    `json:"team1_bats_first,omitempty"`
 	AsOf           string   `json:"as_of,omitempty"`
-	NSamples       int      `json:"n_samples,omitempty"`
-	Seed           int      `json:"seed"`
+	// MatchDate (YYYY-MM-DD) is the day the fixture is played: what ml-service reads every
+	// date-dependent feature at (SERVE-04). Omitting it lets ml-service date the fixture
+	// itself, which it reports as such; this client always knows the date and sends it.
+	MatchDate string `json:"match_date,omitempty"`
+	// Gender picks the context baseline the fixture's scoring rates are read from; empty
+	// is the unsplit baseline and is omitted.
+	Gender   string `json:"gender,omitempty"`
+	NSamples int    `json:"n_samples,omitempty"`
+	Seed     int    `json:"seed"`
 }
 
 type mlSimulatedRange struct {
@@ -400,7 +408,9 @@ func (c *MLClient) SimulateMatchXI(
 		Team2ID:        optionalID(req.Team2ID),
 		VenueID:        optionalID(req.VenueID),
 		Team1BatsFirst: req.Team1BatsFirst,
-		AsOf:           asOfParam(req.AsOf),
+		AsOf:           dateParam(req.AsOf),
+		MatchDate:      dateParam(req.MatchDate),
+		Gender:         req.Gender,
 		NSamples:       req.Samples,
 		Seed:           req.Seed,
 	})
@@ -469,6 +479,11 @@ type mlPerformanceRequest struct {
 	// do batting first at this ground" is a different question from the marginal one.
 	Team1BatsFirst *bool  `json:"team1_bats_first,omitempty"`
 	AsOf           string `json:"as_of,omitempty"`
+	// MatchDate (YYYY-MM-DD) is the day the fixture is played (SERVE-04), as on the
+	// simulate payload: the rows behind both answers are built from the same fixture and
+	// must be dated identically.
+	MatchDate string `json:"match_date,omitempty"`
+	Gender    string `json:"gender,omitempty"`
 }
 
 // mlWicketDistribution is the wicket count's distribution (app/models/xi.py
@@ -524,7 +539,9 @@ func (c *MLClient) PredictPerformance(
 		Team2ID:        optionalID(req.Team2ID),
 		VenueID:        optionalID(req.VenueID),
 		Team1BatsFirst: req.Team1BatsFirst,
-		AsOf:           asOfParam(req.AsOf),
+		AsOf:           dateParam(req.AsOf),
+		MatchDate:      dateParam(req.MatchDate),
+		Gender:         req.Gender,
 	})
 	if err != nil {
 		return nil, err

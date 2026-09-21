@@ -16,16 +16,18 @@ function statusWith(artifacts: Record<string, unknown>, served?: ServedFreshness
 const FRESH: ServedFreshness = {
   status: 'fresh',
   fresh: true,
-  age_days: 2,
+  data_age_days: 2,
   max_age_days: 14,
+  data_through: '2026-09-01',
   ratings_through: '2026-08-30',
   code: null,
 };
 const STALE: ServedFreshness = {
   status: 'stale',
   fresh: false,
-  age_days: 40,
+  data_age_days: 40,
   max_age_days: 14,
+  data_through: '2026-07-21',
   ratings_through: '2026-07-19',
   code: 'RATINGS_STALE',
 };
@@ -71,9 +73,11 @@ describe('OpsRunsPanel', () => {
     expect(screen.getByText(/current$/)).toBeInTheDocument();
     expect(screen.getByText(/loaded$/)).toBeInTheDocument();
     expect(screen.getByText('deadbee')).toBeInTheDocument();
-    // The verdict's date and the loaded run's manifest date are one date (P2-2): the
-    // badge and the loaded row's chip both read it, and the older run reads its own.
-    expect(screen.getAllByText(/ratings through 2026-08-30/)).toHaveLength(2);
+    // The verdict's last-match date and the loaded run's manifest date are one date
+    // (P2-2): the badge and the loaded row's chip both read it, and the older run reads
+    // its own. The verdict is taken on the boundary beside it, not on this date (SERVE-03).
+    expect(screen.getByText(/last match 2026-08-30/)).toBeInTheDocument();
+    expect(screen.getByText('ratings through 2026-08-30')).toBeInTheDocument();
     expect(screen.getByText('ratings through 2026-08-23')).toBeInTheDocument();
   });
 
@@ -113,7 +117,9 @@ describe('OpsRunsPanel', () => {
         data={statusWith({ loaded_run: 'r1', runs: [{ run_id: 'r1', has_manifest: true }] }, STALE)}
       />,
     );
-    expect(screen.getByText(/40 days old, past the limit of 14/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/data built to 2026-07-21 — 40 days ago, past the limit of 14/),
+    ).toBeInTheDocument();
     // The badge names the code and so does the sentence under it; both are the verdict's.
     expect(screen.getAllByText(/RATINGS_STALE/).length).toBeGreaterThan(0);
   });

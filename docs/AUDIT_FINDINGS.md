@@ -151,14 +151,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 ## 4. Simulator, optimizer and serving (`ml-service/ml/xi/`, `ml-service/app/`)
 
-### SERVE-03 — `RATINGS_STALE` measures the wrong quantity  **Medium**
-
-`app/xi_service.py:297-303` compares `today - state.last_date` (date of the last match folded in) with `ratings_max_age_days`. In an off-season a run retrained yesterday is refused with a hint to retrain, which changes nothing; a run built with a far-back `--cutoff` whose data includes a recent match is accepted. The verdict is global, not per format. **Fix.** Compare against the manifest's cutoff / import high-water mark, per requested format.
-
-### SERVE-04 — Serving fixtures are stamped with `state.last_date`  **Medium**
-
-`app/xi_service.py:565-573` → `serving_match(..., store.state.last_date)`; consumed at `rows.py:146-155` (`on=match.match_date`, `age_vectors`). No request model carries a fixture date; `as_of` only selects a state. Every date-dependent feature is computed as of the last match in the state, and `gender=""` (`rows.py:115`) reads the men's context group if `gender_split_context` is on. **Fix.** Add `match_date` (and `gender`) to the request models; pass `match_date or as_of or today` to `serving_match`.
-
 ### SERVE-05 — Simulator batting depth contradicts per-player `p_bats`  **Medium**
 
 `simulator.py:651-659`: `depth = (p_bats > u).sum()` with one shared uniform, then the *first* `depth` slots in `exp_bat_position` order bat. `exp_bat_position` (rating accumulator) and `p_bats` (L2-B classifier) are independent, so with order `[…, 0.9, 0.4, 0.7, …]` the 0.4 slot bats whenever the 0.7 slot would (realised 0.6). The reported `p_bats` (line 894) then disagrees with `/performance/predict` for the same fixture. **Fix.** Enforce a monotone envelope (`min(p_bats[:j+1])`) or reorder by `p_bats` for the depth decision and document it.
@@ -358,6 +350,34 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### SERVE-03 — `RATINGS_STALE` measures the wrong quantity  **Medium** — PR #327
+
+`app/xi_service.py` compared `today - state.last_date` (the date of the last match folded in) with `ratings_max_age_days`. In an off-season a run retrained yesterday is refused with a hint to retrain, which changes nothing; a run built with a far-back `--cutoff` whose data includes a recent match is accepted. The verdict is global, not per format. **Fix.** Compare against the manifest's cutoff / import high-water mark, per requested format.
+
+**Both defects confirmed, and the refusal was three days from firing on the live stack.** The served run `20260920T175255Z-71339c52` has `cutoff` 2026-09-20 and `ratings_through` 2026-09-09; the archive's own high-water mark is 2026-09-09 in ODI and T20, 2026-09-08 in TEST and 2026-09-06 in T20I, so the run had folded in every match the database holds and nothing was missing. Under the old rule it read 12 days of 14 on 2026-09-21 and would have refused every live prediction from **2026-09-24**, with a hint naming a retrain that would have produced a run with the same `ratings_through` and been refused again. The refusal was unclearable by anything it named. The second half is confirmed too: the rating pass folds in every match the source offers whatever the cutoff says (`retrain.main` builds the state before the cutoff is applied, and the cutoff only splits train from holdout), so `--cutoff 2020-01-01` against today's archive yields `ratings_through` = today's last match and was called fresh.
+
+**What the verdict now compares.** `today - manifest.cutoff` — the date the run's data was built to, which `retrain` stamps with the day it was run. That is the only quantity in the artifacts belonging to the pipeline rather than to the cricket calendar, and it is the one the hint's "retrain" can actually move.
+
+**The spec's "per requested format" is not implementable and would not be right.** A run has exactly one cutoff, so there is no per-format boundary to compare. The only per-format dates in the artifacts are last-match dates — `xi_win_report.json` → `formats[].performance.fit.train_to` — which is the very quantity this finding rejects, and they exist only for formats whose performance model was fitted. EVAL-12 (#323) added `dataset_digest`, `source`, `library_versions`, `model_params` and `performance_spec`; none of them is dated per format. The per-format question the spec was reaching for — "has anything been imported that the served run never saw?" — is already answered, per format and correctly, by go-app's `opsstatus.buildRetrainStatus` (`/ops/status` → `freshness.retrain_due`), which is the component that can see the archive; making ml-service duplicate it would also contradict P2-1's deliberate decision that the database's per-format lag is a dated fact and never a verdict. So the verdict stays one verdict per run, and the refusal names the format it refused.
+
+**On the wire.** `RatingsFreshness` now carries `data_through` (the boundary) and `data_age_days` (what the limit is applied to) beside `ratings_through` (reported, never the verdict), so a reader can tell "nobody has retrained" from "the archive is behind". The refusal message names all three and the format: `no T20 prediction: the served run's data was built to 2026-08-22 (30 days ago, limit 14); its last match is 2026-08-07`. A loaded run whose manifest cannot name a boundary is refused by name rather than dated today — unless the limit is zero, which turns H-11 off entirely and must turn off every refusal it makes.
+
+**Does the live stack still serve?** Yes, with eleven more days of head-room: `71339c52` reads `data_age_days` 1 of 14 on 2026-09-21 and stays fresh to 2026-10-05, where the old rule refused from 2026-09-24. Nothing flips from served to refused.
+
+### SERVE-04 — Serving fixtures are stamped with `state.last_date`  **Medium** — PR #327
+
+`app/xi_service.py` → `serving_match(..., store.state.last_date)`; consumed at `rows.py` (`on=match.match_date`, `age_vectors`). No request model carried a fixture date; `as_of` only selects a state. Every date-dependent feature was computed as of the last match in the state, and `gender=""` read the men's context group if `gender_split_context` is on. **Fix.** Add `match_date` (and `gender`) to the request models; pass `match_date or as_of or today` to `serving_match`.
+
+**Confirmed, and the size of the error measured against the served run.** `state.last_date` is 2026-09-09 and today is 2026-09-21, so the stamp is **12 days** behind a fixture played today and **42 days** behind one a month out. Rebuilding the same eleven's rows at the two dates moves exactly two columns: `match_date` itself, and `age` — by 0.0329 years at 12 days and 0.1150 years at 42. The error is one day per day and grows until a retrain, because `state.last_date` cannot move on its own.
+
+**What it costs today: nothing — and that is a statement about two flags, not about the code.** The served run has `age_aware_cold_start: false` and every format's performance spec has `age: false` (`manifest.performance_spec.<FMT>.age`, and no `age*` column among the 62 `feature_cols`), so neither consumer of the date is switched on and the numbers `71339c52` serves are unchanged by this fix. Both are supported, configured flags: turning either on silently reintroduces the error, and the `age` column in the frame the model is handed is wrong by 12 days either way. The debut prior's error is also *discontinuous* rather than small — `contract.AGE_BANDS` cuts at 22/26/30/34, so a 0.033-year shift changes a debutant's whole `DEBUT_PRIOR_KEYS` vector for roughly 0.7% of debutants (those within that window of a band edge; about 2.3% at 42 days) and leaves everyone else untouched.
+
+**The contract.** `PerformancePredictRequest` (and `SimulateRequest`, which inherits it) gains `match_date: Optional[date]` and `gender: Optional[Literal["male","female"]]`. The date resolves `match_date` → `as_of` → today, and the response carries a `fixture` block — `{match_date, match_date_source, gender}` — so a date the service supplied is visible as one (§8.7) rather than assumed. One resolution serves both endpoints, so `/simulate` and `/performance/predict` cannot date the same fixture differently.
+
+**go-app already had both facts and sent neither.** `predictteam.Input.MatchDate` is the day the caller typed; it reached the pool's recency cutoff and `asOfFor` (which sets `as_of` only for a *past* match) and stopped there. The gender is `team1.Gender`, resolved from the database and already checked — `resolveFixture` refuses a cross-gender fixture — so there is exactly one gender to name. Both are now threaded through `fixture.matchDate` / `fixture.gender` onto both payloads, so the live case — a fixture today or later, where `as_of` is empty and the old default was worst — is the case that is fixed. A gender the archive did not record is sent as no gender, which reads the unsplit baseline (today's behaviour) rather than turning a prediction into a 422 over a field that matters only where the split is on. The frontend already sends `match_date` to go-app and needed no request change; what changed there is the freshness prose.
+
+**Not fixed here, and adjacent to SERVE-07.** `XiStore.side_vectors` still reads at `state.last_date` for the win, roles and optimiser paths; its only date consumer is the same age-aware cold start, whose plumbing is SERVE-07's.
 
 ### EVAL-12 — Manifest cannot reproduce a run  **Medium**
 

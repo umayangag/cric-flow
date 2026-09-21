@@ -94,20 +94,23 @@ func TestBuildFreshnessSection_SparseFormatIsALagNotAVerdict(t *testing.T) {
 		counts: map[string]int64{"TEST": 2857, "ODI": 4835, "T20I": 3402, "T20": 11724},
 	}
 	artifacts := artifactsFromMLService(t, map[string]any{
-		"fresh": true, "age_days": 2, "max_age_days": 14,
-		"ratings_through": "2026-09-02", "code": nil,
+		"fresh": true, "data_age_days": 1, "max_age_days": 14,
+		"data_through": "2026-09-03", "ratings_through": "2026-09-02", "code": nil,
 	})
 
 	got := opsstatus.BuildFreshnessSection(context.Background(), probe, artifacts, now)
 
 	assert.Equal(t, freshness.Fresh, got.Served.Status, "H-11 decides the badge, alone")
 	assert.True(t, got.Served.Fresh)
-	require.NotNil(t, got.Served.AgeDays)
-	assert.Equal(t, 2, *got.Served.AgeDays)
+	require.NotNil(t, got.Served.DataAgeDays)
+	assert.Equal(t, 1, *got.Served.DataAgeDays, "the age is measured from the run's data boundary")
 	require.NotNil(t, got.Served.MaxAgeDays)
 	assert.Equal(t, 14, *got.Served.MaxAgeDays, "the limit is ml-service's, copied through")
+	require.NotNil(t, got.Served.DataThrough)
+	assert.Equal(t, "2026-09-03", *got.Served.DataThrough)
 	require.NotNil(t, got.Served.RatingsThrough)
-	assert.Equal(t, "2026-09-02", *got.Served.RatingsThrough)
+	assert.Equal(t, "2026-09-02", *got.Served.RatingsThrough,
+		"the last match is carried beside the boundary, and the retrain-due comparison reads it")
 	assert.Nil(t, got.Served.Code)
 
 	test := got.Database["TEST"]
@@ -135,7 +138,7 @@ func TestBuildFreshnessSection_ImportsTheServedRunNeverSaw(t *testing.T) {
 		counts: map[string]int64{"ODI": 10, "T20": 20},
 	}
 	artifacts := artifactsFromMLService(t, map[string]any{
-		"fresh": true, "age_days": 5, "max_age_days": 14,
+		"fresh": true, "data_age_days": 5, "max_age_days": 14,
 		"ratings_through": "2026-09-02", "code": nil,
 	})
 
@@ -158,7 +161,7 @@ func TestBuildFreshnessSection_StaleVerdictIsCopiedNeverRecomputed(t *testing.T)
 		counts: map[string]int64{"T20": 20},
 	}
 	artifacts := artifactsFromMLService(t, map[string]any{
-		"fresh": false, "age_days": 5, "max_age_days": 3,
+		"fresh": false, "data_age_days": 5, "max_age_days": 3,
 		"ratings_through": "2026-09-02", "code": freshness.RatingsStaleCode,
 	})
 
@@ -184,14 +187,14 @@ func TestBuildFreshnessSection_NothingLoaded(t *testing.T) {
 		counts: map[string]int64{"T20": 20},
 	}
 	artifacts := artifactsFromMLService(t, map[string]any{
-		"fresh": false, "age_days": nil, "max_age_days": 14,
+		"fresh": false, "data_age_days": nil, "max_age_days": 14,
 		"ratings_through": nil, "code": nil,
 	})
 
 	got := opsstatus.BuildFreshnessSection(context.Background(), probe, artifacts, now)
 
 	assert.Equal(t, freshness.NotLoaded, got.Served.Status)
-	assert.Nil(t, got.Served.AgeDays, "no state, so no age; an invented one would be a lie")
+	assert.Nil(t, got.Served.DataAgeDays, "no run, so no age; an invented one would be a lie")
 	assert.Nil(t, got.Served.RatingsThrough)
 	assert.Equal(t, freshness.Unknown, got.RetrainDue.Status,
 		"nothing to compare the import against")
@@ -229,7 +232,7 @@ func TestBuildFreshnessSection_DatabaseSilencesAreNamed(t *testing.T) {
 		countErr:  map[string]error{"T20I": probeError{}},
 	}
 	artifacts := artifactsFromMLService(t, map[string]any{
-		"fresh": true, "age_days": 1, "max_age_days": 14,
+		"fresh": true, "data_age_days": 1, "max_age_days": 14,
 		"ratings_through": "2026-09-06", "code": nil,
 	})
 

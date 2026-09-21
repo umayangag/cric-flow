@@ -114,9 +114,18 @@ def serving_match(
     team2: Optional[str],
     venue: Optional[str],
     match_date,
+    gender: str = "",
 ) -> MatchRecord:
     """A match that has not been played, for the serving path to build feature rows from.
-    Team and venue names are optional: without them the context columns read neutral."""
+    Team and venue names are optional: without them the context columns read neutral.
+
+    ``match_date`` is the day the fixture is played, and it is the caller's to supply: it
+    is what every date-dependent feature is read at (each player's age, and the age-aware
+    cold start's band for a debutant). ``gender`` picks the context baseline; empty is the
+    unsplit group, which is every match unless the run was built with the gender split on.
+    Neither is defaulted here, because a serving path that quietly substitutes the state's
+    own date for the fixture's is the defect SERVE-04 named.
+    """
     return MatchRecord(
         match_id="",
         match_date=match_date,
@@ -124,7 +133,7 @@ def serving_match(
         team1=team1 or "",
         team2=team2 or "",
         venue=venue or "",
-        gender="",
+        gender=gender,
         team1_players=list(team1_players),
         team2_players=list(team2_players),
         winner=None,

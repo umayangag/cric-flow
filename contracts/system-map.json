@@ -349,10 +349,17 @@
           "value_kind": "date"
         },
         {
-          "key": "ratings_age",
-          "label": "Age of the ratings (days)",
+          "key": "data_through",
+          "label": "Data built to",
           "source": "ops_status",
-          "path": "freshness.served.age_days",
+          "path": "freshness.served.data_through",
+          "value_kind": "date"
+        },
+        {
+          "key": "ratings_age",
+          "label": "Age of the run's data (days)",
+          "source": "ops_status",
+          "path": "freshness.served.data_age_days",
           "value_kind": "integer"
         },
         {

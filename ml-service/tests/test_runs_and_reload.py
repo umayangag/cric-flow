@@ -58,14 +58,17 @@ def _write_run(
     run_id: str = "20260902T101500Z-ab12cd34",
     *,
     last_date: date | None = None,
+    cutoff: date | None = None,
     manifest_ratings_through: str | None = None,
     unusable_reasons: dict[str, str] | None = None,
 ) -> str:
     """A complete, loadable run: ratings, one format's models, and a manifest.
 
     ``manifest_ratings_through`` overrides the date the manifest records; by default it
-    is the state's own, which is what ``retrain`` writes. ``unusable_reasons`` writes the
-    run as one its retrain judged not usable (EVAL-04)."""
+    is the state's own, which is what ``retrain`` writes. ``cutoff`` is the boundary the
+    run's data was built to -- H-11's quantity since SERVE-03 -- and defaults to the
+    state's own date, which is the pair a retrain run at the archive's own date writes.
+    ``unusable_reasons`` writes the run as one its retrain judged not usable (EVAL-04)."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
     state = _state(last_date=last_date)
@@ -88,7 +91,7 @@ def _write_run(
         runs.RunManifest(
             run_id=run_id,
             created_at="2026-09-02T10:15:00+00:00",
-            cutoff="2025-09-01",
+            cutoff=(cutoff or state.last_date).isoformat(),
             ratings_through=manifest_ratings_through or state.last_date.isoformat(),
             dataset_sha="abc123",
             git_sha="deadbee",
@@ -357,7 +360,7 @@ def test_a_loaded_run_status_stamp_and_manifest_carry_one_date(tmp_path, monkeyp
     the state) and the manifest summary (off the file) -- are the same date, because the
     loader asserted it before any of them could be read."""
     monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "0")
-    _write_run(tmp_path, last_date=date(2026, 8, 30))
+    _write_run(tmp_path, last_date=date(2026, 8, 30), cutoff=date(2025, 9, 1))
     registry = xi_service.XiRegistry()
     registry.reload(str(tmp_path))
 
@@ -567,7 +570,7 @@ def test_fresh_ratings_pass_the_staleness_check(tmp_path, monkeypatch):
     freshness = registry.freshness()
 
     assert freshness.fresh is True
-    assert freshness.age_days == 2
+    assert freshness.data_age_days == 2
     assert freshness.code is None
 
 
@@ -616,6 +619,90 @@ def test_a_backtest_dated_past_the_loaded_state_is_refused_when_that_state_is_st
         registry.store_as_of("T20", date.today() - timedelta(days=10))
 
     assert excinfo.value.payload["code"] == "RATINGS_STALE"
+
+
+def test_an_off_season_run_retrained_today_is_fresh_though_its_last_match_is_old(tmp_path, monkeypatch):
+    """SERVE-03: H-11 is a verdict on the pipeline, not on the cricket calendar.
+
+    A run built this morning to today's boundary is as current as this system can be, and
+    it stays so through a gap between seasons -- or through the eleven days the archive
+    itself runs behind the calendar on the dev box. Measuring the last match instead made
+    that run refused with a hint to retrain, which would have produced a run with exactly
+    the same last match and been refused again: a refusal nothing the hint named could
+    clear.
+    """
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    _write_run(tmp_path, last_date=date.today() - timedelta(days=40), cutoff=date.today())
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    freshness = registry.freshness()
+
+    assert freshness.fresh is True and freshness.code is None
+    assert freshness.data_age_days == 0
+    assert freshness.data_through == date.today().isoformat()
+    assert freshness.ratings_through == (date.today() - timedelta(days=40)).isoformat(), (
+        "the last match is still reported -- it is just not what the verdict is taken on"
+    )
+    assert registry.store_as_of("T20", None) is not None, "and a live request is answered"
+
+
+def test_a_run_built_to_an_old_boundary_is_refused_though_its_state_holds_a_recent_match(tmp_path, monkeypatch):
+    """SERVE-03, the other way round: the rating pass folds in every match the source
+    offers whatever the cutoff says, so a run trained to a boundary a year back still
+    carries yesterday's cricket in its state. Measuring the last match called that run
+    fresh; the boundary is what the models were fitted to, and it is a year old."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    _write_run(tmp_path, last_date=date.today() - timedelta(days=1), cutoff=date.today() - timedelta(days=400))
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    with pytest.raises(xi_service.RatingsStale) as excinfo:
+        registry.store_as_of("T20", None)
+
+    assert excinfo.value.payload["code"] == "RATINGS_STALE"
+    assert registry.freshness().data_age_days == 400
+
+
+def test_the_refusal_names_the_format_and_both_dates(tmp_path, monkeypatch):
+    """§8.7: a refusal names what was actually stale. What was stale is the run's data
+    boundary; the date of its last match is beside it so an operator can tell "nobody has
+    retrained" from "the archive is behind", and the format says which read was refused."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    boundary, last_match = date.today() - timedelta(days=30), date.today() - timedelta(days=45)
+    _write_run(tmp_path, last_date=last_match, cutoff=boundary)
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    with pytest.raises(xi_service.RatingsStale) as excinfo:
+        registry.store_as_of("T20", None)
+
+    message = excinfo.value.payload["message"]
+    assert "no T20 prediction" in message
+    assert f"built to {boundary.isoformat()}" in message and "30 days ago, limit 14" in message
+    assert f"its last match is {last_match.isoformat()}" in message
+
+
+def test_a_run_whose_manifest_cannot_name_its_boundary_is_refused_rather_than_served(tmp_path, monkeypatch):
+    """The verdict is taken on the cutoff, so a manifest that does not write a date leaves
+    nothing to take it on. That is refused by name, not defaulted to today: guessing the
+    date a refusal turns on is the substitution §8.7 forbids."""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    directory = _write_run(tmp_path, last_date=date.today())
+    path = runs.manifest_path(directory)
+    with open(path) as fh:
+        raw = json.load(fh)
+    raw["cutoff"] = ""
+    with open(path, "w") as fh:
+        json.dump(raw, fh)
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+
+    with pytest.raises(xi_service.RatingsStale) as excinfo:
+        registry.store_as_of("T20", None)
+
+    assert "does not record the date its data was built to" in excinfo.value.payload["message"]
+    assert registry.freshness().data_age_days is None, "no boundary is no age, never an invented one"
 
 
 def test_the_check_is_off_when_the_limit_is_zero(tmp_path, monkeypatch):
@@ -822,7 +909,7 @@ def test_a_live_prediction_against_stale_ratings_is_a_503_with_the_code_on_the_w
     detail = resp.json()["detail"]
     assert detail["code"] == "RATINGS_STALE"
     assert stale_through.isoformat() in detail["message"]
-    assert "40 days old, limit 14" in detail["message"]
+    assert "40 days ago, limit 14" in detail["message"]
     assert "retrain" in detail["hint"]
 
 

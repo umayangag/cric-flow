@@ -13,24 +13,27 @@ function statusWith(served: ServedFreshness, artifacts: Record<string, unknown> 
 const FRESH: ServedFreshness = {
   status: 'fresh',
   fresh: true,
-  age_days: 2,
+  data_age_days: 2,
   max_age_days: 14,
+  data_through: '2026-08-28',
   ratings_through: '2026-08-26',
   code: null,
 };
 const STALE: ServedFreshness = {
   status: 'stale',
   fresh: false,
-  age_days: 40,
+  data_age_days: 40,
   max_age_days: 14,
+  data_through: '2026-07-21',
   ratings_through: '2026-07-19',
   code: 'RATINGS_STALE',
 };
 const NOT_LOADED: ServedFreshness = {
   status: 'not_loaded',
   fresh: false,
-  age_days: null,
+  data_age_days: null,
   max_age_days: 14,
+  data_through: null,
   ratings_through: null,
   code: null,
 };

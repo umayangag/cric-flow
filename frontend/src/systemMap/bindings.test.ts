@@ -47,8 +47,9 @@ const opsStatus: OpsStatusDTO = {
     served: {
       status: 'fresh',
       fresh: true,
-      age_days: 1,
+      data_age_days: 1,
       max_age_days: 14,
+      data_through: '2026-09-02',
       ratings_through: '2026-09-01',
       code: null,
     },

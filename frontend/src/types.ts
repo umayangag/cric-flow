@@ -888,11 +888,23 @@ export type RetrainStatus = (typeof RETRAIN_STATUSES)[number];
 /** The code a live prediction past the limit is refused with (H-11), as ml-service raises it. */
 export const RATINGS_STALE_CODE = 'RATINGS_STALE';
 
-/** How old the loaded rating state is, and whether that is old enough to refuse with. */
+/**
+ * How far back the served run's data boundary is, and whether that is far enough to refuse
+ * with (H-11).
+ *
+ * The verdict is taken on `data_through` — the run's cutoff, the date its data was built
+ * to — and never on `ratings_through`, the last match it folded in (SERVE-03). The second
+ * is the cricket calendar's, not the pipeline's: between seasons it walks away from today
+ * on its own, and the retrain the refusal names cannot move it.
+ */
 export type RatingsFreshness = {
   fresh: boolean;
-  age_days: number | null;
+  /** Days from `data_through` to today — the quantity compared against the limit. */
+  data_age_days: number | null;
   max_age_days: number;
+  /** The served run's cutoff: what the age counts from. */
+  data_through: string | null;
+  /** The last match the run folded in. Reported beside the verdict, never the verdict. */
   ratings_through: string | null;
   /** RATINGS_STALE when a live prediction would be refused; absent when it would not. */
   code?: string | null;
@@ -1349,7 +1361,12 @@ export type OpsStatusDTO = {
     current_run?: string | null;
     loaded_run?: string | null;
     ratings_through?: string | null;
-    ratings?: { fresh?: boolean; age_days?: number | null; max_age_days?: number } | null;
+    ratings?: {
+      fresh?: boolean;
+      data_age_days?: number | null;
+      max_age_days?: number;
+      data_through?: string | null;
+    } | null;
     error?: string | null;
     runs?: Array<{
       run_id?: string;

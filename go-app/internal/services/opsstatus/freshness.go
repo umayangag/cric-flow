@@ -33,11 +33,22 @@ type Freshness struct {
 // it. Every field but Status is copied through verbatim; Status is the vocabulary applied
 // to those fields, not a second computation — in particular the age is never recompared
 // against a limit of go-app's own, because go-app has none.
+//
+// The age is measured from DataThrough — the run's own training boundary — and not from
+// RatingsThrough, the last match it folded in (SERVE-03). Both dates are carried because
+// they answer different questions and an operator acts on both: the boundary says whether
+// anybody has retrained, and the gap to the database's own latest match (RetrainDue,
+// below) says whether anybody has imported.
 type ServedFreshness struct {
-	Status         string  `json:"status"`
-	Fresh          bool    `json:"fresh"`
-	AgeDays        *int    `json:"age_days"`
-	MaxAgeDays     *int    `json:"max_age_days"`
+	Status string `json:"status"`
+	Fresh  bool   `json:"fresh"`
+	// DataAgeDays is days from DataThrough to today — the quantity ml-service compared
+	// against MaxAgeDays.
+	DataAgeDays *int `json:"data_age_days"`
+	MaxAgeDays  *int `json:"max_age_days"`
+	// DataThrough is the served run's cutoff: the date its data was built to.
+	DataThrough *string `json:"data_through"`
+	// RatingsThrough is the last match the run folded in. Reported, never the verdict.
 	RatingsThrough *string `json:"ratings_through"`
 	Code           *string `json:"code"`
 }
@@ -102,8 +113,9 @@ func readServedVerdict(artifacts map[string]any) ServedFreshness {
 	}
 	served := ServedFreshness{
 		Fresh:          verdict["fresh"] == true,
-		AgeDays:        readIntPointer(verdict["age_days"]),
+		DataAgeDays:    readIntPointer(verdict["data_age_days"]),
 		MaxAgeDays:     readIntPointer(verdict["max_age_days"]),
+		DataThrough:    readStringPointer(verdict["data_through"]),
 		RatingsThrough: readStringPointer(verdict["ratings_through"]),
 		Code:           readStringPointer(verdict["code"]),
 	}

@@ -21,8 +21,11 @@ It is intended for operators, developers, and AI agents diagnosing issues or val
     - `freshness` — **the one freshness verdict, assembled once and read by every surface**
       (P2-1). Three named facts and nothing else: `freshness.served` is H-11's verdict copied
       through from ml-service (`status` — `fresh` | `stale` | `not_loaded` | `unknown` —
-      `fresh`, `age_days`, `max_age_days`, `ratings_through`, `code`), and it is the only badge
-      and the only thing that says whether a prediction would be refused;
+      `fresh`, `data_age_days`, `max_age_days`, `data_through`, `ratings_through`, `code`), and
+      it is the only badge and the only thing that says whether a prediction would be refused.
+      The age is measured from `data_through`, the served run's own training boundary, and
+      never from `ratings_through`, the last match it folded in (SERVE-03): an off-season moves
+      the second and no retrain can move it back;
       `freshness.database[FORMAT]` is the import's lag as facts (`latest_match_date`,
       `age_days`, `match_count`, and a `note` when there is no date) with no status of its own;
       `freshness.retrain_due` is whether the database holds matches the served run never saw

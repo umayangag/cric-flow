@@ -349,16 +349,46 @@ happened six times:
   written before the class changed is served as it was. A load-time check for the performance
   artifact is the standing follow-up (B-14).
 
-**Staleness (H-11).** A live prediction against ratings older than
-`ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused with
-`RATINGS_STALE` and a hint naming the step that fixes it. A request that names an `as_of` the
-as-of pass serves is not refused: a backtest asks for a date and gets it, and refusing one
-would break the harness for a reason that does not describe it. An `as_of` past everything the
-loaded state holds is answered from the through-today state unchanged, so H-11 applies to it
-exactly as to a live request — otherwise naming any date after `ratings_through` would be a
-way around the refusal (SERVE-08). Setting the limit to zero turns the check off
-— a decision visible in config rather than a state the code can drift into. The verdict, not
-just the date, is on `/xi/status` (`ratings.fresh`, `age_days`, `max_age_days`, `code`).
+**Staleness (H-11).** A live prediction from a run whose **data boundary** is further back
+than `ml.ratings_max_age_days` (default 14; `XI_RATINGS_MAX_AGE_DAYS` overrides) is refused
+with `RATINGS_STALE` and a hint naming the steps that fix it.
+
+The boundary is the manifest's `cutoff` — the date the run's data was built to, which
+`retrain` stamps with the day it was run — and **not** `ratings_through`, the last match the
+rating pass folded in (SERVE-03). The two are different quantities: the first belongs to the
+pipeline, the second to the cricket calendar. Measuring the second meant a run retrained this
+morning was refused whenever cricket had paused — and the hint's retrain would produce a run
+with the same last match and be refused again, so the refusal was unclearable by anything it
+named. It failed the other way too: the rating pass folds in every match the source offers
+whatever the cutoff says, so a run trained to a boundary years back was called fresh as long
+as the archive it read held a recent match.
+
+There is one verdict per run and not one per format: a run has one cutoff, and nothing in the
+artifacts dates a *format's* data except the last match played in it. The per-format question
+— "has anything been imported that the served run never saw?" — is answered in go-app's
+`/ops/status` (`freshness.retrain_due`), which is the component that can see the archive.
+
+A request that names an `as_of` the as-of pass serves is not refused: a backtest asks for a
+date and gets it, and refusing one would break the harness for a reason that does not describe
+it. An `as_of` past everything the loaded state holds is answered from the through-today state
+unchanged, so H-11 applies to it exactly as to a live request — otherwise naming any date after
+`ratings_through` would be a way around the refusal (SERVE-08). Setting the limit to zero turns
+the check off — a decision visible in config rather than a state the code can drift into. The
+verdict, not just the date, is on `/xi/status`: `ratings.fresh`, `data_age_days`,
+`max_age_days`, `data_through`, `ratings_through` and `code`. Both dates are reported so a
+reader can tell "nobody has retrained" from "the archive is behind".
+
+**The fixture's own date (SERVE-04).** `/performance/predict` and `/simulate` take a
+`match_date` — the day the fixture is played — and a `gender`. Every date-dependent feature in
+the rows those answers are built from (each player's age, and the age-aware cold start's band
+for a debutant) is read at that date, and the gender picks the context baseline the fixture's
+scoring rates come from. Until SERVE-04 the serving path stamped `state.last_date` on every
+fixture and `gender=""`, so a match next month was aged as of the last match in the state —
+twelve days behind on the dev box, and further for any fixture worth asking about. A caller who
+sends no `match_date` still gets one, because the features cannot be computed without a date:
+it is `as_of` where a backtest gave one and today otherwise, and the answer's `fixture` block
+says which (`match_date`, `match_date_source`, `gender`), so a defaulted date is never
+invisible. go-app always sends the date the caller typed.
 
 **Every prediction names the state it was served from (P1-5).** `/xi/optimize`,
 `/xi/predict-win`, `/simulate` and `/performance/predict` each answer with

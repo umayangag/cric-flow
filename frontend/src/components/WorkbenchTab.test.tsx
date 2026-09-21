@@ -18,8 +18,9 @@ const OPS_STATUS_FRESH = {
     served: {
       status: 'fresh',
       fresh: true,
-      age_days: 3,
+      data_age_days: 1,
       max_age_days: 14,
+      data_through: '2026-08-31',
       ratings_through: '2026-08-30',
       code: null,
     },
@@ -78,7 +79,7 @@ describe('WorkbenchTab', () => {
     // The manifest's own date beside the cutoff (P2-2), and the verdict reads the same one.
     expect(screen.getByText('Ratings through (manifest)')).toBeInTheDocument();
     expect(screen.getByText('2026-08-30')).toBeInTheDocument();
-    expect(screen.getByText(/ratings through 2026-08-30 \(3 days old/)).toBeInTheDocument();
+    expect(screen.getByText(/last match 2026-08-30/)).toBeInTheDocument();
   });
 
   /** L-1: the run's headline metrics are a table keyed by metric, not a JSON dump. */
@@ -143,7 +144,9 @@ describe('WorkbenchTab', () => {
     mockXiStatus.mockResolvedValue(LOADED);
     render(<WorkbenchTab />);
     expect(
-      await screen.findByText(/ratings through 2026-08-30 \(3 days old, limit 14\)/),
+      await screen.findByText(
+        /data built to 2026-08-31 \(1 days ago, limit 14\); last match 2026-08-30/,
+      ),
     ).toBeInTheDocument();
   });
 });
