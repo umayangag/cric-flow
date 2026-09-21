@@ -11,16 +11,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
 
-func CreateMigration(ctx context.Context, command string, args json.RawMessage) (int, error) {
-	var id int
-	err := db.QueryRow(ctx, `
-		INSERT INTO data_migrations (command, args, status, started_at)
-		VALUES ($1, $2, $3, NOW())
-		RETURNING id
-	`, command, args, StatusInProgress).Scan(&id)
-	return id, err
-}
-
 func UpdateMigrationStatus(
 	ctx context.Context,
 	id int,
