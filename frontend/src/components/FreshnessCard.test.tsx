@@ -65,9 +65,7 @@ describe('FreshnessCard', () => {
     render(<FreshnessCard freshness={readFreshness(P0_4_STATE)} formats={FORMATS} />);
 
     expect(
-      screen.getByText(
-        /data built to 2026-09-03 \(1 days ago, limit 14\); last match 2026-09-02/,
-      ),
+      screen.getByText(/data built to 2026-09-03 \(1 days ago, limit 14\); last match 2026-09-02/),
     ).toBeInTheDocument();
     expect(screen.getByText(/2026-08-27 · 8d ago · 2,857 matches/)).toBeInTheDocument();
     expect(screen.queryByText(/🕒 stale/)).not.toBeInTheDocument();

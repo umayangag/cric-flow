@@ -67,9 +67,8 @@ const PredictionReadiness: React.FC<Props> = ({ status }) => {
               run_id: loadedRun,
             }}
           />
-          . A live prediction is refused with{' '}
-          <strong>{served.code ?? RATINGS_STALE_CODE}</strong> rather than answered from a squad
-          that has moved on.
+          . A live prediction is refused with <strong>{served.code ?? RATINGS_STALE_CODE}</strong>{' '}
+          rather than answered from a squad that has moved on.
         </Typography>
       )}
       {!unknown && (
