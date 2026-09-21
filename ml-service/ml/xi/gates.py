@@ -43,6 +43,14 @@ nothing served. The clauses encode what the prose already says and nothing more:
 * A gate an experiment script runs (``report_path`` None) is evaluated by that script; its
   clause stays prose here.
 
+Every gate also declares whether it *consulted the folds* (EVAL-11). The walk-forward
+folds are the development surface: the same eleven windows have decided every gate here,
+so a fold mean is a number under as many comparisons as there are gates that read it, and
+the report prints that count beside every fold summary (``ml.xi.folds``). The holdout --
+the report's ``locked`` node -- decides nothing: a ``Threshold`` whose ``report_path``
+reaches into it is refused when the gate is registered, so a future gate cannot read the
+holdout by mistake and a reader can trust that a holdout number was never a choice's input.
+
 No clause anywhere is read against a seed-to-seed spread. The display model is one fit
 per window: its random seed reached only sklearn's early-stopping split, so the three
 "seeds" the harness used to fit were bit-identical below 10,000 rows and the spread they
@@ -93,10 +101,36 @@ class Gate:
     #: Where the report carries the number: relative to each format's node, or to the whole
     #: report with the ``report:`` prefix. None for a gate an experiment script reports.
     report_path: Optional[str]
+    #: Whether the gate read the walk-forward folds -- a clause evaluated on a fold mean, a
+    #: choice made from fold numbers, or a figure printed from them. Every such gate is one
+    #: more comparison the folds have absorbed, and the count travels beside every fold
+    #: number the report prints (EVAL-11). False only for a gate that reads no fold at all.
+    consults_folds: bool
     #: The decides clause evaluated on that number. None where the clause decides an action
     #: the harness already takes, needs a previous release, or informs (the docstring says
     #: which) -- and for every gate a script reports.
     threshold: Optional[Threshold] = None
+
+    def __post_init__(self) -> None:
+        # EVAL-11: the holdout decides nothing. A clause that would read a number scored on
+        # it is refused at registration, before any report is built, so the property is the
+        # registry's and not a convention a future gate can forget.
+        if self.threshold is not None and self.report_path is not None and reads_holdout(self.report_path):
+            raise ValueError(
+                f"gate {self.id}: a threshold may not read the holdout ({self.report_path}); "
+                "a gate decides on the walk-forward folds, and the holdout is scored once and never decides"
+            )
+
+
+#: The report node under which a format's holdout numbers sit (``evaluate.LOCKED_START`` on).
+HOLDOUT_NODE = "locked"
+
+
+def reads_holdout(report_path: str) -> bool:
+    """Whether a report path reaches into the holdout node, at any depth (``locked.x`` or
+    ``e5_lineup_only.locked.agreement`` alike)."""
+    path = report_path[len(REPORT_SCOPE) :] if report_path.startswith(REPORT_SCOPE) else report_path
+    return HOLDOUT_NODE in path.split(".")
 
 
 def _fold_mean(value: Any) -> Optional[float]:
@@ -190,6 +224,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the fold's cutoff, the objective fitted before it, the labels",
         decides="walk-forward mean objective AUC >= 0.65, else the format is not offered an optimised selection",
         report_path="walk_forward.summary.objective_auc",
+        consults_folds=True,
         threshold=Threshold(
             rule="where an optimised selection is served, mean >= 0.65; a served format with no number fails",
             failure=_h17_failure,
@@ -202,6 +237,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the other ten, the opponent eleven, the as-of date, the fold's objective",
         decides="share of upgrades that lower P(win) < 2 %",
         report_path="walk_forward.summary.swap_violation_share",
+        consults_folds=True,
         threshold=Threshold(rule="mean < 0.02 in every format the folds scored", failure=_h4_failure),
     ),
     Gate(
@@ -211,6 +247,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the evaluation matches, the labels, the fold's objective",
         decides="AUC(specific) - AUC(typical) > 0",
         report_path="walk_forward.summary.specific_vs_typical_delta",
+        consults_folds=True,
         # A selection gate (P-5 shipped the XI path on it beside H-4), so it is read as
         # H-17 is: the eleven must add something where an optimised eleven is served.
         threshold=Threshold(
@@ -226,6 +263,7 @@ GATES: Tuple[Gate, ...] = (
         decides="sign agreement between the objective's preference and the result change, over pairs whose "
         "result moved, at or above the bar derived from the objective's own claimed effect size (§8.8)",
         report_path="e5_lineup_only.decision.agreement",
+        consults_folds=True,
         threshold=Threshold(
             rule="where an optimised selection is served, passes_derived_bar is true; a served format E5 could not "
             "score fails",
@@ -239,6 +277,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the fixtures, the as-of forecasts, the fold's models, the labels",
         decides="Brier(simulated) - Brier(display) <= 0.01 on the folds, else the simulation is a description only",
         report_path="simulation_decision.simulated_win_probability_within_tolerance",
+        consults_folds=True,
         threshold=Threshold(
             rule="where the simulated P(win) is served as the headline, within tolerance is true",
             failure=_e2_failure,
@@ -254,6 +293,7 @@ GATES: Tuple[Gate, ...] = (
         "carry a binned empirical quantile, or fitted no model at all, the target goes uncorrected and is named "
         "in locked.recalibration_skipped beside the request in locked.recalibration_requested",
         report_path="locked.recalibrated_targets",
+        consults_folds=True,
     ),
     Gate(
         id="H-22",
@@ -262,6 +302,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="coverage at nominal, the target, the population",
         decides="a narrower 10-90 interval with coverage held is progress; narrower with coverage falling fails",
         report_path="walk_forward.summary.performance",
+        consults_folds=True,
     ),
     Gate(
         id="H-2",
@@ -270,6 +311,7 @@ GATES: Tuple[Gate, ...] = (
         fixed="the development-window labels, per format",
         decides="a column at AUC >= 0.65 in a limited-overs format and <= 0.55 in TEST is a suspect to be reviewed",
         report_path=REPORT_SCOPE + "leak_canary.test_control_suspects",
+        consults_folds=True,
     ),
     Gate(
         id="H-8",
@@ -280,6 +322,7 @@ GATES: Tuple[Gate, ...] = (
         decides="max abs difference <= 1e-9 across rows, the served display and objective probabilities "
         "(as-of and from the loaded artifact), performance predictions and draws, else the run fails",
         report_path=REPORT_SCOPE + "serving_parity.passed",
+        consults_folds=False,
         threshold=Threshold(rule="passed is true", failure=_h8_failure),
     ),
     Gate(
@@ -290,6 +333,7 @@ GATES: Tuple[Gate, ...] = (
         decides="share of elevens whose best sampled order moves the confirmed simulated median total by > 3 %; "
         "above 30 % adds a batting-order suggestion to L3",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="A-1",
@@ -304,6 +348,7 @@ GATES: Tuple[Gate, ...] = (
         "grow (H-22) and every headline target's pinball is no worse by more than 0.5 %, in both T20 and ODI; "
         "a recorded null ships no feature",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="A-2",
@@ -320,6 +365,7 @@ GATES: Tuple[Gate, ...] = (
         "also beats the level control on the coverage distance by more than one standard error; a recorded null "
         "ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="A-3",
@@ -341,6 +387,7 @@ GATES: Tuple[Gate, ...] = (
         "beside the verdict and never decides on its own; a recorded null ships nothing and T20 stays "
         "rating-ordered",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-1b-age",
@@ -359,6 +406,7 @@ GATES: Tuple[Gate, ...] = (
         "the age family, reported beside the verdict and never deciding it. T20I and TEST are reported, not "
         "decided on. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-1b-cold-start",
@@ -382,6 +430,7 @@ GATES: Tuple[Gate, ...] = (
         "fall by more than one paired fold-level standard error and H-4's swap share stays under 2 %. T20 is "
         "decided on men's rows, as family 1. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-3-e5",
@@ -399,6 +448,7 @@ GATES: Tuple[Gate, ...] = (
         "clears its re-derived bar is evidence for revisiting the T20 scoping through the P-7 machinery, and is "
         "recorded as such; the scoping does not move on this run",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-3-stakes",
@@ -417,6 +467,7 @@ GATES: Tuple[Gate, ...] = (
         "found that spread to be identically zero -- the three seeds were the same fit -- so the standard error "
         "was the floor that bound)",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="B-7-display-monotone",
@@ -441,6 +492,7 @@ GATES: Tuple[Gate, ...] = (
         "is recorded with its fold table for the decision to be made deliberately. Neither moving is a "
         "recorded null, and the measurement stays either way",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="B-7-pelo-spread",
@@ -464,6 +516,7 @@ GATES: Tuple[Gate, ...] = (
         "FEAT-14, out of the objective's columns too -- no win model reads them), display AUC was spent on a "
         "Team Lab surface that is coherent by construction, and the cost is recorded in docs/BUG_BACKLOG.md § B-7",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-4",
@@ -479,6 +532,7 @@ GATES: Tuple[Gate, ...] = (
         "number; no feature, threshold or format scoping moves on its result, and odds are never a model "
         "input",
         report_path=REPORT_SCOPE + "market_benchmark.formats",
+        consults_folds=True,
     ),
     Gate(
         id="X-2-daynight",
@@ -502,6 +556,7 @@ GATES: Tuple[Gate, ...] = (
         "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
         "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-2-humidity-temperature",
@@ -525,6 +580,7 @@ GATES: Tuple[Gate, ...] = (
         "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
         "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-2-dew",
@@ -548,6 +604,7 @@ GATES: Tuple[Gate, ...] = (
         "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
         "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="X-2-rain",
@@ -571,6 +628,7 @@ GATES: Tuple[Gate, ...] = (
         "E2 -- Brier(simulated) - Brier(display) -- moves by no more than one fold-level standard error and stays "
         "within its 0.01 tolerance. T20I and TEST are reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-DN-split",
@@ -597,6 +655,7 @@ GATES: Tuple[Gate, ...] = (
         "simulator's 20-match floor in 2 of 11 folds and its night calibration fold clears the 30-match guard in "
         "1) and is reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-DN-scale",
@@ -626,6 +685,7 @@ GATES: Tuple[Gate, ...] = (
         "simulator's 20-match floor in 2 of 11 folds and its night calibration fold clears the 15-match floor in "
         "3, never in the same fold) and is reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-IN-chase",
@@ -660,6 +720,7 @@ GATES: Tuple[Gate, ...] = (
         "it (its night side clears the simulator's 20-match floor in 2 of 11 folds) and is reported. A recorded "
         "null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-IN-both",
@@ -687,6 +748,7 @@ GATES: Tuple[Gate, ...] = (
         "growth of more than one fold-level standard error, or leaving the 0.01 tolerance, fails it. ODI cannot "
         "decide it and is reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-IN-corr",
@@ -727,6 +789,7 @@ GATES: Tuple[Gate, ...] = (
         "it (its night side clears the simulator's 20-match floor in 2 of 11 folds) and is reported. A recorded "
         "null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
     Gate(
         id="SIM-IN-corrboth",
@@ -754,6 +817,7 @@ GATES: Tuple[Gate, ...] = (
         "growth of more than one fold-level standard error, or leaving the 0.01 tolerance, fails it. ODI cannot "
         "decide it and is reported. A recorded null ships nothing",
         report_path=None,
+        consults_folds=True,
     ),
 )
 
@@ -771,10 +835,22 @@ def as_dict() -> Dict[str, Dict[str, Any]]:
             "fixed": gate.fixed,
             "decides": gate.decides,
             "report_path": gate.report_path,
+            "consults_folds": gate.consults_folds,
             "threshold": None if gate.threshold is None else gate.threshold.rule,
         }
         for gate in GATES
     }
+
+
+def folds_consulted() -> List[str]:
+    """The gates that have read the walk-forward folds, by id: the comparisons those folds
+    have absorbed, which is why a fold mean is a development number and not a holdout one."""
+    return [gate.id for gate in GATES if gate.consults_folds]
+
+
+def folds_consulted_count() -> int:
+    """How many gates consulted the folds -- the figure every fold summary carries."""
+    return len(folds_consulted())
 
 
 def describe(gate_id: str) -> str:

@@ -53,6 +53,50 @@ def test_every_gate_declares_its_triple() -> None:
         assert gate.decides.strip(), gate.id
 
 
+def test_every_gate_but_parity_consulted_the_folds() -> None:
+    """EVAL-11: the disclosure beside every fold number is this count. H-8 compares two
+    code paths over the last 50 matches and reads no fold; every other gate decided,
+    acted or informed on the same walk-forward windows."""
+    consulted = gates.folds_consulted()
+
+    assert {gate.id for gate in gates.GATES} - set(consulted) == {"H-8"}
+    assert gates.folds_consulted_count() == len(gates.GATES) - 1
+    assert gates.as_dict()["H-17"]["consults_folds"] is True and gates.as_dict()["H-8"]["consults_folds"] is False
+
+
+@pytest.mark.parametrize(
+    "report_path",
+    [
+        "locked.objective_auc",
+        "e5_lineup_only.locked.agreement",
+        gates.REPORT_SCOPE + "formats.T20.locked.objective_auc",
+    ],
+)
+def test_a_threshold_that_would_read_the_holdout_is_refused_at_registration(report_path: str) -> None:
+    """EVAL-11: the holdout decides nothing, as a property of the registry. A gate whose
+    clause would be evaluated on a number under the locked node cannot be registered."""
+    with pytest.raises(ValueError, match="a threshold may not read the holdout"):
+        gates.Gate(
+            id="X",
+            name="a gate on the holdout",
+            varies="v",
+            fixed="f",
+            decides="d",
+            report_path=report_path,
+            consults_folds=False,
+            threshold=gates.Threshold(rule="mean > 0", failure=lambda value, node: None),
+        )
+
+
+def test_a_record_under_the_holdout_with_no_clause_is_still_allowed() -> None:
+    """H-5's shape: the locked node carries what was applied, and nothing decides on it."""
+    gate = gates.Gate(
+        id="X", name="a record", varies="v", fixed="f", decides="d", report_path="locked.applied", consults_folds=True
+    )
+
+    assert gate.threshold is None and gates.reads_holdout(gate.report_path)
+
+
 def test_check_report_passes_a_report_that_carries_every_gate() -> None:
     assert gates.check_report(_report_with_every_gate()) == []
 

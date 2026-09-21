@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from typing import Iterator, List
+from typing import Iterator, List, Tuple
 
 import pandas as pd
 import pytest
 
 from ml.xi import contract as C
 from ml.xi import evaluate as ev
-from ml.xi import gates, glossary
+from ml.xi import folds, gates, glossary
 from ml.xi.asof import ROUND_TRIP_RUN_ID
 from ml.xi.train import _score_marginalised
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
@@ -48,15 +48,61 @@ def test_locked_window_states_where_the_line_is_and_when_it_moved() -> None:
     assert ev.LOCKED_START in ev.locked_note() and ev.LOCKED_PREVIOUS_START in ev.locked_note()
 
 
+def test_locked_window_is_a_season_and_says_when_it_completes() -> None:
+    """EVAL-11: the holdout is a season accruing from the line, not the days since the
+    last decision; the report names the day a verdict on it becomes due."""
+    window = ev.locked_window()
+
+    assert window["season_days"] == 365
+    assert window["season_end"] == (pd.Timestamp(ev.LOCKED_START) + pd.Timedelta(days=365)).date().isoformat()
+    assert "read by no gate" in ev.locked_note()
+
+
+def test_fold_windows_refuse_a_cutoff_inside_the_holdout() -> None:
+    """EVAL-11: a fold cannot end past the line. A rotation that extended the cutoffs
+    without moving LOCKED_START, or a script that added a late cutoff, fails here rather
+    than scoring holdout rows as a fold."""
+    with _synthetic_timeline(["2023-03-01", "2023-06-01"], "2023-05-01"):
+        with pytest.raises(ValueError, match="at or past the holdout line 2023-05-01"):
+            ev.fold_windows()
+
+
 def test_stats_ignores_missing_folds() -> None:
-    stats = ev._stats([0.7, None, 0.8])
+    stats = folds.summarise_over_folds([0.7, None, 0.8])
 
     assert stats["n_folds"] == 2
     assert stats["mean"] == pytest.approx(0.75)
+    assert stats["gates_consulted"] == gates.folds_consulted_count()
 
 
 def test_stats_is_none_when_no_fold_produced_the_number() -> None:
-    assert ev._stats([None, None]) is None
+    assert folds.summarise_over_folds([None, None]) is None
+
+
+def test_the_fold_path_is_handed_no_holdout_row(monkeypatch) -> None:
+    """EVAL-11: the folds are scored from the development rows alone. Whatever a fold
+    computes -- today's gates or one added later -- it cannot reach a row at or past the
+    line, because the frame it is handed ends there; only the locked window's own call
+    sees the whole frame."""
+    dates = pd.date_range("2023-01-01", "2023-07-01", freq="7D")
+    frame = pd.DataFrame({"format_code": "T20", "match_date": dates})
+    player_frame = pd.DataFrame({"format_code": "T20", "match_date": dates})
+    latest_row_seen: List[Tuple[str, pd.Timestamp, pd.Timestamp]] = []
+
+    def spy(format_code, format_frame, players, cutoff, end, recalibrate=(), benchmark=None, window_label="fold"):
+        latest_row_seen.append((window_label, format_frame.match_date.max(), players.match_date.max()))
+        report = {"cutoff": cutoff.date().isoformat(), "end": end.date().isoformat(), "n_train": 0, "n_eval": 0}
+        return ev.FoldOutcome(report={**report, "skipped_reason": "spy"})
+
+    monkeypatch.setattr(ev, "_evaluate_fold", spy)
+    with _synthetic_timeline(["2023-03-01", "2023-04-01"], "2023-05-01"):
+        ev.evaluate_format("T20", frame, player_frame)
+
+    line = pd.Timestamp("2023-05-01")
+    fold_calls = [(matches, players) for label, matches, players in latest_row_seen if label == "fold"]
+    assert len(fold_calls) == 2
+    assert all(matches < line and players < line for matches, players in fold_calls)
+    assert [matches >= line for label, matches, _ in latest_row_seen if label == "locked"] == [True]
 
 
 def test_evaluate_win_window_reports_why_it_skipped() -> None:
@@ -180,6 +226,34 @@ def test_harness_scores_the_locked_window_once_and_labels_it(harness_report) -> 
 
     assert "locked window" in locked["note"]
     assert "objective_auc" in locked
+
+
+def test_fold_summaries_say_how_many_gates_consulted_the_folds(harness_report) -> None:
+    """EVAL-11: a fold mean is a development number, and says so where it is printed --
+    every summary over folds, the win model's, the performance model's and E5's alike,
+    carries the count of gates that have read the folds; the holdout carries zero."""
+    node = harness_report["formats"]["T20"]
+    summary = node["walk_forward"]["summary"]
+    expected = gates.folds_consulted_count()
+
+    assert expected == len(gates.GATES) - 1  # every gate but H-8 parity reads the folds
+    assert summary["objective_auc"]["gates_consulted"] == expected
+    assert summary["performance"]["targets"]["runs"]["model"]["pinball"]["gates_consulted"] == expected
+    assert node["e5_lineup_only"]["walk_forward"]["summary"]["agreement"]["gates_consulted"] == expected
+    assert node["locked"]["holdout"]["gates_consulted"] == 0
+
+
+def test_the_locked_window_carries_its_holdout_season_record(harness_report) -> None:
+    """EVAL-11: beside the holdout's numbers, what it holds and how much of the season
+    has accrued -- measured from the matches scored, so a thin window is named thin."""
+    locked = harness_report["formats"]["T20"]["locked"]
+    holdout = locked["holdout"]
+
+    assert holdout["n_matches"] == locked["n_eval"]
+    assert holdout["season_start"] == locked["cutoff"] and holdout["season_days"] == ev.LOCKED_SEASON_DAYS
+    assert holdout["first_match"] >= locked["cutoff"] and holdout["last_match"] >= holdout["first_match"]
+    assert 0 < holdout["days_covered"] < ev.LOCKED_SEASON_DAYS
+    assert holdout["season_complete"] is False
 
 
 def test_harness_report_carries_the_window_and_its_rotation(harness_report) -> None:
@@ -352,8 +426,17 @@ def _fake_report(parity_passed: bool = True, gates_passed: bool = True) -> dict:
         "formats": {
             "T20": {
                 "walk_forward": {
-                    "summary": {"objective_auc": {"mean": 0.72, "sd": 0.01, "n_folds": 2}, "performance": None}
+                    "summary": {
+                        "objective_auc": {
+                            "mean": 0.72,
+                            "sd": 0.01,
+                            "n_folds": 2,
+                            "gates_consulted": gates.folds_consulted_count(),
+                        },
+                        "performance": None,
+                    }
                 },
+                "locked": {"holdout": {"n_matches": 3, "days_covered": 19, "season_complete": False}},
                 "simulation_decision": {
                     "delta_brier_mean": 0.003,
                     "delta_brier_sd": 0.004,

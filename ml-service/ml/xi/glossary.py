@@ -1255,6 +1255,12 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "n_eval": "a row count",
     "n_holdout": "a row count",
     "n_folds": "how many folds a summary averaged",
+    "gates_consulted": "how many gates have read the walk-forward folds a summary averaged -- the comparisons "
+    "those folds have absorbed (EVAL-11); zero on the holdout, which no gate reads",
+    "holdout": "the holdout season's record beside the locked window's numbers: its matches, how much of the "
+    "season has accrued, and that no gate consulted it (EVAL-11)",
+    "locked_window": "the locked window's record: where the line is, when it moved, what retired into the folds, "
+    "and the season it accrues (H-19, A-4, EVAL-11)",
     "n_rows": "a row count",
     "n_player_rows": "a row count",
     "n_matches": "a match count",
@@ -1308,8 +1314,9 @@ NON_METRIC_KEYS: Dict[str, str] = {
 }
 
 #: The shape ``_stats`` writes when a number is summarised over folds. It terminates a
-#: walk: the key above it is the metric, and mean / sd / n_folds are its summary.
-_FOLD_STAT_KEYS = frozenset({"mean", "sd", "n_folds"})
+#: walk: the key above it is the metric, and mean / sd / n_folds / gates_consulted are its
+#: summary (``ml.xi.folds.summarise_over_folds``).
+_FOLD_STAT_KEYS = frozenset({"mean", "sd", "n_folds", "gates_consulted"})
 
 
 def as_dict() -> Dict[str, Dict[str, Any]]:

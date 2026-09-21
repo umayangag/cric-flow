@@ -14,11 +14,21 @@ def _report_with_two_metrics() -> dict:
             "T20": {
                 "walk_forward": {
                     "folds": [{"n_train": 900, "objective_auc": 0.71}],
-                    "summary": {"objective_auc": {"mean": 0.72, "sd": 0.01, "n_folds": 2}},
-                }
+                    "summary": {"objective_auc": {"mean": 0.72, "sd": 0.01, "n_folds": 2, "gates_consulted": 29}},
+                },
+                "locked": {
+                    "objective_auc": 0.71,
+                    "holdout": {"n_matches": 40, "days_covered": 19, "season_days": 365, "gates_consulted": 0},
+                },
             }
         }
     }
+
+
+def test_a_fold_summary_with_its_gate_count_is_one_metric_and_the_holdout_record_is_none() -> None:
+    """EVAL-11: `gates_consulted` rides inside the fold summary, and the holdout record's
+    counts are a record, not metrics the glossary must explain."""
+    assert glossary.metric_keys(_report_with_two_metrics()) == ["objective_auc"]
 
 
 def test_every_entry_declares_the_copy_a_reader_needs() -> None:
