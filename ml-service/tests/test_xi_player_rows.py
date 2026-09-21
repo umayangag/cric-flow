@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ import pytest
 
 from ml.xi import contract as C
 from ml.xi import simulator
+from ml.xi.biography import DAYS_PER_YEAR
 from ml.xi.builder import build
 from ml.xi.ratings import RatingState
 from ml.xi.rows import innings_outcomes, match_actuals, player_feature_rows, serving_match
@@ -333,3 +335,49 @@ def test_a_decided_match_with_no_deliveries_yields_the_win_row_and_no_player_row
     assert set(result.player_frame.match_id) == {"played"}
     assert list(simulator.complete_first_innings(result.frame)) == [False, False]
     assert result.quality.decided_matches_without_deliveries == 1
+
+
+# --- SERVE-04: a fixture is built for its own date, not for the state's ---------------
+
+
+def test_serving_rows_age_the_players_at_the_fixture_date_not_the_states() -> None:
+    """The serving path stamped ``state.last_date`` on every fixture, so a match played
+    next month was aged as of the last match the state had folded in (SERVE-04). The two
+    dates are twelve days apart on the dev box and further on any fixture worth asking
+    about, and ``age`` is read at whichever date the record carries."""
+    source = _two_match_source()
+    state = build(source).state
+    for key in xi("a") + xi("b"):
+        state.birth_dates[key] = date(1995, 6, 1)
+    fixture_day = state.last_date + timedelta(days=42)
+
+    at_state_date = pd.DataFrame(
+        player_feature_rows(state, serving_match("T20", xi("a"), xi("b"), None, None, None, state.last_date))[1]
+    )
+    at_fixture_date = pd.DataFrame(
+        player_feature_rows(state, serving_match("T20", xi("a"), xi("b"), None, None, None, fixture_day))[1]
+    )
+
+    assert (at_fixture_date.match_date == pd.Timestamp(fixture_day)).all()
+    assert (at_fixture_date.age - at_state_date.age).round(9).eq(round(42 / DAYS_PER_YEAR, 9)).all()
+    assert (at_fixture_date.age_known == 1.0).all(), "a stated birth date is a known age at either date"
+
+
+def test_serving_rows_read_the_context_group_the_fixture_names() -> None:
+    """``serving_match`` stamped ``gender=""`` on every fixture, which is context group 0
+    -- the men's group where a run was built with the gender split on, whatever the
+    fixture was (SERVE-01). Carrying the gender the request now names reads the fixture's
+    own baseline instead."""
+    source = _two_match_source()
+    women = replace(source.matches[1], match_id="m3", gender=C.GENDER_FEMALE)
+    state = build(ListSource(source.matches + [women]), gender_split_context=True).state
+
+    unnamed = player_feature_rows(state, serving_match("T20", xi("a"), xi("b"), None, None, None, state.last_date))[0]
+    named = player_feature_rows(
+        state, serving_match("T20", xi("a"), xi("b"), None, None, None, state.last_date, C.GENDER_FEMALE)
+    )[0]
+
+    assert unnamed["gender"] == "" and named["gender"] == C.GENDER_FEMALE
+    assert named["ctx_innings_deliveries"] != unnamed["ctx_innings_deliveries"], (
+        "the women's fixture reads the women's baseline, not the group a blank gender falls into"
+    )

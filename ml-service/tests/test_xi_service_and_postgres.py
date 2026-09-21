@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from app import serving_compute, xi_service
 from app.models.xi import PerformancePredictRequest, SimulateRequest, XiConstraints, XiOptimizeRequest, XiWinRequest
 from ml.xi import simulator
+from ml.xi.biography import DAYS_PER_YEAR
 from ml.xi.builder import build
 from ml.xi.perf_calibration import QuantileRecalibration
 from ml.xi.retrain import main as retrain_main
@@ -1057,6 +1058,87 @@ def test_predict_win_with_as_of_uses_the_earlier_ratings(artifacts_dir) -> None:
     assert today.served_ratings.ratings_through == reg.status().ratings_through
     assert early.served_ratings.ratings_through < matches[30].match_date.isoformat()
     assert early.served_ratings.run_id == today.served_ratings.run_id
+
+
+# --- SERVE-04: the fixture is dated by the caller, and the answer says by whom --------
+
+
+def _eleven_against_eleven(artifacts_dir) -> dict:
+    _, squad_a, squad_b, _ = artifacts_dir
+    return {"format": "T20I", "team1_player_ids": squad_a[:11], "team2_player_ids": squad_b[:11]}
+
+
+def test_a_performance_request_builds_its_rows_for_the_fixture_date_it_names(registry, artifacts_dir) -> None:
+    """SERVE-04: the serving path stamped ``state.last_date`` on every fixture, so every
+    date-dependent feature was read at the last match the state held rather than at the
+    match being asked about. ``_fixture_rows`` is the seam where the resolved fixture meets
+    the row assembly, so it is where the two are pinned together.
+
+    The rows carry the age at the fixture date, which is the column the X-1b family reads
+    and the one that moves by a day for every day the two dates are apart."""
+    fixture_day = date(2024, 3, 1)
+    born = date(1995, 6, 1)
+    store = registry.store("T20I")
+    request = PerformancePredictRequest(**_eleven_against_eleven(artifacts_dir), match_date=fixture_day)
+    for key in request.team1_player_ids + request.team2_player_ids:
+        store.state.birth_dates[key] = born
+
+    stamp = xi_service.served_fixture(request)
+    _, rows, _ = xi_service._fixture_rows(store, request, stamp)
+
+    assert (stamp.match_date, stamp.match_date_source) == (fixture_day.isoformat(), "request")
+    assert store.state.last_date != fixture_day, "the two dates differ, which is what makes this a test"
+    assert (rows.match_date == pd.Timestamp(fixture_day)).all()
+    assert rows.age.round(6).eq(round((fixture_day - born).days / DAYS_PER_YEAR, 6)).all()
+
+
+def test_a_fixture_with_no_date_is_dated_today_and_says_so(registry, artifacts_dir) -> None:
+    """A caller who names no date still gets one, because the features cannot be computed
+    without it. What §8.7 forbids is that substitution being silent, so the answer carries
+    the date it used and where the date came from -- never the state's own date, which is
+    what it silently used before."""
+    request = PerformancePredictRequest(**_eleven_against_eleven(artifacts_dir))
+
+    res = xi_service.predict_performance(request, registry)
+
+    assert res.fixture.match_date_source == "today"
+    assert res.fixture.match_date == date.today().isoformat()
+    assert res.fixture.match_date != registry.status().ratings_through
+
+
+def test_a_backtest_dates_its_fixture_by_the_date_it_is_backtesting(registry, artifacts_dir) -> None:
+    """``as_of`` selects which ratings answer; go-app sets it to a played match's own day,
+    so it also dates the fixture when the caller named no ``match_date``. A named
+    ``match_date`` still wins: the two answer different questions and only one of them is
+    "when is this match played"."""
+    as_of = date(2023, 4, 1)
+    named = date(2023, 4, 20)
+
+    dated_by_as_of = xi_service.served_fixture(
+        PerformancePredictRequest(**_eleven_against_eleven(artifacts_dir), as_of=as_of)
+    )
+    dated_by_request = xi_service.served_fixture(
+        PerformancePredictRequest(**_eleven_against_eleven(artifacts_dir), as_of=as_of, match_date=named)
+    )
+
+    assert (dated_by_as_of.match_date, dated_by_as_of.match_date_source) == (as_of.isoformat(), "as_of")
+    assert (dated_by_request.match_date, dated_by_request.match_date_source) == (named.isoformat(), "request")
+
+
+def test_a_simulated_fixture_carries_the_same_stamp_the_performance_rows_were_built_from(
+    registry, artifacts_dir
+) -> None:
+    """One resolution serves both surfaces: a caller comparing ``/simulate`` with
+    ``/performance/predict`` for the same fixture must not find them dated differently."""
+    request = SimulateRequest(
+        **_eleven_against_eleven(artifacts_dir), match_date=date(2024, 3, 1), n_samples=300, gender="female"
+    )
+
+    simulated = xi_service.simulate(request, registry)
+    predicted = xi_service.predict_performance(PerformancePredictRequest(**request.model_dump()), registry)
+
+    assert simulated.fixture.match_date == "2024-03-01" and simulated.fixture.gender == "female"
+    assert simulated.fixture == predicted.fixture
 
 
 def test_simulate_returns_totals_scorecard_and_both_win_probabilities(registry, artifacts_dir) -> None:
