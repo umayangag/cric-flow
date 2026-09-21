@@ -16,7 +16,6 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	"github.com/umayangag/cric-flow/go-app/internal/services/opsstatus"
 	pipelinesvc "github.com/umayangag/cric-flow/go-app/internal/services/pipeline"
-	"github.com/umayangag/cric-flow/go-app/internal/services/runplan"
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
 )
 
@@ -45,7 +44,7 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 		"cancelled by user",
 		lanes,
 		a.CancelJobsInLanes,
-		cancelRunsIncludingThePlan,
+		tracking.CancelInProgressMigrations,
 		pipelinesvc.StopMLTraining,
 	)
 	if err != nil {
@@ -94,25 +93,6 @@ func (a *App) pipelineStopHandler(w http.ResponseWriter, r *http.Request) {
 		// different events, and the console could not previously tell them apart.
 		"training_stopped": outcome.TrainingStopped,
 	})
-}
-
-// cancelRunsIncludingThePlan marks the in-flight runs CANCELLED, with the plan's own
-// row always in scope.
-//
-// A plan is in no lane by design (runplan.PlanCommand), so a lane-scoped Stop —
-// `?lane=compute`, which is what the console sends — cancelled the step's row and left
-// the plan's row IN_PROGRESS even though StopRunPlan had just cancelled the plan
-// itself (GO-05). `TrackingStore.Active` then reported a plan in flight and every
-// later plan was answered 409 until the 24-hour stale sweep. The plan is stopped
-// unconditionally above, so its row is cancelled unconditionally here.
-//
-// An empty command set already means "every run", so the plan is only appended to a
-// set that names commands.
-func cancelRunsIncludingThePlan(ctx context.Context, reason string, commands []string) (int, error) {
-	if len(commands) > 0 {
-		commands = append(append([]string(nil), commands...), runplan.PlanCommand)
-	}
-	return tracking.CancelInProgressMigrations(ctx, reason, commands)
 }
 
 // laneLabel renders the lanes a stop applied to for the log. No lanes means all of them.
@@ -249,16 +229,16 @@ func (a *App) startTrackedJob(
 ) {
 	lane := pipelinesvc.Steps().LaneForCommand(command)
 	jobCtx, cancel := context.WithCancel(a.JobContext())
-	releaseLane := a.SetJobCancel(lane, cancel)
-	a.RunBackgroundJob(func() {
-		defer releaseLane()
+	a.SetJobCancel(lane, cancel)
+	go func() {
+		defer a.ClearJobCancel(lane)
 		slog.Info(command+" started", slog.Any("args", args))
 		if err := pipeline.RunJob(jobCtx, command, args, timeout, work); err != nil {
 			slog.Error(command+" failed", slog.Any("err", err))
 			return
 		}
 		slog.Info(command + " completed")
-	})
+	}()
 }
 
 // trainRunMetadata builds what a finished training step is remembered by, for

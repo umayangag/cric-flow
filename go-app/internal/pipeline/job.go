@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"runtime/debug"
 	"time"
@@ -32,20 +31,6 @@ func LaneBusy(ctx context.Context, command string) (bool, error) {
 	return tracking.HasInProgressForAnyCommand(ctx, registry.CommandsInLane(lane))
 }
 
-// LaneLockKey is the advisory-lock key a lane's claimants contend for.
-//
-// Derived from the lane's name rather than configured, so a lane added to the registry
-// arrives with its own lock instead of sharing one by omission. FNV-1a because it is
-// in the standard library, deterministic across processes and builds, and the key only
-// has to be stable and well spread — a collision between two lanes would serialise
-// them unnecessarily, not corrupt anything.
-func LaneLockKey(lane steps.Lane) uint32 {
-	digest := fnv.New32a()
-	// hash.Hash32.Write never returns an error, which is why this one is discarded.
-	_, _ = digest.Write([]byte(lane))
-	return digest.Sum32()
-}
-
 // JobFunc runs a pipeline step. It returns (exitMeta, err). On success, exitMeta is
 // passed to tracking.CaptureExit; on failure, err is used.
 type JobFunc func(ctx context.Context) (exitMeta any, err error)
@@ -64,31 +49,21 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	}
 
 	// Enforce the lane: one step at a time within a lane, lanes free to overlap.
-	//
-	// One call, because the check and the claim have to be one thing. They were a
-	// LaneBusy SELECT followed by an unguarded INSERT, and a `busy` that could not be
-	// determined was treated as "not busy" — so two requests in the same round trip,
-	// or one database hiccup, started two runs in a lane that exists to hold one
-	// (GO-06).
-	registry := steps.Steps()
-	lane := registry.LaneForCommand(jobName)
-	tracker, claimErr := tracking.StartExclusive(
-		ctx, jobName, startMeta, LaneLockKey(lane), registry.CommandsInLane(lane))
-	switch {
-	case errors.Is(claimErr, tracking.ErrRunConflict):
-		return ErrPipelineBusy
-	case errors.Is(claimErr, tracking.ErrNoDatabase):
-		// No pool: no run history to write and no lane to contend for. The job still
-		// runs, which is what the offline unit and CLI-without-a-database paths expect.
-		slog.Warn("pipeline: no database, so this run is neither recorded nor serialised",
-			slog.String("command", jobName))
-	case claimErr != nil:
-		// Fail closed. A claim that could not be made is not a claim.
-		slog.Error("pipeline: could not claim the lane",
+	busy, err := LaneBusy(ctx, jobName)
+	if err != nil {
+		slog.Warn("pipeline: check for existing run failed",
 			slog.String("command", jobName),
-			slog.String("lane", string(lane)),
-			slog.Any("err", claimErr))
-		return fmt.Errorf("claim the %s lane for %s: %w", lane, jobName, claimErr)
+			slog.Any("err", err))
+	}
+	if busy {
+		return ErrPipelineBusy
+	}
+
+	tracker, tErr := tracking.Start(ctx, jobName, startMeta)
+	if tErr != nil {
+		slog.Warn("pipeline: tracking start failed",
+			slog.String("command", jobName),
+			slog.Any("err", tErr))
 	}
 	if tracker != nil {
 		defer func() {
