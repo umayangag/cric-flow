@@ -253,7 +253,9 @@ func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T)
 	predictor := &fakePerformance{result: &XIPerformanceResult{
 		Served:              servedFromRunA,
 		InningsMarginalised: true,
-		Players:             []XIPerformancePlayer{{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}}},
+		Players: []XIPerformancePlayer{
+			{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}},
+		},
 	}}
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),

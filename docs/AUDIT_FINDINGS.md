@@ -237,10 +237,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 ## 6. go-app prediction path, track record and ops
 
-### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium**
-
-`ml_xi_client.go:100-114` (`mlXIWinRequest`) and `:453-461` (`mlPerformanceRequest`) omit `team1_bats_first`, which `models/xi.py:155-157, 253` accept and `xi_service.py:540, 586-597` use. For TEST (non-simulated) the headline P(win) and per-player numbers are toss-marginalised even when the caller sent the toss, and the response's `honoured: false` note blames the format. `objective_probability` / constraint checks are toss-blind everywhere. **Fix.** Add `Team1BatsFirst *bool` to both structs and thread `fix.team1BatsFirst` through.
-
 ### GO-08 — Venue lookup failure swallowed  **Medium**
 
 `predict_team.go:406-411`: `if id, verr := GetVenueID(...); verr == nil { venueID = id }` — a typo, unknown venue or DB error yields a "no venue" prediction with nothing on the wire saying so. **Fix.** `400 VENUE_NOT_FOUND` on miss, propagate other errors, echo `venue: {resolved: false}`.
@@ -334,6 +330,24 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium** — PR #PRNUM
+
+`ml_xi_client.go:100-114` (`mlXIWinRequest`) and `:453-461` (`mlPerformanceRequest`) omit `team1_bats_first`, which `models/xi.py:155-157, 253` accept and `xi_service.py:540, 586-597` use. For TEST (non-simulated) the headline P(win) and per-player numbers are toss-marginalised even when the caller sent the toss, and the response's `honoured: false` note blames the format. `objective_probability` / constraint checks are toss-blind everywhere. **Fix.** Add `Team1BatsFirst *bool` to both structs and thread `fix.team1BatsFirst` through.
+
+**Confirmed on `main` (`43090018`), with one half of the spec stale.** `mlPerformanceRequest` has carried `team1_bats_first` since P3-2 (#290) — the auction projection sets it — so the struct did not need the field; what was missing was the Lab's own call, `applyPerformanceForecast`, which sent nil whatever the caller asked for, under a comment claiming "a format with no innings length has no toss to know". `mlXIWinRequest` omitted the field outright, as the entry says. The stated reason was wrong in both places: `bats_first` is a column of the per-player row L2-B predicts and the batting order is a column the display model reads, in TEST as in every other format — the innings *length* is what TEST lacks, not the innings.
+
+**Measured, because the size decides how much this matters.** On the served run `20260920T175255Z-71339c52`, over the 25 most recent men's TEST fixtures in the archive with a known toss (real elevens, real venues, `/xi/predict-win` on the live stack), the toss-aware headline and the marginalised one differ by **0.042 on average, 0.136 at most** and 0.0003 at least; the two oriented readings sit **0.083 apart on average, 0.273 at most**. The served answer was therefore up to fourteen points away from the question the caller asked.
+
+**Fixed.** `XIWinRequest` gains `Team1BatsFirst` and `newWinRequest` threads `fix.team1BatsFirst`; `applyPerformanceForecast` threads it too. Both answers are cross-checked against the toss that was asked for — `toss_marginalised` on the win path, `innings_marginalised` on the performance path — and a mismatch is an error, not a relabelled response, exactly as `/simulate` and the auction's projection already did. `XiWinResponse` gains `toss_marginalised` so the win call reports its reading the way the other two endpoints report theirs.
+
+**§8.7: the answer names its own reading.** `toss.honoured` is gone: once the field is sent it could only ever be true, and a permanently-true boolean beside a note that can never fire is the misdescription the rule exists to stop. In its place `toss.reading` is `toss_aware` or `marginalised` — a declared vocabulary in `contracts/ops-console.contract.json`, asserted from both sides (H-24) — derived from what each model reported having done rather than from the request echo. `toss.note`, on a toss-aware answer, now names what in the answer stayed toss-blind instead of blaming the format.
+
+**`objective_probability` and the constraint checks stay marginalised, and that is deliberate.** The constraint checks count team size, bowlers, keeper and must-include ids; they are toss-invariant by construction and "toss-aware" is not a thing they could be. `objective_probability` cannot be made toss-aware by threading anything: `XiStore.objective_probability` reads per-side aggregates through `xi_feature_vector` and the objective model has no batting-order column — verified, it returns the identical float for `team1_bats_first` true, false and absent on all 25 fixtures above. Making it toss-aware means a new feature, a refit and a re-gate, and it would decouple the optimiser's target from `objective_auc` and H-17 — the key EVAL-05 (#319) had just finished making mean one thing. The consequence, that the eleven is picked for the average batting order while the probability beside it is read at the toss, is recorded as **B-21** rather than changed here.
+
+**Not retrain-flagged.** No feature or label definition moves: the rating pass, both training frames and every model are untouched. What changed is which value of an input the serving path passes, and what the response says about it. Every run on disk stays valid, and EVAL-05's manifest keys still score the quantity they name.
+
+---
 
 ### GO-05 — Cancelled run plan can never record its outcome  **Medium**  — PR #330
 

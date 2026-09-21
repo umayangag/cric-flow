@@ -168,7 +168,10 @@ game (§1 of the re-architecture plan), and no amount of search moves it.
 **One key, one quantity** (EVAL-05). Both headline numbers are the *served* reading: the
 probability marginalised over the toss — the mean of team1-bats-first and team2-bats-first —
 because that is what the optimiser maximises (`XiStore.objective_probability`) and what
-`/xi/predict-win` answers when the caller does not say who bats first. The harness reports the
+`/xi/predict-win` answers when the caller does not say who bats first. Since GO-07 the serving
+path forwards a toss the caller *does* name, and the answer is then the toss-aware reading —
+a different quantity, which these two keys do not score; `/xi/predict-win` reports
+`toss_marginalised` so a caller can tell the two apart. The harness reports the
 same quantity under the same keys in every walk-forward fold, so a manifest's `objective_auc`
 and a fold's are one number. Until EVAL-05 the manifest quoted the model read at the batting
 order that actually happened under the harness's key, so `objective_auc` meant two things

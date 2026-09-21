@@ -460,9 +460,7 @@ def test_predict_win_reports_which_reading_it_answered(registry, artifacts_dir) 
     last = matches[-1]
     t1, t2 = list(last.team1_players), list(last.team2_players)
 
-    marginal = xi_service.predict_win(
-        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2), registry
-    )
+    marginal = xi_service.predict_win(XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2), registry)
     bats_first = xi_service.predict_win(
         XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, team1_bats_first=True), registry
     )
