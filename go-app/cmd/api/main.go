@@ -131,6 +131,12 @@ func run() int {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer shutdownCancel()
 		shutdownErr := srv.Shutdown(shutdownCtx)
+		// Between cancelling the jobs and closing the pool, not after closing it.
+		// srv.Shutdown waits for in-flight HTTP requests, and a pipeline run is not one:
+		// it is a goroutine behind a 202 that still owns an IN_PROGRESS row. Closing the
+		// pool first left that row IN_PROGRESS, so `TrackingStore.Active` reported a run
+		// in flight and every later run was answered 409 until the stale sweep (GO-05).
+		drainBackgroundJobs(server)
 		db.Close() // Ensure DB connection is closed after shutdown attempt
 		if shutdownErr != nil {
 			slog.Error("server shutdown failed (timeout or error)", slog.Any("err", shutdownErr))
@@ -147,6 +153,26 @@ func run() int {
 		db.Close() // Drain pool and flush logs on normal server exit
 		return 0
 	}
+}
+
+// backgroundJobDrainTimeout bounds the wait for in-flight pipeline jobs to record
+// their outcome during shutdown. Its own budget rather than what srv.Shutdown left
+// over, so a slow HTTP drain cannot leave the run history no time at all.
+const backgroundJobDrainTimeout = 10 * time.Second
+
+// drainBackgroundJobs waits for cancelled pipeline jobs to write their outcome.
+//
+// A job that will not stop does not get to hold the process open forever: the pool
+// closes anyway and the startup sweep tidies whatever row was left behind, which is
+// the lesser of the two bad outcomes.
+func drainBackgroundJobs(app *apipkg.App) {
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), backgroundJobDrainTimeout)
+	defer cancelDrain()
+	if app.WaitForBackgroundJobs(drainCtx) {
+		return
+	}
+	slog.Warn("shutdown: pipeline jobs did not finish recording their outcome in time",
+		slog.Duration("waited", backgroundJobDrainTimeout))
 }
 
 // memStatsInterval returns MEM_STATS_INTERVAL (e.g. 5m) for periodic memory logging; 0 disables.

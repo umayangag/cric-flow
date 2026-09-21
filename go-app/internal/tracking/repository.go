@@ -34,9 +34,15 @@ func UpdateMigrationStatus(
 		errMsgPtr = &errorMsg
 	}
 
+	// COALESCE, not a plain assignment: several callers end a run without having any
+	// metadata of their own to write (Tracker.Fail, Tracker.Cancel, and the Stop
+	// endpoint's CancelInProgressMigrations all pass nil). A plain assignment made
+	// those calls erase what the run had already recorded — for a run plan, the whole
+	// step-by-step state, so a stopped plan came back from the database with nothing
+	// to show for itself. Passing nil now means "leave what is there".
 	return db.Exec(ctx, `
 		UPDATE data_migrations
-		SET status = $2, completed_at = NOW(), metadata = $3, error_message = $4
+		SET status = $2, completed_at = NOW(), metadata = COALESCE($3, metadata), error_message = $4
 		WHERE id = $1
 	`, id, status, metadata, errMsgPtr)
 }

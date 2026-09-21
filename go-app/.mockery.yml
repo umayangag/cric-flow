@@ -11,6 +11,7 @@ packages:
       DB: {}
       Row: {}
       Rows: {}
+      Tx: {}
   github.com/umayangag/cric-flow/go-app/internal/availability:
     config:
       dir: internal/availability/mocks

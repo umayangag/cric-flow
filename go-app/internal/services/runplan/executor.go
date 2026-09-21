@@ -117,7 +117,15 @@ func (e *Executor) run(
 	steps []pipelinesvc.Step,
 	skip map[string]string,
 ) (err error) {
-	if _, _, running, activeErr := e.Store.Active(ctx); activeErr == nil && running {
+	// Fail closed. This used to read `activeErr == nil && running`, so a database
+	// hiccup while asking "is a plan already going?" was answered as "no" and a second
+	// plan started on top of the first. A question about exclusivity that could not be
+	// answered is not a yes.
+	_, _, running, activeErr := e.Store.Active(ctx)
+	if activeErr != nil {
+		return fmt.Errorf("check whether a plan is already running: %w", activeErr)
+	}
+	if running {
 		return ErrPlanRunning
 	}
 
@@ -129,7 +137,10 @@ func (e *Executor) run(
 
 	defer func() {
 		state.FinishedAt = e.timestamp()
-		if finishErr := e.Store.Finish(ctx, id, state.Clone(), err); finishErr != nil {
+		state.Outcome = OutcomeFor(err)
+		writeCtx, cancelWrite := recordingContext(ctx)
+		defer cancelWrite()
+		if finishErr := e.Store.Finish(writeCtx, id, state.Clone(), err); finishErr != nil {
 			slog.Warn("run plan: recording the outcome failed", slog.Int("id", id), slog.Any("err", finishErr))
 		}
 	}()
@@ -209,9 +220,31 @@ func (e *Executor) markRemaining(state *State, from int, status StepStatus) {
 // are running regardless, and abandoning a working pipeline because a status write
 // failed would be the wrong trade.
 func (e *Executor) save(ctx context.Context, id int, state State) {
-	if err := e.Store.Save(ctx, id, state.Clone()); err != nil {
+	writeCtx, cancel := recordingContext(ctx)
+	defer cancel()
+	if err := e.Store.Save(writeCtx, id, state.Clone()); err != nil {
 		slog.Warn("run plan: saving state failed", slog.Int("id", id), slog.Any("err", err))
 	}
+}
+
+// recordingTimeout bounds a bookkeeping write that no longer answers to the plan's
+// own context. Short: it runs while the process may be shutting down, and a write
+// that waits on a pool being drained delays the shutdown it is racing.
+const recordingTimeout = 5 * time.Second
+
+// recordingContext is the context a plan's bookkeeping writes use.
+//
+// Detached from the plan's own context on purpose (GO-05). The three writes that
+// record a cancellation — the two `save` calls on the cancellation paths and the
+// deferred `Finish` — were made through the very context that had just been
+// cancelled, so pgx refused each of them with `context canceled` and only a warning
+// was logged. The row stayed IN_PROGRESS, `TrackingStore.Active` went on reporting a
+// plan in flight, and every later plan was answered 409 until the 24-hour stale sweep
+// caught up. The outcome of a cancellation is precisely what has to be recorded, so
+// the write outlives the cancellation that caused it. This is the same trade
+// `tracking.CaptureExit` already makes for a single step.
+func recordingContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), recordingTimeout)
 }
 
 func (e *Executor) gate(ctx context.Context, stepID string) (bool, string) {

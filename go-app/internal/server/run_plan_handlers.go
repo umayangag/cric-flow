@@ -57,8 +57,19 @@ func (a *App) runPlanStartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fail closed. `activeErr == nil && running` answered a database hiccup as "no plan
+	// is running" and started a second one on top of the first; a question about
+	// exclusivity that could not be answered is not a yes.
 	store := runplan.TrackingStore{}
-	if _, _, running, activeErr := store.Active(r.Context()); activeErr == nil && running {
+	_, _, running, activeErr := store.Active(r.Context())
+	if activeErr != nil {
+		slog.Error("run plan: checking for a running plan failed", slog.Any("err", activeErr))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "could not check whether a plan is already running",
+		})
+		return
+	}
+	if running {
 		respondJSON(w, http.StatusConflict, map[string]string{"error": runplan.ErrPlanRunning.Error()})
 		return
 	}
@@ -117,13 +128,26 @@ func (a *App) runPlanStateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, running, _ := store.Active(r.Context())
+	_, _, running, activeErr := store.Active(r.Context())
+	if activeErr != nil {
+		slog.Error("run plan: checking whether the plan is still running failed", slog.Any("err", activeErr))
+		respondJSON(w, http.StatusInternalServerError, map[string]string{
+			"error": "could not check whether the plan is still running",
+		})
+		return
+	}
 	payload := map[string]any{
 		"id":      id,
 		"running": running,
 		"plan":    state.Plan,
 		"steps":   state.Steps,
 		"plans":   runplan.Names(),
+	}
+	// How the run ended, so the console does not have to infer "stopped" from "failed"
+	// by reading the step list (audit § 8.7). Absent while the run is still going, and
+	// absent for a run that ended before the field existed.
+	if state.Outcome != "" {
+		payload["outcome"] = state.Outcome
 	}
 	if state.StartedAt != "" {
 		payload["started_at"] = state.StartedAt

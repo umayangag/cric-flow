@@ -45,17 +45,44 @@ func TestCancelJobsInLanes_WithNoLanesCancelsEverything(t *testing.T) {
 	assert.Zero(t, app.CancelJobsInLanes(), "a second Stop has nothing left to cancel")
 }
 
-func TestClearJobCancel_ForgetsOnlyItsOwnLane(t *testing.T) {
+func TestSetJobCancel_ReleaseForgetsOnlyItsOwnLane(t *testing.T) {
 	t.Parallel()
 	app := &App{}
 	_, computeCancel := context.WithCancel(context.Background())
 	dataCtx, dataCancel := context.WithCancel(context.Background())
-	app.SetJobCancel(pipelinesvc.LaneCompute, computeCancel)
+	releaseCompute := app.SetJobCancel(pipelinesvc.LaneCompute, computeCancel)
 	app.SetJobCancel(pipelinesvc.LaneData, dataCancel)
 
-	app.ClearJobCancel(pipelinesvc.LaneCompute)
+	releaseCompute()
 	assert.Equal(t, 1, app.CancelJobsInLanes(), "the finished compute job leaves only the download")
 	assert.Error(t, dataCtx.Err())
+}
+
+// TestSetJobCancel_SecondJobInTheLaneCannotDeregisterTheFirst pins GO-06's second half.
+// Registering was `a.jobCancels[lane] = cancel` and releasing was
+// `delete(a.jobCancels, lane)`, neither of which asked whose registration it was
+// touching. A second job that reached the lane — which the check-then-insert lock could
+// allow — replaced the running job's cancel func on the way in and deleted the
+// survivor's on the way out, so Stop cancelled neither. The interleaving is forced here
+// rather than raced for: the second job registers and releases while the first is still
+// running.
+func TestSetJobCancel_SecondJobInTheLaneCannotDeregisterTheFirst(t *testing.T) {
+	t.Parallel()
+	app := &App{}
+	firstCtx, firstCancel := context.WithCancel(context.Background())
+	secondCtx, secondCancel := context.WithCancel(context.Background())
+
+	releaseFirst := app.SetJobCancel(pipelinesvc.LaneCompute, firstCancel)
+	releaseSecond := app.SetJobCancel(pipelinesvc.LaneCompute, secondCancel)
+	releaseSecond()
+
+	require.Equal(t, 1, app.CancelJobsInLanes(pipelinesvc.LaneCompute),
+		"the lane must still hold the job that claimed it")
+	assert.Error(t, firstCtx.Err(), "Stop must cancel the job that is actually running")
+	assert.NoError(t, secondCtx.Err(), "the refused job is not the one Stop is aimed at")
+
+	releaseFirst()
+	assert.Zero(t, app.CancelJobsInLanes(pipelinesvc.LaneCompute))
 }
 
 // A nil App is the zero value handlers may hold in tests; none of these may panic.
@@ -63,8 +90,8 @@ func TestJobCancels_NilAppIsInert(t *testing.T) {
 	t.Parallel()
 	var app *App
 	assert.NotPanics(t, func() {
-		app.SetJobCancel(pipelinesvc.LaneData, func() {})
-		app.ClearJobCancel(pipelinesvc.LaneData)
+		release := app.SetJobCancel(pipelinesvc.LaneData, func() {})
+		release()
 		assert.Zero(t, app.CancelJobsInLanes())
 	})
 }

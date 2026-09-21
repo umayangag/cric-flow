@@ -12,6 +12,8 @@
 package runplan
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -107,6 +109,42 @@ type StepState struct {
 	MigrationID int `json:"migration_id,omitempty"`
 }
 
+// PlanOutcome is how a plan run ended, which is a different question from where any
+// one of its steps got to.
+//
+// A reader of the run had to infer it from the step list before: a plan whose last
+// step says CANCELLED could have been stopped by the operator, or could have been a
+// plan whose final step timed out on its own. "Was this stopped, or did it break?" is
+// the first question asked of a pipeline that did not finish, and it is now answered
+// rather than reconstructed (audit § 8.7).
+type PlanOutcome string
+
+const (
+	// OutcomeCompleted means every step the plan walked finished or was skipped.
+	OutcomeCompleted PlanOutcome = "COMPLETED"
+	// OutcomeFailed means a step failed, or could not be allowed to start.
+	OutcomeFailed PlanOutcome = "FAILED"
+	// OutcomeCancelled means the plan was stopped — by the operator, by a timeout, or
+	// by the process shutting down.
+	OutcomeCancelled PlanOutcome = "CANCELLED"
+)
+
+// OutcomeFor maps a plan run's terminal error to how the run ended.
+//
+// One decision point on purpose: the data_migrations status, the persisted plan state
+// and the plan payload on the wire all derive from this, so the three cannot disagree
+// about whether a run was stopped or broke.
+func OutcomeFor(runErr error) PlanOutcome {
+	switch {
+	case runErr == nil:
+		return OutcomeCompleted
+	case errors.Is(runErr, context.Canceled), errors.Is(runErr, context.DeadlineExceeded):
+		return OutcomeCancelled
+	default:
+		return OutcomeFailed
+	}
+}
+
 // State is a plan run: which plan, which steps, and where it has got to.
 //
 // It is JSON because it lives in `data_migrations.metadata` — the run-history table
@@ -119,6 +157,8 @@ type State struct {
 	StartedAt string `json:"started_at,omitempty"`
 	// FinishedAt is when it stopped, for any reason.
 	FinishedAt string `json:"finished_at,omitempty"`
+	// Outcome is how it ended. Empty while the run is still going.
+	Outcome PlanOutcome `json:"outcome,omitempty"`
 }
 
 // planSteps returns the ordered step IDs for a named plan.

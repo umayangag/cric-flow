@@ -3,7 +3,6 @@ package runplan
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/umayangag/cric-flow/go-app/internal/tracking"
@@ -53,10 +52,13 @@ func (TrackingStore) Finish(ctx context.Context, id int, state State, runErr err
 		return fmt.Errorf("encode plan state: %w", err)
 	}
 
-	switch {
-	case runErr == nil:
+	// The row's status and the state's own Outcome come from one decision (OutcomeFor),
+	// so run history and the plan payload cannot disagree about whether a run was
+	// stopped or broke.
+	switch OutcomeFor(runErr) {
+	case OutcomeCompleted:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusCompleted, encoded, "")
-	case errors.Is(runErr, context.Canceled), errors.Is(runErr, context.DeadlineExceeded):
+	case OutcomeCancelled:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusCancelled, encoded, runErr.Error())
 	default:
 		return tracking.UpdateMigrationStatus(ctx, id, tracking.StatusFailed, encoded, runErr.Error())
