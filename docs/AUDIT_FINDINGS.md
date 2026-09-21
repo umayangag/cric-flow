@@ -331,7 +331,7 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 
 ## 9. Fixed
 
-### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium** — PR #PRNUM
+### GO-07 — `/xi/predict-win` and `/performance/predict` never told the toss  **Medium** — PR #331
 
 `ml_xi_client.go:100-114` (`mlXIWinRequest`) and `:453-461` (`mlPerformanceRequest`) omit `team1_bats_first`, which `models/xi.py:155-157, 253` accept and `xi_service.py:540, 586-597` use. For TEST (non-simulated) the headline P(win) and per-player numbers are toss-marginalised even when the caller sent the toss, and the response's `honoured: false` note blames the format. `objective_probability` / constraint checks are toss-blind everywhere. **Fix.** Add `Team1BatsFirst *bool` to both structs and thread `fix.team1BatsFirst` through.
 
