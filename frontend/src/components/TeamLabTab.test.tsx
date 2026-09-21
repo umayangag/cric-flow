@@ -135,6 +135,7 @@ function prediction(
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.61, source: 'display', predicted_winner: 'India (women)' },
     toss: { team1_bats_first: null, reading: 'marginalised' },
+    venue: { resolved: false, note: 'no venue was named' },
     team1_pool: defaultPool,
     team2_pool: defaultPool,
     ...overrides,

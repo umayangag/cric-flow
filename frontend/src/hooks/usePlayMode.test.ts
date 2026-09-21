@@ -35,6 +35,7 @@ function answer(
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.6, source: 'display', predicted_winner: 'India (men)' },
     toss: { team1_bats_first: null, reading: 'marginalised' },
+    venue: { resolved: false, note: 'no venue was named' },
     team1_pool: pool,
     team2_pool: pool,
     ...overrides,
