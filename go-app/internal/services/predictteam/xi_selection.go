@@ -83,6 +83,10 @@ type XIWinPredictor interface {
 // probability, and the rating state it was read from.
 type XIWinResult struct {
 	Team1WinProbability float64
+	// TossMarginalised is what ml-service says it did: true where it averaged both
+	// batting orders, false where it read the one it was given. It is checked against the
+	// toss that was asked for rather than trusted, for the reason /simulate's is (§8.7).
+	TossMarginalised bool
 	// Team1Check and Team2Check are the constraint checks, present only where the
 	// request asked for them — that is, only where the caller pinned the elevens.
 	Team1Check *XIConstraintCheck
@@ -180,7 +184,12 @@ type XIWinRequest struct {
 	Team1ID         int64
 	Team2ID         int64
 	VenueID         int64
-	AsOf            time.Time
+	// Team1BatsFirst is the toss, where the caller named one; nil averages both batting
+	// orders. The display model reads it in every format (GO-07) — it is the innings the
+	// side's aggregates are read for, not a property of the simulator — so it is sent
+	// whether or not this format has an innings length to simulate.
+	Team1BatsFirst *bool
+	AsOf           time.Time
 	// Team1Constraints and Team2Constraints ask for a constraint check on the eleven
 	// being scored. Nil on the searched path, where the optimiser applied them already.
 	Team1Constraints *ConstraintCheckRequest

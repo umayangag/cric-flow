@@ -29,12 +29,14 @@ func (f *fakeSimulator) SimulateMatchXI(
 type fakePerformance struct {
 	result *XIPerformanceResult
 	err    error
+	req    XIPerformanceRequest
 }
 
 func (f *fakePerformance) PredictPerformance(
 	_ context.Context,
-	_ XIPerformanceRequest,
+	req XIPerformanceRequest,
 ) (*XIPerformanceResult, error) {
+	f.req = req
 	return f.result, f.err
 }
 
@@ -212,6 +214,9 @@ func TestApplyMatchForecast_RefusesAForecastFromAnotherRunThanTheSelection(t *te
 			apply: func(result *Result) error {
 				forecast := &XIPerformanceResult{
 					Served: servedFromRunB,
+					// The fixture names no toss, so the forecast that answers it is the
+					// marginalised one; anything else is refused before the run is read.
+					InningsMarginalised: true,
 					Players: []XIPerformancePlayer{
 						{PlayerKey: "a1", Side: Team1Side},
 						{PlayerKey: "b1", Side: Team2Side},
@@ -246,8 +251,11 @@ func TestApplyMatchForecast_RefusesAForecastFromAnotherRunThanTheSelection(t *te
 func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T) {
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
-		Served:  servedFromRunA,
-		Players: []XIPerformancePlayer{{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}}},
+		Served:              servedFromRunA,
+		InningsMarginalised: true,
+		Players: []XIPerformancePlayer{
+			{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{Median: 26}},
+		},
 	}}
 
 	err := applyPerformanceForecast(context.Background(), predictor, twoSidedFixture("TEST"),
@@ -263,7 +271,8 @@ func TestApplyPerformanceForecast_RefusesAPlayerItHasNoForecastFor(t *testing.T)
 func TestApplyPerformanceForecast_ReadsEachSidesOwnRow(t *testing.T) {
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
-		Served: servedFromRunA,
+		Served:              servedFromRunA,
+		InningsMarginalised: true,
 		Players: []XIPerformancePlayer{
 			{PlayerKey: "shared", Side: Team1Side, Runs: XISimulatedRange{Median: 61}},
 			{PlayerKey: "shared", Side: Team2Side, Runs: XISimulatedRange{Median: 12}},
@@ -287,7 +296,8 @@ func TestApplyPerformanceForecast_ReadsEachSidesOwnRow(t *testing.T) {
 func TestApplyPerformanceForecast_RefusesARowFromTheWrongSide(t *testing.T) {
 	t.Parallel()
 	predictor := &fakePerformance{result: &XIPerformanceResult{
-		Served: servedFromRunA,
+		Served:              servedFromRunA,
+		InningsMarginalised: true,
 		Players: []XIPerformancePlayer{
 			{PlayerKey: "a1", Side: Team1Side},
 			{PlayerKey: "b1", Side: Team1Side},
@@ -388,10 +398,26 @@ func TestApplyXISimulation_CarriesEachTossStateToTheSimulatorAndNamesIt(t *testi
 		name             string
 		team1BatsFirst   *bool
 		tossMarginalised bool
+		wantReading      string
 	}{
-		{name: "unknown draws both batting orders", team1BatsFirst: nil, tossMarginalised: true},
-		{name: "team1 bats first", team1BatsFirst: boolValue(true), tossMarginalised: false},
-		{name: "team2 bats first", team1BatsFirst: boolValue(false), tossMarginalised: false},
+		{
+			name:             "unknown draws both batting orders",
+			team1BatsFirst:   nil,
+			tossMarginalised: true,
+			wantReading:      TossReadingMarginalised,
+		},
+		{
+			name:             "team1 bats first",
+			team1BatsFirst:   boolValue(true),
+			tossMarginalised: false,
+			wantReading:      TossReadingAware,
+		},
+		{
+			name:             "team2 bats first",
+			team1BatsFirst:   boolValue(false),
+			tossMarginalised: false,
+			wantReading:      TossReadingAware,
+		},
 	}
 
 	for i := range testCases {
@@ -410,8 +436,7 @@ func TestApplyXISimulation_CarriesEachTossStateToTheSimulatorAndNamesIt(t *testi
 			require.NoError(t, err)
 			assert.Equal(t, tc.team1BatsFirst, simulator.req.Team1BatsFirst, "the toss reaches /simulate")
 			assert.Equal(t, tc.team1BatsFirst, result.Toss.Team1BatsFirst, "and the response names it")
-			assert.True(t, result.Toss.Honoured)
-			assert.Empty(t, result.Toss.Note)
+			assert.Equal(t, tc.wantReading, result.Toss.Reading, "and names which reading it is")
 			require.NotNil(t, result.Scorecard)
 			assert.Equal(t, tc.tossMarginalised, result.Scorecard.TossMarginalised)
 		})
@@ -461,20 +486,36 @@ func TestApplyXISimulation_RefusesDrawsThatIgnoredTheTossAsked(t *testing.T) {
 	}
 }
 
-// A format with no innings length has no batting order to fix, and the response says the
-// toss was not used rather than returning numbers that quietly ignored it (§8.7).
-func TestTossNotSimulated_SaysANamedTossWasNotUsed(t *testing.T) {
+// The response names which of the two quantities its probabilities are, and what in the
+// answer did not read the toss (§8.7).
+//
+// It used to say a named toss "was not used" and blame the format for it. The format was
+// never the reason -- `bats_first` orients the per-player row and the batting order is a
+// column the display model reads, in TEST as in every other format -- the reason was that
+// go-app did not send the field (GO-07).
+func TestTossRead_NamesTheReadingAndTheCarveOut(t *testing.T) {
 	t.Parallel()
 
-	unknown := tossNotSimulated(nil)
+	unknown := tossRead(nil)
 	assert.Nil(t, unknown.Team1BatsFirst)
-	assert.True(t, unknown.Honoured, "asking for nothing and getting nothing is honoured")
-	assert.Empty(t, unknown.Note)
+	assert.Equal(t, TossReadingMarginalised, unknown.Reading)
+	assert.Empty(t, unknown.Note, "nothing was carved out of an answer that read no toss")
 
-	named := tossNotSimulated(boolValue(true))
-	assert.Nil(t, named.Team1BatsFirst, "there was no batting order to fix, so none is claimed")
-	assert.False(t, named.Honoured)
-	assert.Contains(t, named.Note, "no innings length")
+	named := tossRead(boolValue(true))
+	require.NotNil(t, named.Team1BatsFirst)
+	assert.True(t, *named.Team1BatsFirst)
+	assert.Equal(t, TossReadingAware, named.Reading)
+	assert.Contains(t, named.Note, "toss-blind objective",
+		"the selection and the constraint checks are named as the part that did not read it")
+	assert.NotContains(t, named.Note, "no innings length", "the format is not the reason and is not blamed")
+}
+
+// The two readings are a declared vocabulary: the Lab labels the card off the value, and
+// the ops contract is asserted from both sides (H-24).
+func TestTossReadings_AreTheDeclaredVocabulary(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{TossReadingAware, TossReadingMarginalised}, TossReadings())
 }
 
 func TestTossDescription_NamesEachState(t *testing.T) {
@@ -487,4 +528,157 @@ func TestTossDescription_NamesEachState(t *testing.T) {
 
 func boolValue(v bool) *bool {
 	return &v
+}
+
+// GO-07: the toss the caller named reaches /performance/predict, and the answer says which
+// of the two readings it is.
+//
+// The performance model orients every player row by `bats_first`, so the toss moves the
+// per-player numbers on a format with no innings length exactly as it moves them on one
+// with. This path sent nil whatever the caller asked for, on the theory that a format with
+// no innings length has no batting order -- so the numbers were marginalised and the
+// response blamed the format for it.
+func TestApplyPerformanceForecast_CarriesEachTossStateToTheModelAndNamesTheReading(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                string
+		team1BatsFirst      *bool
+		inningsMarginalised bool
+		wantReading         string
+		wantNote            bool
+	}{
+		{
+			name:                "unknown averages both batting orders",
+			team1BatsFirst:      nil,
+			inningsMarginalised: true,
+			wantReading:         TossReadingMarginalised,
+			wantNote:            false,
+		},
+		{
+			name:                "team1 bats first",
+			team1BatsFirst:      boolValue(true),
+			inningsMarginalised: false,
+			wantReading:         TossReadingAware,
+			wantNote:            true,
+		},
+		{
+			name:                "team2 bats first",
+			team1BatsFirst:      boolValue(false),
+			inningsMarginalised: false,
+			wantReading:         TossReadingAware,
+			wantNote:            true,
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			predictor := &fakePerformance{result: performanceResultForBothSides(tc.inningsMarginalised)}
+			fix := twoSidedFixture("TEST")
+			fix.team1BatsFirst = tc.team1BatsFirst
+			result := resultWithOnePlayerEachSide()
+
+			err := applyPerformanceForecast(
+				context.Background(), predictor, fix, []string{"a1"}, []string{"b1"}, result)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.team1BatsFirst, predictor.req.Team1BatsFirst,
+				"the toss reaches /performance/predict")
+			assert.Equal(t, tc.team1BatsFirst, result.Toss.Team1BatsFirst)
+			assert.Equal(t, tc.wantReading, result.Toss.Reading)
+			assert.Equal(t, tc.wantNote, result.Toss.Note != "",
+				"a toss-aware answer names what in it stayed toss-blind; a marginalised one has nothing to name")
+		})
+	}
+}
+
+// A named toss answered by a marginalised forecast is the request being silently changed,
+// and `innings_marginalised` is the one field that can catch it (§8.7, the check the
+// simulated path already made for the same reason).
+func TestApplyPerformanceForecast_RefusesAForecastThatIgnoredTheTossAsked(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                string
+		team1BatsFirst      *bool
+		inningsMarginalised bool
+		want                string
+	}{
+		{
+			name:                "a named toss answered over both orders",
+			team1BatsFirst:      boolValue(true),
+			inningsMarginalised: true,
+			want:                "the toss was team1 bats first",
+		},
+		{
+			name:                "an unknown toss answered at one order",
+			team1BatsFirst:      nil,
+			inningsMarginalised: false,
+			want:                "the toss was unknown",
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			predictor := &fakePerformance{result: performanceResultForBothSides(tc.inningsMarginalised)}
+			fix := twoSidedFixture("TEST")
+			fix.team1BatsFirst = tc.team1BatsFirst
+
+			err := applyPerformanceForecast(context.Background(), predictor, fix,
+				[]string{"a1"}, []string{"b1"}, resultWithOnePlayerEachSide())
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+			assert.Contains(t, err.Error(), "innings_marginalised")
+		})
+	}
+}
+
+// performanceResultForBothSides is one forecast row per side, which is what the two
+// selected players in resultWithOnePlayerEachSide need.
+func performanceResultForBothSides(inningsMarginalised bool) *XIPerformanceResult {
+	return &XIPerformanceResult{
+		Served:              servedFromRunA,
+		InningsMarginalised: inningsMarginalised,
+		Players: []XIPerformancePlayer{
+			{PlayerKey: "a1", Side: Team1Side, Runs: XISimulatedRange{P10: 3, Median: 26, P90: 71}},
+			{PlayerKey: "b1", Side: Team2Side, Runs: XISimulatedRange{P10: 1, Median: 12, P90: 40}},
+		},
+	}
+}
+
+// GO-07: the win call is told the toss too. The displayed probability is the headline on
+// every format with no innings length, and until this it was read over both batting orders
+// however loudly the caller named one.
+func TestNewWinRequest_CarriesTheTossAndTheFixture(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		team1BatsFirst *bool
+	}{
+		{name: "unknown sends no toss", team1BatsFirst: nil},
+		{name: "team1 bats first", team1BatsFirst: boolValue(true)},
+		{name: "team2 bats first", team1BatsFirst: boolValue(false)},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fix := twoSidedFixture("TEST")
+			fix.team1BatsFirst = tc.team1BatsFirst
+
+			req := newWinRequest(fix, xiSelection{Team1Keys: []string{"a1"}, Team2Keys: []string{"b1"}})
+
+			assert.Equal(t, tc.team1BatsFirst, req.Team1BatsFirst, "the toss reaches /xi/predict-win")
+			assert.Equal(t, "TEST", req.Format)
+			assert.Equal(t, []string{"a1"}, req.Team1PlayerKeys)
+			assert.Nil(t, req.Team1Constraints, "an unpinned eleven asks for no constraint check")
+		})
+	}
 }

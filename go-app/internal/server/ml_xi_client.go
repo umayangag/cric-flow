@@ -104,6 +104,10 @@ type mlXIWinRequest struct {
 	Team1ID        *int64   `json:"team1_id,omitempty"`
 	Team2ID        *int64   `json:"team2_id,omitempty"`
 	VenueID        *int64   `json:"venue_id,omitempty"`
+	// Team1BatsFirst is the toss, nil before it. The display model reads the batting
+	// order in every format, so a caller who names one is answered at that order rather
+	// than over the average of both (GO-07); the response says which it answered.
+	Team1BatsFirst *bool `json:"team1_bats_first,omitempty"`
 	// Team1Constraints and Team2Constraints ask ml-service to check the eleven it is
 	// scoring against these constraints instead of selecting under them (P1-2). Omitted
 	// on the searched path, where the optimiser applied them while it searched.
@@ -160,8 +164,12 @@ func constraintPayload(req *predictteam.ConstraintCheckRequest) *mlXIConstraints
 }
 
 type mlXIWinResponse struct {
-	Team1WinProbability  float64              `json:"team1_win_probability"`
+	Team1WinProbability float64 `json:"team1_win_probability"`
+	// ObjectiveProbability is the optimiser's value and is marginalised over the batting
+	// order whatever the request said — its model has no batting-order feature. It is
+	// decoded and not served: nothing on the surface shows it.
 	ObjectiveProbability float64              `json:"objective_probability"`
+	TossMarginalised     bool                 `json:"toss_marginalised"`
 	Team1ConstraintCheck *mlXIConstraintCheck `json:"team1_constraint_check"`
 	Team2ConstraintCheck *mlXIConstraintCheck `json:"team2_constraint_check"`
 	ServedRatings        mlServedRatings      `json:"served_ratings"`
@@ -240,6 +248,7 @@ func (c *MLClient) PredictMatchWinXI(
 		Team1ID:          optionalID(req.Team1ID),
 		Team2ID:          optionalID(req.Team2ID),
 		VenueID:          optionalID(req.VenueID),
+		Team1BatsFirst:   req.Team1BatsFirst,
 		Team1Constraints: constraintPayload(req.Team1Constraints),
 		Team2Constraints: constraintPayload(req.Team2Constraints),
 		AsOf:             dateParam(req.AsOf),
@@ -253,6 +262,7 @@ func (c *MLClient) PredictMatchWinXI(
 	}
 	return &predictteam.XIWinResult{
 		Team1WinProbability: out.Team1WinProbability,
+		TossMarginalised:    out.TossMarginalised,
 		Team1Check:          out.Team1ConstraintCheck.check(),
 		Team2Check:          out.Team2ConstraintCheck.check(),
 		Served:              out.ServedRatings.served(),
@@ -473,10 +483,10 @@ type mlPerformanceRequest struct {
 	Team1ID        *int64   `json:"team1_id,omitempty"`
 	Team2ID        *int64   `json:"team2_id,omitempty"`
 	VenueID        *int64   `json:"venue_id,omitempty"`
-	// Team1BatsFirst is nil before the toss, when both batting orders are averaged. The
-	// Lab's quantiles path never sets it — a format with no innings length has no toss to
-	// know — but the auction's projection lets the operator set it, because "what would he
-	// do batting first at this ground" is a different question from the marginal one.
+	// Team1BatsFirst is nil before the toss, when both batting orders are averaged.
+	// `bats_first` is a per-player feature of the row this model predicts, so it orients
+	// the forecast in every format — including the ones with no innings length, which the
+	// Lab's quantiles path used to leave nil on the theory that they had no toss (GO-07).
 	Team1BatsFirst *bool  `json:"team1_bats_first,omitempty"`
 	AsOf           string `json:"as_of,omitempty"`
 	// MatchDate (YYYY-MM-DD) is the day the fixture is played (SERVE-04), as on the

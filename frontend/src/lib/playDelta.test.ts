@@ -35,7 +35,7 @@ function answer(
     record: { stored: true, id: 'f0f8f1a4-0f0e-4a6b-9b6f-2c5d4a1e0001' },
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.6, source: 'display', predicted_winner: 'India (men)' },
-    toss: { team1_bats_first: null, honoured: true },
+    toss: { team1_bats_first: null, reading: 'marginalised' },
     scorecard: {
       samples: 2000,
       toss_marginalised: true,
@@ -104,7 +104,7 @@ describe('playDelta', () => {
       ),
     ).toBeNull();
     expect(
-      playDelta(previous, answer({ toss: { team1_bats_first: true, honoured: true } })),
+      playDelta(previous, answer({ toss: { team1_bats_first: true, reading: 'toss_aware' } })),
     ).toBeNull();
     expect(playDelta(previous, answer({ run_id: 'a-later-run' }))).toBeNull();
     expect(playDelta(previous, answer({ ratings_through: '2026-09-09' }))).toBeNull();

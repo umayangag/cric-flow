@@ -324,23 +324,13 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team2PoolSummary: fix.summary2,
 	}
 
-	winRequest := XIWinRequest{
-		Format:          fix.format,
-		Team1PlayerKeys: selection.Team1Keys,
-		Team2PlayerKeys: selection.Team2Keys,
-		Team1ID:         fix.team1.ClubID,
-		Team2ID:         fix.team2.ClubID,
-		VenueID:         fix.venueID,
-		AsOf:            fix.asOf,
-	}
-	// A pinned eleven is checked against the constraints on the call that scores it, so
-	// the check describes the same eleven the probability beside it describes.
-	if fix.isPinned {
-		winRequest.Team1Constraints, winRequest.Team2Constraints = constraintCheckRequests(fix)
-	}
-	win, err := service.PredictMatchWinXI(ctx, winRequest)
+	win, err := service.PredictMatchWinXI(ctx, newWinRequest(fix, selection))
 	if err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
+	}
+	if err := refuseTossMismatch(
+		"win probability", fix.team1BatsFirst, win.TossMarginalised, "toss_marginalised"); err != nil {
+		return nil, err
 	}
 	if err := result.Adopt(win.Served); err != nil {
 		return nil, fmt.Errorf("win probability: %w", err)
@@ -368,6 +358,32 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	return result, nil
 }
 
+// newWinRequest is the fixture and the two chosen elevens as /xi/predict-win takes them.
+//
+// The toss goes with them. The display model reads the batting order in every format — it
+// is the innings a side's aggregates are read for, not a property of the simulator — so a
+// caller who names one is answered at that order rather than over the average of both,
+// which was the defect: the field existed on both sides of the wire and go-app never set
+// it (GO-07).
+func newWinRequest(fix fixture, selection xiSelection) XIWinRequest {
+	req := XIWinRequest{
+		Format:          fix.format,
+		Team1PlayerKeys: selection.Team1Keys,
+		Team2PlayerKeys: selection.Team2Keys,
+		Team1ID:         fix.team1.ClubID,
+		Team2ID:         fix.team2.ClubID,
+		VenueID:         fix.venueID,
+		Team1BatsFirst:  fix.team1BatsFirst,
+		AsOf:            fix.asOf,
+	}
+	// A pinned eleven is checked against the constraints on the call that scores it, so
+	// the check describes the same eleven the probability beside it describes.
+	if fix.isPinned {
+		req.Team1Constraints, req.Team2Constraints = constraintCheckRequests(fix)
+	}
+	return req
+}
+
 // applyMatchForecast fills in the per-player points and ranges, and the scorecard where
 // there is one to fill: the simulator for formats with an innings length, the performance
 // model's own quantiles for the rest (they have no innings to draw, but every player still
@@ -382,9 +398,6 @@ func applyMatchForecast(
 	if FormatHasInningsLength(fix.format) {
 		return applyXISimulation(ctx, service, fix, xi1, xi2, result)
 	}
-	// A named toss cannot be honoured without an innings to bat in, and the response says
-	// so rather than returning numbers that quietly ignored it (§8.7).
-	result.Toss = tossNotSimulated(fix.team1BatsFirst)
 	return applyPerformanceForecast(ctx, service, fix, xi1, xi2, result)
 }
 

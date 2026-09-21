@@ -145,6 +145,10 @@
     "simulator",
     "performance_quantiles"
   ],
+  "toss_readings": [
+    "toss_aware",
+    "marginalised"
+  ],
   "selection_objectives": [
     "win",
     "ratings",

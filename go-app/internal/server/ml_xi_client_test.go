@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -483,4 +484,148 @@ func TestOptimizeXI_WithNoMustIncludeSendsAnEmptyLock(t *testing.T) {
 	sent, present := (*captured)["constraints"].(map[string]interface{})
 	require.True(t, present)
 	assert.Equal(t, []interface{}{}, sent["must_include"])
+}
+
+// GO-07: the toss reaches the two calls that were never told it, and the win answer says
+// which of the two readings it carries.
+//
+// `team1_bats_first` has been on `XiWinRequest` and `PerformancePredictRequest` since P1-1,
+// and the display model reads the batting order in every format. go-app's structs simply
+// omitted the field, so a caller who named the toss was answered the reading averaged over
+// both batting orders -- 0.04 apart from the one asked for in TEST, and 0.14 at most.
+func TestWinAndPerformancePayloads_CarryTheToss(t *testing.T) {
+	t.Parallel()
+
+	winResponse := `{"team1_win_probability":0.61,"objective_probability":0.58,
+	  "toss_marginalised":false,"team1_constraint_check":null,"team2_constraint_check":null,
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+	performanceResponse := `{"players":[],"innings_marginalised":false,
+	  "venue_context":{"venue_bf_rate":0.5,"venue_n":0,"neutral":true},
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+
+	testCases := []struct {
+		name      string
+		response  string
+		call      func(*MLClient, *bool) error
+		batsFirst *bool
+		wantField bool
+		wantValue bool
+	}{
+		{
+			name:     "a win prediction is told who bats first",
+			response: winResponse,
+			call: func(client *MLClient, batsFirst *bool) error {
+				_, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+					Format:          "TEST",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					Team1BatsFirst:  batsFirst,
+				})
+				return err
+			},
+			batsFirst: boolPtr(true),
+			wantField: true,
+			wantValue: true,
+		},
+		{
+			name:     "a win prediction is told who chases",
+			response: winResponse,
+			call: func(client *MLClient, batsFirst *bool) error {
+				_, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+					Format:          "TEST",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					Team1BatsFirst:  batsFirst,
+				})
+				return err
+			},
+			batsFirst: boolPtr(false),
+			wantField: true,
+			wantValue: false,
+		},
+		{
+			name:     "no toss is no field, and the model averages both orders",
+			response: winResponse,
+			call: func(client *MLClient, batsFirst *bool) error {
+				_, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+					Format:          "TEST",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					Team1BatsFirst:  batsFirst,
+				})
+				return err
+			},
+			batsFirst: nil,
+			wantField: false,
+		},
+		{
+			name:     "a performance prediction is told the toss on a format with no innings length",
+			response: performanceResponse,
+			call: func(client *MLClient, batsFirst *bool) error {
+				_, err := client.PredictPerformance(context.Background(), predictteam.XIPerformanceRequest{
+					Format:          "TEST",
+					Team1PlayerKeys: []string{"a1"},
+					Team2PlayerKeys: []string{"b1"},
+					Team1BatsFirst:  batsFirst,
+				})
+				return err
+			},
+			batsFirst: boolPtr(true),
+			wantField: true,
+			wantValue: true,
+		},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, captured := xiCaptureServer(t, tc.response)
+
+			err := tc.call(client, tc.batsFirst)
+
+			require.NoError(t, err)
+			value, ok := (*captured)["team1_bats_first"]
+			require.Equal(t, tc.wantField, ok, "the toss is sent exactly when one was named")
+			if tc.wantField {
+				assert.Equal(t, tc.wantValue, value)
+			}
+		})
+	}
+}
+
+// The win answer says which reading it is, rather than leaving the caller to infer it from
+// its own request (§8.7). The two are different numbers, so a caller holding one needs to
+// know which.
+func TestPredictMatchWinXI_ReportsWhichReadingItAnswered(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		tossMarginalised bool
+	}{
+		{name: "a marginalised answer says so", tossMarginalised: true},
+		{name: "a toss-aware answer says so", tossMarginalised: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			response := fmt.Sprintf(`{"team1_win_probability":0.61,"objective_probability":0.58,
+			  "toss_marginalised":%t,"team1_constraint_check":null,"team2_constraint_check":null,
+			  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`,
+				tc.tossMarginalised)
+			client, _ := xiCaptureServer(t, response)
+
+			result, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+				Format:          "TEST",
+				Team1PlayerKeys: []string{"a1"},
+				Team2PlayerKeys: []string{"b1"},
+			})
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.tossMarginalised, result.TossMarginalised)
+		})
+	}
 }

@@ -11,7 +11,7 @@ import type {
 } from '../types';
 
 /** The default toss: unknown, which is the simulator drawing both batting orders. */
-const unknownToss: PredictTossSummary = { team1_bats_first: null, honoured: true };
+const unknownToss: PredictTossSummary = { team1_bats_first: null, reading: 'marginalised' };
 
 /** The rating state the answer names: the run and the date its ratings run through (P1-5). */
 const served: PredictServedRatings = {
@@ -168,7 +168,7 @@ describe('MatchScorecard', () => {
   it('names the side that bats first when the toss is known', () => {
     renderCard({
       scorecard: { ...scorecard, toss_marginalised: false },
-      toss: { team1_bats_first: false, honoured: true },
+      toss: { team1_bats_first: false, reading: 'toss_aware' },
     });
 
     expect(screen.getByText('toss: AUS bats first')).toBeInTheDocument();
@@ -180,18 +180,21 @@ describe('MatchScorecard', () => {
     expect(screen.getByText('IND (batting second):')).toBeInTheDocument();
   });
 
-  // §8.7: an input the forecast could not use is said so on the answer, not dropped.
-  it('says when a named toss could not be used', () => {
+  // §8.7: a toss-aware answer names what in it stayed toss-blind, on the card rather than
+  // only in the payload. It used to say the toss "was not used" and blame the format; the
+  // toss is used now, and what is carved out is the selection (GO-07).
+  it('names what in a toss-aware answer did not read the toss', () => {
     renderCard({
       scorecard: undefined,
       forecast: quantiles,
       toss: {
-        team1_bats_first: null,
-        honoured: false,
-        note: 'This format has no innings length, so the toss you named was not used.',
+        team1_bats_first: true,
+        reading: 'toss_aware',
+        note: 'The eleven was selected on the toss-blind objective.',
       },
     });
 
-    expect(screen.getByText(/the toss you named was not used/)).toBeInTheDocument();
+    expect(screen.getByText('toss: IND bats first')).toBeInTheDocument();
+    expect(screen.getByText(/selected on the toss-blind objective/)).toBeInTheDocument();
   });
 });

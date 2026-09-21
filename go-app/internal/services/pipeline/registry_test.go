@@ -89,6 +89,13 @@ type contractDoc struct {
 	// number shown with no model behind it. Two sides, not three: go-app decides both.
 	WinProbabilitySources []string `json:"win_probability_sources"`
 	ForecastSources       []string `json:"forecast_sources"`
+	// TossReadings is which of the two quantities a prediction's probabilities are
+	// (H-24, GO-07). They are two different numbers — 0.04 apart on average in TEST —
+	// and since the serving path forwards a named toss, the same fixture is answered
+	// with either depending on what the caller said. The Lab labels the answer from this
+	// value, so a reading the UI cannot spell would be a probability on screen with no
+	// statement of which of the two it is.
+	TossReadings []string `json:"toss_readings"`
 	// SelectionObjectives is how an eleven was arrived at (H-24, P2-3). It became a
 	// declared vocabulary with the prediction record: go-app stores it as a column and
 	// puts it on the record's listing, and it is the one value that separates an eleven
@@ -217,6 +224,7 @@ func buildContract() contractDoc {
 		SelectionRoles:         predictteam.SelectionRoles(),
 		WinProbabilitySources:  predictteam.WinProbabilitySources(),
 		ForecastSources:        predictteam.ForecastSources(),
+		TossReadings:           predictteam.TossReadings(),
 		SelectionObjectives:    predictteam.SelectionObjectives(),
 		FreshnessStatuses:      freshness.Statuses(),
 		RetrainStatuses:        freshness.RetrainStatuses(),

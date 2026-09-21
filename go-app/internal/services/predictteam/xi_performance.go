@@ -27,8 +27,10 @@ type XIPerformanceRequest struct {
 	Team2ID         int64
 	VenueID         int64
 	// Team1BatsFirst is nil before the toss, when the model averages both batting orders.
-	// The Lab's quantiles path leaves it nil — a format with no innings length has no toss
-	// — and the auction's projection sets it where the operator asks a toss-known question.
+	// `bats_first` is a feature of the per-player row this model predicts, so it orients
+	// the forecast whether or not the format has an innings length to simulate: the Lab's
+	// quantiles path sends the caller's toss for the same reason the auction's projection
+	// does (GO-07).
 	Team1BatsFirst *bool
 	AsOf           time.Time
 	// MatchDate is the day the fixture is played. Every date-dependent feature in the row
@@ -103,12 +105,18 @@ func applyPerformanceForecast(
 		Team1ID:         fix.team1.ClubID,
 		Team2ID:         fix.team2.ClubID,
 		VenueID:         fix.venueID,
+		Team1BatsFirst:  fix.team1BatsFirst,
 		AsOf:            fix.asOf,
 		MatchDate:       fix.matchDate,
 		Gender:          fix.gender,
 	})
 	if err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
+	}
+	if err := refuseTossMismatch(
+		"performance forecast", fix.team1BatsFirst, forecast.InningsMarginalised, "innings_marginalised",
+	); err != nil {
+		return err
 	}
 	if err := result.Adopt(forecast.Served); err != nil {
 		return fmt.Errorf("performance forecast: %w", err)
@@ -128,6 +136,7 @@ func applyPerformanceForecast(
 		Note: "This format has no innings length, so there is no simulated match: the " +
 			"per-player numbers are the performance model's own quantiles, and there is no total.",
 	}
+	result.Toss = tossRead(fix.team1BatsFirst)
 	slog.InfoContext(ctx, "performance forecast applied",
 		slog.String("format", fix.format),
 		slog.Int("players", len(forecast.Players)),
