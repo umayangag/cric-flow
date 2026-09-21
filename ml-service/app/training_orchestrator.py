@@ -288,13 +288,6 @@ def run_training_subprocess(
     cmd = [sys.executable, "-m", module]
     if extra_args:
         cmd.extend(extra_args)
-    if logger:
-        logger.info(
-            "pipeline: starting training subprocess",
-            module=module,
-            extra_args=extra_args or [],
-            cwd=root,
-        )
     env = {**os.environ, "SKIP_PIPELINE_TRACKING": "1"}
     # Force subprocess to load config from ml-service root so MLQA/tuning use the same config as the server.
     config_path = os.path.join(root, "config.json")
@@ -320,6 +313,17 @@ def run_training_subprocess(
         ),
     )
     proc = run.process
+    # Logged once the process exists, and with its pid: announcing a start before the slot
+    # is claimed writes "starting" for a run that is then refused, and leaves the log
+    # claiming something that did not happen.
+    if logger:
+        logger.info(
+            "pipeline: starting training subprocess",
+            module=module,
+            extra_args=extra_args or [],
+            cwd=root,
+            pid=proc.pid,
+        )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_sec)
     except subprocess.TimeoutExpired as e:
