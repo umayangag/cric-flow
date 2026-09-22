@@ -118,24 +118,53 @@ func TestImportDir_SettlesNamesAndLineageAfterAFailedRun(t *testing.T) {
 
 // TestImportDir_ReportsBothTheFailedFilesAndAFailedSettlement pins the join: an early
 // return let whichever error came first hide the other, and an operator reading the log
-// could not tell that the lineage pass had also failed.
+// could not tell that a settlement step had also failed. Either step can be the one that
+// fails, and neither may hide the file that stopped the run.
 func TestImportDir_ReportsBothTheFailedFilesAndAFailedSettlement(t *testing.T) {
-	harness := newSettlementHarness(t, map[string]string{"match1.json": oneMatchFile})
-	failEveryTransaction(t)
-	harness.database.EXPECT().
-		UpdatePlayerDisplayNames(mock.Anything, mock.Anything).
-		Return(errors.New("settlement is down")).
-		Once()
-	harness.database.EXPECT().
-		ApplyTeamLineage(mock.Anything, mock.Anything).
-		Return(db.TeamLineageReport{}, nil).
-		Once()
+	testCases := []struct {
+		name            string
+		namesError      error
+		lineageError    error
+		expectedInError string
+	}{
+		{
+			name:            "display-name settlement fails",
+			namesError:      errors.New("name settlement is down"),
+			expectedInError: "name settlement is down",
+		},
+		{
+			name:            "the lineage pass fails",
+			lineageError:    errors.New("lineage pass is down"),
+			expectedInError: "lineage pass is down",
+		},
+	}
 
-	_, err := cricsheet.ImportDir(context.Background(), harness.dir, &cricsheet.Options{FailFast: true}, 1)
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			harness := newSettlementHarness(t, map[string]string{"match1.json": oneMatchFile})
+			failEveryTransaction(t)
+			harness.database.EXPECT().
+				UpdatePlayerDisplayNames(mock.Anything, mock.Anything).
+				Return(testCase.namesError).
+				Once()
+			harness.database.EXPECT().
+				ApplyTeamLineage(mock.Anything, mock.Anything).
+				Return(db.TeamLineageReport{}, testCase.lineageError).
+				Once()
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "db error", "the file that stopped the run")
-	assert.Contains(t, err.Error(), "settlement is down", "and the settlement that failed after it")
+			_, err := cricsheet.ImportDir(
+				context.Background(),
+				harness.dir,
+				&cricsheet.Options{FailFast: true},
+				1,
+			)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "db error", "the file that stopped the run")
+			assert.Contains(t, err.Error(), testCase.expectedInError, "and the step that failed after it")
+		})
+	}
 }
 
 // TestImportMatchFile_AppliesTheClubLineage covers the single-file path, which applied no
