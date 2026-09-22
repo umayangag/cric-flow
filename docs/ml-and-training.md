@@ -546,6 +546,10 @@ per (team name, gender) since migration `0004_identity.sql`, folded onto the clu
 by `opposition.canonical_id` since `0006_team_lineage.sql`, so a franchise that renames does not
 restart its Elo and head-to-head. The renames are reviewed data in `configs/team_lineage.json`
 (I-4), read by the go-app importer and by the Cricsheet-JSON source, so both agree. The
+importer writes the links after the files, whether or not every file landed, because an
+aborted run does not undo what already committed; `/ops/status` reports the coverage under
+`db.team_lineage`, where `incomplete` means both rows of a rename are in the archive and the
+link between them was never written (IMPORT-07). The
 wicket kinds are the same shape: `configs/wicket_kinds.json` says which kinds are the
 bowler's, which are wickets nobody took and which are not wickets at all, and the importer's
 `bowling_data.wickets` / `wickets_lost` and the pass's `wickets` / `dismissals` targets read

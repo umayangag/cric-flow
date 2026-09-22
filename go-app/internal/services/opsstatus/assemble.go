@@ -26,6 +26,10 @@ func AssembleResponse(ctx context.Context, dbProbe DBProbe) Response {
 	if connected, ok := resp.DB["connected"].(bool); ok {
 		resp.Services["api_readiness"] = connected
 	}
+	// Whether renamed clubs have been joined back up is a fact about the archive, not
+	// about the last import, so it is read here rather than trusted from a run's log: an
+	// import that aborted before settlement wrote nothing and logged nothing (IMPORT-07).
+	resp.DB["team_lineage"] = BuildTeamLineageSection(ctx, NewProductionTeamLineageProbe())
 	resp.Fielding = BuildFieldingSection(ctx, dbProbe)
 	resp.DBCompleteness = BuildDBCompletenessSection(ctx, insights, now)
 	// Artifacts + ML health

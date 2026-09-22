@@ -137,32 +137,24 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 		})
 	}
 
-	if err := g.Wait(); err != nil {
+	waitErr := g.Wait()
+	if waitErr != nil {
 		slog.Error(
 			"cricsheet.ImportDir wait failed",
 			slog.String("dir", dir),
 			slog.Int64("imported", count),
-			slog.Any("err", err),
+			slog.Any("err", waitErr),
 		)
-		return int(count), err
+	} else {
+		resources.RecordWorkerMemorySample(resources.KindImport, concurrency)
 	}
-	resources.RecordWorkerMemorySample(resources.KindImport, concurrency)
-	// Settle display names once every file has been read. A failure here leaves the
-	// identities correct and some names stale, which is worth a loud log but not worth
-	// discarding a completed import for.
-	if err := cricDB.UpdatePlayerDisplayNames(parentCtx, names.rows()); err != nil {
-		slog.Error("cricsheet.ImportDir could not settle player display names",
-			slog.String("dir", dir),
-			slog.Int("players", len(names.rows())),
-			slog.Any("err", err))
-		return int(count), fmt.Errorf("settle player display names: %w", err)
-	}
-	// Join up clubs that have renamed. Also after the files, and for the same reason as
-	// display names: both rows of a rename have to exist before they can be linked, and
-	// which file creates which is not something one file can know.
-	if err := applyTeamLineage(parentCtx, dir); err != nil {
-		return int(count), err
-	}
+	// Settlement runs whether every file landed or not, because an abort does not undo
+	// what already committed. The lookup rows -- players, clubs -- are written on the pool
+	// rather than inside the per-file transaction, so a run that stopped on file 9,000
+	// leaves 9,000 matches and every identity they touched behind it, unsettled. Returning
+	// early there did not leave the archive untouched; it left it half-written and looking
+	// finished (IMPORT-07).
+	settleErr := settleImport(parentCtx, dir, names)
 	if len(failedFiles) > 0 {
 		slog.Warn("cricsheet.ImportDir finished with skipped files",
 			slog.String("dir", dir),
@@ -170,7 +162,35 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 			slog.Int("skipped", len(failedFiles)),
 			slog.Any("skipped_files", failedFiles))
 	}
-	return int(count), nil
+	return int(count), errors.Join(waitErr, settleErr)
+}
+
+// settleImport finishes an import: the display names it collected across the files, then
+// the club lineage. Both run even when one fails, because they settle different things and
+// neither depends on the other; the errors are joined so a failure in one cannot hide the
+// other the way an early return did.
+//
+// Settling names over a partial import is safe, not a compromise. The rule picks the
+// spelling from the latest match date seen, and UpdatePlayerDisplayNames will not move a
+// name backwards -- it writes only where the new name_as_of is at or after the stored one.
+// So the worst a half-read directory can do is choose the name a smaller import would have
+// chosen. Not settling is the lossy option: the names already committed are whichever
+// file's goroutine created the row first, which is not reproducible.
+//
+// A nil collector means there are no names to settle -- the single-file path, which has
+// one spelling and nothing to weigh it against -- and only the lineage runs.
+func settleImport(ctx context.Context, dir string, names *displayNames) error {
+	var settleNamesErr error
+	if names != nil {
+		if err := cricDB.UpdatePlayerDisplayNames(ctx, names.rows()); err != nil {
+			slog.Error("cricsheet: could not settle player display names",
+				slog.String("dir", dir),
+				slog.Int("players", len(names.rows())),
+				slog.Any("err", err))
+			settleNamesErr = fmt.Errorf("settle player display names: %w", err)
+		}
+	}
+	return errors.Join(settleNamesErr, applyTeamLineage(ctx, dir))
 }
 
 // applyTeamLineage links every superseded team row to the club's current row, from the
@@ -180,7 +200,11 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 // a bug in committed data, and importing 22,734 files against a broken mapping only buries
 // it. A mapping that is simply *absent* does not fail -- a deployment may legitimately have
 // none, and losing the whole dataset over a search path would be the worse trade -- but it
-// warns, and the row count below is what makes its absence visible in a run's log.
+// warns, and the counts below are what make its absence visible in a run's log.
+//
+// The log names all three outcomes separately -- linked, written by this run, and absent
+// from this dataset -- because a single "rows changed: 0" was the same answer for a mapping
+// already applied, a dataset that stops before a rename, and a pass that never ran.
 func applyTeamLineage(ctx context.Context, dir string) error {
 	mapping, err := teamlineage.Load()
 	if err != nil {
@@ -196,22 +220,43 @@ func applyTeamLineage(ctx context.Context, dir string) error {
 	for _, r := range mapping.Renames {
 		renames = append(renames, db.TeamRename{FromName: r.From, ToName: r.To, Gender: r.Gender})
 	}
-	changed, err := cricDB.ApplyTeamLineage(ctx, renames)
+	report, err := cricDB.ApplyTeamLineage(ctx, renames)
 	if err != nil {
-		slog.Error("cricsheet.ImportDir could not apply the team lineage mapping",
+		slog.Error("cricsheet: could not apply the team lineage mapping",
 			slog.String("dir", dir),
 			slog.Any("err", err))
 		return fmt.Errorf("apply team lineage: %w", err)
 	}
 	slog.Info("cricsheet: team lineage applied",
-		slog.Int("renames", len(renames)),
-		slog.Int("rows_changed", changed))
+		slog.Int("renames", report.Requested()),
+		slog.Int("linked", report.Count(db.TeamLineageLinked)),
+		slog.Int("linked_by_this_run", report.Changed()),
+		slog.Any("absent_from_this_dataset", report.InState(db.TeamLineageAbsent)))
+	// A rename still unlinked after the pass that exists to link it should be
+	// unreachable: both rows are in the archive, so the statement matched them. Saying
+	// nothing is what made the original defect invisible, so the impossible case is loud.
+	if unlinked := report.InState(db.TeamLineageUnlinked); len(unlinked) > 0 {
+		slog.Error("cricsheet: team lineage left renamed clubs unlinked",
+			slog.String("dir", dir),
+			slog.Any("unlinked_renames", unlinked))
+	}
 	return nil
 }
 
 // ImportMatchFile parses a single Cricsheet JSON file and upserts stats into DB.
+//
+// It applies the club lineage afterwards but does not settle display names, and the
+// asymmetry is the point. Lineage is a closed reviewed list that says nothing about this
+// import: one file can create the opposition row that completes a rename -- lookup rows are
+// written on the pool, not in the file's transaction -- and linking it is idempotent, so
+// running it keeps the single-file path from leaving an archive the directory path would
+// not. Display-name settlement is the opposite: a computation over the files read, and one
+// file has no other spelling to weigh its own against, which is why the collector is nil
+// here (IMPORT-07). Lineage runs even when the file failed, for the same reason it runs
+// after an aborted directory import.
 func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
-	return importMatchFile(ctx, path, opts, nil)
+	importErr := importMatchFile(ctx, path, opts, nil)
+	return errors.Join(importErr, settleImport(ctx, filepath.Dir(path), nil))
 }
 
 // importMatchFile is ImportMatchFile with the import-wide display-name collector, which

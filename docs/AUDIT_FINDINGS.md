@@ -181,10 +181,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-07 — Fail-fast abort skips display-name settlement and team lineage  **Medium**
-
-`ingest.go:113-121, 126, 136`: on `g.Wait()` error the function returns before `UpdatePlayerDisplayNames` and `applyTeamLineage`. Committed files stay; `opposition.canonical_id` is never written, so Delhi Daredevils/Capitals etc. remain two clubs with reset Elo. `ImportMatchFile` (`ingest.go:186-188`) never applies lineage either. `ApplyTeamLineage` returning 0 is "the healthy answer" (`repo_lookup.go:472-474`) so nothing flags it. **Fix.** Run settlement after `Wait` regardless of error; surface `canonical_id` coverage in `/ops/status`.
-
 ### IMPORT-08 — Venue identity is the raw string; `normalized_name` never populated  **Medium · retrain**
 
 `ingest.go:251-257` (`firstNonEmpty(info.Venue, info.City)`), `repo_lookup.go:434-436` upserts on `venue_name` only; `0001_baseline.sql:703-706` has `normalized_name` with a unique index that nothing writes. "M Chinnaswamy Stadium" / "…, Bangalore" / "…, Bengaluru" are three venues with separate familiarity and scoring baselines (`docs/config-and-data.md:599` already notes "four spelling pairs of one ground"). A blank venue makes the city a venue. `GetVenueID` errors are swallowed (`ingest.go:254`).
@@ -322,6 +318,20 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-07 — Fail-fast abort skips display-name settlement and team lineage  **Medium** — PR #333
+
+`ingest.go:113-121, 126, 136`: on `g.Wait()` error the function returns before `UpdatePlayerDisplayNames` and `applyTeamLineage`. Committed files stay; `opposition.canonical_id` is never written, so Delhi Daredevils/Capitals etc. remain two clubs with reset Elo. `ImportMatchFile` (`ingest.go:186-188`) never applies lineage either. `ApplyTeamLineage` returning 0 is "the healthy answer" (`repo_lookup.go:472-474`) so nothing flags it. **Fix.** Run settlement after `Wait` regardless of error; surface `canonical_id` coverage in `/ops/status`.
+
+**The claims hold; every line number in the finding is stale.** On `main` (`f38d391b`) the early return is `ingest.go:140-147`, the two skipped steps `:153` and `:163`, `ImportMatchFile` `:213-215`, and the "healthy answer" comment `repo_lookup.go:88` with the zero-rows branch at `:114`. The finding also overstates `ImportMatchFile`: it is exported but has **no production caller** — `cmd/cricsheet-importer` uses `ImportDir` only — so the single-file gap is an inconsistent public contract rather than a live hole, and is fixed on those grounds.
+
+**Confirmed on `main` (`f38d391b`), and the mechanism is worse than the abort alone.** Lookup rows — players, clubs, venues, seasons — are written on the pool (`db.GetOrCreatePlayer`, `db.GetOrCreateOpposition`), not inside the per-file transaction, so the file that *fails* still leaves its identities behind. An aborted run therefore commits matches, players and opposition rows and then skips both settlement steps; nothing retries them and nothing reports them.
+
+**Not retrain-flagged, with evidence.** The mapping is a fixed reviewed list of 10 renames (`configs/team_lineage.json`) and `cricket_data` holds exactly 10 `opposition.canonical_id` rows, one per entry, each pointing at the entry's successor. Re-running the pass writes nothing (`canonical_id IS DISTINCT FROM` guard), so no feature value moves and no run on disk is stale. The exposure, had it gone the other way: 668 matches have a side that is one of the 10 superseded rows (RCB 240, Kings XI 190, Delhi Daredevils 161, Deccan 75, Surrey Stars 31, Himachal 29, RCB women 18, Rising Pune 14, Jaffna 10, Kathmandu 7), 2.9% of the archive, each club split into two Elo, form and head-to-head histories.
+
+**Fixed.** `ImportDir` settles after `g.Wait()` whether or not it errored, and joins the errors instead of returning on the first (`errors.Join`), so a failed settlement can no longer be hidden by a failed file. Settling names over a partial import is safe rather than a compromise: `UpdatePlayerDisplayNames` writes only where `name_as_of` is at or after the stored date, so a half-read directory can only choose the name a smaller import would have chosen, whereas *not* settling leaves the spelling whichever goroutine created the row first chose. `ImportMatchFile` applies the lineage (a closed list, idempotent, and one file can create the row that completes a rename) but still settles no names (a computation over the files read; one file has nothing to weigh itself against). `ApplyTeamLineage` returns a per-rename `TeamLineageReport` with an explicit state — `linked` / `unlinked` / `absent`, plus whether *this* run wrote the link — so "nothing to do" is no longer the same answer as "never ran", and a read-only `TeamLineageCoverage` asks the archive the same question for `/ops/status` (`db.team_lineage`, `incomplete` when both rows exist and the link does not) and the ops console's Database card. A rename still `unlinked` after the pass whose job is to link it should be unreachable, so it is logged at ERROR by name rather than passed over — silence in exactly that place is what made the defect invisible.
+
+**Proved against `main`.** Two throwaway cases written for `main`'s signature — an aborted `ImportDir` and a single-file `ImportMatchFile`, both against the mock — assert `UpdatePlayerDisplayNames` and `ApplyTeamLineage` were called; all three assertions fail there and the branch's equivalents (`ingest_settlement_test.go`) pass. The new SQL was exercised against Postgres in `cricket_flow_test` (`repo_team_lineage_integration_test.go`), including the unlinked→linked transition `/ops/status` reports.
 
 ### GO-08 — Venue lookup failure swallowed  **Medium** — PR #332
 

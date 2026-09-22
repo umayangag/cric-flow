@@ -121,13 +121,13 @@ func TestResolveTeamSide_ARetiredNameResolvesToTheClub_Integration(t *testing.T)
 	require.NoError(t, err)
 	playFixture(ctx, t, 900030, "T20", bangalore, chennai)
 	playFixture(ctx, t, 900031, "T20", bengaluru, chennai)
-	linked, err := ApplyTeamLineage(ctx, []TeamRename{{
+	report, err := ApplyTeamLineage(ctx, []TeamRename{{
 		FromName: "Royal Challengers Bangalore",
 		ToName:   "Royal Challengers Bengaluru",
 		Gender:   teams.GenderMale,
 	}})
 	require.NoError(t, err)
-	require.Equal(t, 1, linked)
+	require.Equal(t, 1, report.Count(TeamLineageLinked))
 
 	side, err := ResolveTeamSide(ctx, TeamRef{Name: "Royal Challengers Bangalore"}, "T20")
 
@@ -184,11 +184,11 @@ func TestTeamLineageNeverBridgesTwoGenders_Integration(t *testing.T) {
 
 	// A rename whose two sides are the same gender links; the same names across genders
 	// must not, whichever way the mapping is written.
-	linked, err := ApplyTeamLineage(ctx, []TeamRename{
+	report, err := ApplyTeamLineage(ctx, []TeamRename{
 		{FromName: "Delhi Daredevils", ToName: "Delhi Capitals", Gender: teams.GenderMale},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, linked)
+	require.Equal(t, 1, report.Count(TeamLineageLinked))
 
 	var bridging int
 	require.NoError(t, Pool.QueryRow(ctx, `
