@@ -8,6 +8,7 @@ import OpsStatusDetailsGrid from './OpsStatusDetailsGrid';
 import OpsDatasetSection from './OpsDatasetSection';
 import BiographyCoverageSection from './BiographyCoverageSection';
 import DatasetRegistrySection from './DatasetRegistrySection';
+import ClubLineageLine from './ClubLineageLine';
 import { Button, Grid, Stack, Typography } from '@mui/material';
 import StatusPill from './common/StatusPill';
 import JsonCollapse from './common/JsonCollapse';
@@ -15,7 +16,7 @@ import SimpleStatTiles from './common/SimpleStatTiles';
 import SectionCard from './common/SectionCard';
 import { formatWhen } from '../utils/format';
 import ErrorNotice from './common/ErrorNotice';
-import { asObj } from '../utils/opsStatusHelpers';
+import { asObj, readTeamLineage } from '../utils/opsStatusHelpers';
 import type { OpsStatus } from '../utils/opsStatusHelpers';
 import { TableStat } from '../types';
 
@@ -131,6 +132,7 @@ export const OpsStatusSection: React.FC<OpsStatusSectionProps> = ({
                   {formatWhen(asObj(data?.db).last_match_import_at as string | undefined)}
                 </strong>
               </Typography>
+              <ClubLineageLine lineage={readTeamLineage(data)} />
               {(() => {
                 const dbObj = asObj(data?.db);
                 const ts = Array.isArray((dbObj as { table_stats?: unknown }).table_stats)

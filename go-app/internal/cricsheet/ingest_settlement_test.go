@@ -161,3 +161,29 @@ func TestImportMatchFile_AppliesTheClubLineage(t *testing.T) {
 	harness.database.AssertExpectations(t)
 	harness.database.AssertNotCalled(t, "UpdatePlayerDisplayNames", mock.Anything, mock.Anything)
 }
+
+// TestImportDir_ARenameLeftUnlinkedIsReportedAndDoesNotFailTheRun covers the state that
+// should be unreachable after the pass whose job is to remove it: both rows of a rename in
+// the archive and no link between them. It is logged rather than returned, because the
+// import that just ran is not the thing that can fix it -- but silence there is what made
+// IMPORT-07 invisible in the first place.
+func TestImportDir_ARenameLeftUnlinkedIsReportedAndDoesNotFailTheRun(t *testing.T) {
+	harness := newSettlementHarness(t, map[string]string{"match1.json": oneMatchFile})
+	failEveryTransaction(t)
+	harness.database.EXPECT().
+		UpdatePlayerDisplayNames(mock.Anything, mock.Anything).
+		Return(nil).
+		Once()
+	harness.database.EXPECT().
+		ApplyTeamLineage(mock.Anything, mock.Anything).
+		Return(db.TeamLineageReport{Renames: []db.TeamLineageRename{{
+			Rename: db.TeamRename{FromName: "Delhi Daredevils", ToName: "Delhi Capitals", Gender: "male"},
+			State:  db.TeamLineageUnlinked,
+		}}}, nil).
+		Once()
+
+	_, err := cricsheet.ImportDir(context.Background(), harness.dir, &cricsheet.Options{}, 1)
+
+	require.NoError(t, err, "an unlinked rename is a fact about the archive, not a failure of this run")
+	harness.database.AssertExpectations(t)
+}

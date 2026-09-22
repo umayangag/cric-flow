@@ -185,6 +185,35 @@ function readDatabaseLag(v: unknown): Record<string, FormatLag> {
   return out;
 }
 
+/**
+ * How many of the reviewed franchise renames the archive has joined back up.
+ *
+ * `incomplete` is the one to act on: both rows of a rename are in the data and the link
+ * between them was never written, so that club is two clubs with two rating histories.
+ * That is what an import which stopped before settlement leaves behind, and until
+ * IMPORT-07 no surface said so. A rename this dataset stops before is not a fault, so it
+ * is counted separately by the backend and not read here.
+ */
+export type TeamLineage = {
+  status: 'ok' | 'incomplete' | 'unknown';
+  renamesConfigured: number | null;
+  linked: number | null;
+  unlinkedRenames: string[];
+};
+
+export function readTeamLineage(data: unknown): TeamLineage {
+  const section = asObj(asObj(asObj(data).db).team_lineage);
+  const status = section.status;
+  return {
+    status: status === 'ok' || status === 'incomplete' ? status : 'unknown',
+    renamesConfigured: readNumber(section.renames_configured) ?? null,
+    linked: readNumber(section.linked) ?? null,
+    unlinkedRenames: Array.isArray(section.unlinked_renames)
+      ? section.unlinked_renames.filter((entry): entry is string => typeof entry === 'string')
+      : [],
+  };
+}
+
 /** The pill a served status is shown as. One mapping, so the badge cannot differ by tab. */
 export function freshnessPillState(
   status: FreshnessStatus,

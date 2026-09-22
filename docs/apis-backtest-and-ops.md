@@ -669,10 +669,23 @@ counts, one freshness verdict and DB completeness per format, the pipeline's per
 and an ordered list of **suggestions** (the next make command the run history says is missing).
 
 **Response sections:** `timestamp`, `services` (api_health, api_readiness, ml_health), `db`
-(connected, migration status/current/expected, counts), `dataset` (the directory Import reads,
+(connected, migration status/current/expected, counts, `team_lineage`), `dataset` (the directory Import reads,
 its manifest and match-file count), `artifacts`, `fielding` (available, rows), `freshness`,
 `db_completeness`, `pipeline` (per step: running, completed, runnable, optional),
 `suggestions[]`.
+
+**`db.team_lineage` says whether renamed clubs are one club (IMPORT-07).** It is read off the
+archive rather than off the last import's log, because an import that stopped before settlement
+wrote no links and logged nothing:
+
+- `status` — `ok`, `incomplete`, or `unknown` (the mapping or the database could not be read).
+- `renames_configured`, `linked`, `absent`, `unlinked`, and `unlinked_renames[]`, which names
+  them (`"Delhi Daredevils -> Delhi Capitals (male)"`).
+- **The bad value is `incomplete`**, i.e. `unlinked > 0`: both rows of a rename are in the
+  archive and `opposition.canonical_id` was never written, so that club is two clubs with two
+  Elo histories, two form series and two head-to-head records, and no other surface says so.
+  The remedy is to re-run the import; linking is idempotent. `absent` is not a fault — the
+  mapping describes cricket, and a dataset may stop before a club renamed.
 
 **`freshness` is one verdict, assembled once (P2-1).** Every surface that shows freshness — the
 Health tab, the Ops badge, the Workbench's loaded-run card, the system map, and the Lab's

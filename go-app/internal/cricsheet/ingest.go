@@ -176,6 +176,9 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 // So the worst a half-read directory can do is choose the name a smaller import would have
 // chosen. Not settling is the lossy option: the names already committed are whichever
 // file's goroutine created the row first, which is not reproducible.
+//
+// A nil collector means there are no names to settle -- the single-file path, which has
+// one spelling and nothing to weigh it against -- and only the lineage runs.
 func settleImport(ctx context.Context, dir string, names *displayNames) error {
 	var settleNamesErr error
 	if names != nil {
@@ -229,6 +232,14 @@ func applyTeamLineage(ctx context.Context, dir string) error {
 		slog.Int("linked", report.Count(db.TeamLineageLinked)),
 		slog.Int("linked_by_this_run", report.Changed()),
 		slog.Any("absent_from_this_dataset", report.InState(db.TeamLineageAbsent)))
+	// A rename still unlinked after the pass that exists to link it should be
+	// unreachable: both rows are in the archive, so the statement matched them. Saying
+	// nothing is what made the original defect invisible, so the impossible case is loud.
+	if unlinked := report.InState(db.TeamLineageUnlinked); len(unlinked) > 0 {
+		slog.Error("cricsheet: team lineage left renamed clubs unlinked",
+			slog.String("dir", dir),
+			slog.Any("unlinked_renames", unlinked))
+	}
 	return nil
 }
 
@@ -245,7 +256,7 @@ func applyTeamLineage(ctx context.Context, dir string) error {
 // after an aborted directory import.
 func ImportMatchFile(ctx context.Context, path string, opts *Options) error {
 	importErr := importMatchFile(ctx, path, opts, nil)
-	return errors.Join(importErr, applyTeamLineage(ctx, filepath.Dir(path)))
+	return errors.Join(importErr, settleImport(ctx, filepath.Dir(path), nil))
 }
 
 // importMatchFile is ImportMatchFile with the import-wide display-name collector, which
