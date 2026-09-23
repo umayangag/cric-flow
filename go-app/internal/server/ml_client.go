@@ -111,6 +111,58 @@ func logMLNon2xx(resp *http.Response, endpoint string) error {
 				Available: d.Available,
 			}
 		}
+		// Neither shape matched -- this is FastAPI's own default for a pydantic
+		// validation failure this service never overrode: {"detail": [{"loc",
+		// "msg", "type"}, ...]}, an array, which fails to unmarshal into either
+		// struct above. Before this branch that left `err` from the attempt just
+		// above as the only signal, which the code below discards, so a 422 the
+		// caller could have acted on (a bad `team_size`, a repeated pool id) fell
+		// through to respondErr's generic 500 INTERNAL (GO-12). A 4xx here is
+		// always the caller's fault, whatever shape it arrived in, so it is
+		// relayed as a structured error rather than swallowed.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return &mlServiceError{
+				Endpoint: endpoint,
+				Status:   resp.StatusCode,
+				Code:     "VALIDATION_ERROR",
+				Message:  describeUnstructuredDetail(detail.Detail),
+			}
+		}
 	}
 	return fmt.Errorf("%s http %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(bodyStr))
+}
+
+// fastAPIValidationIssue is one entry of FastAPI's default RequestValidationError body:
+// no "code", so describeUnstructuredDetail is what turns it into something a caller can
+// read rather than a raw JSON array.
+type fastAPIValidationIssue struct {
+	Loc  []any  `json:"loc"`
+	Msg  string `json:"msg"`
+	Type string `json:"type"`
+}
+
+// describeUnstructuredDetail renders a 4xx body's "detail" as a message, for the shapes
+// that are not {"detail": "..."} or {"detail": {"code", "message", "hint"}}. It reads
+// FastAPI's own validation-issue array first, because "team_size: value is not a valid
+// integer" is more useful than the raw JSON it was built from; anything else falls back to
+// the raw detail so no information here is ever dropped, only reformatted.
+func describeUnstructuredDetail(raw json.RawMessage) string {
+	var issues []fastAPIValidationIssue
+	if err := json.Unmarshal(raw, &issues); err == nil && len(issues) > 0 {
+		parts := make([]string, 0, len(issues))
+		for _, issue := range issues {
+			locParts := make([]string, 0, len(issue.Loc))
+			for _, p := range issue.Loc {
+				locParts = append(locParts, fmt.Sprintf("%v", p))
+			}
+			loc := strings.Join(locParts, ".")
+			if loc == "" {
+				parts = append(parts, issue.Msg)
+				continue
+			}
+			parts = append(parts, loc+": "+issue.Msg)
+		}
+		return strings.Join(parts, "; ")
+	}
+	return strings.TrimSpace(string(raw))
 }
