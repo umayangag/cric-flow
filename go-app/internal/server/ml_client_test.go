@@ -29,7 +29,11 @@ func TestLogMLNon2xx_FastAPIValidationArray_RelaysAsStructuredError(t *testing.T
 	err := logMLNon2xx(resp, "/xi/optimize")
 
 	var mlErr *mlServiceError
-	require.True(t, errors.As(err, &mlErr), "must be a *mlServiceError, not a bare error respondErr would answer as 500")
+	require.True(
+		t,
+		errors.As(err, &mlErr),
+		"must be a *mlServiceError, not a bare error respondErr would answer as 500",
+	)
 	assert.Equal(t, 422, mlErr.Status)
 	assert.Equal(t, "VALIDATION_ERROR", mlErr.Code)
 	assert.Contains(t, mlErr.Message, "body.constraints.team_size")
@@ -57,7 +61,10 @@ func TestLogMLNon2xx_FastAPIValidationArray_JoinsEveryIssue(t *testing.T) {
 // keep relaying exactly as it did before this fix.
 func TestLogMLNon2xx_StructuredDetail_StillRelaysCodeMessageHint(t *testing.T) {
 	t.Parallel()
-	resp := mlResponse(409, `{"detail":{"code":"TRAIN_ALREADY_RUNNING","message":"a training run is already in progress","hint":"wait for it to finish"}}`)
+	resp := mlResponse(
+		409,
+		`{"detail":{"code":"TRAIN_ALREADY_RUNNING","message":"a training run is already in progress","hint":"wait for it to finish"}}`,
+	)
 
 	err := logMLNon2xx(resp, "/train/start")
 
