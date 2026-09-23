@@ -60,10 +60,17 @@ func (m *matchIdentity) SettleObservedNames() {
 // PlayerID resolves a player name in this match to a player id.
 //
 // When the file's registry has no entry for the name the lookup falls back to keying by
-// name -- the pre-identity behaviour, and the only remaining path that can merge two
-// people. It is logged every time, because a silent fallback would reintroduce the bug it
-// exists to survive. Coverage across the current 22,734 files is total, so a warning here
-// means the dataset has changed shape.
+// name -- the pre-identity behaviour. It is logged every time, because a silent fallback
+// would reintroduce the bug it exists to survive. Coverage across the current 22,905 files
+// is total (checked directly, not merely carried forward from the 22,734-file count this
+// once read), so a warning here means the dataset has changed shape.
+//
+// The fallback itself can no longer duplicate a person who is already known under a real
+// identifier: GetOrCreatePlayer looks for an existing (name, non-null external_id) row
+// before it mints a name-keyed one (IMPORT-15). It can still merge two different people who
+// happen to share an exact display name and both lack a registry entry -- the same limit
+// the pre-identity importer had -- which is why the warning stays loud rather than going
+// quiet now that the common case is safe.
 func (m *matchIdentity) PlayerID(ctx context.Context, name string) (int64, error) {
 	externalID, ok := m.registry[strings.TrimSpace(name)]
 	if !ok {
