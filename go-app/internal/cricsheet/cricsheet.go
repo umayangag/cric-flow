@@ -103,12 +103,17 @@ func (r Registry) PersonIDsByName() map[string]string {
 }
 
 // MatchDate returns the primary match date (the first entry in Dates).
-// It defaults to "1970-01-01" if no dates are available.
-func (i Info) MatchDate() string {
+//
+// A file with none is refused, the same as a file with no team (ingest.go's team-name
+// validation): the match date is the as-of clock every rating and every serving decision
+// reads a player's history against, and 1970-01-01 -- the old default -- placed a match
+// before every real one in the archive rather than reporting that the file named no date
+// at all (IMPORT-17).
+func (i Info) MatchDate() (string, error) {
 	if len(i.Dates) > 0 {
-		return i.Dates[0]
+		return i.Dates[0], nil
 	}
-	return "1970-01-01"
+	return "", fmt.Errorf("no dates in info.dates or info.match_date")
 }
 
 // UnmarshalJSON allows Info to flexibly decode from Cricsheet JSON variations.

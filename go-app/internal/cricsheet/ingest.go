@@ -296,7 +296,15 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		return fmt.Errorf("read wicket kinds: %w", err)
 	}
 	info := m.Info
-	dateISO := info.MatchDate()
+	// A file with no date is refused rather than placed at 1970-01-01, ahead of every
+	// real match in the archive (IMPORT-17).
+	dateISO, err := info.MatchDate()
+	if err != nil {
+		slog.Error("cricsheet: match date unreadable",
+			slog.String("file", path),
+			slog.Any("err", err))
+		return fmt.Errorf("match date of %s: %w", path, err)
+	}
 	// Every name below is resolved through this: it carries the file's person registry
 	// and the match's gender, which are the two things that turn a name into an identity.
 	identity := &matchIdentity{
