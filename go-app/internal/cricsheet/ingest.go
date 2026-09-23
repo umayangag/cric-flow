@@ -57,6 +57,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	if opts == nil {
 		opts = &Options{}
 	}
+	// The process-global EntityCache never expires on its own, and go-app's API server
+	// can run this more than once across its own lifetime (the pipeline's import step);
+	// a dev-destroy or re-migrate between two such runs would otherwise leave the second
+	// one resolving names against ids the schema no longer holds (IMPORT-16). Every run
+	// starts from nothing memoised, before any file is read.
+	db.GetGlobalCache().Clear()
 	if concurrency <= 0 {
 		concurrency = resources.GetLimit(resources.KindImport)
 	}

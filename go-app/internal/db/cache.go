@@ -52,6 +52,39 @@ func GetGlobalCache() *EntityCache {
 	return globalCache
 }
 
+// Clear empties every entry the cache holds.
+//
+// The cache is process-global and outlives a single import in the one process that runs
+// more than one: go-app's own API server, which reaches ImportDir from its pipeline step
+// (internal/server/handlers.go, step_work.go) and can run it again hours or days later in
+// the same still-running process. An id memoised before a `dev-destroy` or a re-migrate
+// would otherwise survive it, pointing at a row that no longer exists or, after `RESTART
+// IDENTITY`, now belongs to someone else (IMPORT-16). ImportDir calls this once, before
+// any lookup of the run, so every id an import resolves is fetched fresh, at most once,
+// against the schema the run is actually importing into.
+//
+// The other process this cache exists in, the one-shot cricsheet-importer CLI, needs
+// nothing here: it starts each run in a fresh process with nothing memoised already, which
+// is the same guarantee Clear gives the server explicitly.
+//
+// Range then Delete, not a fresh sync.Map assigned over the field: the cache is read and
+// written by a run's own goroutines concurrently, and reassigning the field while they do
+// would race. Range and Delete are safe for concurrent use with them.
+func (c *EntityCache) Clear() {
+	clearSyncMap(&c.players)
+	clearSyncMap(&c.venues)
+	clearSyncMap(&c.seasons)
+	clearSyncMap(&c.formats)
+	clearSyncMap(&c.oppositions)
+}
+
+func clearSyncMap(m *sync.Map) {
+	m.Range(func(key, _ any) bool {
+		m.Delete(key)
+		return true
+	})
+}
+
 // memoiseID remembers an id under a key, unless the id is zero.
 //
 // Every dimension table's primary key is a serial starting at 1, so zero is not a row:
