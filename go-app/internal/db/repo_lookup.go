@@ -65,7 +65,10 @@ func FindVenueIDByName(ctx context.Context, name string) (int64, bool, error) {
 // (ml-service/ml/weather/backfill.py) later overwrites it with the geocoded place, which is
 // the better answer when it exists; this is what the column holds until it runs.
 func GetOrCreateVenue(ctx context.Context, name, city string) (int64, error) {
-	if Pool == nil {
+	// PoolAPI, not Pool: this is a lookup the importer makes, and EntityCache used to
+	// turn a nil pool into (0, nil) rather than report it (IMPORT-13). It reports it now,
+	// so the seam a test injects has to be the one RunInTx already uses.
+	if PoolAPI == nil {
 		return 0, errors.New("db pool not initialized")
 	}
 	normalized := venues.NormalizeName(name)
@@ -73,7 +76,7 @@ func GetOrCreateVenue(ctx context.Context, name, city string) (int64, error) {
 		return 0, fmt.Errorf("venue name %q has no identity once folded", name)
 	}
 	var id int64
-	err := Pool.QueryRow(ctx, `INSERT INTO venue(venue_name, normalized_name, city)
+	err := PoolAPI.QueryRow(ctx, `INSERT INTO venue(venue_name, normalized_name, city)
 		VALUES($1, $2, NULLIF($3, ''))
 		ON CONFLICT (normalized_name) DO UPDATE
 		SET city = COALESCE(NULLIF(venue.city, ''), NULLIF(EXCLUDED.city, ''))
@@ -89,11 +92,14 @@ func GetOrCreateVenue(ctx context.Context, name, city string) (int64, error) {
 // file carries, so an empty gender here is a caller that has lost track of its match
 // rather than a team whose gender is unknown -- and the NOT NULL column will say so.
 func GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, error) {
-	if Pool == nil {
+	// PoolAPI, not Pool: this is a lookup the importer makes, and EntityCache used to
+	// turn a nil pool into (0, nil) rather than report it (IMPORT-13). It reports it now,
+	// so the seam a test injects has to be the one RunInTx already uses.
+	if PoolAPI == nil {
 		return 0, errors.New("db pool not initialized")
 	}
 	var id int64
-	err := Pool.QueryRow(ctx, `INSERT INTO opposition(opposition_name, gender) VALUES($1, $2)
+	err := PoolAPI.QueryRow(ctx, `INSERT INTO opposition(opposition_name, gender) VALUES($1, $2)
 		ON CONFLICT (opposition_name, gender) DO UPDATE SET opposition_name = EXCLUDED.opposition_name
 		RETURNING id`, name, gender).Scan(&id)
 	return id, err
@@ -101,11 +107,14 @@ func GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, err
 
 // GetOrCreateSeason returns season.id for a given season_name, creating it if necessary.
 func GetOrCreateSeason(ctx context.Context, name string) (int64, error) {
-	if Pool == nil {
+	// PoolAPI, not Pool: this is a lookup the importer makes, and EntityCache used to
+	// turn a nil pool into (0, nil) rather than report it (IMPORT-13). It reports it now,
+	// so the seam a test injects has to be the one RunInTx already uses.
+	if PoolAPI == nil {
 		return 0, errors.New("db pool not initialized")
 	}
 	var id int64
-	err := Pool.QueryRow(ctx, `INSERT INTO season(season_name) VALUES($1)
+	err := PoolAPI.QueryRow(ctx, `INSERT INTO season(season_name) VALUES($1)
 		ON CONFLICT (season_name) DO UPDATE SET season_name = EXCLUDED.season_name
 		RETURNING id`, name).Scan(&id)
 	return id, err

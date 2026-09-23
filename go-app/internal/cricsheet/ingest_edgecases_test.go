@@ -113,6 +113,9 @@ func TestImportMatchFile_InningTeamMismatch_Error(t *testing.T) {
 	// Inning team name must match one of info.teams; otherwise otherTeam returns ""
 	// and we would call GetOrCreateOpposition(""), corrupting the opposition table.
 	ctx := context.Background()
+	prevPool := db.PoolAPI
+	db.SetPoolAPI(nopPool{})
+	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 	dbMock := new(mocks.MockCricsheetDB)
 	cricsheet.SetCricsheetDB(dbMock)
 	defer func() {
@@ -154,6 +157,9 @@ func TestImportMatchFile_InningTeamMismatch_Error(t *testing.T) {
 func TestImportMatchFile_InningEmptyTeamName_Error(t *testing.T) {
 	// Inning with empty team name would make otherTeam return teamA; we validate batTeam non-empty first.
 	ctx := context.Background()
+	prevPool := db.PoolAPI
+	db.SetPoolAPI(nopPool{})
+	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 	dbMock := new(mocks.MockCricsheetDB)
 	cricsheet.SetCricsheetDB(dbMock)
 	defer func() {
@@ -190,6 +196,9 @@ func TestImportMatchFile_InningEmptyTeamName_Error(t *testing.T) {
 func TestImportMatchFile_BallsPerOverFallbackToSix(t *testing.T) {
 	// Not parallel: uses package-level singletons and RunInTxFn.
 	ctx := context.Background()
+	prevPool := db.PoolAPI
+	db.SetPoolAPI(nopPool{})
+	t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 
 	// Spy tx to capture match_inning upsert args (OversBowled is 7th arg, 0-indexed: args[6])
 	var oversBowled float32

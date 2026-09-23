@@ -360,11 +360,21 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		}
 		venueID = &id
 	}
+	// A season the file names is a season the match belongs to. Failing the lookup used
+	// to leave season_id NULL in silence, which reads downstream as a match played in no
+	// season at all -- indistinguishable from a file that names none (IMPORT-13).
 	var seasonID *int64
 	if s := strings.TrimSpace(string(info.Season)); s != "" {
-		if id, e := cache.GetSeasonID(ctx, s); e == nil {
-			seasonID = &id
+		id, e := cache.GetSeasonID(ctx, s)
+		if e != nil {
+			slog.Error("lookup season_id failed",
+				slog.String("file", path),
+				slog.String("season", s),
+				slog.String("match_date", dateISO),
+				slog.Any("err", e))
+			return fmt.Errorf("lookup season_id for %q: %w", s, e)
 		}
+		seasonID = &id
 	}
 	matchNumber := (*int)(nil)
 	if info.Event != nil && info.Event.MatchNumber != nil {
@@ -395,11 +405,23 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 	if ballsPerOver <= 0 {
 		ballsPerOver = 6
 	}
+	// The toss winner is a side the file names, and it is one of the two playing. The
+	// lookup failing used to leave toss_winner_opposition_id NULL without a word, which
+	// reads as a match with no toss -- and the toss is a feature (IMPORT-13).
 	var tossWinnerOppositionID *int64
 	if toss != "" {
-		if id, e := identity.OppositionID(ctx, toss); e == nil {
-			tossWinnerOppositionID = &id
+		id, e := identity.OppositionID(ctx, toss)
+		if e != nil {
+			slog.Error("get/create opposition for toss winner failed",
+				slog.String("file", path),
+				slog.Int64("match_id", mid),
+				slog.String("match_date", dateISO),
+				slog.String("toss_winner", toss),
+				slog.String("teams", fmt.Sprintf("%s vs %s", teamA, teamB)),
+				slog.Any("err", e))
+			return fmt.Errorf("get/create opposition for toss winner %q: %w", toss, e)
 		}
+		tossWinnerOppositionID = &id
 	}
 	scheduledOvers := scheduledOversFromFormatOrInfo(formatCode, info.Overs)
 	eventName, eventStage, eventGroup := "", "", ""
@@ -974,6 +996,9 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		)
 		return err
 	}
+	// Only now: the file's rows are in the archive, so the spellings it used are spellings
+	// the archive holds and may settle the display name (IMPORT-13).
+	identity.SettleObservedNames()
 	return nil
 }
 

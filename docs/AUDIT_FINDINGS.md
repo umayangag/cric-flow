@@ -181,13 +181,13 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-12 — Forfeited / zero-legal-ball innings dropped from `ball_event` but keep their number  **Low**
+### IMPORT-13 — Dimension rows created outside the per-file transaction  **Low** — the swallowed-error half fixed in PR #338
 
-`ball_event_emit.go:40-42` (`if totalLegal == 0 { continue }`); consumer `sources.py:604` normalises by `innings.min()`, so the DB path renumbers innings differently from the JSON path. An innings of only wides has `balls_bowled=0` and `run_rate=0` (`ingest.go:548-551`). **Fix.** Emit rows for every delivery (`is_legal` exists) or write a `forfeited/declared` flag; never use `innings.min()`.
+`ingest.go`; `db/cache.go`. Acknowledged in a comment above the transaction. A failed file still leaves the `player` / `opposition` / `venue` / `season` rows it created behind, because `EntityCache` writes them on the pool before the transaction opens. **What remains.** Resolve dimensions through the tx.
 
-### IMPORT-13 — Dimension rows created outside the per-file transaction; lookups swallow errors  **Low**
+**Why it is not a boundary move.** The ids are memoised in a process-global `EntityCache`, so a rollback would leave the cache asserting rows the database no longer holds; the transaction opens only after every aggregate is built, so each of the dozen resolution sites would have to move inside it; and `importMatchFile` reaches `db.GetGlobalCache()` concretely, with no seam to thread a `tx` through. It is a restructuring of a 1,200-line function plus the cache's lifetime semantics, not a mechanical change, and a half-moved boundary is worse than a documented one. IMPORT-10's note in § 9 — that a genuine dry run is impossible while this stands — remains correct.
 
-`ingest.go:254-257, 297-300, 699-703`; `ball_event_emit.go:59-67`. Acknowledged in a comment. A failed file leaves `player` / `opposition` / `venue` rows and its spellings win display-name settlement (`identity.go:147-149`); striker/non-striker resolution errors write NULL with no log. **Fix.** Resolve dimensions through the tx; log every swallowed error; observe display names only after commit.
+**The swallowed errors are closed** (PR #338): striker, non-striker, bowler and dismissed player now fail the file rather than writing NULL; the season and toss-winner lookups likewise; `EntityCache` no longer turns a missing pool into `(0, nil)`; and display names are observed after the commit, so a rolled-back file no longer votes on what a player is called.
 
 ### IMPORT-14 — Maiden overs: wides do not break a maiden; partial overs count  **Low**
 
@@ -298,6 +298,20 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-12 — Forfeited / zero-legal-ball innings dropped from `ball_event` but keep their number  **Low** — PR #338
+
+`ball_event_emit.go:40-42` (`if totalLegal == 0 { continue }`); consumer `sources.py:604` normalises by `innings.min()`, so the DB path renumbers innings differently from the JSON path. An innings of only wides has `balls_bowled=0` and `run_rate=0` (`ingest.go:548-551`). **Fix.** Emit rows for every delivery (`is_legal` exists) or write a `forfeited/declared` flag; never use `innings.min()`.
+
+**Confirmed, and one half of it is live damage rather than a latent hazard.** Measured on `cricket_data` first: 15 `match_inning` rows have `balls_bowled = 0`, 11 matches disagree between their `match_inning` count and their distinct `ball_event` innings count, and **zero** matches have `min(ball_event.innings) > 1`. A pass over all 22,907 archive files says why: **14** innings have no delivery at all (every one forfeited), **1** has a delivery and no legal ball, and **none of them is the first played innings**. So the `innings.min()` renumbering has never misfired — it is a trap that fires the first time a first innings is forfeited — while the dropped delivery is damage in the database today.
+
+**The one innings is match 514034**, South Africa needing two to win and getting them off a single no-ball (one off the bat, one for the no-ball). Its `match_inning` row read `runs_scored = 2, balls_bowled = 0` while `ball_event` held nothing for it, so the scorecard and the ball-by-ball disagreed about the same innings. `select sum(runs_total) from ball_event` reads **9,345,813** and the archive reads **9,345,815**: those two runs. The count that can see it, `runs_scored`, is not in `_COMPARED_COUNTS`, which is why `make xi-parity` never failed on it.
+
+**Fixed on both sides.** The `totalLegal == 0` skip is gone: every delivery the file lists is a row, and `is_legal` already says which are the bowler's count. `ml/xi/sources.py` reads `innings - 1` rather than `innings - innings.min()`, because `ball_event.innings` *is* the innings' position in `Match.PlayedInnings`, which is the position the archive path enumerates; the last `innings.min()` in the rating pass (`ratings.py`, picking the first innings for the full-innings context) is `== 0` with a guard for the same reason. Proved on the scratch database: re-importing 514034 alone into `cricket_flow_test` gives innings `{1,2,3,4}` and `sum(runs_total) = 1163` against `cricket_data`'s `{1,2,3}` and `1161`, with innings 1–3 identical row for row.
+
+**Parity does not move.** The three differences `make xi-parity` reports are unchanged before and after — `matches_with_stage_label` 22101/22100, `matches_with_reconstructible_table` 16587/16692, `dead_rubber_matches` 2215/2236, all in the stakes derivation. No compared count can move: the delivery is a no-ball, so it is faced and it is charged to the bowler, and it carries no wicket.
+
+**Not retrain-flagged; it joins batch 4's re-import.** No feature or label is redefined, and the `innings - 1` change is bit-identical on the database as it stands. After the re-import one match gains one delivery and two runs, so a run built from that re-import differs from the current one for 514034 and for what carries forward from it.
 
 ### IMPORT-11 — `match_inning.target_runs` ignores `innings[].target`  **Medium** — PR #337
 

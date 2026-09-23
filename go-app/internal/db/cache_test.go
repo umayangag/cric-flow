@@ -2,48 +2,77 @@ package db
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestEntityCache_WhenPoolNil(t *testing.T) {
-	// Ensure Pool is nil for these tests (unit test without DB)
-	origPool := Pool
-	Pool = nil
-	t.Cleanup(func() { Pool = origPool })
+// TestEntityCache_WithNoPool_ReportsTheFailureInsteadOfAnID is IMPORT-13. Every lookup
+// here used to answer (0, nil) when there was no pool, as a convenience for tests, which
+// swallowed the "db pool not initialized" the repository function underneath already
+// returned. The importer wrote that zero into format_id, venue_id, season_id, player_id
+// and opposition_id, and nothing anywhere said a lookup had failed. A lookup that cannot
+// reach its table has not found a zero.
+func TestEntityCache_WithNoPool_ReportsTheFailureInsteadOfAnID(t *testing.T) {
+	origPool, origPoolAPI := Pool, PoolAPI
+	Pool, PoolAPI = nil, nil
+	t.Cleanup(func() { Pool, PoolAPI = origPool, origPoolAPI })
 
 	ctx := context.Background()
-	cache := GetGlobalCache()
+	// Not the global cache: an entry another test warmed would be a hit and never reach
+	// the pool this case is about.
+	cache := &EntityCache{}
 
-	// When Pool is nil, cache returns 0, nil (fallback for tests)
-	id, err := cache.GetPlayerID(ctx, "abc12345", "any", "2024-01-01")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), id)
+	testCases := []struct {
+		name   string
+		lookup func() (int64, error)
+	}{
+		{
+			name:   "a player",
+			lookup: func() (int64, error) { return cache.GetPlayerID(ctx, "abc12345", "any", "2024-01-01") },
+		},
+		{
+			name:   "a venue",
+			lookup: func() (int64, error) { return cache.GetVenueID(ctx, "any", "any city") },
+		},
+		{
+			name:   "a season",
+			lookup: func() (int64, error) { return cache.GetSeasonID(ctx, "2024") },
+		},
+		{
+			name:   "a format",
+			lookup: func() (int64, error) { return cache.GetFormatID(ctx, "T20") },
+		},
+		{
+			name:   "an opposition",
+			lookup: func() (int64, error) { return cache.GetOppositionID(ctx, "India", "male") },
+		},
+	}
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			id, err := testCase.lookup()
 
-	id, err = cache.GetVenueID(ctx, "any", "any city")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), id)
+			require.Error(t, err, "a lookup with no database behind it has failed")
+			require.Contains(t, err.Error(), "pool not initialized")
+			require.Zero(t, id)
+		})
+	}
+}
 
-	id, err = cache.GetSeasonID(ctx, "2024")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), id)
+// A bucket's format ids cannot be read without a database either, and the failure is the
+// first lookup's.
+func TestEntityCache_GetFormatIDsForTrainingBucket_WithNoPool_ReportsTheFailure(t *testing.T) {
+	origPool, origPoolAPI := Pool, PoolAPI
+	Pool, PoolAPI = nil, nil
+	t.Cleanup(func() { Pool, PoolAPI = origPool, origPoolAPI })
 
-	id, err = cache.GetFormatID(ctx, "T20")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), id)
+	ids, err := (&EntityCache{}).GetFormatIDsForTrainingBucket(context.Background(), "T20")
 
-	ids, err := cache.GetFormatIDsForTrainingBucket(ctx, "T20")
-	require.NoError(t, err)
-	require.Len(t, ids, 2) // T20 and T20I
-
-	ids, err = cache.GetFormatIDsForTrainingBucket(ctx, "ODI")
-	require.NoError(t, err)
-	require.Len(t, ids, 1)
-
-	id, err = cache.GetOppositionID(ctx, "India", "male")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), id)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "pool not initialized")
+	require.Nil(t, ids)
 }
 
 func TestEntityCache_WarmupPlayers_WhenPoolNil(t *testing.T) {
@@ -59,51 +88,70 @@ func TestEntityCache_WarmupPlayers_WhenPoolNil(t *testing.T) {
 	require.Contains(t, err.Error(), "pool not initialized")
 }
 
-// TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization verifies that
-// format string trimming/case and T20/T20I bucket logic behave correctly when Pool is nil.
-func TestEntityCache_GetFormatIDsForTrainingBucket_FormatNormalization(t *testing.T) {
-	origPool := Pool
-	Pool = nil
-	t.Cleanup(func() { Pool = origPool })
-
-	ctx := context.Background()
-	cache := GetGlobalCache()
+// TestFormatCodesForTrainingBucket_NamesTheCodesTheBucketCovers pins the naming rule on
+// its own, without a database: T20 and T20I are one training bucket however the caller
+// spells or spaces the name, and every other format is its own.
+func TestFormatCodesForTrainingBucket_NamesTheCodesTheBucketCovers(t *testing.T) {
+	t.Parallel()
 
 	testCases := []struct {
-		name           string
-		format         string
-		wantNumFormats int // T20/T20I bucket returns 2 IDs; others return 1
+		name      string
+		format    string
+		wantCodes []string
 	}{
-		{"T20 uppercase", "T20", 2},
-		{"T20I uppercase", "T20I", 2},
-		{"t20 lowercase", "t20", 2},
-		{"t20i lowercase", "t20i", 2},
-		{"T20 with surrounding space", "  T20  ", 2},
-		{"ODI single format", "ODI", 1},
-		{"TEST single format", "TEST", 1},
-		{"odi lowercase", "odi", 1},
-		{"odI mixed case", "odI", 1},
-		{"whitespace only trimmed odi", "  odi  ", 1},
+		{name: "T20 uppercase", format: "T20", wantCodes: []string{"T20", "T20I"}},
+		{name: "T20I uppercase", format: "T20I", wantCodes: []string{"T20", "T20I"}},
+		{name: "t20 lowercase", format: "t20", wantCodes: []string{"T20", "T20I"}},
+		{name: "t20i lowercase", format: "t20i", wantCodes: []string{"T20", "T20I"}},
+		{name: "T20 with surrounding space", format: "  T20  ", wantCodes: []string{"T20", "T20I"}},
+		{name: "ODI single format", format: "ODI", wantCodes: []string{"ODI"}},
+		{name: "TEST single format", format: "TEST", wantCodes: []string{"TEST"}},
+		{name: "odi lowercase", format: "odi", wantCodes: []string{"ODI"}},
+		{name: "odI mixed case", format: "odI", wantCodes: []string{"ODI"}},
+		{name: "whitespace only trimmed odi", format: "  odi  ", wantCodes: []string{"ODI"}},
 	}
 	for i := range testCases {
-		tc := testCases[i]
-		t.Run(tc.name, func(t *testing.T) {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			ids, err := cache.GetFormatIDsForTrainingBucket(ctx, tc.format)
-			require.NoError(t, err)
-			require.Len(
-				t,
-				ids,
-				tc.wantNumFormats,
-				"format %q should yield %d format ID(s)",
-				tc.format,
-				tc.wantNumFormats,
-			)
+
+			codes := FormatCodesForTrainingBucket(testCase.format)
+
+			require.Equal(t, testCase.wantCodes, codes)
 		})
 	}
 }
 
 // TestGetGlobalCache_Singleton verifies that GetGlobalCache returns the same instance each time.
+// TestMemoiseID_DoesNotRememberAZero pins what keeps a lookup that produced nothing out
+// of a process-global cache. Every dimension table's primary key is a serial starting at
+// 1, so zero is not a row; remembering it would hand that nothing to every later caller
+// of the key, which would then write it into a foreign key.
+func TestMemoiseID_DoesNotRememberAZero(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		id         int64
+		wantStored bool
+	}{
+		{name: "a real row is remembered", id: 7, wantStored: true},
+		{name: "a zero is not", id: 0, wantStored: false},
+	}
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			var store sync.Map
+
+			memoiseID(&store, "T20", testCase.id)
+
+			_, stored := store.Load("T20")
+			require.Equal(t, testCase.wantStored, stored)
+		})
+	}
+}
+
 func TestGetGlobalCache_Singleton(t *testing.T) {
 	t.Parallel()
 	c1 := GetGlobalCache()

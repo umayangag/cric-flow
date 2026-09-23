@@ -55,17 +55,20 @@ func GetOrCreatePlayer(
 	ctx context.Context,
 	externalID, name, nameAsOf string,
 ) (id int64, storedName string, err error) {
-	if Pool == nil {
+	// PoolAPI, not Pool: this is a lookup the importer makes, and EntityCache used to
+	// turn a nil pool into (0, nil) rather than report it (IMPORT-13). It reports it now,
+	// so the seam a test injects has to be the one RunInTx already uses.
+	if PoolAPI == nil {
 		return 0, "", errors.New("db pool not initialized")
 	}
 	if externalID == "" {
-		err = Pool.QueryRow(ctx, `INSERT INTO player(player_name, name_as_of) VALUES($1, $2::date)
+		err = PoolAPI.QueryRow(ctx, `INSERT INTO player(player_name, name_as_of) VALUES($1, $2::date)
 			ON CONFLICT (player_name) WHERE external_id IS NULL
 			DO UPDATE SET player_name = EXCLUDED.player_name
 			RETURNING id, player_name`, name, nullableDate(nameAsOf)).Scan(&id, &storedName)
 		return id, storedName, err
 	}
-	err = Pool.QueryRow(ctx, `INSERT INTO player(external_id, player_name, name_as_of) VALUES($1, $2, $3::date)
+	err = PoolAPI.QueryRow(ctx, `INSERT INTO player(external_id, player_name, name_as_of) VALUES($1, $2, $3::date)
 		ON CONFLICT (external_id) DO UPDATE SET external_id = EXCLUDED.external_id
 		RETURNING id, player_name`, externalID, name, nullableDate(nameAsOf)).Scan(&id, &storedName)
 	return id, storedName, err

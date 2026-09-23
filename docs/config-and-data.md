@@ -566,7 +566,8 @@ where the record keeps it — see the next section.
 The same decode reads Cricsheet's other innings-level facts — `declared`, `forfeited`
 (an innings with no `overs` at all, 14 in the archive) and `target` — so a short innings
 can be told from a truncated file. Nothing derived from `declared` or `forfeited` is
-stored yet.
+stored yet; a forfeited innings simply has no `ball_event` row, and the innings after it
+keep their own numbers — see *What the ball-event record holds* below.
 
 **The target** is stored, in `match_inning.target_runs` and `target_overs`, and is the
 archive's own figure wherever the archive states one. Cricsheet writes `innings[].target`
@@ -709,6 +710,28 @@ before `0018`, so until the directory is re-imported the rating pass over the da
 counts every wide as faced, which `make xi-parity` reports as `deliveries_not_faced`
 differing from the archive; `batting_data.balls` changes only when the file is re-imported.
 
+**Every delivery the file lists is a row, and innings are numbered by position.** An
+innings' number in `ball_event` is its place in `Match.PlayedInnings` — the same place its
+`match_inning` row is numbered by, and the same place the archive path of the rating pass
+enumerates (`ml/xi/sources.py`, `_deliveries_from_cricsheet`) — so the two sources always
+call one innings by one number. That holds even where an innings has no rows at all: the
+14 forfeited innings in the archive bowled nothing, and the innings after them keep their
+own numbers rather than closing the gap. The rating pass's Postgres source therefore reads
+`innings - 1` for its 0-based index and never the smallest innings present; normalising by
+the smallest was the same number only while innings 1 bowled a ball, and a first innings
+forfeited or made up entirely of extras would have renumbered the rest of the match on one
+source and not the other, silently (IMPORT-12).
+
+Until IMPORT-12 was fixed an innings with no *legal* ball was skipped whole, which is not
+the same thing as an innings with no delivery. The archive holds one: match 514034, where
+South Africa needed two to win and got them off a single no-ball. That delivery — one run
+off the bat and one for the no-ball — never reached `ball_event`, while its `match_inning`
+row kept `runs_scored = 2` and `balls_bowled = 0`, so the scorecard and the ball-by-ball
+disagreed about the same innings. It is why `make xi-parity` read 9,345,813 runs from the
+database and 9,345,815 from the files; the re-import writes the missing delivery and
+closes the two runs. `is_legal` already says which deliveries are the bowler's count, so
+nothing downstream needs an innings to be absent to know it faced no legal ball.
+
 **A wicket is what the vocabulary says it is.** Cricsheet records fourteen kinds of wicket
 and the scorecard does not treat them alike: six are the bowler's (`bowled`, `caught`,
 `caught and bowled`, `hit wicket`, `lbw`, `stumped`), six are wickets the innings lost and
@@ -803,7 +826,8 @@ by whichever version of the importer wrote them; nothing back-fills them later. 
 to what the importer extracts or how it derives a column — a super over that was being
 stored as innings 3 (IMPORT-01), a super-over win stored with no winner (IMPORT-02), byes
 that were being charged to the bowler (IMPORT-04), a run out credited to him and the
-second wicket of a delivery dropped (IMPORT-06), an `info.event` field that was being
+second wicket of a delivery dropped (IMPORT-06), an innings of nothing but extras dropped
+whole (IMPORT-12), an `info.event` field that was being
 dropped —
 reaches only the matches imported after it. The re-import is the whole
 directory, not the changed files, because the fix applies to every match: run Import again

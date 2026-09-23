@@ -127,6 +127,9 @@ func TestImportMatchFile_VenueIDFromVenueFieldOnly(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			// Arrange
 			ctx := context.Background()
+			prevPool := db.PoolAPI
+			db.SetPoolAPI(nopPool{})
+			t.Cleanup(func() { db.SetPoolAPI(prevPool) })
 			spyTx := &spyTxForMatchVenue{}
 			cricsheet.SetRunInTxFn(func(ctx context.Context, inner func(context.Context, db.CopyFromTx) error) error {
 				return inner(ctx, spyTx)
