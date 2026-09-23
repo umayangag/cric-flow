@@ -21,7 +21,7 @@ func TestEntityCache_WhenPoolNil(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(0), id)
 
-	id, err = cache.GetVenueID(ctx, "any")
+	id, err = cache.GetVenueID(ctx, "any", "any city")
 	require.NoError(t, err)
 	require.Equal(t, int64(0), id)
 

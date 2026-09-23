@@ -19,6 +19,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	"github.com/umayangag/cric-flow/go-app/internal/teamlineage"
+	"github.com/umayangag/cric-flow/go-app/internal/venues"
 	"github.com/umayangag/cric-flow/go-app/internal/wicketkinds"
 )
 
@@ -327,12 +328,25 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 			slog.Any("err", err))
 		return fmt.Errorf("lookup format_id for %s: %w", formatCode, err)
 	}
-	venueName := strings.TrimSpace(firstNonEmpty(info.Venue, info.City))
+	// A match file with no venue has no venue. The city it names is where a ground is, not
+	// a ground, and standing it in built venue rows named after cities that carried real
+	// familiarity and scoring history under a name no XI ever played at (IMPORT-08).
+	// match.venue_id is nullable, so the honest record of an unnamed ground is no ground,
+	// and that is also the answer for a name that carries no identity once folded.
+	venueName := strings.TrimSpace(info.Venue)
+	venueCity := strings.TrimSpace(info.City)
 	var venueID *int64
-	if venueName != "" {
-		if id, e := cache.GetVenueID(ctx, venueName); e == nil {
-			venueID = &id
+	if venues.NormalizeName(venueName) != "" {
+		id, e := cache.GetVenueID(ctx, venueName, venueCity)
+		if e != nil {
+			slog.Error("lookup venue_id failed",
+				slog.String("file", path),
+				slog.String("venue", venueName),
+				slog.String("match_date", dateISO),
+				slog.Any("err", e))
+			return fmt.Errorf("lookup venue_id for %q: %w", venueName, e)
 		}
+		venueID = &id
 	}
 	var seasonID *int64
 	if s := strings.TrimSpace(string(info.Season)); s != "" {

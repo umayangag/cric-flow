@@ -465,8 +465,8 @@ func (_c *MockCricsheetDB_GetOrCreateSeason_Call) RunAndReturn(run func(ctx cont
 }
 
 // GetOrCreateVenue provides a mock function for the type MockCricsheetDB
-func (_mock *MockCricsheetDB) GetOrCreateVenue(ctx context.Context, name string) (int64, error) {
-	ret := _mock.Called(ctx, name)
+func (_mock *MockCricsheetDB) GetOrCreateVenue(ctx context.Context, name string, city string) (int64, error) {
+	ret := _mock.Called(ctx, name, city)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrCreateVenue")
@@ -474,16 +474,16 @@ func (_mock *MockCricsheetDB) GetOrCreateVenue(ctx context.Context, name string)
 
 	var r0 int64
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int64, error)); ok {
-		return returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (int64, error)); ok {
+		return returnFunc(ctx, name, city)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int64); ok {
-		r0 = returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) int64); ok {
+		r0 = returnFunc(ctx, name, city)
 	} else {
 		r0 = ret.Get(0).(int64)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, name)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, name, city)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -498,11 +498,12 @@ type MockCricsheetDB_GetOrCreateVenue_Call struct {
 // GetOrCreateVenue is a helper method to define mock.On call
 //   - ctx context.Context
 //   - name string
-func (_e *MockCricsheetDB_Expecter) GetOrCreateVenue(ctx interface{}, name interface{}) *MockCricsheetDB_GetOrCreateVenue_Call {
-	return &MockCricsheetDB_GetOrCreateVenue_Call{Call: _e.mock.On("GetOrCreateVenue", ctx, name)}
+//   - city string
+func (_e *MockCricsheetDB_Expecter) GetOrCreateVenue(ctx interface{}, name interface{}, city interface{}) *MockCricsheetDB_GetOrCreateVenue_Call {
+	return &MockCricsheetDB_GetOrCreateVenue_Call{Call: _e.mock.On("GetOrCreateVenue", ctx, name, city)}
 }
 
-func (_c *MockCricsheetDB_GetOrCreateVenue_Call) Run(run func(ctx context.Context, name string)) *MockCricsheetDB_GetOrCreateVenue_Call {
+func (_c *MockCricsheetDB_GetOrCreateVenue_Call) Run(run func(ctx context.Context, name string, city string)) *MockCricsheetDB_GetOrCreateVenue_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -512,9 +513,14 @@ func (_c *MockCricsheetDB_GetOrCreateVenue_Call) Run(run func(ctx context.Contex
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -525,7 +531,7 @@ func (_c *MockCricsheetDB_GetOrCreateVenue_Call) Return(n int64, err error) *Moc
 	return _c
 }
 
-func (_c *MockCricsheetDB_GetOrCreateVenue_Call) RunAndReturn(run func(ctx context.Context, name string) (int64, error)) *MockCricsheetDB_GetOrCreateVenue_Call {
+func (_c *MockCricsheetDB_GetOrCreateVenue_Call) RunAndReturn(run func(ctx context.Context, name string, city string) (int64, error)) *MockCricsheetDB_GetOrCreateVenue_Call {
 	_c.Call.Return(run)
 	return _c
 }

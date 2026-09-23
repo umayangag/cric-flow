@@ -9,6 +9,7 @@ require (
 	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/sync v0.22.0
+	golang.org/x/text v0.41.0
 )
 
 require (
@@ -17,5 +18,4 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/text v0.41.0 // indirect
 )
