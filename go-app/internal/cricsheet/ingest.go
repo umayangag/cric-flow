@@ -57,6 +57,12 @@ func ImportDir(ctx context.Context, dir string, opts *Options, concurrency int) 
 	if opts == nil {
 		opts = &Options{}
 	}
+	// The process-global EntityCache never expires on its own, and go-app's API server
+	// can run this more than once across its own lifetime (the pipeline's import step);
+	// a dev-destroy or re-migrate between two such runs would otherwise leave the second
+	// one resolving names against ids the schema no longer holds (IMPORT-16). Every run
+	// starts from nothing memoised, before any file is read.
+	db.GetGlobalCache().Clear()
 	if concurrency <= 0 {
 		concurrency = resources.GetLimit(resources.KindImport)
 	}
@@ -290,7 +296,15 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		return fmt.Errorf("read wicket kinds: %w", err)
 	}
 	info := m.Info
-	dateISO := info.MatchDate()
+	// A file with no date is refused rather than placed at 1970-01-01, ahead of every
+	// real match in the archive (IMPORT-17).
+	dateISO, err := info.MatchDate()
+	if err != nil {
+		slog.Error("cricsheet: match date unreadable",
+			slog.String("file", path),
+			slog.Any("err", err))
+		return fmt.Errorf("match date of %s: %w", path, err)
+	}
 	// Every name below is resolved through this: it carries the file's person registry
 	// and the match's gender, which are the two things that turn a name into an identity.
 	identity := &matchIdentity{
@@ -518,25 +532,37 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		dismissals := map[string]string{}
 		bowlAgg := map[string]*bowlRow{}
 		overTotalsByBowler := map[string]map[int]int{}
+		overLegalBallsByBowler := map[string]map[int]int{}
 		var fieldingEvents []db.FieldingEvent
 		for _, over := range inng.Overs {
 			overNo := over.Over
 			perBowler := map[string]int{}
+			perBowlerLegalBalls := map[string]int{}
 			for ballIndex, d := range over.Deliveries {
 				tr := d.Runs.Total
 				runs += tr
 				extras += d.Runs.Extras
 				// The bowler's runs are not the delivery's total: byes, leg-byes and penalty
 				// runs go to the innings but not to him. Until IMPORT-04 was fixed the whole
-				// total was charged, and the runs, economy and maidens of every bowler who
-				// bowled to a fumbling keeper carried the keeper's misses.
+				// total was charged, and the runs, economy of every bowler who bowled to a
+				// fumbling keeper carried the keeper's misses.
 				bowlerRuns := d.RunsConcededByBowler()
 				// The bowler's count, not the batter's: a no-ball is faced but is not one of
 				// his six, and a wide is neither (IMPORT-05).
 				legal := d.IsLegal()
+				// A maiden is the same "runs charged to the bowler" as his Runs column
+				// (bowlerRuns): byes, leg-byes and penalty runs stay off it, as IMPORT-04
+				// established. The bug was gating this accumulation on `legal` -- a wide or
+				// no-ball is illegal, so bowlerRuns off one (which does include it; only
+				// byes/leg-byes/penalty are excluded) never reached the over's tally, and an
+				// over that only conceded a wide read as scoreless (IMPORT-14). Every delivery
+				// counts here, legal or not; the legal-ball count below is what tells
+				// maidenCount a complete over from a partial one, so an innings cut short
+				// mid-over is never mistaken for a maiden either.
+				perBowler[d.Bowler] += bowlerRuns
 				if legal {
 					balls++
-					perBowler[d.Bowler] += bowlerRuns
+					perBowlerLegalBalls[d.Bowler]++
 				}
 				// What the delivery's wickets are to the scorecard: a run out is a wicket
 				// lost and not the bowler's, a batter retired hurt is neither (IMPORT-06).
@@ -695,6 +721,12 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 				}
 				overTotalsByBowler[bowler][overNo] += t
 			}
+			for bowler, n := range perBowlerLegalBalls {
+				if overLegalBallsByBowler[bowler] == nil {
+					overLegalBallsByBowler[bowler] = map[int]int{}
+				}
+				overLegalBallsByBowler[bowler][overNo] += n
+			}
 		}
 		allFieldingEvents = append(allFieldingEvents, fieldingEvents)
 		oversFloat := oversFromBalls(balls, ballsPerOver)
@@ -766,7 +798,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 
 		var bowlBatch []db.Bowling
 		for name, s := range bowlAgg {
-			maidens := maidenCount(overTotalsByBowler[name])
+			maidens := maidenCount(overTotalsByBowler[name], overLegalBallsByBowler[name], ballsPerOver)
 			o := oversFromBalls(s.Balls, ballsPerOver)
 			econ := float32(0)
 			if s.Balls > 0 {
@@ -1094,10 +1126,14 @@ func oversFromBalls(balls int, bpo int) float32 {
 	return float32(float64(ov) + float64(rem)/10.0)
 }
 
-func maidenCount(overMap map[int]int) int {
+// maidenCount reports how many of a bowler's overs were maidens: zero runs charged to the
+// over (overRuns), and a complete over of legal balls (overLegalBalls == ballsPerOver) --
+// not a partial one, such as an innings that ends mid-over. An over the bowler did not
+// finish is never a maiden, whatever it conceded (IMPORT-14).
+func maidenCount(overRuns map[int]int, overLegalBalls map[int]int, ballsPerOver int) int {
 	c := 0
-	for _, t := range overMap {
-		if t == 0 {
+	for overNo, t := range overRuns {
+		if t == 0 && overLegalBalls[overNo] == ballsPerOver {
 			c++
 		}
 	}

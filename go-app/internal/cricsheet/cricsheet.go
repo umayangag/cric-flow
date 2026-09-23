@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -76,15 +77,23 @@ type Registry struct {
 // do not, so an exact-match lookup silently drops them onto the name-keyed fallback --
 // and two spellings of one name is exactly the split career this work removes. No file
 // in the dataset has two identifiers whose names differ only by surrounding space, so
-// trimming cannot merge two people; if one ever did, the later key wins and the drop from
-// both squads that already covers in-match namesakes applies.
+// trimming cannot merge two people today; if one ever did, which one wins must not depend
+// on the range order Go picks for r.People, which varies between runs of the same file
+// (IMPORT-15). The raw keys are sorted first, so the greater key always wins and two
+// imports of the same file always resolve it the same way.
 //
 // Built once per match rather than looked up per name, because a match resolves the same
 // handful of names hundreds of times.
 func (r Registry) PersonIDsByName() map[string]string {
+	rawNames := make([]string, 0, len(r.People))
+	for name := range r.People {
+		rawNames = append(rawNames, name)
+	}
+	sort.Strings(rawNames)
+
 	out := make(map[string]string, len(r.People))
-	for name, id := range r.People {
-		name, id = strings.TrimSpace(name), strings.TrimSpace(id)
+	for _, rawName := range rawNames {
+		name, id := strings.TrimSpace(rawName), strings.TrimSpace(r.People[rawName])
 		if name == "" || id == "" {
 			continue
 		}
@@ -94,12 +103,17 @@ func (r Registry) PersonIDsByName() map[string]string {
 }
 
 // MatchDate returns the primary match date (the first entry in Dates).
-// It defaults to "1970-01-01" if no dates are available.
-func (i Info) MatchDate() string {
+//
+// A file with none is refused, the same as a file with no team (ingest.go's team-name
+// validation): the match date is the as-of clock every rating and every serving decision
+// reads a player's history against, and 1970-01-01 -- the old default -- placed a match
+// before every real one in the archive rather than reporting that the file named no date
+// at all (IMPORT-17).
+func (i Info) MatchDate() (string, error) {
 	if len(i.Dates) > 0 {
-		return i.Dates[0]
+		return i.Dates[0], nil
 	}
-	return "1970-01-01"
+	return "", fmt.Errorf("no dates in info.dates or info.match_date")
 }
 
 // UnmarshalJSON allows Info to flexibly decode from Cricsheet JSON variations.

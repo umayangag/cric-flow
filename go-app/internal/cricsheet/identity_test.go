@@ -318,6 +318,38 @@ func TestRegistryPersonIDsByName_TrimsBothSidesOfTheMapping(t *testing.T) {
 	assert.Equal(t, map[string]string{"Lalchhuanliana": "2ca0f319"}, people)
 }
 
+// TestRegistryPersonIDsByName_DuplicateAfterTrim_ResolvesTheSameWayEveryTime pins
+// IMPORT-15's other half. No file in the current archive has two raw registry keys that
+// trim to the same name (see the doc comment on PersonIDsByName), but ranging over
+// r.People in whatever order Go's runtime picks -- which varies from call to call, not
+// just from process to process -- made "the later key wins" nondeterministic if one ever
+// did. Sorting the raw keys first makes the outcome a property of the keys, not of when
+// the map happened to be walked.
+func TestRegistryPersonIDsByName_DuplicateAfterTrim_ResolvesTheSameWayEveryTime(t *testing.T) {
+	t.Parallel()
+
+	// Built with assignments, not a map literal: a literal's trailing-space key reads as
+	// a typo to the linter, though it is the exact shape a real registry entry takes
+	// (see TestRegistryPersonIDsByName_TrimsBothSidesOfTheMapping).
+	people := map[string]string{}
+	people["Lalchhuanliana "] = "2ca0f319"
+	people["Lalchhuanliana"] = "zzz00000"
+	registry := Registry{People: people}
+
+	var want string
+	for i := range 200 {
+		people := registry.PersonIDsByName()
+		got := people["Lalchhuanliana"]
+		if i == 0 {
+			want = got
+		}
+		require.Equal(t, want, got, "call %d picked a different identifier than call 0", i)
+	}
+	// Sorted, "Lalchhuanliana" precedes "Lalchhuanliana " (a string precedes itself plus
+	// a trailing byte), so the space-trailing key is assigned last and wins.
+	require.Equal(t, "2ca0f319", want)
+}
+
 func TestMatchIdentityPlayerID_ResolvesANameTheRegistrySpellsWithTrailingSpace(t *testing.T) {
 	t.Parallel()
 

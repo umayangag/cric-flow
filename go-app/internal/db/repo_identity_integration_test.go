@@ -72,6 +72,28 @@ func TestGetOrCreatePlayer_WithoutARegistryEntryFallsBackToOneRowPerName_Integra
 	assert.NotEqual(t, first, identified, "a name-keyed row never absorbs an identified person")
 }
 
+// TestGetOrCreatePlayer_NameKnownUnderAnotherFilesRegistry_ReusesTheIdentifiedRow pins
+// IMPORT-15: a name missing from one file's registry must not duplicate a person who is
+// already known under a real Cricsheet identifier from another file. Before this fix the
+// name-only fallback keyed on (player_name, external_id IS NULL) alone, which never looked
+// at a same-named row that already carried an identifier.
+func TestGetOrCreatePlayer_NameKnownUnderAnotherFilesRegistry_ReusesTheIdentifiedRow(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	ctx := connectAndMigrateForIdentity(t)
+
+	identified, _, err := GetOrCreatePlayer(ctx, "92cf79a8", "SR Taylor", "2015-06-01")
+	require.NoError(t, err)
+
+	// A later file's registry has no entry for this name, so the importer resolves it
+	// with an empty external id -- the fallback that, unfixed, would have created a
+	// second "SR Taylor" row with a null external_id.
+	fallback, _, err := GetOrCreatePlayer(ctx, "", "SR Taylor", "2019-06-01")
+	require.NoError(t, err)
+
+	assert.Equal(t, identified, fallback,
+		"the registry-less lookup must find the already-identified row, not duplicate it")
+}
+
 func TestUpdatePlayerDisplayNames_RenamesToTheMostRecentSpelling_Integration(t *testing.T) {
 	dbtest.SkipUnlessScratchDatabase(t)
 	ctx := connectAndMigrateForIdentity(t)

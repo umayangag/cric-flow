@@ -169,6 +169,35 @@ func TestPlayerKey_ExternalIDAndNameNeverCollide(t *testing.T) {
 	require.NotEqual(t, playerKey("92cf79a8", "SR Taylor"), playerKey("a9231c3f", "SR Taylor"))
 }
 
+// TestEntityCache_Clear_ForgetsEveryMemoisedID pins IMPORT-16: the cache is
+// process-global and never invalidated on its own, so an id it memoised before a
+// dev-destroy or a re-migrate would otherwise survive it. Clear must empty every one of
+// the five maps, not just players -- a stale venue, season, format or opposition id is
+// the same hazard under a different table.
+func TestEntityCache_Clear_ForgetsEveryMemoisedID(t *testing.T) {
+	t.Parallel()
+
+	cache := &EntityCache{}
+	cache.players.Store("id:abc123", int64(1))
+	cache.venues.Store("lords\x00", int64(2))
+	cache.seasons.Store("2024", int64(3))
+	cache.formats.Store("T20", int64(4))
+	cache.oppositions.Store("India\x00male", int64(5))
+
+	cache.Clear()
+
+	_, playerFound := cache.players.Load("id:abc123")
+	_, venueFound := cache.venues.Load("lords\x00")
+	_, seasonFound := cache.seasons.Load("2024")
+	_, formatFound := cache.formats.Load("T20")
+	_, oppositionFound := cache.oppositions.Load("India\x00male")
+	require.False(t, playerFound, "a cleared cache must not still answer a player lookup from memory")
+	require.False(t, venueFound, "a cleared cache must not still answer a venue lookup from memory")
+	require.False(t, seasonFound, "a cleared cache must not still answer a season lookup from memory")
+	require.False(t, formatFound, "a cleared cache must not still answer a format lookup from memory")
+	require.False(t, oppositionFound, "a cleared cache must not still answer an opposition lookup from memory")
+}
+
 func TestOppositionKey_SameNameDifferentGenderAreDifferentTeams(t *testing.T) {
 	t.Parallel()
 

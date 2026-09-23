@@ -93,17 +93,47 @@ func TestMaidenCount(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name  string
-		overs map[int]int
-		want  int
+		name         string
+		overs        map[int]int
+		legalBalls   map[int]int
+		ballsPerOver int
+		want         int
 	}{
-		{name: "two maidens", overs: map[int]int{0: 0, 1: 6, 2: 0, 3: 1}, want: 2},
-		{name: "none", overs: map[int]int{0: 1, 1: 2}, want: 0},
+		{
+			name:         "two complete scoreless overs are maidens",
+			overs:        map[int]int{0: 0, 1: 6, 2: 0, 3: 1},
+			legalBalls:   map[int]int{0: 6, 1: 6, 2: 6, 3: 6},
+			ballsPerOver: 6,
+			want:         2,
+		},
+		{
+			name:         "none scoreless",
+			overs:        map[int]int{0: 1, 1: 2},
+			legalBalls:   map[int]int{0: 6, 1: 6},
+			ballsPerOver: 6,
+			want:         0,
+		},
+		{
+			name: "a wide-conceded run breaks the maiden even though it is not the bowler's" +
+				" own figures (IMPORT-14)",
+			overs:        map[int]int{0: 1},
+			legalBalls:   map[int]int{0: 6},
+			ballsPerOver: 6,
+			want:         0,
+		},
+		{
+			name: "a scoreless over cut short by the innings ending is not a maiden" +
+				" (IMPORT-14)",
+			overs:        map[int]int{0: 0},
+			legalBalls:   map[int]int{0: 3},
+			ballsPerOver: 6,
+			want:         0,
+		},
 	}
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, maidenCount(tc.overs))
+			require.Equal(t, tc.want, maidenCount(tc.overs, tc.legalBalls, tc.ballsPerOver))
 		})
 	}
 }

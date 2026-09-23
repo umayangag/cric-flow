@@ -91,6 +91,9 @@ type offlineSpyTx struct {
 	innings                                         []db.MatchInningInsert
 	execs                                           []string
 	sawBattingCopy, sawBowlingCopy, sawFieldingCopy bool
+	// bowlingMaidens is the "maidens" column of every row CopyFrom'd into a bowling table,
+	// in copy order, found by column name rather than a hardcoded index (IMPORT-14).
+	bowlingMaidens []*int
 }
 
 // Column indexes for match_inning INSERT in db.UpsertMatchInningTx (repo_match.go).
@@ -212,7 +215,7 @@ func (t *offlineSpyTx) QueryRow(_ context.Context, _ string, _ ...any) db.Row {
 func (t *offlineSpyTx) CopyFrom(
 	_ context.Context,
 	table pgx.Identifier,
-	_ []string,
+	columns []string,
 	src pgx.CopyFromSource,
 ) (int64, error) {
 	tbl := strings.Join(table, ".")
@@ -225,9 +228,22 @@ func (t *offlineSpyTx) CopyFrom(
 	if strings.Contains(tbl, "fielding") {
 		t.sawFieldingCopy = true
 	}
+	maidenIdx := -1
+	for i, c := range columns {
+		if c == "maidens" {
+			maidenIdx = i
+		}
+	}
 	n := int64(0)
 	for src.Next() {
 		n++
+		if maidenIdx >= 0 {
+			values, err := src.Values()
+			if err != nil {
+				return n, err
+			}
+			t.bowlingMaidens = append(t.bowlingMaidens, toIntPtr(values[maidenIdx]))
+		}
 	}
 	return n, src.Err()
 }

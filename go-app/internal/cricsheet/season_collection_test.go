@@ -83,36 +83,39 @@ func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 		name     string
 		in       string
 		wantDate string
+		wantErr  bool
 	}{
 		{
-			"standard dates field",
-			`{"dates": ["2025-11-07"]}`,
-			"2025-11-07",
+			name:     "standard dates field",
+			in:       `{"dates": ["2025-11-07"]}`,
+			wantDate: "2025-11-07",
 		},
 		{
-			"match_date field",
-			`{"match_date": ["2025-12-25"]}`,
-			"2025-12-25",
+			name:     "match_date field",
+			in:       `{"match_date": ["2025-12-25"]}`,
+			wantDate: "2025-12-25",
 		},
 		{
-			"both fields - dates takes precedence",
-			`{"dates": ["2025-11-07"], "match_date": ["2025-12-25"]}`,
-			"2025-11-07",
+			name:     "both fields - dates takes precedence",
+			in:       `{"dates": ["2025-11-07"], "match_date": ["2025-12-25"]}`,
+			wantDate: "2025-11-07",
 		},
 		{
-			"neither field",
-			`{"venue": "Some Stadium"}`,
-			"1970-01-01",
+			// IMPORT-17: a file with no date is refused, not placed at 1970-01-01
+			// ahead of every real match in the archive.
+			name:    "neither field is a parse error",
+			in:      `{"venue": "Some Stadium"}`,
+			wantErr: true,
 		},
 		{
-			"multiple dates",
-			`{"dates": ["2025-11-07", "2025-11-08"]}`,
-			"2025-11-07",
+			name:     "multiple dates",
+			in:       `{"dates": ["2025-11-07", "2025-11-08"]}`,
+			wantDate: "2025-11-07",
 		},
 		{
-			"empty dates array",
-			`{"dates": []}`,
-			"1970-01-01",
+			name:    "empty dates array is a parse error",
+			in:      `{"dates": []}`,
+			wantErr: true,
 		},
 	}
 	for i := range testCases {
@@ -121,7 +124,16 @@ func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 			var info cricsheet.Info
 			err := json.Unmarshal([]byte(tc.in), &info)
 			require.NoError(t, err)
-			require.Equal(t, tc.wantDate, info.MatchDate())
+
+			date, err := info.MatchDate()
+
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Empty(t, date)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantDate, date)
 		})
 	}
 }

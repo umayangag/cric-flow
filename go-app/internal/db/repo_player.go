@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"errors"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Player represents the player table row
@@ -62,6 +64,26 @@ func GetOrCreatePlayer(
 		return 0, "", errors.New("db pool not initialized")
 	}
 	if externalID == "" {
+		// A name missing from this file's registry (a Cricsheet data gap, or a source
+		// with no registry at all) must not mint a second person for someone whose
+		// identity another file already established under a real external_id: that is
+		// the split career this identity work exists to prevent, reopened through the
+		// one path that still keys on name (IMPORT-15). Ordered by id so a name that
+		// happens to match more than one already-identified player resolves the same
+		// way on every run, not on whichever row the planner returns first.
+		var knownID int64
+		var knownName string
+		lookupErr := PoolAPI.QueryRow(ctx,
+			`SELECT id, player_name FROM player WHERE player_name = $1 AND external_id IS NOT NULL
+			ORDER BY id LIMIT 1`,
+			name,
+		).Scan(&knownID, &knownName)
+		if lookupErr == nil {
+			return knownID, knownName, nil
+		}
+		if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			return 0, "", lookupErr
+		}
 		err = PoolAPI.QueryRow(ctx, `INSERT INTO player(player_name, name_as_of) VALUES($1, $2::date)
 			ON CONFLICT (player_name) WHERE external_id IS NULL
 			DO UPDATE SET player_name = EXCLUDED.player_name
