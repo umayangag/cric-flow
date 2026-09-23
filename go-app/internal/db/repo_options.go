@@ -45,11 +45,11 @@ func GetUniqueFormats(ctx context.Context) ([]string, error) {
 //
 // It offers `venue_name` and nothing else, because that is the string the caller will send
 // back and every string this list offers must resolve. It used to offer
-// `COALESCE(NULLIF(trim(display_name), ''), venue_name)` while venue resolution matched on
-// `venue_name`: a venue with a display name would have been listed under one string and
-// refused under it with VENUE_NOT_FOUND. Nothing has ever written `venue.display_name`, so
-// the mismatch never fired -- it sat waiting for the first writer, which is the shape of
-// bug `normalized_name` already was (IMPORT-08).
+// the trimmed `display_name` and fell back to `venue_name` only when it was blank, while
+// venue resolution matched `venue_name`: a venue with a display name would have been listed
+// under one string and refused under it with VENUE_NOT_FOUND. Nothing has ever written
+// `venue.display_name`, so the mismatch never fired -- it sat waiting for the first writer,
+// which is the shape of bug `normalized_name` already was (IMPORT-08).
 func GetVenuesByQuery(ctx context.Context, q string) ([]string, error) {
 	q = strings.TrimSpace(q)
 	if len(q) < 3 {

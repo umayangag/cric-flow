@@ -414,12 +414,14 @@ func TestPredictTeamSelectionHandler_AnOffsetBearingMatchDateKeepsThePreviousDay
 	}
 }
 
-// insertVenue adds one venue the prediction path can resolve, and returns its id.
+// insertVenue adds one venue the prediction path can resolve, and returns its id. It goes
+// through the importer's own get-or-create so the row carries the identity key resolution
+// matches on; a bare INSERT would leave normalized_name unset, which the column no longer
+// permits (IMPORT-08).
 func insertVenue(t *testing.T, name string) int64 {
 	t.Helper()
-	var id int64
-	require.NoError(t, db.Pool.QueryRow(context.Background(),
-		`INSERT INTO venue (venue_name) VALUES ($1) RETURNING id`, name).Scan(&id))
+	id, err := db.GetOrCreateVenue(context.Background(), name, "")
+	require.NoError(t, err)
 	return id
 }
 

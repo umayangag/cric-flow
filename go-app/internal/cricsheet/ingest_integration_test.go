@@ -280,7 +280,6 @@ func TestImportDir_SortsAndCountsJSON(t *testing.T) {
 	anyCtx := mock.MatchedBy(func(c context.Context) bool { return c != nil })
 	// DB expectations minimal for directory import (typed matchers)
 	mdb.On("GetMatchFormatIDByCode", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
-	mdb.On("GetOrCreateVenue", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("GetOrCreateSeason", anyCtx, mock.MatchedBy(func(_ string) bool { return true })).Return(int64(1), nil)
 	mdb.On("GetOrCreateOpposition", anyCtx, mock.Anything, mock.Anything).Return(int64(1), nil)
 	mdb.On("GetOrCreatePlayer", anyCtx, mock.Anything, mock.Anything, mock.Anything).Return(int64(1), "", nil)

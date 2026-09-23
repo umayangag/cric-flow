@@ -12,7 +12,6 @@ type CricsheetDB interface {
 	GetMatchFormatIDByCode(ctx context.Context, code string) (int64, error)
 	UpsertMatch(ctx context.Context, m *db.MatchInsert) error
 	UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error
-	GetOrCreateVenue(ctx context.Context, name, city string) (int64, error)
 	GetOrCreateSeason(ctx context.Context, name string) (int64, error)
 	GetOrCreateOpposition(ctx context.Context, name, gender string) (int64, error)
 	GetOrCreatePlayer(ctx context.Context, externalID, name, nameAsOf string) (int64, string, error)
@@ -59,10 +58,6 @@ func (realDB) UpsertMatch(ctx context.Context, m *db.MatchInsert) error {
 
 func (realDB) UpsertMatchInning(ctx context.Context, mi *db.MatchInningInsert) error {
 	return db.UpsertMatchInning(ctx, mi)
-}
-
-func (realDB) GetOrCreateVenue(ctx context.Context, name, city string) (int64, error) {
-	return db.GetOrCreateVenue(ctx, name, city)
 }
 
 func (realDB) GetOrCreateSeason(ctx context.Context, name string) (int64, error) {

@@ -241,6 +241,42 @@ Note `make dev-purge` does **not** drop the database — it stops the stack and 
 
 **Scope:** Input dir = `-in` / `GO_APP_INPUT_DIR`. One file = one match; count = files that completed `ImportMatchFile` without error. Importer: `go-app/cmd/cricsheet-importer`, `go-app/internal/cricsheet/ingest.go`; format: `go-app/internal/cricsheet/format.go` (`DetectFormat`).
 
+### What identifies a venue
+
+A ground is its **folded name**, `venue.normalized_name`, not the spelling a particular
+match file used. The fold is `go-app/internal/venues.NormalizeName`, the same rule
+`reference-data/venue-geocoding.csv`'s `venue_key` column applies in Python
+(`ml-service/ml/weather/venues.py`): accents dropped, case folded, runs of punctuation and
+whitespace collapsed to one space, and nothing else. The column is `NOT NULL` and uniquely
+indexed, so a venue with no identity cannot exist.
+
+The fold is deliberately conservative. It does **not** key on the part before a comma:
+`County Ground` names nine different grounds in this archive — bare, Bristol, Chelmsford,
+Derby, Hove, New Road, New Road/Worcester, Northampton and Taunton — and two of those
+trailing parts are cities, so a rule that dropped them would make nine venues one.
+Spellings that differ by more than punctuation, such as the four `Kensington Oval`
+variants, also stay apart; merging those needs coordinates, not a string rule.
+
+On the archive as it stands the fold merges four pairs, 896 venue rows to 892 (the CSV's
+key count exactly): `Dr. Y.S. Rajasekhara Reddy ACA-VDCA Cricket Stadium`,
+`Gahanga International Cricket Stadium, Rwanda`, `M Chinnaswamy Stadium` and
+`R Premadasa Stadium` each absorb one punctuation variant. Migration
+`0021_venue_identity.sql` backfills the key, moves the loser's matches, weather days and
+auction rows onto the surviving row, and deletes the loser; the survivor is the lower id,
+so `venue_name` keeps the spelling the archive recorded first.
+
+Two consequences worth knowing:
+
+- **A match file that names no venue is recorded with no venue.** `match.venue_id` is
+  nullable and stays null. The importer used to fall back to `info.city`, which built
+  venue rows named after cities that then accumulated familiarity and scoring history under
+  a name no XI ever played at. The city now goes where it belongs, `venue.city`, filled by
+  the first file that names one beside a ground and never rewritten.
+- **Creating a venue is still the importer's act alone.** The prediction path resolves a
+  named ground with `db.FindVenueIDByName`, which matches the same folded key and never
+  writes; a name this database does not hold is `400 VENUE_NOT_FOUND` (GO-08).
+  `/api/options/venues` offers `venue_name`, so every string it lists resolves.
+
 ---
 
 ## Player biographies (X-1a)
@@ -874,5 +910,9 @@ Re-verified on 2026-09-20 after DATA-01 re-placed 22 venues: the same command ag
 same scratch database placed all 896 venue rows and wrote 20,001 `venue_weather` rows with
 no network call, and `M Chinnaswamy Stadium` on 2007-06-06 read back matches its snapshot
 line value for value in `Asia/Kolkata`; the live database was not written.
+Both runs predate IMPORT-08: the "four spelling pairs of one ground" above are exactly the
+four pairs `0021_venue_identity.sql` merges, so after that migration the restore places 892
+venue rows, not 896, and each of those four grounds takes its weather on one id rather than
+two. The snapshot itself is keyed by `venue_key` and does not change.
 Note the default `WEATHER_CRICSHEET_DIR` is `data/go-app/cricsheet` relative to the
 repository; name it when the archive lives elsewhere.

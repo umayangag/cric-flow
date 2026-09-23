@@ -126,7 +126,7 @@ COMMENT ON COLUMN public.venue.normalized_name IS
 COMMENT ON COLUMN public.venue.venue_name IS
     'The spelling that first created this row, and the string /api/options/venues offers';
 COMMENT ON COLUMN public.venue.city IS
-    'The first city the archive named beside this ground; descriptive, no model reads it';
+    'The first city the archive named beside this ground, until the weather backfill overwrites it with the geocoded place; descriptive, no model reads it';
 COMMENT ON COLUMN public.venue.display_name IS
     'Unused: nothing writes this and no query reads it. Venue resolution matches normalized_name, so a value here would not resolve (IMPORT-08)';
 

@@ -61,7 +61,9 @@ func FindVenueIDByName(ctx context.Context, name string) (int64, bool, error) {
 //
 // `city` is what the match file said the ground is in, and it is filled only while the
 // column is still empty: the first city the archive names beside a ground wins, and no
-// later file rewrites it. An empty city writes nothing.
+// later match file rewrites it. An empty city writes nothing. The weather backfill
+// (ml-service/ml/weather/backfill.py) later overwrites it with the geocoded place, which is
+// the better answer when it exists; this is what the column holds until it runs.
 func GetOrCreateVenue(ctx context.Context, name, city string) (int64, error) {
 	if Pool == nil {
 		return 0, errors.New("db pool not initialized")
