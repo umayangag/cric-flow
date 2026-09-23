@@ -195,4 +195,3 @@ func arrangeMatchInningSpy(t *testing.T) *offlineSpyTx {
 	t.Cleanup(func() { cricsheet.SetRunInTxFn(nil) })
 	return spy
 }
-
