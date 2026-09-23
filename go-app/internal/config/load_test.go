@@ -78,6 +78,38 @@ func TestValidateForServer_FailsWhenImportTimeoutNegative(t *testing.T) {
 	assert.Contains(t, err.Error(), "import_timeout_ms")
 }
 
+// GO-13: a config file that is found but does not parse as JSON used to leave Load's
+// caller holding zero values with no way to tell they were never decoded -- ValidateForServer
+// happily let that corrupt file start the server. Load itself still hands back a *Config (its
+// many other callers never check an error), but LoadError now carries the decode failure.
+func TestLoad_InvalidJSON_SetsLoadError(t *testing.T) {
+	cached = nil
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "broken.json")
+	require.NoError(t, os.WriteFile(p, []byte(`{"inputs": not valid json`), 0o600))
+	t.Setenv("GO_APP_CONFIG", p)
+
+	c := Load()
+
+	require.NotNil(t, c, "Load still returns a usable, if empty, Config")
+	require.Error(t, LoadError())
+	assert.Empty(t, c.Inputs.CricsheetDir, "the zero value nothing decoded into")
+}
+
+func TestValidateForServer_FailsWhenConfigIsNotValidJSON(t *testing.T) {
+	cached = nil
+	tmp := t.TempDir()
+	p := filepath.Join(tmp, "broken.json")
+	require.NoError(t, os.WriteFile(p, []byte(`{"pipeline": {`), 0o600))
+	t.Setenv("GO_APP_CONFIG", p)
+
+	err := ValidateForServer()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not valid JSON")
+	assert.Contains(t, err.Error(), p)
+}
+
 func TestLoad_CachePersistsUntilReset(t *testing.T) {
 	cached = nil
 	tmp := t.TempDir()
