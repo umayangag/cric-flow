@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -122,6 +123,35 @@ func TestFormatCodesForTrainingBucket_NamesTheCodesTheBucketCovers(t *testing.T)
 }
 
 // TestGetGlobalCache_Singleton verifies that GetGlobalCache returns the same instance each time.
+// TestMemoiseID_DoesNotRememberAZero pins what keeps a lookup that produced nothing out
+// of a process-global cache. Every dimension table's primary key is a serial starting at
+// 1, so zero is not a row; remembering it would hand that nothing to every later caller
+// of the key, which would then write it into a foreign key.
+func TestMemoiseID_DoesNotRememberAZero(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		id         int64
+		wantStored bool
+	}{
+		{name: "a real row is remembered", id: 7, wantStored: true},
+		{name: "a zero is not", id: 0, wantStored: false},
+	}
+	for i := range testCases {
+		testCase := testCases[i]
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			var store sync.Map
+
+			memoiseID(&store, "T20", testCase.id)
+
+			_, stored := store.Load("T20")
+			require.Equal(t, testCase.wantStored, stored)
+		})
+	}
+}
+
 func TestGetGlobalCache_Singleton(t *testing.T) {
 	t.Parallel()
 	c1 := GetGlobalCache()

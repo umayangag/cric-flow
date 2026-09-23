@@ -52,6 +52,20 @@ func GetGlobalCache() *EntityCache {
 	return globalCache
 }
 
+// memoiseID remembers an id under a key, unless the id is zero.
+//
+// Every dimension table's primary key is a serial starting at 1, so zero is not a row:
+// it is a lookup that produced nothing while reporting success. Remembering it would
+// hand that nothing to every later caller of the same key, and the caller would write it
+// into a foreign key -- which is what a fake pool in a test does to every real lookup
+// that follows it in the same process.
+func memoiseID(store *sync.Map, key string, id int64) {
+	if id == 0 {
+		return
+	}
+	store.Store(key, id)
+}
+
 // GetPlayerID returns the ID for a player, keyed by the Cricsheet person identifier.
 //
 // externalID empty takes the name-keyed fallback, which is the pre-identity behaviour and
@@ -67,7 +81,7 @@ func (c *EntityCache) GetPlayerID(ctx context.Context, externalID, name, nameAsO
 	if err != nil {
 		return 0, err
 	}
-	c.players.Store(key, id)
+	memoiseID(&c.players, key, id)
 	return id, nil
 }
 
@@ -89,7 +103,7 @@ func (c *EntityCache) GetVenueID(ctx context.Context, name, city string) (int64,
 	if err != nil {
 		return 0, err
 	}
-	c.venues.Store(key, id)
+	memoiseID(&c.venues, key, id)
 	return id, nil
 }
 
@@ -102,7 +116,7 @@ func (c *EntityCache) GetSeasonID(ctx context.Context, name string) (int64, erro
 	if err != nil {
 		return 0, err
 	}
-	c.seasons.Store(name, id)
+	memoiseID(&c.seasons, name, id)
 	return id, nil
 }
 
@@ -115,7 +129,7 @@ func (c *EntityCache) GetFormatID(ctx context.Context, code string) (int64, erro
 	if err != nil {
 		return 0, err
 	}
-	c.formats.Store(code, id)
+	memoiseID(&c.formats, code, id)
 	return id, nil
 }
 
@@ -158,7 +172,7 @@ func (c *EntityCache) GetOppositionID(ctx context.Context, name, gender string) 
 	if err != nil {
 		return 0, err
 	}
-	c.oppositions.Store(key, id)
+	memoiseID(&c.oppositions, key, id)
 	return id, nil
 }
 
