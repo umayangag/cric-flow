@@ -47,9 +47,14 @@ func (e *UnknownVenueError) Error() string {
 	return fmt.Sprintf("no venue named %q is known", e.Name)
 }
 
-// VenueLookup finds a venue by the exact name a caller wrote, reporting whether there is
-// one. It is a parameter so the resolution can be tested without a database, and it is
+// VenueLookup finds the venue a caller's name identifies, reporting whether there is one.
+// It is a parameter so the resolution can be tested without a database, and it is
 // read-only by contract: the prediction path must never create the venue it fails to find.
+//
+// Identity is the folded name, not the spelling: since IMPORT-08 the lookup matches
+// `venue.normalized_name`, so a caller who writes "M.Chinnaswamy Stadium" reaches the
+// ground stored as "M Chinnaswamy Stadium". Folding is not guessing -- "County Ground,
+// Derby" still resolves to Derby's ground and to no other.
 type VenueLookup func(ctx context.Context, name string) (int64, bool, error)
 
 // resolveVenue turns the venue a caller named into the venue the answer was produced at,
@@ -73,8 +78,8 @@ func resolveVenue(ctx context.Context, name string, lookup VenueLookup) (VenueSu
 	return VenueSummary{Resolved: true, VenueID: id, Name: name}, nil
 }
 
-// productionVenueLookup is the lookup the served path uses: an exact-name read of the
-// venue table, and nothing else.
+// productionVenueLookup is the lookup the served path uses: a read of the venue table on
+// the folded identity key, and nothing else.
 func productionVenueLookup(ctx context.Context, name string) (int64, bool, error) {
 	return db.FindVenueIDByName(ctx, name)
 }

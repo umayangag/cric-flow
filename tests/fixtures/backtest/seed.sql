@@ -20,7 +20,11 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO season(season_name) VALUES ('2024') ON CONFLICT (season_name) DO NOTHING;
 
-INSERT INTO venue(venue_name) VALUES ('Wankhede Stadium') ON CONFLICT (venue_name) DO NOTHING;
+-- A venue's identity is its folded name since migration 0021 (IMPORT-08): the column is
+-- NOT NULL and uniquely indexed, and it is what the conflict target has to be, because
+-- `venue_name` no longer decides whether two spellings are one ground.
+INSERT INTO venue(venue_name, normalized_name) VALUES ('Wankhede Stadium', 'wankhede stadium')
+ON CONFLICT (normalized_name) DO NOTHING;
 
 -- A team is (name, gender) since migration 0004_identity.sql: 130 of the 394 names in the
 -- real dataset belong to both a men's and a women's side.

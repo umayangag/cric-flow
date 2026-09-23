@@ -181,12 +181,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-08 — Venue identity is the raw string; `normalized_name` never populated  **Medium · retrain**
-
-`ingest.go:251-257` (`firstNonEmpty(info.Venue, info.City)`), `repo_lookup.go:434-436` upserts on `venue_name` only; `0001_baseline.sql:703-706` has `normalized_name` with a unique index that nothing writes. "M Chinnaswamy Stadium" / "…, Bangalore" / "…, Bengaluru" are three venues with separate familiarity and scoring baselines (`docs/config-and-data.md:599` already notes "four spelling pairs of one ground"). A blank venue makes the city a venue. `GetVenueID` errors are swallowed (`ingest.go:254`).
-
-**Fix.** Fold the name as `reference-data/venue-geocoding.csv` does (`venue_key`) into `normalized_name` and upsert on that; drop the city fallback; store `info.city` in `venue.city`; log lookup errors.
-
 ### IMPORT-09 — Format taxonomy merges domestic multi-day with Tests, List-A with ODI, men with women  **Medium (design) · retrain**
 
 `format.go:151-168`; `formats.go:56-68`; `config.json:13-28`; `cricsheet.go:24-45` does not decode `info.team_type` or `match_type_number`. `MDM` (Sheffield Shield, County Championship) is rated with Tests, `ODM` with ODIs, and every format pools men's and women's cricket with gender only a context group. T20I is inferred from a hand-maintained 12-team list rather than `team_type: international`. `original_match_type` is stored (`ingest.go:312`) so this is recoverable.
@@ -269,7 +263,7 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 
 ### DATA-02 — Venue-key normalisation does not merge spellings; 20 rows are country centroids  **Medium**
 
-`ml/weather/venues.py:209-213` folds case/accents/punctuation only. 896 spellings → 892 keys. `Kensington Oval, Bridgetown` (Barbados centroid) vs `…, Barbados` (Bridgetown); `Queen's Park Oval` likewise; rows with `admin1 == ""` and place == country cover 489 venue-days. **Fix.** Key by the first comma-part when trailing parts are a known city/country; reject a candidate with empty `admin1` when the query was a country name. Coordinate with IMPORT-08 so the DB and the CSV share one venue key.
+`ml/weather/venues.py:209-213` folds case/accents/punctuation only. 896 spellings → 892 keys. `Kensington Oval, Bridgetown` (Barbados centroid) vs `…, Barbados` (Bridgetown); `Queen's Park Oval` likewise; rows with `admin1 == ""` and place == country cover 489 venue-days. **Fix.** Key by the first comma-part when trailing parts are a known city/country; reject a candidate with empty `admin1` when the query was a country name. Coordinate with IMPORT-08 so the DB and the CSV share one venue key. **Do not implement the first-comma-part rule as written (IMPORT-08, PR #334).** `County Ground` is nine different grounds in this archive -- bare, Bristol, Chelmsford, Derby, Hove, New Road, New Road/Worcester, Northampton, Taunton -- and Bristol and Derby are known cities, so that rule merges nine unrelated grounds into one. IMPORT-08 landed the conservative fold (`venues.NormalizeName`, the CSV's own `venue_key`) as the shared key: 896 rows to 892, the four `Kensington Oval` spellings left apart for this finding, which needs coordinates rather than a string rule. Whatever DATA-02 lands must keep those nine apart and must be applied to `venue.normalized_name` and the CSV together, since the two are now the same key.
 
 ### DATA-03 — Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured  **Medium**
 
@@ -318,6 +312,26 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-08 — Venue identity is the raw string; `normalized_name` never populated  **Medium · retrain** — PR #334
+
+`ingest.go:251-257` (`firstNonEmpty(info.Venue, info.City)`), `repo_lookup.go:434-436` upserts on `venue_name` only; `0001_baseline.sql:703-706` has `normalized_name` with a unique index that nothing writes. "M Chinnaswamy Stadium" / "…, Bangalore" / "…, Bengaluru" are three venues with separate familiarity and scoring baselines (`docs/config-and-data.md:599` already notes "four spelling pairs of one ground"). A blank venue makes the city a venue. `GetVenueID` errors are swallowed (`ingest.go:254`).
+
+**Fix.** Fold the name as `reference-data/venue-geocoding.csv` does (`venue_key`) into `normalized_name` and upsert on that; drop the city fallback; store `info.city` in `venue.city`; log lookup errors.
+
+**The claims hold; the line numbers are stale and one detail of the headline does not.** On `main` (`f6bebb8b`) the city fallback is `ingest.go:330`, the upsert `repo_lookup.go:43-51`, and the column and its unused unique index `0001_baseline.sql:706` and `:1252`. The swallowed error is real (`ingest.go:333`). The headline's example is half right: the archive does hold `M Chinnaswamy Stadium`, `M Chinnaswamy Stadium, Bangalore` and `M Chinnaswamy Stadium, Bengaluru` as three rows, but the CSV's `venue_key` fold the spec points at does **not** merge those — it merges `M.Chinnaswamy Stadium` into `M Chinnaswamy Stadium`. Folding the Bangalore/Bengaluru family needs coordinates and is DATA-02's. The honest scope of this fix is four pairs, not the Chinnaswamy family.
+
+**Fixed.** The fold is one function, `go-app/internal/venues.NormalizeName`, the same rule `reference-data/venue-geocoding.csv`'s `venue_key` applies in Python: NFKD with the marks dropped, case folded, runs of punctuation and whitespace collapsed to one space, nothing else. `GetOrCreateVenue` upserts on `normalized_name` and `FindVenueIDByName` resolves on it, so writer and reader agree on what is one ground while GO-08's create/read split is untouched — only the importer may bring a venue into existence. Migration `0021_venue_identity.sql` backfills the key, repoints `match`, `venue_weather` and `auction_venue`, deletes the absorbed rows and makes the column `NOT NULL`; it refuses loudly on a non-ASCII name, because its SQL fold and Go's NFKD agree only while every name is ASCII (all 896 are).
+
+**It does not key on the first comma-part, deliberately.** `County Ground` is nine different grounds in this archive — bare, Bristol, Chelmsford, Derby, Hove, New Road, New Road/Worcester, Northampton, Taunton — and two of those trailing parts are cities, so DATA-02's proposed rule would merge nine unrelated venues into one. They stay nine, at the fold, in the database and under test, as do the four `Kensington Oval` spellings, which are one ground this change does not claim to merge.
+
+**Four pairs merge, 896 venue rows to 892** — exactly the CSV's key count, and the migration's SQL fold was verified to produce the same 892 keys as the Go fold, the Python fold and the CSV column, name for name, on a throwaway copy of the real venue table: `Dr. Y.S. Rajasekhara Reddy ACA-VDCA Cricket Stadium` (25 → 48 matches), `Gahanga International Cricket Stadium. Rwanda` (88 → 192), `M Chinnaswamy Stadium` (91 → 111), `R Premadasa Stadium` (84 → 90). 137 of 22,905 matches (0.60%) change venue id. The lower id keeps the row, so `venue_name` is the spelling the archive recorded first.
+
+**A blank venue is now no venue** — `match.venue_id` is nullable and stays null, and the same holds for a name that folds to nothing; `info.city` goes to `venue.city`, filled by the first file that names one and not rewritten by a later match file. This closes a latent defect, not a live one: **0 of the 22,905 archive files have a blank venue**, so no city-named venue exists today. The swallowed `GetVenueID` error is logged and returned.
+
+**The venue-key mismatch beside it is closed.** `/api/options/venues` offered the trimmed `display_name` in place of `venue_name` while resolution matched `venue_name`; it was harmless only because nothing has ever written `venue.display_name`. The picker now offers `venue_name` alone and an integration test writes a `display_name` and then requires every offered string to resolve.
+
+**Retrain-flagged; this opens batch 4.** `make retrain` defaults to `--postgres`, so the merge reaches the rating pass through `match.venue_id`. The affected accumulators are `venue_bat_first` (`venue_bf_rate`, `venue_n`), `team_venue_matches` (`venue_fam_diff`) and `venue_scoring` (A-1's fixture context). Prediction: no headline number should move outside the ~0.002 the gates treat as noise — 0.60% of matches change one categorical key and no feature definition changes for the rest; if anything shows it should be the performance model's venue-conditioned scoring at those four grounds. A larger move is a sign to look elsewhere before attributing it here.
 
 ### IMPORT-07 — Fail-fast abort skips display-name settlement and team lineage  **Medium** — PR #333
 

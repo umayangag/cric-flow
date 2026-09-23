@@ -125,8 +125,12 @@ quantities came back, and its `note` names the toss-blind part.
 
 **A named venue is resolved or the request is refused (GO-08).** `venue` is optional: leave
 it out and the fixture is read without one, which the answer says in
-`venue: {"resolved": false, "note": ...}`. Send one and it is looked up by its exact name —
-the string `/api/options/venues` offers — and the answer names what was used in
+`venue: {"resolved": false, "note": ...}`. Send one and it is looked up by its folded
+identity — `venue.normalized_name`, the same key the importer creates a ground under
+(IMPORT-08), so a punctuation variant of a held ground resolves to it while two grounds
+that merely share a name stem, such as `County Ground, Bristol` and `County Ground, Derby`,
+stay apart. `/api/options/venues` offers `venue_name`, and every string it offers resolves.
+The answer names what was used in
 `venue: {"resolved": true, "venue_id": …, "name": …}`. A name this database does not hold is
 **`400 VENUE_NOT_FOUND`**. It used to be none of those: the lookup was a *get-or-create*, so
 a typo inserted a venue row and the prediction ran at a ground with no history behind it,

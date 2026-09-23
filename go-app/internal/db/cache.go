@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/umayangag/cric-flow/go-app/internal/venues"
 )
 
 // EntityCache provides a thread-safe, process-global cache for database entities
 // to minimize roundtrips during high-concurrency imports.
 type EntityCache struct {
 	players     sync.Map // player key (see playerKey) -> int64
-	venues      sync.Map // string -> int64
+	venues      sync.Map // venue key (see GetVenueID) -> int64
 	seasons     sync.Map // string -> int64
 	formats     sync.Map // string -> int64
 	oppositions sync.Map // opposition key (see oppositionKey) -> int64
@@ -64,19 +66,28 @@ func (c *EntityCache) GetPlayerID(ctx context.Context, externalID, name, nameAsO
 	return id, nil
 }
 
-// GetVenueID returns the ID for a venue name, using the cache if available.
-func (c *EntityCache) GetVenueID(ctx context.Context, name string) (int64, error) {
-	if id, ok := c.venues.Load(name); ok {
+// GetVenueID returns the ID for a venue named by a match file, using the cache if
+// available. `city` is the city that file named beside the ground, and may be empty.
+//
+// The cache key is the folded identity key plus the city, not the spelling: two spellings
+// of one ground share an entry, so the second never reaches the database, while a ground
+// first seen without a city still gets one when a later file names it. Both halves matter
+// -- keying on the spelling alone would let a rival row through, and keying on the ground
+// alone would freeze `venue.city` empty for whichever ground the archive first mentions
+// without one (IMPORT-08).
+func (c *EntityCache) GetVenueID(ctx context.Context, name, city string) (int64, error) {
+	key := venues.NormalizeName(name) + "\x00" + city
+	if id, ok := c.venues.Load(key); ok {
 		return id.(int64), nil
 	}
 	if Pool == nil {
 		return 0, nil
 	}
-	id, err := GetOrCreateVenue(ctx, name)
+	id, err := GetOrCreateVenue(ctx, name, city)
 	if err != nil {
 		return 0, err
 	}
-	c.venues.Store(name, id)
+	c.venues.Store(key, id)
 	return id, nil
 }
 
