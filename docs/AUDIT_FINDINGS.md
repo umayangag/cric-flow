@@ -189,26 +189,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 **The swallowed errors are closed** (PR #338): striker, non-striker, bowler and dismissed player now fail the file rather than writing NULL; the season and toss-winner lookups likewise; `EntityCache` no longer turns a missing pool into `(0, nil)`; and display names are observed after the commit, so a rolled-back file no longer votes on what a player is called.
 
-### IMPORT-14 — Maiden overs: wides do not break a maiden; partial overs count  **Low**
-
-`ingest.go:394-397, 539-544, 898-906`. **Fix.** Accumulate `tr` for every delivery and require `legal == ballsPerOver`.
-
-### IMPORT-15 — Registry fallback can duplicate a person; `PersonIDsByName` is map-order dependent  **Low**
-
-`identity.go:135-151`; `cricsheet.go:63-80` ("later key wins" over Go map iteration); a name missing from one file's registry becomes a separate `name:<X>` row. Latent (coverage is total today) and only `Warn`. **Fix.** Look up by name + non-null `external_id` before creating; sort keys.
-
-### IMPORT-16 — Process-global `EntityCache` never invalidated  **Low**
-
-`cache.go:38-43, 51-65`: after a `dev-destroy` / re-migrate while go-app is up, cached ids point at rows that no longer exist (or, after `RESTART IDENTITY`, at different people). **Fix.** Clear at the start of `ImportDir`, or key by a schema generation stamp.
-
-### IMPORT-17 — `MatchDate()` defaults to 1970-01-01  **Low**
-
-`cricsheet.go:85-90`; `ingest.go:213`. A file with no `dates` gets an as-of date before every other match. **Fix.** Parse error, like the missing-team cases at `ingest.go:338-355`.
-
-### IMPORT-18 — `ball_event` PK conflicts dropped silently  **Low**
-
-`repo_ball_event.go:362, 416`: two `overs[]` entries with the same `over` number (a real source defect) lose the second silently. Fixed by IMPORT-03's delete-then-insert if `ON CONFLICT` is removed and the duplicate is made an error.
-
 ---
 
 ## 6. go-app prediction path, track record and ops
@@ -298,6 +278,62 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-18 — `ball_event` PK conflicts dropped silently  **Low** — resolved by PR #295, verified in PR #339
+
+`repo_ball_event.go:362, 416`: two `overs[]` entries with the same `over` number (a real source defect) lose the second silently. Fixed by IMPORT-03's delete-then-insert if `ON CONFLICT` is removed and the duplicate is made an error.
+
+**Confirmed already resolved; no new code.** `InsertBallEventsTx` (`db/repo_ball_event.go`) carries plain `INSERT` statements on both paths — the small-batch loop (`:70-91`) and the `CREATE TEMP TABLE` / `CopyFrom` / re-`INSERT` path for larger batches (`:93-141`) — with no `ON CONFLICT` clause on either. The function's own comment at `:59-64` says why: IMPORT-03 replaced the `ON CONFLICT DO NOTHING` this finding names with a delete-then-insert, and a plain insert is what makes that safe — a duplicate `(match_id, innings, over, ball)` within one file now hits the table's real primary key (`ball_event_pkey`, `migrations/0001_baseline.sql:868-869`) and fails the import with a constraint violation, rather than silently losing the second delivery. `InsertBallEventWicketsTx` (`:147-161`) carries the same plain-insert shape for `ball_event_wicket`.
+
+### IMPORT-17 — `MatchDate()` defaults to 1970-01-01  **Low** — PR #339
+
+`cricsheet.go:85-90`; `ingest.go:213`. A file with no `dates` gets an as-of date before every other match. **Fix.** Parse error, like the missing-team cases at `ingest.go:338-355`.
+
+**Confirmed, spec's line numbers stale, one claim corrected.** `Info.MatchDate()` had moved to `cricsheet.go:107` and its caller to `ingest.go:299`; the "missing-team cases at `ingest.go:338-355`" the fix was to imitate do not exist at that location — the closest analogue is the inning-team-mismatch validation a little further down the same function (`ingest.go:474-481` as of this PR), which errors rather than defaulting, and is the pattern this fix follows in spirit. `MatchDate` now returns `(string, error)`; `importMatchFile` fails the file and logs the path when it errors.
+
+**Checked against the archive before changing anything: latent, not live.** A script over all 22,905 current files finds zero with an empty or missing `dates` array. This closes a hazard the archive does not currently exercise, not a repair of stored data — not retrain-flagged, and nothing to re-import.
+
+Pinned by `TestImportMatchFile_NoDate_IsRefused`, which fails on main (the file imports successfully, logged at `match_date=1970-01-01`) and passes here; `TestInfo_UnmarshalJSON_Dates`'s two no-date cases were updated from asserting the old default to asserting the parse error.
+
+### IMPORT-16 — Process-global `EntityCache` never invalidated  **Low** — PR #339
+
+`cache.go:38-43, 51-65`: after a `dev-destroy` / re-migrate while go-app is up, cached ids point at rows that no longer exist (or, after `RESTART IDENTITY`, at different people). **Fix.** Clear at the start of `ImportDir`, or key by a schema generation stamp.
+
+**Confirmed, and the process that matters is go-app's own API server, not the CLI.** `EntityCache` is process-global, but the two processes that read `db.GetGlobalCache()` do not share memory: the one-shot `cricsheet-importer` CLI starts each run in a fresh process with nothing memoised, so the hazard is moot there regardless of any fix. go-app's API server is the process the finding's "while go-app is up" names — it reaches `ImportDir` more than once across its own lifetime, from the pipeline's import step (`internal/server/handlers.go:178`, `step_work.go:77`), and a `dev-destroy` or re-migrate run between two such calls left the second one resolving names against ids the rebuilt schema no longer held.
+
+**Chosen: clear at `ImportDir`'s start, not a schema-generation stamp.** `grep -rln "GetGlobalCache" go-app --include="*.go"` (excluding tests) finds exactly two files: `cache.go` itself and `ingest.go`, which is the cache's only production caller. With one caller and one entry point, clearing at that entry point is a complete fix, not a partial one — there is no second reader left holding a stale answer, which is the scenario a generation stamp exists to cover. Adding one today would be complexity for a caller that does not exist (YAGNI); the stamp is the right answer if a second consumer of this cache ever appears.
+
+**`EntityCache.Clear`** empties all five maps via `Range` + `Delete` on each `sync.Map`, not by reassigning the field: `ImportDir`'s own goroutines read and write these maps concurrently once the run is underway, and reassigning a `sync.Map` value while that happens would race, where `Range`/`Delete` are documented safe for concurrent use. `ImportDir` calls `Clear()` once, before `dataset.MatchFiles` is even read, so the empty-directory error path also proves the ordering.
+
+Not retrain-flagged and nothing to re-import: this is process memory, not a stored value.
+
+Pinned by `TestEntityCache_Clear_ForgetsEveryMemoisedID` (all five maps, `package db`) and `TestImportDir_ClearsTheGlobalCacheBeforeDoingAnythingElse` (an id memoised before the call is gone after it, even though the run itself fails on an empty directory). Both fail to *build* against main, which has no `Clear` method — the defect is the absence of any invalidation, not a wrong one.
+
+### IMPORT-15 — Registry fallback can duplicate a person; `PersonIDsByName` is map-order dependent  **Low** — PR #339
+
+`identity.go:135-151`; `cricsheet.go:63-80` ("later key wins" over Go map iteration); a name missing from one file's registry becomes a separate `name:<X>` row. Latent (coverage is total today) and only `Warn`. **Fix.** Look up by name + non-null `external_id` before creating; sort keys.
+
+**Verified latent before fixing, and still latent after.** A script over all 22,905 current archive files checked every name the importer resolves through `identity.PlayerID` — batters, non-strikers, bowlers, dismissed players and named fielders — against each file's own `info.registry.people`, trimmed: zero files have a name missing a registry entry. A second pass over every file's raw registry keys, trimmed, found zero that collide after trimming. Both hazards are real defects with no live instance in the current dataset, refreshed from the file's own stale "22,734 files" comment (now 22,905, still total).
+
+**Fixed at the root, in `db.GetOrCreatePlayer`.** The no-external-id path previously went straight to `INSERT ... ON CONFLICT (player_name) WHERE external_id IS NULL`, a partial unique index with no visibility across the null/non-null split — so a name missing from one file's registry could mint a second row for someone another file had already identified. It now looks up `(player_name, external_id IS NOT NULL)` first and reuses that row, falling back to the name-only insert only when nothing is found. `Registry.PersonIDsByName` now sorts its raw keys before ranging over them, so which raw key wins a post-trim collision is a property of the keys, not of Go's per-call randomised map order.
+
+Not retrain-flagged: no feature or label definition changes, and — being latent — no run on disk is stale either.
+
+Pinned by `TestGetOrCreatePlayer_NameKnownUnderAnotherFilesRegistry_ReusesTheIdentifiedRow` (integration, against `cricket_flow_test`; fails on main with two rows where there should be one) and `TestRegistryPersonIDsByName_DuplicateAfterTrim_ResolvesTheSameWayEveryTime` (fails on main within a handful of calls, reproducing the nondeterminism directly rather than arguing it).
+
+### IMPORT-14 — Maiden overs: wides do not break a maiden; partial overs count  **Low** — PR #339
+
+`ingest.go:394-397, 539-544, 898-906`. **Fix.** Accumulate `tr` for every delivery and require `legal == ballsPerOver`.
+
+**Confirmed, and the spec's own fix corrected on one point.** The wide-conceded-run defect is real: `perBowler[d.Bowler] += bowlerRuns` ran only `if legal`, so a wide or no-ball's conceded runs — which `RunsConcededByBowler` does charge to the bowler — never reached the over's maiden tally, and an over whose only run came off a wide read as scoreless. The partial-over defect is also real: `maidenCount` credited a maiden on zero tallied runs alone, with no check on how many legal balls the over actually had, so an innings ending mid-over (a wicket, a declaration, an abandonment) read the same as a complete one.
+
+**The correction: accumulate `bowlerRuns`, not `tr`.** The finding's fix names the delivery's total (`tr`), which includes byes, leg-byes and penalty runs. Using it broke `TestImportMatchFile_ExtrasByKind_ChargesTheBowlerOnlyHisRuns`, an existing fixture pinning IMPORT-04, whose own doc comment states a second innings "in which the only runs are four byes: the bowler's runs are zero, so it is a maiden" — and `docs/config-and-data.md`'s "What the ball-event record holds" section already documents `bowling_data`'s "per-over totals a maiden is judged on" as built from `RunsConcededByBowler`. Both agree with each other and against the finding's literal instruction, so the fix accumulates `bowlerRuns` (every delivery, not gated on `legal`) instead, and threads a new per-over legal-ball count so `maidenCount` can require `legal == ballsPerOver` for the completeness half.
+
+**Measured over the 22,905-file archive:** total maidens go from 227,924 to 205,696 under the corrected rule — net **-22,228** across 9,383 files. Of the cells that flip, 14,701 lost their maiden to a wide or no-ball conceding a run, 7,527 to an incomplete over; none gained one (the new rule is strictly more restrictive than the old).
+
+**Not retrain-flagged; joins batch 4's re-import.** `grep -rniE "maidens" go-app/internal/api go-app/internal/contracts ml-service frontend/src` (excluding tests) finds nothing: no feature, label, API surface or frontend view reads `bowling_data.maidens`. No model is fitted on it and no served number depends on it, so no run on disk is stale. What is owed is the re-import: the archive's stored `maidens` values stay wrong under the old rule until the directory is re-imported.
+
+Pinned by `TestImportMatchFile_MaidenOvers_WidesAndPartialOvers`, which fails on main (`expected: 0, actual: 2`) and passes here, and `TestMaidenCount`'s two new table cases isolating each sub-defect.
 
 ### IMPORT-12 — Forfeited / zero-legal-ball innings dropped from `ball_event` but keep their number  **Low** — PR #338
 
