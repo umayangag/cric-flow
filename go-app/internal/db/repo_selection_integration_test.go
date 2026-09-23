@@ -245,6 +245,31 @@ func TestListPlayerPoolByOpposition_ExtraIdsBypassEveryFilter_Integration(t *tes
 	assert.Empty(t, pool.Excluded, "a player the caller insisted on is not an exclusion")
 }
 
+// TestListPlayerRowsByID_BatchesMultipleIdsInOneQuery_Integration is GO-14's premise: the
+// per-player "last played" lookup used to run one QueryRow per id in playerIDs. This asks
+// for three players -- two with a batting appearance and different last-played dates, one
+// with none for this club -- in a single call, and checks each comes back with its own
+// correct data, a duplicated id collapses to one row, and an id nothing knows about is
+// skipped rather than erroring the whole batch. A bug in the batched query's GROUP BY
+// (aggregating across players instead of per player) would show up here as one player's
+// date leaking onto another's, which a one-id-at-a-time test could never catch.
+func TestListPlayerRowsByID_BatchesMultipleIdsInOneQuery_Integration(t *testing.T) {
+	dbtest.SkipUnlessScratchDatabase(t)
+	fixture := setUpPoolFixture(t)
+	noAppearance := insertPlayer(fixture.ctx, t, "non-1", "Never Played")
+
+	rows, err := ListPlayerRowsByID(fixture.ctx, "ODI", fixture.clubID, fixture.cutoff,
+		[]int64{fixture.recent, fixture.stale, fixture.recent, noAppearance, 9_999_999})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []int64{fixture.recent, fixture.stale, noAppearance}, playerIDsOf(rows),
+		"the duplicate collapses, and the id nothing knows about is silently skipped")
+	assert.Equal(t, "2026-06-01", rowFor(t, rows, fixture.recent).LastPlayed.Format(time.DateOnly))
+	assert.Equal(t, "2025-09-10", rowFor(t, rows, fixture.stale).LastPlayed.Format(time.DateOnly),
+		"his own later appearance, not the other player's date")
+	assert.True(t, rowFor(t, rows, noAppearance).LastPlayed.IsZero(), "no appearance for this club at all")
+}
+
 // TestPlayerStatusStore_PromotionAndDemotionAreOneStateChange_Integration is the ledger's
 // whole rule against the database: a corroborated claim raises the stored fact and records
 // which criterion allowed it, and withdrawing the claim lowers the fact and records that.

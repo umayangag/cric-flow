@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
@@ -245,6 +244,13 @@ func ListPlayerRowsByID(
 
 // listPlayerRowsByFormatID is ListPlayerRowsByID with the format already resolved, so
 // the pool query does not look it up twice.
+//
+// One query for the whole batch, not one per id (GO-14): the per-player "last played"
+// lookup used to run inside a QueryRow issued once per entry in playerIDs -- a manual pool
+// or an extras list of a dozen names was a dozen round trips for data that differs only in
+// which player_id the WHERE clause names. Batching it as `= ANY($1)` with the aggregation
+// grouped by player_id turns that into one round trip regardless of how many ids are asked
+// for.
 func listPlayerRowsByFormatID(
 	ctx context.Context,
 	formatID int64,
@@ -258,48 +264,69 @@ func listPlayerRowsByFormatID(
 	if Pool == nil {
 		return nil, errors.New("db pool not initialized")
 	}
-	out := make([]PlayerPoolRow, 0, len(playerIDs))
+	ordered := make([]int64, 0, len(playerIDs))
 	seen := make(map[int64]bool, len(playerIDs))
 	for _, playerID := range playerIDs {
 		if seen[playerID] {
 			continue
 		}
 		seen[playerID] = true
-		row := PlayerPoolRow{PlayerID: playerID}
+		ordered = append(ordered, playerID)
+	}
+
+	rows, err := Pool.Query(ctx, `
+		WITH club AS (
+		  SELECT id FROM opposition WHERE COALESCE(canonical_id, id) = $3
+		), played AS (
+		  SELECT bd.player_id AS player_id, MAX(m.match_date) AS played_on
+		  FROM batting_data bd
+		  JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
+		  JOIN match m ON m.match_id = bd.match_id
+		  WHERE bd.player_id = ANY($1) AND m.format_id = $2 AND m.match_date < $4
+		    AND mi.batting_team_opposition_id IN (SELECT id FROM club)
+		  GROUP BY bd.player_id
+		  UNION ALL
+		  SELECT bw.player_id AS player_id, MAX(m.match_date) AS played_on
+		  FROM bowling_data bw
+		  JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
+		  JOIN match m ON m.match_id = bw.match_id
+		  WHERE bw.player_id = ANY($1) AND m.format_id = $2 AND m.match_date < $4
+		    AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
+		  GROUP BY bw.player_id
+		)
+		SELECT p.id, COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper,
+		       (SELECT MAX(played.played_on) FROM played WHERE played.player_id = p.id)
+		FROM player p WHERE p.id = ANY($1)
+	`, ordered, formatID, oppID, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byID := make(map[int64]PlayerPoolRow, len(ordered))
+	for rows.Next() {
+		var row PlayerPoolRow
 		var lastPlayed *time.Time
-		err := Pool.QueryRow(ctx, `
-			WITH club AS (
-			  SELECT id FROM opposition WHERE COALESCE(canonical_id, id) = $3
-			), played AS (
-			  SELECT MAX(m.match_date) AS played_on
-			  FROM batting_data bd
-			  JOIN match_inning mi ON mi.match_id = bd.match_id AND mi.inning_number = bd.inning_number
-			  JOIN match m ON m.match_id = bd.match_id
-			  WHERE bd.player_id = $1 AND m.format_id = $2 AND m.match_date < $4
-			    AND mi.batting_team_opposition_id IN (SELECT id FROM club)
-			  UNION ALL
-			  SELECT MAX(m.match_date)
-			  FROM bowling_data bw
-			  JOIN match_inning mi ON mi.match_id = bw.match_id AND mi.inning_number = bw.inning_number
-			  JOIN match m ON m.match_id = bw.match_id
-			  WHERE bw.player_id = $1 AND m.format_id = $2 AND m.match_date < $4
-			    AND mi.bowling_team_opposition_id IN (SELECT id FROM club)
-			)
-			SELECT COALESCE(p.external_id, ''), p.player_name, p.is_wicket_keeper,
-			       (SELECT MAX(played_on) FROM played)
-			FROM player p WHERE p.id = $1
-		`, playerID, formatID, oppID, cutoff).
-			Scan(&row.ExternalID, &row.PlayerName, &row.IsWicketKeeper, &lastPlayed)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
+		if err := rows.Scan(&row.PlayerID, &row.ExternalID, &row.PlayerName, &row.IsWicketKeeper, &lastPlayed); err != nil {
 			return nil, err
 		}
 		if lastPlayed != nil {
 			row.LastPlayed = *lastPlayed
 		}
-		out = append(out, row)
+		byID[row.PlayerID] = row
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// A player id with no row (deleted, or never existed) is skipped, as it was when
+	// each id's own QueryRow answered no rows -- the caller's ordering is preserved for
+	// everyone else.
+	out := make([]PlayerPoolRow, 0, len(ordered))
+	for _, playerID := range ordered {
+		if row, ok := byID[playerID]; ok {
+			out = append(out, row)
+		}
 	}
 	return out, nil
 }
