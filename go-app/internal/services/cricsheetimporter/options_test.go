@@ -12,12 +12,11 @@ import (
 
 type assertFn func(t *testing.T, got svc.Options, err error)
 
-func assertNoErrorApplyDir(wantDir string, wantApply bool, wantConc int) assertFn {
+func assertNoErrorDir(wantDir string, wantConc int) assertFn {
 	return func(t *testing.T, got svc.Options, err error) {
 		t.Helper()
 		require.NoError(t, err)
 		require.Equal(t, wantDir, got.InDir)
-		require.Equal(t, wantApply, got.Apply)
 		require.Equal(t, wantConc, got.Concurrency)
 	}
 }
@@ -43,14 +42,25 @@ func TestParseArgs_Basic(t *testing.T) {
 		{
 			name:   "explicit flags override env/defaults",
 			setup:  func() { os.Setenv("GO_APP_CRICSHEET_DIR", ""); os.Setenv("CRICSHEET_CONCURRENCY", "") },
-			args:   []string{"-in", tmp, "-apply", "-concurrency", "8"},
-			assert: assertNoErrorApplyDir(tmp, true, 8),
+			args:   []string{"-in", tmp, "-concurrency", "8"},
+			assert: assertNoErrorDir(tmp, 8),
 		},
 		{
 			name:   "env provides defaults when flags absent",
 			setup:  func() { os.Setenv("GO_APP_CRICSHEET_DIR", tmp); os.Setenv("CRICSHEET_CONCURRENCY", "5") },
 			args:   []string{},
-			assert: assertNoErrorApplyDir(tmp, false, 5),
+			assert: assertNoErrorDir(tmp, 5),
+		},
+		{
+			// IMPORT-10: "-apply" used to be parsed and silently ignored -- every run wrote
+			// regardless of its value, so an operator expecting a dry run got a full,
+			// irreversible import (IMPORT-03 made writes delete-then-insert). The flag is
+			// deleted rather than honoured, so the CLI now refuses to start instead of lying
+			// about what it is about to do.
+			name:   "apply flag is refused, not silently accepted",
+			setup:  func() { os.Setenv("GO_APP_CRICSHEET_DIR", tmp); os.Setenv("CRICSHEET_CONCURRENCY", "") },
+			args:   []string{"-apply"},
+			assert: assertErrorContains("flag provided but not defined: -apply"),
 		},
 		{
 			name:   "error on empty in dir",

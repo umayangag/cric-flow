@@ -17,7 +17,6 @@ import (
 // Only CLI-derived options live here; higher layers may merge config/env.
 type Options struct {
 	InDir                string
-	Apply                bool
 	Concurrency          int
 	PlaceholdersFielding bool
 	FailFast             bool
@@ -26,9 +25,13 @@ type Options struct {
 
 // ParseArgs parses flags using the provided FlagSet and argument slice.
 // It does not exit the process on error; instead it returns an error for tests to assert on.
+//
+// There is no "-apply" / dry-run flag: every run writes, and IMPORT-03 made writes
+// delete-then-insert rather than idempotent upserts, so a flag that only pretended to gate
+// that would be actively dangerous (IMPORT-10). An operator who needs to preview a run should
+// point -in at a scratch database, not expect this CLI to no-op against the real one.
 func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	var inDir string
-	var apply bool
 	var concurrency int
 
 	// The dataset directory resolves the same way for the CLI as for the API.
@@ -36,7 +39,6 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 	defConc := getenvInt("CRICSHEET_CONCURRENCY", runtime.NumCPU())
 
 	fs.StringVar(&inDir, "in", defIn, "input directory containing Cricsheet match files")
-	fs.BoolVar(&apply, "apply", false, "apply changes (upsert to DB); if false, dry-run")
 	fs.IntVar(&concurrency, "concurrency", defConc, "number of concurrent workers")
 	// Legacy behavior flags retained for parity with existing CLI
 	var placeholdersFielding bool
@@ -65,7 +67,6 @@ func ParseArgs(fs *flag.FlagSet, args []string) (Options, error) {
 
 	return Options{
 		InDir:                inDir,
-		Apply:                apply,
 		Concurrency:          concurrency,
 		PlaceholdersFielding: placeholdersFielding,
 		FailFast:             failFast,
