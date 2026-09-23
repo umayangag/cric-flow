@@ -75,6 +75,47 @@ func TestParsePredictTeamRequest_TossHasThreeStates(t *testing.T) {
 	}
 }
 
+// GO-11: a POST body is JSON by its media type, not by an exact header match. A client that
+// adds a parameter -- `; charset=utf-8`, which browsers and many HTTP libraries send by
+// default -- must still have its body decoded, not fall through to query parsing (which
+// finds nothing and would answer a misleading 400 about a missing `format`).
+func TestParsePredictTeamRequest_ContentTypeWithParameters_IsStillDecodedAsJSON(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name        string
+		contentType string
+		wantJSON    bool
+	}{
+		{name: "exact application/json", contentType: "application/json", wantJSON: true},
+		{name: "charset parameter", contentType: "application/json; charset=utf-8", wantJSON: true},
+		{name: "uppercase charset, no space", contentType: "application/json;charset=UTF-8", wantJSON: true},
+		{name: "a different media type falls through to query parsing", contentType: "text/plain", wantJSON: false},
+		{name: "no content type falls through to query parsing", contentType: "", wantJSON: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := httptest.NewRequest(http.MethodPost, "/api/predict/team-selection",
+				strings.NewReader(`{"format":"T20I","team1_id":1,"team2_id":2,"match_date":"2026-09-10"}`))
+			if tc.contentType != "" {
+				r.Header.Set("Content-Type", tc.contentType)
+			}
+
+			body, err := parsePredictTeamRequest(r)
+
+			require.NoError(t, err)
+			if tc.wantJSON {
+				assert.Equal(t, "T20I", body.Format, "decoded from the JSON body")
+			} else {
+				assert.Empty(t, body.Format, "fell through to query parsing, which found nothing")
+			}
+		})
+	}
+}
+
 // A played match is a backtest whether or not the caller calls it one (GO-01): the input
 // names the match date as its as-of date, which is what ml-service serves ratings strictly
 // before and what turns the retirement ledger off. A match today or later is live and
