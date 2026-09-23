@@ -35,6 +35,26 @@ type matchIdentity struct {
 	// Where the display name each player should end up with is collected. Nil for a
 	// single-file import, which has nothing to settle across files.
 	names *displayNames
+
+	// The spellings this file used, held back until its transaction commits. Settlement
+	// is a computation over what the archive holds, and a file whose rows rolled back put
+	// nothing in the archive; letting it vote anyway was how a failed file could still
+	// rename a player (IMPORT-13). Not guarded by a mutex: one matchIdentity belongs to
+	// one file, and one file is read by one goroutine.
+	observed []db.PlayerDisplayName
+}
+
+// SettleObservedNames hands this file's spellings to the import-wide collector. Call it
+// once the file's transaction has committed and not before; a rolled-back file has no
+// spelling to contribute.
+func (m *matchIdentity) SettleObservedNames() {
+	if m.names == nil {
+		return
+	}
+	for i := range m.observed {
+		m.names.observe(m.observed[i].PlayerID, m.observed[i].Name, m.observed[i].NameAsOf)
+	}
+	m.observed = nil
 }
 
 // PlayerID resolves a player name in this match to a player id.
@@ -57,7 +77,7 @@ func (m *matchIdentity) PlayerID(ctx context.Context, name string) (int64, error
 		return 0, err
 	}
 	if m.names != nil {
-		m.names.observe(id, name, m.dateISO)
+		m.observed = append(m.observed, db.PlayerDisplayName{PlayerID: id, Name: name, NameAsOf: m.dateISO})
 	}
 	return id, nil
 }

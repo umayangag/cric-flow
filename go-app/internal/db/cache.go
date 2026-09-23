@@ -11,6 +11,14 @@ import (
 
 // EntityCache provides a thread-safe, process-global cache for database entities
 // to minimize roundtrips during high-concurrency imports.
+//
+// A miss goes to the repository function behind it and returns whatever that returns,
+// error included. Each lookup used to answer (0, nil) when there was no pool -- a
+// convenience for tests that swallowed the "db pool not initialized" the repository
+// function already reported -- so a caller that asked for an id got zero and no error,
+// and the importer wrote that zero into format_id, venue_id, season_id, player_id and
+// opposition_id for every row of every file (IMPORT-13). A lookup that cannot reach its
+// table has not found a zero; it has failed.
 type EntityCache struct {
 	players     sync.Map // player key (see playerKey) -> int64
 	venues      sync.Map // venue key (see GetVenueID) -> int64
@@ -55,9 +63,6 @@ func (c *EntityCache) GetPlayerID(ctx context.Context, externalID, name, nameAsO
 	if id, ok := c.players.Load(key); ok {
 		return id.(int64), nil
 	}
-	if Pool == nil {
-		return 0, nil // Fallback for tests or uninitialized DB
-	}
 	id, _, err := GetOrCreatePlayer(ctx, externalID, name, nameAsOf)
 	if err != nil {
 		return 0, err
@@ -80,9 +85,6 @@ func (c *EntityCache) GetVenueID(ctx context.Context, name, city string) (int64,
 	if id, ok := c.venues.Load(key); ok {
 		return id.(int64), nil
 	}
-	if Pool == nil {
-		return 0, nil
-	}
 	id, err := GetOrCreateVenue(ctx, name, city)
 	if err != nil {
 		return 0, err
@@ -95,9 +97,6 @@ func (c *EntityCache) GetVenueID(ctx context.Context, name, city string) (int64,
 func (c *EntityCache) GetSeasonID(ctx context.Context, name string) (int64, error) {
 	if id, ok := c.seasons.Load(name); ok {
 		return id.(int64), nil
-	}
-	if Pool == nil {
-		return 0, nil
 	}
 	id, err := GetOrCreateSeason(ctx, name)
 	if err != nil {
@@ -112,9 +111,6 @@ func (c *EntityCache) GetFormatID(ctx context.Context, code string) (int64, erro
 	if id, ok := c.formats.Load(code); ok {
 		return id.(int64), nil
 	}
-	if Pool == nil {
-		return 0, nil
-	}
 	id, err := GetMatchFormatIDByCode(ctx, code)
 	if err != nil {
 		return 0, err
@@ -123,29 +119,32 @@ func (c *EntityCache) GetFormatID(ctx context.Context, code string) (int64, erro
 	return id, nil
 }
 
-// GetFormatIDsForTrainingBucket returns the format IDs one format bucket covers.
-// T20 and T20I are treated as one bucket: both IDs are returned so matches stored
-// under either format_id are included (Cricsheet/ingest may store T20I as T20).
-func (c *EntityCache) GetFormatIDsForTrainingBucket(ctx context.Context, format string) ([]int64, error) {
+// FormatCodesForTrainingBucket is the format codes one training bucket covers, spelled
+// the way the format dimension spells them. T20 and T20I are one bucket: both codes come
+// back so matches stored under either are included (Cricsheet/ingest may store T20I as
+// T20). It is a naming rule and nothing else, which is why it takes no database.
+func FormatCodesForTrainingBucket(format string) []string {
 	code := strings.ToUpper(strings.TrimSpace(format))
 	switch code {
 	case "T20", "T20I":
-		idT20, err := c.GetFormatID(ctx, "T20")
-		if err != nil {
-			return nil, err
-		}
-		idT20I, err := c.GetFormatID(ctx, "T20I")
-		if err != nil {
-			return nil, err
-		}
-		return []int64{idT20, idT20I}, nil
+		return []string{"T20", "T20I"}
 	default:
+		return []string{code}
+	}
+}
+
+// GetFormatIDsForTrainingBucket returns the format IDs one format bucket covers.
+func (c *EntityCache) GetFormatIDsForTrainingBucket(ctx context.Context, format string) ([]int64, error) {
+	codes := FormatCodesForTrainingBucket(format)
+	ids := make([]int64, 0, len(codes))
+	for _, code := range codes {
 		id, err := c.GetFormatID(ctx, code)
 		if err != nil {
 			return nil, err
 		}
-		return []int64{id}, nil
+		ids = append(ids, id)
 	}
+	return ids, nil
 }
 
 // GetOppositionID returns the ID for a team, using the cache if available. A team is
@@ -154,9 +153,6 @@ func (c *EntityCache) GetOppositionID(ctx context.Context, name, gender string) 
 	key := oppositionKey(name, gender)
 	if id, ok := c.oppositions.Load(key); ok {
 		return id.(int64), nil
-	}
-	if Pool == nil {
-		return 0, nil
 	}
 	id, err := GetOrCreateOpposition(ctx, name, gender)
 	if err != nil {

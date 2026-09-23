@@ -615,10 +615,13 @@ class RatingState:
         self.ctx_deliveries[g, f] += float(len(d))
         self.ctx_bowler_wickets[g, f] += float(d.bowler_wicket.sum())
         self.ctx_dismissals[g, f] += float(d.wicket.sum())
-        first = d.innings == d.innings.min()
+        first = d.innings == 0
         # A first innings that was not all out ran its overs (rain aside), so its length in
         # deliveries -- wides included, as every ball count here is -- is the innings length.
-        if d.wicket[first].sum() < C.MAX_WICKETS:
+        # Index 0 and not the smallest present: a forfeited first innings bowled nothing, and
+        # calling whichever innings did bowl "the first" would measure a chase as an innings
+        # that ran its overs (IMPORT-12). A match with no first innings contributes none.
+        if first.any() and d.wicket[first].sum() < C.MAX_WICKETS:
             self.ctx_full_innings_deliveries[g, f] += float(first.sum())
             self.ctx_full_innings[g, f] += 1.0
 

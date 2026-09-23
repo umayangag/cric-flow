@@ -703,6 +703,48 @@ def test_deliveries_from_rows_handles_empty() -> None:
     assert len(_deliveries_from_rows([])) == 0
 
 
+def _ball_row(innings: int, over: int) -> tuple:
+    """One ``_BALLS_SQL`` row, with only the columns these cases read filled in."""
+    return (innings, over, "a", "b", 0, 0, None, None, None, 0, 0, 0, 0)
+
+
+def test_postgres_innings_are_numbered_by_position_not_by_the_smallest_present() -> None:
+    """IMPORT-12. ``ball_event.innings`` is the innings' position in the match, 1-based, so
+    one subtracted is the 0-based index the archive path enumerates. Normalising by the
+    smallest innings present was the same number only while innings 1 bowled a ball: a
+    first innings that is forfeited, or made up entirely of extras, has no ``ball_event``
+    row, and subtracting its absence renamed every innings after it."""
+    d = _deliveries_from_rows([_ball_row(2, 0), _ball_row(3, 0)])
+
+    assert list(d.innings) == [1, 2], "the second and third innings keep being the second and third"
+
+
+def test_the_two_sources_number_a_forfeited_first_innings_the_same_way() -> None:
+    """The parity check (H-15) compares counts across the database and the archive, and
+    can only do so while both call the same innings by the same number. A forfeited first
+    innings is the shape that used to split them: fourteen innings in the archive are
+    forfeited and one is all extras, and the only reason this never misfired is that none
+    of them is the first."""
+    from ml.xi.sources import _deliveries_from_cricsheet
+
+    innings = [
+        {"team": "Alpha", "forfeited": True},
+        {"team": "Beta", "overs": [{"over": 0, "deliveries": [_cricsheet_delivery()]}]},
+        {"team": "Alpha", "overs": [{"over": 0, "deliveries": [_cricsheet_delivery()]}]},
+    ]
+
+    archive = _deliveries_from_cricsheet(innings, {})
+    # What the importer writes for that match: nothing for the forfeited innings, and the
+    # positions the scorecard gives the other two.
+    database = _deliveries_from_rows([_ball_row(2, 0), _ball_row(3, 0)])
+
+    assert list(archive.innings) == list(database.innings) == [1, 2]
+
+
+def _cricsheet_delivery() -> dict:
+    return {"batter": "A1", "bowler": "B1", "non_striker": "A2", "runs": {"batter": 0, "total": 0}}
+
+
 # ---------------------------------------------------------------------------
 # Runs charged to the bowler (FEAT-08): one rule on both sources
 # ---------------------------------------------------------------------------

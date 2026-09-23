@@ -841,8 +841,15 @@ def _stakes_header(row: Sequence) -> Header:
 def _deliveries_from_rows(rows) -> Deliveries:
     if not rows:
         return Deliveries.empty()
-    innings = np.asarray([r[0] for r in rows], dtype=int)
-    innings = innings - innings.min()
+    # ``ball_event.innings`` is 1-based and is the innings' position in
+    # ``Match.PlayedInnings`` -- the same position the archive path enumerates -- so one
+    # subtracted is the 0-based index, on every match. It used to be the smallest innings
+    # present, which is the same number only while innings 1 bowled a ball: a first innings
+    # forfeited or made up entirely of extras is absent from ``ball_event``, and the two
+    # sources would then have numbered the rest of the match differently and neither said
+    # so (IMPORT-12). Fourteen innings in the archive are forfeited and one is all extras,
+    # and none of them is the first, which is the only reason this never misfired.
+    innings = np.asarray([r[0] for r in rows], dtype=int) - 1
     runs_total = np.asarray([r[5] for r in rows], dtype=float)
     # A wicket whose player the database could not key reads as "" here, as on the
     # archive path; the kinds and keys are two arrays of one length, in wicket order.
