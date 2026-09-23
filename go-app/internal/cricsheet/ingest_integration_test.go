@@ -106,9 +106,10 @@ const (
 	matchInningArgBallsBowled             = 7
 	matchInningArgRunRate                 = 8
 	matchInningArgTargetRuns              = 9
-	matchInningArgExtras                  = 10
-	matchInningArgWinnerOppositionID      = 11
-	matchInningArgCount                   = 12
+	matchInningArgTargetOvers             = 10
+	matchInningArgExtras                  = 11
+	matchInningArgWinnerOppositionID      = 12
+	matchInningArgCount                   = 13
 )
 
 func (t *offlineSpyTx) Exec(_ context.Context, sql string, args ...any) error {
@@ -125,6 +126,7 @@ func (t *offlineSpyTx) Exec(_ context.Context, sql string, args ...any) error {
 			BallsBowled:             toInt(args[matchInningArgBallsBowled]),
 			RunRate:                 toFloat32Ptr(args[matchInningArgRunRate]),
 			TargetRuns:              toIntPtr(args[matchInningArgTargetRuns]),
+			TargetOvers:             toFloat32Ptr(args[matchInningArgTargetOvers]),
 			Extras:                  toInt(args[matchInningArgExtras]),
 			WinnerOppositionID:      toInt64Ptr(args[matchInningArgWinnerOppositionID]),
 		}
@@ -259,9 +261,12 @@ func TestImportMatchFile_OfflinePathsAndAggregates(t *testing.T) {
 
 	// Expect two match_inning upserts (two innings)
 	require.Len(t, spy.innings, 2, "expected 2 inning upserts")
-	// Target for second innings should equal first innings total (4 + 1 + 6 = 11)
+	// This fixture names no innings[].target, so the second innings' target is the runs
+	// that win the chase: the first innings' 11 (4 + 1 + 6) plus one. The over limit is
+	// null, because the file states none.
 	require.NotNil(t, spy.innings[1].TargetRuns)
-	require.Equal(t, 11, *spy.innings[1].TargetRuns)
+	require.Equal(t, 12, *spy.innings[1].TargetRuns)
+	require.Nil(t, spy.innings[1].TargetOvers)
 	// Expect CopyFrom for batting, bowling, fielding (proves those code paths ran)
 	require.True(t, spy.sawBattingCopy, "expected batting CopyFrom")
 	require.True(t, spy.sawBowlingCopy, "expected bowling CopyFrom")

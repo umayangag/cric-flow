@@ -680,11 +680,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		if balls > 0 {
 			rpo = float32(float64(runs) / float64(balls) * float64(ballsPerOver))
 		}
-		target := (*int)(nil)
-		if inningNo == 2 {
-			firRuns := inningsRuns(playedInnings[0])
-			target = &firRuns
-		}
+		targetRuns, targetOvers := chaseTarget(inng, inningNo, formatCode, playedInnings)
 		mi := &db.MatchInningInsert{
 			MatchID:                 mid,
 			InningNumber:            inningNo,
@@ -695,7 +691,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 			OversBowled:             oversFloat,
 			BallsBowled:             balls,
 			RunRate:                 &rpo,
-			TargetRuns:              target,
+			TargetRuns:              targetRuns,
+			TargetOvers:             targetOvers,
 			Extras:                  extras,
 			WinnerOppositionID:      winnerID,
 		}
@@ -1018,6 +1015,39 @@ func ensureBowl(m map[string]*bowlRow, name string) *bowlRow {
 	br := &bowlRow{}
 	m[name] = br
 	return br
+}
+
+// chaseTarget is what the batting side had to make, and in how many overs, for one innings:
+// the runs to win and the over limit the chase was given, or nil for an innings that was
+// not a chase.
+//
+// The archive's own figure comes first. Cricsheet writes `innings[].target` as {runs, overs}
+// on the innings being chased, and those are the real numbers: `runs` is the score that wins
+// (one more than the innings defended, or the Duckworth-Lewis figure when rain revised it),
+// and `overs` is the limit that chase was given, which a rain revision also cuts. 18,264 of
+// the 22,905 files carry one; on 983 of them the runs differ from first + 1 and on 1,541 the
+// overs differ from the scheduled allotment, so deriving either from the first innings throws
+// away every revised target in the archive. Only 971 of those matches name "D/L" in
+// `info.outcome.method` -- that field says how the *result* was reached, not whether a target
+// was revised -- so the revised target cannot be recovered from what is already stored.
+//
+// Where the file names no target, first + 1 is the arithmetic of a chase and is used for a
+// limited-overs second innings, with no over limit because the archive states none (the
+// match's scheduled_overs_per_innings already holds the allotment). A multi-day innings gets
+// nothing: no file in the archive puts a target on one, and until IMPORT-11 every second
+// innings of a Test or a first-class match was given the first innings' total as its target,
+// which is not a target and is not even the lead.
+func chaseTarget(inng Innings, inningNo int, formatCode string, played []Innings) (*int, *float32) {
+	if inng.Target != nil {
+		runs := inng.Target.Runs
+		overs := float32(inng.Target.Overs)
+		return &runs, &overs
+	}
+	if inningNo != 2 || formatCode == formats.CodeTest || len(played) == 0 {
+		return nil, nil
+	}
+	runs := inningsRuns(played[0]) + 1
+	return &runs, nil
 }
 
 func inningsRuns(inng Innings) int {

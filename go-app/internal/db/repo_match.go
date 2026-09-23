@@ -50,6 +50,7 @@ type MatchInningInsert struct {
 	BallsBowled             int
 	RunRate                 *float32
 	TargetRuns              *int
+	TargetOvers             *float32
 	Extras                  int
 	WinnerOppositionID      *int64
 }
@@ -115,61 +116,48 @@ func UpsertMatchTx(ctx context.Context, tx CopyFromTx, m *MatchInsert) error {
 	return tx.Exec(ctx, upsertMatchSQL, upsertMatchArgs(m)...)
 }
 
+// upsertMatchInningSQL is the one statement both entry points below run. Like
+// upsertMatchSQL above it used to be written out twice, and target_overs would have been
+// the column that reached only half the callers.
+const upsertMatchInningSQL = `
+		INSERT INTO match_inning (
+			match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
+			runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate,
+			target_runs, target_overs, extras, winner_opposition_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (match_id, inning_number) DO UPDATE SET
+			batting_team_opposition_id = EXCLUDED.batting_team_opposition_id,
+			bowling_team_opposition_id = EXCLUDED.bowling_team_opposition_id,
+			runs_scored = EXCLUDED.runs_scored,
+			wickets_lost = EXCLUDED.wickets_lost,
+			overs_bowled = EXCLUDED.overs_bowled,
+			balls_bowled = EXCLUDED.balls_bowled,
+			run_rate = EXCLUDED.run_rate,
+			target_runs = EXCLUDED.target_runs,
+			target_overs = EXCLUDED.target_overs,
+			extras = EXCLUDED.extras,
+			winner_opposition_id = EXCLUDED.winner_opposition_id
+	`
+
+// matchInningArgs are upsertMatchInningSQL's bind values, in the statement's order.
+func matchInningArgs(mi *MatchInningInsert) []any {
+	return []any{
+		mi.MatchID, mi.InningNumber, mi.BattingTeamOppositionID, mi.BowlingTeamOppositionID,
+		mi.RunsScored, mi.WicketsLost, mi.OversBowled, mi.BallsBowled, mi.RunRate,
+		mi.TargetRuns, mi.TargetOvers, mi.Extras, mi.WinnerOppositionID,
+	}
+}
+
 // UpsertMatchInning inserts or updates a match_inning row. Call once per inning.
 func UpsertMatchInning(ctx context.Context, mi *MatchInningInsert) error {
 	if Pool == nil {
 		return errors.New("db pool not initialized")
 	}
-	_, err := Pool.Exec(
-		ctx, `
-		INSERT INTO match_inning (
-			match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
-			runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate,
-			target_runs, extras, winner_opposition_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (match_id, inning_number) DO UPDATE SET
-			batting_team_opposition_id = EXCLUDED.batting_team_opposition_id,
-			bowling_team_opposition_id = EXCLUDED.bowling_team_opposition_id,
-			runs_scored = EXCLUDED.runs_scored,
-			wickets_lost = EXCLUDED.wickets_lost,
-			overs_bowled = EXCLUDED.overs_bowled,
-			balls_bowled = EXCLUDED.balls_bowled,
-			run_rate = EXCLUDED.run_rate,
-			target_runs = EXCLUDED.target_runs,
-			extras = EXCLUDED.extras,
-			winner_opposition_id = EXCLUDED.winner_opposition_id
-	`,
-		mi.MatchID, mi.InningNumber, mi.BattingTeamOppositionID, mi.BowlingTeamOppositionID,
-		mi.RunsScored, mi.WicketsLost, mi.OversBowled, mi.BallsBowled, mi.RunRate,
-		mi.TargetRuns, mi.Extras, mi.WinnerOppositionID,
-	)
+	_, err := Pool.Exec(ctx, upsertMatchInningSQL, matchInningArgs(mi)...)
 	return err
 }
 
 // UpsertMatchInningTx inserts or updates a match_inning row using the given transaction.
 func UpsertMatchInningTx(ctx context.Context, tx CopyFromTx, mi *MatchInningInsert) error {
-	err := tx.Exec(
-		ctx, `
-		INSERT INTO match_inning (
-			match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id,
-			runs_scored, wickets_lost, overs_bowled, balls_bowled, run_rate,
-			target_runs, extras, winner_opposition_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (match_id, inning_number) DO UPDATE SET
-			batting_team_opposition_id = EXCLUDED.batting_team_opposition_id,
-			bowling_team_opposition_id = EXCLUDED.bowling_team_opposition_id,
-			runs_scored = EXCLUDED.runs_scored,
-			wickets_lost = EXCLUDED.wickets_lost,
-			overs_bowled = EXCLUDED.overs_bowled,
-			balls_bowled = EXCLUDED.balls_bowled,
-			run_rate = EXCLUDED.run_rate,
-			target_runs = EXCLUDED.target_runs,
-			extras = EXCLUDED.extras,
-			winner_opposition_id = EXCLUDED.winner_opposition_id
-	`,
-		mi.MatchID, mi.InningNumber, mi.BattingTeamOppositionID, mi.BowlingTeamOppositionID,
-		mi.RunsScored, mi.WicketsLost, mi.OversBowled, mi.BallsBowled, mi.RunRate,
-		mi.TargetRuns, mi.Extras, mi.WinnerOppositionID,
-	)
-	return err
+	return tx.Exec(ctx, upsertMatchInningSQL, matchInningArgs(mi)...)
 }
