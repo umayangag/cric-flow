@@ -181,10 +181,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-10 — `-apply` flag parsed and ignored  **Medium**
-
-`services/cricsheetimporter/options.go:100, 127-134`; `cmd/cricsheet-importer/main.go:46-54`: `Options.Apply` is never read. An operator expecting a dry run gets a full import that IMPORT-03 makes irreversible. **Fix.** Honour it or delete it.
-
 ### IMPORT-11 — `match_inning.target_runs` ignores `innings[].target`  **Medium**
 
 `ingest.go:552-556, 879-887`: second innings target = first-innings runs (not +1), set even for Tests; D/L revised targets never stored. **Fix.** Decode `target` and `method`; store `target.runs/overs` when present, else `first + 1` for limited-overs innings 2 only.
@@ -306,6 +302,18 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-10 — `-apply` flag parsed and ignored  **Medium** — PR #336
+
+`services/cricsheetimporter/options.go` (then `:100, 127-134`); `cmd/cricsheet-importer/main.go` (then `:46-54`): `Options.Apply` was never read. An operator running `-apply=false` expecting a dry run got a full import that IMPORT-03 makes irreversible (delete-then-insert, not `ON CONFLICT DO NOTHING`). **Fix.** Honour it or delete it.
+
+**Confirmed and reproduced.** `grep -rn "\.Apply" go-app/` before touching anything: the only reader was `options_test.go` asserting the parsed value back; `main.go` builds `cricsheet.Options{PlaceholdersFielding, FailFast}` and never mentions `copts.Apply`. `-apply` and `-apply=false` were equally full imports.
+
+**Deleted, not honoured.** A real dry run needs to prove it writes nothing, not merely skip a final call, and this importer cannot make that promise as a mechanical fix: dimension rows (`player`/`venue`/`opposition`, via the process-global `EntityCache`, `internal/db/cache.go`) are already written outside the per-file transaction (IMPORT-13, still open) — a separate architectural gap, not something a flag check closes. Building a dry run that *looked* safe while `EntityCache` kept writing would be the exact defect this finding exists to close, restated. `Options.Apply` and the `-apply` flag registration are removed; the CLI now refuses to start with `flag provided but not defined: -apply` instead of silently importing.
+
+**Other flags in the same CLI, checked and clean.** `-in`, `-concurrency`, `-placeholders-fielding`, `-fail-fast`, `-timeout` all have a live consumer (`ImportDir`'s params, `ingest.go`'s `PlaceholdersFielding`/`FailFast` reads, `main.go`'s `context.WithTimeout`). `-apply` was the only dead one.
+
+Pinned by `TestParseArgs_Basic/apply_flag_is_refused,_not_silently_accepted`, which fails on `main` (`ParseArgs(["-apply"])` returns no error) and passes here. Not retrain-flagged — CLI plumbing only, no feature or label definition touched.
 
 ### IMPORT-09 — Format taxonomy merges domestic multi-day with Tests, List-A with ODI, men with women  **Medium (design) · retrain** — PR #335
 
