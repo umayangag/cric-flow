@@ -70,20 +70,43 @@ func TestGetPredictionHandler_ReturnsTheStoredAnswer(t *testing.T) {
 }
 
 // An id the record does not hold is a 404 naming it, not an empty 200: "we never issued
-// that" and "we issued it and it said nothing" are different answers.
+// that" and "we issued it and it said nothing" are different answers. The id is a
+// well-formed UUID nothing was ever stored under -- a malformed id is a different case,
+// pinned by TestGetPredictionHandler_ANonUUIDIdIsRefusedWithoutQueryingTheStore below.
 func TestGetPredictionHandler_SaysWhenTheRecordHoldsNoSuchAnswer(t *testing.T) {
 	t.Parallel()
+	const missing = "8f14e45f-ceea-467e-bc4a-085d5a56cd01"
 	reader := mocks.NewMockReader(t)
-	reader.EXPECT().Get(mock.Anything, "missing").Return(nil, predictions.ErrNotFound)
+	reader.EXPECT().Get(mock.Anything, missing).Return(nil, predictions.ErrNotFound)
 	app := &App{predictionReaderStore: reader}
 	rec := httptest.NewRecorder()
 
-	app.getPredictionHandler(rec, getPredictionRequest("missing"))
+	app.getPredictionHandler(rec, getPredictionRequest(missing))
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	body := decodeAPIError(t, rec)
 	assert.Equal(t, "PREDICTION_NOT_FOUND", body.Code)
-	assert.Contains(t, body.Message, "missing")
+	assert.Contains(t, body.Message, missing)
+}
+
+// GO-16: a prediction id is a UUID, and the column it is compared against is typed uuid --
+// a value that is not one made Postgres answer 22P02, which repo_prediction.go's Get did
+// not recognise as "not found" (it is not pgx.ErrNoRows), so it reached respondErr as a
+// bare error and answered 500 INTERNAL for what is, to a caller, indistinguishable from a
+// well-formed id nothing matches. The reader is a strict mock with no expectations set: if
+// the handler still queried the store for a non-UUID id, the mock's own
+// AssertExpectations(t) cleanup would fail this test.
+func TestGetPredictionHandler_ANonUUIDIdIsRefusedWithoutQueryingTheStore(t *testing.T) {
+	t.Parallel()
+	reader := mocks.NewMockReader(t)
+	app := &App{predictionReaderStore: reader}
+	rec := httptest.NewRecorder()
+
+	app.getPredictionHandler(rec, getPredictionRequest("not-a-uuid"))
+
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	body := decodeAPIError(t, rec)
+	assert.Equal(t, "BAD_REQUEST", body.Code)
 }
 
 // The listing is the record's index: the join columns, the page it is, and the count it

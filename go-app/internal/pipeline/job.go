@@ -45,8 +45,16 @@ type JobFunc func(ctx context.Context) (exitMeta any, err error)
 // RunJob executes a pipeline step with panic recovery, tracking, and optional timeout.
 // Callers (handlers and CLI) pass a parent context; timeout is applied on top of it.
 // If timeout <= 0, no additional timeout is applied.
-func RunJob(parent context.Context, jobName string, startMeta any, timeout time.Duration, fn JobFunc) error {
-	var runErr error
+//
+// err is a named return (GO-15) because the panic-recovery defer below can only report
+// what it found by assigning into the function's own return value: a panic never reaches
+// the `return` statement at the bottom of the function, so before this fix, with an
+// unnamed return, that assignment went nowhere and RunJob answered nil -- success -- to
+// whatever called it, even though the tracking row it wrote (CaptureExit closes over err
+// by pointer, not by the return path) and the log line right above it both said the job
+// had panicked. A caller that only checks the returned error, which is every caller here,
+// could not tell the two apart.
+func RunJob(parent context.Context, jobName string, startMeta any, timeout time.Duration, fn JobFunc) (err error) {
 	var exitMeta any
 	ctx := parent
 	if timeout > 0 {
@@ -84,7 +92,7 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	}
 	if tracker != nil {
 		defer func() {
-			tracker.CaptureExit(ctx, &runErr, exitMeta)
+			tracker.CaptureExit(ctx, &err, exitMeta)
 		}()
 		// Log with run_id for cross-service correlation (see docs/observability.md).
 		slog.Info("pipeline: job starting",
@@ -100,7 +108,7 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 	}
 	defer func() {
 		if v := recover(); v != nil {
-			runErr = fmt.Errorf("panic: %v", v)
+			err = fmt.Errorf("panic: %v", v)
 			attrs := []any{
 				slog.String("panic", fmt.Sprint(v)),
 				slog.String("stack", string(debug.Stack())),
@@ -113,13 +121,13 @@ func RunJob(parent context.Context, jobName string, startMeta any, timeout time.
 		}
 	}()
 
-	exitMeta, runErr = fn(ctx)
-	if runErr != nil {
-		attrs := []any{slog.Any("err", runErr), slog.String("command", jobName), slog.Any("start_meta", startMeta)}
+	exitMeta, err = fn(ctx)
+	if err != nil {
+		attrs := []any{slog.Any("err", err), slog.String("command", jobName), slog.Any("start_meta", startMeta)}
 		if tracker != nil {
 			attrs = append(attrs, slog.Int("run_id", tracker.ID))
 		}
 		slog.Error("pipeline: job function failed", attrs...)
 	}
-	return runErr
+	return err
 }

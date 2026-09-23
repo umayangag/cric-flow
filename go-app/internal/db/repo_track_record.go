@@ -93,54 +93,69 @@ func (l *MatchLookup) FindMatches(ctx context.Context, fixture trackrecord.Fixtu
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("find matches for the fixture: %w", err)
 	}
-	for i := range matches {
-		if err := l.fill(ctx, &matches[i]); err != nil {
-			return nil, err
-		}
+	if err := l.fillAll(ctx, matches); err != nil {
+		return nil, err
 	}
 	return matches, nil
 }
 
-// fill reads the innings and the fielded players of one match, both sided in club ids so
-// the caller can compare them against what the prediction stored.
-func (l *MatchLookup) fill(ctx context.Context, match *trackrecord.PlayedMatch) error {
+// fillAll reads the innings and the fielded players of every match at once, both sided in
+// club ids so the caller can compare them against what the prediction stored.
+//
+// Two queries for the whole batch, not two per match (GO-14): this used to run inside a
+// loop, once per match FindMatches had just found, so a fixture answered by more than one
+// match -- the double-header FindMatches' own doc comment already names as a real case --
+// paid two extra round trips per extra match. Batched by `match_id = ANY($1)`, it is two
+// round trips regardless of how many matches are being filled.
+func (l *MatchLookup) fillAll(ctx context.Context, matches []trackrecord.PlayedMatch) error {
+	if len(matches) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(matches))
+	byID := make(map[int64]*trackrecord.PlayedMatch, len(matches))
+	for i := range matches {
+		ids[i] = matches[i].MatchID
+		matches[i].FieldedPlayers = map[int64]int64{}
+		byID[matches[i].MatchID] = &matches[i]
+	}
+
 	innings, err := Pool.Query(ctx, `
-		SELECT i.inning_number, COALESCE(o.canonical_id, o.id), i.runs_scored
+		SELECT i.match_id, i.inning_number, COALESCE(o.canonical_id, o.id), i.runs_scored
 		FROM match_inning i JOIN opposition o ON o.id = i.batting_team_opposition_id
-		WHERE i.match_id = $1 ORDER BY i.inning_number`, match.MatchID)
+		WHERE i.match_id = ANY($1) ORDER BY i.match_id, i.inning_number`, ids)
 	if err != nil {
-		return fmt.Errorf("read innings of match %d: %w", match.MatchID, err)
+		return fmt.Errorf("read innings of %d match(es): %w", len(matches), err)
 	}
 	defer innings.Close()
 	for innings.Next() {
+		var matchID int64
 		var played trackrecord.PlayedInnings
-		if err := innings.Scan(&played.Number, &played.BattingOppositionID, &played.Runs); err != nil {
-			return fmt.Errorf("read innings of match %d: %w", match.MatchID, err)
+		if err := innings.Scan(&matchID, &played.Number, &played.BattingOppositionID, &played.Runs); err != nil {
+			return fmt.Errorf("read innings of %d match(es): %w", len(matches), err)
 		}
-		match.Innings = append(match.Innings, played)
+		byID[matchID].Innings = append(byID[matchID].Innings, played)
 	}
 	if err := innings.Err(); err != nil {
-		return fmt.Errorf("read innings of match %d: %w", match.MatchID, err)
+		return fmt.Errorf("read innings of %d match(es): %w", len(matches), err)
 	}
 
 	fielded, err := Pool.Query(ctx, `
-		SELECT p.player_id, COALESCE(o.canonical_id, o.id)
+		SELECT p.match_id, p.player_id, COALESCE(o.canonical_id, o.id)
 		FROM match_player p JOIN opposition o ON o.id = p.opposition_id
-		WHERE p.match_id = $1`, match.MatchID)
+		WHERE p.match_id = ANY($1)`, ids)
 	if err != nil {
-		return fmt.Errorf("read fielded players of match %d: %w", match.MatchID, err)
+		return fmt.Errorf("read fielded players of %d match(es): %w", len(matches), err)
 	}
 	defer fielded.Close()
-	match.FieldedPlayers = map[int64]int64{}
 	for fielded.Next() {
-		var playerID, oppositionID int64
-		if err := fielded.Scan(&playerID, &oppositionID); err != nil {
-			return fmt.Errorf("read fielded players of match %d: %w", match.MatchID, err)
+		var matchID, playerID, oppositionID int64
+		if err := fielded.Scan(&matchID, &playerID, &oppositionID); err != nil {
+			return fmt.Errorf("read fielded players of %d match(es): %w", len(matches), err)
 		}
-		match.FieldedPlayers[playerID] = oppositionID
+		byID[matchID].FieldedPlayers[playerID] = oppositionID
 	}
 	if err := fielded.Err(); err != nil {
-		return fmt.Errorf("read fielded players of match %d: %w", match.MatchID, err)
+		return fmt.Errorf("read fielded players of %d match(es): %w", len(matches), err)
 	}
 	return nil
 }

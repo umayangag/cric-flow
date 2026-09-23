@@ -172,6 +172,25 @@ func TestRunJob(t *testing.T) {
 	}
 }
 
+// GO-15: a panic inside the job body must come back as RunJob's own returned error, not
+// nil. The panic is recovered in a deferred func that assigns to the function's return
+// value -- before this fix that was an unnamed return, so the assignment never reached the
+// caller on the panic path, and RunJob answered nil (success) even though its own log line
+// and the tracking row CaptureExit wrote both said the job had panicked.
+func TestRunJob_PanicIsReturnedAsAnError(t *testing.T) {
+	// Do not use t.Parallel(); this test uses db.SetDB (global).
+	mockDB, mockTx := armClaim(t, claimSetup{})
+	mockDB.On("Exec", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	err := RunJob(context.Background(), "test-job", nil, 0, func(context.Context) (any, error) {
+		panic("boom")
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "panic: boom")
+	assertMocks(t, mockDB, mockTx)
+}
+
 func assertJobOutcome(t *testing.T, got, want error) {
 	t.Helper()
 	if want == nil {

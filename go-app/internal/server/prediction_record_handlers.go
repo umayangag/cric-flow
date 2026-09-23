@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"github.com/umayangag/cric-flow/go-app/internal/predictions"
@@ -114,6 +115,17 @@ func (a *App) listPredictionsHandler(w http.ResponseWriter, r *http.Request) {
 // getPredictionHandler answers GET /api/predictions/{id}: one stored answer, as served.
 func (a *App) getPredictionHandler(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(mux.Vars(r)["id"])
+	// A prediction id is a UUID (predictions.NewID); the column it is compared against is
+	// typed uuid, and Postgres refuses a value that is not one with 22P02 rather than
+	// answering zero rows. Left unchecked, that reached the caller as a 500 INTERNAL for
+	// what is really the same "no prediction under this id" as a well-formed id nothing
+	// matches (GO-16), so it is refused here, before a query is issued, the same way
+	// getPlayerHandler and getMatchHandler already refuse an unparseable id.
+	if _, err := uuid.Parse(id); err != nil {
+		slog.Info("getPrediction: invalid prediction id", slog.String("prediction_id", id), slog.Any("err", err))
+		respondBadRequest(w, err)
+		return
+	}
 	stored, err := a.predictionReader().Get(r.Context(), id)
 	if errors.Is(err, predictions.ErrNotFound) {
 		writeJSON(w, http.StatusNotFound, apiError{

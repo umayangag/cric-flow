@@ -14,19 +14,28 @@ var (
 	cached     *Config
 	loadedFrom string // path of config file loaded; empty if none found
 	loadedRaw  []byte // the bytes it was decoded from, so retired keys can be spotted
+	loadErr    error  // set when a found config file's JSON failed to decode
 )
 
 // Load reads config.json from the current working directory if present.
 // It is safe to call multiple times; the result is cached for the process lifetime.
+//
+// A file that is found but does not parse as JSON still returns a *Config -- the zero
+// value Load started building before the decode failed -- because every caller of Load
+// besides ValidateForServer reads it as "the config, or sensible zero values" and none of
+// them checks an error return. LoadError is where that decode failure actually surfaces
+// (GO-13): ValidateForServer is the one caller whose job is to refuse a broken config
+// rather than run on zero values it never chose.
 func Load() *Config {
 	if cached != nil {
 		return cached
 	}
 	cfg := &Config{}
 	loadedFrom = ""
+	loadErr = nil
 	if p := os.Getenv("GO_APP_CONFIG"); p != "" {
 		if b, err := os.ReadFile(p); err == nil {
-			_ = json.Unmarshal(b, cfg)
+			loadErr = json.Unmarshal(b, cfg)
 			cached, loadedFrom, loadedRaw = cfg, p, b
 			return cfg
 		}
@@ -38,13 +47,21 @@ func Load() *Config {
 	}
 	for _, p := range candidates {
 		if b, err := os.ReadFile(p); err == nil {
-			_ = json.Unmarshal(b, cfg)
+			loadErr = json.Unmarshal(b, cfg)
 			cached, loadedFrom, loadedRaw = cfg, p, b
 			return cfg
 		}
 	}
 	cached = cfg
 	return cfg
+}
+
+// LoadError reports the error from decoding the config file Load found, if its JSON was
+// invalid. Nil whenever no config file was found at all (ValidateForServer's loadedFrom
+// check covers that case) or the file it found decoded cleanly.
+func LoadError() error {
+	Load()
+	return loadErr
 }
 
 // ValidateForServer returns an error if config is missing or invalid for the API server.
@@ -54,6 +71,11 @@ func ValidateForServer() error {
 	if loadedFrom == "" {
 		err := fmt.Errorf("config file not found: set GO_APP_CONFIG or ensure config.json exists (CWD, .., or ../..)")
 		slog.Error("config.ValidateForServer failed", slog.Any("err", err))
+		return err
+	}
+	if decodeErr := LoadError(); decodeErr != nil {
+		err := fmt.Errorf("config file %s is not valid JSON: %w", loadedFrom, decodeErr)
+		slog.Error("config.ValidateForServer failed", slog.String("path", loadedFrom), slog.Any("err", err))
 		return err
 	}
 	if err := RetiredKeys(loadedRaw); err != nil {

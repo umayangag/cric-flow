@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -99,7 +100,7 @@ var retiredPredictBodyFields = []struct {
 // parsePredictTeamRequest decodes the request body from JSON or query params.
 func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	var body predictTeamRequest
-	if r.Method == http.MethodPost && r.Header.Get("Content-Type") == "application/json" {
+	if r.Method == http.MethodPost && hasJSONContentType(r) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			return body, err
 		}
@@ -143,6 +144,16 @@ func parsePredictTeamRequest(r *http.Request) (predictTeamRequest, error) {
 	body.Team1Pool = poolRequestBody{WindowMonths: pool.WindowMonths, AllTime: pool.AllTime}
 	body.Team2Pool = body.Team1Pool
 	return body, nil
+}
+
+// hasJSONContentType reports whether the request declares a JSON body. It parses the media
+// type rather than comparing the header verbatim, so a client that adds a parameter --
+// `application/json; charset=utf-8`, which browsers and many HTTP clients send by default --
+// is still decoded as JSON instead of silently falling through to query parsing and a
+// misleading 400 about a missing `format` (GO-11).
+func hasJSONContentType(r *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && mediaType == "application/json"
 }
 
 // parseClubID reads a club id from a query parameter. A value that is not a positive

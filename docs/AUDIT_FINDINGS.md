@@ -193,34 +193,6 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 ## 6. go-app prediction path, track record and ops
 
-### GO-10 — Predicted winner at exactly 0.5 differs between served answer and track record  **Low**
-
-`predict_team.go:573-583` (`>= 0.5` → team1) vs `trackrecord/build.go:115-122` (`> 0.5` → team1); each comment claims the other's rule. **Fix.** One helper.
-
-### GO-11 — POST body ignored unless `Content-Type` is exactly `application/json`  **Low**
-
-`predict_handlers.go:101`. `application/json; charset=utf-8` falls through to query parsing and a misleading 400. **Fix.** `mime.ParseMediaType`.
-
-### GO-12 — ml-service 422 becomes `500 INTERNAL`  **Low**
-
-`ml_client.go:94-115`, `json.go:53-81`: FastAPI's `{"detail": [ … ]}` array is not decoded. **Fix.** Map 4xx with unstructured detail to a `VALIDATION_ERROR` relay.
-
-### GO-13 — `config.Load` ignores JSON decode errors  **Low**
-
-`config/loader.go:27-45`: `_ = json.Unmarshal(b, cfg)`; a corrupt `config.json` passes `ValidateForServer` with zero values. **Fix.** Return the error.
-
-### GO-14 — N+1 queries on prediction and track-record paths  **Low**
-
-`repo_selection.go:260-300` (one `QueryRow` per manual-pool id); `repo_track_record.go:66-70, 75-112` (1 + 2 queries per fixture); `repo_prediction.go:132-163` reads every payload unpaged; `track_record_handler.go:27-45` has no paging or caching. **Fix.** `= ANY($1)` batching.
-
-### GO-15 — `RunJob` returns nil after a recovered panic; `colorHandler` drops attrs  **Low**
-
-`pipeline/job.go:84-108` (unnamed result); `logger/logger.go:58-64` (`WithAttrs` / `WithGroup` return the receiver unchanged, so `LOG_COLOR=1` loses every `slog.With` attribute). **Fix.** Named return; implement the handler methods.
-
-### GO-16 — Non-UUID prediction id answers 500  **Low**
-
-`prediction_record_handlers.go:115-131`; `repo_prediction.go:64-77`; `22P02` is not `pgx.ErrNoRows`. **Fix.** `uuid.Parse` first.
-
 ---
 
 ## 7. Weather, reference data and geocoding
@@ -278,6 +250,94 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### GO-16 — Non-UUID prediction id answers 500  **Low** — PR #340
+
+`prediction_record_handlers.go:115-131`; `repo_prediction.go:64-77`; `22P02` is not `pgx.ErrNoRows`. **Fix.** `uuid.Parse` first.
+
+**Confirmed, one call site.** `grep` for `predictionReader().Get` finds exactly one caller, `getPredictionHandler`; `repo_prediction.go`'s `Get` compares the caller's raw id string against `issued_prediction.id`, a `uuid` column, and its only special case (`errors.Is(err, pgx.ErrNoRows)`) does not match Postgres's `22P02` for a non-UUID value, so the error reached `respondErr` as a bare error and answered `500 INTERNAL`.
+
+**Fixed at the boundary, not in the repository.** `getPredictionHandler` now parses the id with `uuid.Parse` before querying the store and answers `400 BAD_REQUEST` on failure, the same pattern `getPlayerHandler` and `getMatchHandler` already use for an unparseable numeric id. `repo_prediction.go` is unchanged: with the one caller now refusing a malformed id before the query, there is no path left that can reach the 500.
+
+Not retrain-flagged: HTTP-layer validation only.
+
+Pinned by `TestGetPredictionHandler_ANonUUIDIdIsRefusedWithoutQueryingTheStore`, which fails on `main` (a strict mock reader receives an unexpected `Get("not-a-uuid")` call) and passes here. The existing `TestGetPredictionHandler_SaysWhenTheRecordHoldsNoSuchAnswer` used the non-UUID literal `"missing"` as its fixture id and only passed because it drives a mock that does not care whether an id is well-formed — it never exercised the real defect; it now uses a well-formed UUID nothing is stored under.
+
+### GO-15 — `RunJob` returns nil after a recovered panic; `colorHandler` drops attrs  **Low** — PR #340
+
+`pipeline/job.go:84-108` (unnamed result); `logger/logger.go:58-64` (`WithAttrs` / `WithGroup` return the receiver unchanged, so `LOG_COLOR=1` loses every `slog.With` attribute). **Fix.** Named return; implement the handler methods.
+
+**Both confirmed, both fixed.** `RunJob`'s panic-recovery defer assigned to a local `runErr`, but the function's return type was unnamed `error`; that assignment never reaches a panicking call's actual return value, so `RunJob` answered `nil` (success) even though its own log line and the tracking row `CaptureExit` wrote (by pointer, not by the return path) both said the job had panicked. `err` is now a named return, and the panic-recovery defer, `CaptureExit`, and the normal-path assignment all write into it directly.
+
+`colorHandler.WithAttrs`/`WithGroup` returned the receiver unchanged, so any `slog.With(...)` or `WithGroup(...)` a caller made vanished the moment `LOG_COLOR=1` selected this handler as the default — silently, since `Handle` still produced a well-formed line, just one with the caller's attrs missing. `colorHandler` now carries an ordered list of `WithAttrs`/`WithGroup` operations and replays them onto the inner handler it rebuilds on every `Handle` call, which is what keeps a `WithGroup` followed by a `WithAttrs` correctly nesting inside the group.
+
+Not retrain-flagged.
+
+Pinned by `TestRunJob_PanicIsReturnedAsAnError` (fails on `main`: "An error is expected but got nil") and `TestSetupFromEnv_LOG_COLOR_KeepsWithAttrsAndWithGroup` (fails on `main`: the JSON line carries the message but not `"request_id"` or the `"db"` group). The existing `TestLogger_WithAttrsAndWithGroup` never caught the second defect because it does not set `LOG_COLOR=1` and only asserts the message text is present.
+
+### GO-14 — N+1 queries on prediction and track-record paths  **Low** — PR #340
+
+`repo_selection.go:260-300`; `repo_track_record.go:66-70, 75-112`; `repo_prediction.go:132-163`; `track_record_handler.go:27-45`. **Fix.** `= ANY($1)` batching.
+
+**Measured the actual N first, against `cricket_data`.** A real `/api/track-record` request today issues 6 queries: `predictionReader().All()` (1) plus one `FindMatches` per distinct fixture (5, for the 26 stored predictions — 5 distinct fixtures, none imported yet so `fill()` never fires). A query-counting `pgx.QueryTracer` on a synthetic double-header (two matches, one fixture) confirms the multiplier `fill()` adds once a fixture does resolve: `main` issues 5 round trips (1 find + 2 fill queries per match), this branch issues 3 (1 find + `fillAll` batched to 2, regardless of match count).
+
+**Fixed, mechanically, in two places.** `listPlayerRowsByFormatID` ran one `QueryRow` per manual-pool/extra id; it is now one query, `player_id = ANY($1)`, with the per-player "last played" aggregation grouped by `player_id`. `repo_track_record.go`'s `fill` ran two queries per match `FindMatches` had found, inside a per-match loop; replaced with `fillAll`, two queries total, `match_id = ANY($1)`, for however many matches a fixture resolves to.
+
+**Left undone, by design, not oversight.** `repo_prediction.go`'s `All()` and `track_record_handler.go`'s unpaged read: `All()`'s own comment already argues this ("one operator's record is tens of rows... a page would only make the answer wrong"), and the measured 26 rows today matches that claim — paging here is a design decision (what would a paged track record even mean, when superseding and coverage are questions about every row at once?), not a mechanical batch. Also left undone: batching `resolveFixtures`'s one-`FindMatches`-call-per-distinct-fixture loop into a single cross-fixture round trip, which needs the `trackrecord.MatchLookup` interface to accept a batch of fixtures instead of one — an interface redesign, not a mechanical query change. Measured impact today is small (5 distinct fixtures, 5 round trips) but grows linearly with outstanding unresolved fixtures.
+
+Not retrain-flagged.
+
+Pinned by `TestListPlayerRowsByID_BatchesMultipleIdsInOneQuery_Integration` (correctness: three ids in one call, each with its own last-played date, a duplicate collapsing, an unknown id skipped) and `TestMatchLookup_FindMatches_ADoubleHeaderIsOneBatchedRoundTrip_Integration` (the query count itself: fails on `main` at 5 round trips, passes here at 3, and each match keeps its own innings and its own fielded eleven).
+
+### GO-13 — `config.Load` ignores JSON decode errors  **Low** — PR #340
+
+`config/loader.go:27-45`: `_ = json.Unmarshal(b, cfg)`; a corrupt `config.json` passes `ValidateForServer` with zero values. **Fix.** Return the error.
+
+**Confirmed and fixed, without changing `Load`'s signature.** `Load` discarded `json.Unmarshal`'s error; a corrupt `config.json` was still "found" (`loadedFrom` set), so `ValidateForServer`'s checks all passed against a zero-value `Config` nothing had actually decoded into. `retired_keys.go` already said as much in its own comment: "a config that does not parse is the loader's problem, not this one's." `Load` keeps its existing behaviour for its ~30 other call sites, which read it as "the config, or sensible zero values" and check no error — rewriting that surface was out of scope. The decode error is now kept in a package-level `loadErr`, exposed via a new `LoadError()`, and `ValidateForServer` — the one caller whose job is to refuse a broken config — checks it before `RetiredKeys` and the field checks.
+
+Not retrain-flagged.
+
+Pinned by `TestValidateForServer_FailsWhenConfigIsNotValidJSON` (fails to build on `main`, which has no `LoadError`) and `TestLoad_InvalidJSON_SetsLoadError`.
+
+### GO-12 — ml-service 422 becomes `500 INTERNAL`  **Low** — PR #340
+
+`ml_client.go:94-115`, `json.go:53-81`: FastAPI's `{"detail": [ … ]}` array is not decoded. **Fix.** Map 4xx with unstructured detail to a `VALIDATION_ERROR` relay.
+
+**Confirmed.** `logMLNon2xx` recognised two "detail" shapes: a plain string, or `{"code","message","hint"}`. FastAPI's own default for a pydantic validation failure — raised by, e.g., the `team_size` `field_validator` in ml-service's request models, and never overridden with a custom exception handler in this service (`grep` for `RequestValidationError` finds no handler) — is neither: an array of `{"loc","msg","type"}` objects. Unmarshalling that array into the `{code,message,hint}` struct fails, so the function fell through to a bare `fmt.Errorf`, which `respondErr`'s `errors.As` check missed, answering `500 INTERNAL` for the caller's own bad request.
+
+**Fixed.** A 4xx whose detail matches neither known shape now relays as a `VALIDATION_ERROR` `*mlServiceError`, with a message built from FastAPI's own `loc`/`msg` pairs where that array shape parses, and the raw detail otherwise. A 5xx with the same unstructured shape stays on the generic path (`relayStatus` maps it to 502): that is ml-service's own failure, not the caller's.
+
+**Both current ml-service error shapes verified unaffected.** SERVE-02's field-named 422s and SERVE-06's `409 TRAIN_ALREADY_RUNNING` both already use the `{code,message,hint}` shape (`app/errors.py`'s `error_payload`) and continue to relay exactly as before (regression test included); the plain-string shape is unchanged too. No frontend change needed: `ApiError`/`ErrorNotice` already render an arbitrary `code` string generically.
+
+Not retrain-flagged.
+
+Pinned by `TestLogMLNon2xx_FastAPIValidationArray_RelaysAsStructuredError` and `TestLogMLNon2xx_FastAPIValidationArray_JoinsEveryIssue`, both of which fail on `main` ("must be a *mlServiceError...").
+
+### GO-11 — POST body ignored unless `Content-Type` is exactly `application/json`  **Low** — PR #340
+
+`predict_handlers.go:101`. `application/json; charset=utf-8` falls through to query parsing and a misleading 400. **Fix.** `mime.ParseMediaType`.
+
+**Confirmed, one call site.** `parsePredictTeamRequest` compared `Content-Type` to the literal string `"application/json"`, so `application/json; charset=utf-8` — which browsers and many HTTP clients send by default — fell through to query-parameter parsing, found no `format`, and answered a misleading 400. `grep` for `Header.Get("Content-Type")` in `internal/server` finds only this site.
+
+**Fixed.** A new `hasJSONContentType` parses the media type with `mime.ParseMediaType` and ignores parameters, replacing the exact string comparison.
+
+Not retrain-flagged.
+
+Pinned by `TestParsePredictTeamRequest_ContentTypeWithParameters_IsStillDecodedAsJSON`, whose `charset` cases fail on `main` (`body.Format` comes back empty, having fallen through to query parsing) and pass here.
+
+### GO-10 — Predicted winner at exactly 0.5 differs between served answer and track record  **Low** — PR #340
+
+`predict_team.go:573-583` (`>= 0.5` → team1) vs `trackrecord/build.go:115-122` (`> 0.5` → team1); each comment claims the other's rule. **Fix.** One helper.
+
+**Confirmed exactly, including the crossed comments.** `winnerFrom` (the live serving path) used `>= 0.5` → team1; `predictedWinner` (the track record) used `> 0.5` → team1. Each function's own comment claimed the *other's* rule: `winnerFrom`'s said "exactly 0.5 is team2's," `predictedWinner`'s said "as the Lab does (winnerFrom in predictteam)" — both wrong about what the code they were describing (or referencing) actually did.
+
+**Chose team1 for the tie — the live path's existing behaviour — because served answers must not change, and the track record is a read of history, not an answer already handed to a caller.** Centralised the rule in a new `internal/winprob` package (`Team1Wins`), used by both call sites, so the two cannot drift apart again without a compile error.
+
+**Checked `cricket_data.issued_prediction` before writing anything:** 26 stored predictions, zero at exactly `win_probability_team1 = 0.5`, so no recorded verdict flips.
+
+Not retrain-flagged.
+
+Pinned by `TestBuild_PredictedWinnerAtExactlyOneHalfMatchesTheServedAnswer` (fails on `main`: returns team2's opposition id, 54, instead of team1's, 4) and `TestTeam1Wins_BreaksTheTieAtOneHalfTowardTeam1` (the shared helper, table-driven). The existing `TestWinnerFrom_NamesTeam2OnAnExactTie` was itself mislabeled — it asserted team1's name at the tie despite its name — and is renamed `TestWinnerFrom_NamesTeam1OnAnExactTie` to match what it has always verified.
 
 ### IMPORT-18 — `ball_event` PK conflicts dropped silently  **Low** — resolved by PR #295, verified in PR #339
 

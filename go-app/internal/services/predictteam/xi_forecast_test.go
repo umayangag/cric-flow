@@ -351,7 +351,7 @@ func TestEconomy_IsZeroForAPlayerWhoDidNotBowl(t *testing.T) {
 	assert.InDelta(t, 6.0, economy(30, 30), 1e-9)
 }
 
-func TestWinnerFrom_NamesTeam2OnAnExactTie(t *testing.T) {
+func TestWinnerFrom_NamesTeam1OnAnExactTie(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "India (men)", winnerFrom(0.5, indiaMen, australiaMen))
 	assert.Equal(t, "Australia (men)", winnerFrom(0.4999, indiaMen, australiaMen))
