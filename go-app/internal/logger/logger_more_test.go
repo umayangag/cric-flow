@@ -118,6 +118,35 @@ func TestSetupFromEnv_LOG_COLOR_AddsANSI(t *testing.T) {
 	require.Contains(t, out, "info-plain")
 }
 
+// GO-15: colorHandler.WithAttrs and WithGroup used to return the receiver unchanged, so
+// any slog.With(...) or WithGroup(...) attrs vanished the moment LOG_COLOR=1 selected this
+// handler as the default -- silently, since Handle still produced a well-formed line, just
+// one with the caller's attrs missing from it. TestLogger_WithAttrsAndWithGroup below does
+// not catch this: it never sets LOG_COLOR=1, and only asserts the log message text is
+// present, not that the attrs survived. This sets LOG_COLOR=1 and asserts the attrs
+// themselves -- including one added after WithGroup, which must nest inside that group --
+// are actually in the line.
+func TestSetupFromEnv_LOG_COLOR_KeepsWithAttrsAndWithGroup(t *testing.T) {
+	require.NoError(t, os.Setenv("LOG_FORMAT", "json"))
+	require.NoError(t, os.Setenv("LOG_LEVEL", "info"))
+	require.NoError(t, os.Setenv("LOG_COLOR", "1"))
+	t.Cleanup(func() {
+		_ = os.Unsetenv("LOG_FORMAT")
+		_ = os.Unsetenv("LOG_LEVEL")
+		_ = os.Unsetenv("LOG_COLOR")
+	})
+
+	out := captureStdout(func() {
+		logger.SetupFromEnv()
+		slog.Default().With("request_id", "abc-123").Error("with-attrs-and-color")
+		slog.Default().WithGroup("db").With("table", "match").Info("with-group-and-color")
+	})
+
+	require.Contains(t, out, `"request_id":"abc-123"`, "an attr added with .With must survive LOG_COLOR=1")
+	require.Contains(t, out, `"db":{`, "a group added with .WithGroup must survive LOG_COLOR=1")
+	require.Contains(t, out, `"table":"match"`, "an attr added after .WithGroup must nest inside that group")
+}
+
 // TestLogger_WithAttrsAndWithGroup exercises the handler's WithAttrs and WithGroup (slog calls them when using With/WithGroup).
 func TestLogger_WithAttrsAndWithGroup(t *testing.T) {
 	require.NoError(t, os.Setenv("LOG_FORMAT", "json"))
