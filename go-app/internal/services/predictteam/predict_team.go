@@ -20,6 +20,7 @@ import (
 	"github.com/umayangag/cric-flow/go-app/internal/availability"
 	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/winprob"
 )
 
 // Input defines the request for future-match team selection.
@@ -638,13 +639,15 @@ func newSelectedPlayers(
 	return out
 }
 
-// winnerFrom names the side the headline probability favours. Exactly 0.5 is team2's, as
-// it has always been; the probability is displayed beside it, so nothing is hidden.
+// winnerFrom names the side the headline probability favours, using the one tie-break rule
+// (winprob.Team1Wins, GO-10) so the track record's read of this same answer never disagrees
+// about who won a coin-flip probability. The probability is displayed beside the name, so
+// nothing about the tie is hidden.
 //
 // It names the *resolved* side -- "India (women)", not the "India" a caller typed -- for the
 // same reason the response echoes both sides: the answer says what was scored.
 func winnerFrom(team1Probability float64, team1, team2 db.TeamSide) string {
-	if team1Probability >= 0.5 {
+	if winprob.Team1Wins(team1Probability) {
 		return team1.Label()
 	}
 	return team2.Label()

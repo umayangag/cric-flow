@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/predictions"
+	"github.com/umayangag/cric-flow/go-app/internal/winprob"
 )
 
 // The objective a hand-built eleven is stored under (contract: selection_objectives).
@@ -112,10 +113,12 @@ func newEntry(stored predictions.Prediction) *entry {
 	return e
 }
 
-// predictedWinner is the side the headline probability favoured. At exactly one half the
-// record names team2, as the Lab does (winnerFrom in predictteam).
+// predictedWinner is the side the headline probability favoured, using the same tie-break
+// rule the serving path used to answer it (winprob.Team1Wins, GO-10) -- so a fixture whose
+// stored probability landed at exactly 0.5 is scored against the winner it was actually
+// served as, not a second, disagreeing opinion computed here.
 func predictedWinner(stored predictions.Prediction) int64 {
-	if stored.WinProbabilityTeam1 > 0.5 {
+	if winprob.Team1Wins(stored.WinProbabilityTeam1) {
 		return stored.Team1OppositionID
 	}
 	return stored.Team2OppositionID

@@ -236,6 +236,20 @@ func TestBuild_EachStoredPredictionLandsInExactlyOneState(t *testing.T) {
 	}
 }
 
+// GO-10: an exact-tie probability must name the same winner the live prediction path
+// (predictteam.winnerFrom) already names for it -- team1 -- not the disagreeing team2 the
+// track record used to compute on its own.
+func TestBuild_PredictedWinnerAtExactlyOneHalfMatchesTheServedAnswer(t *testing.T) {
+	t.Parallel()
+	row := stored(storedOptions{id: "tied", issued: time.Date(2026, 9, 5, 10, 0, 0, 0, time.UTC), probability: 0.5})
+	lookup := &fakeLookup{matches: map[trackrecord.Fixture][]trackrecord.PlayedMatch{}}
+
+	record := build(t, lookup, row)
+
+	entry := entryByID(t, record, "tied")
+	assert.Equal(t, testland, entry.Claimed.PredictedWinnerID, "team1 wins the exact tie, as the served answer does")
+}
+
 // The superseding rule: of two Optimise forecasts of one fixture issued before the match,
 // the later one is scored and the earlier one is superseded by it -- and a scenario of the
 // same fixture, and a forecast issued after the match day, take no part.
