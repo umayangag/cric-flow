@@ -209,9 +209,10 @@ type OutcomeBy struct {
 // innings (226 such entries in the current archive, always at index two or later, each of
 // exactly one over), whose deliveries belong to no innings anyone bats a career in. See
 // PlayedInnings. Declared and Forfeited say why a first-class innings ended short of ten
-// wickets, and Target is what the chasing side was set -- Cricsheet's own figure, which is
-// the revised one in a rain-shortened chase. They are read so the record can tell a short
-// innings from a truncated file; nothing derived from them is stored yet.
+// wickets, and nothing derived from those two is stored yet. Target is what the chasing
+// side was set -- Cricsheet's own figure, which is the revised one in a rain-shortened
+// chase -- and chaseTarget stores it in match_inning.target_runs / target_overs
+// (IMPORT-11).
 type Innings struct {
 	Team      string  `json:"team"`
 	Overs     []Over  `json:"overs"`

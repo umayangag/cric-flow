@@ -181,10 +181,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-11 — `match_inning.target_runs` ignores `innings[].target`  **Medium**
-
-`ingest.go:552-556, 879-887`: second innings target = first-innings runs (not +1), set even for Tests; D/L revised targets never stored. **Fix.** Decode `target` and `method`; store `target.runs/overs` when present, else `first + 1` for limited-overs innings 2 only.
-
 ### IMPORT-12 — Forfeited / zero-legal-ball innings dropped from `ball_event` but keep their number  **Low**
 
 `ball_event_emit.go:40-42` (`if totalLegal == 0 { continue }`); consumer `sources.py:604` normalises by `innings.min()`, so the DB path renumbers innings differently from the JSON path. An innings of only wides has `balls_bowled=0` and `run_rate=0` (`ingest.go:548-551`). **Fix.** Emit rows for every delivery (`is_legal` exists) or write a `forfeited/declared` flag; never use `innings.min()`.
@@ -302,6 +298,20 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### IMPORT-11 — `match_inning.target_runs` ignores `innings[].target`  **Medium** — PR #337
+
+`ingest.go:552-556, 879-887`: second innings target = first-innings runs (not +1), set even for Tests; D/L revised targets never stored. **Fix.** Decode `target` and `method`; store `target.runs/overs` when present, else `first + 1` for limited-overs innings 2 only.
+
+**Confirmed, and the spec corrected on one point.** The line numbers were stale (the block had moved to `ingest.go:683-687` and the upsert to `:883-895`) but every claim held. Measured on `cricket_data` before touching anything: of the 19,432 limited-overs second innings carrying a `target_runs`, **19,432 equal the first innings' runs and zero equal `runs + 1`** — every chase in the archive recorded as needing one run fewer than it did — and **3,102** multi-day second innings (914 Test, 2,188 MDM) carry one at all. The correction is `method`: `innings[].target` has exactly two keys in all 18,264 files that carry it, `runs` and `overs`, and no per-innings method exists to decode. Cricsheet puts the method on `info.outcome`, which IMPORT-02 already stores as `match.result_method`, so storing it again would have been the same fact under two names. Not done.
+
+**The prize was the revised target.** A census of the 22,905 files: **18,264** carry an explicit `target`, always on innings 2, always with both `runs` and `overs`; **983** state runs that are not `first + 1`; **1,541** state an over limit that is not the scheduled allotment (567 of those with the runs unchanged); **158** state the limit in fractional O.B notation such as `12.4`. **No multi-day file — 918 Test, 2,207 MDM — carries a target at all**, so the 3,102 rows were pure fabrication by the importer. And the revised population cannot be recovered from what was already stored: only 971 of the 1,550 revised-target matches name `D/L` in `info.outcome.method` (2 name `VJD`), because that field says how the *result* was reached and **577** of them completed the revised chase normally.
+
+**Fixed as `chaseTarget`** (`ingest.go`): the file's `{runs, overs}` where the file states them, `first + 1` with a null over limit for a limited-overs second innings where it does not, nothing for a multi-day innings. Migration `0023` adds `match_inning.target_overs` (`real`, nullable, O.B notation like `overs_bowled`). `repo_match.go`'s `match_inning` upsert was written out twice — the same duplication `upsertMatchSQL` above it was already extracted for — so `target_overs` would have reached one caller of two; it is now one const and one args helper.
+
+**Not retrain-flagged; it joins batch 4's re-import.** These are two different claims and only the second applies. `grep` for `target_runs` / `TargetRuns` across `go-app`, `ml-service` and `frontend` finds the importer's struct, the upsert, the tests and one seed fixture — **no feature, no serving path, no frontend surface reads the column**. No model was fitted on it and no served number built from it, so no run on disk is stale and no retrain is owed. What is owed is the re-import: nothing back-fills, the rows keep the wrong `target_runs` and a null `target_overs` until the directory is re-imported, and that same re-import is what clears the 3,102 multi-day rows to null (the upsert assigns `target_runs = EXCLUDED.target_runs` on conflict). `0023` is unapplied on `cricket_data` and joins `0021` and `0022` there; it was applied to `cricket_flow_test` only.
+
+**Pinned by two tests.** `ingest_target_test.go` drives `ImportMatchFile` through the transaction spy over six second-innings cases — no stated target (12, not 11), a stated unrevised target, a rain-revised target, a revised limit of `12.4`, a Test and an MDM — and all six fail on `main`, each reading back `11 runs, no stated over limit`. `ingest_target_integration_test.go` runs the same rule against Postgres behind `make -C go-app test-db`: `235 runs in 42.3 overs` out of the table, and `no target` for the first-class second innings.
 
 ### IMPORT-10 — `-apply` flag parsed and ignored  **Medium** — PR #336
 

@@ -565,9 +565,37 @@ where the record keeps it — see the next section.
 
 The same decode reads Cricsheet's other innings-level facts — `declared`, `forfeited`
 (an innings with no `overs` at all, 14 in the archive) and `target` — so a short innings
-can be told from a truncated file. `target.overs` is a float: 158 innings carry a
-rain-revised target in overs-and-balls notation such as `12.4`, and an integer field would
-refuse every one of those files. Nothing derived from these three is stored yet.
+can be told from a truncated file. Nothing derived from `declared` or `forfeited` is
+stored yet.
+
+**The target** is stored, in `match_inning.target_runs` and `target_overs`, and is the
+archive's own figure wherever the archive states one. Cricsheet writes `innings[].target`
+as `{runs, overs}` on the innings being chased: `runs` is the score that *wins*, `overs`
+the limit that chase was given. 18,264 of the 22,905 files carry one. Where a file states
+none, a limited-overs second innings gets the first innings' runs **plus one** — the
+arithmetic of a chase — and a null over limit, because the allotment is already in
+`match.scheduled_overs_per_innings`. A multi-day innings gets neither: no file in the
+archive puts a target on one.
+
+`target_overs` is a `real` in the scorer's overs-and-balls notation, like `overs_bowled`:
+158 of these targets are fractional (`12.4` is twelve overs and four balls), and an integer
+column would lose every one.
+
+Until IMPORT-11 the importer read none of this and wrote the first innings' *runs* into
+`target_runs` on every second innings. That was one short of the winning score on all
+19,432 limited-overs chases; it replaced each of the 983 revised targets with the
+unrevised total and discarded each of the 1,541 shortened over limits; and it put a
+target on the 3,102 second innings of Tests and first-class matches, where the first
+innings' total is not even the lead. The rows in the table keep those figures until the
+directory is re-imported, which is what writes the corrected ones and clears the
+multi-day rows to null. Nothing reads either column yet, so no model or served number was
+ever built on them.
+
+The revised target is not recoverable from `match.result_method`: that is
+`info.outcome.method`, which says how the *result* was reached, and 577 of the 1,550
+matches with a revised target name no method there at all because the revised chase was
+completed normally. The method is therefore stored once, on the match, and not repeated
+on the innings.
 
 ### What the outcome record holds
 
