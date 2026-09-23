@@ -14,8 +14,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/umayangag/cric-flow/go-app/internal/config"
 	"github.com/umayangag/cric-flow/go-app/internal/db"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 	"github.com/umayangag/cric-flow/go-app/internal/resources"
 	"github.com/umayangag/cric-flow/go-app/internal/services/dataset"
 	"github.com/umayangag/cric-flow/go-app/internal/teamlineage"
@@ -309,8 +309,20 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		teamB = info.Teams[1]
 	}
 	mid := MatchIDFromSource(SourceRef(path), dateISO, teamA, teamB)
-	cfg := config.Load()
-	formatCode := DetectFormat(info.MatchType, info.Teams, cfg)
+	// The level is read before the format because the format depends on it: a "T20"
+	// between national sides is a T20I only by its team_type. A file that names no level
+	// is refused, not guessed at, for the same reason the twelve-team list was retired.
+	competitionLevel, err := formats.ParseCompetitionLevel(info.TeamType)
+	if err != nil {
+		slog.Error("cricsheet: competition level unreadable",
+			slog.String("file", path),
+			slog.String("team_type", info.TeamType),
+			slog.String("match_type", info.MatchType),
+			slog.String("teams", fmt.Sprintf("%v", info.Teams)),
+			slog.Any("err", err))
+		return fmt.Errorf("competition level of %s: %w", path, err)
+	}
+	formatCode := DetectFormat(info.MatchType, competitionLevel)
 	if formatCode == "" {
 		slog.Error("unsupported match_type",
 			slog.String("file", path),
@@ -401,6 +413,8 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		FormatID:                  formatID,
 		MatchDate:                 dateISO,
 		OriginalMatchType:         info.MatchType,
+		CompetitionLevel:          competitionLevel,
+		MatchTypeNumber:           info.MatchTypeNumber,
 		VenueID:                   venueID,
 		SeasonID:                  seasonID,
 		TossWinnerOppositionID:    tossWinnerOppositionID,

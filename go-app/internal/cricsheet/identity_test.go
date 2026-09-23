@@ -292,7 +292,7 @@ func TestDisplayNames_RowsAreOrderedByPlayerID(t *testing.T) {
 func TestParse_ReadsTheRegistryAndItsIdentifiers(t *testing.T) {
 	t.Parallel()
 
-	raw := `{"info":{"dates":["2024-05-01"],"match_type":"T20","gender":"female",
+	raw := `{"info":{"dates":["2024-05-01"],"match_type":"T20","team_type":"club","gender":"female",
 		"teams":["Alpha","Beta"],
 		"registry":{"people":{"NR Sciver-Brunt":"f3a18a0c","KH Sciver-Brunt":"6a434bd3"}}},"innings":[]}`
 

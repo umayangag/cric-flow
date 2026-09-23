@@ -27,6 +27,7 @@ const superOverTieJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "venue": "The Oval",
     "season": "2024",

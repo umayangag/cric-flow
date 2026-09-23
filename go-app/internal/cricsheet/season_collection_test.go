@@ -129,7 +129,7 @@ func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 func TestParse_DoesNotPanicOnMinimalJSON(t *testing.T) {
 	t.Parallel()
 
-	data := []byte(`{"info":{"teams":["A","B"],"match_type":"T20","season":"2019"},"innings":[]}`)
+	data := []byte(`{"info":{"teams":["A","B"],"match_type":"T20","team_type":"club","season":"2019"},"innings":[]}`)
 	m, err := cricsheet.Parse(bytes.NewReader(data))
 	require.NoError(t, err)
 	require.NotNil(t, m)

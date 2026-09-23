@@ -114,7 +114,7 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		os.WriteFile(
 			file1,
 			[]byte(
-				`{"info":{"match_type":"T20","teams":["A","B"],"dates":["2024-01-01"]},"innings":[{"team":"A","overs":[{"over":1,"deliveries":[{"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`,
+				`{"info":{"match_type":"T20","team_type":"club","teams":["A","B"],"dates":["2024-01-01"]},"innings":[{"team":"A","overs":[{"over":1,"deliveries":[{"batter":"A1","bowler":"B1","non_striker":"A2","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`,
 			),
 			0o600,
 		),
@@ -124,7 +124,7 @@ func TestImportDir_ErrorHandling(t *testing.T) {
 		os.WriteFile(
 			file2,
 			[]byte(
-				`{"info":{"match_type":"T20","teams":["C","D"],"dates":["2024-01-02"]},"innings":[{"team":"C","overs":[{"over":1,"deliveries":[{"batter":"C1","bowler":"D1","non_striker":"C2","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`,
+				`{"info":{"match_type":"T20","team_type":"club","teams":["C","D"],"dates":["2024-01-02"]},"innings":[{"team":"C","overs":[{"over":1,"deliveries":[{"batter":"C1","bowler":"D1","non_striker":"C2","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`,
 			),
 			0o600,
 		),

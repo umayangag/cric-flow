@@ -162,9 +162,9 @@ type matchUpsertSpyTx struct {
 // Positions in upsertMatchSQL's argument list: result and result_method follow the
 // outcome margin.
 const (
-	matchArgResult       = 11
-	matchArgResultMethod = 12
-	matchArgCount        = 20
+	matchArgResult       = 13
+	matchArgResultMethod = 14
+	matchArgCount        = 22
 )
 
 func (s *matchUpsertSpyTx) Exec(_ context.Context, sql string, args ...any) error {

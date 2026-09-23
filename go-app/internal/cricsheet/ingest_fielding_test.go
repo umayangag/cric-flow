@@ -19,6 +19,7 @@ const fieldingJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "season": "2024",
     "players": {"Alpha": ["A1", "A2", "A3"], "Beta": ["B1", "B2", "B3"]}
