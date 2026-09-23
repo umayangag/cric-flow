@@ -10,23 +10,6 @@
     "train_step_timeout_min": 43200,
     "http_write_timeout_sec": 3600
   },
-  "formats": {
-    "treat_t20i_as_subset": true,
-    "international_teams": [
-      "Afghanistan",
-      "Australia",
-      "Bangladesh",
-      "England",
-      "India",
-      "Ireland",
-      "New Zealand",
-      "Pakistan",
-      "South Africa",
-      "Sri Lanka",
-      "West Indies",
-      "Zimbabwe"
-    ]
-  },
   "team": {
     "min_bowlers": 5,
     "default_batters": 6,

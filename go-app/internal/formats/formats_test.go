@@ -47,6 +47,51 @@ func TestNormalizeCode(t *testing.T) {
 	}
 }
 
+// A competition level is one of Cricsheet's two words or it is an error: the importer
+// refuses a file it cannot place rather than inferring the level from team names, which
+// is the hand list IMPORT-09 retired.
+func TestParseCompetitionLevel(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		teamType  string
+		want      string
+		wantError string
+	}{
+		{name: "international", teamType: "international", want: formats.CompetitionInternational},
+		{name: "club", teamType: "club", want: formats.CompetitionClub},
+		{name: "case and padding are folded", teamType: " International\n", want: formats.CompetitionInternational},
+		{name: "missing is refused", teamType: "", wantError: "missing team_type"},
+		{name: "blank is refused", teamType: "   ", wantError: "missing team_type"},
+		{name: "an unknown word is refused", teamType: "franchise", wantError: `unsupported team_type: "franchise"`},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Act
+			got, err := formats.ParseCompetitionLevel(tc.teamType)
+
+			// Assert
+			assertCompetitionLevel(t, got, err, tc.want, tc.wantError)
+		})
+	}
+}
+
+func assertCompetitionLevel(t *testing.T, got string, err error, want, wantError string) {
+	t.Helper()
+	if wantError != "" {
+		require.EqualError(t, err, wantError)
+		require.Empty(t, got)
+		return
+	}
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
 func TestCanonicalizeCode(t *testing.T) {
 	t.Parallel()
 

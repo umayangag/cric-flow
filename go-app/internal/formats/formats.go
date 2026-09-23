@@ -1,6 +1,7 @@
 package formats
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +14,31 @@ const (
 	CodeT20  = "T20"
 	CodeT20I = "T20I"
 )
+
+// Competition levels: Cricsheet's own two words for `info.team_type`, stored verbatim in
+// match.competition_level (migration 0022, IMPORT-09). The level is what separates a Test
+// from a Sheffield Shield round and an India v Netherlands World Cup match from an IPL
+// game; the format code alone does not, because MDM folds into TEST and ODM into ODI.
+const (
+	CompetitionInternational = "international"
+	CompetitionClub          = "club"
+)
+
+// ParseCompetitionLevel validates a Cricsheet `info.team_type` and returns it trimmed and
+// lower-cased. Every file in the archive carries one of the two values, so a file that
+// carries neither is refused rather than guessed at: the T20 / T20I split depends on it,
+// and inferring it from team names is the hand-maintained list this replaced.
+func ParseCompetitionLevel(teamType string) (string, error) {
+	level := strings.ToLower(strings.TrimSpace(teamType))
+	switch level {
+	case CompetitionInternational, CompetitionClub:
+		return level, nil
+	case "":
+		return "", errors.New("missing team_type")
+	default:
+		return "", fmt.Errorf("unsupported team_type: %q", teamType)
+	}
+}
 
 // CanonicalCodes returns the list of canonical format codes in standard order (TEST, ODI, T20, T20I).
 // Use this where a single shared list is needed (e.g. the ops status sections).

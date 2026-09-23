@@ -13,13 +13,13 @@ import (
 )
 
 // spyTxForMatchVenue implements db.CopyFromTx and captures the venue_id the match upsert
-// writes. It is the fifth argument of upsertMatchSQL (repo_match.go, upsertMatchArgs).
+// writes. It is the seventh argument of upsertMatchSQL (repo_match.go, upsertMatchArgs).
 type spyTxForMatchVenue struct {
 	sawMatch bool
 	venueID  *int64
 }
 
-const matchVenueArgIndex = 4
+const matchVenueArgIndex = 6
 
 func (t *spyTxForMatchVenue) Exec(_ context.Context, sql string, args ...any) error {
 	if strings.Contains(sql, "INSERT INTO match ") && len(args) > matchVenueArgIndex {
@@ -59,6 +59,7 @@ func matchFileWithVenueAndCity(venue, city string) string {
         "balls_per_over": 6,
         "dates": ["2025-11-07"],
         "match_type": "T20",
+        "team_type": "club",
         "teams": ["Alpha", "Beta"],
         "venue": "` + venue + `",
         "city": "` + city + `",

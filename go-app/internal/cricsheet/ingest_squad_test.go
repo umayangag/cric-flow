@@ -20,6 +20,7 @@ const squadJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "venue": "The Oval",
     "season": "2024",
@@ -49,6 +50,7 @@ const noSquadJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "season": "2024"
   },
@@ -73,6 +75,7 @@ const namesakeSquadJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "season": "2024",
     "players": {"Alpha": ["A1", "A2"], "Beta": ["A1", "B2"]}
@@ -190,6 +193,7 @@ const replacementSquadJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-02"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "venue": "The Oval",
     "season": "2024",

@@ -28,6 +28,7 @@ const wicketsMatchJSON = `{
     "balls_per_over": 6,
     "dates": ["2024-01-03"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "venue": "The Oval",
     "season": "2024",

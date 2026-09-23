@@ -38,9 +38,6 @@ Config file: `go-app/config.json`
   - `dir` — go-app's own output directory. It held the export CSVs until P-6 deleted them;
     what is left is the resource-observation file the import pipeline's concurrency is
     derived from. `GO_APP_OUTPUT_DIR` overrides it.
-- `formats`
-  - `treat_t20i_as_subset` (bool) — treat T20 between international teams as T20I.
-  - `international_teams` (list) — ICC national teams for the subset rule.
 - `pipeline` (optional)
   - `import_timeout_ms` (int) — how long an import may run (default 86400000). 0 = no deadline.
   - `import_concurrency` (int) — 0 = auto. With a memory limit set (GOMEMLIMIT, or cgroup v2
@@ -606,6 +603,35 @@ The archive path of the rating pass agreed with it, reading only `winner` too, w
 the H-8 parity check never saw the difference. Both columns are written by the importer
 and by nothing else; a match imported before `0017` carries NULL in both until the
 directory is re-imported.
+
+### What the competition record holds
+
+The four format codes pool cricket the archive tells apart. `match_format` has `TEST`,
+`ODI`, `T20` and `T20I`; Cricsheet's `match_type` has `Test`, `ODI`, `T20`, `IT20`, `MDM`
+and `ODM`, and beside it `team_type` says whether both sides are national teams. The
+importer folds `MDM` (Sheffield Shield, County Championship, Ranji Trophy) into `TEST` and
+`ODM` (domestic one-day, and internationals without ODI status) into `ODI`, so on the
+archive as imported 70.6 % of `TEST` rows and 39.3 % of `ODI` rows are not the format the
+label names. Three columns on `match` keep the distinction recoverable (IMPORT-09):
+
+- **`original_match_type`** is `match_type` verbatim, and is what separates a Test from a
+  first-class round under the one code.
+- **`competition_level`** (migration `0022`) is `team_type` verbatim, `international` or
+  `club`. It is the T20 / T20I rule: Cricsheet writes every twenty-over match as `T20`,
+  national sides included, so a `T20` whose level is `international` is stored as `T20I`
+  and a `T20` whose level is `club` as `T20`. Until IMPORT-09 the rule was a hand list of
+  twelve team names in `config.json`, which took the 3,888 T20s between other national
+  sides — World Cup qualifiers, and the 87 World Cup matches the twelve played against
+  them — for club cricket; the list is gone. A file with no `team_type` is refused rather
+  than guessed at. Nothing but the importer reads the column yet: it is what the pooling
+  decision — does `TEST` mean Test cricket or first-class cricket? — is measured against,
+  and once taken it is applied with an `UPDATE` of `format_id`, not a re-import.
+- **`match_type_number`** (`0022`) is the ICC's running number for an official Test, ODI
+  or T20I, NULL for club matches and for the 320 `IT20` files, which are internationals
+  played before their sides had T20I status.
+
+Nothing back-fills the two new columns: a re-import of the whole directory is what writes
+them, and the same re-import is what moves the 3,888 misfiled matches onto `T20I`.
 
 ### What the ball-event record holds
 

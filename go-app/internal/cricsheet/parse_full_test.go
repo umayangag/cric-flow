@@ -19,6 +19,7 @@ func TestParse_FullShapes(t *testing.T) {
 			"balls_per_over": 6,
 			"dates":          []string{"2025-11-07"},
 			"match_type":     "T20",
+			"team_type":      "club",
 			"teams":          []string{"India", "Australia"},
 			"venue":          "Some Stadium",
 			"city":           "Some City",

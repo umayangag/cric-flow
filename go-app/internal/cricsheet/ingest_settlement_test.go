@@ -18,7 +18,7 @@ import (
 
 // oneMatchFile is the smallest file the importer accepts, so these cases are about what
 // runs after the files rather than about what is in them.
-const oneMatchFile = `{"info":{"match_type":"T20","teams":["A","B"],"dates":["2024-01-01"]},` +
+const oneMatchFile = `{"info":{"match_type":"T20","team_type":"club","teams":["A","B"],"dates":["2024-01-01"]},` +
 	`"innings":[{"team":"A","overs":[{"over":1,"deliveries":[{"batter":"A1","bowler":"B1",` +
 	`"non_striker":"A2","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`
 

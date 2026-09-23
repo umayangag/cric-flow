@@ -7,10 +7,16 @@ import (
 
 // MatchInsert carries match-level fields for the match table.
 type MatchInsert struct {
-	MatchID                   int64
-	FormatID                  int64
-	MatchDate                 string // YYYY-MM-DD
-	OriginalMatchType         string
+	MatchID           int64
+	FormatID          int64
+	MatchDate         string // YYYY-MM-DD
+	OriginalMatchType string
+	// CompetitionLevel is Cricsheet's info.team_type verbatim -- "international" or
+	// "club" -- and MatchTypeNumber the ICC's number for an official international, nil
+	// elsewhere (migration 0022). Together with OriginalMatchType they keep a Test apart
+	// from a Sheffield Shield round under the one format code both are rated in.
+	CompetitionLevel          string
+	MatchTypeNumber           *int
 	VenueID                   *int64
 	SeasonID                  *int64
 	TossWinnerOppositionID    *int64
@@ -52,16 +58,19 @@ type MatchInningInsert struct {
 // twice, which is how a column added to one of them would reach only half the callers.
 const upsertMatchSQL = `
 		INSERT INTO match (
-			match_id, format_id, match_date, original_match_type, venue_id, season_id,
+			match_id, format_id, match_date, original_match_type, competition_level, match_type_number,
+			venue_id, season_id,
 			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
 			outcome_by_runs, outcome_by_wickets, result, result_method,
 			event_name, event_stage, event_group,
 			match_number, gender, balls_per_over, scheduled_overs_per_innings
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (match_id) DO UPDATE SET
 			format_id = EXCLUDED.format_id,
 			match_date = EXCLUDED.match_date,
 			original_match_type = EXCLUDED.original_match_type,
+			competition_level = EXCLUDED.competition_level,
+			match_type_number = EXCLUDED.match_type_number,
 			venue_id = EXCLUDED.venue_id,
 			season_id = EXCLUDED.season_id,
 			toss_winner_opposition_id = EXCLUDED.toss_winner_opposition_id,
@@ -83,7 +92,8 @@ const upsertMatchSQL = `
 // upsertMatchArgs is the argument list for upsertMatchSQL, in the statement's order.
 func upsertMatchArgs(m *MatchInsert) []any {
 	return []any{
-		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.VenueID, m.SeasonID,
+		m.MatchID, m.FormatID, m.MatchDate, m.OriginalMatchType, m.CompetitionLevel, m.MatchTypeNumber,
+		m.VenueID, m.SeasonID,
 		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
 		m.OutcomeByRuns, m.OutcomeByWickets, m.Result, m.ResultMethod,
 		m.EventName, m.EventStage, m.EventGroup,

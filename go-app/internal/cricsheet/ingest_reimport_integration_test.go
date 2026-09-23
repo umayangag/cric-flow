@@ -40,6 +40,7 @@ func matchFileWithOutcomeJSON(outcome string, innings ...string) string {
     "balls_per_over": 6,
     "dates": ["%s"],
     "match_type": "T20",
+    "team_type": "club",
     "teams": ["Alpha", "Beta"],
     "venue": "The Oval",
     "season": "2024",

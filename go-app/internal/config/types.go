@@ -79,10 +79,6 @@ type Config struct {
 		// pipeline's concurrency is derived from.
 		Dir string `json:"dir"`
 	} `json:"outputs"`
-	Formats struct {
-		TreatT20ISubset    bool     `json:"treat_t20i_as_subset"`
-		InternationalTeams []string `json:"international_teams"`
-	} `json:"formats"`
 	Team struct {
 		MinBowlers     int `json:"min_bowlers"`
 		DefaultBatters int `json:"default_batters"`

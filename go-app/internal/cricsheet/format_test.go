@@ -4,111 +4,72 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/umayangag/cric-flow/go-app/internal/config"
+
 	"github.com/umayangag/cric-flow/go-app/internal/cricsheet"
+	"github.com/umayangag/cric-flow/go-app/internal/formats"
 )
 
-// NOTE: This file follows the gold-standard for tests: external package,
-// table-driven subtests, Arrange → Act → Assert, and fail-fast require assertions.
-
-// SPDX-License-Identifier: MIT
-// Package-level tests consolidated: prefer table-driven, black-box tests.
-
-func testConfig() *config.Config {
-	cfg := &config.Config{}
-	cfg.Formats.TreatT20ISubset = true
-	cfg.Formats.InternationalTeams = []string{
-		"Afghanistan", "Australia", "Bangladesh", "England", "India", "Ireland",
-		"New Zealand", "Pakistan", "South Africa", "Sri Lanka", "West Indies", "Zimbabwe",
-	}
-	return cfg
-}
-
+// DetectFormat reads Cricsheet's match_type and team_type and nothing else. Until IMPORT-09
+// the T20 / T20I split was a hand list of twelve team names, so the cases here name sides
+// that were never on it: what decides the code is the level the file states.
 func TestDetectFormat_Table(t *testing.T) {
 	t.Parallel()
 
-	base := testConfig()
-	disabled := &config.Config{}
-	disabled.Formats.TreatT20ISubset = false
-	disabled.Formats.InternationalTeams = []string{"India", "Australia"}
-
-	enabledCase := &config.Config{}
-	enabledCase.Formats.TreatT20ISubset = true
-	enabledCase.Formats.InternationalTeams = []string{" india ", "australia"}
-
-	type testCase struct {
-		name      string
-		matchType string
-		teams     []string
-		cfg       *config.Config
-		want      string
-	}
-
-	testCases := []testCase{
-		// Basic mappings
-		{name: "TEST basic", matchType: "Test", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
-		{name: "ODI basic", matchType: "ODI", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
-		{name: "T20I basic", matchType: "T20I", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
-		// Aliases
-		{name: "IT20 alias", matchType: "IT20", teams: []string{"India", "Australia"}, cfg: base, want: "T20I"},
-		{name: "ODM alias", matchType: "ODM", teams: []string{"India", "Australia"}, cfg: base, want: "ODI"},
-		{name: "MDM alias", matchType: "MDM", teams: []string{"India", "Australia"}, cfg: base, want: "TEST"},
-		// T20 subset rule
+	testCases := []struct {
+		name             string
+		matchType        string
+		competitionLevel string
+		want             string
+	}{
+		{name: "Test", matchType: "Test", competitionLevel: formats.CompetitionInternational, want: "TEST"},
+		{name: "ODI", matchType: "ODI", competitionLevel: formats.CompetitionInternational, want: "ODI"},
+		{name: "T20I", matchType: "T20I", competitionLevel: formats.CompetitionInternational, want: "T20I"},
+		// IT20 is an international without T20I status; it is international by definition.
+		{name: "IT20 alias", matchType: "IT20", competitionLevel: formats.CompetitionInternational, want: "T20I"},
+		// MDM and ODM stay pooled with TEST and ODI whatever their level (see the § 9 entry).
+		{name: "MDM pools with TEST", matchType: "MDM", competitionLevel: formats.CompetitionClub, want: "TEST"},
 		{
-			name:      "T20 subset -> T20I (intl vs intl)",
-			matchType: "T20",
-			teams:     []string{"India", "Australia"},
-			cfg:       base,
-			want:      "T20I",
+			name:             "international MDM pools with TEST",
+			matchType:        "MDM",
+			competitionLevel: formats.CompetitionInternational,
+			want:             "TEST",
 		},
+		{name: "ODM pools with ODI", matchType: "ODM", competitionLevel: formats.CompetitionClub, want: "ODI"},
 		{
-			name:      "T20 domestic -> T20",
-			matchType: "T20",
-			teams:     []string{"Mumbai Indians", "Chennai Super Kings"},
-			cfg:       base,
-			want:      "T20",
+			name:             "international ODM pools with ODI",
+			matchType:        "ODM",
+			competitionLevel: formats.CompetitionInternational,
+			want:             "ODI",
 		},
+		// The T20 split is the level, not the team names: a qualifier between two
+		// associate sides is a T20I, a franchise game is not.
 		{
-			name:      "T20 mixed intl+domestic -> T20",
-			matchType: "T20",
-			teams:     []string{"India", "Mumbai Indians"},
-			cfg:       base,
-			want:      "T20",
+			name:             "T20 between national sides is T20I",
+			matchType:        "T20",
+			competitionLevel: formats.CompetitionInternational,
+			want:             "T20I",
 		},
-		// Unknown
-		{name: "Unknown -> empty", matchType: "Friendly", teams: []string{"Team A", "Team B"}, cfg: base, want: ""},
-		// Edge cases
-		{name: "lowercase test", matchType: "test", teams: []string{"India", "Australia"}, cfg: disabled, want: "TEST"},
+		{name: "T20 between clubs is T20", matchType: "T20", competitionLevel: formats.CompetitionClub, want: "T20"},
+		{name: "T20 with no level is T20", matchType: "T20", competitionLevel: "", want: "T20"},
+		// Case and whitespace on the match type are tolerated; the level is already parsed.
+		{name: "lower-case test", matchType: "test", competitionLevel: formats.CompetitionInternational, want: "TEST"},
+		{name: "padded odi", matchType: "  odi \n", competitionLevel: formats.CompetitionInternational, want: "ODI"},
 		{
-			name:      "whitespace odi",
-			matchType: "  odi \n",
-			teams:     []string{"India", "Australia"},
-			cfg:       disabled,
-			want:      "ODI",
+			name:             "lower-case t20 international",
+			matchType:        "t20",
+			competitionLevel: formats.CompetitionInternational,
+			want:             "T20I",
 		},
-		{
-			name:      "t20 subset disabled",
-			matchType: "t20",
-			teams:     []string{"India", "Australia"},
-			cfg:       disabled,
-			want:      "T20",
-		},
-		{name: "t20 nil cfg", matchType: "T20", teams: []string{"India", "Australia"}, cfg: nil, want: "T20"},
-		{name: "t20 less than 2 teams", matchType: "T20", teams: []string{"India"}, cfg: disabled, want: "T20"},
-		{
-			name:      "t20 subset enabled with case/whitespace",
-			matchType: "T20",
-			teams:     []string{" India", "AUSTRALIA "},
-			cfg:       enabledCase,
-			want:      "T20I",
-		},
+		{name: "unknown type is no format", matchType: "Friendly", competitionLevel: formats.CompetitionClub, want: ""},
+		{name: "empty type is no format", matchType: "", competitionLevel: formats.CompetitionClub, want: ""},
 	}
 
 	for i := range testCases {
 		tc := testCases[i]
 		t.Run(tc.name, func(t *testing.T) {
-			// Arrange -> Act
-			got := cricsheet.DetectFormat(tc.matchType, tc.teams, tc.cfg)
+			t.Parallel()
+			// Act
+			got := cricsheet.DetectFormat(tc.matchType, tc.competitionLevel)
 			// Assert
 			require.Equal(t, tc.want, got)
 		})

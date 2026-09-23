@@ -72,7 +72,8 @@ func TestInfo_UnmarshalJSON_EventFieldsReachTheInfo(t *testing.T) {
 	var info cricsheet.Info
 
 	err := json.Unmarshal([]byte(`{
-		"match_type":"T20",
+		"match_type":"T20","team_type":"club",
+		"team_type":"club",
 		"dates":["2019-05-12"],
 		"teams":["A","B"],
 		"event":{"name":"Indian Premier League","stage":"Final"}

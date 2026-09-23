@@ -27,15 +27,26 @@ type Info struct {
 	BallsPerOver int      `json:"balls_per_over"`
 	Dates        []string `json:"dates"`
 	MatchType    string   `json:"match_type"`
-	Teams        []string `json:"teams"`
-	Venue        string   `json:"venue"`
-	City         string   `json:"city"`
-	Season       Season   `json:"season"`
-	Event        *Event   `json:"event"`
-	Toss         *Toss    `json:"toss"`
-	Outcome      *Outcome `json:"outcome"`
-	Gender       string   `json:"gender"`
-	Overs        int      `json:"overs"`
+	// TeamType is Cricsheet's competition level, "international" or "club". It is what
+	// tells a T20 between two national sides from a franchise game -- the archive's
+	// `match_type` is "T20" for both -- and it is stored on the match as
+	// competition_level, so a Test and a Sheffield Shield round stay distinguishable
+	// under the one TEST code they share (IMPORT-09).
+	TeamType string `json:"team_type"`
+	// MatchTypeNumber is the ICC's running number for an official international of this
+	// type (Test no. 2,400; ODI no. 4,700). Present exactly where the match had official
+	// status, absent on every club match and on the internationals played before their
+	// members' matches carried it.
+	MatchTypeNumber *int     `json:"match_type_number"`
+	Teams           []string `json:"teams"`
+	Venue           string   `json:"venue"`
+	City            string   `json:"city"`
+	Season          Season   `json:"season"`
+	Event           *Event   `json:"event"`
+	Toss            *Toss    `json:"toss"`
+	Outcome         *Outcome `json:"outcome"`
+	Gender          string   `json:"gender"`
+	Overs           int      `json:"overs"`
 
 	// Players maps a team name to the players it fielded. This is the only record of
 	// who was picked: the scorecard shows only whoever batted or bowled, and both of
