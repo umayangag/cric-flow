@@ -159,6 +159,14 @@ func (r assignedIDRow) Scan(dest ...any) error {
 	return nil
 }
 
+// settlementNamesFile is one file with names no other case in this package uses. The
+// entity cache is process-global: a name another test already resolved against a nop pool
+// is a cache hit holding id 0, and a player id of 0 never reaches settlement at all.
+const settlementNamesFile = `{"info":{"match_type":"T20","team_type":"club",` +
+	`"teams":["Import13NameA","Import13NameB"],"dates":["2024-05-01"],"gender":"male"},` +
+	`"innings":[{"team":"Import13NameA","overs":[{"over":0,"deliveries":[{"batter":"Import13Striker",` +
+	`"bowler":"Import13Bowler","non_striker":"Import13NonStriker","runs":{"batter":1,"extras":0,"total":1}}]}]}]}`
+
 // TestImportDir_SpellingsOfAFileWhoseTransactionFailed_DoNotSettleDisplayNames is
 // IMPORT-13.
 //
@@ -181,7 +189,7 @@ func TestImportDir_SpellingsOfAFileWhoseTransactionFailed_DoNotSettleDisplayName
 		testCase := testCases[i]
 		t.Run(testCase.name, func(t *testing.T) {
 			// Arrange
-			harness := newSettlementHarness(t, map[string]string{"match1.json": oneMatchFile})
+			harness := newSettlementHarness(t, map[string]string{"match1.json": settlementNamesFile})
 			previousPool := db.PoolAPI
 			db.SetPoolAPI(idAssigningPool{})
 			t.Cleanup(func() { db.SetPoolAPI(previousPool) })
