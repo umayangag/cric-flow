@@ -36,3 +36,12 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+# The coverage gate's exit code depends on this. pytest-cov decides pass/fail with
+# coverage's should_fail_under, which compares `round(total, precision)` against
+# `--cov-fail-under`; coverage's default precision is 0. At precision 0 a real total of
+# 94.94% rounded to 95 and cleared a floor of 95, so CI printed
+# "FAIL Required test coverage of 95% not reached" and still exited 0 (run 35969830980):
+# the ml-service gate could not fail for any total within half a point of the floor.
+# Two decimals also make the printed TOTAL row show 94.94% instead of a rounded 95%,
+# which is the number the floor must be read from. Do not lower this.
+precision = 2
