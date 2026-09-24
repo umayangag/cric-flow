@@ -286,24 +286,45 @@ def _seed_or_conflict(pool: _Pool, c: Constraints, locked: List[int], banned: se
     return chosen
 
 
-def _best_neighbour(pool: _Pool, current: List[int], c: Constraints, locked: set, banned: set, pairs: bool):
+def _single_swaps(pool: "_Pool", current: List[int], outs: List[int], ins: List[int]):
+    """Every one-player swap out of ``current``, as (candidate, move label) pairs."""
+    for o in outs:
+        for j in ins:
+            cand = [j if x == o else x for x in current]
+            yield cand, f"{pool.keys[o]}->{pool.keys[j]}"
+
+
+def _pair_swaps(pool: "_Pool", current: List[int], outs: List[int], ins: List[int]):
+    """Every two-player swap out of ``current``, as (candidate, move label) pairs. One
+    sweep is C(len(outs), 2) x C(len(ins), 2) candidates -- 9,405 for an 11-a-side pick
+    from a 30-player pool -- which is why ``_best_neighbour`` bounds how many it scores."""
+    for o1, o2 in itertools.combinations(outs, 2):
+        for j1, j2 in itertools.combinations(ins, 2):
+            cand = [j1 if x == o1 else (j2 if x == o2 else x) for x in current]
+            yield cand, f"{pool.keys[o1]},{pool.keys[o2]}->{pool.keys[j1]},{pool.keys[j2]}"
+
+
+def _best_neighbour(
+    pool: _Pool, current: List[int], c: Constraints, locked: set, banned: set, pairs: bool, budget: int
+):
+    """The best feasible neighbour of ``current``, scoring at most ``budget`` feasible
+    candidates so a single sweep cannot blow through the caller's ``max_evaluations`` on
+    its own (SERVE-11): ``select_xi``'s own check runs only *between* calls to this
+    function, and a full pair-swap sweep is thousands of candidates in one
+    ``pool.score_many`` call. Truncating stops at whatever the enumeration order reaches
+    first once the budget is spent -- a tight budget trades completeness for staying
+    inside what the caller asked for."""
     outs = [i for i in current if i not in locked]
     ins = [j for j in range(len(pool.keys)) if j not in current and j not in banned]
+    swaps = _pair_swaps(pool, current, outs, ins) if pairs else _single_swaps(pool, current, outs, ins)
     candidates, moves = [], []
-    if not pairs:
-        for o in outs:
-            for j in ins:
-                cand = [j if x == o else x for x in current]
-                if pool.feasible(cand, c):
-                    candidates.append(cand)
-                    moves.append(f"{pool.keys[o]}->{pool.keys[j]}")
-    else:
-        for o1, o2 in itertools.combinations(outs, 2):
-            for j1, j2 in itertools.combinations(ins, 2):
-                cand = [j1 if x == o1 else (j2 if x == o2 else x) for x in current]
-                if pool.feasible(cand, c):
-                    candidates.append(cand)
-                    moves.append(f"{pool.keys[o1]},{pool.keys[o2]}->{pool.keys[j1]},{pool.keys[j2]}")
+    for cand, move in swaps:
+        if not pool.feasible(cand, c):
+            continue
+        candidates.append(cand)
+        moves.append(move)
+        if len(candidates) >= budget:
+            break
     if not candidates:
         return None, None, None
     scores = pool.score_many(candidates)
@@ -329,14 +350,16 @@ def select_xi(
     seed_score = current_score
     trace: List[str] = []
     while pool.evaluations < max_evaluations:
-        cand, score, move = _best_neighbour(pool, current, c, set(locked), banned, pairs=False)
+        budget = max_evaluations - pool.evaluations
+        cand, score, move = _best_neighbour(pool, current, c, set(locked), banned, pairs=False, budget=budget)
         if cand is not None and score > current_score + 1e-9:
             current, current_score = cand, score
             trace.append(f"swap {move} -> {score:.4f}")
             continue
         if len(pool.keys) > max_pair_swap_pool:
             break
-        cand, score, move = _best_neighbour(pool, current, c, set(locked), banned, pairs=True)
+        budget = max_evaluations - pool.evaluations
+        cand, score, move = _best_neighbour(pool, current, c, set(locked), banned, pairs=True, budget=budget)
         if cand is not None and score > current_score + 1e-9:
             current, current_score = cand, score
             trace.append(f"pair {move} -> {score:.4f}")

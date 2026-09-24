@@ -15,6 +15,7 @@ from ml.xi.builder import build
 from ml.xi.optimizer import (
     ConstraintConflict,
     Constraints,
+    _best_neighbour,
     marginal_values,
     rating_order_score,
     rating_percentiles,
@@ -149,6 +150,48 @@ def test_store_round_trip_preserves_the_gender_split_flag(tmp_path) -> None:
     save_ratings(state, str(tmp_path))
 
     assert load_ratings(str(tmp_path)).gender_split_context is True
+
+
+class _RecordingPool:
+    """A `_best_neighbour` collaborator standing in for `_Pool`: every candidate is
+    feasible, and each call to `score_many` is recorded so a test can see exactly how
+    many candidates one sweep scored, without training a model."""
+
+    def __init__(self, keys: List[str]) -> None:
+        self.keys = keys
+        self.calls: List[int] = []
+
+    def feasible(self, cand, c) -> bool:
+        del cand, c
+        return True
+
+    def score_many(self, candidates) -> np.ndarray:
+        self.calls.append(len(candidates))
+        return np.arange(len(candidates), dtype=float)
+
+
+def test_best_neighbour_pair_swap_sweep_stops_at_the_budget() -> None:
+    """SERVE-11: one pair-swap sweep over 11 outs and 19 ins is C(11,2) x C(19,2) = 9,405
+    candidates. A tight budget must stop the sweep there, not score all 9,405 in the one
+    `score_many` call -- the caller's `max_evaluations` would otherwise be meaningless."""
+    current = list(range(11))
+    pool = _RecordingPool(keys=[str(i) for i in range(30)])  # 19 ins outside `current`
+
+    _best_neighbour(pool, current, c=None, locked=set(), banned=set(), pairs=True, budget=100)
+
+    assert pool.calls == [100]
+
+
+def test_best_neighbour_pair_swap_sweep_completes_when_the_budget_allows_it() -> None:
+    """A generous budget still scores every feasible pair-swap candidate: the eleven a
+    caller gets at the default (generous) `max_evaluations` does not move because of the
+    bound (SERVE-11)."""
+    current = list(range(11))
+    pool = _RecordingPool(keys=[str(i) for i in range(30)])
+
+    _best_neighbour(pool, current, c=None, locked=set(), banned=set(), pairs=True, budget=20000)
+
+    assert pool.calls == [9405]
 
 
 def test_select_xi_respects_constraints_and_beats_seed(trained_store) -> None:
