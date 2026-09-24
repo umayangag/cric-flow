@@ -10,13 +10,17 @@ from typing import List
 import numpy as np
 import pytest
 
+from app.models.xi import XiOptimizeResponse
 from ml.xi import contract as C
+from ml.xi import glossary
 from ml.xi.builder import build
 from ml.xi.optimizer import (
+    PAR_IMPACT_KEYS,
     ConstraintConflict,
     Constraints,
     _best_neighbour,
     marginal_values,
+    par_replacement,
     rating_order_score,
     rating_percentiles,
     select_xi,
@@ -411,6 +415,44 @@ def test_marginal_values_cover_every_player_and_rank_the_strongest_highest(train
     best = max(mv, key=mv.get)
     top_batters = sorted(last.team1_players, key=skill_rank)[:6]
     assert best in top_batters, "the most valuable player is one of the six who bat, and they are the most skilled"
+
+
+def test_par_replacement_neutralises_what_a_player_does_and_keeps_the_slot_he_fills(trained_store) -> None:
+    """SERVE-10: the counterfactual behind a marginal value is a par player in the role --
+    impact rates at zero, the initial rating, the eleven's median experience -- and nothing
+    else moves: his expected balls, keeper flag, phase and sequence rates stay his own."""
+    store, _, _, matches = trained_store
+    last = matches[-1]
+    vectors = store.side_vectors("T20", last.team1_players)
+    j = 0
+
+    replaced = par_replacement(vectors, j)
+
+    for name in PAR_IMPACT_KEYS:
+        assert replaced[name][j] == 0.0
+    assert replaced["pelo"][j] == C.ELO_INITIAL
+    assert replaced["career"][j] == np.median(vectors["career"])
+    assert replaced["career_all"][j] == np.median(vectors["career_all"])
+    held = set(vectors) - set(PAR_IMPACT_KEYS) - {"pelo", "career", "career_all"}
+    assert {"exp_balls_faced", "exp_balls_bowled", "keeper"} <= held
+    for name in held:
+        np.testing.assert_array_equal(replaced[name], vectors[name])
+    others = [i for i in range(len(last.team1_players)) if i != j]
+    for name in vectors:
+        np.testing.assert_array_equal(replaced[name][others], vectors[name][others])
+
+
+def test_marginal_value_literals_describe_the_par_replacement_the_code_builds() -> None:
+    """SERVE-10 / H-24: the wire description and the glossary must say what is actually
+    computed -- a par player in the role, the slot held fixed -- and not promise an
+    "average" player the code never builds."""
+    wire = XiOptimizeResponse.model_fields["marginal_values"].description or ""
+    entry = glossary.REGISTRY["marginal_value"].explanation
+
+    for text in (wire, entry):
+        assert "average" not in text.lower()
+        assert "par player" in text and "initial rating" in text
+        assert "balls faced and bowled" in text and "keeper" in text
 
 
 # --- P1-3: what the selection read about each player it picked ----------------------

@@ -747,8 +747,8 @@ Do P1-3: the "why this player" card, assembled from what the objective consumed.
    consumed input is omitted, with the reason recorded in docs/PRODUCT_ROADMAP.md § 4 —
    not approximated, not fabricated. This is the item, not a footnote.
 2. THE FIELDS, each from an existing computation or explicitly new and subject to the
-   rule: marginal value (the headline: P(win) lost if replaced by an average player —
-   already on the wire); role in the XI (which constraint the player satisfies: keeper, a
+   rule: marginal value (the headline: P(win) lost if replaced by a par player in his role —
+   already on the wire; SERVE-10 pinned the wording to what the code builds); role in the XI (which constraint the player satisfies: keeper, a
    bowling option, must-include — from the optimiser's constraint state, put on the wire
    per player); expected contribution (L2-B's median and 10-90 range for runs and wickets
    in THIS fixture — already on the wire); form and standing (rating percentile within

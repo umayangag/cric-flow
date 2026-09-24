@@ -184,7 +184,9 @@ summing eleven medians and calling it an innings.
 - **The objective** is the XI win model: additive in the XI features, so upgrading a player
   cannot lower the score (H-4, measured at 0.3 % violations).
 - **Marginal value** per selected player is P(win) with the XI minus P(win) with that player
-  replaced by a neutral, average one — the L3 explanation of why he is in it.
+  replaced by a par player in his role (`optimizer.par_replacement`: the same expected balls
+  faced and bowled and the same keeper flag, impact rates at zero, the initial rating) — the
+  L3 explanation of why he is in it.
 - **Where the objective does not rank** (H-17: TEST, holdout AUC under 0.65),
   `/xi/optimize` refuses the win objective and serves `objective: "ratings"` — the search's own
   seed order under the same constraints, evaluating no model — and every surface says the XI is

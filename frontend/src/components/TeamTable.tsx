@@ -43,8 +43,9 @@ function columnCount(optimised: boolean): number {
  * Every point carries its 10–90 range, because that is what the model produced: a median
  * with no interval reads as a promise, and the plan's whole answer to "performance
  * prediction is hard" is to show the spread rather than hide it. The marginal value is
- * what the XI loses if the player is replaced by an average one — the L3 explanation of
- * why he is in it.
+ * what the XI loses if the player is replaced by a par player in his role (the same
+ * workload and keeper flag, expectation-level rates, the initial rating) — the L3
+ * explanation of why he is in it.
  *
  * The rows are in the order {@link boardOrder} gives them — by marginal value on a searched
  * eleven, as served everywhere else — and the caption says which, because a board that

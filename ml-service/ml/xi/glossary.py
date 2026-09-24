@@ -971,8 +971,10 @@ METRICS: Tuple[Metric, ...] = (
         key="marginal_value",
         name="Marginal value",
         explanation=(
-            "The win probability the side loses if this player were replaced by an average one. It is "
-            "the reason he is in the eleven, stated as a number."
+            "The win probability the side loses if this player were replaced by a par player in his role: "
+            "the same expected balls faced and bowled and the same keeper flag, but scoring and conceding "
+            "exactly what the format expects off every ball, at the initial rating. His contribution, with "
+            "the slot he fills held fixed. It is the reason he is in the eleven, stated as a number."
         ),
         band="A few points of win probability across a typical XI. It is a ranking aid, not a promise.",
         better=HIGHER,

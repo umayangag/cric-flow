@@ -89,17 +89,16 @@ describe('WhyThisPlayer', () => {
     });
 
     /**
-     * A marginal value can be negative — the objective can prefer an average player to a
-     * selected one — and the card says what that means rather than printing a bare minus.
+     * A marginal value can be negative — the objective can prefer a par player in the role
+     * to the selected one — and the card says what that means rather than printing a bare
+     * minus.
      */
     it('reads a negative marginal value out loud instead of leaving a bare minus', () => {
       const negative = { ...player, marginal_value: -0.0238 };
       render(<WhyThisPlayer player={negative} selection={optimised} />);
 
       expect(screen.getByText(/-2\.4 pp of win probability/)).toBeInTheDocument();
-      expect(
-        screen.getByText(/scores the eleven higher with that average player/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/scores the eleven higher with that par player/)).toBeInTheDocument();
     });
 
     it('states plainly that a player answered neither constraint', () => {

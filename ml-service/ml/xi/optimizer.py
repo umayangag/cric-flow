@@ -524,24 +524,51 @@ def selection_reasons(
     return out
 
 
+#: The per-player vectors a par replacement neutralises: the runs-above-expectation and
+#: wickets-above-expectation rates the objective multiplies by workload.
+PAR_IMPACT_KEYS = ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate")
+
+
+def par_replacement(vectors: Dict[str, np.ndarray], j: int) -> Dict[str, np.ndarray]:
+    """The eleven's vectors with player ``j`` replaced by a par player in his role.
+
+    Par: his impact rates at zero -- he scores and concedes exactly what the format expects
+    off every ball he faces or bowls -- at the initial rating, with the eleven's median
+    experience, and everything else his own: expected balls faced and bowled, the keeper
+    flag, the phase and sequence rates. What is held fixed is the slot he fills; what is
+    neutralised is what he does with it, so the difference in P(win) is attributable to
+    him and not to the constraint that put a keeper or a fifth bowler in the eleven.
+
+    Not the pool median (SERVE-10 weighed it): a median replacement is usually not a keeper
+    and often not a bowling option, so the number would carry ``has_keeper`` and
+    ``n_bowlers`` -- terms the selection can never trade -- and its expected balls, so the
+    value would reward a slot rather than a player. Measured on the served run (120 recent
+    matches per format), the median baseline raises the value's rank correlation with
+    expected balls faced from +0.15 / +0.31 / -0.07 to +0.35 / +0.39 / +0.16 in
+    ODI / T20I / T20, and in the low-impact quartile from +0.32 / +0.13 / +0.07 to
+    +0.52 / +0.21 / +0.41, while lowering its correlation with impact itself.
+    """
+    out = {k: v.copy() for k, v in vectors.items()}
+    for name in PAR_IMPACT_KEYS:
+        out[name][j] = 0.0
+    out["pelo"][j] = C.ELO_INITIAL
+    out["career"][j] = float(np.median(vectors["career"]))
+    out["career_all"][j] = float(np.median(vectors["career_all"]))
+    return out
+
+
 def marginal_values(
     store: XiStore, format_code: str, xi_keys: Sequence[str], opponent_keys: Sequence[str], team_is_team1: bool = True
 ) -> Dict[str, float]:
-    """P(win) with the XI minus P(win) with each player replaced by a neutral, average player.
-    The explanation the selector shows: who is carrying the side."""
+    """P(win) with the XI minus P(win) with each player replaced by a par player in his
+    role (``par_replacement``). The explanation the selector shows: who is carrying the side."""
     pool = _Pool(store, format_code, xi_keys, opponent_keys, team_is_team1)
     base_idx = list(range(len(xi_keys)))
     base = pool.score(base_idx)
     out: Dict[str, float] = {}
+    saved = pool.vectors
     for j, key in enumerate(xi_keys):
-        vec = {k: v.copy() for k, v in pool.vectors.items()}
-        for name in ("bat_rate", "bat_wrate", "bowl_rate", "bowl_wrate"):
-            vec[name][j] = 0.0
-        vec["pelo"][j] = C.ELO_INITIAL
-        vec["career"][j] = float(np.median(pool.vectors["career"]))
-        vec["career_all"][j] = float(np.median(pool.vectors["career_all"]))
-        saved = pool.vectors
-        pool.vectors = vec
+        pool.vectors = par_replacement(saved, j)
         out[key] = base - pool.score(base_idx)
-        pool.vectors = saved
+    pool.vectors = saved
     return out

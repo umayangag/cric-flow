@@ -770,7 +770,7 @@
       "lane": "l3",
       "column": 0,
       "kind": "process",
-      "summary": "The search that picks an eleven. Each side is optimised against the other side's currently chosen eleven rather than against its whole squad, because every feature the objective reads is a property of one complete eleven; the two sides take turns until neither wants to change. Beside each chosen player it reports a marginal value — how much win probability would be lost if that player were swapped for an average one. Where the objective has not shown it can rank a format's results, the selector refuses to optimise, returns the rating-ordered eleven, and every surface says so.",
+      "summary": "The search that picks an eleven. Each side is optimised against the other side's currently chosen eleven rather than against its whole squad, because every feature the objective reads is a property of one complete eleven; the two sides take turns until neither wants to change. Beside each chosen player it reports a marginal value — how much win probability would be lost if that player were swapped for a par player in his role: the same expected balls faced and bowled and the same keeper flag, but scoring and conceding exactly what the format expects off every ball, at the initial rating. Where the objective has not shown it can rank a format's results, the selector refuses to optimise, returns the rating-ordered eleven, and every surface says so.",
       "anchors": {
         "modules": [
           "ml.xi.optimizer",

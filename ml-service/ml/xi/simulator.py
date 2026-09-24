@@ -123,6 +123,7 @@ class MatchContext:
 
     format_code: str
     extras_per_ball: float
+    bowler_extras_per_ball: float
     innings_deliveries: float
     bowler_wicket_share: float
 
@@ -134,6 +135,7 @@ class MatchContext:
         return cls(
             format_code,
             float(get("ctx_extras_per_ball")),
+            float(get("ctx_bowler_extras_per_ball")),
             float(get("ctx_innings_deliveries")),
             float(get("ctx_bowler_wicket_share")),
         )
@@ -141,6 +143,12 @@ class MatchContext:
     @property
     def deliveries(self) -> int:
         return int(round(self.innings_deliveries))
+
+    @property
+    def bowler_extras_share(self) -> float:
+        """The share of an innings' extras its bowlers are charged: the wides and no-balls
+        (FEAT-08). Zero where no extras were ever seen, when none are drawn either."""
+        return self.bowler_extras_per_ball / self.extras_per_ball if self.extras_per_ball > 0 else 0.0
 
     @property
     def bowler_cap(self) -> int:
@@ -946,28 +954,44 @@ def _share_deliveries(bowls: np.ndarray, weight: np.ndarray, cap: int, deliverie
     return np.rint(balls)
 
 
-def _multinomial_rows(rng: np.random.Generator, counts: np.ndarray, weight: np.ndarray) -> np.ndarray:
-    """Split each row's count over the columns with the row's weights (uniform where all
-    weights are zero)."""
+def _multinomial_rows(
+    rng: np.random.Generator, counts: np.ndarray, weight: np.ndarray, bowled: np.ndarray
+) -> np.ndarray:
+    """Split each row's count over the columns with the row's weights. A row whose weights
+    are all zero splits uniformly over ``bowled`` -- those who delivered a ball -- never
+    over the whole eleven, which put runs and wickets on players who bowled nothing
+    (SERVE-12). ``bowled`` is never empty on a row: the caller backs it with the draft."""
     total = weight.sum(axis=1, keepdims=True)
-    probabilities = np.where(total > 0, weight / np.where(total > 0, total, 1.0), 1.0 / weight.shape[1])
+    bowled = bowled.astype(float)
+    fallback = bowled / bowled.sum(axis=1, keepdims=True)
+    probabilities = np.where(total > 0, weight / np.where(total > 0, total, 1.0), fallback)
     return rng.multinomial(counts.astype(int), probabilities).astype(float)
 
 
 def bowling_attribution(
     rng: np.random.Generator, side: SideForecast, context: MatchContext, innings: InningsDraws
 ) -> BowlingDraws:
-    """Attribute the batting side's innings to the bowlers (plan §3, "Bowling attribution")."""
+    """Attribute the batting side's innings to the bowlers (plan §3, "Bowling attribution").
+
+    The bowlers are charged the batters' runs plus the wides and no-balls -- the as-of
+    bowler-charged share of the innings' extras -- and not the byes, leg-byes and
+    penalties, which are the innings' (FEAT-08). That is what L2-B's ``runs_conceded``
+    means, so the bowlers' figures sum to what their own forecasts describe (SERVE-12)."""
     bowls = _draft_bowlers(rng, side, context.bowler_cap, innings.deliveries)
     weight = side.exp_balls_bowled + 1e-3  # a drafted debutant still gets a share
     balls = _share_deliveries(bowls, weight, context.bowler_cap, innings.deliveries)
     expected_balls = np.maximum(side.exp_balls_bowled, 1.0)
     run_rate = side.conceded[:, 1] / expected_balls
     run_rate = np.where(run_rate > 0, run_rate, run_rate[run_rate > 0].mean() if (run_rate > 0).any() else 1.0)
-    conceded = _multinomial_rows(rng, innings.total, balls * run_rate[None, :])
+    charged = innings.runs.sum(axis=1) + np.rint(innings.extras * context.bowler_extras_share)
+    # Where the weights are all zero the split falls to those who delivered a ball; only a
+    # draw whose few deliveries all rounded away from every bowler falls back to the draft.
+    bowled = balls > 0
+    bowled = np.where(bowled.any(axis=1, keepdims=True), bowled, bowls)
+    conceded = _multinomial_rows(rng, charged, balls * run_rate[None, :], bowled)
     wicket_rate = side.wickets_mean / expected_balls
     bowler_wickets = rng.binomial(innings.wickets.astype(int), context.bowler_wicket_share)
-    wickets = _multinomial_rows(rng, bowler_wickets, balls * wicket_rate[None, :])
+    wickets = _multinomial_rows(rng, bowler_wickets, balls * wicket_rate[None, :], bowled)
     return BowlingDraws(balls, conceded, wickets)
 
 
@@ -1052,6 +1076,11 @@ def simulate_match(
     if context.format_code not in SIMULATED_FORMATS:
         raise SimulationUnavailable(f"format {context.format_code!r} has no innings length; nothing to simulate")
     rng = np.random.default_rng(seed)
+    # The bowling attribution draws from its own stream, spawned from the seed: it describes
+    # innings that are already settled, and while it shared the innings' generator any
+    # change to how bowlers are charged re-rolled the next innings drawn -- so a bookkeeping
+    # fix moved totals, margins and P(win) for the same seed (SERVE-12). Now it cannot.
+    attribution_rng = rng.spawn(1)[0]
     first_flags = np.arange(n) < (n + 1) // 2 if team1_bats_first is None else np.full(n, bool(team1_bats_first))
     out1, out2 = _empty_team(team1.bat_first.player_keys, n), _empty_team(team2.bat_first.player_keys, n)
     for team1_first in (True, False):
@@ -1070,7 +1099,6 @@ def simulate_match(
         factor = shared_factor.sample(rng, len(rows)) if shared_factor is not None else None
         rho = calibration.runs_balls_rho
         innings1 = batting_innings(rng, first.bat_first, context, len(rows), rho, factor=factor)
-        bowling1 = bowling_attribution(rng, second.when_chasing, context, innings1)
         innings2 = batting_innings(
             rng,
             second.when_chasing,
@@ -1082,7 +1110,8 @@ def simulate_match(
             chase_response=calibration.chase_response,
             chase_dispersion=calibration.chase_dispersion,
         )
-        bowling2 = bowling_attribution(rng, first.bat_first, context, innings2)
+        bowling1 = bowling_attribution(attribution_rng, second.when_chasing, context, innings1)
+        bowling2 = bowling_attribution(attribution_rng, first.bat_first, context, innings2)
         _fill(first_out, rows, innings1, bowling2)
         _fill(second_out, rows, innings2, bowling1)
     winner = np.where(out1.total > out2.total, 1, np.where(out2.total > out1.total, 2, 0))

@@ -104,8 +104,9 @@ type SelectedPlayer struct {
 	// Economy is runs conceded per over, and needs a balls-bowled forecast to exist: only
 	// the simulator produces one, so it is zero on the performance-only path.
 	Economy float64 `json:"economy,omitempty"`
-	// MarginalValue is P(win) lost if this player were replaced by an average one. Absent
-	// on a rating-ordered XI: nothing was maximised, so nothing has a margin.
+	// MarginalValue is P(win) lost if this player were replaced by a par player in his role
+	// (the same workload and keeper flag, expectation-level rates, the initial rating).
+	// Absent on a rating-ordered XI: nothing was maximised, so nothing has a margin.
 	MarginalValue *float64 `json:"marginal_value,omitempty"`
 	// SpreadShare is the player's share of the side total's variance, from the simulator.
 	SpreadShare *float64 `json:"spread_share,omitempty"`

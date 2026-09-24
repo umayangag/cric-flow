@@ -442,6 +442,8 @@ def test_simulation_context_starts_at_the_laws_of_the_game_and_is_as_of() -> Non
     d = _deliveries(["a0"] * 12 + ["b0"] * 12, ["b5"] * 12 + ["a5"] * 12, [1] * 24, [0] * 12 + [1] * 10 + [0] * 2)
     d.innings = np.array([0] * 12 + [1] * 12)
     d.runs_total = d.runs_batter + np.array([1, 1, 1] + [0] * 21, dtype=float)
+    # Two of the three extras are the bowler's (a wide and a no-ball); the third is a bye.
+    d.runs_bowler = d.runs_batter + np.array([1, 1, 0] + [0] * 21, dtype=float)
     d.bowler_wicket = d.wicket.copy()
     d.bowler_wicket[12:14] = 0.0
     state = RatingState()
@@ -450,8 +452,14 @@ def test_simulation_context_starts_at_the_laws_of_the_game_and_is_as_of() -> Non
     state.update(_match("m1", 0, "A", t1, t2, d))
     after = state.simulation_context("T20", "male")
 
-    assert before == {"ctx_extras_per_ball": 0.0, "ctx_innings_deliveries": 120.0, "ctx_bowler_wicket_share": 1.0}
+    assert before == {
+        "ctx_extras_per_ball": 0.0,
+        "ctx_bowler_extras_per_ball": 0.0,
+        "ctx_innings_deliveries": 120.0,
+        "ctx_bowler_wicket_share": 1.0,
+    }
     assert after["ctx_extras_per_ball"] == pytest.approx(3.0 / 25.0)  # one prior delivery
+    assert after["ctx_bowler_extras_per_ball"] == pytest.approx(2.0 / 25.0)  # the bye is the innings' (SERVE-12)
     assert after["ctx_innings_deliveries"] == pytest.approx((120.0 + 12.0) / 2.0)  # one prior innings
     assert after["ctx_bowler_wicket_share"] == pytest.approx((1.0 + 8.0) / (1.0 + 10.0))
     assert state.simulation_context("ODI", "male")["ctx_innings_deliveries"] == 300.0  # per format
