@@ -123,6 +123,23 @@ def test_median_band_scorecard_sums_to_the_side_total_by_construction(draws) -> 
     assert summary["total"]["q10"] <= summary["total"]["median"] <= summary["total"]["q90"]
 
 
+def test_summarize_margin_balls_remaining_uses_the_innings_quota_not_the_largest_draw() -> None:
+    """No draw's chase runs the full 120-ball innings (the widest used only 90), so "balls
+    remaining when the chaser wins" must be measured against the format's legal quota, not
+    the sample's own maximum -- SERVE-09."""
+    n = 3
+    team1 = S._empty_team(np.array(["a", "b"], dtype=object), n)
+    team2 = S._empty_team(np.array(["c", "d"], dtype=object), n)
+    team1.total[:] = [150.0, 150.0, 150.0]
+    team2.total[:] = [151.0, 155.0, 160.0]  # the chaser wins every draw
+    team2.deliveries[:] = [70.0, 80.0, 90.0]  # none of them uses the full innings
+    draws = S.MatchDraws(team1, team2, np.full(n, True), np.full(n, 2), deliveries=120)
+
+    margin = S.summarize_margin(draws)
+
+    assert margin["balls_remaining_when_chaser_wins"]["median"] == pytest.approx(120.0 - 80.0)
+
+
 def test_draws_are_deterministic_given_inputs_and_seed() -> None:
     team1, team2 = _teams()
 
