@@ -155,14 +155,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 `asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
 
-### SERVE-10 — Marginal value's "neutral" player is a zero-impact debutant, not "average"  **Low**
-
-`optimizer.py:509-514` zeroes impact rates and sets `pelo = ELO_INITIAL` but leaves `exp_balls_faced`, `exp_balls_bowled`, `keeper`, phase and sequence rates. The value systematically favours high-workload players; `models/xi.py:136` promises "an average one". **Fix.** Set every field to the pool median, or fix the description.
-
-### SERVE-12 — Bowling attribution splits the total including extras; all-zero weights spread uniformly over all eleven  **Low**
-
-`simulator.py:743-748, 761-764`. **Fix.** Distribute `runs.sum(axis=1)` plus wide/no-ball share only; restrict the fallback to columns with `balls > 0`.
-
 ---
 
 ## 5. Cricsheet import and schema (`go-app/`)
@@ -238,6 +230,32 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### SERVE-12 — Bowling attribution splits the total including extras; all-zero weights spread uniformly over all eleven  **Low** — PR #342
+
+`simulator.py:743-748, 761-764`. **Fix.** Distribute `runs.sum(axis=1)` plus wide/no-ball share only; restrict the fallback to columns with `balls > 0`.
+
+**Confirmed.** `bowling_attribution` split `innings.total` — the batters' runs plus every extra — over the bowlers, so their conceded summed to a figure holding the byes, leg-byes and penalties that FEAT-08 made the innings' and that L2-B's `runs_conceded` (the very quantiles the attribution rates come from) never held. On the archive, wides and no-balls are 67 % / 66 % / 68 % of extras in ODI / T20I / T20 (36 % in TEST) and extras are 5–8 % of runs, so bowlers were over-charged by about 2 % of the innings total (2.0 % / 1.7 % / 2.3 % measured on the served run). `_multinomial_rows` fell back to `1/k` over all eleven where a row's weights were all zero.
+
+**Fixed as specified, with the share as-of rather than a constant.** The rating pass accumulates the bowler-charged extras (`runs_bowler − runs_batter`: the wides and no-balls) beside the extras it already sums and serves it as a fourth simulation context rate, `ctx_bowler_extras_per_ball` (`SIMULATION_CONTEXT_COLS`; `MatchContext.bowler_extras_share`), the same as-of mechanism as the other three rates. The attribution distributes the batters' runs plus `rint(extras × share)`. The fallback is uniform over those who delivered a ball, backed by the draft for a draw whose few deliveries all rounded away; instrumented over 360 real fixtures × 1,000 draws on the served run (1,440,000 attributed innings) it fired **zero** times for either split, so it is a correctness guard, not a live path. The attribution also draws from its own generator (`rng.spawn(1)[0]`): it shared the innings' generator and sat between the two innings, so any change to how bowlers are charged re-rolled the chase for the same seed — on `main`, a differently-implemented attribution moves 165 of 200 chase totals. Now it cannot.
+
+**Gates.** H-22 reads the performance model's intervals (`walk_forward.summary.performance`), which the simulator does not feed. E2 reads totals, margins and P(win) from the draws, which the attribution does not feed; the one-time generator split re-rolls the chase for a given seed, and the move is seed-sized: on the same 360 fixtures, per-fixture |ΔP(win)| branch vs `main` is 0.013 mean against `main`'s own seed-to-seed 0.016; first-innings coverage / width identical (0.783 / 153.2, 0.775 / 74.7, 0.775 / 85.7); chase coverage 0.775 → 0.792 / 0.642 → 0.642 / 0.650 → 0.642 against seed noise 0.775 → 0.783 / 0.642 → 0.642 / 0.650 → 0.642; Brier 0.1820 → 0.1804 / 0.1954 → 0.1973 / 0.1780 → 0.1770 against 0.1820 → 0.1794 / 0.1954 → 0.1961 / 0.1780 → 0.1752. No threshold changed. B-20 is untouched: it lives in `batting_innings`; this reads `innings.runs` and `innings.extras` after that budget and alters neither.
+
+**Retrain-flagged.** `STATE_ARRAY_NAMES` and `SIMULATION_CONTEXT_COLS` each gain a member, so `XiStore.load` refuses every run on disk with the D-6 message until batch 4's retrain writes one with `ctx_bowler_extras`; the served run's files are untouched and the running container keeps serving it.
+
+Pinned by `test_bowlers_are_charged_the_batters_runs_and_the_wides_and_no_balls_only` (on `main` the sum is the whole total), `test_all_zero_attribution_weights_fall_to_the_drafted_bowlers_never_the_whole_eleven` (on `main` 798 of 1,441 wickets land on players who bowled nothing) and `test_the_attribution_cannot_move_the_innings_it_describes`; the rating-pass context test extends to the new rate.
+
+### SERVE-10 — Marginal value's "neutral" player is a zero-impact debutant, not "average"  **Low** — PR #342
+
+`optimizer.py:509-514` zeroes impact rates and sets `pelo = ELO_INITIAL` but leaves `exp_balls_faced`, `exp_balls_bowled`, `keeper`, phase and sequence rates. The value systematically favours high-workload players; `models/xi.py:136` promises "an average one". **Fix.** Set every field to the pool median, or fix the description.
+
+**The description was wrong; the baseline was not, and the measurement decided it.** On the served run (120 recent decided matches per format, both elevens, 2,640 player values per format) the marginal value's Spearman correlation with `exp_balls_faced` is +0.15 / +0.31 / −0.07 (ODI / T20I / T20) under today's baseline and +0.35 / +0.39 / +0.16 under the pool median the finding offered; in the low-impact quartile, where a pure workload effect would show, +0.32 / +0.13 / +0.07 becomes +0.52 / +0.21 / +0.41. The median baseline also lowers the value's correlation with impact (0.80 → 0.68 / 0.70 → 0.63 / 0.79 → 0.74) and with the rating (0.43 → 0.24 / 0.47 → 0.19 / 0.46 → 0.32), and would change the top-ranked player in 26 % / 3 % / 24 % of elevens. The premise is backwards: a median replacement is usually not a keeper and often not a bowling option, so the number would carry `has_keeper` and `n_bowlers` — terms the selection can never trade — and its expected balls through `exp_balls_faced_sum`; it rewards a slot, not a player. A zero-impact player with the real player's workload is the coherent counterfactual in the objective's own terms: impact is *rate × expected balls*, so a player at rate zero over his own balls scores and concedes exactly what the format expects — par for his role — and the difference in P(win) is his, not the constraint's. Nothing is double counted: the workload terms are structural and holding them fixed is what makes the value attributable.
+
+**Fixed the description everywhere (H-24) and named the rule.** `optimizer.par_replacement` is the one place the counterfactual is built (its docstring carries the measurement); the wire `Field`, the glossary entry the Team Lab's tooltips read, the "why this player" card, the `TeamTable` and Go `SelectedPlayer` comments and two plan docs now say "a par player in his role: the same expected balls faced and bowled and the same keeper flag, but scoring and conceding exactly what the format expects off every ball, at the initial rating". No served number changes; the displayed ordering is unchanged.
+
+Not retrain-flagged; no gate reads a marginal value.
+
+Pinned by `test_marginal_value_literals_describe_the_par_replacement_the_code_builds` (fails on `main`: both literals promise an "average" player) and `test_par_replacement_neutralises_what_a_player_does_and_keeps_the_slot_he_fills`.
 
 ### SERVE-13 — Unknown format returns 503, not 422  **Low** — PR #341
 
