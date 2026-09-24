@@ -155,25 +155,13 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 `asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
 
-### SERVE-09 — Chase "balls remaining" uses max observed deliveries  **Low**
-
-`simulator.py:931, 940`: `capacity = second_deliveries.max()`. Biased low when no draw runs the full innings. **Fix.** Carry `context.deliveries` on `MatchDraws`.
-
 ### SERVE-10 — Marginal value's "neutral" player is a zero-impact debutant, not "average"  **Low**
 
 `optimizer.py:509-514` zeroes impact rates and sets `pelo = ELO_INITIAL` but leaves `exp_balls_faced`, `exp_balls_bowled`, `keeper`, phase and sequence rates. The value systematically favours high-workload players; `models/xi.py:136` promises "an average one". **Fix.** Set every field to the pool median, or fix the description.
 
-### SERVE-11 — `max_evaluations` cannot bound a pair-swap sweep  **Low**
-
-`optimizer.py:322-335`: budget checked only between neighbourhoods; one pair sweep is C(11,2)×C(19,2) = 9,405 candidates. **Fix.** Pass the remaining budget into `_best_neighbour`.
-
 ### SERVE-12 — Bowling attribution splits the total including extras; all-zero weights spread uniformly over all eleven  **Low**
 
 `simulator.py:743-748, 761-764`. **Fix.** Distribute `runs.sum(axis=1)` plus wide/no-ball share only; restrict the fallback to columns with `balls > 0`.
-
-### SERVE-13 — Unknown format returns 503, not 422  **Low**
-
-`xi_service.py:235-236, 413-418`; `main.py:553-554`. **Fix.** Validate `format` against `C.FORMAT_CODES` in the Pydantic validator (`xi.py:59-61`).
 
 ---
 
@@ -250,6 +238,48 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### SERVE-13 — Unknown format returns 503, not 422  **Low** — PR #341
+
+`xi_service.py:235-236, 413-418`; `main.py:553-554`. **Fix.** Validate `format` against `C.FORMAT_CODES` in the Pydantic validator (`xi.py:59-61`).
+
+**Confirmed, but the stale line numbers pointed at the wrong layer.** `format` was upper-cased on every request model (`XiOptimizeRequest`, `PlayerRolesRequest`, `XiWinRequest` — and, by inheritance, `PerformancePredictRequest` and `SimulateRequest`) by three duplicated `_format_upper` validators, none of which checked membership in a real format code. An unrecognised string reached `XiRegistry.store` unchanged and failed exactly the way a real format with no loaded model does (`XiUnavailable`, mapped to 503 in `main.py`), so a client's own typo read as "the service is unavailable, retry" — retrying could never succeed. Third finding in this shape, after GO-12 (422→500) and GO-16 (non-UUID→500).
+
+**Fixed in the Pydantic validator, as the finding specified.** Added `_format_code` in `app/models/xi.py`, which upper-cases and checks membership in `ml.xi.contract.FORMAT_CODES`, raising `ValueError` (refused at parse time — 422, the field named — the shape SERVE-02 established) when it does not match. The three `_format_upper` validators now delegate to it, so every request model with a `format` field is covered from one place; `xi_service.py` and `main.py` are unchanged — their `has_format` / `XiUnavailable` checks still correctly answer 503 for a real format code whose model just isn't currently loaded.
+
+**Checked what relied on the 503.** go-app's relay (`internal/server/json.go`'s `relayStatus`, `ml_client.go`'s `respondErr`) passes upstream 4xx/503 codes and error payloads through status-code-agnostically. The frontend has no 503-specific handling. No ml-service test asserted 503 (or 422) for an unknown format string — the existing 503 tests all use real formats with genuine unavailability (no run loaded, `RATINGS_STALE`).
+
+Not retrain-flagged: request validation only.
+
+Pinned by five new cases in `test_xi_request_models.py`: an unknown format is refused (with the field named) on `XiWinRequest`, `PerformancePredictRequest`, `SimulateRequest`, `PlayerRolesRequest` and `XiOptimizeRequest`, all of which fail on `main` (`DID NOT RAISE ValidationError`) and pass here; a sixth case confirms a real format in any case still normalises to upper-case.
+
+### SERVE-11 — `max_evaluations` cannot bound a pair-swap sweep  **Low** — PR #341
+
+`optimizer.py:322-335`: budget checked only between neighbourhoods; one pair sweep is C(11,2)×C(19,2) = 9,405 candidates. **Fix.** Pass the remaining budget into `_best_neighbour`.
+
+**Confirmed and measured on the served run** (`20260920T175255Z-71339c52`), with a real T20 pool (30 players, Sri Lanka's 2016-2026 squad) and a real opponent XI (Pakistan's most recent T20 XI), default constraints (`min_bowlers=5`, `require_keeper=True`): `select_xi`'s `while pool.evaluations < max_evaluations` loop checked the budget only *between* calls to `_best_neighbour`, so one pair-swap sweep — every candidate scored in a single `pool.score_many` call — could blow through it regardless of how little budget remained. Asking for `max_evaluations=600` actually cost 8,858 evaluations (**+8,258, 14.8×** over); `max_evaluations=400` cost 8,858 (**+8,458, 22.1×**). With constraints relaxed (`min_bowlers=0`, no keeper) so the sweep sits closer to its full combinatorial size, `max_evaluations=600` overshot to 10,033 (**+9,433, 16.7×**).
+
+**Fixed by passing the remaining budget into `_best_neighbour`**, which now stops adding feasible candidates to the sweep once it is spent. The single- and pair-swap candidate builders were split into their own generators (`_single_swaps`, `_pair_swaps`) so the shared budget-and-feasibility loop is not duplicated between them. After the fix, the same real pool/opponent measurements land at 600 and 401 evaluations respectively (at most one over the asked-for budget, from the seed's own evaluation).
+
+**The chosen eleven does not move at a generous budget.** At the default `max_evaluations=20000` (generous enough that the sweep was never truncated either before or after), both the evaluation count (8,858) and the selected eleven (`win_probability=0.806738`) are identical before and after the fix — the bound only bites when the budget is tight.
+
+Not retrain-flagged: search-loop bookkeeping only.
+
+Pinned by two tests against a recording fake `_Pool` collaborator (no model training needed): `test_best_neighbour_pair_swap_sweep_stops_at_the_budget` pins that a pair-swap sweep with `budget=100` scores exactly 100 candidates, not the full 9,405; `test_best_neighbour_pair_swap_sweep_completes_when_the_budget_allows_it` pins that a generous budget (20,000) still scores all 9,405. Both fail on `main` (`TypeError: _best_neighbour() got an unexpected keyword argument 'budget'`) and pass here.
+
+### SERVE-09 — Chase "balls remaining" uses max observed deliveries  **Low** — PR #341
+
+`simulator.py:931, 940`: `capacity = second_deliveries.max()`. Biased low when no draw runs the full innings. **Fix.** Carry `context.deliveries` on `MatchDraws`.
+
+**Confirmed.** `summarize_margin` measured "balls remaining when the chaser wins" against `second_deliveries.max()` — the widest chase the *sample itself* drew — instead of the format's legal innings quota. Whenever no draw in the sample ran the chase to the last legal ball (the common case, since a chase stops the moment the target is reached), the reported margin was tighter than it really is.
+
+**Fixed** by carrying the innings quota (`context.deliveries`) onto `MatchDraws` (a new field, populated by `simulate_match`) and using it as capacity in `summarize_margin` instead of the sample's own maximum.
+
+**Does this move any gate number? No.** `sim_harness.py`'s E2 section (the harness `make xi-evaluate` reads, which H-22 and the coverage/width figures it reports depend on) already computes this same margin independently, reading `fixture.context.deliveries - known.team2.deliveries` directly rather than calling `summarize_margin` — confirmed by reading the code, not by rerunning the ~2h10m harness. Only the `/xi/simulate` served response's `balls_remaining_when_chaser_wins` field changes.
+
+Not retrain-flagged: simulator output only, not a feature or label.
+
+Pinned by `test_summarize_margin_balls_remaining_uses_the_innings_quota_not_the_largest_draw`, which builds a `MatchDraws` by hand where every draw's chase stops well short of the innings (max 90 of 120 balls) and pins the median remaining against the quota (40), not the observed maximum (10). Fails on `main` (`TypeError: MatchDraws.__init__() got an unexpected keyword argument 'deliveries'`) and passes here.
 
 ### GO-16 — Non-UUID prediction id answers 500  **Low** — PR #340
 

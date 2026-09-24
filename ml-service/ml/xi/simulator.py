@@ -1003,6 +1003,10 @@ class MatchDraws:
     team2: TeamDraws
     team1_bats_first: np.ndarray  # (n,) bool
     winner: np.ndarray  # (n,) 1, 2 or 0 for a tie
+    #: The innings' full legal quota (``context.deliveries``), not a draw-derived figure:
+    #: a chase that never runs the full innings must not shrink what "remaining" is
+    #: measured against (SERVE-09).
+    deliveries: int
 
     @property
     def n(self) -> int:
@@ -1082,7 +1086,7 @@ def simulate_match(
         _fill(first_out, rows, innings1, bowling2)
         _fill(second_out, rows, innings2, bowling1)
     winner = np.where(out1.total > out2.total, 1, np.where(out2.total > out1.total, 2, 0))
-    return MatchDraws(out1, out2, first_flags, winner)
+    return MatchDraws(out1, out2, first_flags, winner, context.deliveries)
 
 
 # --- summaries ------------------------------------------------------------------------
@@ -1162,7 +1166,9 @@ def summarize_margin(draws: MatchDraws) -> Dict[str, Any]:
     second_wickets = np.where(draws.team1_bats_first, draws.team2.wickets_lost, draws.team1.wickets_lost)
     bat_first_won = first_total > second_total
     chaser_won = second_total > first_total
-    capacity = np.maximum(second_deliveries.max(), 1.0)
+    # The innings' full legal quota, not the largest draw's chase -- a chase that never ran
+    # the full innings (no draw reached the last over) must not shrink "remaining" (SERVE-09).
+    capacity = float(max(draws.deliveries, 1))
     out: Dict[str, Any] = {
         "p_bat_first_wins": float(bat_first_won.mean()),
         "p_chaser_wins": float(chaser_won.mean()),
