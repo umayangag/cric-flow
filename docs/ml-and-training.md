@@ -922,10 +922,11 @@ Cov(player, total) / Var(total). Nothing is trained: the design is written down 
 
 **Inputs.** L2-B's forecasts for the fixture under both orientations — the three quantiles of
 runs, balls faced and runs conceded, the wicket distribution, P(bats) / P(bowls) — plus the
-row's as-of expected slot and expected balls bowled, and three **as-of context rates** the
+row's as-of expected slot and expected balls bowled, and four **as-of context rates** the
 rating pass now carries per format (`contract.SIMULATION_CONTEXT_COLS`,
-`RatingState.simulation_context`): extras per delivery, deliveries per full first innings (one
-not all out, so it ran its overs) and the bowler-credited share of dismissals. The only
+`RatingState.simulation_context`): extras per delivery, the bowler-charged extras (wides and
+no-balls, FEAT-08) per delivery, deliveries per full first innings (one not all out, so it ran
+its overs) and the bowler-credited share of dismissals. The only
 constants are laws of the game (legal balls, ten wickets, a bowler's fifth). Nothing the
 simulator consumes is in-sample for the fixture (H-21): the forecasts are as-of predictions,
 the rates are running sums over matches before it.
@@ -949,11 +950,18 @@ pair face the rest at their expected rates; wickets = batters − 2 (10 when all
 are Poisson at the as-of rate over the deliveries used. The chase ends at the target
 (contributions counted with extras pro rata). Bowlers are *attributions* of that innings:
 each bowls with P(bowls), topped up until the side can deliver the innings under the cap;
-balls in proportion to expected balls; runs conceded a multinomial split of the total by
-balls × as-of rate; the bowler-credited share of the wickets by balls × wicket rate. So the
-bowlers' figures sum to the innings by construction and their own L2-B medians are not
-reproduced — that would be a second estimate of the innings, and the whole point of taking the
-batting side as authoritative is that there is only one. Toss unknown: half the draws each way, each with the matching forecasts (H-3).
+balls in proportion to expected balls; runs conceded a multinomial split by balls × as-of rate
+of the batters' runs plus the wides and no-balls — the extras at the as-of bowler-charged
+share, because byes, leg-byes and penalties are the innings' and `runs_conceded` never held
+them (FEAT-08, SERVE-12); the bowler-credited share of the wickets by balls × wicket rate. A
+split whose weights are all zero falls to those who delivered a ball, never to the whole
+eleven (it did not fire once in 1.44 million attributed draws on the served run). So the
+bowlers' figures sum to what the innings charges them by construction and their own L2-B
+medians are not reproduced — that would be a second estimate of the innings, and the whole
+point of taking the batting side as authoritative is that there is only one. The attribution
+draws from its own random stream, spawned from the seed, so a change to it cannot move a
+total, a margin or P(win). Toss unknown: half the draws each way, each with the matching
+forecasts (H-3).
 On the wire, `/simulate` reports each player's `p_bats` / `p_bowls` as the forecasts the draws
 were made from — the same numbers `/performance/predict` returns — and the share of draws that
 realised them as `batted_share` / `bowled_share`. The two are different numbers and are served

@@ -50,7 +50,9 @@ def _calibration_sample(n: int) -> S.SharedFactorCalibrationSample:
     )
 
 
-CONTEXT = S.MatchContext("T20", extras_per_ball=0.08, innings_deliveries=124.0, bowler_wicket_share=0.9)
+CONTEXT = S.MatchContext(
+    "T20", extras_per_ball=0.08, bowler_extras_per_ball=0.05, innings_deliveries=124.0, bowler_wicket_share=0.9
+)
 CALIBRATION = S.SimulatorCalibration(runs_balls_rho=0.9)
 
 
@@ -75,7 +77,9 @@ def test_quantile_function_is_exact_at_the_fitted_levels_and_monotone() -> None:
 def test_every_draw_respects_the_laws_and_the_identities(draws) -> None:
     for team, other in ((draws.team1, draws.team2), (draws.team2, draws.team1)):
         np.testing.assert_allclose(team.runs.sum(axis=1) + team.extras, team.total)
-        np.testing.assert_allclose(other.conceded.sum(axis=1), team.total)  # bowlers' figures sum to the innings
+        # The bowlers' figures sum to the innings less the extras that are not theirs (SERVE-12).
+        charged = team.runs.sum(axis=1) + np.rint(team.extras * CONTEXT.bowler_extras_share)
+        np.testing.assert_allclose(other.conceded.sum(axis=1), charged)
         assert (team.deliveries <= CONTEXT.deliveries).all()
         assert (team.wickets_lost <= C.MAX_WICKETS).all()
         assert (other.wickets.sum(axis=1) <= team.wickets_lost).all()  # the rest are run-outs
@@ -218,32 +222,100 @@ def test_runs_balls_copula_rho_from_rank_correlation() -> None:
     assert S.runs_balls_copula_rho(np.ones(50), np.ones(50)) == 0.0  # constant: undefined, so none
 
 
+def _innings(n: int, batter_runs: float, extras: float, wickets: float = 6.0) -> S.InningsDraws:
+    """``n`` identical innings: ``batter_runs`` off the bat spread over the top six slots,
+    ``extras`` on top, the full T20 quota of deliveries."""
+    runs = np.zeros((n, 11))
+    runs[:, :6] = batter_runs / 6.0
+    balls = np.zeros((n, 11))
+    balls[:, :6] = 20.0
+    return S.InningsDraws(
+        runs=runs,
+        balls=balls,
+        extras=np.full(n, extras),
+        total=np.full(n, batter_runs + extras),
+        wickets=np.full(n, wickets),
+        deliveries=np.full(n, 120.0),
+        reached_target=np.zeros(n, dtype=bool),
+        untruncated_total=np.full(n, batter_runs + extras),
+    )
+
+
 def test_bowling_attribution_drafts_enough_bowlers_for_the_innings() -> None:
     side = _side(5)
     rng = np.random.default_rng(0)
-    innings = S.InningsDraws(
-        runs=np.zeros((50, 11)),
-        balls=np.zeros((50, 11)),
-        extras=np.zeros(50),
-        total=np.full(50, 160.0),
-        wickets=np.full(50, 6.0),
-        deliveries=np.full(50, 124.0),
-        reached_target=np.zeros(50, dtype=bool),
-        untruncated_total=np.full(50, 160.0),
-    )
+    innings = _innings(50, batter_runs=150.0, extras=10.0)
 
     bowling = S.bowling_attribution(rng, side, CONTEXT, innings)
 
     assert ((bowling.balls > 0).sum(axis=1) >= 5).all()  # a fifth each at most, so five at least
-    np.testing.assert_allclose(bowling.conceded.sum(axis=1), 160.0)
     assert (bowling.wickets.sum(axis=1) <= 6).all()
+
+
+def test_bowlers_are_charged_the_batters_runs_and_the_wides_and_no_balls_only() -> None:
+    """SERVE-12: the innings' 10 extras split at the as-of bowler share (0.05 / 0.08 of a
+    delivery's extras are wides and no-balls), so the bowlers' conceded sums to the 150 off
+    the bat plus 6, not to the innings total of 160 that charged them the byes and leg-byes
+    L2-B's ``runs_conceded`` never held (FEAT-08)."""
+    side = _side(5)
+    rng = np.random.default_rng(0)
+    innings = _innings(50, batter_runs=150.0, extras=10.0)
+
+    bowling = S.bowling_attribution(rng, side, CONTEXT, innings)
+
+    assert CONTEXT.bowler_extras_share == pytest.approx(0.625)
+    np.testing.assert_allclose(bowling.conceded.sum(axis=1), 150.0 + 6.0)
+
+
+def test_all_zero_attribution_weights_fall_to_the_drafted_bowlers_never_the_whole_eleven() -> None:
+    """SERVE-12: a side whose bowlers have no wicket rate at all gives the wicket split
+    all-zero weights; those wickets must land on the drafted bowlers, not on the openers."""
+    base = _side(5)
+    side = S.SideForecast(
+        player_keys=base.player_keys,
+        exp_bat_position=base.exp_bat_position,
+        exp_balls_bowled=base.exp_balls_bowled,
+        p_bats=base.p_bats,
+        p_bowls=base.p_bowls,
+        runs=base.runs,
+        balls=base.balls,
+        conceded=base.conceded,
+        wickets_mean=np.zeros(11),
+    )
+    rng = np.random.default_rng(0)
+    innings = _innings(200, batter_runs=150.0, extras=10.0, wickets=8.0)
+
+    bowling = S.bowling_attribution(rng, side, CONTEXT, innings)
+
+    assert bowling.wickets.sum() > 0, "the bowler-credited wickets were split somewhere"
+    assert (bowling.wickets[bowling.balls == 0] == 0).all(), "a wicket landed on a player who bowled nothing"
+
+
+def test_the_attribution_cannot_move_the_innings_it_describes(monkeypatch) -> None:
+    """SERVE-12: the bowling attribution draws from its own stream, so however many random
+    draws it takes, the totals, margins and winner of a seed are the same. Before, it shared
+    the innings' generator and any change to it re-rolled the next innings drawn."""
+    team1, team2 = _teams()
+    before = S.simulate_match(team1, team2, CONTEXT, n=200, seed=3, calibration=CALIBRATION)
+    real = S.bowling_attribution
+
+    def hungrier_attribution(rng, side, context, innings):
+        rng.random(1000)  # a differently-implemented attribution consuming a different stream
+        return real(rng, side, context, innings)
+
+    monkeypatch.setattr(S, "bowling_attribution", hungrier_attribution)
+    after = S.simulate_match(team1, team2, CONTEXT, n=200, seed=3, calibration=CALIBRATION)
+
+    np.testing.assert_array_equal(after.team1.total, before.team1.total)
+    np.testing.assert_array_equal(after.team2.total, before.team2.total)
+    np.testing.assert_array_equal(after.winner, before.winner)
 
 
 def test_simulate_match_refuses_a_format_without_an_innings_length() -> None:
     team1, team2 = _teams()
 
     with pytest.raises(S.SimulationUnavailable):
-        S.simulate_match(team1, team2, S.MatchContext("TEST", 0.05, 0.0, 0.9), n=10)
+        S.simulate_match(team1, team2, S.MatchContext("TEST", 0.05, 0.03, 0.0, 0.9), n=10)
 
 
 def test_complete_first_innings_means_all_out_or_the_overs_bowled() -> None:
@@ -275,6 +347,7 @@ def test_fixtures_from_rows_build_both_orientations_per_side() -> None:
                 "match_id": "m1",
                 "format_code": "T20",
                 "ctx_extras_per_ball": 0.07,
+                "ctx_bowler_extras_per_ball": 0.05,
                 "ctx_innings_deliveries": 123.0,
                 "ctx_bowler_wicket_share": 0.88,
             }
@@ -304,7 +377,7 @@ def test_fixtures_from_rows_build_both_orientations_per_side() -> None:
         and list(fixture.team2.bat_first.player_keys) == keys[11:]
     )
     assert fixture.team1.bat_first.runs[0, 1] == 15.0 and fixture.team1.chasing.runs[0, 1] == 10.0
-    assert fixture.context == S.MatchContext("T20", 0.07, 123.0, 0.88)
+    assert fixture.context == S.MatchContext("T20", 0.07, 0.05, 123.0, 0.88)
 
 
 # --- the chase response (plan §8.10, gate A-2) -----------------------------------------
@@ -682,7 +755,9 @@ def _side_with_p_bats(p_bats, balls_median: float = 6.0) -> S.SideForecast:
     )
 
 
-UNBOUNDED = S.MatchContext("T20", extras_per_ball=0.0, innings_deliveries=1e6, bowler_wicket_share=0.9)
+UNBOUNDED = S.MatchContext(
+    "T20", extras_per_ball=0.0, bowler_extras_per_ball=0.0, innings_deliveries=1e6, bowler_wicket_share=0.9
+)
 
 
 def test_each_batter_realises_his_own_p_bats_whatever_the_order_says() -> None:
@@ -713,7 +788,9 @@ def test_the_not_out_pair_are_the_last_two_who_batted_in_slot_order() -> None:
     somebody else once the batters are no longer a prefix of the order."""
     p_bats = [1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     side = _side_with_p_bats(p_bats, balls_median=3.0)
-    context = S.MatchContext("T20", extras_per_ball=0.0, innings_deliveries=120.0, bowler_wicket_share=0.9)
+    context = S.MatchContext(
+        "T20", extras_per_ball=0.0, bowler_extras_per_ball=0.0, innings_deliveries=120.0, bowler_wicket_share=0.9
+    )
 
     innings = S.batting_innings(np.random.default_rng(1), side, context, 500, rho=0.0)
 

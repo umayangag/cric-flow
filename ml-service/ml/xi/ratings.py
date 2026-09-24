@@ -137,6 +137,7 @@ CONTEXT_ARRAY_NAMES = (
     "ctx_runs",
     "ctx_wickets",
     "ctx_extras",
+    "ctx_bowler_extras",
     "ctx_deliveries",
     "ctx_bowler_wickets",
     "ctx_dismissals",
@@ -228,11 +229,13 @@ class RatingState:
         self.ctx_runs = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 1.2)
         self.ctx_wickets = np.full((2, _N_FMT, C.MAX_OVER_INDEX), 0.05)
         # simulator context (L2-C): per (context group, format) running sums over deliveries
-        # -- extras, deliveries, bowler-credited and total dismissals -- and over full first
-        # innings (not all out, so they ran their overs) their deliveries and count. The
-        # priors are the laws of the game, not tuned values: one innings of legal balls, no
-        # extras over one delivery, every dismissal the bowler's over one dismissal.
+        # -- extras, the bowler-charged extras (wides and no-balls, FEAT-08), deliveries,
+        # bowler-credited and total dismissals -- and over full first innings (not all out,
+        # so they ran their overs) their deliveries and count. The priors are the laws of the
+        # game, not tuned values: one innings of legal balls, no extras over one delivery,
+        # every dismissal the bowler's over one dismissal.
         self.ctx_extras = np.zeros((2, _N_FMT))
+        self.ctx_bowler_extras = np.zeros((2, _N_FMT))
         self.ctx_deliveries = np.ones((2, _N_FMT))
         self.ctx_bowler_wickets = np.ones((2, _N_FMT))
         self.ctx_dismissals = np.ones((2, _N_FMT))
@@ -472,13 +475,15 @@ class RatingState:
 
     def simulation_context(self, format_code: str, gender: str) -> Dict[str, float]:
         """The as-of rates the simulator consumes (``contract.SIMULATION_CONTEXT_COLS``):
-        extras per delivery, deliveries per full first innings and the bowler-credited share
-        of dismissals, for the format (and the match's context group, which is everyone
-        unless the gender split is on -- a serving request names no gender and reads group 0,
-        exactly what training reads with the split off)."""
+        extras per delivery, the bowler-charged extras (wides and no-balls) per delivery,
+        deliveries per full first innings and the bowler-credited share of dismissals, for
+        the format (and the match's context group, which is everyone unless the gender
+        split is on -- a serving request names no gender and reads group 0, exactly what
+        training reads with the split off)."""
         g, f = self._ctx_group(gender), C.FORMAT_INDEX[format_code]
         return {
             "ctx_extras_per_ball": float(self.ctx_extras[g, f] / self.ctx_deliveries[g, f]),
+            "ctx_bowler_extras_per_ball": float(self.ctx_bowler_extras[g, f] / self.ctx_deliveries[g, f]),
             "ctx_innings_deliveries": float(self.ctx_full_innings_deliveries[g, f] / self.ctx_full_innings[g, f]),
             "ctx_bowler_wicket_share": float(self.ctx_bowler_wickets[g, f] / self.ctx_dismissals[g, f]),
         }
@@ -612,6 +617,10 @@ class RatingState:
 
     def _update_simulation_context(self, f: int, g: int, d: Deliveries) -> None:
         self.ctx_extras[g, f] += float((d.runs_total - d.runs_batter).sum())
+        # The bowler's charge less the batter's runs is the wides and no-balls: the extras
+        # the simulator may put on a bowler's figures. Byes, leg-byes and penalties are the
+        # innings' (FEAT-08), and the attribution must not sum them into ``runs_conceded``.
+        self.ctx_bowler_extras[g, f] += float((d.runs_bowler - d.runs_batter).sum())
         self.ctx_deliveries[g, f] += float(len(d))
         self.ctx_bowler_wickets[g, f] += float(d.bowler_wicket.sum())
         self.ctx_dismissals[g, f] += float(d.wicket.sum())

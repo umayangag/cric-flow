@@ -438,7 +438,15 @@ BOWLER_MAX_SHARE = 0.2
 #: As-of match context per format (and context group, like the run baselines): extras per
 #: delivery, deliveries per full first innings (one not all out, so it ran its overs), and
 #: the bowler-credited share of dismissals. Running rates over every delivery before the match.
-SIMULATION_CONTEXT_COLS: List[str] = ["ctx_extras_per_ball", "ctx_innings_deliveries", "ctx_bowler_wicket_share"]
+SIMULATION_CONTEXT_COLS: List[str] = [
+    "ctx_extras_per_ball",
+    # The part of the extras the bowler is charged -- wides and no-balls -- per delivery,
+    # so the simulator's bowling attribution charges the bowlers what ``runs_conceded``
+    # means (FEAT-08) and not the byes, leg-byes and penalties (SERVE-12).
+    "ctx_bowler_extras_per_ball",
+    "ctx_innings_deliveries",
+    "ctx_bowler_wicket_share",
+]
 #: What each innings then did -- outcome columns on the win row. Targets for E2 (simulated
 #: totals against actual), never inputs to anything.
 INNINGS_OUTCOME_COLS: List[str] = [
