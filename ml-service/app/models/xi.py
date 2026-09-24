@@ -21,6 +21,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from ml.xi import contract as C
+
 # What an eleven is, everywhere in this module (SERVE-02).
 #
 # It is a constant rather than a caller's choice because every model behind these routes
@@ -35,6 +37,22 @@ TEAM_SIZE = 11
 
 def _upper(v: Optional[str]) -> Optional[str]:
     return v if v is None or v == "" else v.strip().upper()
+
+
+def _format_code(v: Optional[str]) -> str:
+    """Upper-case ``format`` and refuse it here if it names no served format.
+
+    An unrecognised format used to reach the registry unchanged, where it failed the same
+    way a real format with no loaded model does -- ``XiUnavailable``, a 503 -- so a typo
+    read as "the service is unavailable, retry" (SERVE-13) rather than as the caller's own
+    mistake. Checked against ``C.FORMAT_CODES`` rather than against what happens to be
+    loaded, so the refusal (422, the field named) is the same whether or not a run is
+    currently served.
+    """
+    code = _upper(v) or ""
+    if code not in C.FORMAT_CODES:
+        raise ValueError(f"format {v!r} is not a served format code; expected one of {C.FORMAT_CODES}")
+    return code
 
 
 def _refuse_repeats(ids: List[str], field_name: str) -> None:
@@ -121,7 +139,7 @@ class XiOptimizeRequest(BaseModel):
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
-        return _upper(v) or ""
+        return _format_code(v)
 
     @model_validator(mode="after")
     def _one_player_one_place(self) -> "XiOptimizeRequest":
@@ -242,7 +260,7 @@ class PlayerRolesRequest(BaseModel):
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
-        return _upper(v) or ""
+        return _format_code(v)
 
 
 class PlayerRoles(BaseModel):
@@ -316,7 +334,7 @@ class XiWinRequest(BaseModel):
 
     @field_validator("format", mode="before")
     def _format_upper(cls, v: str) -> str:
-        return _upper(v) or ""
+        return _format_code(v)
 
     @model_validator(mode="after")
     def _two_elevens(self) -> "XiWinRequest":

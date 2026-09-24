@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from app.models.xi import (
     TEAM_SIZE,
     PerformancePredictRequest,
+    PlayerRolesRequest,
     SimulateRequest,
     XiConstraints,
     XiOptimizeRequest,
@@ -112,3 +113,30 @@ def test_no_side_size_but_eleven_is_supported(size: int) -> None:
 
 def test_the_default_constraint_is_an_eleven() -> None:
     assert XiConstraints().team_size == TEAM_SIZE
+
+
+@pytest.mark.parametrize("model", TWO_ELEVEN_REQUESTS)
+def test_an_unknown_format_is_refused_at_parse_time(model) -> None:
+    """SERVE-13: a format that names no served format code is the caller's mistake, refused
+    here (422, the field named) before the request ever reaches the registry -- not treated
+    the same as a real format whose model happens not to be loaded (503, retryable)."""
+    with pytest.raises(ValidationError, match="format 'NOT_A_FORMAT' is not a served format code"):
+        model(**{**_sides(xi("a"), xi("b")), "format": "NOT_A_FORMAT"})
+
+
+def test_an_unknown_format_is_refused_for_player_roles() -> None:
+    with pytest.raises(ValidationError, match="format 'NOT_A_FORMAT' is not a served format code"):
+        PlayerRolesRequest(format="NOT_A_FORMAT", player_ids=["a1"])
+
+
+def test_an_unknown_format_is_refused_for_optimize() -> None:
+    with pytest.raises(ValidationError, match="format 'NOT_A_FORMAT' is not a served format code"):
+        XiOptimizeRequest(format="NOT_A_FORMAT", pool_player_ids=xi("a"), objective="ratings")
+
+
+@pytest.mark.parametrize("model", TWO_ELEVEN_REQUESTS)
+def test_a_known_format_is_still_accepted_and_upper_cased(model) -> None:
+    """The refusal is additive: a real format, however cased, still normalises as before."""
+    request = model(**{**_sides(xi("a"), xi("b")), "format": "t20i"})
+
+    assert request.format == "T20I"
