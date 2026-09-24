@@ -236,7 +236,10 @@ class XiOptimizeResponse(BaseModel):
         default_factory=list, description="Pool ids with no rating history; treated as debutants"
     )
     marginal_values: Dict[str, float] = Field(
-        default_factory=dict, description="P(win) lost if the player were replaced by an average one"
+        default_factory=dict,
+        description="P(win) lost if the player were replaced by a par player in his role: the same expected "
+        "balls faced and bowled and the same keeper flag, but scoring and conceding exactly what the format "
+        "expects off every ball, at the initial rating. His contribution, with the slot he fills held fixed",
     )
     selection_reasons: Dict[str, PlayerSelectionReasonModel] = Field(
         default_factory=dict,

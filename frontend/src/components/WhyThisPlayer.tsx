@@ -134,10 +134,11 @@ const OptimisedCard: React.FC<{
 }> = ({ player, reason }) => (
   <Stack spacing={1.25}>
     <Field metricKey="marginal_value" label="What the eleven loses without him">
-      {formatProbabilityPoints(player.marginal_value)} of win probability, if an average player took
-      his place.
+      {formatProbabilityPoints(player.marginal_value)} of win probability, if a par player took his
+      place: the same role and workload, scoring and conceding exactly what the format expects off
+      every ball, at the initial rating.
       {(player.marginal_value ?? 0) < 0 &&
-        ' Negative: against this opposition the objective scores the eleven higher with that average player in his place.'}
+        ' Negative: against this opposition the objective scores the eleven higher with that par player in his place.'}
     </Field>
     <RoleChips roles={reason.roles} />
     <ExpectedContribution player={player} />
