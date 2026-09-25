@@ -33,7 +33,14 @@ GENDER_FEMALE = "female"
 TEAM_GENDERS: List[str] = [GENDER_MALE, GENDER_FEMALE]
 
 # Rating-pass hyperparameters. Changing any of these changes the feature definitions and
-# requires a re-run of the pass; they are recorded in the artifact metadata.
+# requires a re-run of the pass; they are recorded per run in manifest.json (rating_params).
+#
+# The decay and the prior are set by judgment and have never been swept (FEAT-12): they are
+# baked into every accumulator, so a candidate value is a full rating pass (216 s on the
+# archive) and eleven walk-forward folds (`make evaluate`, ~2 h) per point, and the win
+# models' fold-mean AUC cannot tell apart differences under a fold sd (~0.01). Recorded as
+# unevidenced rather than half-tuned on one split; docs/AUDIT_FINDINGS.md § 9 says what a
+# sweep would take.
 DECAY_PER_MATCH = 0.90  # exponential forgetting applied to a player's accumulators per match played
 PRIOR_BALLS = 60.0  # shrinkage: a rate is (sum above expectation) / (balls + PRIOR_BALLS)
 K_TEAM_ELO = 24.0
