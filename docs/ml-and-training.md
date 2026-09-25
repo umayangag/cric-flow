@@ -860,8 +860,17 @@ ground's and the competition's as-of scoring level, above), the age columns gate
 (none — `AGE_FEATURES_KEPT` is False; the age at the match date, above), and
 the innings (bat first / chase). The
 innings is the toss, not the result: at prediction it is **marginalised** — predicted under
-both and averaged — unless the caller passes `team1_bats_first`, the same knob
-`/xi/predict-win` has. Nothing the model reads is a function of the match's own result
+both and the two forecasts *mixed* (`performance._marginalise`, EVAL-14): P(bats) and
+P(bowls) are averaged, a quantile target is served the quantiles of the equal-weight mixture
+of the two innings' distributions — each reconstructed the one way this system reads three
+quantiles, `simulator.quantile_function`, and inverted through its inverse
+`simulator.cumulative_probability` by bisection — and a count target the mixture of its two
+zero-inflated Poissons exactly (`count_distribution` takes the components). Until EVAL-14 the
+quantiles were averaged level by level and the Poisson's zero inflation and rate parameter by
+parameter: the former is the quantile of no distribution and narrows the 10–90 interval
+whenever the two innings differ (H-22 reads that width beside coverage), the latter's mean
+was `avg(p)·avg(rate)` rather than `avg(p·rate)`. The mixture is served unless the caller
+passes `team1_bats_first`, the same knob `/xi/predict-win` has. Nothing the model reads is a function of the match's own result
 (`contract.performance_feature_cols` excludes every target column; a unit test asserts it).
 
 **Fitting.** `HistGradientBoostingRegressor` with quantile and Poisson losses and a

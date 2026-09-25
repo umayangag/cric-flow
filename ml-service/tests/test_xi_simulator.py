@@ -818,3 +818,22 @@ def test_the_summary_reports_the_forecast_it_drew_from_beside_the_realised_share
     shares = [p["batted_share"] for p in known["team1"]["players"]]
     assert all(0.0 <= s <= 1.0 for s in shares) and shares[0] == 1.0 and shares[-1] < shares[0]
     assert all(0.0 <= p["bowled_share"] <= 1.0 for p in known["team1"]["players"])
+
+
+def test_cumulative_probability_inverts_the_quantile_function() -> None:
+    """EVAL-14: the CDF the performance model mixes the two innings through is the inverse
+    of the reconstruction the draws are made from -- on the body, in the tail, and at an
+    atom (two fitted quantiles that coincide read the higher level at that value)."""
+    quantiles = np.array([[0.0, 12.0, 40.0], [3.0, 20.0, 55.0]])
+    level = np.tile(np.linspace(0.0, 0.995, 200), (2, 1)).T  # (levels, players)
+
+    value = S.quantile_function(quantiles, level)
+    recovered = S.cumulative_probability(quantiles, value)
+    at_the_atom = S.cumulative_probability(quantiles, np.array([[0.0, 3.0]]))
+
+    # Off the atom: the first player's q10 is 0, so levels up to 0.1 all map to value 0 and
+    # read back as 0.1 -- the right-continuous inverse, pinned by ``at_the_atom`` below.
+    strictly_increasing = value > 0.0
+    np.testing.assert_allclose(recovered[strictly_increasing], level[strictly_increasing], atol=1e-9)
+    np.testing.assert_allclose(at_the_atom, [[0.1, 0.1]])
+    np.testing.assert_allclose(S.cumulative_probability(quantiles, np.array([[-1.0, 1e9]])), [[0.0, 1.0]])

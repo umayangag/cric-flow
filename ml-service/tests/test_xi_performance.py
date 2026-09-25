@@ -31,8 +31,8 @@ def test_mixture_quantiles_place_the_zero_mass_first() -> None:
 
 
 def test_count_distribution_matches_poisson_and_zero_inflates() -> None:
-    plain = P.count_distribution(np.array([0.0]), np.array([1.0]))
-    inflated = P.count_distribution(np.array([0.5]), np.array([1.0]))
+    plain = P.count_distribution([(np.array([0.0]), np.array([1.0]))])
+    inflated = P.count_distribution([(np.array([0.5]), np.array([1.0]))])
 
     assert plain["p0"][0] == pytest.approx(np.exp(-1.0))
     assert plain["p1"][0] == pytest.approx(np.exp(-1.0))
@@ -118,14 +118,27 @@ def test_fit_produces_every_output_in_range(fitted, frame) -> None:
     assert fitted.metadata["n_train"] > 0 and "seeds" not in fitted.metadata["spec"]
 
 
-def test_marginalised_prediction_is_the_mean_of_both_innings(fitted, frame) -> None:
+def test_marginalised_prediction_mixes_both_innings(fitted, frame) -> None:
+    """EVAL-14: the involvement probability is the mean of the two innings'; the quantiles
+    are the mixture's -- the two oriented sets bracket each level, the mixture's median sits
+    between the medians, and its 10-90 interval is never narrower than the level average
+    the model used to serve."""
     rows = frame[frame.match_date >= pd.Timestamp("2023-05-01")].head(30)
 
-    marginalised = fitted.predict_marginalised(rows)["runs"]["quantiles"]
-    first = fitted.predict_oriented(rows, True)["runs"]["quantiles"]
-    chase = fitted.predict_oriented(rows, False)["runs"]["quantiles"]
+    marginalised = fitted.predict_marginalised(rows)
+    first = fitted.predict_oriented(rows, True)
+    chase = fitted.predict_oriented(rows, False)
 
-    np.testing.assert_allclose(marginalised, 0.5 * (first + chase), atol=1e-9)
+    np.testing.assert_allclose(marginalised["p_bats"], 0.5 * (first["p_bats"] + chase["p_bats"]))
+    quantiles = marginalised["runs"]["quantiles"]
+    low = np.minimum(first["runs"]["quantiles"], chase["runs"]["quantiles"])
+    high = np.maximum(first["runs"]["quantiles"], chase["runs"]["quantiles"])
+    assert np.all(quantiles >= low - 1e-9) and np.all(quantiles <= high + 1e-9)
+    np.testing.assert_allclose(
+        quantiles, P.mixture_of_quantile_sets([first["runs"]["quantiles"], chase["runs"]["quantiles"]])
+    )
+    averaged = 0.5 * (first["runs"]["quantiles"] + chase["runs"]["quantiles"])
+    assert np.all(quantiles[:, 2] - quantiles[:, 0] >= averaged[:, 2] - averaged[:, 0] - 1e-9)
 
 
 def test_oriented_prediction_without_an_override_reads_each_rows_side(fitted, frame) -> None:
@@ -504,3 +517,106 @@ def test_a_history_too_short_to_cut_runs_the_ceiling_everywhere_and_warns(frame,
     assert model.metadata["iteration_choice"]["chosen"] == {}
     assert "every booster runs 40 iterations" in caplog.text
     assert {est.n_iter_ for _, est in _fitted_boosters(model.members[0])} == {40}
+
+
+# --- EVAL-14: the toss is marginalised by mixing distributions, not by averaging parameters ---
+
+
+class _ByInnings:
+    """An estimator whose answer depends on the innings column alone: ``bats_first`` when
+    the row bats first, ``chase`` otherwise."""
+
+    n_iter_ = 1
+
+    def __init__(self, bats_first: float, chase: float, innings_column: int):
+        self.bats_first, self.chase, self.innings_column = bats_first, chase, innings_column
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        return np.where(x[:, self.innings_column] == 1.0, self.bats_first, self.chase)
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        p = self.predict(x)
+        return np.column_stack([1.0 - p, p])
+
+
+def _innings_dependent_model(frame) -> P.PerformanceModels:
+    """Runs (direct) at 10 / 30 / 60 batting first and 20 / 50 / 100 chasing; wickets
+    (two-part) with P(bowls) 0.2 and rate 3.0 batting first, 1.0 and 0.5 chasing."""
+    spec = P.default_spec(targets=("runs", "wickets"), shared_factor=False)
+    column = spec.feature_cols.index(C.BATS_FIRST_COL)
+    member = P.SeedMember(
+        seed=0,
+        involvement={"bowls": _ByInnings(0.2, 1.0, column)},
+        quantile_direct={
+            "runs": [_ByInnings(10.0, 20.0, column), _ByInnings(30.0, 50.0, column), _ByInnings(60.0, 100.0, column)]
+        },
+        quantile_conditional={},
+        count_rate={"wickets": _ByInnings(3.0, 0.5, column)},
+        iterations={},
+    )
+    return P.PerformanceModels("T20", spec, [member], {}, {})
+
+
+def test_marginalised_quantiles_are_the_mixtures_not_the_level_average(frame) -> None:
+    """The finding's own test. Level-by-level averaging served [15, 40, 80] for a batter
+    whose two innings read [10, 30, 60] and [20, 50, 100]: a 10-90 interval of 65 that the
+    mixture of the two -- under the reconstruction the simulator draws from -- puts at
+    [12, 90]. The lower end is where the two piecewise-linear CDFs average to 0.1; the
+    upper end is in the first innings' exponential tail."""
+    model = _innings_dependent_model(frame)
+    rows = frame.head(4)
+
+    quantiles = model.predict_marginalised(rows)["runs"]["quantiles"]
+
+    np.testing.assert_allclose(quantiles[:, 0], 12.0, atol=1e-6)
+    assert np.all((quantiles[:, 1] > 30.0) & (quantiles[:, 1] < 50.0))
+    np.testing.assert_allclose(quantiles[:, 2], 90.0, atol=0.05)
+    assert np.all(quantiles[:, 2] - quantiles[:, 0] > 65.0)
+    np.testing.assert_allclose(model.predict_oriented(rows, True)["runs"]["quantiles"], [[10.0, 30.0, 60.0]] * 4)
+
+
+def test_marginalised_count_is_the_mixture_of_the_two_zero_inflated_poissons(frame) -> None:
+    """Averaging P(bowls) and the rate separately gave a wickets mean of avg(p) * avg(rate)
+    = 0.6 * 1.75 = 1.05 for a bowler who bowls a fifth of the time batting first at rate 3
+    and always chasing at rate 0.5; the mixture's mean is avg(p * rate) = 0.55, and its
+    P(0) the mean of the two innings' P(0)."""
+    model = _innings_dependent_model(frame)
+    rows = frame.head(3)
+
+    wickets = model.predict_marginalised(rows)["wickets"]
+
+    np.testing.assert_allclose(wickets["mean"], 0.55)
+    np.testing.assert_allclose(wickets["p0"], 0.5 * ((0.8 + 0.2 * np.exp(-3.0)) + np.exp(-0.5)))
+    np.testing.assert_allclose(wickets["p0"] + wickets["p1"] + wickets["p2plus"], 1.0)
+    np.testing.assert_allclose(model.predict_marginalised(rows)["p_bowls"], 0.6)
+
+
+def test_count_distribution_of_two_components_inverts_the_mean_cdf() -> None:
+    """A mixture of a certain zero and a Poisson(4): P(0) = 0.5 + 0.5e^-4, and its quantiles
+    are the smallest counts at which the mean CDF reaches each level -- 0 at 0.1 and 0.5,
+    Poisson(4)'s 0.8-quantile (6) at 0.9 -- none of which the parameter average
+    (zero inflation 0.5, rate 2) gives."""
+    mixture = P.count_distribution([(np.array([1.0]), np.array([1e-9])), (np.array([0.0]), np.array([4.0]))])
+    averaged = P.count_distribution([(np.array([0.5]), np.array([2.0]))])
+
+    assert mixture["p0"][0] == pytest.approx(0.5 + 0.5 * np.exp(-4.0))
+    assert mixture["mean"][0] == pytest.approx(2.0)
+    np.testing.assert_allclose(mixture["quantiles"][0], [0.0, 0.0, 6.0])
+    assert averaged["quantiles"][0][2] != 6.0
+
+
+def test_mixture_of_one_quantile_set_is_that_set_and_of_identical_sets_is_the_same() -> None:
+    quantiles = np.array([[0.0, 12.0, 40.0], [3.0, 20.0, 55.0]])
+
+    np.testing.assert_allclose(P.mixture_of_quantile_sets([quantiles]), quantiles)
+    np.testing.assert_allclose(P.mixture_of_quantile_sets([quantiles, quantiles]), quantiles)
+
+
+def test_a_model_holding_other_than_one_member_is_refused(fitted) -> None:
+    """EVAL-09 left one fit; the member average that used to sit in front of it is gone,
+    and an artifact with any other count is named rather than served."""
+    two = P.PerformanceModels("T20", fitted.spec, fitted.members * 2, {}, {})
+
+    with pytest.raises(ValueError, match="2 performance members"):
+        two.predict_oriented(pd.DataFrame(), True)
+    assert fitted.member is fitted.members[0]
