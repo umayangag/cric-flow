@@ -191,6 +191,9 @@ class _CountingSource:
     def birth_dates(self):
         return {}
 
+    def venue_countries(self):
+        return {}
+
 
 def test_the_pass_reports_what_the_source_dropped() -> None:
     matches = [_match("m0", 0, ["a1"], ["b1"])]
@@ -291,6 +294,9 @@ def test_a_source_that_reports_nothing_is_described_by_what_arrived() -> None:
         def birth_dates(self):
             return {}
 
+        def venue_countries(self):
+            return {}
+
     result = build(_SilentSource())
 
     assert result.quality.offered_matches == 1
@@ -304,6 +310,9 @@ def test_an_empty_source_fails_the_gate_rather_than_reporting_a_clean_pass() -> 
             return iter(())
 
         def birth_dates(self):
+            return {}
+
+        def venue_countries(self):
             return {}
 
     result = build(_EmptySource())

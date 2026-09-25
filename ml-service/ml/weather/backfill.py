@@ -28,7 +28,7 @@ from ml.weather import archive, features, geocoding, sessions, venues
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
-DEFAULT_GEOCODING = os.path.join(REPO_ROOT, "reference-data", "venue-geocoding.csv")
+DEFAULT_GEOCODING = geocoding.DEFAULT_LOCATIONS_PATH
 DEFAULT_CACHE = os.path.join(REPO_ROOT, "reference-data", "era5-venue-days.jsonl")
 
 _WEATHER_UPSERT_SQL = """

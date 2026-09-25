@@ -27,10 +27,11 @@ from ml.xi.optimizer import (
     select_xi_by_ratings,
     selection_reasons,
 )
+from ml.xi.ratings import RatingState
 from ml.xi.retrain import retrain
 from ml.xi.roles import ROLE_BOWLING_OPTION, ROLE_KEEPER, SELECTION_ROLES
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
-from ml.xi.store import XiStore, load_ratings, save_ratings
+from ml.xi.store import FormatModels, XiStore, load_ratings, save_ratings
 
 
 def _deliveries(
@@ -72,6 +73,9 @@ class _ListSource:
         yield from self.matches
 
     def birth_dates(self):
+        return {}
+
+    def venue_countries(self):
         return {}
 
     def team_key_for(self, name, gender):
@@ -578,6 +582,42 @@ def test_selection_reasons_skip_a_player_the_pool_does_not_hold(trained_store) -
 
     assert "not-in-this-pool" not in reasons
     assert set(reasons) == set(selected)
+
+
+class _TossReader:
+    """A display model that answers 0.9 when the side batting first won the toss and 0.3
+    when it was put in, and nothing else: what the served number reads off it is exactly
+    how the store treats a toss no request carries."""
+
+    def __init__(self, columns):
+        self.toss = columns.index(C.TOSS_COL)
+
+    def predict_proba(self, rows):
+        p = np.where(rows[:, self.toss] == 1.0, 0.9, 0.3)
+        return np.column_stack([1.0 - p, p])
+
+
+def test_display_probability_averages_over_who_won_the_toss_in_every_reading() -> None:
+    """FEAT-05 at serving: the toss winner is on no request, so the display's toss column
+    is averaged over both answers -- with the batting order named as well as without it.
+    The reader above makes the mean 0.6 for the side batting first; a store that read the
+    column at its neutral default would answer 0.3 here."""
+    state = RatingState()
+    state.reserve_read_capacity()
+    models = FormatModels(
+        format_code="T20",
+        objective=None,
+        display=_TossReader(C.DISPLAY_FEATURE_COLS),
+        objective_cols=list(C.XI_FEATURE_COLS),
+        display_cols=list(C.DISPLAY_FEATURE_COLS),
+        metadata={},
+    )
+    store = XiStore(state, {"T20": models})
+    a, b = [f"a{i}" for i in range(11)], [f"b{i}" for i in range(11)]
+
+    assert store.display_probability("T20", a, b, team1_bats_first=True) == pytest.approx(0.6)
+    assert store.display_probability("T20", a, b, team1_bats_first=False) == pytest.approx(0.4)
+    assert store.display_probability("T20", a, b) == pytest.approx(0.5)
 
 
 def test_display_probability_accepts_missing_context(trained_store) -> None:

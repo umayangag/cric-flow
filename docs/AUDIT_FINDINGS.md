@@ -89,18 +89,6 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 ## 2. Rating pass and features (`ml-service/ml/xi/`)
 
-### FEAT-05 — No home-advantage and no toss feature  **Medium · retrain**
-
-`ratings.py:301-317` — the only venue-side context is `venue_fam_diff` (log1p of raw `(team, venue)` match counts). `venue.country` (`0001_baseline.sql:709`) and `toss_winner_opposition_id` / `toss_decision` (`0001_baseline.sql:482-483`) exist but `_MATCH_SQL` (`sources.py:423-438`) reads neither. Home advantage is the largest non-strength effect in international cricket; "chose to bat" vs "was made to bat" are different populations of batting-first sides.
-
-**Fix.** Derive an as-of home flag (team country = venue country, team country inferred as-of from the modal venue country of past home fixtures or a reviewed config) and a `toss_won_by_team1` column; both are at-toss facts (H-21 compliant) and can be marginalised at serving the way batting order is.
-
-### FEAT-06 — Ratings siloed per format; cold start on every crossover  **Medium · retrain**
-
-`ratings.py:234-258` — every accumulator is `[f, s]`; a player with no history in the format reads the neutral vector (`bat_rate = 0`, `pelo = 1500`, counted as a debutant in `n_debutants`, `ratings.py:634`). A 100-cap T20I player making his IPL debut is an unknown. `PRIOR_BALLS=60` shrinks toward *zero* impact, not toward the player's own cross-format estimate.
-
-**Fix.** Hierarchical shrinkage: shrink the format rate toward the pooled T20+T20I (or all-format) rate instead of zero. Only `side_vectors` changes.
-
 ### FEAT-07 — Batter's dismissal rate charges every wicket on the ball to the striker  **Low · retrain**
 
 `ratings.py:446-447` uses `d.wicket` (any dismissal on the ball, `sources.py:44`); a non-striker run-out or "retired hurt" lowers the striker's `bat_wrate`, while the `dismissals` target (`rows.py:66-70`) uses `player_out`. Feature and target are defined on different events. **Fix.** Use `(d.player_out == d.batter)` as the batter's indicator.
@@ -182,6 +170,28 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### FEAT-05 — No home-advantage and no toss feature  **Medium · retrain** — PR #348
+
+`ratings.py:301-317` — the only venue-side context is `venue_fam_diff` (log1p of raw `(team, venue)` match counts). `venue.country` (`0001_baseline.sql:709`) and `toss_winner_opposition_id` / `toss_decision` (`0001_baseline.sql:482-483`) exist but `_MATCH_SQL` (`sources.py:423-438`) reads neither. Home advantage is the largest non-strength effect in international cricket; "chose to bat" vs "was made to bat" are different populations of batting-first sides.
+
+**Fix.** Derive an as-of home flag (team country = venue country, team country inferred as-of from the modal venue country of past home fixtures or a reviewed config) and a `toss_won_by_team1` column; both are at-toss facts (H-21 compliant) and can be marginalised at serving the way batting order is.
+
+**The spec holds, with one load-bearing correction: `venue.country` is NULL on all 892 rows of the archive**, so a feature reading it would have been a silent null. The ground's country comes instead from the curated `reference-data/venue-geocoding.csv` (the table X-2's weather is fetched at), which places 892 of 892 database venues; the West Indies' ten territories fold to one region, and England, Scotland, Wales and Belfast share `GB` at the table's granularity. A team's country is nowhere written down and is derived as-of: the strict mode of the regions it has played in before today, kept in `RatingState.team_countries` and advanced at day close like every other accumulator (`ml/xi/geography.py`). Nothing about a team is read from a whole-archive table, so the flag cannot see forward — a side reads as at home only once its past says so, its first match reads 0, and a later match abroad changes no earlier row (pinned by `test_home_diff_reads_the_teams_past_and_never_the_match_itself`). `home_diff` (team1 at home minus team2 at home) joins `TEAM_CONTEXT_COLS`; B-7's arm constrains it +1. On the archive: 6,164 matches (26.9 %) have exactly one side at home, 12,160 (53.1 %) both — two sides of one domestic league, which read 0 — and 4,581 (20.0 %) neither. Univariate, the home side wins 63.5 % of Tests (AUC 0.576), 57.8 % of ODIs (0.556), 52.9 % of T20Is (0.524) and 51.0 % of T20s (0.502, on the 12 % of rows that have a home side).
+
+The toss: every archive match records one, and `toss_decision` is exactly "the toss winner is the side batting first" on all 22,905 rows, so the record carries the winner as a team key and `toss_won_by_team1` is one equality on both sources (0.5 where a source records no toss). It is a display-only column (`TOSS_COLS`, in `DISPLAY_FEATURE_COLS` and not `XI_FEATURE_COLS`), so `objective_probability` and the optimiser stay toss-blind and B-21 is untouched. No request carries the toss winner, so `XiStore.display_probability` averages over both answers in every reading, the named batting order included, and `train.marginalised_probabilities` scores the same mean (EVAL-05); the toss-aware arm reads it as it fell. Univariate the toss is near nothing: the side that chose to bat wins 52.9 % v 48.2 % put in in Tests (AUC 0.523), 51.2 v 48.3 in T20I (0.515), 46.4 v 47.7 in ODI (0.494), 47.9 v 47.8 in T20 (0.501) — and because the served reading marginalises it out, it cannot move the headline at all, only the toss-aware arm.
+
+**Prediction for the batch-4 retrain (display AUC, served reading).** Home advantage is on the request (teams and venue), so it can move the served number, but `venue_fam_diff` and `team_elo_diff` already carry much of it. Expected: TEST a small real gain (+0.005 to +0.015), ODI plausible (+0.003 to +0.01), T20I within its fold sd, T20 null. The objective AUC does not change by construction.
+
+### FEAT-06 — Ratings siloed per format; cold start on every crossover  **Medium · retrain** — PR #348
+
+`ratings.py:234-258` — every accumulator is `[f, s]`; a player with no history in the format reads the neutral vector (`bat_rate = 0`, `pelo = 1500`, counted as a debutant in `n_debutants`, `ratings.py:634`). A 100-cap T20I player making his IPL debut is an unknown. `PRIOR_BALLS=60` shrinks toward *zero* impact, not toward the player's own cross-format estimate.
+
+**Fix.** Hierarchical shrinkage: shrink the format rate toward the pooled T20+T20I (or all-format) rate instead of zero. Only `side_vectors` changes.
+
+**The spec holds.** `hierarchical_rate` keeps every prior's weight and moves its mean to the player's own rate over his *other* formats (itself shrunk toward the old prior over the same weight), so a format debutant with a career elsewhere reads his rate elsewhere, a player with balls in both reads a blend his format's balls take over at the old pace, and a single-format player — most of the archive — reads bit-for-bit what he did before. All-format pooling, the simpler of the two the spec offers: the impact rates are residuals against each format's own per-over baseline, so pooling adds no level shift. It applies to the four impact rates, the eight phase rates and the sequence families. Only `side_vectors` changes, as the spec says: the accumulators, `career` and therefore `n_debutants` are untouched (a format debutant is still a format debutant), and so are involvement (`exp_balls_*`, not comparable across a 120-ball and a 300-ball innings) and Elo. Because involvement is not pooled, a format debutant's impact still weighs nothing in the side aggregates on his first appearance; the pooled prior reaches the win features from his second appearance and the performance model at once. Reach: format-debutant rows with history elsewhere are 4.1 % of T20I player rows (56 % of its format debutants), 2.6 % of TEST, 2.4 % of ODI, 1.2 % of T20.
+
+**Prediction for the batch-4 retrain.** Null on the win models in every format (the change touches a few per cent of rows, and their first appearance still weighs zero); a possible small gain in the T20I performance model's early-career rows. Recorded as expected-null so a gain, if one comes, is a surprise worth checking.
 
 ### OPS-01 — Reference data, configs, scripts and contracts trigger no CI  **Medium** — PR #347
 

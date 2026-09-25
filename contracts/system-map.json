@@ -469,10 +469,11 @@
         {
           "id": "frame-team-context",
           "label": "Team and venue context",
-          "summary": "The things the selector cannot pick: the two teams' Elo difference, their recent form, their head-to-head record, and how the venue has behaved. They make the displayed probability more accurate and they are deliberately kept out of the selection objective, because a model that credits an eleven for the ground it is playing on cannot be used to choose the eleven.",
+          "summary": "The things the selector cannot pick: the two teams' Elo difference, their recent form, their head-to-head record, how the venue has behaved, whether either side is at home (the ground's country against where each side has played most before today — as-of, so a side is at home only once its past says so), and who won the toss. They make the displayed probability more accurate and they are deliberately kept out of the selection objective, because a model that credits an eleven for the ground it is playing on cannot be used to choose the eleven. No request carries the toss winner, so the served probability averages over both answers.",
           "anchors": {
             "feature_groups": [
               "TEAM_CONTEXT_COLS",
+              "TOSS_COLS",
               "DISPLAY_FEATURE_COLS"
             ]
           }

@@ -11,11 +11,13 @@ LINE_LENGTH?=120
 # One requirements set now serves both CI and a local venv (P-6 removed the optional
 # pycaret / autogluon / shap extras), so the local figure and the gate's are the same run.
 #
-# 95 -> 94: a correction, not a lowering. The 95 set in PR #341 was read off the report's
-# rounded TOTAL row; the gate's own line said 94.94%, and the gate could not fail (see
-# tests/test_coverage_gate.py), so 95 was never met on any run. 94 is 94.94% floored --
-# the honest figure the gate now enforces. Raise it, never lower it.
-COV_MIN?=94
+# 95 -> 94 was a correction, not a lowering: the 95 set in PR #341 was read off the
+# report's rounded TOTAL row while the gate's own line said 94.94%, and the gate could not
+# fail (see tests/test_coverage_gate.py), so 95 was never met on any run. 94 -> 95 is the
+# ratchet: FEAT-05/06 (PR #348) added a module and its tests and the gate's own line reads
+# "Total coverage: 95.02%" -- read the gate's line, never the rounded TOTAL row, before
+# moving this. Raise it, never lower it.
+COV_MIN?=95
 REQUIREMENTS_FILE?=requirements.txt
 
 .PHONY: all venv install compile-requirements compile-requirements-docker run retrain evaluate reload venue-weather

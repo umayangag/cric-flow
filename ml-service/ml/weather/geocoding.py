@@ -40,6 +40,11 @@ GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 STATUS_MAPPED = "mapped"
 STATUS_UNMAPPABLE = "unmappable"
 SOURCE = "open-meteo-geocoding"
+#: The curated table this repository tracks (``reference-data/README.md``): the one file
+#: both the weather backfill and the rating pass's home flag (``ml.xi.geography``) read.
+DEFAULT_LOCATIONS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "reference-data", "venue-geocoding.csv"
+)
 #: The results asked for per query: enough to hold every same-named place that matters.
 CANDIDATES_PER_QUERY = 10
 #: Seconds between geocoding calls; the service is free and asks for restraint, not speed.

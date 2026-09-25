@@ -156,6 +156,16 @@ def stakes_columns(match: MatchRecord) -> Dict[str, float]:
     }
 
 
+def toss_columns(match: MatchRecord) -> Dict[str, float]:
+    """The toss as a win-row column (``contract.TOSS_COLS``, FEAT-05): whether the side
+    batting first won it. A match whose toss the source does not record, and a record
+    built for the serving path, read ``TOSS_UNKNOWN`` -- their own category. The serving
+    path never reads that value into a model: ``XiStore.display_probability`` averages
+    over both answers, because no request carries the toss winner."""
+    won = match.toss_won_by_team1
+    return {C.TOSS_COL: C.TOSS_UNKNOWN if won is None else won}
+
+
 def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
     """Both sides' aggregates as the win-feature row, and one feature row per XI player
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
@@ -190,6 +200,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     win_row.update(state.simulation_context(match.format_code, match.gender))
     win_row.update(fixture_context)
     win_row.update(stakes_columns(match))
+    win_row.update(toss_columns(match))
 
     player_rows: List[Dict] = []
     sides = (
@@ -253,4 +264,5 @@ def team_context_or_neutral(state: RatingState, match: MatchRecord) -> Dict[str,
         "venue_bf_rate": 0.5,
         "venue_n": 0.0,
         "venue_fam_diff": 0.0,
+        "home_diff": 0.0,
     }

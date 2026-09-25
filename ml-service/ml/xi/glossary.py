@@ -102,12 +102,12 @@ AUC_EXPLANATION = (
 # response holds is on the response (`toss_marginalised`); which reading these scores hold
 # is this sentence.
 SERVED_READING = (
-    " Scored as served: the probability averaged over both batting orders. That is what the "
-    "optimiser maximises, and what `/xi/predict-win` answers with when the caller names no toss "
-    "— a caller who names one is answered the toss-aware reading instead, which this score does "
-    "not describe. The same quantity under the same key in the run manifest and the walk-forward "
-    "report; the toss-aware reading is in the run report and, for the displayed model, the "
-    "market benchmark."
+    " Scored as served: the probability averaged over both batting orders and, for the displayed "
+    "model, over who won the toss. That is what the optimiser maximises, and what `/xi/predict-win` "
+    "answers with when the caller names no batting order — a caller who names one is answered the "
+    "toss-aware reading instead, which this score does not describe. The same quantity under the "
+    "same key in the run manifest and the walk-forward report; the toss-aware reading is in the run "
+    "report and, for the displayed model, the market benchmark."
 )
 AUC_BAND = (
     "0.50 chance; 0.55 weak; 0.65+ useful (H-17's selection line); 0.70-0.75 is this system's "
@@ -1162,10 +1162,13 @@ METRICS: Tuple[Metric, ...] = (
         key="display_toss_aware_auc",
         name="Display AUC, toss-aware",
         explanation=(
-            "The displayed model read at the batting order that actually happened, rather than averaged "
-            "over both. The served probability marginalises over the toss because the toss is unknown "
-            "when a user asks; the closing market price is struck after it. This arm gives the market's "
-            "information set to our model, so the comparison is like for like."
+            "The displayed model read at the batting order that actually happened and at the toss as it "
+            "fell, rather than averaged over both. The served probability marginalises over the toss "
+            "because the toss is unknown when a user asks; the closing market price is struck after it. "
+            "This arm gives the market's information set to our model, so the comparison is like for "
+            "like. A request that names the batting order is still answered with the toss winner averaged "
+            "over, because no request carries it; that served reading lies between this arm and the "
+            "headline and is scored by neither."
         ),
         band=MARKET_BAND,
         better=HIGHER,

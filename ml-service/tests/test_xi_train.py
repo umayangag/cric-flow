@@ -26,12 +26,14 @@ from ml.xi.train import (
     _xy,
     make_display_model,
     make_objective_model,
+    marginalised_probabilities,
     own_side_sensitivities,
+    swap_orientation,
     train_format,
 )
 from tests.test_xi_optimizer_and_store import _ListSource, _synthetic_history
 
-SWAP_COLUMNS = ("team_elo_diff", "team_form_diff", "venue_fam_diff", "team_h2h")
+SWAP_COLUMNS = ("team_elo_diff", "team_form_diff", "venue_fam_diff", "team_h2h", "home_diff")
 
 
 def synthetic_win_rows(n: int, seed: int = 0) -> pd.DataFrame:
@@ -50,6 +52,40 @@ def synthetic_win_rows(n: int, seed: int = 0) -> pd.DataFrame:
     signal = frame[C.DISPLAY_FEATURE_COLS[0]] + 0.5 * rng.normal(size=n)
     frame[C.TARGET_COL] = (signal > 0).astype(float)
     return frame
+
+
+def test_swap_orientation_exchanges_the_batting_order_and_keeps_the_toss_winner() -> None:
+    """FEAT-05: with the sides exchanged, home advantage changes sign like the other
+    signed context columns, and the toss reads 1 - x -- the side that won it is a fact of
+    the fixture and now bats second."""
+    rows = synthetic_win_rows(8)
+    rows[C.TOSS_COL] = [1.0, 0.0] * 4
+
+    swapped = swap_orientation(rows)
+
+    assert list(swapped["home_diff"]) == list(-rows["home_diff"])
+    assert list(swapped[C.TOSS_COL]) == [0.0, 1.0] * 4
+
+
+def test_marginalised_probabilities_average_both_batting_orders_and_both_toss_winners() -> None:
+    """The served reading (EVAL-05): what ``XiStore.display_probability`` answers is the
+    mean over both batting orders and, for the display model, both answers to who won the
+    toss -- four readings, not two -- so the manifest scores the number that is served."""
+    rows = synthetic_win_rows(400)
+    x, y = _xy(rows, C.DISPLAY_FEATURE_COLS)
+    display = make_display_model(C.DISPLAY_FEATURE_COLS).fit(x, y)
+    scored = rows.head(20)
+    readings = []
+    for frame, swapped in ((scored, False), (swap_orientation(scored), True)):
+        for toss in (1.0, 0.0):
+            p = display.predict_proba(_xy(frame.assign(**{C.TOSS_COL: toss}), C.DISPLAY_FEATURE_COLS)[0])[:, 1]
+            readings.append(1.0 - p if swapped else p)
+
+    served = marginalised_probabilities(display, scored, C.DISPLAY_FEATURE_COLS)
+
+    np.testing.assert_allclose(served, np.mean(readings, axis=0))
+    objective_only = marginalised_probabilities(display, scored, C.DISPLAY_FEATURE_COLS)
+    assert not np.allclose(objective_only, readings[0]), "the toss is read, so averaging it changes the number"
 
 
 def test_display_refits_under_other_seeds_are_identical_below_the_early_stopping_threshold() -> None:

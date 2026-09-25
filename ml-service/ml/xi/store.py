@@ -332,24 +332,38 @@ class XiStore:
         their neutral values. ``team1_bats_first`` is optional too: unknown (None) averages
         both batting orders, which is the right treatment before the toss and measured
         +0.007 to +0.02 AUC over assuming an order; once the toss is known, pass it.
+
+        Who *won* the toss is on no request, so the display model's toss column
+        (``contract.TOSS_COL``, FEAT-05) is averaged over both answers in every reading,
+        the named batting order included -- the same mean ``train.marginalised_probabilities``
+        scores, so the manifest's figure is the served one (EVAL-05). The two answers are
+        weighted equally, as the two batting orders are: a deliberate simplification, since
+        given a named order the side batting first won the toss only as often as sides
+        choose to bat (42 % of the archive), and neither number is read here.
         """
         m = self.models[format_code]
         side1 = aggregate_side(self.side_vectors(format_code, team1_keys), format_code)
         side2 = aggregate_side(self.side_vectors(format_code, team2_keys), format_code)
+        toss_answers = (1.0, 0.0) if C.TOSS_COL in m.display_cols else (C.TOSS_UNKNOWN,)
 
-        def row_for(first, second, first_name, second_name):
+        def rows_for(first, second, first_name, second_name) -> np.ndarray:
             row = dict(zip(m.objective_cols, xi_feature_vector(first, second, m.objective_cols)))
             row.update(self._team_context(format_code, first_name, second_name, venue))
-            return np.asarray([row.get(c, 0.0) for c in m.display_cols], dtype=float)
+            return np.asarray(
+                [[{**row, C.TOSS_COL: toss}.get(c, 0.0) for c in m.display_cols] for toss in toss_answers],
+                dtype=float,
+            )
+
+        def oriented(first, second, first_name, second_name) -> float:
+            return float(m.display_proba(rows_for(first, second, first_name, second_name)).mean())
 
         if team1_bats_first is True:
-            return float(m.display_proba(row_for(side1, side2, team1_name, team2_name))[0])
+            return oriented(side1, side2, team1_name, team2_name)
         if team1_bats_first is False:
-            return float(1.0 - m.display_proba(row_for(side2, side1, team2_name, team1_name))[0])
-        p = m.display_proba(
-            np.vstack([row_for(side1, side2, team1_name, team2_name), row_for(side2, side1, team2_name, team1_name)])
+            return 1.0 - oriented(side2, side1, team2_name, team1_name)
+        return 0.5 * (
+            oriented(side1, side2, team1_name, team2_name) + 1.0 - oriented(side2, side1, team2_name, team1_name)
         )
-        return float(0.5 * (p[0] + (1.0 - p[1])))
 
     def _team_context(self, fmt: str, t1: Optional[str], t2: Optional[str], venue: Optional[str]) -> Dict[str, float]:
         return team_context_or_neutral(self.state, serving_match(fmt, [], [], t1, t2, venue, self.state.last_date))

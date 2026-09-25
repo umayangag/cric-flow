@@ -73,6 +73,9 @@ class _ListSource:
     def birth_dates(self):
         return {}
 
+    def venue_countries(self):
+        return {}
+
 
 def test_every_accumulator_the_pass_keeps_is_named_in_the_state_field_lists() -> None:
     """Three things walk these tuples -- the artifact writer, its D-6 refusal and
@@ -256,15 +259,82 @@ def test_a_ball_by_someone_not_named_for_the_match_is_nobodys_involvement() -> N
 
 
 def test_ratings_are_per_format() -> None:
+    """The accumulators are per format: a T20 match lands on the T20 sums and not the ODI
+    ones, and the career counts stay per format (so ``n_debutants`` still counts a format
+    debutant, whatever his rate reads -- FEAT-06 changes the rate, not the count). The
+    *read* of either format pools the other as its prior mean, which is the point."""
     state = RatingState()
     t1, t2 = _xi("a"), _xi("b")
     d = _deliveries([t1[0]] * 12, [t2[0]] * 12, [6] * 12, [0] * 12)
     state.update(_match("m", 0, "A", t1, t2, d, fmt="ODI"))
-
-    assert state.side_vectors("ODI", [t1[0]])["bat_rate"][0] > 0
-    assert state.side_vectors("T20", [t1[0]])["bat_rate"][0] == 0.0
+    slot = state.players.key_to_slot[t1[0]]
+    odi, t20 = C.FORMAT_INDEX["ODI"], C.FORMAT_INDEX["T20"]
+    odi_sums_before = (state.bat_rae[odi, slot], state.bat_balls[odi, slot])
     assert state.side_vectors("T20", [t1[0]])["career"][0] == 0.0
     assert state.side_vectors("T20", [t1[0]])["career_all"][0] == 1.0
+    assert aggregate_side(state.side_vectors("T20", t1), "T20")["n_debutants"] == 11.0
+
+    state.update(_match("m2", 1, "B", t1, t2, _deliveries([t1[0]] * 12, [t2[0]] * 12, [0] * 12, [1] * 12), fmt="T20"))
+
+    assert (state.bat_rae[odi, slot], state.bat_balls[odi, slot]) == odi_sums_before
+    assert state.bat_rae[t20, slot] < 0 < state.bat_rae[odi, slot]
+    assert state.side_vectors("T20", [t1[0]])["bat_rate"][0] < state.side_vectors("ODI", [t1[0]])["bat_rate"][0]
+    assert state.side_vectors("T20", [t1[0]])["career"][0] == 1.0
+
+
+def test_a_format_debutant_reads_his_rate_from_the_formats_he_has_played() -> None:
+    """FEAT-06: a player with no history in the format used to read the neutral vector --
+    ``PRIOR_BALLS`` of shrinkage toward *zero* -- so a T20I regular on IPL debut was an
+    unknown. He now reads his own rate elsewhere: the prior mean is his pooled other-format
+    rate, and with no balls in the format the rate is exactly that prior."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    d = _deliveries([t1[0]] * 12, [t2[0]] * 12, [6] * 12, [0] * 12)
+    state.update(_match("m", 0, "A", t1, t2, d, fmt="T20I"))
+    t20i = state.side_vectors("T20I", [t1[0], t2[0]])
+
+    t20 = state.side_vectors("T20", [t1[0], t2[0]])
+
+    assert t20i["bat_rate"][0] > 0 and t20i["bowl_rate"][1] < 0
+    assert t20["bat_rate"][0] == pytest.approx(t20i["bat_rate"][0])
+    assert t20["bowl_rate"][1] == pytest.approx(t20i["bowl_rate"][1])
+    assert t20["bat_pp_rate"][0] == pytest.approx(t20i["bat_pp_rate"][0])
+    assert t20["bat_stuck_share"][0] == pytest.approx(t20i["bat_stuck_share"][0])
+    # What is not pooled: involvement, Elo and the role keys keep their neutral values.
+    assert t20["exp_balls_faced"][0] == 0.0 and t20["career"][0] == 0.0 and t20["pelo"][0] == C.ELO_INITIAL
+
+
+def test_a_single_format_player_reads_the_plain_shrunk_rate_bit_for_bit() -> None:
+    """The other half of FEAT-06's contract: with no history outside the format the prior
+    mean is the old zero and the rate is the old ``sum / (balls + PRIOR_BALLS)``, so every
+    single-format player -- most of the archive -- is unchanged by the pooling."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    state.update(_match("m", 0, "A", t1, t2, _deliveries([t1[0]] * 12, [t2[0]] * 12, [6] * 12, [0] * 12)))
+    slot = state.players.key_to_slot[t1[0]]
+    f = C.FORMAT_INDEX["T20"]
+
+    vectors = state.side_vectors("T20", [t1[0]])
+
+    assert vectors["bat_rate"][0] == state.bat_rae[f, slot] / (state.bat_balls[f, slot] + C.PRIOR_BALLS)
+    assert vectors["bowl_spell_overs"][0] == pytest.approx(2.0), "the spell prior's mean is unchanged too"
+
+
+def test_the_formats_own_balls_take_over_from_the_pooled_prior() -> None:
+    """A player with balls in both formats reads a blend: his format's sum plus
+    ``PRIOR_BALLS`` of his other-format rate, over his format's balls plus ``PRIOR_BALLS``
+    -- the same weight the zero prior had, so the format's own evidence wins at the old pace."""
+    state = RatingState()
+    t1, t2 = _xi("a"), _xi("b")
+    state.update(_match("m1", 0, "A", t1, t2, _deliveries([t1[0]] * 12, [t2[0]] * 12, [6] * 12, [0] * 12), fmt="ODI"))
+    state.update(_match("m2", 1, "A", t1, t2, _deliveries([t1[0]] * 12, [t2[0]] * 12, [0] * 12, [0] * 12), fmt="T20"))
+    slot = state.players.key_to_slot[t1[0]]
+    odi, t20 = C.FORMAT_INDEX["ODI"], C.FORMAT_INDEX["T20"]
+    prior_mean = state.bat_rae[odi, slot] / (state.bat_balls[odi, slot] + C.PRIOR_BALLS)
+    expected = (state.bat_rae[t20, slot] + C.PRIOR_BALLS * prior_mean) / (state.bat_balls[t20, slot] + C.PRIOR_BALLS)
+
+    assert state.side_vectors("T20", [t1[0]])["bat_rate"][0] == pytest.approx(expected)
+    assert 0 < state.side_vectors("T20", [t1[0]])["bat_rate"][0] < prior_mean
 
 
 def _bowl_rate_after(deliveries: Deliveries) -> float:
@@ -332,8 +402,9 @@ def test_monotone_directions_follow_the_contract() -> None:
 
 def test_team_context_is_constrained_only_when_gate_b7s_switch_is_on() -> None:
     """B-7's arm switch. The shipped default leaves every context column free; the gate's
-    arm constrains the three whose direction is knowable and nothing else."""
+    arm constrains the four whose direction is knowable and nothing else."""
     constrained = dict(zip(C.TEAM_CONTEXT_COLS, C.monotone_directions(C.TEAM_CONTEXT_COLS, True)))
+    assert constrained["home_diff"] == 1
 
     assert constrained["team_elo_diff"] == 1
     assert constrained["team_form_diff"] == 1
@@ -515,7 +586,7 @@ def test_reading_an_unknown_player_does_not_register_him() -> None:
     assert state.players.key_to_slot == keys_before, "a read registered a player it was only asked about"
 
 
-_TEAM_TABLES = ("team_elo", "team_results", "head_to_head", "venue_bat_first", "team_venue_matches")
+_TEAM_TABLES = ("team_elo", "team_results", "head_to_head", "venue_bat_first", "team_venue_matches", "team_countries")
 
 
 def _team_table_sizes(state: RatingState) -> dict:
@@ -567,5 +638,83 @@ def test_update_still_writes_the_team_tables() -> None:
         "head_to_head": 2,
         "venue_bat_first": 1,
         "team_venue_matches": 2,
+        "team_countries": 0,  # the venue is in no region, so nobody played anywhere
     }
     assert state.team_elo[("T20", "A")] > state.team_elo[("T20", "B")]
+
+
+# ---------------------------------------------------------------------------
+# Home advantage (FEAT-05)
+# ---------------------------------------------------------------------------
+
+_REGIONS = {"v": "IN", "w": "AU"}
+
+
+def _away_match(mid: str, day: int, team1: str, team2: str, venue: str, winner: str = "A") -> MatchRecord:
+    t1, t2 = _xi("a"), _xi("b")
+    record = _match(mid, day, winner, t1, t2, _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6))
+    record.team1, record.team2, record.venue = team1, team2, venue
+    return record
+
+
+def test_home_diff_reads_the_teams_past_and_never_the_match_itself() -> None:
+    """FEAT-05: a side is at home when the ground's region is the one it has played in
+    most *before today*. Nothing is looked up about the team in a whole-archive table, so
+    the first match of a team's life reads 0 even though, seen whole, it was played at home
+    -- and a later match played abroad does not change what an earlier row read."""
+    m1 = _away_match("m1", 0, "A", "B", "V")  # both A and B play their first match in India
+    m2 = _away_match("m2", 1, "A", "C", "V")  # A has a past in India; C has none
+    m3 = _away_match("m3", 2, "A", "C", "W")  # in Australia: A's past says India, C's says India
+    m4 = _away_match("m4", 3, "C", "A", "W")  # C's past is now split IN 1 / AU 1: no home
+
+    def frame(*matches):
+        source = _ListSource(list(matches))
+        source.venue_countries = lambda: dict(_REGIONS)
+        return build(source).frame.set_index("match_id")["home_diff"]
+
+    short, long = frame(m1, m2), frame(m1, m2, m3, m4)
+
+    assert short["m1"] == 0.0 and long["m1"] == 0.0, "no past, so nobody is at home yet"
+    assert short["m2"] == 1.0 and long["m2"] == 1.0, "A is at home, C has no past; the later matches change nothing"
+    assert long["m3"] == 0.0, "Australia is home to neither; both sides' past says India"
+    assert long["m4"] == 0.0, "C's most-played regions tie, so C is nowhere; A is still Indian"
+
+
+def test_home_sides_read_a_region_from_the_venue_table_and_a_snapshot_keeps_the_teams_past() -> None:
+    """The two inputs: the ground's region comes from the static venue table (a ground it
+    does not place is neutral for everyone), the team's from ``team_countries``, which the
+    pass writes at update and a snapshot copies value by value (SERVE-01)."""
+    state = RatingState(venue_countries=_REGIONS)
+    state.update(_away_match("m1", 0, "A", "B", "V"))
+    frozen = state.snapshot()
+
+    state.update(_away_match("m2", 1, "A", "B", "V"))
+    unplaced = _away_match("m3", 2, "A", "B", "unplaced ground")
+
+    assert state.home_sides(_away_match("m3", 2, "A", "B", "V")) == (1.0, 1.0)
+    assert state.home_sides(unplaced) == (0.0, 0.0)
+    assert state.team_context(unplaced)["home_diff"] == 0.0
+    assert state.team_countries["A"] == {"IN": 2} and frozen.team_countries["A"] == {"IN": 1}
+
+
+def test_reading_home_sides_for_an_unknown_team_does_not_write_it() -> None:
+    """B-1 for the new table: a request naming a team the state has never seen reads it
+    as nowhere and leaves the table as the artifact left it."""
+    state = RatingState(venue_countries=_REGIONS)
+    state.update(_away_match("m1", 0, "A", "B", "V"))
+
+    home = state.home_sides(_away_match("m2", 1, "A", "never-seen-team", "V"))
+
+    assert home == (1.0, 0.0)
+    assert set(state.team_countries) == {"A", "B"}
+
+
+def test_home_and_toss_are_display_columns_the_objective_never_reads() -> None:
+    """The constraint FEAT-05 lands under: both facts are constant with respect to the
+    eleven, so they reach the displayed probability only. ``XI_FEATURE_COLS`` -- what
+    ``objective_probability`` reads and ``objective_auc`` scores -- is untouched, so the
+    optimiser stays toss-blind (B-21) and H-17's line keeps its meaning."""
+    assert "home_diff" in C.TEAM_CONTEXT_COLS and "home_diff" in C.DISPLAY_FEATURE_COLS
+    assert C.TOSS_COL in C.DISPLAY_FEATURE_COLS
+    assert "home_diff" not in C.XI_FEATURE_COLS and C.TOSS_COL not in C.XI_FEATURE_COLS
+    assert C.monotone_directions(["home_diff"], True) == [1]

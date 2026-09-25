@@ -20,6 +20,7 @@ import numpy as np
 
 from ml.xi.biography import BirthDates, load_birth_dates_csv, load_birth_dates_postgres
 from ml.xi.contract import FORMAT_CODES
+from ml.xi.geography import VenueCountries, load_venue_countries_csv, load_venue_countries_postgres
 from ml.xi.lineage import TeamLineage
 from ml.xi.lineage import load as load_lineage
 from ml.xi.stakes import UNLABELLED, Header, MatchStakes
@@ -195,6 +196,19 @@ class MatchRecord:
     # ``make xi-parity`` can compare the count across sources. Their deliveries stay in
     # ``deliveries``: what they did is theirs, and the ledgers read it as anyone else's.
     replacements: List[str] = field(default_factory=list)
+    # The side that won the toss, as a team key (FEAT-05): Cricsheet's ``info.toss.winner``
+    # on both sources, through the same club-and-gender key the sides carry. None where the
+    # source records no toss, and on a record built for the serving path.
+    toss_winner: Optional[str] = None
+
+    @property
+    def toss_won_by_team1(self) -> Optional[float]:
+        """1.0 when the side batting first won the toss (it chose to bat), 0.0 when it was
+        put in, None when the source records no toss. The decision is not read: on every
+        match of the archive it is exactly this comparison (0 of 22,905 disagree)."""
+        if self.toss_winner is None:
+            return None
+        return 1.0 if self.toss_winner == self.team1 else 0.0
 
     @property
     def outcome(self) -> Optional[float]:
@@ -273,6 +287,12 @@ class MatchSource(Protocol):
         """Date of birth per player key, for every player the source knows one for
         (X-1b). The rating state reads it once; a player absent from the map has an
         unknown age, which is a category of its own and never an imputed value."""
+        ...
+
+    def venue_countries(self) -> VenueCountries:
+        """Home region per venue key, for every venue the curated table places
+        (``ml.xi.geography``, FEAT-05). Static, read once; a venue absent from the map
+        is in no region and the match reads as neutral ground."""
         ...
 
 
@@ -435,6 +455,7 @@ def parse_cricsheet_file(
     winner = winning_team(outcome)
     if winner:
         winner = team_key(winner, gender, lineage)
+    toss_winner = str((info.get("toss") or {}).get("winner") or "").strip()
     return MatchRecord(
         match_id=os.path.basename(path).rsplit(".", 1)[0],
         match_date=date.fromisoformat(info["dates"][0]),
@@ -455,6 +476,7 @@ def parse_cricsheet_file(
         # rest; the importer normalises the same way (cricsheet.FlexibleTag).
         event_group="" if event.get("group") is None else str(event["group"]).strip(),
         replacements=replacements,
+        toss_winner=team_key(toss_winner, gender, lineage) if toss_winner else None,
     )
 
 
@@ -571,6 +593,7 @@ class CricsheetJsonSource:
         formats: Sequence[str] = FORMAT_CODES,
         lineage: Optional[TeamLineage] = None,
         birth_dates_path: Optional[str] = None,
+        venue_countries_path: Optional[str] = None,
     ):
         self.directory = directory
         self.international_teams = list(international_teams)
@@ -579,10 +602,18 @@ class CricsheetJsonSource:
         # The archive carries no biography; the CSV ``ml.xi.biography --export`` writes from
         # the database is how the offline path reads the same dates of birth.
         self.birth_dates_path = birth_dates_path
+        # Nor a country: the curated venue table is the one place either source reads it
+        # from, keyed by the venue name folded the identity way (``ml.xi.geography``).
+        self.venue_countries_path = venue_countries_path
         self.counts = SourceCounts()
 
     def birth_dates(self) -> BirthDates:
         return load_birth_dates_csv(self.birth_dates_path)
+
+    def venue_countries(self) -> VenueCountries:
+        if self.venue_countries_path is None:
+            return load_venue_countries_csv()
+        return load_venue_countries_csv(self.venue_countries_path)
 
     def team_key_for(self, name: str, gender: str) -> Optional[str]:
         """The club key for a name, through the same lineage the parser uses. Every name
@@ -636,6 +667,9 @@ class CricsheetJsonSource:
 # ``m.result`` is Cricsheet's own word for a match with no outright winner (migration
 # 0017); the archive path reads the same field, so a drawn Test moves both sides' form the
 # same way on both sources (FEAT-04). A winner beside 'tie' is a tie-breaker win.
+# The toss winner (FEAT-05) is keyed through the same COALESCE as the sides, so "did the
+# side batting first win the toss" is one equality on both sources. ``toss_decision`` is
+# not read: it is that equality on every row of the archive.
 _MATCH_SQL = """
 SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
@@ -643,13 +677,15 @@ SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(win.canonical_id, win.id),
        COALESCE(m.event_name, ''), m.match_number,
        COALESCE(m.event_stage, ''), COALESCE(m.event_group, ''),
-       m.result
+       m.result,
+       COALESCE(toss.canonical_id, toss.id)
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
 JOIN opposition bat ON bat.id = mi.batting_team_opposition_id
 JOIN opposition bowl ON bowl.id = mi.bowling_team_opposition_id
 LEFT JOIN opposition win ON win.id = m.outcome_winner_opposition_id
+LEFT JOIN opposition toss ON toss.id = m.toss_winner_opposition_id
 WHERE mf.code = ANY(%s) AND m.match_date < %s
 ORDER BY m.match_date, m.match_id
 """
@@ -746,10 +782,17 @@ class PostgresSource:
     this source and the JSON one produce the same key for the same person (P-1).
     """
 
-    def __init__(self, connection, formats: Sequence[str] = FORMAT_CODES, before: Optional[date] = None):
+    def __init__(
+        self,
+        connection,
+        formats: Sequence[str] = FORMAT_CODES,
+        before: Optional[date] = None,
+        venue_countries_path: Optional[str] = None,
+    ):
         self.connection = connection
         self.formats = list(formats)
         self.before = before or date(9999, 1, 1)
+        self.venue_countries_path = venue_countries_path
         self.counts = SourceCounts()
         self._team_keys: Optional[Dict[Tuple[str, str], str]] = None
 
@@ -766,6 +809,13 @@ class PostgresSource:
 
     def birth_dates(self) -> BirthDates:
         return load_birth_dates_postgres(self.connection)
+
+    def venue_countries(self) -> VenueCountries:
+        """Keyed by ``venue.id`` as a string -- the key this source's records carry -- each
+        row's name joined to the curated table (``ml.xi.geography``)."""
+        if self.venue_countries_path is None:
+            return load_venue_countries_postgres(self.connection)
+        return load_venue_countries_postgres(self.connection, self.venue_countries_path)
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         with self.connection.cursor() as cur:
@@ -816,6 +866,7 @@ class PostgresSource:
                 event_group=row[11] or "",
                 stakes=stakes.get(str(match_id), UNLABELLED),
                 replacements=replacements,
+                toss_winner=None if row[13] is None else str(row[13]),
             )
 
 
