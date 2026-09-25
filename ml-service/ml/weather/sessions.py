@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import collections
 from dataclasses import dataclass
-from typing import Dict, Mapping, Sequence
+from typing import Dict, Mapping, Optional, Sequence
 
 from ml.weather.venues import Fixture
 
@@ -226,3 +226,36 @@ def census(windows: Mapping[str, SessionWindow]) -> Dict[str, int]:
     """How many matches each rule placed, most first: the inspectable record."""
     counts = collections.Counter(w.rule for w in windows.values())
     return dict(counts.most_common())
+
+
+#: DATA-08: rule ids (by prefix, since a rule id often carries a per-match suffix such as a
+#: country or a slot number) that assign the day/night flag from something other than a
+#: documented single start hour -- one blanket hour applied to every country alike for a
+#: format whose men's equivalent is known to vary by country (``odi_women``, ``t20i_women``:
+#: the international women's game is not evenly a subset of the men's schedule, it is
+#: simply never asked), or an hour read off ``MULTI_HEADER_SLOTS`` by the fixture's rank
+#: among the day's matches at its venue (``t20i_associate``, ``t20_domestic_day``) -- a
+#: rotation through fixed slots, not a fact about when that match played. Together
+#: ``t20i_women`` (1,992 rows) and ``t20i_associate`` (1,477+ across its slots) are the
+#: 3,469+ rows the census's 35.2 % night share was never evidence for
+#: (`docs/EXTERNAL_DATA_PLAN.md`); ``odi_women`` and ``t20_domestic_day`` share the same
+#: defect and are excluded for the same reason, even though they are not part of that count.
+UNDOCUMENTED_NIGHT_RULE_PREFIXES: Sequence[str] = ("odi_women", "t20i_women", "t20i_associate", "t20_domestic_day")
+
+
+def has_documented_start_hour(rule: str) -> bool:
+    """Whether ``rule`` (a ``SessionWindow.rule``) placed its match from a documented single
+    start hour -- a competition's or a country's stated norm -- rather than from a rule that
+    is, in effect, a coin flip dressed as a schedule (DATA-08)."""
+    return not rule.startswith(tuple(UNDOCUMENTED_NIGHT_RULE_PREFIXES))
+
+
+def night_share(windows: Mapping[str, SessionWindow], documented_only: bool = False) -> Optional[float]:
+    """The fraction of ``windows`` placed at night. With ``documented_only``, a day/night
+    family evaluation reads only the rows a documented single start hour placed (DATA-08),
+    dropping the rule-artefact rows rather than letting them inflate or deflate the share.
+    ``None`` when no window qualifies."""
+    selected = [w for w in windows.values() if not documented_only or has_documented_start_hour(w.rule)]
+    if not selected:
+        return None
+    return sum(1 for w in selected if w.night) / len(selected)

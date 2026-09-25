@@ -415,6 +415,53 @@ def test_assign_ranks_double_headers_by_match_number_and_censuses_the_rules() ->
     }
 
 
+@pytest.mark.parametrize(
+    "rule, documented",
+    [
+        ("odi_men:IN", True),
+        ("odi_women", False),
+        ("one_day_domestic:GB", True),
+        ("t20i_men:AU", True),
+        ("t20i_women", False),
+        ("t20i_associate:slot_0", False),
+        ("t20i_associate:slot_1", False),
+        ("t20_domestic_day:slot_2", False),
+        ("t20_domestic:weekday", True),
+        ("t20_league:indian premier league:single", True),
+        ("t20i_icc:women", True),
+        ("first_class", True),
+        ("unknown_type:XYZ", True),
+    ],
+)
+def test_has_documented_start_hour_excludes_the_rank_and_blanket_rules(rule, documented) -> None:
+    """DATA-08: a rule that assigns one hardcoded hour to every country alike for a
+    bilateral international format (``odi_women``, ``t20i_women``), or reads an hour off a
+    rotation keyed by the fixture's rank at its venue (``t20i_associate``,
+    ``t20_domestic_day``), is not a documented single start hour."""
+    assert sessions.has_documented_start_hour(rule) is documented
+
+
+def test_night_share_documented_only_drops_the_rule_artefact_rows() -> None:
+    """DATA-08: the 35.2 % night share the census implies mixes real evidence with rule
+    artefacts. Restricting to documented rules changes the share, because the excluded
+    rows are not a random sample of the day/night split."""
+    windows = {
+        "m1": sessions.SessionWindow(13, True, "odi_men:IN"),
+        "m2": sessions.SessionWindow(11, False, "odi_men:GB"),
+        "m3": sessions.SessionWindow(10, False, "odi_women"),
+        "m4": sessions.SessionWindow(18, True, "t20i_associate:slot_2"),  # placed night by rank alone
+    }
+
+    assert sessions.night_share(windows) == pytest.approx(0.5)  # m1 and m4 of four
+    assert sessions.night_share(windows, documented_only=True) == pytest.approx(0.5)  # m1 of {m1, m2}
+
+
+def test_night_share_is_none_when_no_window_qualifies() -> None:
+    windows = {"m1": sessions.SessionWindow(10, False, "odi_women")}
+
+    assert sessions.night_share(windows, documented_only=True) is None
+
+
 # --- archive ----------------------------------------------------------------------------
 
 
