@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { getStoredApiKey, setStoredApiKey, clearStoredApiKey } from '../lib/apiKeyStorage';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -9,10 +10,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'cric_info_api_key';
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [apiKey, setApiKey] = useState<string | null>(localStorage.getItem(STORAGE_KEY));
+  const [apiKey, setApiKey] = useState<string | null>(getStoredApiKey());
 
   const login = async (password: string): Promise<boolean> => {
     // In local development, the API key is used as the password.
@@ -27,7 +26,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
 
         if (res.ok) {
-          localStorage.setItem(STORAGE_KEY, password);
+          setStoredApiKey(password);
           setApiKey(password);
           return true;
         }
@@ -39,7 +38,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    clearStoredApiKey();
     setApiKey(null);
   };
 

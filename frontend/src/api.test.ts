@@ -1,6 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import { api } from './api';
+import { api, isGoAppRequest } from './api';
+
+describe('isGoAppRequest (OPS-03)', () => {
+  it('is true for go-app’s own base URL and paths under it', () => {
+    expect(isGoAppRequest('http://localhost:8080')).toBe(true);
+    expect(isGoAppRequest('http://localhost:8080/ops/status')).toBe(true);
+  });
+
+  // The key used to be attached whenever a URL merely *contained* ":8080" anywhere in
+  // it, which an absolute URL to an unrelated host can just as easily contain.
+  it('is false for an unrelated absolute URL that contains ":8080" as a substring', () => {
+    expect(isGoAppRequest('http://attacker.example/relay?target=internal:8080')).toBe(false);
+  });
+
+  it('is false for a different host on the same port', () => {
+    expect(isGoAppRequest('http://not-go-app.example:8080/ops/status')).toBe(false);
+  });
+});
 
 describe('frontend api client (DB-backed)', () => {
   beforeEach(() => {
@@ -19,9 +36,9 @@ describe('frontend api client (DB-backed)', () => {
     await expect(api.apiHealth()).rejects.toBeInstanceOf(Error);
   });
 
-  it('includes X-API-Key header when stored in localStorage', async () => {
+  it('includes X-API-Key header when stored in sessionStorage', async () => {
     const mockStorage: Record<string, string> = { cric_info_api_key: 'test-key' };
-    vi.stubGlobal('localStorage', {
+    vi.stubGlobal('sessionStorage', {
       getItem: (key: string) => mockStorage[key] || null,
       setItem: (key: string, value: string) => {
         mockStorage[key] = value;
@@ -51,7 +68,7 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('getTeamSidesByFormat fetches with format query param and returns sides', async () => {
-    vi.stubGlobal('localStorage', {
+    vi.stubGlobal('sessionStorage', {
       getItem: () => null,
       setItem: () => {},
       removeItem: () => {},
@@ -76,7 +93,7 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('getOpponentSides addresses the club by id, not by name', async () => {
-    vi.stubGlobal('localStorage', {
+    vi.stubGlobal('sessionStorage', {
       getItem: () => null,
       setItem: () => {},
       removeItem: () => {},
@@ -95,7 +112,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('predictTeamSelection POSTs params and returns selection', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const payload = {
       team1: [
         {
@@ -144,7 +165,11 @@ describe('frontend api client (DB-backed)', () => {
   // console now depends on being told which steps really stopped, and on a partial stop
   // arriving as one — so both shapes are read here rather than assumed.
   it('opsPipelineStop reports the training steps that were stopped', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const body = {
       status: 'cancelled',
       cancelled: 1,
@@ -167,7 +192,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('opsPipelineStop surfaces a stop ml-service could not confirm', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const body = {
       status: 'partially_cancelled',
       cancelled: 1,
@@ -194,7 +223,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('searchVenues fetches when query has 3+ characters', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ["Lord's", 'MCG'],
@@ -210,7 +243,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('evaluationReport fetches the harness report from the backtest surface', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const payload = { formats: {}, serving_parity: { passed: true } };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
@@ -224,7 +261,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('metricGlossary fetches the metric glossary, not the megabyte of folds beside it', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const payload = { entries: { pinball: { key: 'pinball' } } };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => payload });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
@@ -237,7 +278,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('opsStatus and health go to their own routes', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
@@ -249,7 +294,11 @@ describe('frontend api client (DB-backed)', () => {
     vi.unstubAllGlobals();
   });
   it('getCandidates asks for one side, and spells the pool scope on the query string', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const payload = {
       side: {},
       pool: { source: 'all_time', size: 3, retired_excluded: 0 },
@@ -280,7 +329,11 @@ describe('frontend api client (DB-backed)', () => {
   // The default pool is the per-format window, and asking for it is saying nothing: an
   // absent window_months is what the backend reads as the default (D-12).
   it('getCandidates leaves the pool scope out when nothing was asked for', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 
@@ -294,7 +347,11 @@ describe('frontend api client (DB-backed)', () => {
   });
 
   it('flagRetirement posts the claim, and unflagRetirement withdraws it', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ player_id: 7 }) });
     (globalThis as unknown as { fetch: Mock }).fetch = fetchMock as unknown as Mock;
 

@@ -37,7 +37,7 @@ describe('Login', () => {
   const originalFetch = globalThis.fetch;
   beforeEach(() => {
     globalThis.fetch = vi.fn();
-    vi.stubGlobal('localStorage', createStorage());
+    vi.stubGlobal('sessionStorage', createStorage());
   });
 
   afterEach(() => {

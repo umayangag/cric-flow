@@ -47,7 +47,7 @@ describe('AuthContext', () => {
   beforeEach(() => {
     globalThis.fetch = vi.fn();
     storage = createStorage();
-    vi.stubGlobal('localStorage', storage);
+    vi.stubGlobal('sessionStorage', storage);
   });
 
   afterEach(() => {
@@ -75,7 +75,7 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('apikey')).toHaveTextContent('null');
   });
 
-  it('provides isAuthenticated true when key is in localStorage', () => {
+  it('provides isAuthenticated true when key is in sessionStorage', () => {
     storage.setItem('cric_info_api_key', 'stored-key');
     render(
       <AuthProvider>
