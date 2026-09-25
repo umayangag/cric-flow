@@ -106,6 +106,53 @@ def test_team_and_competition_countries_are_looked_up_case_insensitively() -> No
     assert venues.competition_countries("Unheard Of Cup") == ()
 
 
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        ("Zimbabwe tour of Australia", ()),  # a tour is not a competition anyone is at home in
+        ("Zimbabwe in Bangladesh ODI Series", ()),
+        ("ACC Twenty20 Cup", ()),  # the Asian Cricket Council's, never England's
+        ("CSA T20 Challenge", ("ZA",)),  # matched whole, without the table's old trailing space
+        ("ECB Women's One-Day Cup", ("GB",)),
+        ("Vitality Blast Women", ("GB",)),
+        ("The Marsh Cup", ("AU",)),
+    ],
+)
+def test_a_competition_needle_never_matches_a_country_a_tour_is_named_after(event, expected) -> None:
+    """DATA-03: "zimbabwe" was a needle, so every one of the 443 fixtures whose event name
+    carries the country voted ZW for wherever it was played -- Townsville, Bloemfontein,
+    Hyderabad. A needle names a competition, matched as a whole phrase, or nothing."""
+    assert venues.competition_countries(event) == expected
+
+
+def test_no_competition_needle_is_an_international_side_the_archive_names() -> None:
+    """The structural guard behind DATA-03: a needle that is also a team name votes for
+    that team's country on every tour it plays, home or away."""
+    needles = {needle for needle, _ in venues.COMPETITION_COUNTRIES}
+
+    assert needles & set(venues.TEAM_COUNTRIES) == set()
+
+
+def test_a_tour_votes_only_for_the_sides_that_played_it(tmp_path) -> None:
+    """DATA-03's verified case: Zimbabwe's tour of Australia at Townsville used to vote ZW
+    twice -- once for the side, once for the event name -- and out-vote the host."""
+    directory = tmp_path / CRICSHEET_DIR
+    directory.mkdir()
+    _write_match(
+        directory,
+        "1",
+        team_type="international",
+        teams=["Zimbabwe", "Australia"],
+        venue="Tony Ireland Stadium, Townsville",
+        city="Townsville",
+        event={"name": "Zimbabwe tour of Australia"},
+    )
+
+    _, facts = venues.read_archive(str(directory))
+
+    assert dict(facts["tony ireland stadium townsville"].country_votes) == {"ZW": 1, "AU": 1}
+
+
 # --- geocoding --------------------------------------------------------------------------
 
 
@@ -296,7 +343,7 @@ def test_curation_summary_matches_the_documented_counts() -> None:
     summary = geocoding.curation_summary(locations)
 
     assert summary == geocoding.CurationSummary(
-        total=892, top_vote=670, minority_vote=62, unvoted=44, no_votes=4, hand_curated=112
+        total=892, top_vote=673, minority_vote=59, unvoted=44, no_votes=4, hand_curated=112
     )
 
 
