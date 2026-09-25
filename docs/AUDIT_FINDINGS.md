@@ -1643,6 +1643,66 @@ ERROR the database and the archive describe different cricket (5 differences)
 
 **Read plainly: parity is red, both defects are on the side of the check that the served models do not read, and neither is a threshold question.** The pipeline was continued to the retrain and the harness because they read Postgres and because this pass's purpose is the record; the red result stands as a finding, and no criterion was changed.
 
+#### Step 4 — `make retrain`: a run on the new population, with a per-format grid that moved for the first time
+
+`make retrain CUTOFF=2026-09-25` — **11 min 49 s** (19:30:07–19:41:56 UTC; rating pass 3 min 45 s, models 8 min 3 s), exit 0, `data_quality_failures: []`, `usable: true`, `unusable_reasons: {}`. A minute over batch 3's 10 min 34 s, and the extra is EVAL-13's objective grid (nine points per format where there were none).
+
+| | |
+|---|---|
+| run id | **`20260925T193353Z-a021a5c1`** |
+| cutoff | 2026-09-25 |
+| ratings through | 2026-09-09 (13,639 players) |
+| `dataset_sha` | `a0aedc83279d…` (batch 3: `7e301346aa3d…`) |
+| `dataset_digest` | `{scheme: matches+xi-outcomes+pass-counts/1, matches 21293, player_rows 468461, pass_counts 19, undecided_matches 1612}` |
+| `git_sha` | **`bf9da5bf8abbc7c13e0d16ba3867dec88bdd6e67`** — this branch's head at the time (main `8076bc45` plus this record's first two commits, docs only); **no `-dirty` suffix**, because the run was launched from a worktree with no untracked file — batch 3's `-dirty` finding is a property of the main checkout's notes directories, confirmed by its absence here |
+| `source` | `PostgresSource` |
+| `library_versions` | python 3.12.14 · scikit-learn 1.5.2 · numpy 1.26.4 · scipy 1.11.4 · pandas 2.1.4 · joblib 1.6.0 |
+| `state_shape` | 13,639 players, **33 arrays** — `ctx_bowler_extras` (SERVE-12) is new and `keeper` is now `kept` (FEAT-10); batch 3's artifact had 32 |
+| training rows | **T20 8,305 · T20I 5,898 · ODI 4,995 · TEST 2,095** (batch 3: 12,130 · 2,073 · 4,995 · 2,095) |
+| player-match rows | 468,461 (unchanged) |
+| objective columns | **29** (`XI_FEATURE_COLS`; EVAL-13, from 40) — none of them home or toss |
+| display columns | 38, including `home_diff` and `toss_won_by_team1` (FEAT-05, display only) |
+
+**The retrain compared itself against the served run this time.** `served_run_manifest` read `71339c52`'s manifest — it *has* a digest, so `read_manifest` succeeds; the run is refused only later, at artifact load, for the missing tables — and the usability gate raised nothing. No log line was written either way, which is the code's shape (it logs only a manifest it cannot read); batch 3's `ERROR … no regression comparison is made` was the first-run-after-a-digest case and does not recur.
+
+**No headline metric, as in batch 3 (EVAL-05):** every format reports `n_holdout: 0`, "trained on N rows but not scored: … 0 rows at or after the cutoff". The archive ends 2026-09-09. The choice-facing numbers come from step 7.
+
+##### IMPORT-09's population prediction, tested — **held to within two rows**
+
+IMPORT-09 (#335) predicted T20I `n_train` 2,073 → ~5,900 and T20 → ~8,300. The run reads **T20I 5,898 and T20 8,305**: of the 3,888 matches that moved, 3,825 are decided (63 are no-results or ties), and 2,073 + 3,825 = 5,898, 12,130 − 3,825 = 8,305. ODI and TEST are unchanged. The AUC half of the prediction is step 7's.
+
+##### EVAL-13's grid, recorded per format — **and it moved, in three formats of four**
+
+EVAL-13 (#350) said `manifest.hyperparameters` would record an objective `C` and a recency half-life per format, chosen on the inner temporal split (the first 80 % of training rows by date fit, the last 20 % score, marginalised over the toss), incumbent `C 0.3, no recency weight`, moved only by more than the 0.002 margin. It does, and for the first time in four batches the grid did not keep the incumbent everywhere:
+
+| fmt | objective pick | reason | incumbent → best inner AUC | display pick | display inner AUC (batch 3) |
+|---|---|---|---:|---|---:|
+| T20 | **`C 0.1, half-life 4 y`** | beat the incumbent | 0.5933 → **0.5969** (+0.0036) | 3 / 0.04 / 300, kept | **0.5975** (0.7402) |
+| T20I | **`C 1.0, half-life 4 y`** | beat the incumbent | 0.7819 → **0.7857** (+0.0038) | 3 / 0.04 / 300, kept | **0.8089** (0.7555) |
+| ODI | `C 0.3, none` | kept — nothing beat it by 0.002 | 0.6575 → 0.6586 (+0.0011) | 3 / 0.04 / 300, kept | 0.6732 (0.6706) |
+| TEST | **`C 0.1, half-life 4 y`** | beat the incumbent | 0.6018 → **0.6092** (+0.0073) | 3 / 0.04 / 300, kept | 0.6475 (0.6182) |
+
+Three things to read off that table. (1) The recency weight is what moved: at every `C` the four-year half-life beats the eight-year, which beats none, in T20, T20I and TEST; the `C` axis is nearly flat (T20's three `C`s at a fixed half-life span 0.0003). (2) The display grid kept its point in every format again, `n_iter 300` everywhere. (3) **The inner-split scores have re-based with the population, and T20's is the one to watch**: T20's inner display AUC is **0.5975 against batch 3's 0.7402 on the same split rule** (`_choose_on_inner_split` is unchanged — last fifth by date), and T20I's is 0.8089 against 0.7555. That is IMPORT-09's composition change seen from inside the run — the 3,825 international T20s the club population lost were the easy ones — and it is a stronger signal than the "flat to −0.005" the prediction gave T20. Whether the walk-forward folds say the same is step 7's first question.
+
+##### The performance fits
+
+`iteration_choice` in every format, with the cut on the most recent tenth by date: T20 chosen on 18,327 rows from 2025-08-27 (fitted on the rest; batch 3: 26,753 from 2026-01-14 — a smaller, older last tenth, because the format is a third smaller), T20I 13,002 from **2026-03-27** (batch 3: 4,576 from 2025-07-22 — the format has nearly tripled), ODI 11,064 from 2025-08-08 and TEST 4,642 from 2025-05-16 (both as batch 3).
+
+| fmt | `p_bats` | `p_bowls` | `wickets` | `catches` |
+|---|---:|---:|---:|---:|
+| T20 | 276 → **192** | 251 → **220** | 122 → **73** | 255 → **174** |
+| T20I | 84 → **228** | 117 → **213** | — → **76** | — → **116** |
+| ODI | 127 → **146** | 176 → **189** | — → **110** | — → **93** |
+| TEST | 44 → **34** | 127 → **167** | — → **90** | — → **98** |
+
+Batch 3's two oddities are still there and one has grown. `runs_q0.1`, `balls_faced_q0.1` and `runs_conceded_q0.1` chose **1** iteration again in T20, T20I and ODI (TEST now chooses 98 / 54 for the first two and 1 for the third); and **six q0.5 boosters sit on the 300 ceiling** — `runs_q0.5`, `balls_faced_q0.5` and `runs_conceded_q0.5` in both T20 and T20I — where batch 3 had two. The T20I case is new and is the bigger population wanting more trees than `MAX_ITER` allows; recorded, not changed. `state_shape` says `kept` where batch 3 said `keeper` (FEAT-10's as-of keeper flag), while the performance spec's feature list still names the column `keeper` — one is the state array, the other the feature derived from it; noted so nobody greps one and misses the other.
+
+#### Step 5 — `make reload`: serving restored on the first call; the old run refused by name while the new one keeps serving
+
+No rebuild was needed: the images running were built at 19:14 UTC from `8076bc45`, main's head, and this branch differs from it in this file only. **Before reload** the service was refusing `71339c52` (step 1). **`make reload`** at 19:43:50 UTC → `{"status":"reloaded","loaded":true,"formats":["ODI","T20","T20I","TEST"],"performance_formats":[…same…],"players":13639,"ratings_through":"2026-09-09", …}` with the run's full report echoed back (`runs_scored 9345815`, `unknown_player_keys 0`). After: `/health` → `loaded: true, run_id: 20260925T193353Z-a021a5c1`, `ratings.fresh: true, data_age_days: 0, data_through: 2026-09-25` (SERVE-03's H-11 now measures the run's data boundary, which is the cutoff); `current_run.json` → `a021a5c1`; go-api `/ops/status` → `current_run` and `loaded_run` both `a021a5c1`, `ml_health: true`, `migration {current: 25, expected: 25, ok}`. **A served run is restored.**
+
+**The old run is refused by name, and the refusal does not unseat the new one.** `make reload RUN=20260920T175255Z-71339c52` → HTTP error, `{"code":"RUN_ARTIFACTS_INVALID","message":"run 20260920T175255Z-71339c52: the rating artifact is missing 2 table(s) this code reads (venue_countries, team_countries); it was written by an older pass and cannot be served. Retrain.","hint":"20260925T193353Z-a021a5c1 is still serving; run the retrain step to produce a run this code wrote, then reload"}`; `/health` still `a021a5c1`, `current_run.json` untouched. `/artifacts/status` lists thirteen run directories: the new one; `71339c52` and the orphan `cb30121b` with readable manifests (the listing is manifest-level and does not open the artifact — they are refused at load, as the reload just showed, not in the listing); and the ten older ones refused by name as in batch 3, five for no `dataset_digest` and five for no `ratings_through`.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
