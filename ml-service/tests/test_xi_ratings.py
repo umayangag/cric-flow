@@ -500,10 +500,11 @@ def test_aggregate_side_role_coverage_and_monotone_direction() -> None:
 
 def test_monotone_directions_follow_the_contract() -> None:
     dirs = dict(zip(C.XI_FEATURE_COLS, C.monotone_directions(C.XI_FEATURE_COLS)))
-    assert dirs["d_imp_bat_sum"] == 1
+    assert dirs["d_pelo_top3"] == 1
     assert dirs["t1_imp_bowl_sum"] == 1
     assert dirs["t2_imp_bowl_sum"] == -1
-    assert dirs["d_n_debutants"] == -1
+    assert dirs["t1_n_debutants"] == -1
+    assert dirs["t2_n_debutants"] == 1
     assert C.monotone_directions(["t1_pelo_std"]) == [0]
     assert C.monotone_directions(C.TEAM_CONTEXT_COLS) == [0] * len(C.TEAM_CONTEXT_COLS)
 
@@ -842,3 +843,25 @@ def test_home_and_toss_are_display_columns_the_objective_never_reads() -> None:
     assert C.TOSS_COL in C.DISPLAY_FEATURE_COLS
     assert "home_diff" not in C.XI_FEATURE_COLS and C.TOSS_COL not in C.XI_FEATURE_COLS
     assert C.monotone_directions(["home_diff"], True) == [1]
+
+
+def test_the_objective_reads_no_stem_as_both_its_differential_and_its_raw_pair() -> None:
+    """EVAL-13: ``d_x`` is ``t1_x - t2_x`` exactly, so a stem read three ways was one exact
+    linear dependence and the L2 penalty, not the rows, decided how its weight was split.
+    The design built from the side aggregates has full column rank (main: 40 columns of
+    rank 29), and a stem read as a raw pair is not read as a differential as well."""
+    rng = np.random.default_rng(0)
+    rows = []
+    for _ in range(200):
+        side1 = {stem: float(rng.normal()) for stem in C.SIDE_FEATURE_STEMS}
+        side2 = {stem: float(rng.normal()) for stem in C.SIDE_FEATURE_STEMS}
+        features = match_features(side1, side2)
+        rows.append([features[column] for column in C.XI_FEATURE_COLS])
+    design = np.asarray(rows)
+
+    assert np.linalg.matrix_rank(design) == design.shape[1]
+    raw_pair_stems = {column[3:] for column in C.XI_FEATURE_COLS if column.startswith("t1_")}
+    differential_stems = {column[2:] for column in C.XI_FEATURE_COLS if column.startswith("d_")}
+    assert raw_pair_stems and differential_stems
+    assert not raw_pair_stems & differential_stems
+    assert len(C.XI_FEATURE_COLS) == len(differential_stems) + 2 * len(raw_pair_stems)

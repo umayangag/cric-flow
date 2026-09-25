@@ -108,3 +108,29 @@ def test_fit_rejects_labels_outside_zero_and_one() -> None:
 
     with pytest.raises(ValueError, match="0 / 1"):
         SignedLogisticRegression(signs=[0, 0, 0, 0]).fit(x, np.full(100, 2.0))
+
+
+def test_a_row_at_weight_zero_is_absent_from_the_fit() -> None:
+    """EVAL-13: ``sample_weight`` scales each row's log-loss, so weighting the second half
+    of the rows at zero is the fit on the first half alone -- the mechanism the objective's
+    recency half-life reaches the estimator through."""
+    x, y = _rows()
+    half = len(y) // 2
+    weights = np.concatenate([np.ones(half), np.zeros(len(y) - half)])
+
+    weighted = SignedLogisticRegression(signs=[0, 0, 0, 0], C=0.3).fit(x, y, sample_weight=weights)
+    first_half = SignedLogisticRegression(signs=[0, 0, 0, 0], C=0.3).fit(x[:half], y[:half])
+    unweighted = SignedLogisticRegression(signs=[0, 0, 0, 0], C=0.3).fit(x, y)
+
+    assert weighted.coef_ == pytest.approx(first_half.coef_, abs=1e-3)
+    assert weighted.intercept_ == pytest.approx(first_half.intercept_, abs=1e-3)
+    assert weighted.coef_ != pytest.approx(unweighted.coef_, abs=1e-3)
+
+
+def test_fit_rejects_a_weight_per_row_that_is_negative_or_the_wrong_length() -> None:
+    x, y = _rows(n=50)
+
+    with pytest.raises(ValueError, match="sample_weight"):
+        SignedLogisticRegression(signs=[0, 0, 0, 0]).fit(x, y, sample_weight=np.ones(49))
+    with pytest.raises(ValueError, match="sample_weight"):
+        SignedLogisticRegression(signs=[0, 0, 0, 0]).fit(x, y, sample_weight=-np.ones(50))

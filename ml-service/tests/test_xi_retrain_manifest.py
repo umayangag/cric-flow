@@ -102,7 +102,7 @@ def test_the_manifest_records_the_iterations_the_display_model_ran(built, tmp_pa
     ``max_iter`` the grid chose -- the record that would have shown an early-stopped fit."""
     manifest = _written_manifest(built, tmp_path, "2024-02-20")
 
-    chosen = manifest["hyperparameters"]["T20"]
+    chosen = manifest["hyperparameters"]["T20"]["display"]
     assert chosen["n_iter"] == chosen["params"]["max_iter"]
 
 
@@ -205,7 +205,7 @@ def test_the_harness_fits_the_display_model_the_grid_would_ship(monkeypatch) -> 
     models, report = train_format(rows, "T20", cutoff)
     fold, _, harness_display = evaluate_module._evaluate_win_window(rows, cutoff, end)
 
-    assert report["hyperparameters"]["params"] == incumbent, "the grid moved off its (crippled) incumbent"
+    assert report["hyperparameters"]["display"]["params"] == incumbent, "the grid stayed on its (crippled) incumbent"
     assert fold["hyperparameters"] == report["hyperparameters"], "the window records the pick the manifest records"
     assert _grid_settings(harness_display) == _grid_settings(models.display) == incumbent
 
@@ -365,7 +365,7 @@ def test_the_manifest_records_what_it_takes_to_build_the_run_again(built, tmp_pa
     assert manifest["dataset_digest"]["player_rows"] > 0
     assert manifest["library_versions"]["scikit-learn"]
     assert manifest["library_versions"]["python"]
-    assert manifest["model_params"]["objective_C"] == train_module.OBJECTIVE_C
+    assert manifest["model_params"]["objective_max_iter"] == train_module.OBJECTIVE_MAX_ITER
     assert manifest["model_params"]["display_fixed"] == train_module.DISPLAY_FIXED_PARAMS
     assert manifest["performance_spec"]["T20"]["n_features"] > 0
 
@@ -375,9 +375,15 @@ def test_the_win_model_constants_do_not_restate_the_grids_choice(built, tmp_path
     picked (EVAL-06), and ``model_params`` carries only the levers it never varies."""
     manifest = _written_manifest(built, tmp_path, "2024-02-20")
 
-    chosen = manifest["hyperparameters"]["T20"]["params"]
+    chosen = manifest["hyperparameters"]["T20"]["display"]["params"]
     assert set(chosen) == {"max_depth", "learning_rate", "max_iter"}
     assert not set(manifest["model_params"]["display_fixed"]).intersection(chosen)
+    # EVAL-13: the objective's pick is recorded the same way, and its ``C`` is no longer a
+    # constant the manifest restates.
+    objective = manifest["hyperparameters"]["T20"]["objective"]
+    assert set(objective["params"]) == {"C", "half_life_years"}
+    assert objective["params"] in train_module.OBJECTIVE_GRID
+    assert "objective_C" not in manifest["model_params"]
 
 
 def test_the_manifest_quotes_the_performance_spec_the_report_recorded(built, tmp_path) -> None:

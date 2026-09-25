@@ -248,7 +248,11 @@ def _choose_on_inner_split(
     best = max(scores[1:], key=lambda s: s["auc"], default=None)
     if best is not None and best["auc"] > baseline + GRID_MARGIN:
         return {"params": best["params"], "reason": "beat the incumbent on the inner split", "scores": scores}
-    return {"params": incumbent, "reason": f"no candidate beat the incumbent by more than {GRID_MARGIN}", "scores": scores}
+    return {
+        "params": incumbent,
+        "reason": f"no candidate beat the incumbent by more than {GRID_MARGIN}",
+        "scores": scores,
+    }
 
 
 def choose_display_params(train: pd.DataFrame) -> Dict:

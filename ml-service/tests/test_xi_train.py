@@ -19,15 +19,19 @@ import pytest
 from sklearn.metrics import roc_auc_score
 
 from ml.xi import contract as C
+from ml.xi import evaluate as evaluate_module
 from ml.xi import selection_metrics
+from ml.xi import train as train_module
 from ml.xi.builder import build
 from ml.xi.train import (
     _score_marginalised,
     _xy,
+    fit_objective,
     make_display_model,
     make_objective_model,
     marginalised_probabilities,
     own_side_sensitivities,
+    recency_weights,
     swap_orientation,
     train_format,
 )
@@ -120,11 +124,11 @@ def test_train_format_fits_every_iteration_the_grid_chose_above_the_early_stoppi
 
     models, report = train_format(rows, "T20", cutoff)
 
-    chosen_max_iter = report["hyperparameters"]["params"]["max_iter"]
+    chosen_max_iter = report["hyperparameters"]["display"]["params"]["max_iter"]
     assert report["n_train"] > 10_000
     assert models.display.n_iter_ == chosen_max_iter
-    assert report["hyperparameters"]["n_iter"] == chosen_max_iter
-    assert models.metadata["hyperparameters"]["n_iter"] == chosen_max_iter
+    assert report["hyperparameters"]["display"]["n_iter"] == chosen_max_iter
+    assert models.metadata["hyperparameters"]["display"]["n_iter"] == chosen_max_iter
 
 
 def test_train_format_fits_the_display_model_once_and_reports_that_fits_score() -> None:
@@ -227,3 +231,54 @@ def test_train_format_fits_the_objective_under_the_contract() -> None:
     assert not any(column.endswith("_pelo_std") for column in models.objective_cols)
     _assert_sensitivities_carry_the_contract(own_side_sensitivities(models.objective, models.objective_cols))
     assert set(report["objective_marginalised"]) == {"auc", "brier"}
+
+
+# --- EVAL-13: the objective's C and recency weight are chosen per format, on the inner split ---
+
+
+def test_recency_weights_halve_every_half_life_back_from_the_newest_row() -> None:
+    dates = pd.Series(pd.to_datetime(["2020-01-01", "2024-01-01", "2028-01-01"]))
+
+    weights = recency_weights(dates, 4.0)
+
+    assert weights[2] == 1.0
+    assert weights[1] == pytest.approx(0.5, rel=1e-3)
+    assert weights[0] == pytest.approx(0.25, rel=1e-3)
+    assert list(recency_weights(dates, None)) == [1.0, 1.0, 1.0]
+
+
+def test_the_objective_grid_puts_the_incumbent_first_and_reaches_the_fitted_estimator() -> None:
+    """Grid point 0 is what the objective has always been fitted with, and the pick's ``C``
+    is the estimator's."""
+    rows = collinear_elo_rows(600)
+
+    objective = fit_objective(rows, {"C": 0.1, "half_life_years": None})
+
+    assert train_module.OBJECTIVE_GRID[0] == {"C": 0.3, "half_life_years": None}
+    assert len(train_module.OBJECTIVE_GRID) == 9
+    assert objective.steps[-1][1].C == 0.1
+
+
+def test_a_crippled_incumbent_is_displaced_and_the_harness_fits_the_objective_the_grid_would_ship(
+    monkeypatch,
+) -> None:
+    """The finding's own test: the objective's ``C`` and half-life are chosen on the inner
+    temporal split -- a half-life that leaves one row with any weight cannot rank, so the
+    grid must move off it -- and the harness window fits the same pick ``train_format``
+    ships and records it under the manifest's key (the EVAL-06 rule, for this model)."""
+    crippled, incumbent = {"C": 0.3, "half_life_years": 1e-4}, dict(train_module.OBJECTIVE_GRID[0])
+    monkeypatch.setattr(train_module, "OBJECTIVE_GRID", (crippled, incumbent))
+    rows = collinear_elo_rows(600)
+    cutoff, end = rows.match_date.iloc[500], rows.match_date.max() + pd.Timedelta(days=1)
+
+    models, report = train_format(rows, "T20", cutoff)
+    fold, harness_objective, _ = evaluate_module._evaluate_win_window(rows, cutoff, end)
+
+    record = report["hyperparameters"]["objective"]
+    assert record["params"] == incumbent, "the grid stayed on its (crippled) incumbent"
+    assert record["reason"] == "beat the incumbent on the inner split"
+    assert [score["params"] for score in record["scores"]] == [crippled, incumbent]
+    assert record["scores"][0]["auc"] < record["scores"][1]["auc"]
+    assert fold["hyperparameters"]["objective"] == record
+    assert models.objective.steps[-1][1].C == harness_objective.steps[-1][1].C == incumbent["C"]
+    assert set(report["hyperparameters"]) == {"objective", "display"}
