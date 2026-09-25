@@ -40,6 +40,21 @@ BirthDates = Dict[str, date]
 DAYS_PER_YEAR = 365.25
 CSV_COLUMNS = ("player_key", "birth_date")
 
+#: DATA-07: Wikidata renders a year-precision date of birth as 1 January, and the query
+#: this project runs (``wikidata.go``'s ``parseWikidataDate``) carries no precision
+#: qualifier, so a birth date landing on 1 January cannot be told apart, per row, from a
+#: player genuinely born that day -- 3.7 % of ``wikidata-player-lookups.jsonl``'s dates are
+#: ``-01-01`` against an expected ~0.27 %, so most of them are the artefact, not the day.
+#: A literal 1 January over-states such a player's age by up to a year; the Go-side comment
+#: already promises "at most half a year", which only holds if the day is read as the
+#: middle of the year, not literally -- so that is what this reads it as. Precisely which
+#: rows are the artefact is unrecoverable without the qualifier (a network fetch this
+#: offline pass does not make); treating every 1 January this way trades a small, bounded
+#: error for the ~0.27 % of players genuinely born then against removing a much larger,
+#: one-sided error for the rest.
+_YEAR_PRECISION_MIDYEAR_MONTH = 7
+_YEAR_PRECISION_MIDYEAR_DAY = 2
+
 # The player key expression is ``sources._player_key``'s -- the registry identifier, with
 # the same name fallback -- so a biography lands on the slot its matches are rated under.
 _BIRTH_DATES_SQL = """
@@ -51,9 +66,12 @@ WHERE b.birth_date IS NOT NULL
 
 
 def age_years(birth_date: date, on: date) -> float:
-    """Age in years at ``on``: elapsed days over the mean year. Wikidata renders a
-    year-precision birth date as the first of January (plan § X-1a), so an age here can be
-    up to a year high for such a player; it is recorded, not smoothed."""
+    """Age in years at ``on``: elapsed days over the mean year. A date read as 1 January
+    (plan § X-1a) is treated as mid-year (DATA-07): a year-precision date has no true day
+    to read, and the mid-point is the estimate that bounds the error at half a year in
+    either direction rather than up to a year high."""
+    if birth_date.month == 1 and birth_date.day == 1:
+        birth_date = date(birth_date.year, _YEAR_PRECISION_MIDYEAR_MONTH, _YEAR_PRECISION_MIDYEAR_DAY)
     return (on - birth_date).days / DAYS_PER_YEAR
 
 

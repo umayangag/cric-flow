@@ -37,14 +37,27 @@ def _matches(days, winner="A"):
 
 
 def test_age_years_counts_elapsed_days_over_the_mean_year() -> None:
-    assert biography.age_years(date(2000, 1, 1), date(2024, 1, 1)) == pytest.approx(24.0, abs=0.01)
+    assert biography.age_years(date(2000, 6, 15), date(2024, 6, 15)) == pytest.approx(24.0, abs=0.01)
+
+
+def test_age_years_reads_a_1_january_birth_date_as_mid_year() -> None:
+    """DATA-07: Wikidata cannot distinguish a genuine 1 January birth from a year-precision
+    date rendered as 1 January, so age_years reads every 1 January as mid-year -- half the
+    naive value's overstatement, not the up-to-a-year-high the raw date would give."""
+    naive = (date(2024, 1, 1) - date(2000, 1, 1)).days / biography.DAYS_PER_YEAR
+
+    age = biography.age_years(date(2000, 1, 1), date(2024, 1, 1))
+
+    assert age == pytest.approx(naive - 0.5, abs=0.01)
+    assert age != pytest.approx(naive, abs=0.01)
 
 
 def test_age_vectors_leave_a_player_without_a_birth_date_as_his_own_category() -> None:
     """Missing is 0.0 / 0.0 -- an indicator of its own, never an imputed age."""
     out = biography.age_vectors(BIRTH, ["a0", "nobody", "b0"], date(2024, 6, 15))
 
-    np.testing.assert_allclose(out["age"], [24.0, 0.0, 34.45], atol=0.01)
+    # b0's birth date (1990-01-01) is read as mid-year (DATA-07): ~33.95, not the naive 34.45.
+    np.testing.assert_allclose(out["age"], [24.0, 0.0, 33.95], atol=0.01)
     np.testing.assert_array_equal(out["age_known"], [1.0, 0.0, 1.0])
 
 
@@ -141,7 +154,7 @@ def test_cold_start_prior_moves_only_debutants_of_known_age() -> None:
     matches = _matches([0, 1, 2])
     off = build(_Source(matches), age_aware_cold_start=False).state
     on = build(_Source(matches), age_aware_cold_start=True).state
-    on.birth_dates["fresh"] = date(2000, 1, 1)  # 24 at the read date: a0's band, where a0 debuted
+    on.birth_dates["fresh"] = date(2000, 1, 1)  # ~23.5 at the read date (mid-year, DATA-07): a0's band
     on_date = date(2024, 1, 10)
 
     keys = ["a0", "b0", "fresh", "unknown"]
@@ -159,7 +172,8 @@ def test_cold_start_prior_moves_only_debutants_of_known_age() -> None:
 
 
 class _TwoDebutantsOfOneBand(_Source):
-    """a0 (23) and a1 (24) debut on the same day in the same band; only a0 bats."""
+    """a0 (23) and a1 (~23.5, mid-year DATA-07 reading of a 1 January date) debut on the
+    same day in the same band; only a0 bats."""
 
     def birth_dates(self):
         return {**BIRTH, "a1": date(2000, 1, 1)}
