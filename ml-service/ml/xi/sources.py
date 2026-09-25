@@ -200,6 +200,17 @@ class MatchRecord:
     # on both sources, through the same club-and-gender key the sides carry. None where the
     # source records no toss, and on a record built for the serving path.
     toss_winner: Optional[str] = None
+    # The last day the match was played on (FEAT-09): Cricsheet's ``dates[-1]`` on both
+    # sources -- ``match.match_end_date`` (migration 0024) on Postgres. ``match_date``,
+    # ``dates[0]``, stays the day every feature is read at; this is the day after which the
+    # match is folded into the state, so a Test's later days are not in the state of a
+    # fixture played while it was still on. None is a match played on its one day.
+    match_end_date: Optional[date] = None
+
+    @property
+    def last_day(self) -> date:
+        """The day the match ended: its last day, or its only one."""
+        return self.match_end_date or self.match_date
 
     @property
     def toss_won_by_team1(self) -> Optional[float]:
@@ -477,6 +488,7 @@ def parse_cricsheet_file(
         event_group="" if event.get("group") is None else str(event["group"]).strip(),
         replacements=replacements,
         toss_winner=team_key(toss_winner, gender, lineage) if toss_winner else None,
+        match_end_date=date.fromisoformat(info["dates"][-1]),
     )
 
 
@@ -675,6 +687,10 @@ class CricsheetJsonSource:
 # and a match with no first innings -- a toss and then rain -- reaches Python with both
 # sides NULL and is counted ``unusable`` there, as the archive path counts a file with no
 # innings. An inner join dropped it here, silently, into the other count.
+# ``match_end_date`` (migration 0024, FEAT-09) is the match's last day; a database migrated
+# but not yet re-imported holds NULL, which reads as the start date -- every match folded at
+# the close of its first day, as before -- and ``make xi-parity`` reports the difference
+# against the archive as ``multi_day_matches``.
 _MATCH_SQL = """
 SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
@@ -683,7 +699,8 @@ SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(m.event_name, ''), m.match_number,
        COALESCE(m.event_stage, ''), COALESCE(m.event_group, ''),
        m.result,
-       COALESCE(toss.canonical_id, toss.id)
+       COALESCE(toss.canonical_id, toss.id),
+       COALESCE(m.match_end_date, m.match_date)
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 LEFT JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
@@ -873,6 +890,7 @@ class PostgresSource:
                 stakes=stakes.get(str(match_id), UNLABELLED),
                 replacements=replacements,
                 toss_winner=None if row[13] is None else str(row[13]),
+                match_end_date=row[14],
             )
 
     def _with_a_first_innings(self, matches: Sequence[Sequence]) -> List[Sequence]:

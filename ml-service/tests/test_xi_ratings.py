@@ -584,6 +584,22 @@ def test_a_draw_or_an_unbroken_tie_is_half_a_win_of_form_and_moves_no_elo() -> N
     assert state.team_elo[("T20", "A")] > elo_after_draws, "a tie-breaker win is a win"
 
 
+def test_a_fixture_played_during_a_test_reads_a_state_without_that_test() -> None:
+    """FEAT-09: the Test runs from day 0 to day 4; the T20 on day 2 is played while it is
+    on, so its rows read nobody's Test appearance -- the pass folds the Test at the close
+    of its last day, not its first -- and the T20 on day 6 reads both matches."""
+    t1, t2 = _xi("a"), _xi("b")
+    d = _deliveries([t1[0]] * 12, [t2[5]] * 12, [1] * 12, [0] * 12)
+    test_match = replace(_match("test", 0, "A", t1, t2, d, fmt="TEST"), match_end_date=date(2024, 1, 5))
+    during = _match("during", 2, "A", t1, t2, d)
+    after = _match("after", 6, "A", t1, t2, d)
+
+    player_rows = build(_ListSource([test_match, during, after])).player_frame
+
+    assert set(player_rows[player_rows.match_id == "during"].career_all) == {0.0}
+    assert set(player_rows[player_rows.match_id == "after"].career_all) == {2.0}
+
+
 def test_same_day_matches_do_not_see_each_other() -> None:
     """Two matches on one date are applied at day close: neither row reflects the other."""
     t1, t2 = _xi("a"), _xi("b")

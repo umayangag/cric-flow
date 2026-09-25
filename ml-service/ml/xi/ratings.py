@@ -599,7 +599,26 @@ class RatingState:
             self.team_results[(fmt, match.team1)].append(0.5)
             self.team_results[(fmt, match.team2)].append(0.5)
         self.matches_seen += 1
-        self.last_date = match.match_date
+        # The day the state's cricket runs through: the latest last day folded (FEAT-09).
+        self.last_date = match.last_day if self.last_date is None else max(self.last_date, match.last_day)
+
+    def fold_finished(self, pending: Sequence[MatchRecord], before: date) -> List[MatchRecord]:
+        """Fold, in order, every pending match whose last day is before ``before``, and
+        return the ones still being played (FEAT-09).
+
+        The one rule for the training pass and the as-of serving path: a match joins the
+        state once its last day has closed, so a fixture dated during a Test reads a state
+        without that Test -- as nobody on that day could have known its later days -- and
+        the two paths agree on it (H-8). A match on its one day is folded at that day's
+        close, as it always was.
+        """
+        still_playing: List[MatchRecord] = []
+        for match in pending:
+            if match.last_day < before:
+                self.update(match)
+            else:
+                still_playing.append(match)
+        return still_playing
 
     def _accumulate_involvement(self, f: int, xi_slots: np.ndarray, d: Deliveries) -> None:
         """Land this match's deliveries on the XI members' involvement numerators -- every

@@ -673,6 +673,16 @@ label names. Three columns on `match` keep the distinction recoverable (IMPORT-0
 Nothing back-fills the two new columns: a re-import of the whole directory is what writes
 them, and the same re-import is what moves the 3,888 misfiled matches onto `T20I`.
 
+A fourth column, **`match_end_date`** (migration `0024`, FEAT-09), is the match's last day
+— Cricsheet's `dates[-1]`, where `match_date` is `dates[0]`. 3,171 of the 22,905 files run
+over more than one day (918 Tests, 2,207 first-class rounds, 46 one-day or twenty-over
+matches carried over), and until FEAT-09 the rating pass folded each of them into its state
+at the close of its *first* day, so a fixture played during a Test read a state holding
+that Test's later days. The pass now folds a match at the close of its last day; the
+database reads `COALESCE(match_end_date, match_date)`, so a database migrated but not
+re-imported behaves as before and `make xi-parity` reports it as `multi_day_matches`
+differing from the archive. Nothing back-fills it either: the re-import writes it.
+
 ### What the ball-event record holds
 
 `ball_event` has one row per delivery, and its runs are in three parts as Cricsheet writes

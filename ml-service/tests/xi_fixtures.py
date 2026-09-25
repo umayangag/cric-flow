@@ -55,7 +55,10 @@ def make_match(
     team2: str = "B",
     gender: str = "male",
     start: date = date(2024, 1, 1),
+    last_day: Optional[int] = None,
 ) -> MatchRecord:
+    """``last_day`` is the day offset the match ended on, for one played over several days
+    (FEAT-09); left unsaid, it ended on the day it started."""
     return MatchRecord(
         match_id=mid,
         match_date=start + timedelta(days=day),
@@ -69,6 +72,7 @@ def make_match(
         winner=winner,
         result=None,
         deliveries=deliveries,
+        match_end_date=None if last_day is None else start + timedelta(days=last_day),
     )
 
 

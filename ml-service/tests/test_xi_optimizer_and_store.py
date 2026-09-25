@@ -757,6 +757,19 @@ def test_parse_cricsheet_file_gives_a_super_over_tie_to_the_eliminator(tmp_path)
     assert rec.result == "tie"
 
 
+def test_cricsheet_source_reads_the_last_day_a_match_was_played_on(tmp_path) -> None:
+    """FEAT-09: ``dates[-1]`` is the match's last day and ``dates[0]`` stays its date."""
+    players = {"X": [f"X{i}" for i in range(11)], "Y": [f"Y{i}" for i in range(11)]}
+    doc = _cricsheet_doc("Test", ["X", "Y"], players, "X", 0)
+    doc["info"]["dates"] = ["2024-03-01", "2024-03-02", "2024-03-03", "2024-03-04"]
+    (tmp_path / "test.json").write_text(json.dumps(doc))
+
+    record = parse_cricsheet_file(str(tmp_path / "test.json"), _INTL)
+
+    assert record.match_date == date(2024, 3, 1)
+    assert record.match_end_date == date(2024, 3, 4) and record.last_day == date(2024, 3, 4)
+
+
 def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> None:
     players = {"X": [f"X{i}" for i in range(11)], "Y": [f"Y{i}" for i in range(11)]}
     (tmp_path / "b.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], players, "X", 5)))

@@ -61,6 +61,27 @@ def test_state_as_of_excludes_the_queried_date_itself() -> None:
     assert state.matches_seen == 0
 
 
+def test_state_as_of_holds_back_a_match_still_being_played(caplog) -> None:
+    """FEAT-09: a Test that started on the 1st and ends on the 5th is not in the state a
+    fixture on the 3rd is served from -- nobody on the 3rd knew its last three days -- and
+    it is folded once the query date is past its last day. The state then holds a match
+    through the 5th, so asking for the 5th again is running backwards."""
+    t1, t2 = xi("a"), xi("b")
+    d = make_deliveries(["a0"] * 6, ["b5"] * 6, [4] * 6, [0] * 6)
+    test_match = make_match("test", 0, "A", t1, t2, d, fmt="TEST", last_day=4)  # Jan 1 .. Jan 5
+    one_day = make_match("t20", 1, "A", t1, t2, d)  # Jan 2
+    asof = AsOfRatings(ListSource([test_match, one_day]))
+
+    during = asof.state_as_of(date(2024, 1, 3))
+    seen_during = during.matches_seen
+    after = asof.state_as_of(date(2024, 1, 6))
+
+    assert seen_during == 1, "the one-day match on the 2nd is in; the Test still on is not"
+    assert after.matches_seen == 2 and after.last_date == date(2024, 1, 5)
+    with pytest.raises(ValueError, match="through 2024-01-05"):
+        asof.state_as_of(date(2024, 1, 5))
+
+
 def test_state_as_of_raises_when_asked_to_run_backwards() -> None:
     asof = AsOfRatings(ListSource(_matches([0, 1, 2])))
     asof.state_as_of(date(2024, 1, 3))

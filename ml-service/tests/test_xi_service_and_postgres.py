@@ -617,12 +617,28 @@ class _FakeConnection:
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
         # Columns follow _MATCH_SQL: ..., winner, event name, match number, stage, group,
-        # result, toss winner. Match 2 is a tie settled by a super over: a winner with
-        # result 'tie'; match 3 records no toss.
+        # result, toss winner, last day. Match 2 is a tie settled by a super over: a winner
+        # with result 'tie'; match 3 records no toss; match 1 ran into a second day.
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None, 10),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None, 20),
-            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None, "tie", None),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None, 10, date(2024, 1, 2)),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None, 20, date(2024, 1, 2)),
+            (
+                3,
+                date(2024, 1, 3),
+                "T20I",
+                "male",
+                None,
+                10,
+                20,
+                10,
+                None,
+                None,
+                None,
+                None,
+                "tie",
+                None,
+                date(2024, 1, 3),
+            ),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -672,6 +688,10 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     # it" is one equality; a match the database records no toss for reads None, never 0.
     assert first.toss_winner == "10" and first.toss_won_by_team1 == 1.0
     assert recs[1].toss_winner is None and recs[1].toss_won_by_team1 is None
+    # The last day (FEAT-09) is the column beside the toss; the query reads it as the start
+    # date where the database holds none, so a match on its one day reads its own date.
+    assert first.match_end_date == date(2024, 1, 2) and first.last_day == date(2024, 1, 2)
+    assert recs[1].last_day == date(2024, 1, 3)
 
 
 def test_postgres_source_counts_a_match_with_no_first_innings_unusable_not_out_of_scope(caplog) -> None:
@@ -684,7 +704,25 @@ def test_postgres_source_counts_a_match_with_no_first_innings_unusable_not_out_o
     from ml.xi.sources import _MATCH_SQL
 
     tables = {
-        "matches": [(7, date(2024, 1, 1), "T20I", "male", 5, None, None, None, "", None, "", "", "no result", 10)],
+        "matches": [
+            (
+                7,
+                date(2024, 1, 1),
+                "T20I",
+                "male",
+                5,
+                None,
+                None,
+                None,
+                "",
+                None,
+                "",
+                "",
+                "no result",
+                10,
+                date(2024, 1, 1),
+            )
+        ],
         "players": {7: [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)]},
         "balls": {},
     }
@@ -854,7 +892,7 @@ def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> Non
     no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0, 0)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10, date(2024, 1, 1))],
         "players": {1: squad},
         "balls": {1: [no_ball_with_four_leg_byes, plain_four]},
     }
@@ -1414,7 +1452,7 @@ def test_the_postgres_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
     wide = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 1)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10, date(2024, 1, 1))],
         "players": {1: squad},
         "balls": {1: [no_ball, wide, plain_four]},
     }

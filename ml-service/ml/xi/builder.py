@@ -154,7 +154,12 @@ def build(
     reads features from prior dates only, then the whole day is applied. Within a date the
     source's order is by id, not by start time, so sequential updates would let a match see
     the result of a same-day match it may in fact have preceded. 78% of matches share a date
-    with another in the same format; the cost of the strict rule is <= 0.003 AUC."""
+    with another in the same format; the cost of the strict rule is <= 0.003 AUC.
+
+    The day that closes is the match's *last* day (FEAT-09): a Test is folded once its
+    fifth day is over, not its first, so a fixture played while it is on reads a state
+    without it. 3,171 of the archive's 22,905 matches run over more than one day and 10,656
+    start inside another's span, 1,386 of them in the same format."""
     state = RatingState(
         gender_split_context=gender_split_context,
         birth_dates=source.birth_dates(),
@@ -178,6 +183,7 @@ def build(
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
     matches_with_one_home_side = 0
     matches_without_toss = 0
+    multi_day_matches = 0
     pending: List = []
     current_date = None
     for i, match in enumerate(source.iter_matches()):
@@ -197,10 +203,9 @@ def build(
         if current_date is not None and match.match_date < current_date:
             raise ValueError(f"source is not in date order: {match.match_id} ({match.match_date}) after {current_date}")
         if current_date is not None and match.match_date != current_date:
-            for done in pending:
-                state.update(done)
-            pending.clear()
+            pending = state.fold_finished(pending, match.match_date)
         current_date = match.match_date
+        multi_day_matches += int(match.last_day > match.match_date)
         # Read before the day is folded, as the row is: the home flag is as-of (FEAT-05).
         matches_with_one_home_side += int(sum(state.home_sides(match)) == 1.0)
         matches_without_toss += int(match.toss_won_by_team1 is None)
@@ -246,6 +251,7 @@ def build(
         dead_rubber_matches=stakes_counts["dead"],
         matches_with_one_home_side=matches_with_one_home_side,
         matches_without_toss=matches_without_toss,
+        multi_day_matches=multi_day_matches,
     )
     logger.info(
         "rating pass: %d training rows, %d player-match rows, %d undecided matches, "

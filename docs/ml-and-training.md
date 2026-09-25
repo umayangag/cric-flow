@@ -44,7 +44,9 @@ artifacts root names the run being served. See *Runs, manifests and staleness* b
 
 - **No future leakage:** every row a model trains on has `match_date < cutoff`, and every
   feature in it is an as-of accumulator that has seen only earlier matches (H-1). The rating
-  pass folds a day's matches in at day close, so a match never sees a same-day result (H-18).
+  pass folds a day's matches in at day close, so a match never sees a same-day result (H-18);
+  the day that closes is the match's *last* day, so a fixture played during a Test never
+  sees that Test either (FEAT-09).
 - **One feature computation:** training rows and serving rows come from the same code
   (`ml.xi.rows`) over the same rating state, which is what makes the two paths compute the
   same function of the same eleven names. The harness re-derives the last 50 matches through

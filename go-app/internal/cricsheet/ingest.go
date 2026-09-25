@@ -305,6 +305,13 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 			slog.Any("err", err))
 		return fmt.Errorf("match date of %s: %w", path, err)
 	}
+	endDateISO, err := info.MatchEndDate()
+	if err != nil {
+		slog.Error("cricsheet: match end date unreadable",
+			slog.String("file", path),
+			slog.Any("err", err))
+		return fmt.Errorf("match end date of %s: %w", path, err)
+	}
 	// Every name below is resolved through this: it carries the file's person registry
 	// and the match's gender, which are the two things that turn a name into an identity.
 	identity := &matchIdentity{
@@ -448,6 +455,7 @@ func importMatchFile(ctx context.Context, path string, opts *Options, names *dis
 		MatchID:                   mid,
 		FormatID:                  formatID,
 		MatchDate:                 dateISO,
+		MatchEndDate:              endDateISO,
 		OriginalMatchType:         info.MatchType,
 		CompetitionLevel:          competitionLevel,
 		MatchTypeNumber:           info.MatchTypeNumber,
