@@ -1,3 +1,10 @@
+# Published ports bind to the loopback address, not to every interface (OPS-02). Postgres
+# in particular was reachable on 0.0.0.0:5432 with the password defaulting to `postgres`,
+# so any host on the same network could read and write the archive. Nothing in the stack
+# needs a published port to reach another service -- containers talk over the compose
+# network by name -- so the published ports exist only for the developer's own machine.
+# Set BIND_HOST=0.0.0.0 in .env to expose the stack on the LAN deliberately.
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -7,7 +14,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      - "${BIND_HOST:-127.0.0.1}:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -40,7 +47,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_SSLMODE: disable
-      API_KEY: ${API_KEY:-dev-local-key}
+      # No default (OPS-02). internal/server/auth.go already fails closed when API_KEY is
+      # unset -- it answers 503 to everything rather than let an unauthenticated request
+      # through -- and a compose-level default defeated exactly that, by handing every
+      # checkout of this repository the same well-known key. Compose refuses to render
+      # without it, so the stack cannot start half-protected.
+      API_KEY: ${API_KEY:?set API_KEY in .env or the environment; there is no default (see .env.example)}
       MIGRATIONS_DIR: /migrations
       PORT: 8080
       ML_SERVICE_URL: http://ml-service:8000
@@ -68,7 +80,7 @@ services:
       # Error (red) and warn (yellow) in docker logs for visibility
       LOG_COLOR: "1"
     ports:
-      - "8080:8080"
+      - "${BIND_HOST:-127.0.0.1}:8080:8080"
     volumes:
       - ./output:/output
       - ./data:/data
@@ -102,8 +114,10 @@ services:
       ML_SERVICE_OUTPUT_DIR: /app/output/ml-service
       # Enable /admin/reload and /admin/train/* when running from frontend pipeline
       ENABLE_HOT_RELOAD: ${ENABLE_HOT_RELOAD:-1}
-      # Require X-API-Key for /admin/* when set; default to API_KEY so admin is protected by default
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:-dev-local-key}}
+      # Require X-API-Key for /admin/*. app/main.py's `_verify_admin_api_key` lets every
+      # admin call through when this is empty, so it must never be empty here: it falls
+      # back to API_KEY, which compose refuses to render without (OPS-02).
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-${API_KEY:?set API_KEY in .env or the environment; there is no default (see .env.example)}}
       # H-11: a live prediction against ratings older than this is refused with RATINGS_STALE.
       XI_RATINGS_MAX_AGE_DAYS: ${XI_RATINGS_MAX_AGE_DAYS:-14}
       # The wicket-kind vocabulary the rating pass classifies wickets by (IMPORT-06);
@@ -112,10 +126,28 @@ services:
       # Error (red) and warn (yellow) in docker logs for visibility
       LOG_COLOR: "1"
     ports:
-      - "8000:8000"
+      - "${BIND_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - ./output:/app/output
       - ./configs:/configs:ro
+    restart: unless-stopped
+
+  # Read-only view of the Docker API for the watcher (OPS-02). Mounting /var/run/docker.sock
+  # into a container is equivalent to handing it root on the host: whoever is inside can
+  # create a privileged container and mount the host filesystem. The watcher never needs
+  # that -- `docker events`, `docker inspect` and `docker logs` are all GET calls -- so it
+  # talks to this haproxy instead, which allows the container and event endpoints and
+  # refuses every POST. Verified: inspect, logs and the event stream work through it;
+  # `docker run` and `docker kill` both come back 403 Forbidden.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: cric-docker-socket-proxy
+    environment:
+      CONTAINERS: 1 # /containers/* — inspect and logs, which is what the watcher reads
+      EVENTS: 1 # /events — the container `die` stream it subscribes to
+      POST: 0 # refuse every write: no create, exec, start, stop or kill
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
   # Watcher: monitors go-api, ml-service and postgres for crashes, OOM, and logs diagnostics. See docs/quality-and-debugging.md.
@@ -128,7 +160,10 @@ services:
     depends_on:
       - go-api
       - ml-service
+      - docker-socket-proxy
     environment:
+      # The Docker API, through the read-only proxy above, instead of the host socket.
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
       # Comma-separated list. Postgres is included because it is the likeliest OOM victim of
       # an allocation it did not make. Legacy: WATCH_CONTAINER for single container.
       WATCH_CONTAINERS: ${WATCH_CONTAINERS:-cric-go-api,cric-ml-service,cricket-postgres}
@@ -137,7 +172,6 @@ services:
       # Last N log lines to capture on crash (default 50)
       WATCH_TAIL_LOGS: ${WATCH_TAIL_LOGS:-50}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - watcher-logs:/logs
     restart: unless-stopped
 

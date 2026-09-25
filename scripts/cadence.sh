@@ -17,7 +17,7 @@
 #
 # Environment:
 #   API_URL          go-app base URL (default http://localhost:8080)
-#   API_KEY          X-API-Key for the admin surface (default dev-local-key)
+#   API_KEY          X-API-Key for the admin surface (required; no default -- OPS-02)
 #   PLAN             run plan to execute (default refresh)
 #   POLL_SECONDS     how often to re-read plan state (default 30)
 #   TIMEOUT_MINUTES  give up waiting after this long (default 90)
@@ -34,7 +34,10 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8080}"
-API_KEY="${API_KEY:-dev-local-key}"
+# No default (OPS-02). A scheduler entry that fell back to a key every checkout of this
+# repository knows would authenticate against any stack started with the old default, so
+# an unset key is a precondition failure (exit 1) rather than a silent one.
+API_KEY="${API_KEY:-}"
 PLAN="${PLAN:-refresh}"
 POLL_SECONDS="${POLL_SECONDS:-30}"
 TIMEOUT_MINUTES="${TIMEOUT_MINUTES:-90}"
@@ -64,6 +67,9 @@ print_steps() {
 
 require_tool curl
 require_tool jq
+
+[ -n "$API_KEY" ] ||
+  die "API_KEY is not set and has no default; use the key the stack was started with"
 
 log "target ${API_URL}, plan ${PLAN}, poll ${POLL_SECONDS}s, timeout ${TIMEOUT_MINUTES}m"
 

@@ -203,6 +203,8 @@ The stack includes a **watcher** service that monitors **cric-go-api**, **cric-m
 
 Start: `docker compose up -d`. View: `docker logs -f cric-watcher`. Set `WATCH_LOG=/logs/watcher.log` to persist. Use `WATCH_CONTAINERS=cric-go-api,cric-ml-service,cricket-postgres` (default) or `WATCH_CONTAINER=cric-go-api` (legacy). Use `WATCH_TAIL_LOGS=100` to capture more log lines.
 
+The watcher does **not** hold the host's Docker socket (OPS-02). Mounting `/var/run/docker.sock` into a container is equivalent to giving it root on the host — whatever is inside can create a privileged container and mount the host filesystem — and the watcher only ever reads: `docker events`, `docker inspect` and `docker logs` are all GET calls. It reaches the Docker API through a **`docker-socket-proxy`** service (`tecnativa/docker-socket-proxy`, one haproxy container) with `CONTAINERS=1`, `EVENTS=1` and `POST=0`, so reads work and every write — create, exec, start, stop, kill — comes back `403 Forbidden`. `DOCKER_HOST=tcp://docker-socket-proxy:2375` is what points it there. Running the script on the host (below) uses the host's own socket and is unaffected.
+
 **4. Watcher on host**  
 Run the same script on the host: `./scripts/watch-containers.sh`. Options: `WATCH_CONTAINERS=cric-go-api,cric-ml-service,cricket-postgres`, `WATCH_LOG=/path/to/file`, `WATCH_TAIL_LOGS=50`.
 

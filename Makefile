@@ -90,9 +90,25 @@ ml-serve:
 	cd ml-service && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # API auth/host for targets that talk to an already-running stack.
-# Must match the API_KEY the stack was started with (docker-compose defaults to dev-local-key).
-API_KEY ?= dev-local-key
+#
+# There is no default key (OPS-02). A default is a shared secret every checkout of this
+# repository knows, and go-app's own middleware fails closed without one, so a default
+# here only ever defeated that. The key comes from the command line, the environment, or
+# `.env` -- the file docker compose reads, so `make` and the stack agree on one key
+# without it being written down twice.
+API_KEY ?= $(shell set -a; [ -f .env ] && . ./.env; set +a; printf '%s' "$$API_KEY")
 API_URL ?= http://localhost:8080
+
+# Fail with an instruction rather than with a 401 when a target that needs the key has none.
+.PHONY: require-api-key
+require-api-key:
+	@test -n "$(API_KEY)" || { \
+	  echo "API_KEY is not set, and there is no default (OPS-02)."; \
+	  echo "Use the key the stack was started with, either of:"; \
+	  echo "  echo 'API_KEY=<your-key>' >> .env    # docker compose and these targets both read it"; \
+	  echo "  make <target> API_KEY=<your-key>"; \
+	  exit 1; \
+	}
 
 # Variables for convenience (override like: make e2e FORMAT=ODI SEASON=2019)
 SEASON ?= 2019
@@ -127,7 +143,7 @@ retrain:
 # Point `current` at a run and load it into the running ML service. RUN=<id> names one;
 # with none, the newest run on disk -- which is the run a retrain just built.
 RUN ?=
-reload:
+reload: require-api-key
 	$(MAKE) -C ml-service reload API_KEY="$(API_KEY)" ML_URL="$(ML_URL)" RUN="$(RUN)"
 
 # L4 evaluation harness (H-19): walk-forward + locked window, one JSON report. Reads the DB
@@ -172,7 +188,7 @@ full-pipeline: retrain reload
 #
 # The stack must be up (make dev-up) and API_KEY must match what it was started with.
 CADENCE_PLAN ?= refresh
-cadence:
+cadence: require-api-key
 	API_URL="$(API_URL)" API_KEY="$(API_KEY)" PLAN="$(CADENCE_PLAN)" bash scripts/cadence.sh
 
 # The same command, checking its preconditions and starting nothing.

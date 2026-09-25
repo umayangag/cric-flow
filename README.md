@@ -4,6 +4,7 @@ Cricket match and player performance prediction: Cricsheet import, one as-of rat
 
 ## Quick start
 
+- **Before the first `make dev-up`:** `cp .env.example .env` and set `API_KEY` to anything. There is no default key (OPS-02) — `docker compose` refuses to start without one and names the line to fill in. The same value goes in the frontend's login box, and `make reload` / `make cadence` read it from `.env` too. The stack's published ports bind to `127.0.0.1`; set `BIND_HOST=0.0.0.0` to expose them on the LAN deliberately.
 - **Bootstrap:** `make init` then `make dev-up` (Postgres, API, ML). Full pipeline: `make up-all`.
 - **Docs:** **docs/README.md** (the index), **docs/overview.md** (architecture, pipeline), **docs/config-and-data.md** (config, import), **docs/apis-backtest-and-ops.md** (APIs, evaluation, ops), **docs/ML_PIPELINE_REARCHITECTURE_PLAN.md** (the evidence for every number the system claims).
 
@@ -11,7 +12,7 @@ Cricket match and player performance prediction: Cricsheet import, one as-of rat
 
 - **Run API:** `make api` — `curl -s http://localhost:8080/health`
 - **Team selection API:** `POST /api/predict/team-selection` — `format`, `match_date`, and each side named by `team1_id` / `team2_id` (the `club_id` from `/api/options/teams-by-format`) or by name plus gender; see **docs/apis-backtest-and-ops.md**.
-- **Frontend:** eight tabs — Health, Ops Status, Workbench, Evaluation report, Team Lab, Track record, Auction, System map. (The Team Lab is the Upcoming-match tab grown up, on `/lab`: fixture, candidate pools, the toss and the constraints in, both XIs with their ranges out — P1-1 — and **Play mode**, where adding, removing or swapping a player on either side re-scores the fixture and shows the change against the eleven before it, with a broken constraint shown broken and never repaired — P1-2. The ML-model-stats tab went with the endpoint behind it in P-6; data acquisition is a section of Ops Status. The **Auction** tab, on `/auction`, is the auction record — P3-1: the list, each player's state, buyer, price and role, the buyer's squad and open slots, and the remaining pool's distribution by role. It is valuation and projection, never XI-picking: no request from it reaches `/xi/optimize`, and no win probability, marginal value or "best XI" is on it.) `make frontend-dev`; default key `dev-local-key`. Go API and ML service must be running.
+- **Frontend:** eight tabs — Health, Ops Status, Workbench, Evaluation report, Team Lab, Track record, Auction, System map. (The Team Lab is the Upcoming-match tab grown up, on `/lab`: fixture, candidate pools, the toss and the constraints in, both XIs with their ranges out — P1-1 — and **Play mode**, where adding, removing or swapping a player on either side re-scores the fixture and shows the change against the eleven before it, with a broken constraint shown broken and never repaired — P1-2. The ML-model-stats tab went with the endpoint behind it in P-6; data acquisition is a section of Ops Status. The **Auction** tab, on `/auction`, is the auction record — P3-1: the list, each player's state, buyer, price and role, the buyer's squad and open slots, and the remaining pool's distribution by role. It is valuation and projection, never XI-picking: no request from it reaches `/xi/optimize`, and no win probability, marginal value or "best XI" is on it.) `make frontend-dev`; the key you type in is the `API_KEY` the stack was started with (there is no default — OPS-02). Go API and ML service must be running.
 
 ## System architecture
 
@@ -101,7 +102,7 @@ Notes:
 
 ## Evaluation and frontend
 
-Evaluation report tab: L4's walk-forward folds, the locked window, per-target performance with interval width beside coverage, the simulator's E2 section, the train/serve parity check and the market benchmark (X-4: closing odds scored beside the displayed probability, with the joined coverage printed beside every number — a yardstick, never a model input). It reads one file (`make evaluate` writes it) — there is no form, because the folds and the locked window are the harness's. See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: default `dev-local-key` or set `API_KEY` in backend.
+Evaluation report tab: L4's walk-forward folds, the locked window, per-target performance with interval width beside coverage, the simulator's E2 section, the train/serve parity check and the market benchmark (X-4: closing odds scored beside the displayed probability, with the joined coverage printed beside every number — a yardstick, never a model input). It reads one file (`make evaluate` writes it) — there is no form, because the folds and the locked window are the harness's. See **docs/apis-backtest-and-ops.md**. Start stack: `make dev-up`; frontend: `make frontend-dev` (http://localhost:5173). API key in UI: the `API_KEY` the backend was started with; there is no default, and `docker compose` refuses to start without one (see `.env.example`).
 
 ## CI
 
@@ -169,7 +170,7 @@ Structured `log/slog`. Env: `LOG_FORMAT` (json|text), `LOG_LEVEL` (debug|info|wa
 
 ## Frontend
 
-Vite + React, MUI. `frontend/` — dev: `make frontend-dev`, test: `npm test`, build: `npm run build`. Auth: default `dev-local-key` or set `API_KEY`; admin tabs use `X-API-Key` header.
+Vite + React, MUI. `frontend/` — dev: `make frontend-dev`, test: `npm test`, build: `npm run build`. Auth: the `API_KEY` the backend was started with — no default; admin tabs use the `X-API-Key` header.
 
 **Import MUI through the barrel** — `import { Button } from '@mui/material'`, never `@mui/material/Button`. Subpath imports each add a Vite pre-bundle entry, which splits the package across many chunks and makes a re-optimization strand an open tab on stale chunks (blank page, `styled_default is not a function`). Enforced by `no-restricted-imports`; `@mui/icons-material/<Icon>` is exempt.
 

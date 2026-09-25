@@ -7,6 +7,8 @@
 # themselves. Without those paths a hand edit that broke a row merged green and surfaced at
 # the next backfill. `scripts/**` replaces the single py-reachability.py entry for the same
 # reason: the Python under scripts/ is in the reachability graph this job checks.
+# `docker-compose.yml` is here because tests/test_stack_security.py reads it (OPS-02): the
+# stack's admin key, its port bindings and the watcher's Docker access are asserted there.
 name: ML Service CI
 
 concurrency:
@@ -21,6 +23,7 @@ on:
       - 'reference-data/**'
       - 'configs/**'
       - 'scripts/**'
+      - 'docker-compose.yml'
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
@@ -31,6 +34,7 @@ on:
       - 'reference-data/**'
       - 'configs/**'
       - 'scripts/**'
+      - 'docker-compose.yml'
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
