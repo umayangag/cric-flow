@@ -364,6 +364,77 @@ def test_locate_uses_the_city_hint_then_the_venue_parts_then_records_unmappable(
     assert nowhere.note == geocoding.NOTE_NO_PLACE
 
 
+def test_locate_holds_a_country_centroid_and_takes_a_place_in_the_same_country() -> None:
+    """DATA-02: Cricsheet names "Barbados" as the city beside the Kensington Oval, so the
+    geocoder answered with the country and the row sat at its centroid -- 10 km from the
+    ground, and from where the other three spellings of the same ground were placed. The
+    centroid is held, the venue name's own parts are asked, and Bridgetown replaces it."""
+    facts = venues.VenueFacts(venue="Kensington Oval, Bridgetown")
+    facts.cities["Barbados"] += 57
+    facts.country_votes["BB"] += 57
+    client = _FakeGeocoder(
+        {
+            "Barbados": [_candidate("Barbados", "BB", 287_000)],
+            "Bridgetown": [_candidate("Bridgetown", "BB", 98_000, admin1="Saint Michael")],
+        }
+    )
+
+    located = geocoding.locate(facts, client)
+
+    assert located.query == "Bridgetown" and located.place == "Bridgetown"
+    assert located.admin1 == "Saint Michael" and located.note == ""
+    assert client.queries == ["Barbados", "Bridgetown"]
+
+
+def test_locate_keeps_a_country_centroid_when_the_venue_name_answers_another_country() -> None:
+    """The other half of DATA-02: "Lords, St David's Cricket Club Ground" is in Bermuda,
+    and its own name answers La Verne, California. A place replaces the centroid only when
+    it is in the same country, so the centroid stays."""
+    facts = venues.VenueFacts(venue="Lords, St David's Cricket Club Ground")
+    facts.cities["Bermuda"] += 4
+    client = _FakeGeocoder(
+        {
+            "Bermuda": [_candidate("Bermuda", "BM", 64_000)],
+            "Lords": [_candidate("La Verne", "US", 31_000, admin1="California")],
+        }
+    )
+
+    located = geocoding.locate(facts, client)
+
+    assert located.place == "Bermuda" and located.country_code == "BM"
+    assert "Lords" in client.queries
+
+
+def test_is_country_centroid_only_when_the_query_was_the_country_name() -> None:
+    """A place inside a country is never a centroid, and neither is a country whose name
+    the query did not ask for -- which is how "Rwandarugali" stops out-ranking "Rwanda"."""
+    barbados = _candidate("Barbados", "BB", 287_000)
+    bridgetown = _candidate("Bridgetown", "BB", 98_000, admin1="Saint Michael")
+
+    assert geocoding.is_country_centroid(barbados, "Barbados") is True
+    assert geocoding.is_country_centroid(barbados, "Bridgetown") is False
+    assert geocoding.is_country_centroid(bridgetown, "Bridgetown") is False
+
+
+def test_every_spelling_of_one_ground_is_placed_at_one_set_of_coordinates() -> None:
+    """DATA-02, on the committed table: the key deliberately does not merge spellings --
+    "County Ground" is nine different grounds in this archive, and a rule that folded the
+    first comma-part would make them one. What it must not do is place one ground in two
+    places, which is what a country centroid did to the Kensington Oval and the Queen's
+    Park Oval."""
+    locations = geocoding.read_locations(CURATED_TABLE)
+
+    for prefix in ("kensington oval", "queen s park oval"):
+        placements = {
+            (round(loc.latitude, 4), round(loc.longitude, 4))
+            for key, loc in locations.items()
+            if key == prefix or key.startswith(prefix + " ")
+        }
+        assert len(placements) == 1, f"{prefix}: {placements}"
+    county = {key for key in locations if key == "county ground" or key.startswith("county ground ")}
+    assert len(county) == 9
+
+
 def test_locate_notes_a_country_the_archive_did_not_vote_for() -> None:
     facts = venues.VenueFacts(venue="Dubai International Cricket Stadium")
     facts.country_votes["PK"] += 1

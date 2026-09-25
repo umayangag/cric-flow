@@ -78,8 +78,8 @@ share a row), with the coordinates, country and IANA timezone the weather is fet
 |---|---|
 | **Source** | Open-Meteo geocoding API (`https://geocoding-api.open-meteo.com/v1/search`), asked about the city Cricsheet names beside the venue (`info.city`) or the venue name's own parts, the country chosen by the sides that played there (*How a row is chosen*, below); **112 rows then placed by hand** (`note` starts `hand-curated`) where the geocoder placed a ground wrongly (Lincoln, Nebraska for Lincoln, Canterbury; Bangalore Town, Sindh for the Chinnaswamy) or not at all |
 | **Licence** | The geocoding data is Open-Meteo's, free for non-commercial use under **CC BY 4.0**; the hand placements are this project's |
-| **Captured** | **2026-09-05**, by X-2's backfill (`make venue-weather`) and the curation pass recorded in each row's `note`; **re-placed 2026-09-20** under DATA-01 (`docs/AUDIT_FINDINGS.md`): 22 rows moved, 2 by the corrected chooser and 20 by hand, and every row's `countries_voted` re-counted; **re-counted 2026-09-25** under DATA-03: 81 rows' votes changed when the competition table stopped voting for the country a tour is named after |
-| **Size** | 892 venue keys (896 archive spellings), **892 mapped**: 673 in the archive's top-voted country, 59 in a country the top vote does not out-vote beyond chance, 44 in a country nobody voted for against a weak top vote, 4 with no vote at all, 112 placed by hand — each kind but the first says so in its `note`. A row is a city-level placement, which is the data's own resolution (see below), except 26 that sit at a country or island centroid because the geocoder answered a country name (DATA-02). The one ground neither the archive nor the geocoder could place, `F B Colony Ground`, was placed from Wikipedia's alias for it (the former Alembic No 2 Ground, Vadodara) with the provenance in its `note` |
+| **Captured** | **2026-09-05**, by X-2's backfill (`make venue-weather`) and the curation pass recorded in each row's `note`; **re-placed 2026-09-20** under DATA-01 (`docs/AUDIT_FINDINGS.md`): 22 rows moved, 2 by the corrected chooser and 20 by hand, and every row's `countries_voted` re-counted; **re-counted and re-placed 2026-09-25** under DATA-03 and DATA-02: 81 rows' votes changed when the competition table stopped voting for the country a tour is named after, and 7 rows moved off a country centroid onto the city the ground is in |
+| **Size** | 892 venue keys (896 archive spellings), **892 mapped**: 673 in the archive's top-voted country, 59 in a country the top vote does not out-vote beyond chance, 44 in a country nobody voted for against a weak top vote, 4 with no vote at all, 112 placed by hand — each kind but the first says so in its `note`. A row is a city-level placement, which is the data's own resolution (see below), except **21 with an empty `admin1`** — 9 of them the country's own point — where the ground is in a city-state (Singapore, Gibraltar) or a dependent territory the geocoder holds no place inside (Jersey, Guernsey, Bermuda, Antigua, Grenada, Rwanda). Those are what is left of DATA-02: the chooser now holds a country answer and takes a place in the same country when a later query finds one, which moved 7 rows (the Kensington Oval off the Barbados centroid onto Bridgetown, the Queen's Park Oval off Trinidad onto Port of Spain), and keeps the centroid when nothing better exists rather than taking the Californian *Lords* that answers a Bermudian ground's name. The one ground neither the archive nor the geocoder could place, `F B Colony Ground`, was placed from Wikipedia's alias for it (the former Alembic No 2 Ground, Vadodara) with the provenance in its `note` |
 | **Read by** | `ml-service/ml/weather/geocoding.py`; written onto `venue.latitude/longitude/timezone/city/country` by the restore |
 
 **A row, once written, is never rewritten by a run**: `make venue-weather` asks only about
@@ -87,6 +87,17 @@ venues the file has no row for. That is what makes the file curated rather than 
 correct a row by hand, say so in its `note`, and it stays corrected. ERA5 is a 0.25°
 reanalysis (~28 km cells), so a ground's city places it as well as its gates would; the
 `query` column says what was asked and `place` what answered.
+
+**The key does not merge spellings of one ground, deliberately.** `venue_key` folds case,
+accents and punctuation and nothing else — the same fold `venues.NormalizeName` applies to
+`venue.normalized_name` in the database (IMPORT-08), which is why the two tables join. It
+does *not* key on the first comma-part: `County Ground` is **nine different grounds** in
+this archive (bare, Bristol, Chelmsford, Derby, Hove, New Road, New Road/Worcester,
+Northampton, Taunton), and Bristol and Derby are real cities, so a rule that dropped the
+trailing parts when they look like a place would make those nine one. So four spellings of
+the Kensington Oval remain four rows; what DATA-02 fixed is that they no longer sit in two
+different places. Merging them into one row needs coordinates or a person, not a longer
+delimiter rule, and is not done here.
 
 **How a row is chosen.** The archive's votes are on the row, in `countries_voted`
 (`BD:105 ZW:37 IN:33 …`, most votes first — one vote per fixture for each international
