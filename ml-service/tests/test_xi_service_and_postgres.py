@@ -674,6 +674,31 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     assert recs[1].toss_winner is None and recs[1].toss_won_by_team1 is None
 
 
+def test_postgres_source_counts_a_match_with_no_first_innings_unusable_not_out_of_scope(caplog) -> None:
+    """FEAT-11: a match with a toss and then rain has a `match` row and no `match_inning`
+    row. The archive path counts such a file unusable; this source inner-joined the first
+    innings in SQL, so the same match vanished into `out_of_scope` -- the count that means
+    "a format or date this run did not ask for" -- and `make xi-parity` compared two
+    sources that disagreed on the split. SQL now filters by format and date only, and the
+    missing innings is detected here and counted with the archive path's word for it."""
+    from ml.xi.sources import _MATCH_SQL
+
+    tables = {
+        "matches": [(7, date(2024, 1, 1), "T20I", "male", 5, None, None, None, "", None, "", "", "no result", 10)],
+        "players": {7: [(f"a{i:07x}", 10, False) for i in range(11)] + [(f"b{i:07x}", 20, False) for i in range(11)]},
+        "balls": {},
+    }
+    source = PostgresSource(_FakeConnection(tables), formats=["T20I"])
+
+    with caplog.at_level("WARNING", logger="ml.xi.sources"):
+        records = list(source.iter_matches())
+
+    assert records == []
+    assert (source.counts.offered, source.counts.out_of_scope, source.counts.unusable) == (1, 0, 1)
+    assert "no first innings" in caplog.text
+    assert "LEFT JOIN match_inning mi" in _MATCH_SQL, "the innings filter belongs to Python, not to the SQL"
+
+
 def test_postgres_source_places_venues_through_the_curated_table(tmp_path) -> None:
     """FEAT-05's static input on the database path: ``venue.country`` is NULL on every row
     of the archive, so the source joins each venue's *name* to the curated table by the

@@ -670,6 +670,11 @@ class CricsheetJsonSource:
 # The toss winner (FEAT-05) is keyed through the same COALESCE as the sides, so "did the
 # side batting first win the toss" is one equality on both sources. ``toss_decision`` is
 # not read: it is that equality on every row of the archive.
+# The sides come from the first innings, and the join to it is a LEFT JOIN on purpose
+# (FEAT-11): SQL filters by format and date only, which is what ``out_of_scope`` counts,
+# and a match with no first innings -- a toss and then rain -- reaches Python with both
+# sides NULL and is counted ``unusable`` there, as the archive path counts a file with no
+# innings. An inner join dropped it here, silently, into the other count.
 _MATCH_SQL = """
 SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(bat.canonical_id, bat.id),
@@ -681,9 +686,9 @@ SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(toss.canonical_id, toss.id)
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
-JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
-JOIN opposition bat ON bat.id = mi.batting_team_opposition_id
-JOIN opposition bowl ON bowl.id = mi.bowling_team_opposition_id
+LEFT JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
+LEFT JOIN opposition bat ON bat.id = mi.batting_team_opposition_id
+LEFT JOIN opposition bowl ON bowl.id = mi.bowling_team_opposition_id
 LEFT JOIN opposition win ON win.id = m.outcome_winner_opposition_id
 LEFT JOIN opposition toss ON toss.id = m.toss_winner_opposition_id
 WHERE mf.code = ANY(%s) AND m.match_date < %s
@@ -825,6 +830,7 @@ class PostgresSource:
             matches = cur.fetchall()
         self.counts = SourceCounts(offered=offered, out_of_scope=offered - len(matches))
         logger.info("postgres source: %d matches of %d in the date range", len(matches), offered)
+        matches = self._with_a_first_innings(matches)
         # The whole edition before the first delivery is read: the same derivation the
         # archive path runs, over the same set of matches, so the two agree or H-15 says
         # which field they differ on (X-3). "The same set" is exact while
@@ -868,6 +874,19 @@ class PostgresSource:
                 replacements=replacements,
                 toss_winner=None if row[13] is None else str(row[13]),
             )
+
+
+    def _with_a_first_innings(self, matches: Sequence[Sequence]) -> List[Sequence]:
+        """The rows that have a first innings to name the sides from; the rest are
+        counted unusable, as the archive path counts a file with no innings (FEAT-11)."""
+        usable: List[Sequence] = []
+        for row in matches:
+            if row[5] is None or row[6] is None:
+                logger.warning("match %s has no first innings to name its sides from; unusable", row[0])
+                self.counts.unusable += 1
+                continue
+            usable.append(row)
+        return usable
 
 
 def _stakes_header(row: Sequence) -> Header:
