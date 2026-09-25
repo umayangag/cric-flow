@@ -1595,6 +1595,54 @@ Three facts about the data on the way in, each of which sets up a prediction. **
 
 The three synthetic `player` rows with ids 1–3 are still there, as in every batch; the importer deletes nothing it does not name.
 
+#### Step 3 — `make xi-parity`: **FAILS** — five differences, two defects, both on the archive side, neither fixed here
+
+`make export-birth-dates` wrote 6,967 players first (the operator note from batches 1–3, still required), then `make xi-parity` ran two rating passes: Postgres in 3 min 46 s, the archive in 1 min 29 s, **exit 2** in 5 min 16 s (19:23:59–19:29:15 UTC). The check now compares **twenty-three** counts (batch 3: twenty) — `runs_scored`, `matches_with_one_home_side`, `matches_without_toss` and `multi_day_matches` were added and `out_of_scope_matches` is still left out on purpose — and prints twenty-five. **This is the first red parity check of the audit.** Every count, and the verdict:
+
+| count | postgres | cricsheet | batch 3 |
+|---|---:|---:|---:|
+| offered_matches / matches_read | 22,905 | 22,905 | 22,905 |
+| out_of_scope / unusable_matches | 0 | 0 | 0 |
+| undecided_matches | 1,612 | 1,612 | 1,612 |
+| drawn_or_tied_matches | 1,121 | 1,121 | 1,121 |
+| decided_matches_without_deliveries | 0 | 0 | 0 |
+| runs_not_charged_to_bowler | 234,322 | 234,322 | 234,322 |
+| **runs_scored** (now compared) | **9,345,815** | **9,345,815** | 9,345,813 / 9,345,815 |
+| deliveries_not_faced | 202,331 | 202,331 | 202,331 |
+| dismissals | 353,063 | 353,063 | 353,063 |
+| namesake_sides | 0 | 0 | 0 |
+| oversized_squads | 24 | 24 | 24 |
+| replacement_players | 1,362 | 1,362 | 1,362 |
+| **unknown_player_keys** | **0** | **1 ❌** | 0 / 0 |
+| **player_keys** | **13,639** | **13,640 ❌** | 13,639 / 13,639 |
+| team_keys | 522 | 522 | 522 |
+| players_with_birth_date | 6,955 | 6,955 | 6,955 |
+| matches_with_stage_label | 22,100 | 22,100 | 22,101 |
+| knockout_matches | 1,420 | 1,420 | 1,420 |
+| **matches_with_reconstructible_table** | **16,664** | **16,692 ❌** | 16,587 / 16,587 |
+| **dead_rubber_matches** | **2,224** | **2,236 ❌** | 2,215 / 2,215 |
+| matches_with_one_home_side (FEAT-05, new) | 6,164 | 6,164 | — |
+| matches_without_toss (new) | 0 | 0 | — |
+| multi_day_matches (FEAT-09, new) | 3,171 | 3,171 | — |
+| training rows / player-match rows | 21,293 / 468,461 | 21,293 / 468,461 | 21,293 / 468,461 |
+
+```
+ERROR source parity: unknown_player_keys: postgres 0, cricsheet 1
+ERROR source parity: player_keys: postgres 13639, cricsheet 13640
+ERROR source parity: matches_with_reconstructible_table: postgres 16664, cricsheet 16692
+ERROR source parity: dead_rubber_matches: postgres 2224, cricsheet 2236
+ERROR source parity: player keys differ: 0 only in postgres [], 1 only in cricsheet ['name:Lalchhuanliana']
+ERROR the database and the archive describe different cricket (5 differences)
+```
+
+**What held.** `runs_scored` closes at **9,345,815 on both sides** — IMPORT-12's prediction, to the run: the one ball step 2 added is the 2 runs batch 3 found missing, and the count is now in `_COMPARED_COUNTS`, so B-17's live symptom is closed. FEAT-09's `multi_day_matches` reads 3,171 on both sides, the same 3,171 rows whose `match_end_date` step 2 set. FEAT-05's `matches_with_one_home_side` reads 6,164 on both sides. `matches_with_stage_label` fell by one on *both* sides (22,101 → 22,100), which the two sources agree on and this pass did not chase.
+
+**Defect A — the archive path's format taxonomy no longer mirrors the database's; 5,700 international T20s are club T20 on the archive side.** IMPORT-09 (#335) made go-app place a `T20` file by `info.team_type` and **deleted `formats.international_teams` from `go-app/config.json`** and from the Go config struct. The Python mirror, `ml/xi/sources.py::detect_format` ("Mirror go-app/internal/cricsheet/format.go"), was not touched by #335 and still places a T20 as T20I when two of its teams are in that list — read by `ml/xi/train.py::_international_teams_from_config`, which finds the config file, finds no key, and **returns `[]` without the warning** (the warning fires only when the file is missing). So the archive pass classes every `match_type: T20` file as club T20; only the 320 files typed `T20I`/`IT20` are T20I. Measured over all 22,880 numerically-named files against the database's `format_id`: **5,700 matches disagree (3,539 men's, 2,161 women's), every one of them `team_type: international` and T20I in the database, T20 on the archive side** — Sri Lanka in Australia 2017, the Trans-Tasman Trophy, the Desert T20 Challenge, the Women's T20 Asia Cup. Parity cannot see it: it compares the *total* training-row count (21,293, which the taxonomy does not change) and not the per-format split, which is **T20 8,305 / T20I 5,898 / ODI 4,995 / TEST 2,095 in the database and T20 13,889 / T20I 314 / ODI 4,995 / TEST 2,095 on the archive side** — the same species of blind spot as B-17. The two table counts are this defect and nothing else: `stakes.py` is unchanged since batch 3 and keys an edition on (competition, format, gender), so a wrong format splits or merges editions. Re-running the archive pass with `detect_format` patched to the database's `team_type` rule gives **16,664 reconstructible tables and 2,224 dead rubbers — the Postgres figures exactly — and the database's per-format rows to the match (8,305 / 5,898 / 4,995 / 2,095)**. Scope: `make xi-parity`'s archive side, and any `CRICSHEET_DIR=` offline retrain, evaluate or serving-parity run — which now train a T20I model on 314 rows and a T20 model on 13,889. The Postgres path, which this pass's retrain and harness read, is unaffected. **Recorded, not fixed.** The fix is one function reading `info.team_type` and one dead config loader deleted; and a per-format row count in `_COMPARED_COUNTS`, so that parity can see a taxonomy again.
+
+**Defect B — a trailing space in a player's name splits him in two on the archive side, and FEAT-07 is what made it visible.** Four Syed Mushtaq Ali Trophy files (1244324, 1244340, 1244360, 1244381; Mizoram, January 2021) spell one player `"Lalchhuanliana "` — trailing space — in `info.players`, in `info.registry.people` (→ `2ca0f319`) and in `player_out`. The archive path resolves his squad key with the raw name (`_squads`, `registry.get(n, …)`) and gets `2ca0f319`; `_wickets_of` (line 428, unchanged since IMPORT-06) does `.strip()` *before* the registry lookup, misses the spaced key, and falls back to `name:Lalchhuanliana`. Before batch 4 that fallback key went nowhere: the dismissal was charged to the striker. FEAT-07 (#349) charges it to the player out (`for i, dismissed in enumerate(d.players_out)`), so the pass now opens a rating slot for the phantom — **13,640 keys, one `unknown_player_key`**, and his three dismissals in those files sit on a player who never batted. The database is right: the importer trims the name (`player.player_name` `Lalchhuanliana`, `external_id 2ca0f319`, one row, four `match_player` rows) and keys on `external_id`, so `unknown_player_keys` is 0 there as it was. One player, three dismissals, no bearing on any served number; but it is the exact path `_unknown_player_keys`'s docstring says is worth gating — "the fallback is the path that quietly goes back to identifying people by name" — and the gate caught it. **Recorded, not fixed.** The fix is to look the registry up with the same string the squads use (or strip both), and a test with a spaced name.
+
+**Read plainly: parity is red, both defects are on the side of the check that the served models do not read, and neither is a threshold question.** The pipeline was continued to the retrain and the harness because they read Postgres and because this pass's purpose is the record; the red result stands as a finding, and no criterion was changed.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
