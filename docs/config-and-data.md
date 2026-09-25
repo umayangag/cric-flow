@@ -273,6 +273,16 @@ Two consequences worth knowing:
   named ground with `db.FindVenueIDByName`, which matches the same folded key and never
   writes; a name this database does not hold is `400 VENUE_NOT_FOUND` (GO-08).
   `/api/options/venues` offers `venue_name`, so every string it lists resolves.
+- **The folded key is the table's only unique key**, and it has to be. The importer upserts
+  `ON CONFLICT (normalized_name)`, and `ON CONFLICT` arbitrates only the index it names: a
+  conflict found while writing any other unique index is raised as `SQLSTATE 23505` rather
+  than absorbed. `venue` kept the 0001 baseline's `UNIQUE (venue_name)` alongside the key
+  0021 introduced, so two importer goroutines that first named one ground at the same
+  instant collided on the old constraint and lost the file — seven files out of 22,905 on a
+  full import, and with `-fail-fast` on by default the run stopped at the first of them.
+  `0025_venue_name_unique_dropped.sql` drops it (B-23). Nothing is given up: the spelling is
+  what the fold is computed from, so uniqueness of the spelling follows from uniqueness of
+  the key.
 
 ---
 
