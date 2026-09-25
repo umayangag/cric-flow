@@ -409,12 +409,16 @@ paying twice.
   it (`SessionWindow.rule`), the census is in the coverage report, and the error is
   inspectable rather than hidden in a feature.
 
-**Every feature is fixed before the first ball (H-21).** The families read the mean of the
-three hours *before* the inferred start (humidity, temperature), the night flag times that
-humidity (dew), and the rain that had already fallen (the day before plus the match day's
-hours before the start; the seven days before). Nothing reads the match's own hours. A
-match without readings in its window is its own category (`wx_known` 0), never an
-imputed climate.
+**Every feature is fixed before the first ball (H-21).** The same-day windows end at
+**08:00 local** — one hour before the earliest start any session rule assigns
+(`sessions.EARLIEST_START_HOUR`, 09:00), so no actual start can have put an hour of play
+inside them, whichever rule placed the match. The families read the mean of the three hours
+before that (05–08h humidity and temperature), the night flag times that humidity (dew),
+and the rain that had already fallen (the day before plus the match day's hours before
+08:00; the seven days before). The inferred start supplies only the night flag: a window
+that ended at the inferred start read in-play hours whenever the match began before its
+norm (DATA-05, `AUDIT_FINDINGS.md` § 9). A match without readings in its window is its own
+category (`wx_known` 0), never an imputed climate.
 
 **One command, resumable.**
 

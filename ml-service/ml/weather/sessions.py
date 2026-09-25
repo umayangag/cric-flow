@@ -2,8 +2,10 @@
 
 Every rule here is a norm -- the hour a competition or a country usually starts a match of
 that format -- and every match records which rule placed it (``SessionWindow.rule``), so
-the inference's error is inspectable rather than hidden in a feature. The pre-match window
-the features read is the hours before ``start_hour``; the day/night flag says whether play
+the inference's error is inspectable rather than hidden in a feature. The features read
+``start_hour`` for nothing but the day/night flag: a same-day window that ended at the
+inferred start read in-play hours whenever the match began before its norm (DATA-05), so
+every same-day window now ends before ``EARLIEST_START_HOUR``. The flag says whether play
 ran into the evening, which is a fact about the schedule, not the weather.
 
 What the rules know: the format class; whether the sides are international; the venue's
@@ -117,6 +119,37 @@ T20_DOMESTIC_DAY_START = 10
 ICC_T20_NEEDLES = ("t20 world cup", "world twenty20", "world t20")
 ICC_T20_MEN_SLOTS = (15, 19)
 ICC_T20_WOMEN_SLOTS = (15, 19)
+
+
+def _every_rule_start_hour() -> Sequence[int]:
+    """Every local hour a rule above can place a start at."""
+    hours = [
+        ODI_START_DEFAULT,
+        ONE_DAY_DOMESTIC_START_DEFAULT,
+        FIRST_CLASS_START_DEFAULT,
+        T20I_START_DEFAULT,
+        T20I_WOMEN_START,
+        T20_DOMESTIC_WEEKDAY_START,
+        T20_DOMESTIC_WEEKEND_START,
+        T20_DOMESTIC_DAY_START,
+        *ODI_START_BY_COUNTRY.values(),
+        *ONE_DAY_DOMESTIC_START_BY_COUNTRY.values(),
+        *FIRST_CLASS_START_BY_COUNTRY.values(),
+        *T20I_START_BY_COUNTRY.values(),
+        *MULTI_HEADER_SLOTS,
+        *ICC_T20_MEN_SLOTS,
+        *ICC_T20_WOMEN_SLOTS,
+    ]
+    for _, norm in T20_LEAGUE_NORMS:
+        hours.append(norm.single)
+        hours.extend(norm.double)
+    return hours
+
+
+#: The earliest local hour any rule places a start at. A same-day weather window that ends
+#: before it cannot contain an hour of play, whichever rule placed the match and however
+#: early the match in fact began within what the rules know (DATA-05).
+EARLIEST_START_HOUR = min(_every_rule_start_hour())
 
 
 @dataclass(frozen=True)

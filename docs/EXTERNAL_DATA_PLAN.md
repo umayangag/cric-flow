@@ -1136,6 +1136,26 @@ were an hour out, so **the gate (a) table below was measured on the pre-correcti
 is not reproducible from the corrected file. It is left as recorded rather than quietly
 restated; re-running it is a `make evaluate`-class job.
 
+**Corrected again under DATA-05 (2026-09-25; PR #346).** The same-day windows read up to
+the *inferred* start, which is a norm: rain summed over `[0, start)`, humidity and
+temperature averaged over `[start-3, start)`. Measured on the corrected cache, every match
+is placed at 09:00 or later and **7,365 of 22,905 matches (6,377 venue-days) read 11,616 mm
+of rain between 08:00 and their inferred start — 48 % of the same-day rain the column
+summed** (565 matches over 5 mm), in the day's rainiest hours (the profile peaks at
+13–16h); humidity and temperature were exposed on every row. Every same-day window now ends
+at 08:00 local, one hour before the earliest start any rule assigns, so no actual start can
+put play inside it; the inferred window supplies only the night flag. What that does to
+the tables below: the **rain** rows were measured with a column that carried in-play rain on
+a third of its rows and still read null in every format — a stronger null, not a weaker
+one; the **humidity/temperature** and **dew** rows were measured with windows that could
+read in-play humidity, and the corrected columns carry less of the diurnal signal (dawn
+humidity correlates 0.65 with the old pre-start mean; the dew proxy's day/night humidity
+contrast is gone at dawn), so those nulls stand more firmly. All four families' figures
+were therefore computed with the leaking windows as well as on the pre-correction hours.
+The arm that joined the weather frame onto the rows was never committed (`e0ecddc7` added
+only the gate declarations), so a re-run first needs that join re-created, then `make
+evaluate`-class compute.
+
 **When the matches started.** Cricsheet carries no start times, so `ml/weather/sessions.py`
 infers a window per match from norms and records the rule that placed it: the league's
 usual hour (the earlier of a double-header from its match number: IPL 15:30/19:30, PSL
