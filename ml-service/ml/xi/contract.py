@@ -306,9 +306,10 @@ _STEM_DIRECTION: Dict[str, int] = {
     "pelo_std": 0,
 }
 
-# The XI-responsive contract: differentials plus both sides' raw values for the subset that
-# is not purely relative (a strong side against a strong side is not the same as two weak ones).
-_DIFF_STEMS: List[str] = [
+# The XI-responsive contract: every stem the win models read. A stem in ``_SIDE_STEMS`` is
+# read as both sides' raw values (a strong side against a strong side is not the same as
+# two weak ones); every other stem is read as the differential alone.
+_XI_STEMS: List[str] = [
     "pelo_mean",
     "pelo_top3",
     "pelo_min",
@@ -353,8 +354,14 @@ _SIDE_STEMS: List[str] = [
     "n_debutants",
 ]
 
+# A side stem is never read as its differential as well: ``d_x = t1_x - t2_x`` exactly, so
+# the triple was one linear dependence per stem (EVAL-13: 40 columns of rank 29) and the
+# objective's L2 penalty, not the rows, decided how a stem's weight was split across the
+# three. The raw pair spans the differential, so nothing the model could express is lost;
+# the differential is what would have lost the level.
+_DIFF_ONLY_STEMS: List[str] = [s for s in _XI_STEMS if s not in _SIDE_STEMS]
 XI_FEATURE_COLS: List[str] = (
-    [f"d_{s}" for s in _DIFF_STEMS] + [f"t1_{s}" for s in _SIDE_STEMS] + [f"t2_{s}" for s in _SIDE_STEMS]
+    [f"d_{s}" for s in _DIFF_ONLY_STEMS] + [f"t1_{s}" for s in _SIDE_STEMS] + [f"t2_{s}" for s in _SIDE_STEMS]
 )
 
 TEAM_CONTEXT_COLS: List[str] = [
