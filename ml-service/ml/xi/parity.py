@@ -62,6 +62,7 @@ _COMPARED_COUNTS = (
     "dead_rubber_matches",
     "matches_with_one_home_side",
     "matches_without_toss",
+    "multi_day_matches",
 )
 
 

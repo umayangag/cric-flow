@@ -138,6 +138,46 @@ func TestInfo_UnmarshalJSON_Dates(t *testing.T) {
 	}
 }
 
+// FEAT-09: the last listed day is the day the match ended; a file with no date is refused
+// as MatchDate refuses it.
+func TestInfo_MatchEndDate(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		in       string
+		wantDate string
+		wantErr  bool
+	}{
+		{name: "one day is its own end", in: `{"dates": ["2025-11-07"]}`, wantDate: "2025-11-07"},
+		{
+			name:     "a Test ends on its last listed day",
+			in:       `{"dates": ["2025-11-07", "2025-11-08", "2025-11-09"]}`,
+			wantDate: "2025-11-09",
+		},
+		{name: "match_date field", in: `{"match_date": ["2025-12-25", "2025-12-26"]}`, wantDate: "2025-12-26"},
+		{name: "no date is a parse error", in: `{"venue": "Some Stadium"}`, wantErr: true},
+	}
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var info cricsheet.Info
+			require.NoError(t, json.Unmarshal([]byte(tc.in), &info))
+
+			endDate, err := info.MatchEndDate()
+
+			if tc.wantErr {
+				require.Error(t, err)
+				require.Empty(t, endDate)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantDate, endDate)
+		})
+	}
+}
+
 func TestParse_DoesNotPanicOnMinimalJSON(t *testing.T) {
 	t.Parallel()
 

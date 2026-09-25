@@ -37,6 +37,8 @@ def _deliveries(batters: List[str], bowlers: List[str], runs: List[int], wickets
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
+        # a wicket is the striker's own dismissal unless a test says otherwise (FEAT-07)
+        players_out=[[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 
@@ -360,6 +362,112 @@ def test_the_bowlers_ledger_charges_him_only_the_runs_he_conceded() -> None:
     assert _bowl_rate_after(no_balls_with_four_leg_byes) > _bowl_rate_after(charged_the_lot)
 
 
+def _bat_wrates_after(deliveries: Deliveries, keys: List[str]) -> List[float]:
+    """Each key's ``bat_wrate`` after one T20 match of the given deliveries."""
+    t1, t2 = _xi("a"), _xi("b")
+    state = RatingState()
+    state.update(_match("m", 0, "A", t1, t2, deliveries))
+    return [float(v) for v in state.side_vectors("T20", keys)["bat_wrate"]]
+
+
+def test_a_run_out_at_the_non_strikers_end_is_charged_to_the_batter_who_was_out() -> None:
+    """FEAT-07 / B-16: a0 faces six balls and a1, backing up, is run out on the third. The
+    dismissal is a1's -- his ``dismissals`` target counts it -- so his wicket rate falls and
+    a0's reads exactly what it would had nobody been out: the ledger charges the batter
+    dismissed, not the batter facing."""
+    t1, t2 = _xi("a"), _xi("b")
+    partner_run_out = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0, 0, 1, 0, 0, 0])
+    partner_run_out.bowler_wicket[2] = 0.0
+    partner_run_out.players_out[2] = [t1[1]]
+    nobody_out = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+
+    striker, partner = _bat_wrates_after(partner_run_out, [t1[0], t1[1]])
+    striker_alone, _ = _bat_wrates_after(nobody_out, [t1[0], t1[1]])
+
+    assert striker == pytest.approx(striker_alone)
+    assert partner < 0.0
+
+
+def test_a_batters_own_dismissal_is_still_his() -> None:
+    """The striker is charged the dismissals that were his, and only those: out on the
+    sixth ball he reads below a batter who survived the same six."""
+    t1, t2 = _xi("a"), _xi("b")
+    bowled_last_ball = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 5 + [1])
+    survived = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+
+    assert _bat_wrates_after(bowled_last_ball, [t1[0]])[0] < _bat_wrates_after(survived, [t1[0]])[0]
+
+
+def _innings_with_a_stumping_by(keeper: str, striker: str, bowler: str) -> Deliveries:
+    """Six balls faced by ``striker``; the last is a stumping credited to ``keeper``."""
+    d = _deliveries([striker] * 6, [bowler] * 6, [1] * 6, [0] * 5 + [1])
+    d.stumping[5] = 1.0
+    d.fielders[5] = [keeper]
+    return d
+
+
+def _keeper_weights_after(innings: List[Deliveries], keys: List[str]) -> List[float]:
+    """Each key's ``keeper`` weight after one match per innings given, side B fielding."""
+    t1, t2 = _xi("a"), _xi("b")
+    state = RatingState()
+    for day, d in enumerate(innings):
+        state.update(_match(f"m{day}", day, "A", t1, t2, d))
+    return [float(v) for v in state.side_vectors("T20", keys)["keeper"]]
+
+
+def test_a_stumping_names_the_keeper_and_says_his_ten_teammates_did_not_keep() -> None:
+    """FEAT-10: the match that credits b0 with a stumping says who kept for side B -- him,
+    and so not b1 -- and the keeper weight reads exactly that."""
+    b = _xi("b")
+
+    weights = _keeper_weights_after([_innings_with_a_stumping_by(b[0], "a0", b[5])], [b[0], b[1]])
+
+    assert weights == [1.0, 0.0]
+    assert C.is_keeper(weights[0]) and not C.is_keeper(weights[1])
+
+
+def test_a_former_keeper_stops_reading_as_one_once_his_sides_stumpings_go_to_someone_else() -> None:
+    """FEAT-10: b0 stumps once, then b1 stumps in each of the next two matches. b0's weight
+    has halved twice to 0.25, on the bar and not over it -- his last stumping is no longer
+    within his side's last two matches that named a keeper -- while b1 reads 1.5. Until
+    FEAT-10 one stumping was a permanent flag."""
+    b = _xi("b")
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5])] + [
+        _innings_with_a_stumping_by(b[1], "a0", b[5]) for _ in range(2)
+    ]
+
+    former, current = _keeper_weights_after(innings, [b[0], b[1]])
+
+    assert former == pytest.approx(0.25) and current == pytest.approx(1.5)
+    assert not C.is_keeper(former) and C.is_keeper(current)
+
+
+def test_a_new_keeper_reads_as_one_from_his_first_stumping_and_a_stand_in_does_not_unseat_the_old() -> None:
+    """The bar admits a keeper the match he is first seen: after b1's first stumping he is
+    a keeper at once, and b0 -- whose last stumping is the match before -- still is: one
+    match in which someone else stumped is a stand-in, not a handover."""
+    b = _xi("b")
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5]), _innings_with_a_stumping_by(b[1], "a0", b[5])]
+
+    former, current = _keeper_weights_after(innings, [b[0], b[1]])
+
+    assert former == pytest.approx(0.5) and current == 1.0
+    assert C.is_keeper(former) and C.is_keeper(current)
+
+
+def test_a_keeper_keeps_reading_as_one_through_matches_with_no_stumping() -> None:
+    """A match in which his side records no stumping says nothing about who kept, so it
+    moves nobody's weight: the side's keeper is not forgotten for a dry run."""
+    b = _xi("b")
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5])] + [
+        _deliveries(["a0"] * 6, [b[5]] * 6, [1] * 6, [0] * 6) for _ in range(4)
+    ]
+
+    (weight,) = _keeper_weights_after(innings, [b[0]])
+
+    assert weight == 1.0 and C.is_keeper(weight)
+
+
 def test_aggregate_side_role_coverage_and_monotone_direction() -> None:
     fmt = "T20"
     base = {
@@ -486,6 +594,22 @@ def test_a_draw_or_an_unbroken_tie_is_half_a_win_of_form_and_moves_no_elo() -> N
     assert state.team_results[("T20", "B")] == [0.5, 0.5, 0.0]
     assert elo_after_draws == pytest.approx(C.ELO_INITIAL), "a draw moves no Elo"
     assert state.team_elo[("T20", "A")] > elo_after_draws, "a tie-breaker win is a win"
+
+
+def test_a_fixture_played_during_a_test_reads_a_state_without_that_test() -> None:
+    """FEAT-09: the Test runs from day 0 to day 4; the T20 on day 2 is played while it is
+    on, so its rows read nobody's Test appearance -- the pass folds the Test at the close
+    of its last day, not its first -- and the T20 on day 6 reads both matches."""
+    t1, t2 = _xi("a"), _xi("b")
+    d = _deliveries([t1[0]] * 12, [t2[5]] * 12, [1] * 12, [0] * 12)
+    test_match = replace(_match("test", 0, "A", t1, t2, d, fmt="TEST"), match_end_date=date(2024, 1, 5))
+    during = _match("during", 2, "A", t1, t2, d)
+    after = _match("after", 6, "A", t1, t2, d)
+
+    player_rows = build(_ListSource([test_match, during, after])).player_frame
+
+    assert set(player_rows[player_rows.match_id == "during"].career_all) == {0.0}
+    assert set(player_rows[player_rows.match_id == "after"].career_all) == {2.0}
 
 
 def test_same_day_matches_do_not_see_each_other() -> None:

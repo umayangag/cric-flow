@@ -119,7 +119,7 @@ PLAYER_ARRAY_NAMES = (
     "bowl_wae",
     "career",
     "career_all",
-    "keeper",
+    "kept",
     "pelo",
     "bat_pos_sum",
     "bat_pos_n",
@@ -220,7 +220,10 @@ class RatingState:
         self.bowl_rse, self.bowl_balls, self.bowl_wae = z(), z(), z()
         self.career = z()
         self.career_all = np.zeros(n)
-        self.keeper = np.zeros(n)
+        # the keeper ledger (FEAT-10): per player, 1.0 for each match he was seen keeping in,
+        # decayed on every later match in which his side's keeper was seen -- one clock,
+        # every format, advanced only by a match that named the side's keeper
+        self.kept = np.zeros(n)
         self.pelo = np.full((_N_FMT, n), C.ELO_INITIAL)
         # expected batting slot: decayed sum of positions batted, decayed count of innings
         # batted, decayed count of XI appearances
@@ -290,7 +293,7 @@ class RatingState:
         ):  # fmt: skip
             setattr(self, name, _grow(getattr(self, name), n, 0.0))
         self.career_all = _grow(self.career_all, n, 0.0)
-        self.keeper = _grow(self.keeper, n, 0.0)
+        self.kept = _grow(self.kept, n, 0.0)
         self.pelo = _grow(self.pelo, n, C.ELO_INITIAL)
 
     def _slots(self, keys: Sequence[str]) -> np.ndarray:
@@ -402,7 +405,7 @@ class RatingState:
             "career": self.career[f, s].copy(),
             "career_all": self.career_all[s].copy(),
             "pelo": self.pelo[f, s].copy(),
-            "keeper": self.keeper[s].copy(),
+            "keeper": self.kept[s].copy(),
             "exp_bat_position": (self.bat_pos_sum[f, s] + C.BAT_POSITION_PRIOR * C.BAT_POSITION_PRIOR_INNINGS)
             / (self.bat_pos_n[f, s] + C.BAT_POSITION_PRIOR_INNINGS),
             "bat_innings_share": per_xi_appearance(self.bat_pos_n[f, s], appearances),
@@ -546,6 +549,7 @@ class RatingState:
         if len(d):
             debut_bands = self._debut_bands(f, both, list(match.team1_players) + list(match.team2_players), match)
             self._update_impact(f, self._ctx_group(match.gender), match.format_code, d, debut_bands)
+            self._update_keepers(match, d)
             self._update_simulation_context(f, self._ctx_group(match.gender), d)
             self._update_fixture_context(match, d)
         self.career[f, both] += 1.0
@@ -593,7 +597,26 @@ class RatingState:
             self.team_results[(fmt, match.team1)].append(0.5)
             self.team_results[(fmt, match.team2)].append(0.5)
         self.matches_seen += 1
-        self.last_date = match.match_date
+        # The day the state's cricket runs through: the latest last day folded (FEAT-09).
+        self.last_date = match.last_day if self.last_date is None else max(self.last_date, match.last_day)
+
+    def fold_finished(self, pending: Sequence[MatchRecord], before: date) -> List[MatchRecord]:
+        """Fold, in order, every pending match whose last day is before ``before``, and
+        return the ones still being played (FEAT-09).
+
+        The one rule for the training pass and the as-of serving path: a match joins the
+        state once its last day has closed, so a fixture dated during a Test reads a state
+        without that Test -- as nobody on that day could have known its later days -- and
+        the two paths agree on it (H-8). A match on its one day is folded at that day's
+        close, as it always was.
+        """
+        still_playing: List[MatchRecord] = []
+        for match in pending:
+            if match.last_day < before:
+                self.update(match)
+            else:
+                still_playing.append(match)
+        return still_playing
 
     def _accumulate_involvement(self, f: int, xi_slots: np.ndarray, d: Deliveries) -> None:
         """Land this match's deliveries on the XI members' involvement numerators -- every
@@ -627,21 +650,24 @@ class RatingState:
         batters = self._slots(list(d.batter))
         bowlers = self._slots(list(d.bowler))
         ones = np.ones(len(d))
+        # The batter's ledger charges each dismissal to the batter who was out (FEAT-07):
+        # the striker his own, against the over's expectation on the ball he faced, and a
+        # batter out at the other end -- a run out backing up, an incomer timed out -- his,
+        # on no ball of his own. ``d.wicket`` counts every wicket the innings lost and stays
+        # the baseline's term, so the striker's expectation is the innings' wicket rate
+        # while his indicator is his own dismissal: what the ``dismissals`` target counts.
+        own_dismissals, dismissed_elsewhere = batter_dismissals(d, self._slots)
+        n_elsewhere = len(dismissed_elsewhere)
+        bat_who = np.concatenate([batters, dismissed_elsewhere])
+        bat_runs = np.concatenate([d.runs_batter - exp_runs, np.zeros(n_elsewhere)])
+        bat_wickets = np.concatenate([exp_wk - own_dismissals, -np.ones(n_elsewhere)])
+        bat_balls = np.concatenate([ones, np.zeros(n_elsewhere)])
         if debut_bands:
-            self._accumulate_debut(self.debut_bat[f], debut_bands, batters, d.runs_batter - exp_runs, exp_wk - d.wicket)
+            self._accumulate_debut(self.debut_bat[f], debut_bands, bat_who, bat_runs, bat_wickets, bat_balls)
             self._accumulate_debut(
-                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_bowler, d.bowler_wicket - exp_wk
+                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_bowler, d.bowler_wicket - exp_wk, ones
             )
-        self._accumulate(
-            self.bat_rae,
-            self.bat_balls,
-            self.bat_wae,
-            f,
-            batters,
-            d.runs_batter - exp_runs,
-            exp_wk - d.wicket,
-            ones,
-        )
+        self._accumulate(self.bat_rae, self.bat_balls, self.bat_wae, f, bat_who, bat_runs, bat_wickets, bat_balls)
         # The bowler's ledger charges him ``runs_bowler`` -- the total less byes, leg-byes
         # and penalty runs -- against the over's expectation, which stays the innings'
         # total. Charging him the total put his keeper's misses in ``bowl_rate`` (FEAT-08).
@@ -663,10 +689,39 @@ class RatingState:
         np.add.at(self.ctx_balls[g, f], over, 1.0)
         np.add.at(self.ctx_runs[g, f], over, d.runs_total)
         np.add.at(self.ctx_wickets[g, f], over, d.wicket)
-        stumped = np.nonzero(d.stumping)[0]
-        for i in stumped:
+
+    def _update_keepers(self, match: MatchRecord, d: Deliveries) -> None:
+        """Advance the keeper ledger for each side whose keeper this match named (FEAT-10).
+
+        A stumping names the keeper; nothing else in the archive does -- Cricsheet marks no
+        fielder as the keeper on a catch, so the "catches as keeper" the finding asked for
+        cannot be read. A match therefore says who kept for a side only when that side was
+        credited a stumping, and then it says it about all eleven: the stumper kept, the
+        other ten did not. Such a side's members are decayed once and the stumper lands a
+        full match on his weight; a side that recorded none says nothing and moves nobody.
+        Until FEAT-10 one stumping set a global, permanent flag: 92 of the archive's 1,060
+        stumpers had it through 31 or more later appearances without another, a run no
+        keeper has at the format rates of 0.30-0.40 stumping matches per match. The clock
+        is the side's identified matches and not the player's appearances, so a keeper is
+        not forgotten for a run of matches in which nobody was stumped; its rate and the
+        bar on the weight are set beside it in the contract.
+
+        One ledger for every format, not one per format: who keeps is a fact about the
+        player, and a per-format ledger would read 0 for a real keeper in the format his
+        side has yet to record a stumping in -- which is the defect's third clause.
+        """
+        sides = (match.team1_players, match.team2_players)
+        stumpers: List[set] = [set(), set()]
+        for i in np.flatnonzero(d.stumping):
             for key in d.fielders[i] if i < len(d.fielders) else []:
-                self.keeper[self._slots([key])[0]] = 1.0
+                for side_index, members in enumerate(sides):
+                    if key in members:
+                        stumpers[side_index].add(key)
+        for side_index, members in enumerate(sides):
+            if not stumpers[side_index]:
+                continue
+            self.kept[self._slots(list(members))] *= C.KEEPER_DECAY_PER_IDENTIFIED_MATCH
+            self.kept[self._slots(sorted(stumpers[side_index]))] += 1.0
 
     def _update_simulation_context(self, f: int, g: int, d: Deliveries) -> None:
         self.ctx_extras[g, f] += float((d.runs_total - d.runs_batter).sum())
@@ -703,7 +758,7 @@ class RatingState:
             entry[2] += balls
 
     @staticmethod
-    def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue) -> None:
+    def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue, count) -> None:
         """Land a debutant's balls on his age band's lifetime sums (``DEBUT_IMPACT`` ..
         ``DEBUT_MATCHES``): the same per-ball quantities ``_accumulate`` lands on the
         player, pooled by band and never decayed. The appearance counts whether or not he
@@ -715,7 +770,7 @@ class RatingState:
             if not mine.any():
                 continue
             table[band, DEBUT_IMPACT] += float(value[mine].sum())
-            table[band, DEBUT_BALLS] += float(mine.sum())
+            table[band, DEBUT_BALLS] += float(count[mine].sum())
             table[band, DEBUT_WICKETS] += float(wvalue[mine].sum())
 
     def _accumulate(self, total, balls, wtotal, f, who, value, wvalue, count) -> None:
@@ -778,6 +833,29 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
+
+
+def batter_dismissals(d: Deliveries, slots_of) -> tuple:
+    """Who each ball's dismissals belong to (FEAT-07): per delivery, how many of them were
+    the striker's own, and the slots of everyone dismissed at the other end -- one entry
+    per such dismissal, in playing order.
+
+    ``players_out`` names every dismissed player on every ball (IMPORT-06); a delivery with
+    no entry dismissed nobody. Until FEAT-07 the ledger read ``wicket`` instead, which
+    counts the wickets the innings lost on the ball, and charged them all to the striker:
+    11,114 of the archive's 353,063 dismissals -- 11,037 run outs at the non-striker's end,
+    the rest retired out, obstructing the field, handled the ball and timed out -- were
+    charged to the batter who was facing, and the batter who was out was charged nothing.
+    """
+    own = np.zeros(len(d))
+    elsewhere: List[str] = []
+    for i, dismissed in enumerate(d.players_out):
+        for key in dismissed:
+            if key == d.batter[i]:
+                own[i] += 1.0
+            else:
+                elsewhere.append(key)
+    return own, np.asarray(slots_of(elsewhere), dtype=int)
 
 
 def hierarchical_rate(
@@ -869,7 +947,7 @@ def aggregate_side(vectors: Dict[str, np.ndarray], format_code: str) -> Dict[str
         "n_bowlers": float(is_bowler.sum()),
         "exp_balls_bowled_top5": float(np.sort(ebb)[::-1][:5].sum()),
         "exp_balls_faced_sum": float(ebf.sum()),
-        "has_keeper": float(vectors["keeper"].any()),
+        "has_keeper": float(C.is_keeper(vectors["keeper"]).any()),
         "n_allrounders": float((is_bowler & (ebf >= 0.6 * np.median(ebf + 1e-9))).sum()),
         "exp_mean_matches": float(career.mean()),
         "n_debutants": float((career == 0).sum()),

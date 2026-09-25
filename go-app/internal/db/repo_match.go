@@ -7,9 +7,13 @@ import (
 
 // MatchInsert carries match-level fields for the match table.
 type MatchInsert struct {
-	MatchID           int64
-	FormatID          int64
-	MatchDate         string // YYYY-MM-DD
+	MatchID   int64
+	FormatID  int64
+	MatchDate string // YYYY-MM-DD
+	// MatchEndDate is the match's last day (YYYY-MM-DD; migration 0024, FEAT-09): the day
+	// after which the rating pass folds it into its state, so a Test's later days are not
+	// in the state of a fixture played while it was on. MatchDate is its first day.
+	MatchEndDate      string
 	OriginalMatchType string
 	// CompetitionLevel is Cricsheet's info.team_type verbatim -- "international" or
 	// "club" -- and MatchTypeNumber the ICC's number for an official international, nil
@@ -64,8 +68,8 @@ const upsertMatchSQL = `
 			toss_winner_opposition_id, toss_decision, outcome_winner_opposition_id,
 			outcome_by_runs, outcome_by_wickets, result, result_method,
 			event_name, event_stage, event_group,
-			match_number, gender, balls_per_over, scheduled_overs_per_innings
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			match_number, gender, balls_per_over, scheduled_overs_per_innings, match_end_date
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT (match_id) DO UPDATE SET
 			format_id = EXCLUDED.format_id,
 			match_date = EXCLUDED.match_date,
@@ -87,7 +91,8 @@ const upsertMatchSQL = `
 			match_number = EXCLUDED.match_number,
 			gender = EXCLUDED.gender,
 			balls_per_over = EXCLUDED.balls_per_over,
-			scheduled_overs_per_innings = EXCLUDED.scheduled_overs_per_innings
+			scheduled_overs_per_innings = EXCLUDED.scheduled_overs_per_innings,
+			match_end_date = EXCLUDED.match_end_date
 	`
 
 // upsertMatchArgs is the argument list for upsertMatchSQL, in the statement's order.
@@ -98,7 +103,7 @@ func upsertMatchArgs(m *MatchInsert) []any {
 		m.TossWinnerOppositionID, m.TossDecision, m.OutcomeWinnerOppositionID,
 		m.OutcomeByRuns, m.OutcomeByWickets, m.Result, m.ResultMethod,
 		m.EventName, m.EventStage, m.EventGroup,
-		m.MatchNumber, m.Gender, m.BallsPerOver, m.ScheduledOversPerInnings,
+		m.MatchNumber, m.Gender, m.BallsPerOver, m.ScheduledOversPerInnings, m.MatchEndDate,
 	}
 }
 

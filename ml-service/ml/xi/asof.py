@@ -6,8 +6,9 @@ and what a backtest must not have -- its team Elo above all carries the results 
 matches being scored. P-0 had to freeze the artifact by hand
 (``scripts/experiments/xi/freeze_ratings.py``, retired by this module). ``AsOfRatings``
 instead advances a fresh state through a match source and answers ``state_as_of(d)``:
-every match strictly before ``d`` folded in, nothing at ``d`` or after -- provably,
-because asking for a date the state has already passed raises instead of guessing.
+every match that *ended* strictly before ``d`` folded in, nothing at ``d`` or after -- a
+Test still being played on ``d`` included (FEAT-09) -- provably, because asking for a date
+the state has already passed raises instead of guessing.
 Ascending queries share one pass, so a chronological backtest costs one sweep of the
 source, not one per match.
 
@@ -58,9 +59,12 @@ PARITY_TOLERANCE = 1e-9
 class AsOfRatings:
     """A rating state advancing through a source, answering "ratings as of date D".
 
-    Folding all matches strictly before ``d`` is day-close by construction: a date
-    boundary can never split a day, so the same-day rule the training pass enforces holds
-    here too.
+    Folding every match that ended strictly before ``d`` is day-close by construction: a
+    date boundary can never split a day, so the same-day rule the training pass enforces
+    holds here too, and so does its rule for a match played over several days
+    (``RatingState.fold_finished``, FEAT-09): one that started before ``d`` and was still
+    on is held back, exactly as the training pass held it back from the rows it built on
+    those days.
     """
 
     def __init__(self, source: MatchSource, gender_split_context: bool = False):
@@ -71,14 +75,18 @@ class AsOfRatings:
         )
         self._matches: Iterator[MatchRecord] = source.iter_matches()
         self._next: Optional[MatchRecord] = next(self._matches, None)
+        # Matches that have started and not yet been folded: a Test still being played
+        # sits here until the query date is past its last day.
+        self._still_playing: List[MatchRecord] = []
+        # The latest last day the state holds a match through.
         self._folded_through: Optional[date] = None
 
     def state_as_of(self, as_of: date) -> RatingState:
-        """The state with every match strictly before ``as_of`` folded in.
+        """The state with every match that ended strictly before ``as_of`` folded in.
 
-        Raises when the state already contains a match at or after ``as_of`` -- the pass
-        cannot run backwards, and silently serving a state that has seen the future is the
-        exact defect this class exists to make impossible.
+        Raises when the state already contains a match ending at or after ``as_of`` -- the
+        pass cannot run backwards, and silently serving a state that has seen the future
+        is the exact defect this class exists to make impossible.
         """
         if self._folded_through is not None and as_of <= self._folded_through:
             raise ValueError(
@@ -86,9 +94,10 @@ class AsOfRatings:
                 f"cannot serve ratings as of {as_of} without a fresh pass"
             )
         while self._next is not None and self._next.match_date < as_of:
-            self.state.update(self._next)
-            self._folded_through = self._next.match_date
+            self._still_playing.append(self._next)
             self._next = next(self._matches, None)
+        self._still_playing = self.state.fold_finished(self._still_playing, as_of)
+        self._folded_through = self.state.last_date
         return self.state
 
 
@@ -147,8 +156,9 @@ def serving_parity(
     served with the training frame (H-8).
 
     The training pass and ``AsOfRatings`` evolve their states through different code --
-    day-close buffering there, a strict date threshold here -- so agreement is a real
-    check on both, while the row assembly is shared (``ml.xi.rows``) so the two cannot
+    day-close buffering there, a strict date threshold here, the same fold rule for a
+    match played over several days -- so agreement is a real check on both, while the
+    row assembly is shared (``ml.xi.rows``) so the two cannot
     even in principle spell a column differently (the D-4 defect class). That is the row
     comparison, and on its own it compares ``rows.py`` with ``rows.py`` (EVAL-10).
 

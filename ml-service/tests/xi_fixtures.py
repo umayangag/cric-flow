@@ -35,9 +35,11 @@ def make_deliveries(
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
         # One dismissed player per ball at most, "" for none: the shape every test needs.
+        # Left unsaid, a wicket is the striker's own dismissal, which is what a hand-made
+        # innings means by ``wickets`` unless it names the batter out (FEAT-07).
         players_out=[[key] if key else [] for key in players_out]
         if players_out is not None
-        else [[] for _ in range(n)],
+        else [[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 
@@ -53,7 +55,10 @@ def make_match(
     team2: str = "B",
     gender: str = "male",
     start: date = date(2024, 1, 1),
+    last_day: Optional[int] = None,
 ) -> MatchRecord:
+    """``last_day`` is the day offset the match ended on, for one played over several days
+    (FEAT-09); left unsaid, it ended on the day it started."""
     return MatchRecord(
         match_id=mid,
         match_date=start + timedelta(days=day),
@@ -67,6 +72,7 @@ def make_match(
         winner=winner,
         result=None,
         deliveries=deliveries,
+        match_end_date=None if last_day is None else start + timedelta(days=last_day),
     )
 
 

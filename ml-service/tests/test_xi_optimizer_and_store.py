@@ -58,6 +58,8 @@ def _deliveries(
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=stump,
         fielders=fielders,
+        # a wicket is the striker's own dismissal (FEAT-07)
+        players_out=[[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 
@@ -305,7 +307,7 @@ def test_select_xi_names_the_role_constraint_that_cannot_be_filled(trained_store
     keeper)" left a caller guessing which of the three it was."""
     store, squad_a, _, matches = trained_store
     vectors = store.side_vectors("T20", list(squad_a))
-    keeperless = [key for key, keeper in zip(squad_a, vectors["keeper"]) if not keeper > 0]
+    keeperless = [key for key, keeper in zip(squad_a, vectors["keeper"]) if not C.is_keeper(keeper)]
     bowlers = [key for key, balls in zip(squad_a, vectors["exp_balls_bowled"]) if C.is_bowling_option(balls, "T20")]
     assert len(keeperless) >= 5 and len(bowlers) >= 1
 
@@ -502,7 +504,7 @@ def test_selection_reasons_name_the_roles_the_constraints_counted(trained_store)
     vectors = store.side_vectors("T20", selected)
     for i, key in enumerate(selected):
         bowler = bool(C.is_bowling_option(vectors["exp_balls_bowled"][i], "T20"))
-        keeper = bool(vectors["keeper"][i] > 0)
+        keeper = bool(C.is_keeper(vectors["keeper"][i]))
         assert (ROLE_BOWLING_OPTION in reasons[key].roles) == bowler
         assert (ROLE_KEEPER in reasons[key].roles) == keeper
         assert set(reasons[key].roles) <= set(SELECTION_ROLES)
@@ -755,6 +757,19 @@ def test_parse_cricsheet_file_gives_a_super_over_tie_to_the_eliminator(tmp_path)
     assert rec.result == "tie"
 
 
+def test_cricsheet_source_reads_the_last_day_a_match_was_played_on(tmp_path) -> None:
+    """FEAT-09: ``dates[-1]`` is the match's last day and ``dates[0]`` stays its date."""
+    players = {"X": [f"X{i}" for i in range(11)], "Y": [f"Y{i}" for i in range(11)]}
+    doc = _cricsheet_doc("Test", ["X", "Y"], players, "X", 0)
+    doc["info"]["dates"] = ["2024-03-01", "2024-03-02", "2024-03-03", "2024-03-04"]
+    (tmp_path / "test.json").write_text(json.dumps(doc))
+
+    record = parse_cricsheet_file(str(tmp_path / "test.json"), _INTL)
+
+    assert record.match_date == date(2024, 3, 1)
+    assert record.match_end_date == date(2024, 3, 4) and record.last_day == date(2024, 3, 4)
+
+
 def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> None:
     players = {"X": [f"X{i}" for i in range(11)], "Y": [f"Y{i}" for i in range(11)]}
     (tmp_path / "b.json").write_text(json.dumps(_cricsheet_doc("ODI", ["X", "Y"], players, "X", 5)))
@@ -768,7 +783,10 @@ def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> N
     assert recs[0].outcome is None and recs[0].result == "no result"
     result = build(CricsheetJsonSource(str(tmp_path), _INTL))
     assert result.n_undecided == 1 and len(result.frame) == 1
-    assert result.state.keeper[result.state.players.slot("id_Y0")] == 1.0, "the stumping marks the keeper"
+    keeper_weight = result.state.side_vectors("ODI", ["id_Y0"])["keeper"][0]
+    assert keeper_weight == pytest.approx(1.5) and C.is_keeper(keeper_weight), (
+        "a stumping in each match marks the keeper"
+    )
     assert os.path.exists(tmp_path)
 
 

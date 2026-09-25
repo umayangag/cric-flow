@@ -116,6 +116,18 @@ func (i Info) MatchDate() (string, error) {
 	return "", fmt.Errorf("no dates in info.dates or info.match_date")
 }
 
+// MatchEndDate returns the day the match ended: the last entry in Dates, which Cricsheet
+// lists in order (0 of 22,905 files list them otherwise). It is the day after which the
+// rating pass folds the match into its state (FEAT-09); MatchDate stays the day every
+// feature is read at. A file with no date is refused for the same reason MatchDate refuses
+// it.
+func (i Info) MatchEndDate() (string, error) {
+	if len(i.Dates) > 0 {
+		return i.Dates[len(i.Dates)-1], nil
+	}
+	return "", fmt.Errorf("no dates in info.dates or info.match_date")
+}
+
 // UnmarshalJSON allows Info to flexibly decode from Cricsheet JSON variations.
 // It maps both `dates` and `match_date` to the `Dates` field.
 func (i *Info) UnmarshalJSON(data []byte) error {

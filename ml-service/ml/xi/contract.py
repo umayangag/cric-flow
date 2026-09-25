@@ -33,7 +33,14 @@ GENDER_FEMALE = "female"
 TEAM_GENDERS: List[str] = [GENDER_MALE, GENDER_FEMALE]
 
 # Rating-pass hyperparameters. Changing any of these changes the feature definitions and
-# requires a re-run of the pass; they are recorded in the artifact metadata.
+# requires a re-run of the pass; they are recorded per run in manifest.json (rating_params).
+#
+# The decay and the prior are set by judgment and have never been swept (FEAT-12): they are
+# baked into every accumulator, so a candidate value is a full rating pass (216 s on the
+# archive) and eleven walk-forward folds (`make evaluate`, ~2 h) per point, and the win
+# models' fold-mean AUC cannot tell apart differences under a fold sd (~0.01). Recorded as
+# unevidenced rather than half-tuned on one split; docs/AUDIT_FINDINGS.md § 9 says what a
+# sweep would take.
 DECAY_PER_MATCH = 0.90  # exponential forgetting applied to a player's accumulators per match played
 PRIOR_BALLS = 60.0  # shrinkage: a rate is (sum above expectation) / (balls + PRIOR_BALLS)
 K_TEAM_ELO = 24.0
@@ -59,6 +66,30 @@ MAX_OVER_INDEX = 100  # context baselines are indexed by over number, capped her
 #: before FEAT-01 and 25.1 / 19.1 / 38.2 / 21.5 % on the old numbers in the new unit
 #: (``tests/fixtures/bowling_option_population.json`` holds a sample of those sides).
 MIN_BOWLING_BALLS: Dict[str, int] = {"T20": 3, "T20I": 4, "ODI": 19, "TEST": 40}
+
+
+#: The keeper ledger's clock and bar (FEAT-10). A stumping lands 1.0 on the stumper; every
+#: later match in which his side's keeper was seen halves it; ``is_keeper`` is weight over
+#: 0.25, so a player is a keeper while his last stumping is within his side's last *two*
+#: matches that named a keeper (1.0, then 0.5, then 0.25 and out): a single match in which
+#: a stand-in stumped does not unseat him, a handover completes in two, and a one-off
+#: stumper is dropped in two. Set on the archive's 42,586 played elevens, where every
+#: eleven has exactly one keeper: the old permanent flag left 4,667 elevens (11.0 %) with
+#: no keeper over the bar and 15,503 with two; a decayed *share* of the side's identified
+#: matches left 9,800 (23.0 %) and 4,263, because a keeper carries for years the matches
+#: in which a predecessor was seen; this rule leaves 6,354 (14.9 %) and 8,070, and flags
+#: 12 of the 92 players whose last stumping is 31+ appearances behind them where the old
+#: flag kept all 92. Three (last three) reads 5,911 and 9,393; one reads 7,193 and 6,014:
+#: no sharp optimum, and two is where the elevens lost per two-keeper eleven saved stop
+#: falling.
+KEEPER_DECAY_PER_IDENTIFIED_MATCH = 0.5
+KEEPER_MIN_WEIGHT = 0.25
+
+
+def is_keeper(keeper_weight):
+    """Whether a player's ``keeper`` weight makes him a keeper. Works on scalars and arrays;
+    the single definition the ``has_keeper`` feature and the constraint share."""
+    return keeper_weight > KEEPER_MIN_WEIGHT
 
 
 def is_bowling_option(expected_balls_bowled, format_code: str):
@@ -100,7 +131,13 @@ PLAYER_VECTOR_KEYS: List[str] = [
     "career",  # matches in this format before this match
     "career_all",  # matches in any format before this match
     "pelo",  # player Elo in this format
-    "keeper",  # 1.0 if the player has ever been credited with a stumping
+    # How recently the player was seen keeping (FEAT-10): 1.0 for each match he was
+    # credited a stumping in -- the one thing in the archive that names the keeper --
+    # halved (``KEEPER_DECAY_PER_IDENTIFIED_MATCH``) for every later match in which his
+    # side's keeper was seen. 0.0 for a player never seen keeping; falling for a former
+    # keeper as his side's stumpings go to someone else; unmoved by a match that named
+    # nobody.
+    "keeper",
 ]
 
 # As-of expected-role keys, held beside the vectors for every player x format. They feed

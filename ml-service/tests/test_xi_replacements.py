@@ -166,7 +166,7 @@ def test_the_postgres_path_leaves_the_replacement_out_of_the_eleven() -> None:
     squad = [(f"a{i:07x}", 10, False) for i in range(11)] + [("a000000b", 10, True)]
     squad += [(f"b{i:07x}", 20, False) for i in range(11)]
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 10, "", None, "", "", None, 10)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 10, "", None, "", "", None, 10, date(2024, 1, 1))],
         "players": {1: squad},
         "balls": {1: [(1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)]},
     }

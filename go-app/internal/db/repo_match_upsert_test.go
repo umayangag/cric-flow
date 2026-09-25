@@ -40,6 +40,17 @@ func TestUpsertMatchSQL_EveryInsertedColumnIsRefreshedOnConflict(t *testing.T) {
 	}
 }
 
+// FEAT-09: the match's last day is written beside its first, and refreshed on conflict
+// like every other column (the test above), so a re-import fills it.
+func TestUpsertMatchSQL_WritesTheMatchEndDate(t *testing.T) {
+	t.Parallel()
+
+	arguments := upsertMatchArgs(&MatchInsert{MatchID: 1, MatchDate: "2024-01-01", MatchEndDate: "2024-01-05"})
+
+	require.Contains(t, insertedColumns(t, upsertMatchSQL), "match_end_date")
+	require.Contains(t, arguments, "2024-01-05")
+}
+
 // insertedColumns reads the column list out of an INSERT ... VALUES statement.
 func insertedColumns(t *testing.T, statement string) []string {
 	t.Helper()

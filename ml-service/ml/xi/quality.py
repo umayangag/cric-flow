@@ -176,6 +176,13 @@ class DataQuality:
     matches_with_one_home_side: int = 0
     matches_without_toss: int = 0
 
+    # Matches whose last day is after their first (FEAT-09): the ones the pass folds in at
+    # the close of that last day rather than the first. The only count that can see
+    # ``match.match_end_date`` (migration 0024), so it is what tells a database migrated
+    # but not re-imported -- every end date NULL, every match one day long -- from the
+    # archive, where 3,171 of 22,905 run longer. A fact about the cricket and not gated.
+    multi_day_matches: int = 0
+
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
 

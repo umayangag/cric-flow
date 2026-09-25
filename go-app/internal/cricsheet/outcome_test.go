@@ -160,11 +160,12 @@ type matchUpsertSpyTx struct {
 }
 
 // Positions in upsertMatchSQL's argument list: result and result_method follow the
-// outcome margin.
+// outcome margin; the match's last day (FEAT-09) is the final argument.
 const (
 	matchArgResult       = 13
 	matchArgResultMethod = 14
-	matchArgCount        = 22
+	matchArgMatchEndDate = 22
+	matchArgCount        = 23
 )
 
 func (s *matchUpsertSpyTx) Exec(_ context.Context, sql string, args ...any) error {

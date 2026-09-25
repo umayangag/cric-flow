@@ -159,12 +159,34 @@ class ServedRun:
 def _load_served_run(directory: str) -> ServedRun:
     """Everything a run needs before it can serve, built without touching the registry."""
     store = XiStore.load(directory)
+    _refuse_a_gender_split_the_routes_cannot_honour(store)
     report = None
     report_path = os.path.join(directory, REPORT_NAME)
     if os.path.exists(report_path):
         with open(report_path) as fh:
             report = json.load(fh)
     return ServedRun(store=store, report=report, directory=directory)
+
+
+def _refuse_a_gender_split_the_routes_cannot_honour(store: XiStore) -> None:
+    """A run built with ``gender_split_context`` on cannot be served yet (FEAT-13).
+
+    Its training rows read the context baseline of the match's own gender. Of the serving
+    routes only ``/performance/predict`` carries a fixture gender, and optionally; the win
+    and optimise requests carry none, so ``serving_match`` stamps the unsplit group and a
+    women's fixture would be scored against the men's baseline -- a feature the model
+    never saw a women's row built from. The split is an experiment flag (E7) and every
+    served run has it off; refusing here, by name and at load, is what keeps it that way
+    until every request model carries the gender. The harness is untouched: it loads its
+    round-trip store through ``XiStore.load`` directly.
+    """
+    if store.state.gender_split_context:
+        run_id = "unnamed" if store.manifest is None else store.manifest.run_id
+        raise RunArtifactsInvalid(
+            f"run {run_id} was built with gender_split_context on, and the win and optimise routes carry no "
+            f"fixture gender: a women's fixture would read the men's baseline its rows were never built from. "
+            f"Retrain without --gender-split-context to serve."
+        )
 
 
 class XiRegistry:

@@ -283,6 +283,22 @@ def test_a_decided_match_without_deliveries_appearing_fails_the_gate() -> None:
     assert result.failures == ["decided_matches_without_deliveries was 0 and is now 1"]
 
 
+def test_the_pass_counts_the_matches_played_over_more_than_one_day() -> None:
+    """FEAT-09: the count that can see ``match_end_date``, so a database migrated but not
+    re-imported -- every end date NULL -- is told from the archive by ``make xi-parity``."""
+    from ml.xi.parity import compare
+
+    one_day = _match("m0", 0, ["a1"], ["b1"])
+    five_days = replace(_match("m1", 1, ["a1"], ["b1"]), match_end_date=date(2024, 1, 6))
+    counts = SourceCounts(offered=2, yielded=2)
+
+    with_end_dates = build(_CountingSource([one_day, five_days], counts))
+    without = build(_CountingSource([one_day, replace(five_days, match_end_date=None)], counts))
+
+    assert with_end_dates.quality.multi_day_matches == 1 and without.quality.multi_day_matches == 0
+    assert any("multi_day_matches" in line for line in compare(without, with_end_dates))
+
+
 def test_a_source_that_reports_nothing_is_described_by_what_arrived() -> None:
     """Zeros would make the accounting identity hold vacuously, which is the opposite of
     what it is for."""

@@ -44,8 +44,8 @@ class _ConstantModel:
         return np.column_stack([np.full(len(rows), 0.4), np.full(len(rows), 0.6)])
 
 
-def _state(players: int = 3, last_date: date | None = None) -> RatingState:
-    state = RatingState()
+def _state(players: int = 3, last_date: date | None = None, gender_split_context: bool = False) -> RatingState:
+    state = RatingState(gender_split_context=gender_split_context)
     for i in range(players):
         state.players.slot(f"player{i}")
     state.matches_seen = players
@@ -61,6 +61,7 @@ def _write_run(
     cutoff: date | None = None,
     manifest_ratings_through: str | None = None,
     unusable_reasons: dict[str, str] | None = None,
+    gender_split_context: bool = False,
 ) -> str:
     """A complete, loadable run: ratings, one format's models, and a manifest.
 
@@ -68,10 +69,11 @@ def _write_run(
     is the state's own, which is what ``retrain`` writes. ``cutoff`` is the boundary the
     run's data was built to -- H-11's quantity since SERVE-03 -- and defaults to the
     state's own date, which is the pair a retrain run at the archive's own date writes.
-    ``unusable_reasons`` writes the run as one its retrain judged not usable (EVAL-04)."""
+    ``unusable_reasons`` writes the run as one its retrain judged not usable (EVAL-04);
+    ``gender_split_context`` writes one built with E7's split on (FEAT-13)."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
-    state = _state(last_date=last_date)
+    state = _state(last_date=last_date, gender_split_context=gender_split_context)
     save_ratings(state, directory)
     joblib.dump(
         FormatModels(
@@ -416,6 +418,21 @@ def test_a_refused_run_is_reported_rather_than_silently_unloaded(tmp_path):
 
     assert status["loaded"] is False
     assert "manifest.json" in status["error"]
+
+
+def test_a_run_built_with_the_gender_split_on_is_refused_at_reload_naming_why(tmp_path):
+    """FEAT-13: the win and optimise routes carry no fixture gender, so a run whose rows
+    read a per-gender baseline would score a women's fixture against the men's. The
+    loader refuses it by name, the way D-6 refuses any run this code cannot serve, and
+    the run that was serving -- here, nothing -- is left as it was."""
+    _write_run(tmp_path, gender_split_context=True)
+    registry = xi_service.XiRegistry()
+
+    status = registry.reload(str(tmp_path))
+
+    assert status["loaded"] is False
+    assert "gender_split_context" in status["error"] and "20260902T101500Z-ab12cd34" in status["error"]
+    assert runs.read_current(str(tmp_path)) is None, "a refused run is never published"
 
 
 def test_a_half_written_run_never_becomes_the_newest_run(tmp_path):
