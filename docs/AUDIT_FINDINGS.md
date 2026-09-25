@@ -89,30 +89,6 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 ## 2. Rating pass and features (`ml-service/ml/xi/`)
 
-### FEAT-07 — Batter's dismissal rate charges every wicket on the ball to the striker  **Low · retrain**
-
-`ratings.py:446-447` uses `d.wicket` (any dismissal on the ball, `sources.py:44`); a non-striker run-out or "retired hurt" lowers the striker's `bat_wrate`, while the `dismissals` target (`rows.py:66-70`) uses `player_out`. Feature and target are defined on different events. **Fix.** Use `(d.player_out == d.batter)` as the batter's indicator.
-
-### FEAT-09 — Multi-day matches fold at the close of their *start* date  **Low (narrow leak)**
-
-`sources.py:287` (`dates[0]`), `builder.py:70-73`, `asof.py:66`. A Test running Jan 1–5 is in the state for any match dated Jan 2–5 — another TEST starting Jan 3 reads context baselines and `competition_scoring` containing all five days; other formats see only `career_all` and `team_venue_matches`. Narrow, but the `AsOfRatings` docstring ("nothing at `d` or after") is false for Tests. **Fix.** Buffer a match until the day-close of `dates[-1]` (persist `match_end_date`), keep `dates[0]` as the feature date.
-
-### FEAT-10 — Keeper flag is global, permanent and stumping-only  **Low**
-
-`ratings.py:469-472` sets `keeper[slot] = 1.0` (no format, no decay) on any stumping ever. A player who kept once in 2009 satisfies `require_keeper` in 2025; a real keeper whose side never recorded a stumping in the format reads 0. **Fix.** A decayed per-format "stumpings + catches-as-keeper share" from `fielding_event`.
-
-### FEAT-11 — Postgres source counts no-innings matches as `out_of_scope`; JSON path counts them `unusable`  **Low**
-
-`sources.py:432` inner-joins `inning_number = 1`; `sources.py:537` derives `out_of_scope = offered - len(matches)`. The two sources' split (compared by `make xi-parity`) disagrees on the first toss-then-abandoned file. **Fix.** Filter by format only in SQL; detect the missing first innings in Python.
-
-### FEAT-12 — Decay and shrinkage are untuned constants  **Low · retrain**
-
-`contract.py:34-35`: `DECAY_PER_MATCH = 0.90`, `PRIOR_BALLS = 60`. Effective sample ≈ 10 innings ≈ 200 T20 balls for a top-order batter; 0.90 per Test forgets a year in 10 matches. Nothing sweeps these. **Fix.** Per-format decay and a ball-count half-life; evaluate on the existing harness.
-
-### FEAT-13 — Gender split at serving would diverge if `gender_split_context` is ever on  **Low (latent)**
-
-`serving_match` stamps `gender=""` (`rows.py:116`), reading context group 0. Matches training only while the split is off. **Fix.** Guard in `store.py` refusing a state built with the split on, or carry `gender` in the request (SERVE-04).
-
 ---
 
 ## 3. Training, evaluation and gates (`ml-service/ml/xi/`)
@@ -170,6 +146,80 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### FEAT-07 — Batter's dismissal rate charges every wicket on the ball to the striker  **Low · retrain** — PR #349
+
+`ratings.py:446-447` uses `d.wicket` (any dismissal on the ball, `sources.py:44`); a non-striker run-out or "retired hurt" lowers the striker's `bat_wrate`, while the `dismissals` target (`rows.py:66-70`) uses `player_out`. Feature and target are defined on different events. **Fix.** Use `(d.player_out == d.batter)` as the batter's indicator.
+
+**The spec holds; its field does not.** `Deliveries` carries `players_out` — per ball, the keys of everyone dismissed on it (IMPORT-06) — and no `player_out`, so the striker's indicator is the count of that ball's dismissed players who are him. Measured on the archive (`ball_event_wicket` joined to `ball_event`): **11,114 of 353,063 dismissals (3.15 %) belong to a batter other than the striker** — 11,037 run outs at the non-striker's end, 67 retired out, 7 obstructing the field, 1 handled the ball, 2 timed out (the incoming batter, at neither end) — ODI 2,567 / T20 6,412 / T20I 1,128 / TEST 1,007. Every one of them lowered the striker's `bat_wrate` and left the batter who was out uncharged. "Retired hurt" (463 records, 137 at the non-striker's end) is not a dismissal in `configs/wicket_kinds.json` and has not been charged to anyone since IMPORT-06, so that half of the finding was already moot. **This is B-16** (`docs/BUG_BACKLOG.md`), which had it at 11,255 of 353,571 on an earlier import; closed there.
+
+**Fix.** `batter_dismissals` splits each ball's dismissals into the striker's own and everyone else's. The striker is charged his own against the over's expectation on the ball he faced (`exp_wk - own`, one ball); a batter out at the other end is charged `-1` on no ball of his own, in the same `_accumulate` call, so his ledger is decayed once for the innings he batted in. The debut pool (X-1b) lands the same terms, its balls now counted from the `count` vector rather than from the rows. `d.wicket` — every wicket the innings lost — stays the context baseline's term, so the striker's expectation is the innings' wicket rate while his indicator is his own dismissal: the same event the `dismissals` target counts. Over the population the two still balance (every dismissal is charged to someone).
+
+**Effect, measured on the archive through the JSON source (before / after this commit only):** `bat_wrate` changes on 70.2 % of the 468,461 player rows, mean |Δ| 0.0029 against the column's sd of 0.0138 (0.21 sd), max 0.050 (T20 0.0035, T20I 0.0061, ODI 0.0022, TEST 0.0008); `d_imp_bat_wk` changes on 99.2 % of win rows, mean |Δ| 0.10 against sd 1.16 (0.09 sd).
+
+**Prediction for the batch-4 retrain.** Null within fold sd on both win models (`imp_bat_wk` is a secondary feature and moves a tenth of its sd). The performance model's `dismissals` output may improve slightly, since its feature and its target now count the same event; recorded as expected-within-noise.
+
+Pinned by `test_a_run_out_at_the_non_strikers_end_is_charged_to_the_batter_who_was_out` (a0 faces six balls, a1 is run out backing up on the third: a0's `bat_wrate` equals the no-wicket innings' and a1's is negative), which fails on `main` on the first assertion — the striker was charged. Every hand-made `Deliveries` in the tests now carries `players_out` (a wicket means the striker, unless the test says otherwise), which is the shape both real sources always fill.
+
+### FEAT-09 — Multi-day matches fold at the close of their *start* date  **Low (narrow leak)** — PR #349
+
+`sources.py:287` (`dates[0]`), `builder.py:70-73`, `asof.py:66`. A Test running Jan 1–5 is in the state for any match dated Jan 2–5 — another TEST starting Jan 3 reads context baselines and `competition_scoring` containing all five days; other formats see only `career_all` and `team_venue_matches`. Narrow, but the `AsOfRatings` docstring ("nothing at `d` or after") is false for Tests. **Fix.** Buffer a match until the day-close of `dates[-1]` (persist `match_end_date`), keep `dates[0]` as the feature date.
+
+**The spec holds; the population is larger than "narrow" suggests and the effect smaller.** Scanned over the 22,905 files: **3,171 matches run over more than one day** — Test 918, MDM 2,207, ODI 20, ODM 6, T20 16, IT20 4; spans of 1 (97), 2 (674), 3 (1,926), 4 (470) and 5 (4) days; 7 files list a gap day; every file lists its days in order. **10,656 matches start inside another match's span, 1,386 of them in the same format** (TEST 1,306, ODI 24, T20/T20I 56), and each of those read a state holding an unfinished match's later days.
+
+**Fix, as specified.** `MatchRecord.match_end_date` is `dates[-1]` on both sources — migration `0024` adds `match.match_end_date`, the importer writes it (`Info.MatchEndDate`), and `_MATCH_SQL` reads `COALESCE(match_end_date, match_date)` so a database migrated but not re-imported behaves exactly as before. `match_date` stays the day every feature is read at. `RatingState.fold_finished(pending, before)` is the one fold rule for the training pass and `AsOfRatings`: a match joins the state once its last day has closed, in pending order; `last_date` is the latest last day folded, which is what `ratings_through` and the freshness check mean by it. The new `multi_day_matches` count is compared by `make xi-parity`, so an un-re-imported database (every end date NULL, 0 multi-day matches) is told from the archive (3,171). **Migration `0024` is not applied to `cricket_data`; batch 4's re-import writes the column.**
+
+**How much any feature moves, measured on the archive through the JSON source (the tree after FEAT-10 against the tree after this commit, so nothing else is in the difference):** on the 219,059 player rows and 9,957 win rows of the 10,656 leak-population matches, 73 % of rows change, but the largest standardised feature move per row averages **0.002 sd** (p50 0, p90 0.0007, p99 0.028), 0.26 % of rows move more than 0.1 sd and the largest is 3.97 sd; on every other row the fold order has changed too (a Test folded after the one-day matches it used to precede), by at most 0.025 sd. The columns that move most on the leak population are the fixture-context ones (`competition_wicket_rate_rel`, 0.0013 sd), which gate A-1 keeps out of every model. A leak by construction, then, and a small one: the H-8 parity check and the docstring are now true for Tests.
+
+Not retrain-flagged in the audit; it changes the state on 10,656 rows and every run on disk is already stale for batch 4. **Prediction for the batch-4 retrain:** null in every format.
+
+Pinned by `test_a_fixture_played_during_a_test_reads_a_state_without_that_test` (builder: a T20 on day 2 of a five-day Test reads `career_all` 0), `test_state_as_of_holds_back_a_match_still_being_played` (as-of: the Test is held back on day 3, folded on day 6, and day 5 is then running backwards), `test_the_pass_counts_the_matches_played_over_more_than_one_day` (the count, and parity reporting it), `test_cricsheet_source_reads_the_last_day_a_match_was_played_on`, and in Go `TestImportMatchFile_WritesTheDayTheMatchEnded` (the upsert's 23rd argument) and `TestInfo_MatchEndDate` — all failing on `main`.
+
+### FEAT-10 — Keeper flag is global, permanent and stumping-only  **Low · retrain** — PR #349
+
+`ratings.py:469-472` sets `keeper[slot] = 1.0` (no format, no decay) on any stumping ever. A player who kept once in 2009 satisfies `require_keeper` in 2025; a real keeper whose side never recorded a stumping in the format reads 0. **Fix.** A decayed per-format "stumpings + catches-as-keeper share" from `fielding_event`.
+
+**Two of the spec's three clauses are wrong for this archive.** *Catches as keeper* cannot be read: Cricsheet marks no fielder as the keeper on a catch, so a stumping is the only record that names him. *Per format* would make the third clause worse, not better: a keeper's stumpings in one format are the evidence for every format, and a per-format ledger reads 0 for a real keeper in the format his side has yet to record a stumping in. What does hold is *permanent*: of the archive's 1,060 stumpers, 184 have not appeared since their last stumping, 592 have 1–10 appearances since, 192 have 11–30, **68 have 31–100 and 24 more than 100** — at the format rates of 0.30–0.40 stumping matches per match, 31 dry matches is a run no keeper has, so 92 players carried the flag while demonstrably no longer keeping.
+
+**Fix.** A stumping names the keeper for the whole side: the stumper kept and his ten teammates did not. `RatingState._update_keepers` lands 1.0 on the stumper and halves every member of that side's weight first (`KEEPER_DECAY_PER_IDENTIFIED_MATCH = 0.5`), on every match in which the side's keeper was seen; a match that named nobody moves nobody, so a keeper is not forgotten for a dry run. `contract.is_keeper` is weight > `KEEPER_MIN_WEIGHT = 0.25` — his last stumping is within his side's last two matches that named a keeper — and is the one predicate `roles.is_keeper`, the optimiser's constraint and `aggregate_side`'s `has_keeper` read. One ledger (`kept`) replaces the `keeper` array; D-6 refuses every run on disk, as batch 4 expects.
+
+**The rule and its bar were chosen on the archive's 42,586 played elevens, every one of which has exactly one keeper.** The first cut was a decayed *share* of the side's identified matches; it dropped a stale flag after one match but left **9,800 elevens (23.0 %) with no player over its bar** — a keeper carries for years the matches in which his predecessor was seen, so every handover read no keeper for ~20 matches, a hard `require_keeper` refusal. The recency weight instead: elevens with no keeper over the bar / with two / of the 92 stale players still flagged — old flag 4,667 (11.0 %) / 15,503 / 92; weight halved, last one 7,193 (16.9 %) / 6,014 / 9; **last two (shipped) 6,354 (14.9 %) / 8,070 / 12**; last three 5,911 / 9,393 / 16; last four 5,582 / 10,361 / 21; weight × 0.9, last six 4,946 / 13,193 / 53. No sharp optimum; two is where the elevens lost per two-keeper eleven saved stop falling, tolerates one stand-in stumping, and completes a handover in two identified matches. Over the pass: the predicate flips true → false on 12,220 player rows (2.6 %) and never the other way; `d_has_keeper` changes on 1,617 win rows (7.6 %); 893 players read as keepers at the end of the archive against 1,060.
+
+`keeper` is a performance-model feature column and `has_keeper` a win feature (`_STEM_DIRECTION` +1, unchanged), so this changes two feature definitions: **flagged retrain here, which the audit did not.** **Prediction for the batch-4 retrain:** within fold sd on the win models (`has_keeper` moves on 7.6 % of rows toward the truth of "this eleven has a keeper"); the performance model's fielding outputs may read the sharper `keeper` weight — within noise.
+
+Pinned by `test_a_former_keeper_stops_reading_as_one_once_his_sides_stumpings_go_to_someone_else` (b0 stumps once, b1 in the next two: b0 reads 0.25 and is not a keeper, b1 reads 1.5 and is — on `main` b0 stays 1.0), with `test_a_stumping_names_the_keeper_and_says_his_ten_teammates_did_not_keep`, `test_a_new_keeper_reads_as_one_from_his_first_stumping_and_a_stand_in_does_not_unseat_the_old` and `test_a_keeper_keeps_reading_as_one_through_matches_with_no_stumping`; all four fail on `main`.
+
+### FEAT-11 — Postgres source counts no-innings matches as `out_of_scope`; JSON path counts them `unusable`  **Low** — PR #349
+
+`sources.py:432` inner-joins `inning_number = 1`; `sources.py:537` derives `out_of_scope = offered - len(matches)`. The two sources' split (compared by `make xi-parity`) disagrees on the first toss-then-abandoned file. **Fix.** Filter by format only in SQL; detect the missing first innings in Python.
+
+**The spec holds, and the defect is latent on this archive.** 0 of 22,905 files have no innings, and 0 of 22,905 database matches lack a first-innings row (or any ball), so neither count has ever disagreed; the first toss-then-abandoned file the importer writes would have. **`ml.xi.parity` can see it:** `unusable_matches` is in `_COMPARED_COUNTS` (and `out_of_scope_matches` deliberately is not, because the two sources filter at different points), so the disagreement would have shown as `unusable_matches 0 vs 1` — the finding's mechanism was exactly the count that check compares. After the fix both sources count such a match `unusable`, and `quality.check`'s "was 0 and is now N" rule on `unusable_matches` fires on the Postgres path for the first such file, where before it vanished into the count that is not gated.
+
+**Fix, as specified.** `_MATCH_SQL` LEFT JOINs the first innings and both sides' opposition rows, filtering by format and date only; `PostgresSource._with_a_first_innings` counts a row with a NULL side `unusable`, logs it by match id, and keeps it out of the stakes derivation. The rewritten query was run read-only against `cricket_data`: 22,905 rows, 0 with a NULL side.
+
+Not retrain-flagged: no row changes on the archive as it stands.
+
+Pinned by `test_postgres_source_counts_a_match_with_no_first_innings_unusable_not_out_of_scope`, which fails on `main` twice over — the warning there says "no recorded squad" (the row reached Python through the fake cursor only because the fake does not execute the join), and `_MATCH_SQL` carries the inner join.
+
+### FEAT-12 — Decay and shrinkage are untuned constants  **Low · retrain** — PR #349 (recorded unevidenced)
+
+`contract.py:34-35`: `DECAY_PER_MATCH = 0.90`, `PRIOR_BALLS = 60`. Effective sample ≈ 10 innings ≈ 200 T20 balls for a top-order batter; 0.90 per Test forgets a year in 10 matches. Nothing sweeps these. **Fix.** Per-format decay and a ball-count half-life; evaluate on the existing harness.
+
+**Recorded as unevidenced, deliberately not tuned.** Both constants are inside every accumulator, so a candidate value cannot be scored on the rows the pass already built: each grid point is a full rating pass (216 s over Postgres, ~80 s over the JSON archive) and then the eleven walk-forward folds — `make evaluate` is ~2 h 10 min on the full recipe, so a 3 × 3 grid over decay × prior is ~20 h, and a win-models-only sweep (the pass plus 44 fold fits per point; EVAL-06 measured the display grid at 177 s over 48 windows) is on the order of an hour — per format if the spec's per-format decay is wanted, with T20I's ~300 walk-forward rows unable to carry a constant of its own. The decision statistic would be the fold-mean objective / display AUC, whose fold sd is ~0.01, and this project's record is that it cannot separate candidates inside that (the win-model selection record in `docs/ML_PIPELINE_REARCHITECTURE_PLAN.md`: two arms a few thousandths apart could not be decided); a tuned pair that came out within a fold sd of 0.90 / 60 would be no more evidenced than the pair it replaced. What *is* done: the contract says the two are set by judgment and never swept, and every run's `manifest.json` already records the values it was built with (`rating_params.decay_per_match`, `.prior_balls`), so a future sweep has its baseline. `PHASE_PRIOR_BALLS` and `SEQUENCE_PRIOR_BALLS` derive from `PRIOR_BALLS` and would move with it.
+
+Retrain-flagged in the audit; nothing in this PR changes a number the pass computes, so there is no prediction to make for batch 4.
+
+### FEAT-13 — Gender split at serving would diverge if `gender_split_context` is ever on  **Low (latent)** — PR #349
+
+`serving_match` stamps `gender=""` (`rows.py:116`), reading context group 0. Matches training only while the split is off. **Fix.** Guard in `store.py` refusing a state built with the split on, or carry `gender` in the request (SERVE-04).
+
+**Confirmed off, and latent.** The served run's manifest (`runs/20260920T175255Z-71339c52/manifest.json`) records `rating_params.gender_split_context: false`; `retrain --gender-split-context` defaults to off; every run under `output/ml-service/runs` was built with it off. Since SERVE-04 the performance route carries an optional `gender` and `serving_match` stamps it, so that one route already agrees with training; `XiWinRequest` and `XiOptimizeRequest` carry none, and `serving_match` stamps the unsplit group for them.
+
+**Chose the guard, not the speculative fix.** `XiRegistry.reload` (`_load_served_run`) refuses, by name and D-6 style, a run whose state has the split on — "the win and optimise routes carry no fixture gender: a women's fixture would read the men's baseline its rows were never built from. Retrain without --gender-split-context to serve" — leaving whatever was serving as it was (B-13). Placed in the registry rather than in `store.py` as the spec suggested, because `XiStore.load` is also the harness's round-trip loader (EVAL-10) and refusing there would end `evaluate --gender-split-context`, E7's only remaining surface. Carrying `gender` on every request model is the fix to make if the flag is ever turned on; nothing asks for it now (E7 read null).
+
+Not retrain-flagged: nothing in a run changes.
+
+Pinned by `test_a_run_built_with_the_gender_split_on_is_refused_at_reload_naming_why` (a written run with the split on: `loaded` false, the error names the flag and the run, `current` untouched), which fails on `main` where the run loads.
 
 ### FEAT-05 — No home-advantage and no toss feature  **Medium · retrain** — PR #348
 
