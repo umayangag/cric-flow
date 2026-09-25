@@ -58,6 +58,8 @@ def _deliveries(
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=stump,
         fielders=fielders,
+        # a wicket is the striker's own dismissal (FEAT-07)
+        players_out=[[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 

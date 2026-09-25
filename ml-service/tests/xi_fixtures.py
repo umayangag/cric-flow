@@ -35,9 +35,11 @@ def make_deliveries(
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
         # One dismissed player per ball at most, "" for none: the shape every test needs.
+        # Left unsaid, a wicket is the striker's own dismissal, which is what a hand-made
+        # innings means by ``wickets`` unless it names the batter out (FEAT-07).
         players_out=[[key] if key else [] for key in players_out]
         if players_out is not None
-        else [[] for _ in range(n)],
+        else [[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 

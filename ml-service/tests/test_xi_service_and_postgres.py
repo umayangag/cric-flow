@@ -49,6 +49,7 @@ def _registry_keyed_history(n: int = 160):
         d2 = Deliveries(
             d.over, d.innings, np.asarray(remap(list(d.batter)), dtype=object), np.asarray(remap(list(d.bowler)), dtype=object),
             d.runs_batter, d.runs_total, d.runs_bowler, d.faced, d.wicket, d.bowler_wicket, d.stumping, [remap(f) for f in d.fielders],
+            [remap(list(out)) for out in d.players_out],
         )  # fmt: skip
         out.append(
             MatchRecord(

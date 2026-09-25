@@ -627,21 +627,24 @@ class RatingState:
         batters = self._slots(list(d.batter))
         bowlers = self._slots(list(d.bowler))
         ones = np.ones(len(d))
+        # The batter's ledger charges each dismissal to the batter who was out (FEAT-07):
+        # the striker his own, against the over's expectation on the ball he faced, and a
+        # batter out at the other end -- a run out backing up, an incomer timed out -- his,
+        # on no ball of his own. ``d.wicket`` counts every wicket the innings lost and stays
+        # the baseline's term, so the striker's expectation is the innings' wicket rate
+        # while his indicator is his own dismissal: what the ``dismissals`` target counts.
+        own_dismissals, dismissed_elsewhere = batter_dismissals(d, self._slots)
+        n_elsewhere = len(dismissed_elsewhere)
+        bat_who = np.concatenate([batters, dismissed_elsewhere])
+        bat_runs = np.concatenate([d.runs_batter - exp_runs, np.zeros(n_elsewhere)])
+        bat_wickets = np.concatenate([exp_wk - own_dismissals, -np.ones(n_elsewhere)])
+        bat_balls = np.concatenate([ones, np.zeros(n_elsewhere)])
         if debut_bands:
-            self._accumulate_debut(self.debut_bat[f], debut_bands, batters, d.runs_batter - exp_runs, exp_wk - d.wicket)
+            self._accumulate_debut(self.debut_bat[f], debut_bands, bat_who, bat_runs, bat_wickets, bat_balls)
             self._accumulate_debut(
-                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_bowler, d.bowler_wicket - exp_wk
+                self.debut_bowl[f], debut_bands, bowlers, exp_runs - d.runs_bowler, d.bowler_wicket - exp_wk, ones
             )
-        self._accumulate(
-            self.bat_rae,
-            self.bat_balls,
-            self.bat_wae,
-            f,
-            batters,
-            d.runs_batter - exp_runs,
-            exp_wk - d.wicket,
-            ones,
-        )
+        self._accumulate(self.bat_rae, self.bat_balls, self.bat_wae, f, bat_who, bat_runs, bat_wickets, bat_balls)
         # The bowler's ledger charges him ``runs_bowler`` -- the total less byes, leg-byes
         # and penalty runs -- against the over's expectation, which stays the innings'
         # total. Charging him the total put his keeper's misses in ``bowl_rate`` (FEAT-08).
@@ -703,7 +706,7 @@ class RatingState:
             entry[2] += balls
 
     @staticmethod
-    def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue) -> None:
+    def _accumulate_debut(table: np.ndarray, debut_bands: Dict[int, int], who, value, wvalue, count) -> None:
         """Land a debutant's balls on his age band's lifetime sums (``DEBUT_IMPACT`` ..
         ``DEBUT_MATCHES``): the same per-ball quantities ``_accumulate`` lands on the
         player, pooled by band and never decayed. The appearance counts whether or not he
@@ -715,7 +718,7 @@ class RatingState:
             if not mine.any():
                 continue
             table[band, DEBUT_IMPACT] += float(value[mine].sum())
-            table[band, DEBUT_BALLS] += float(mine.sum())
+            table[band, DEBUT_BALLS] += float(count[mine].sum())
             table[band, DEBUT_WICKETS] += float(wvalue[mine].sum())
 
     def _accumulate(self, total, balls, wtotal, f, who, value, wvalue, count) -> None:
@@ -778,6 +781,29 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
+
+
+def batter_dismissals(d: Deliveries, slots_of) -> tuple:
+    """Who each ball's dismissals belong to (FEAT-07): per delivery, how many of them were
+    the striker's own, and the slots of everyone dismissed at the other end -- one entry
+    per such dismissal, in playing order.
+
+    ``players_out`` names every dismissed player on every ball (IMPORT-06); a delivery with
+    no entry dismissed nobody. Until FEAT-07 the ledger read ``wicket`` instead, which
+    counts the wickets the innings lost on the ball, and charged them all to the striker:
+    11,114 of the archive's 353,063 dismissals -- 11,037 run outs at the non-striker's end,
+    the rest retired out, obstructing the field, handled the ball and timed out -- were
+    charged to the batter who was facing, and the batter who was out was charged nothing.
+    """
+    own = np.zeros(len(d))
+    elsewhere: List[str] = []
+    for i, dismissed in enumerate(d.players_out):
+        for key in dismissed:
+            if key == d.batter[i]:
+                own[i] += 1.0
+            else:
+                elsewhere.append(key)
+    return own, np.asarray(slots_of(elsewhere), dtype=int)
 
 
 def hierarchical_rate(

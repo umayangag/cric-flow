@@ -37,6 +37,8 @@ def _deliveries(batters: List[str], bowlers: List[str], runs: List[int], wickets
         bowler_wicket=np.asarray(wickets, dtype=float),
         stumping=np.zeros(n),
         fielders=[[] for _ in range(n)],
+        # a wicket is the striker's own dismissal unless a test says otherwise (FEAT-07)
+        players_out=[[batter] if wicket else [] for batter, wicket in zip(batters, wickets)],
     )
 
 
@@ -358,6 +360,42 @@ def test_the_bowlers_ledger_charges_him_only_the_runs_he_conceded() -> None:
 
     assert _bowl_rate_after(no_balls_with_four_leg_byes) == pytest.approx(_bowl_rate_after(six_singles))
     assert _bowl_rate_after(no_balls_with_four_leg_byes) > _bowl_rate_after(charged_the_lot)
+
+
+def _bat_wrates_after(deliveries: Deliveries, keys: List[str]) -> List[float]:
+    """Each key's ``bat_wrate`` after one T20 match of the given deliveries."""
+    t1, t2 = _xi("a"), _xi("b")
+    state = RatingState()
+    state.update(_match("m", 0, "A", t1, t2, deliveries))
+    return [float(v) for v in state.side_vectors("T20", keys)["bat_wrate"]]
+
+
+def test_a_run_out_at_the_non_strikers_end_is_charged_to_the_batter_who_was_out() -> None:
+    """FEAT-07 / B-16: a0 faces six balls and a1, backing up, is run out on the third. The
+    dismissal is a1's -- his ``dismissals`` target counts it -- so his wicket rate falls and
+    a0's reads exactly what it would had nobody been out: the ledger charges the batter
+    dismissed, not the batter facing."""
+    t1, t2 = _xi("a"), _xi("b")
+    partner_run_out = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0, 0, 1, 0, 0, 0])
+    partner_run_out.bowler_wicket[2] = 0.0
+    partner_run_out.players_out[2] = [t1[1]]
+    nobody_out = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+
+    striker, partner = _bat_wrates_after(partner_run_out, [t1[0], t1[1]])
+    striker_alone, _ = _bat_wrates_after(nobody_out, [t1[0], t1[1]])
+
+    assert striker == pytest.approx(striker_alone)
+    assert partner < 0.0
+
+
+def test_a_batters_own_dismissal_is_still_his() -> None:
+    """The striker is charged the dismissals that were his, and only those: out on the
+    sixth ball he reads below a batter who survived the same six."""
+    t1, t2 = _xi("a"), _xi("b")
+    bowled_last_ball = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 5 + [1])
+    survived = _deliveries([t1[0]] * 6, [t2[0]] * 6, [1] * 6, [0] * 6)
+
+    assert _bat_wrates_after(bowled_last_ball, [t1[0]])[0] < _bat_wrates_after(survived, [t1[0]])[0]
 
 
 def test_aggregate_side_role_coverage_and_monotone_direction() -> None:
