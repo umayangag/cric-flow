@@ -136,19 +136,41 @@ class WeatherCache:
     def __init__(self, path: str) -> None:
         self.path = path
         self.entries: Dict[Tuple[str, date], Entry] = {}
+        #: Unparsable lines tolerated on load; only ever the torn final line (DATA-06).
+        self.skipped_lines = 0
         if os.path.exists(path):
-            with open(path) as fh:
-                for raw in fh:
-                    raw = raw.strip()
-                    if not raw:
-                        continue
-                    try:
-                        entry = entry_from_line(json.loads(raw))
-                    except (ValueError, KeyError):
-                        # A torn final line is what an interrupted append leaves; dropping
-                        # it costs one cluster on the next run.
-                        continue
-                    self.entries[(entry.venue_key, entry.day)] = entry
+            self._load(path)
+
+    def _load(self, path: str) -> None:
+        """Read every line, tolerating exactly one unparsable line and only as the last.
+
+        A torn final line is what an interrupted append leaves and costs one cluster on
+        the next run. An unparsable line anywhere else means the file was corrupted after
+        it was written, and silently dropping it would turn the days it held back into
+        gaps a later run would re-ask for at whatever coordinates the table then held --
+        so it raises, loudly, with the line number (DATA-06).
+        """
+        torn: Optional[Tuple[int, str]] = None
+        with open(path) as fh:
+            for number, raw in enumerate(fh, start=1):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                if torn is not None:
+                    line_number, reason = torn
+                    raise ValueError(
+                        f"{path}: line {line_number} could not be read ({reason}) and is not the last line; "
+                        f"the cache is corrupt, not merely torn by an interrupted append"
+                    )
+                try:
+                    entry = entry_from_line(json.loads(raw))
+                except (ValueError, KeyError) as exc:
+                    torn = (number, f"{type(exc).__name__}: {exc}")
+                    continue
+                self.entries[(entry.venue_key, entry.day)] = entry
+        if torn is not None:
+            self.skipped_lines = 1
+            logger.warning("%s: dropped torn final line %d (%s)", path, torn[0], torn[1])
 
     def get(self, venue_key: str, day: date) -> Optional[Entry]:
         return self.entries.get((venue_key, day))
@@ -301,6 +323,9 @@ class _HourlyReadings:
             out.append(None if i is None or i >= len(values) else values[i])
         return out
 
+    def has_temperature(self, keys: Sequence[str]) -> bool:
+        return any(v is not None for v in self.values("temperature_2m", keys))
+
 
 def reduce_days(
     venue_key: str, response: ArchiveResponse, days: Sequence[date], fetched_at: str, zone: str
@@ -314,6 +339,15 @@ def reduce_days(
         keys = local_hour_keys(day, zone)
         series = {variable: readings.values(variable, keys) for variable in HOURLY_VARIABLES}
         if all(v is None for v in series["temperature_2m"]):
+            neighbours = (day - timedelta(days=1), day + timedelta(days=1))
+            if not any(readings.has_temperature(local_hour_keys(n, zone)) for n in neighbours):
+                # A miss is permanent: a restore never re-asks it. A day with no readings
+                # whose neighbours have none either is a call that came back empty, not an
+                # archive gap, so it is refused rather than recorded (DATA-06).
+                raise ValueError(
+                    f"{venue_key} {day.isoformat()}: the response holds no readings for this day "
+                    f"or either neighbour; refusing to record a permanent miss from an empty answer"
+                )
             out.append(Miss(venue_key, day, "no hourly readings in the archive", fetched_at))
             continue
         prior = []

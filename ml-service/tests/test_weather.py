@@ -700,6 +700,18 @@ def test_reduce_days_reads_each_day_at_its_own_offset_within_one_call() -> None:
     assert winter.temperature_c[0] - summer.temperature_c[0] != 24 * (date(2024, 6, 10) - date(2024, 1, 10)).days
 
 
+def test_reduce_days_refuses_a_permanent_miss_when_the_call_answered_nothing() -> None:
+    """DATA-06: a day the archive has no readings for is a miss only when the response
+    answered for a neighbour. A response empty throughout is a bad 200, and recording it
+    would make a permanent miss a restore never re-asks."""
+    days = [date(2024, 3, 30)]
+    empty = _response(days)
+    empty.hourly["temperature_2m"] = [None] * len(empty.hourly_time)
+
+    with pytest.raises(ValueError, match="refusing to record a permanent miss"):
+        archive.reduce_days("v", empty, days, "t0", "Asia/Kolkata")
+
+
 def test_cache_round_trips_hits_and_misses_and_skips_a_torn_line(tmp_path, window_day) -> None:
     path = str(tmp_path / "cache.jsonl")
     cache = archive.WeatherCache(path)
@@ -708,10 +720,26 @@ def test_cache_round_trips_hits_and_misses_and_skips_a_torn_line(tmp_path, windo
         fh.write('{"venue": "torn"')
     reopened = archive.WeatherCache(path)
     assert len(reopened) == 2 and reopened.counts() == {"days": 1, "misses": 1}
+    assert reopened.skipped_lines == 1
     day = reopened.get(window_day.venue_key, window_day.day)
     assert day.relative_humidity[0] == 50 and day.temperature_c[23] == pytest.approx(43.0)
     assert isinstance(reopened.get("v", date(2024, 1, 1)), archive.Miss)
     assert reopened.get("v", date(2024, 1, 2)) is None
+
+
+def test_cache_refuses_an_unparsable_line_that_is_not_the_last(tmp_path, window_day, caplog) -> None:
+    """DATA-06: a torn final line costs one cluster and is logged; a bad line anywhere else
+    means the file was corrupted after it was written, and dropping it silently would turn
+    the days it held into gaps a later run re-asks at whatever coordinates it then holds."""
+    path = str(tmp_path / "cache.jsonl")
+    cache = archive.WeatherCache(path)
+    cache.append([window_day])
+    with open(path, "a") as fh:
+        fh.write('{"venue": "torn"\n')
+        fh.write(json.dumps(archive.Miss("v", date(2024, 1, 1), "why").to_line()) + "\n")
+
+    with pytest.raises(ValueError, match="line 2 could not be read"):
+        archive.WeatherCache(path)
 
 
 class _FakeArchive:

@@ -1091,10 +1091,50 @@ right from wrong (Mirpur at 105 to 33 and Sheikh Zayed Stadium, Pakistan's home-
 at 58 to 29 are the same shape in the votes), so 20 of the 22 rows that moved were placed by
 hand with the reason on the row, and four correct rows the rule refuses (Sheikh Zayed and
 three associate grounds with only visitors' votes) keep their coordinates under a hand note.
-**112 rows are now hand-placed, 892 of 892 mapped**; 26 rows sit at a country centroid,
-which is DATA-02's finding, not this one. The 602 dropped days were fetched again at the
+**112 rows are now hand-placed, 892 of 892 mapped**; the rows that sat at a country
+centroid are DATA-02's finding, not this one. The 602 dropped days were fetched again at the
 corrected coordinates (182 calls, 0 misses), the restore re-verified on the scratch
 database, and the gate (a) table below re-run — see *Reading it*.
+
+**Corrected again under DATA-02, DATA-03, DATA-04 and DATA-06 (2026-09-25; `AUDIT_FINDINGS.md`
+§ 9).** Three further defects in the same acquisition, all of them in how a day or a place was
+*identified* rather than in what was fetched.
+
+- **The votes.** The competition table voted for the country a **tour** is named after:
+  `"zimbabwe"` matched 0 domestic fixtures in this archive and 443 international ones, so
+  Townsville, Bloemfontein, Hyderabad and Bready all carried a Zimbabwean vote, and
+  `"twenty20 cup"` voted GB for the ACC's tournament and for no English event at all. Both
+  needles are gone, matching is now whole-phrase, and a test refuses a needle that is also an
+  international side's name. **81 rows' `countries_voted` changed and five notes with them;
+  no placement moved.** The table's breakdown is now 673 top-vote / 59 minority-vote / 44
+  unvoted / 4 no-vote / 112 hand-placed.
+- **The centroids.** `locate` took the first query that answered, and the first query is the
+  city Cricsheet names — "Barbados" for `Kensington Oval, Bridgetown`, "Trinidad" for
+  `Queen's Park Oval, Port of Spain`. The geocoder answers a country name with the country's
+  centroid, so one ground sat in two places depending on how its name was spelled. A country
+  answer is now *held* and replaced by a place in the **same country** if a later query finds
+  one — the same-country clause is what stops a Bermudian ground's own name placing it in La
+  Verne, California. **Seven rows moved onto the city their ground is in**; 21 rows keep an
+  empty `admin1` because they are in a city-state or a dependent territory with no place
+  inside it. The venue key is unchanged and still identical to the database's, which is why
+  the four `Kensington Oval` spellings remain four rows that now agree on one placement.
+- **The hours.** `timezone=auto` does not mean "local time at the dates requested": the
+  service stamps the whole range with the offset the zone is on **at the moment of the call**.
+  A January request for London comes back at BST, one for Sydney at AEST. **2,523 of the
+  19,653 cached days — 12.8 % — held the wrong hours**, almost none of them English (2 of
+  5,567 `Europe/London` rows) and overwhelmingly southern-hemisphere summer cricket fetched in
+  a southern winter (`Pacific/Auckland` 1,090 of 1,107, `Australia/Sydney` 470 of 482). The
+  client now asks in UTC and builds each local day's hours from the venue's IANA zone per
+  hour. Sixteen unaffected days re-fetched with the corrected client came back identical to
+  their committed lines value for value, so **only the 2,523 wrong days and DATA-02's 226
+  moved-venue days were fetched again** — 881 calls, 0 misses — and the other 16,904 lines
+  are untouched.
+
+**What this does to the numbers below.** Nothing a model serves: no weather column reaches a
+served model, and all four families are recorded nulls. But 12.8 % of the days gate (a) read
+were an hour out, so **the gate (a) table below was measured on the pre-correction data** and
+is not reproducible from the corrected file. It is left as recorded rather than quietly
+restated; re-running it is a `make evaluate`-class job.
 
 **When the matches started.** Cricsheet carries no start times, so `ml/weather/sessions.py`
 infers a window per match from norms and records the rule that placed it: the league's

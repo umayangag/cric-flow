@@ -396,8 +396,11 @@ paying twice.
   whole range with the offset the zone is on *at the moment of the call*, which put every
   cached day on the other side of a daylight-saving boundary one hour out (DATA-04). A day
   the archive holds no readings for is written as a **miss with its reason**, so a restore
-  does not ask again. The file is append-only and flushed after every call, so an
-  interrupted run loses at most the cluster in flight.
+  does not ask again — and only when the same call answered for a neighbouring day, since a
+  miss is permanent and a response empty throughout is a bad answer, not a gap (DATA-06).
+  The file is append-only and flushed after every call, so an interrupted run loses at most
+  the cluster in flight; a torn final line is dropped with a warning, and an unparsable line
+  anywhere else stops the run rather than being skipped.
 - **When the match started** — `ml/weather/sessions.py`. Cricsheet carries no start
   times, so a session window is *inferred* from competition and format norms: the league's
   usual hour (the earlier of a double-header from its match number), the country's usual
