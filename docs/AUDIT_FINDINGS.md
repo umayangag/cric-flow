@@ -105,7 +105,7 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregates in `importMatchFile` (`ingest.go:388-537`) and `BuildBallEventRows` (`ball_event_emit.go:49-129`) → `InsertBallEventsTx` (`db/repo_ball_event.go:347-418`) → `ball_event` (`migrations/0001_baseline.sql:46-64`, PK `:869`). `info.outcome` → `Outcome{Winner, By}` (`cricsheet.go:132-142`) → `ingest.go:272-289, 318-319` → `upsertMatchSQL` (`repo_match.go:48-73`).
 
-### IMPORT-13 — Dimension rows created outside the per-file transaction  **Low — declined a second time, with the exposure measured at zero rows** — the swallowed-error half fixed in PR #338, measured and pinned in PR #PRNUM
+### IMPORT-13 — Dimension rows created outside the per-file transaction  **Low — declined a second time, with the exposure measured at zero rows** — the swallowed-error half fixed in PR #338, measured and pinned in PR #352
 
 `ingest.go`; `db/cache.go`. A failed file still leaves the `player` / `opposition` / `venue` / `season` rows it created behind, because `EntityCache` writes them on the pool, in their own autocommitted statements, before the per-file transaction opens. **What remains.** Resolve dimensions through the tx.
 
