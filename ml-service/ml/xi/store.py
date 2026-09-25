@@ -336,7 +336,10 @@ class XiStore:
         Who *won* the toss is on no request, so the display model's toss column
         (``contract.TOSS_COL``, FEAT-05) is averaged over both answers in every reading,
         the named batting order included -- the same mean ``train.marginalised_probabilities``
-        scores, so the manifest's figure is the served one (EVAL-05).
+        scores, so the manifest's figure is the served one (EVAL-05). The two answers are
+        weighted equally, as the two batting orders are: a deliberate simplification, since
+        given a named order the side batting first won the toss only as often as sides
+        choose to bat (42 % of the archive), and neither number is read here.
         """
         m = self.models[format_code]
         side1 = aggregate_side(self.side_vectors(format_code, team1_keys), format_code)

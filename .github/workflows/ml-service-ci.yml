@@ -78,8 +78,9 @@ jobs:
       - name: Enforce coverage threshold
         env:
           # Keep aligned with ml-service/Makefile COV_MIN and the root Makefile's COV_MIN_ML.
-          # Corrected 95 -> 94 (the measured 94.94% floored) once the gate could fail at all.
-          COV_MIN: "94"
+          # Corrected 95 -> 94 (the measured 94.94% floored) once the gate could fail at all;
+          # ratcheted 94 -> 95 when FEAT-05/06's tests took the gate's own line to 95.02%.
+          COV_MIN: "95"
         run: make -C ml-service coverage-check
 
       - name: Upload coverage artifact
