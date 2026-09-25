@@ -254,6 +254,52 @@ def test_curated_table_places_every_row_where_its_votes_allow_or_says_why() -> N
     assert _unsupported_rows(locations) == []
 
 
+def test_curation_summary_classifies_by_note() -> None:
+    """DATA-09: each placement kind's note maps to its own count, and a note matching
+    none of them is refused rather than silently mis-counted."""
+    locations = {
+        "top": geocoding.VenueLocation("Top", "top", geocoding.STATUS_MAPPED, note=""),
+        "minority": geocoding.VenueLocation(
+            "Minority", "minority", geocoding.STATUS_MAPPED, note=f"{geocoding.NOTE_MINORITY_PREFIX}IN 5 to 3)"
+        ),
+        "unvoted": geocoding.VenueLocation("Unvoted", "unvoted", geocoding.STATUS_MAPPED, note=geocoding.NOTE_UNVOTED),
+        "no_votes": geocoding.VenueLocation(
+            "NoVotes", "no_votes", geocoding.STATUS_MAPPED, note=geocoding.NOTE_NO_VOTES
+        ),
+        "hand": geocoding.VenueLocation(
+            "Hand", "hand", geocoding.STATUS_MAPPED, note="hand-curated: the ground's city, country pinned"
+        ),
+        "unmapped": geocoding.VenueLocation("Gone", "unmapped", geocoding.STATUS_UNMAPPABLE, note="no place found"),
+    }
+
+    summary = geocoding.curation_summary(locations)
+
+    assert summary == geocoding.CurationSummary(
+        total=5, top_vote=1, minority_vote=1, unvoted=1, no_votes=1, hand_curated=1
+    )
+
+
+def test_curation_summary_refuses_a_note_it_cannot_classify() -> None:
+    locations = {"x": geocoding.VenueLocation("X", "x", geocoding.STATUS_MAPPED, note="something new")}
+
+    with pytest.raises(ValueError, match="matches no known placement kind"):
+        geocoding.curation_summary(locations)
+
+
+def test_curation_summary_matches_the_documented_counts() -> None:
+    """DATA-09: `reference-data/README.md` and `contracts/system-map.json` quote this
+    table's breakdown by hand. Derived here from the file itself, so a doc that drifts from
+    it again (as it did before DATA-01 corrected 88 hand-curated rows to 112) fails a test
+    rather than sitting silently wrong."""
+    locations = geocoding.read_locations(CURATED_TABLE)
+
+    summary = geocoding.curation_summary(locations)
+
+    assert summary == geocoding.CurationSummary(
+        total=892, top_vote=670, minority_vote=62, unvoted=44, no_votes=4, hand_curated=112
+    )
+
+
 def test_locate_uses_the_city_hint_then_the_venue_parts_then_records_unmappable() -> None:
     facts = venues.VenueFacts(venue="Seddon Park, Hamilton")
     facts.cities["Hamilton"] += 1
@@ -413,6 +459,53 @@ def test_assign_ranks_double_headers_by_match_number_and_censuses_the_rules() ->
         "t20_league:indian premier league:first_of_day": 1,
         "t20_league:indian premier league:later_in_day": 1,
     }
+
+
+@pytest.mark.parametrize(
+    "rule, documented",
+    [
+        ("odi_men:IN", True),
+        ("odi_women", False),
+        ("one_day_domestic:GB", True),
+        ("t20i_men:AU", True),
+        ("t20i_women", False),
+        ("t20i_associate:slot_0", False),
+        ("t20i_associate:slot_1", False),
+        ("t20_domestic_day:slot_2", False),
+        ("t20_domestic:weekday", True),
+        ("t20_league:indian premier league:single", True),
+        ("t20i_icc:women", True),
+        ("first_class", True),
+        ("unknown_type:XYZ", True),
+    ],
+)
+def test_has_documented_start_hour_excludes_the_rank_and_blanket_rules(rule, documented) -> None:
+    """DATA-08: a rule that assigns one hardcoded hour to every country alike for a
+    bilateral international format (``odi_women``, ``t20i_women``), or reads an hour off a
+    rotation keyed by the fixture's rank at its venue (``t20i_associate``,
+    ``t20_domestic_day``), is not a documented single start hour."""
+    assert sessions.has_documented_start_hour(rule) is documented
+
+
+def test_night_share_documented_only_drops_the_rule_artefact_rows() -> None:
+    """DATA-08: the 35.2 % night share the census implies mixes real evidence with rule
+    artefacts. Restricting to documented rules changes the share, because the excluded
+    rows are not a random sample of the day/night split."""
+    windows = {
+        "m1": sessions.SessionWindow(13, True, "odi_men:IN"),
+        "m2": sessions.SessionWindow(11, False, "odi_men:GB"),
+        "m3": sessions.SessionWindow(10, False, "odi_women"),
+        "m4": sessions.SessionWindow(18, True, "t20i_associate:slot_2"),  # placed night by rank alone
+    }
+
+    assert sessions.night_share(windows) == pytest.approx(0.5)  # m1 and m4 of four
+    assert sessions.night_share(windows, documented_only=True) == pytest.approx(0.5)  # m1 of {m1, m2}
+
+
+def test_night_share_is_none_when_no_window_qualifies() -> None:
+    windows = {"m1": sessions.SessionWindow(10, False, "odi_women")}
+
+    assert sessions.night_share(windows, documented_only=True) is None
 
 
 # --- archive ----------------------------------------------------------------------------

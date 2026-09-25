@@ -71,9 +71,10 @@ def test_summarize_folds_keeps_nesting_and_drops_missing_leaves() -> None:
 
     summary = H.summarize_folds(folds)
 
+    # EVAL-15: two folds' sample sd is ddof=1 (Bessel's correction), not the population sd.
     assert summary["targets"]["runs"]["model"]["pinball"] == {
         "mean": 2.0,
-        "sd": 1.0,
+        "sd": pytest.approx(1.4142135623730951),
         "n_folds": 2,
         "gates_consulted": gates.folds_consulted_count(),
     }

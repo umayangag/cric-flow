@@ -139,10 +139,6 @@ Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depe
 
 `performance.py:364, 369-379, 415-418`: `_average` averages `zero_inflation` and `rate` independently (mean becomes `avg(p)·avg(rate)`); `predict_marginalised` averages the two orientations' quantiles level-by-level, which narrows the 10–90 interval for bimodal cases. **Fix.** Average CDFs (or draws) and invert.
 
-### EVAL-15 — Fold spread uses `ddof=0` on 11 folds  **Low**
-
-`evaluate.py:165`; `perf_harness.py:227`. Understates spread ~5 %. **Fix.** `ddof=1`.
-
 ### EVAL-16 — Career baselines ignore day-close; models saved for formats with 50 rows  **Low**
 
 `perf_baselines.py:40-50` (`shift(1).expanding()` across same-day matches — the baseline sees a same-day earlier match the model does not); `train.py:223` floor of 50 rows. **Fix.** Group the shift by (player, format, date); raise the floor to ~500.
@@ -199,18 +195,6 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 
 `archive.py:134-139` swallows `(ValueError, KeyError)` per line with no log; `:274-275` writes a `Miss` whenever a day's temperatures are all `None`, and the README makes misses permanent. `misses = 0` today. **Fix.** Log and count skipped lines; fail unless the skipped line is the last; only record a `Miss` when neighbouring days have data.
 
-### DATA-07 — Year-precision birth dates stored as 1 January; `age_known` is a survivorship signal  **Low**
-
-`wikidata-player-lookups.jsonl`: 258 of 6,973 `birth_date` values are `-01-01` (3.7 % vs ~0.27 % expected; `go-app/internal/biography/wikidata.go:202-204` acknowledges the query cannot distinguish); `ml/xi/biography.py:53-57` computes age to the day. `age_known` (`contract.py:172`) means "has a Wikidata item in the 2026-09-04 snapshot", which for a 2015 debutant is correlated with later notability — a leak in the X-1b arm (which happened to read null). **Fix.** Fetch the precision qualifier; treat year-precision as mid-year ±0.5; exclude `age_known` from any fold predating the snapshot or document it.
-
-### DATA-08 — Session rules hard-code day games for women's ODI / ODM; associate T20 slots by venue rank  **Low**
-
-`sessions.py:141-149, 170-178`. The 35.2 % night share (`EXTERNAL_DATA_PLAN.md:1088-1090`) is a rule artefact for the 3,469+ `t20i_associate` / `t20i_women` rows. **Fix.** Evaluate the day/night family only on rules with a documented single start hour.
-
-### DATA-09 — Documentation counts do not match the files  **Low**
-
-`reference-data/README.md:79` / `contracts/system-map.json:276` say 140 hand-placed rows; the CSV has 88 `hand-curated` notes and 47 unreviewed "country not among the archive's votes" rows. `README.md:82` "every row is a city-level fix" is contradicted by 20 centroid rows.
-
 ---
 
 ## 8. Ops, CI, security
@@ -223,13 +207,75 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 
 `docker-compose.yml:43` `API_KEY: ${API_KEY:-dev-local-key}`, `:100` `ADMIN_API_KEY` same fallback; root `Makefile:88`, `ml-service/Makefile:83`, `scripts/cadence.sh:37` default to it; Postgres `:10` `"5432:5432"` and both APIs (`:68`, `:106`) bind all interfaces with `POSTGRES_PASSWORD` defaulting to `postgres`; the watcher (`:130`) mounts `/var/run/docker.sock`. `go-app/internal/server/auth.go:21-23` already fails closed when `API_KEY` is unset — the compose fallback defeats that. **Fix.** Drop the `:-dev-local-key` fallbacks; bind Postgres to `127.0.0.1`; read-only socket proxy for the watcher.
 
-### OPS-03 — Frontend keeps the admin key in `localStorage` and attaches it by port heuristic  **Low**
-
-`frontend/src/context/AuthContext.tsx:12-15, 31`; `frontend/src/api.ts:36-40, 50-52` attaches `X-API-Key` when the URL contains `:8080`, and `httpClient` accepts absolute URLs. **Fix.** In-memory / sessionStorage; send only when `url` starts with `BASE_API_URL`.
-
 ---
 
 ## 9. Fixed
+
+### OPS-03 — Frontend keeps the admin key in `localStorage` and attaches it by port heuristic  **Low** — PR #344
+
+`frontend/src/context/AuthContext.tsx:12-15, 31`; `frontend/src/api.ts:36-40, 50-52` attached `X-API-Key` when the URL merely *contained* `:8080`, and `httpClient` accepted absolute URLs. **Fix.** In-memory / sessionStorage; send only when `url` starts with `BASE_API_URL`.
+
+**Both confirmed.** `localStorage` keeps a key on the origin indefinitely -- a leaked or stolen key (XSS, a shared machine, a saved browser profile) stayed valid forever, with no natural expiry. `createHttpClient`'s `isGoApp` check was `baseUrl.includes(':8080') || url.includes(':8080')`: an absolute URL to an unrelated host containing that substring anywhere would also receive the key.
+
+**Storage: `sessionStorage`, chosen over in-memory.** It still survives an accidental reload of a page an operator is watching -- a pipeline progress stream can run a while -- which in-memory (a bare module variable or React state) would not; a console built around long-running, pollable operations pays a real cost for losing that. It does not survive closing the tab or the browser, and a new tab never inherits it, which is what removes the "forever" problem. **User-visible cost:** the key must be re-entered whenever the ops console is opened in a fresh tab or after the browser closes -- not on every reload within the same tab. Centralised behind one module, `lib/apiKeyStorage.ts`: `AuthContext.tsx` and `api.ts` previously each reached into browser storage with their own copy of the key name.
+
+**Attachment rule fixed at the root.** Extracted a named, exported `isGoAppRequest(url)` that prefix-matches the resolved URL against `BASE_API_URL`. Every existing call site in `api.ts` resolves under `BASE_API_URL` (a relative path, or `new URL(path, BASE_API_URL)`), so no legitimate request stops carrying the header.
+
+Not retrain-flagged: frontend only, no ML feature or label involved.
+
+Pinned by `isGoAppRequest` unit tests (true for go-app's own base URL and paths under it; false for an unrelated absolute URL containing `:8080` as a substring; false for a different host on the same port) and by every `api.test.ts` / `AuthContext.test.tsx` / `Login.test.tsx` / `api.error.test.ts` case that now stubs `sessionStorage` instead of `localStorage` -- the storage-specific assertions (login writes the key, logout clears it, a stored key authenticates on load) fail on `main` against a `sessionStorage` stub, since `AuthContext`/`api.ts` never read it there. Coverage: functions rose to 83.03 % (the added module and its tests are fully covered), ratcheted 82 → 83 in `frontend/vite.config.ts`.
+
+### DATA-09 — Documentation counts do not match the files  **Low** — PR #344
+
+`reference-data/README.md:79` / `contracts/system-map.json:276` said 140 hand-placed rows; the CSV had 88 `hand-curated` notes and 47 unreviewed "country not among the archive's votes" rows. `README.md:82` "every row is a city-level fix" was contradicted by 20 centroid rows.
+
+**The citation is stale, already.** Re-derived the true current counts from `reference-data/venue-geocoding.csv` directly, as instructed, rather than trusting either the doc or the finding: 892 mapped rows split 670 top-vote / 62 minority-vote / 44 unvoted / 4 no-vote / **112 hand-curated**. Both `reference-data/README.md` (lines 79 and 82) and `contracts/system-map.json:276` already state exactly this breakdown -- DATA-01 (PR #318) corrected them (88 → 112 hand-curated) as a side effect of its own landing, before this branch touched anything. The "every row is a city-level fix" contradiction is likewise already qualified in both docs with a 26-centroid exception (DATA-02, still open). There is no live doc/file mismatch left at either cited location today.
+
+**What was missing:** a way to tell if these hand-typed numbers drift again, the way they did once already. Added `geocoding.curation_summary`, which classifies every mapped row by its `note` using the same constants `support_note` writes (`NOTE_UNVOTED`, `NOTE_NO_VOTES`, the new shared `NOTE_MINORITY_PREFIX`) plus the hand-curated prefix, and raises on a note it cannot classify rather than mis-counting silently.
+
+**Noted, not fixed (DATA-02's territory):** `docs/EXTERNAL_DATA_PLAN.md:1094`'s "26 rows sit at a country centroid" does not match a naive `admin1 == ""` count over the current file (28); the exact definition of a "centroid" row is DATA-02's still-open question, not this one's.
+
+Not retrain-flagged: no model reads this table; it feeds `ml/weather/features.py`, gated off every served model (X-2 read null on all four weather families).
+
+Pinned by `test_curation_summary_matches_the_documented_counts` (runs `curation_summary` over the real curated table and asserts the exact counts above; fails on `main`, which has no such function), plus a synthetic-fixture classification test and a refusal test for an unrecognised note.
+
+### DATA-08 — Session rules hard-code day games for women's ODI / ODM; associate T20 slots by venue rank  **Low** — PR #344
+
+`sessions.py:141-149, 170-178`. The 35.2 % night share (`EXTERNAL_DATA_PLAN.md:1088-1090`) was claimed to be a rule artefact for the 3,469+ `t20i_associate` / `t20i_women` rows. **Fix.** Evaluate the day/night family only on rules with a documented single start hour.
+
+**The spec's title and its own citation disagree.** The title says "women's ODI/ODM"; the cited "3,469+" count and rule names (`t20i_associate`, `t20i_women`) are a T20I matter. Verified against `docs/EXTERNAL_DATA_PLAN.md`'s census: `t20i_women` (1,992) + `t20i_associate:slot_0` (1,477) = 3,469 exactly, matching the finding's own number -- so the citation is right and the title is wrong. `odi_women` (women's international ODI) carries the identical hardcoding pattern -- one default hour for every country, explicit day regardless -- by inspection of the code, and is included in the fix on that basis even though it is not part of the cited count; `t20_domestic_day:slot_N` shares `t20i_associate`'s exact rank-based-rotation mechanism and is included for the same reason. `one_day_domestic` is not included: it does compute night from an hour like every other rule, the hour is simply below the night threshold for every country the table covers or defaults to, which is a real fact about domestic one-day cricket rather than an evaluation artefact.
+
+**Fix, additive.** Added `sessions.has_documented_start_hour(rule)` and `sessions.night_share(windows, documented_only=...)` so a day/night family evaluation can read only the rows a documented single start hour placed. `infer`/`assign`/`census` are unchanged, so no existing report value moves.
+
+Not retrain-flagged: `wx_night` itself is unchanged; this is a filter a future evaluation opts into. X-2-daynight already read null on the unfiltered figure.
+
+Pinned by a parametrised `has_documented_start_hour` test over every rule shape (`odi_women`, `t20i_women`, `t20i_associate:slot_N`, `t20_domestic_day:slot_N` all `False`; `odi_men:IN`, `t20i_men:AU`, `first_class`, league and ICC rules all `True`) and two `night_share` tests (documented-only changes the share; `None` when nothing qualifies) -- all fail on `main`, which has neither function.
+
+### DATA-07 — Year-precision birth dates stored as 1 January; `age_known` is a survivorship signal  **Low** — PR #344
+
+`wikidata-player-lookups.jsonl`: 258 of 6,973 `birth_date` values are `-01-01` (3.7 % vs ~0.27 % expected; `go-app/internal/biography/wikidata.go:202-204` acknowledges the query cannot distinguish); `ml/xi/biography.py:53-57` computes age to the day. `age_known` (`contract.py:172`) means "has a Wikidata item in the 2026-09-04 snapshot", which for a 2015 debutant is correlated with later notability — a leak in the X-1b arm (which happened to read null). **Fix.** Fetch the precision qualifier; treat year-precision as mid-year ±0.5; exclude `age_known` from any fold predating the snapshot or document it.
+
+**No network fetch; the other two clauses, landed.** `age_years` now reads a 1 January birth date as 2 July of the same year (mid-year), bounding the error at half a year in either direction instead of the "up to a year high" the literal date gave -- which is what the Go-side query's own comment already promised ("a January default costs it at most half a year") but the Python side never actually implemented. Which specific rows are the artefact is unrecoverable without the precision qualifier, so every 1 January date is read this way, trading a small, symmetric cost for the ~0.27 % of players genuinely born then against removing a much larger, one-sided error for the rest.
+
+**Checked whether anything reads it first, per plan.** Neither of `contract.AGE_FEATURES_KEPT` nor `AGE_AWARE_COLD_START` is `True` (X-1b read null on both families), so `age`/`age_known` reach no served model today, and `XI_FEATURE_COLS` (the win/objective/display models) never includes `AGE_COLS` at all -- confirmed by reading `contract.py`'s column lists, not by trusting the flags' names. Documented the survivorship-leak risk directly on both flags in `contract.py`, so re-enabling either without addressing it (a fresher per-fold snapshot, or excluding pre-snapshot folds from a gate that reads `age_known`) is a decision made with the risk in view. Since the leak's expected direction is toward finding an effect, X-1b's recorded null was, if anything, conservative rather than undermined by it.
+
+Not retrain-flagged: the corrected age values reach no served model; a future run that flips either X-1b flag on inherits the correction.
+
+Pinned by `test_age_years_reads_a_1_january_birth_date_as_mid_year` (fails on `main`: the raw Jan-1 value, not the mid-year one) and the existing age-vector/player-row tests updated to the corrected values (b0's age on a 1990-01-01 birth date moves 34.45 → 33.95 at the same read date).
+
+### EVAL-15 — Fold spread uses `ddof=0` on 11 folds  **Low** — PR #344
+
+`evaluate.py:165`; `perf_harness.py:227`. Understates spread ~5 %. **Fix.** `ddof=1`.
+
+**Confirmed, in the shared helper both call.** `ml.xi.folds.summarise_over_folds` -- called directly by `evaluate.py` and `natural_experiment.py`, and through `perf_harness.summarize_folds`'s recursion by `perf_harness.py` -- computed `np.std(present)`, numpy's default `ddof=0` (population sd). Switched to `ddof=1` (Bessel's correction), the correct sample estimate over the eleven walk-forward folds; a single present fold keeps the population convention (`0.0`) rather than reporting `NaN`.
+
+**Before/after fold sd, measured against the latest full L4 report** (`output/ml-service/xi_evaluate_report.json`): T20 0.0385 → 0.0404 (n=11), T20I 0.0399 → 0.0420 (n=10), ODI 0.0683 → 0.0716 (n=11), TEST 0.1041 → 0.1092 (n=11) -- every format widens ~4.9-5.4 %, as the finding predicted.
+
+**No gate verdict changes.** Every `check_report`-enforced `Threshold` (`_h17_failure`, `_h4_failure`, `_specific_vs_typical_failure`, `_e5_failure`, `_e2_failure`) reads only `_fold_mean(value)`, never `sd`; E5's `derived_bar`/`passes_derived_bar` and E2's `decision()` are likewise mean-only. The fold `sd` is printed in the report and read by a human against the "one fold-level standard error" language in several experiment-only gates (`report_path=None`), but no gate this repository's `check_report` evaluates in code reads it.
+
+Not retrain-flagged: a report-summary statistic, not a feature or label definition.
+
+Pinned by `test_stats_spread_is_the_sample_standard_deviation` (asserts the sample `stdev`, not the population `pstdev`; fails on `main`) and `test_stats_spread_is_zero_not_nan_for_a_single_fold`, plus the existing `perf_harness` nesting test updated to the corrected two-fold sample sd (`sqrt(2)`, not `1.0`).
 
 ### CI-01 — The ml-service coverage gate reports failure and exits zero; its floor was never met  **High** — PR #343
 

@@ -1,4 +1,5 @@
 import { ApiError } from './lib/apiError';
+import { getStoredApiKey } from './lib/apiKeyStorage';
 import type {
   HealthResponse,
   XiStatusResponse,
@@ -40,22 +41,26 @@ const BASE_API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localho
 function apiHeaders(includeJsonContentType = true): Record<string, string> {
   const headers: Record<string, string> = {};
   if (includeJsonContentType) headers['Content-Type'] = 'application/json';
-  let apiKey: string | null = null;
-  if (typeof window !== 'undefined' && window.localStorage) {
-    apiKey = window.localStorage.getItem('cric_info_api_key');
-  }
+  const apiKey = typeof window !== 'undefined' ? getStoredApiKey() : null;
   if (apiKey) headers['X-API-Key'] = apiKey;
   return headers;
+}
+
+/**
+ * Whether a resolved request URL is go-app's own API (OPS-03). The admin key belongs to
+ * go-app, so it is attached only when the URL actually starts with go-app's base URL --
+ * a prefix match, not a substring check for ":8080", which an absolute URL to an
+ * unrelated host could also contain (and used to receive the key regardless).
+ */
+export function isGoAppRequest(url: string): boolean {
+  return url.startsWith(BASE_API_URL);
 }
 
 // Generic HTTP client factory to avoid duplication between different base URLs
 function createHttpClient(baseUrl: string) {
   return async function httpClient<T>(pathOrUrl: string, options?: RequestInit): Promise<T> {
     const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${baseUrl}${pathOrUrl}`;
-
-    // Improved detection: matches BASE_API_URL, has go-app port, or final URL has go-app port
-    const isGoApp = baseUrl === BASE_API_URL || baseUrl.includes(':8080') || url.includes(':8080');
-    const headers = isGoApp ? apiHeaders(true) : { 'Content-Type': 'application/json' };
+    const headers = isGoAppRequest(url) ? apiHeaders(true) : { 'Content-Type': 'application/json' };
 
     const res = await fetch(url, {
       headers,

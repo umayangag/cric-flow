@@ -189,6 +189,13 @@ FIXTURE_CONTEXT_FAMILIES_KEPT: Tuple[str, ...] = ()
 # monotone over every age a cricketer has.
 AGE_COLS: List[str] = ["age", "age_known"]
 #: Gate X-1b, family 1 (plan §8.12): whether the performance model reads ``AGE_COLS``.
+#: Both False today (X-1b read null on both families) -- neither AGE_COLS entry reaches
+#: a served model. DATA-07: ``age_known`` is not a fact about the player at the match
+#: date, it is "has a Wikidata item in the lookup snapshot" -- for a player who debuted
+#: near the snapshot date that correlates with later notability, a leak on any fold whose
+#: rows predate the snapshot. Flipping either flag back on without addressing that (a
+#: fresher per-fold snapshot, or excluding pre-snapshot folds from a gate that reads
+#: ``age_known``) reopens it.
 AGE_FEATURES_KEPT = False
 #: Age bands for the age-aware cold start (X-1b family 3): the upper bound of each band in
 #: years, the last band open. Chosen from the population -- the quartiles of age at match
@@ -197,6 +204,7 @@ AGE_BANDS: Tuple[float, ...] = (22.0, 26.0, 30.0, 34.0)
 N_AGE_BANDS = len(AGE_BANDS) + 1
 #: Gate X-1b, family 3 (plan §8.12): whether a player with no history in the format and a
 #: known age reads the as-of debut profile of his age band instead of the neutral vector.
+#: Also False (see ``AGE_FEATURES_KEPT``'s note on ``age_known`` as a survivorship signal).
 AGE_AWARE_COLD_START = False
 
 

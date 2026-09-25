@@ -12,7 +12,11 @@ describe('api error parsing', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   function respondWith(status: number, body: string) {
-    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    vi.stubGlobal('sessionStorage', {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {},
+    });
     (globalThis as unknown as { fetch: unknown }).fetch = vi.fn().mockResolvedValue({
       ok: false,
       status,

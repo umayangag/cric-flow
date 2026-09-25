@@ -62,6 +62,13 @@ _SUPPORT_RANK = {SUPPORT_TOP: 0, SUPPORT_MINORITY: 1, SUPPORT_UNVOTED: 2}
 NOTE_NO_VOTES = "no country vote; most populous place of that name"
 NOTE_UNVOTED = "country not among the archive's votes"
 NOTE_NO_PLACE = "no place found for any query"
+#: The stem of ``support_note``'s minority-vote sentence, before the two countries and
+#: their counts -- shared with ``curation_summary`` (DATA-09) so the two read one string.
+NOTE_MINORITY_PREFIX = "country not the archive's top vote ("
+#: A hand-placed row's note starts with this, set directly on the row by a person rather
+#: than computed by ``support_note`` -- the CSV's own record of what asking the archive's
+#: votes could not settle.
+HAND_CURATED_PREFIX = "hand-curated"
 
 
 @dataclass(frozen=True)
@@ -196,7 +203,7 @@ def support_note(country_code: str, votes: Mapping[str, int]) -> str:
     if kind == SUPPORT_UNVOTED:
         return NOTE_UNVOTED
     code, best = top_vote(votes)
-    return f"country not the archive's top vote ({code} {best} to {votes[country_code]})"
+    return f"{NOTE_MINORITY_PREFIX}{code} {best} to {votes[country_code]})"
 
 
 def choose(candidates: Sequence[Candidate], votes: Mapping[str, int]) -> Optional[Candidate]:
@@ -279,6 +286,45 @@ def read_locations(path: str) -> Dict[str, VenueLocation]:
             location = VenueLocation(**row)
             out[location.venue_key] = location
     return out
+
+
+@dataclass(frozen=True)
+class CurationSummary:
+    """How the curated table's mapped rows break down by what placed them (DATA-09): the
+    counts a doc describing the table should quote, derived from the table itself rather
+    than typed by hand and left to drift the next time a row is hand-placed or re-voted."""
+
+    total: int
+    top_vote: int
+    minority_vote: int
+    unvoted: int
+    no_votes: int
+    hand_curated: int
+
+
+def curation_summary(locations: Mapping[str, VenueLocation]) -> CurationSummary:
+    """Classify every mapped row by its ``note`` (DATA-09): the archive's top-voted country
+    (an empty note), a country the top vote does not out-vote beyond chance, a country
+    nobody voted for, no vote at all, or hand-placed. A row whose note matches none of
+    these raises, so a new note shape is caught here rather than silently mis-counted."""
+    counts = {"top_vote": 0, "minority_vote": 0, "unvoted": 0, "no_votes": 0, "hand_curated": 0}
+    for location in locations.values():
+        if location.status != STATUS_MAPPED:
+            continue
+        note = location.note
+        if note.startswith(HAND_CURATED_PREFIX):
+            counts["hand_curated"] += 1
+        elif note == "":
+            counts["top_vote"] += 1
+        elif note == NOTE_UNVOTED:
+            counts["unvoted"] += 1
+        elif note == NOTE_NO_VOTES:
+            counts["no_votes"] += 1
+        elif note.startswith(NOTE_MINORITY_PREFIX):
+            counts["minority_vote"] += 1
+        else:
+            raise ValueError(f"{location.venue_key}: note matches no known placement kind: {note!r}")
+    return CurationSummary(total=sum(counts.values()), **counts)
 
 
 def write_locations(path: str, locations: Mapping[str, VenueLocation]) -> None:
