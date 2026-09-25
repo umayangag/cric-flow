@@ -169,6 +169,13 @@ class DataQuality:
     matches_with_reconstructible_table: int = 0
     dead_rubber_matches: int = 0
 
+    # The home flag's reach (FEAT-05): matches where exactly one side read as at home, as
+    # the pass read them; and the toss's: matches the source recorded no toss for, which
+    # read ``TOSS_UNKNOWN``. Facts about the cricket and the curated venue table, compared
+    # across sources and not gated.
+    matches_with_one_home_side: int = 0
+    matches_without_toss: int = 0
+
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
 

@@ -584,7 +584,7 @@ class _FakeCursor:
     def __exit__(self, *exc):
         return False
 
-    def execute(self, sql, params):
+    def execute(self, sql, params=None):
         if "count(*) FROM match" in sql:
             self.rows = [(len(self.tables["matches"]),)]
         elif "FROM match m" in sql:
@@ -593,6 +593,8 @@ class _FakeCursor:
             self.rows = self.tables["players"].get(params[0], [])
         elif "FROM ball_event" in sql:
             self.rows = self.tables["balls"].get(params[0], [])
+        elif "FROM venue" in sql:
+            self.rows = self.tables.get("venues", [])
         else:
             raise AssertionError(sql)
 
@@ -614,11 +616,12 @@ class _FakeConnection:
 def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     tables = {
         # Columns follow _MATCH_SQL: ..., winner, event name, match number, stage, group,
-        # result. Match 2 is a tie settled by a super over: a winner with result 'tie'.
+        # result, toss winner. Match 2 is a tie settled by a super over: a winner with
+        # result 'tie'; match 3 records no toss.
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None),
-            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None, "tie"),
+            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None, 10),
+            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None, 20),
+            (3, date(2024, 1, 3), "T20I", "male", None, 10, 20, 10, None, None, None, None, "tie", None),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
         "players": {
@@ -664,6 +667,36 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     # match won outright carries none, and a tie-breaker win keeps 'tie' beside its winner.
     assert first.result is None
     assert recs[1].result == "tie" and recs[1].winner == "10"
+    # The toss winner (FEAT-05) is keyed as the sides are, so "the side batting first won
+    # it" is one equality; a match the database records no toss for reads None, never 0.
+    assert first.toss_winner == "10" and first.toss_won_by_team1 == 1.0
+    assert recs[1].toss_winner is None and recs[1].toss_won_by_team1 is None
+
+
+def test_postgres_source_places_venues_through_the_curated_table(tmp_path) -> None:
+    """FEAT-05's static input on the database path: ``venue.country`` is NULL on every row
+    of the archive, so the source joins each venue's *name* to the curated table by the
+    identity-way key and hands the state a region per ``venue.id``. A venue the table has
+    no row for is in no region."""
+    curated = tmp_path / "venue-geocoding.csv"
+    curated.write_text(
+        "venue,venue_key,status,query,place,admin1,country_code,country,latitude,longitude,timezone,"
+        "countries_voted,source,note\n"
+        '"Eden Gardens, Kolkata",eden gardens kolkata,mapped,Kolkata,Kolkata,WB,IN,India,22.5,88.3,'
+        "Asia/Kolkata,IN:9,open-meteo-geocoding,\n"
+        '"Kensington Oval, Bridgetown",kensington oval bridgetown,mapped,Bridgetown,Bridgetown,,BB,Barbados,'
+        "13.1,-59.6,America/Barbados,BB:2,open-meteo-geocoding,\n"
+    )
+    tables = {
+        "matches": [],
+        "players": {},
+        "balls": {},
+        "venues": [(5, "Eden Gardens, KOLKATA"), (6, "Kensington Oval, Bridgetown"), (7, "Nowhere Park")],
+    }
+
+    placed = PostgresSource(_FakeConnection(tables), venue_countries_path=str(curated)).venue_countries()
+
+    assert placed == {"5": "IN", "6": "WI"}, "keyed by id; the West Indies fold to one region; Nowhere Park is unplaced"
 
 
 def test_postgres_source_keys_players_by_the_registry_identifier() -> None:
@@ -795,7 +828,7 @@ def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> Non
     no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0, 0)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10)],
         "players": {1: squad},
         "balls": {1: [no_ball_with_four_leg_byes, plain_four]},
     }
@@ -1355,7 +1388,7 @@ def test_the_postgres_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
     wide = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 1)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10)],
         "players": {1: squad},
         "balls": {1: [no_ball, wide, plain_four]},
     }

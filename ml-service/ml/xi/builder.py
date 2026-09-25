@@ -159,6 +159,7 @@ def build(
         gender_split_context=gender_split_context,
         birth_dates=source.birth_dates(),
         age_aware_cold_start=age_aware_cold_start,
+        venue_countries=source.venue_countries(),
     )
     rows = []
     player_rows = []
@@ -175,6 +176,8 @@ def build(
     deliveries_not_faced = 0
     dismissals = 0
     stakes_counts = {"stage": 0, "knockout": 0, "table": 0, "dead": 0}
+    matches_with_one_home_side = 0
+    matches_without_toss = 0
     pending: List = []
     current_date = None
     for i, match in enumerate(source.iter_matches()):
@@ -198,6 +201,9 @@ def build(
                 state.update(done)
             pending.clear()
         current_date = match.match_date
+        # Read before the day is folded, as the row is: the home flag is as-of (FEAT-05).
+        matches_with_one_home_side += int(sum(state.home_sides(match)) == 1.0)
+        matches_without_toss += int(match.toss_won_by_team1 is None)
         if match.outcome is not None:
             win_row, match_player_rows = build_match_rows(state, match)
             rows.append(win_row)
@@ -238,11 +244,14 @@ def build(
         knockout_matches=stakes_counts["knockout"],
         matches_with_reconstructible_table=stakes_counts["table"],
         dead_rubber_matches=stakes_counts["dead"],
+        matches_with_one_home_side=matches_with_one_home_side,
+        matches_without_toss=matches_without_toss,
     )
     logger.info(
         "rating pass: %d training rows, %d player-match rows, %d undecided matches, "
         "%d decided matches without deliveries, %d players "
-        "(%d namesake sides, %d sides over eleven, %d unresolved player keys, %d with a date of birth)",
+        "(%d namesake sides, %d sides over eleven, %d unresolved player keys, %d with a date of birth), "
+        "%d matches with exactly one side at home, %d without a toss",
         len(frame),
         len(player_frame),
         n_undecided,
@@ -252,6 +261,8 @@ def build(
         quality.oversized_squads,
         quality.unknown_player_keys,
         quality.players_with_birth_date,
+        quality.matches_with_one_home_side,
+        quality.matches_without_toss,
     )
     return BuildResult(frame=frame, player_frame=player_frame, state=state, n_undecided=n_undecided, quality=quality)
 

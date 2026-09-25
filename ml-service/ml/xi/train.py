@@ -245,24 +245,45 @@ def _score(model, x_te: np.ndarray, y_te: np.ndarray) -> Dict[str, float]:
     return {"auc": float(roc_auc_score(y_te, p)), "brier": float(brier_score_loss(y_te, p))}
 
 
+#: The team-context columns that change sign when the sides are exchanged.
+SIGNED_CONTEXT_COLS = ("team_elo_diff", "team_form_diff", "venue_fam_diff", "home_diff")
+
+
 def swap_orientation(frame: pd.DataFrame) -> pd.DataFrame:
     """The same fixtures with the sides exchanged (team2 bats first). Used to score the
-    serving path, which averages both batting orders because the toss is unknown."""
+    serving path, which averages both batting orders because the toss is unknown. The
+    toss winner is a fact of the fixture, so exchanging the batting order reads it as
+    1 - x: the side that won it now bats second."""
     out = frame.copy()
     for stem in C.SIDE_FEATURE_STEMS:
         out[f"t1_{stem}"], out[f"t2_{stem}"] = frame[f"t2_{stem}"], frame[f"t1_{stem}"]
         out[f"d_{stem}"] = -frame[f"d_{stem}"]
-    for col in ("team_elo_diff", "team_form_diff", "venue_fam_diff"):
+    for col in SIGNED_CONTEXT_COLS:
         out[col] = -frame[col]
     out["team_h2h"] = 1.0 - frame["team_h2h"]
+    if C.TOSS_COL in frame.columns:
+        out[C.TOSS_COL] = 1.0 - frame[C.TOSS_COL]
     return out
 
 
+def toss_variants(frame: pd.DataFrame, cols: List[str]) -> List[pd.DataFrame]:
+    """The frame read at each answer to "who won the toss", when the model reads the
+    toss at all: what the serving path averages over, since no request carries it."""
+    if C.TOSS_COL not in cols:
+        return [frame]
+    return [frame.assign(**{C.TOSS_COL: value}) for value in (1.0, 0.0)]
+
+
 def marginalised_probabilities(model, te: pd.DataFrame, cols: List[str]) -> np.ndarray:
-    """P(team1 wins) per row as the serving path computes it: both batting orders averaged."""
-    x_a, _ = _xy(te, cols)
-    x_b, _ = _xy(swap_orientation(te), cols)
-    return 0.5 * (model.predict_proba(x_a)[:, 1] + (1.0 - model.predict_proba(x_b)[:, 1]))
+    """P(team1 wins) per row as the serving path computes it: both batting orders
+    averaged and, for a model that reads the toss, both toss winners (FEAT-05) -- the
+    same four-way (or two-way) mean ``XiStore.display_probability`` takes."""
+    probabilities = []
+    for frame, swapped in ((te, False), (swap_orientation(te), True)):
+        for variant in toss_variants(frame, cols):
+            p = model.predict_proba(_xy(variant, cols)[0])[:, 1]
+            probabilities.append(1.0 - p if swapped else p)
+    return np.mean(probabilities, axis=0)
 
 
 def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, float]:

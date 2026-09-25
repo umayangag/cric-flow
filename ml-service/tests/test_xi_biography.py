@@ -28,6 +28,9 @@ class _Source(ListSource):
     def birth_dates(self):
         return dict(BIRTH)
 
+    def venue_countries(self):
+        return {}
+
 
 def _matches(days, winner="A"):
     t1, t2 = xi("a"), xi("b")
@@ -177,6 +180,9 @@ class _TwoDebutantsOfOneBand(_Source):
 
     def birth_dates(self):
         return {**BIRTH, "a1": date(2000, 1, 1)}
+
+    def venue_countries(self):
+        return {}
 
 
 def test_debut_prior_divides_the_bands_balls_by_every_debut_appearance() -> None:

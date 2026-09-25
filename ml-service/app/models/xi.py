@@ -385,15 +385,16 @@ class XiWinResponse(BaseModel):
         ge=0,
         le=1,
         description="XI-only model, the value the optimiser maximises. Always marginalised over the "
-        "batting order: the objective reads per-side aggregates over eleven and has no batting-order "
-        "feature to read, so a named toss does not move it",
+        "batting order: the objective reads per-side aggregates over eleven and has no batting-order, "
+        "toss or home-advantage feature to read, so a named toss does not move it",
     )
     toss_marginalised: bool = Field(
         ...,
-        description="True when no toss was named and `team1_win_probability` was averaged over both "
-        "batting orders; false when the named toss was read. The two are different quantities and they "
-        "differ by 0.04 on average in TEST, so a caller has to be able to tell which it holds without "
-        "re-reading its own request (§8.7). `objective_probability` is marginalised either way",
+        description="True when no batting order was named and `team1_win_probability` was averaged over "
+        "both; false when the named order was read. The two are different quantities and they differ by "
+        "0.04 on average in TEST, so a caller has to be able to tell which it holds without re-reading "
+        "its own request (§8.7). Who won the toss is on no request and is averaged over in both readings; "
+        "`objective_probability` is marginalised either way",
     )
     team1_constraint_check: Optional[XiConstraintCheck] = Field(
         default=None, description="Present only where the request carried team1_constraints"

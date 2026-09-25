@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from copy import copy as shallow_copy
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Dict, List, Mapping, Optional, Sequence
@@ -24,6 +25,7 @@ import numpy as np
 
 from ml.xi import contract as C
 from ml.xi.biography import age_vectors
+from ml.xi.geography import NO_COUNTRIES, modal_region, venue_region
 from ml.xi.sequence import sequence_flags
 from ml.xi.sources import Deliveries, MatchRecord, batting_positions
 
@@ -150,7 +152,9 @@ CONTEXT_ARRAY_NAMES = (
 STATE_ARRAY_NAMES = PLAYER_ARRAY_NAMES + CONTEXT_ARRAY_NAMES
 
 #: The keyed tables beside the arrays: team and venue state, the fixture-context sums
-#: (A-1) and the players' dates of birth (X-1b).
+#: (A-1), the players' dates of birth (X-1b), and the home flag's two inputs (FEAT-05):
+#: the region each venue is in, static like the birth dates, and per team the regions it
+#: has played in so far, advanced at day close like every other accumulator.
 STATE_TABLE_NAMES = (
     "team_elo",
     "team_results",
@@ -160,17 +164,21 @@ STATE_TABLE_NAMES = (
     "venue_scoring",
     "competition_scoring",
     "birth_dates",
+    "venue_countries",
+    "team_countries",
 )
 
 #: The tables whose values are mutated in place by ``update`` -- a result appended to a
-#: form list, a venue's bat-first pair incremented, a ground's scoring sums advanced. A
-#: snapshot has to copy the value as well as the mapping, or the copy moves with the pass.
+#: form list, a venue's bat-first pair incremented, a ground's scoring sums advanced, a
+#: team's region counts stepped. A snapshot has to copy the value as well as the mapping,
+#: or the copy moves with the pass.
 _TABLES_WITH_MUTABLE_VALUES = (
     "team_results",
     "head_to_head",
     "venue_bat_first",
     "venue_scoring",
     "competition_scoring",
+    "team_countries",
 )
 
 
@@ -188,6 +196,10 @@ class RatingState:
     is X-1b's family 3: when True, ``side_vectors`` reads a player with no history in the
     format and a known age as the as-of debut profile of his age band instead of the
     neutral vector. Off by default; both are recorded in the artifact.
+
+    ``venue_countries`` is the home flag's static input (FEAT-05): the region each venue
+    key is in, read from the source once like the birth dates. Its other input, where each
+    team has played so far, is ``team_countries`` and is an accumulator.
     """
 
     def __init__(
@@ -195,11 +207,13 @@ class RatingState:
         gender_split_context: bool = False,
         birth_dates: Optional[Mapping[str, date]] = None,
         age_aware_cold_start: bool = False,
+        venue_countries: Optional[Mapping[str, str]] = None,
     ) -> None:
         self.players = PlayerIndex()
         self.gender_split_context = gender_split_context
         self.birth_dates: Dict[str, date] = dict(birth_dates or {})
         self.age_aware_cold_start = age_aware_cold_start
+        self.venue_countries: Dict[str, str] = dict(venue_countries or {})
         n = 1024
         z = lambda: np.zeros((_N_FMT, n))  # noqa: E731
         self.bat_rae, self.bat_balls, self.bat_wae = z(), z(), z()
@@ -253,6 +267,10 @@ class RatingState:
         # [runs, dismissals, deliveries] over every ball of every match under that key
         self.venue_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
         self.competition_scoring: Dict[tuple, List[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+        # home advantage (FEAT-05): per team key, how many past matches it played in each
+        # region -- every format together, since where a club is from does not depend on
+        # the format it is playing. Plain inner dicts: a read must not create a key.
+        self.team_countries: Dict[str, Dict[str, int]] = defaultdict(dict)
         # age-band debut profiles (X-1b family 3): per (format, age band) the lifetime sums
         # of what debutants of that band did in their debut match, batting and bowling
         # (``DEBUT_IMPACT`` .. ``DEBUT_MATCHES``). Not decayed: it is a population prior.
@@ -334,7 +352,7 @@ class RatingState:
             source = getattr(self, name)
             table = getattr(copy, name)
             if name in _TABLES_WITH_MUTABLE_VALUES:
-                table.update({key: list(value) for key, value in source.items()})
+                table.update({key: shallow_copy(value) for key, value in source.items()})
             else:
                 table.update(source)
         copy.matches_seen = self.matches_seen
@@ -360,6 +378,16 @@ class RatingState:
         (X-1b family 3) consumes: a player with no history in the format and a known age
         then reads his age band's as-of debut profile instead of the neutral vector. The
         rows pass the match date; a caller without one reads the state's own date.
+
+        Every shrunk rate is hierarchical (FEAT-06): it shrinks toward the player's own
+        rate in the *other* formats, not toward zero, so a T20I regular making his IPL
+        debut reads as himself rather than as an unknown. ``hierarchical_rate`` says how;
+        a player with no history outside the format reads exactly what he always did.
+        Involvement (``exp_balls_*``), Elo and the role keys are not pooled: balls per
+        appearance are not comparable across a 120-ball and a 300-ball innings, so a
+        format debutant's impact still weighs nothing in the side aggregates until he has
+        appeared -- the performance model, which reads the rates directly, is where the
+        pooled estimate reaches a prediction first.
         """
         f = C.FORMAT_INDEX[format_code]
         s = self._read_slots(player_keys)
@@ -367,10 +395,10 @@ class RatingState:
         out = {
             "exp_balls_faced": per_xi_appearance(self.xi_bat_balls[f, s], appearances),
             "exp_balls_bowled": per_xi_appearance(self.xi_bowl_balls[f, s], appearances),
-            "bat_rate": self.bat_rae[f, s] / (self.bat_balls[f, s] + C.PRIOR_BALLS),
-            "bat_wrate": self.bat_wae[f, s] / (self.bat_balls[f, s] + C.PRIOR_BALLS),
-            "bowl_rate": self.bowl_rse[f, s] / (self.bowl_balls[f, s] + C.PRIOR_BALLS),
-            "bowl_wrate": self.bowl_wae[f, s] / (self.bowl_balls[f, s] + C.PRIOR_BALLS),
+            "bat_rate": hierarchical_rate(self.bat_rae, self.bat_balls, f, s, 0.0, C.PRIOR_BALLS),
+            "bat_wrate": hierarchical_rate(self.bat_wae, self.bat_balls, f, s, 0.0, C.PRIOR_BALLS),
+            "bowl_rate": hierarchical_rate(self.bowl_rse, self.bowl_balls, f, s, 0.0, C.PRIOR_BALLS),
+            "bowl_wrate": hierarchical_rate(self.bowl_wae, self.bowl_balls, f, s, 0.0, C.PRIOR_BALLS),
             "career": self.career[f, s].copy(),
             "career_all": self.career_all[s].copy(),
             "pelo": self.pelo[f, s].copy(),
@@ -380,11 +408,15 @@ class RatingState:
             "bat_innings_share": per_xi_appearance(self.bat_pos_n[f, s], appearances),
         }
         for p, name in enumerate(C.PHASE_NAMES):
-            out[f"bat_{name}_rate"] = self.bat_ph_rae[f, p, s] / (self.bat_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
-            out[f"bowl_{name}_rate"] = self.bowl_ph_rse[f, p, s] / (self.bowl_ph_balls[f, p, s] + C.PHASE_PRIOR_BALLS)
+            out[f"bat_{name}_rate"] = hierarchical_rate(
+                self.bat_ph_rae[:, p, :], self.bat_ph_balls[:, p, :], f, s, 0.0, C.PHASE_PRIOR_BALLS
+            )
+            out[f"bowl_{name}_rate"] = hierarchical_rate(
+                self.bowl_ph_rse[:, p, :], self.bowl_ph_balls[:, p, :], f, s, 0.0, C.PHASE_PRIOR_BALLS
+            )
         for key, i in _SEQ_INDEX.items():
             prior_num, prior_den = _SEQ_PRIOR.get(key, _SEQ_DEFAULT_PRIOR)
-            out[key] = (self.seq_num[i, f, s] + prior_num) / (self.seq_den[i, f, s] + prior_den)
+            out[key] = hierarchical_rate(self.seq_num[i], self.seq_den[i], f, s, prior_num, prior_den)
         if self.age_aware_cold_start:
             self._apply_debut_prior(f, player_keys, out, on if on is not None else self.last_date)
         return out
@@ -434,6 +466,7 @@ class RatingState:
         r2 = self.team_results.get((fmt, t2), _NO_RESULTS)[-C.TEAM_FORM_WINDOW :]
         hh = self.head_to_head.get((fmt, t1, t2), _NO_RESULTS)[-C.HEAD_TO_HEAD_WINDOW :]
         vb = self.venue_bat_first.get((fmt, v), _NO_VENUE_BAT_FIRST)
+        home1, home2 = self.home_sides(match)
         return {
             "team_elo_diff": e1 - e2,
             "team_form_diff": (float(np.mean(r1)) if r1 else 0.5) - (float(np.mean(r2)) if r2 else 0.5),
@@ -443,7 +476,22 @@ class RatingState:
             "venue_n": vb[1],
             "venue_fam_diff": math.log1p(self.team_venue_matches.get((t1, v), _NO_VENUE_MATCHES))
             - math.log1p(self.team_venue_matches.get((t2, v), _NO_VENUE_MATCHES)),
+            "home_diff": home1 - home2,
         }
+
+    def home_sides(self, match: MatchRecord) -> tuple:
+        """Whether each side is at home (1.0 / 0.0), as-of (FEAT-05): the ground's region
+        (``venue_countries``, static) against the region each side has played in most
+        before today (``team_countries``, advanced at day close). A ground the table does
+        not place, or a side whose past says nothing yet, reads 0.0 -- the same reading a
+        neutral ground gets. ``get``, not indexing: a read must not write a key (B-1)."""
+        region = venue_region(self.venue_countries, match.venue)
+        if not region:
+            return 0.0, 0.0
+        return (
+            float(modal_region(self.team_countries.get(match.team1, NO_COUNTRIES)) == region),
+            float(modal_region(self.team_countries.get(match.team2, NO_COUNTRIES)) == region),
+        )
 
     def fixture_context(self, match: MatchRecord) -> Dict[str, float]:
         """The scoring level of the ground and of the competition, as-of
@@ -518,6 +566,11 @@ class RatingState:
             self._accumulate_involvement(f, both, d)
         self.team_venue_matches[(match.team1, match.venue)] += 1
         self.team_venue_matches[(match.team2, match.venue)] += 1
+        region = venue_region(self.venue_countries, match.venue)
+        if region:
+            for team in (match.team1, match.team2):
+                played = self.team_countries[team]
+                played[region] = played.get(region, 0) + 1
         y = match.outcome
         fmt = match.format_code
         if y is not None:
@@ -725,6 +778,34 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
+
+
+def hierarchical_rate(
+    numerator: np.ndarray, denominator: np.ndarray, f: int, s: np.ndarray, prior_num: float, prior_den: float
+) -> np.ndarray:
+    """A shrunk rate whose prior mean is the player's own rate elsewhere (FEAT-06).
+
+    ``numerator`` and ``denominator`` are (format, player) sums. The plain rate was
+    ``(num_f + prior_num) / (den_f + prior_den)``: ``prior_den`` balls' worth of a prior
+    whose mean is ``prior_num / prior_den`` -- zero for every impact rate. Here the prior
+    keeps its weight and its mean becomes the player's rate over his *other* formats,
+    itself shrunk toward the old prior over the same weight::
+
+        prior_mean = (sum_{g != f} num_g + prior_num) / (sum_{g != f} den_g + prior_den)
+        rate_f     = (num_f + prior_den * prior_mean) / (den_f + prior_den)
+
+    So a player with no history outside the format reads exactly the plain rate (the
+    other-format sums are zero and the prior mean is the old one), a format debutant with
+    a career elsewhere reads his rate elsewhere, and a player with balls in both reads a
+    blend that his own format's balls take over at the old pace. The format's own sums
+    are left out of the prior on purpose: pooling them in would count a single-format
+    player's balls twice and shrink everyone less than before.
+    """
+    own_num, own_den = numerator[f, s], denominator[f, s]
+    other_num = numerator[:, s].sum(axis=0) - own_num
+    other_den = denominator[:, s].sum(axis=0) - own_den
+    prior_mean = (other_num + prior_num) / (other_den + prior_den)
+    return (own_num + prior_den * prior_mean) / (own_den + prior_den)
 
 
 def per_xi_appearance(quantity: np.ndarray, appearances: np.ndarray) -> np.ndarray:

@@ -44,7 +44,7 @@ from ml.xi.biography import BirthDates
 from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
-from ml.xi.sources import MatchRecord, MatchSource
+from ml.xi.sources import MatchRecord, MatchSource, VenueCountries
 from ml.xi.store import FormatModels, XiStore, save_models, save_performance, save_ratings, state_shape
 from ml.xi.train import marginalised_probabilities
 
@@ -64,7 +64,11 @@ class AsOfRatings:
     """
 
     def __init__(self, source: MatchSource, gender_split_context: bool = False):
-        self.state = RatingState(gender_split_context=gender_split_context, birth_dates=source.birth_dates())
+        self.state = RatingState(
+            gender_split_context=gender_split_context,
+            birth_dates=source.birth_dates(),
+            venue_countries=source.venue_countries(),
+        )
         self._matches: Iterator[MatchRecord] = source.iter_matches()
         self._next: Optional[MatchRecord] = next(self._matches, None)
         self._folded_through: Optional[date] = None
@@ -114,17 +118,21 @@ class AsOfServer:
 
 class _IteratorSource:
     """Adapter presenting an already-open match iterator as a MatchSource, with the
-    birth dates of the source it was opened from."""
+    birth dates and venue countries of the source it was opened from."""
 
-    def __init__(self, matches: Iterator[MatchRecord], birth_dates: BirthDates):
+    def __init__(self, matches: Iterator[MatchRecord], birth_dates: BirthDates, venue_countries: VenueCountries):
         self._matches = matches
         self._birth_dates = birth_dates
+        self._venue_countries = venue_countries
 
     def iter_matches(self) -> Iterator[MatchRecord]:
         return self._matches
 
     def birth_dates(self) -> BirthDates:
         return self._birth_dates
+
+    def venue_countries(self) -> VenueCountries:
+        return self._venue_countries
 
 
 def serving_parity(
@@ -179,6 +187,7 @@ def serving_parity(
     win_cols = (
         C.XI_FEATURE_COLS
         + C.TEAM_CONTEXT_COLS
+        + C.TOSS_COLS
         + C.SIMULATION_CONTEXT_COLS
         + C.FIXTURE_CONTEXT_COLS
         + C.STAKES_COLS
@@ -198,7 +207,9 @@ def serving_parity(
     served_fixtures: List[MatchRecord] = []
 
     matches_for_lookup, matches_for_state = itertools.tee(source.iter_matches())
-    asof = AsOfRatings(_IteratorSource(matches_for_state, source.birth_dates()), gender_split_context)
+    asof = AsOfRatings(
+        _IteratorSource(matches_for_state, source.birth_dates(), source.venue_countries()), gender_split_context
+    )
     for match in matches_for_lookup:
         # Advance on every match so the two tee'd iterators stay at most a day apart.
         state = asof.state_as_of(match.match_date)

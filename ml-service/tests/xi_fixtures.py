@@ -85,3 +85,6 @@ class ListSource:
 
     def birth_dates(self):
         return {}
+
+    def venue_countries(self):
+        return {}

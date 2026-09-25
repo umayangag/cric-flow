@@ -4,10 +4,13 @@ Two families, kept apart on purpose:
 
 * ``XI_FEATURE_COLS`` -- every column is a function of the two elevens (and nothing else).
   These are the selection objective: changing one player changes them.
-* ``TEAM_CONTEXT_COLS`` -- team Elo, form, head-to-head, venue. Constant with respect to the
-  XI, so they raise outcome accuracy but cannot choose a player. They are excluded from the
-  objective used by the optimiser and included in the model used for the displayed
-  probability.
+* ``TEAM_CONTEXT_COLS`` -- team Elo, form, head-to-head, venue, home advantage. Constant
+  with respect to the XI, so they raise outcome accuracy but cannot choose a player. They
+  are excluded from the objective used by the optimiser and included in the model used for
+  the displayed probability.
+* ``TOSS_COLS`` -- who won the toss, a fact of the fixture rather than of either side's
+  state (FEAT-05). Display-only for the same reason, and marginalised at serving because
+  no request carries it.
 """
 
 from __future__ import annotations
@@ -325,11 +328,26 @@ TEAM_CONTEXT_COLS: List[str] = [
     "venue_bf_rate",
     "venue_n",
     "venue_fam_diff",
+    # Home advantage (FEAT-05): team1 at home minus team2 at home, so +1 / 0 / -1. A side
+    # is at home when the ground's region is the one it has played in most before today
+    # (``ml.xi.geography``); two sides of one domestic league read 0, as a neutral ground
+    # does, and so does a side whose past is too short or too split to say.
+    "home_diff",
 ]
 
-# Sign of each team-context column's effect on P(team1 wins), for the three whose direction
+# The toss (FEAT-05): 1.0 when the side batting first won it -- and so chose to bat --
+# and 0.0 when it was put in; a match whose toss the source does not record reads 0.5, its
+# own category. On the win row and in the display model only: the objective must not read
+# it (it cannot distinguish two elevens, and B-21 records why a toss-aware objective is a
+# product decision, not a fix). ``train.swap_orientation`` reads it as 1 - x, because the
+# winner of the toss is a fact of the fixture and only the batting order is exchanged.
+TOSS_COL = "toss_won_by_team1"
+TOSS_COLS: List[str] = [TOSS_COL]
+TOSS_UNKNOWN = 0.5
+
+# Sign of each team-context column's effect on P(team1 wins), for the four whose direction
 # is knowable rather than merely plausible: a stronger, better-formed side more familiar
-# with the ground does not win less often, and all three are negated by
+# with the ground, or at home, does not win less often, and all four are negated by
 # ``train.swap_orientation``, so the constraint means the same thing in both batting orders.
 # The other four are deliberately absent: ``team_h2h_n``, ``venue_n`` and ``venue_bf_rate``
 # are sample sizes and a venue property with no side attached, and ``team_h2h`` is a rate
@@ -341,6 +359,7 @@ _CONTEXT_DIRECTION: Dict[str, int] = {
     "team_elo_diff": 1,
     "team_form_diff": 1,
     "venue_fam_diff": 1,
+    "home_diff": 1,
 }
 #: Gate B-7: whether the display model's team-context columns are monotone-constrained.
 DISPLAY_CONTEXT_MONOTONE_KEPT = False
@@ -358,12 +377,12 @@ STAKES_COLS: List[str] = ["stakes_knockout", "stakes_stage_known"]
 #: Gate X-3, use 2: whether the display model reads ``STAKES_COLS``.
 STAKES_FEATURES_KEPT = False
 
-# The display model reads every XI column the objective reads, plus the team context the
-# objective must not see (it cannot distinguish two elevens). The two lists differ in
-# nothing else since FEAT-14: B-7's ``t1_pelo_std`` / ``t2_pelo_std`` exclusion is now the
-# contract for both models (see ``_SIDE_STEMS``).
+# The display model reads every XI column the objective reads, plus the team context and
+# the toss the objective must not see (it cannot distinguish two elevens). The two lists
+# differ in nothing else since FEAT-14: B-7's ``t1_pelo_std`` / ``t2_pelo_std`` exclusion
+# is now the contract for both models (see ``_SIDE_STEMS``).
 DISPLAY_FEATURE_COLS: List[str] = (
-    list(XI_FEATURE_COLS) + TEAM_CONTEXT_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
+    list(XI_FEATURE_COLS) + TEAM_CONTEXT_COLS + TOSS_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
 )
 
 TARGET_COL = "team1_wins"

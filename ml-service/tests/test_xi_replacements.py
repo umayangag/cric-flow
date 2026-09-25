@@ -100,6 +100,24 @@ def test_replacement_keys_ignores_a_role_replacement() -> None:
     assert replacement_keys(innings, {}) == []
 
 
+def test_the_archive_path_reads_the_toss_through_the_team_key(tmp_path) -> None:
+    """FEAT-05 on the archive path: ``info.toss.winner`` is a team name, keyed as the sides
+    are, so the record says whether the side batting first won it; a file without a toss
+    reads None. The win row carries it as ``toss_won_by_team1``, 0.5 when unknown."""
+    from ml.xi.rows import toss_columns
+
+    with_toss = _doc(_twelve_and_eleven(), [_innings("X", _delivery("X0", "Y0"))])
+    with_toss["info"]["toss"] = {"winner": "Y", "decision": "field"}
+    without = _doc(_twelve_and_eleven(), [_innings("X", _delivery("X0", "Y0"))])
+
+    put_in, unknown = _parse(tmp_path, with_toss), _parse(tmp_path, without)
+
+    assert put_in.toss_winner == put_in.team2 and put_in.toss_won_by_team1 == 0.0
+    assert unknown.toss_winner is None and unknown.toss_won_by_team1 is None
+    assert toss_columns(put_in) == {"toss_won_by_team1": 0.0}
+    assert toss_columns(unknown) == {"toss_won_by_team1": 0.5}
+
+
 def test_the_archive_path_leaves_the_replacement_out_of_the_eleven(tmp_path) -> None:
     """Twelve listed, one came in: the side is the other eleven and he is named apart."""
     players = _twelve_and_eleven()
@@ -148,7 +166,7 @@ def test_the_postgres_path_leaves_the_replacement_out_of_the_eleven() -> None:
     squad = [(f"a{i:07x}", 10, False) for i in range(11)] + [("a000000b", 10, True)]
     squad += [(f"b{i:07x}", 20, False) for i in range(11)]
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 10, "", None, "", "", None)],
+        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 10, "", None, "", "", None, 10)],
         "players": {1: squad},
         "balls": {1: [(1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)]},
     }

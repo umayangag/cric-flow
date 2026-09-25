@@ -60,6 +60,8 @@ _COMPARED_COUNTS = (
     "knockout_matches",
     "matches_with_reconstructible_table",
     "dead_rubber_matches",
+    "matches_with_one_home_side",
+    "matches_without_toss",
 )
 
 

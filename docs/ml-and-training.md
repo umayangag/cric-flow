@@ -485,8 +485,18 @@ used one were rated and aggregated as twelve while serving always aggregates ele
 his presence was post-start information in a pre-match row. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
 bowling impact weighted by involvement, top-6 / top-5 sums, role coverage (bowling options,
 keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, form,
-head-to-head, venue bat-first bias, venue familiarity) is kept in a separate column list
-because it cannot distinguish two XIs.
+head-to-head, venue bat-first bias, venue familiarity, home advantage) and the toss are kept
+in separate column lists (`TEAM_CONTEXT_COLS`, `TOSS_COLS`) because they cannot distinguish
+two XIs. Home advantage (FEAT-05) is as-of on both sides: the ground's region comes from
+`reference-data/venue-geocoding.csv` (the database's `venue.country` is NULL throughout) and
+a team's region is the strict mode of where it has played *before today*, kept in
+`RatingState.team_countries` — nothing about a team is read from a whole-archive table, so
+a side reads as at home only once its past says so (`ml/xi/geography.py`). The toss is who
+won it, as `toss_won_by_team1`; no request carries it, so the served display averages over
+both answers in every reading (`train.marginalised_probabilities` scores the same mean).
+Every shrunk player rate is hierarchical (FEAT-06): its prior mean is the player's own rate
+in his *other* formats, not zero, so a T20I regular's IPL debut reads as himself; a player
+with no history elsewhere reads exactly the plain rate. Involvement and Elo are not pooled.
 
 **Two models per format.** `objective` — logistic regression on the XI columns, fitted under
 the contract's signs (`ml/xi/signed_logistic.py`: the same L2 log-loss as sklearn's `C=0.3`,
