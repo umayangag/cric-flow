@@ -398,6 +398,64 @@ def test_a_batters_own_dismissal_is_still_his() -> None:
     assert _bat_wrates_after(bowled_last_ball, [t1[0]])[0] < _bat_wrates_after(survived, [t1[0]])[0]
 
 
+def _innings_with_a_stumping_by(keeper: str, striker: str, bowler: str) -> Deliveries:
+    """Six balls faced by ``striker``; the last is a stumping credited to ``keeper``."""
+    d = _deliveries([striker] * 6, [bowler] * 6, [1] * 6, [0] * 5 + [1])
+    d.stumping[5] = 1.0
+    d.fielders[5] = [keeper]
+    return d
+
+
+def _keeper_shares_after(innings: List[Deliveries], keys: List[str]) -> List[float]:
+    """Each key's ``keeper`` share after one match per innings given, side B fielding."""
+    t1, t2 = _xi("a"), _xi("b")
+    state = RatingState()
+    for day, d in enumerate(innings):
+        state.update(_match(f"m{day}", day, "A", t1, t2, d))
+    return [float(v) for v in state.side_vectors("T20", keys)["keeper"]]
+
+
+def test_a_stumping_names_the_keeper_and_says_his_ten_teammates_did_not_keep() -> None:
+    """FEAT-10: the match that credits b0 with a stumping says who kept for side B -- him,
+    and so not b1 -- and the keeper share reads exactly that."""
+    b = _xi("b")
+
+    shares = _keeper_shares_after([_innings_with_a_stumping_by(b[0], "a0", b[5])], [b[0], b[1]])
+
+    assert shares == [1.0, 0.0]
+    assert C.is_keeper(shares[0]) and not C.is_keeper(shares[1])
+
+
+def test_a_former_keeper_stops_reading_as_one_once_his_sides_stumpings_go_to_someone_else() -> None:
+    """FEAT-10: b0 stumps once, then b1 stumps in the next two matches. Of the three
+    matches that named side B's keeper, decayed, b0 kept in 0.81 of 2.71 and b1 in 1.9 --
+    b1 is the keeper now and b0 is not. Until FEAT-10 one stumping was a permanent flag."""
+    b = _xi("b")
+    innings = [
+        _innings_with_a_stumping_by(b[0], "a0", b[5]),
+        _innings_with_a_stumping_by(b[1], "a0", b[5]),
+        _innings_with_a_stumping_by(b[1], "a0", b[5]),
+    ]
+
+    former, current = _keeper_shares_after(innings, [b[0], b[1]])
+
+    assert former == pytest.approx(0.81 / 2.71) and current == pytest.approx(1.9 / 2.71)
+    assert not C.is_keeper(former) and C.is_keeper(current)
+
+
+def test_a_keeper_keeps_reading_as_one_through_matches_with_no_stumping() -> None:
+    """A match in which his side records no stumping says nothing about who kept, so it
+    moves nobody's share: the side's keeper is not forgotten for a dry run."""
+    b = _xi("b")
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5])] + [
+        _deliveries(["a0"] * 6, [b[5]] * 6, [1] * 6, [0] * 6) for _ in range(4)
+    ]
+
+    (share,) = _keeper_shares_after(innings, [b[0]])
+
+    assert share == 1.0 and C.is_keeper(share)
+
+
 def test_aggregate_side_role_coverage_and_monotone_direction() -> None:
     fmt = "T20"
     base = {

@@ -875,7 +875,6 @@ class PostgresSource:
                 toss_winner=None if row[13] is None else str(row[13]),
             )
 
-
     def _with_a_first_innings(self, matches: Sequence[Sequence]) -> List[Sequence]:
         """The rows that have a first innings to name the sides from; the rest are
         counted unusable, as the archive path counts a file with no innings (FEAT-11)."""

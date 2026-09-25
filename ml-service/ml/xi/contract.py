@@ -61,6 +61,20 @@ MAX_OVER_INDEX = 100  # context baselines are indexed by over number, capped her
 MIN_BOWLING_BALLS: Dict[str, int] = {"T20": 3, "T20I": 4, "ODI": 19, "TEST": 40}
 
 
+#: The keeper predicate's bar on the ``keeper`` share: he is the side's keeper when, of the
+#: recent matches in which the side's keeper was seen, more than half saw him. A player
+#: whose one stumping is followed by his teammate's two reads 0.30 and is not; the side's
+#: keeper through a run of matches with no stumping keeps reading 1.0, because such a match
+#: says nothing about who kept and moves nobody's share (FEAT-10).
+KEEPER_MIN_SHARE = 0.5
+
+
+def is_keeper(keeper_share):
+    """Whether a player's ``keeper`` share makes him his side's keeper. Works on scalars
+    and arrays; the single definition the ``has_keeper`` feature and the constraint share."""
+    return keeper_share > KEEPER_MIN_SHARE
+
+
 def is_bowling_option(expected_balls_bowled, format_code: str):
     """Whether a player's expected balls bowled per XI appearance make them a bowling
     option. Works on scalars and arrays; the tolerance keeps a decayed ratio that is
@@ -100,7 +114,11 @@ PLAYER_VECTOR_KEYS: List[str] = [
     "career",  # matches in this format before this match
     "career_all",  # matches in any format before this match
     "pelo",  # player Elo in this format
-    "keeper",  # 1.0 if the player has ever been credited with a stumping
+    # Of the recent matches in which his side's keeper was identified -- a stumping names
+    # him; nothing else in the archive does -- the decayed share in which it was this
+    # player. 1.0 for the side's keeper, 0.0 for his ten teammates in those matches, and
+    # falling for a former keeper as his side's stumpings go to someone else (FEAT-10).
+    "keeper",
 ]
 
 # As-of expected-role keys, held beside the vectors for every player x format. They feed
