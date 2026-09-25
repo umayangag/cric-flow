@@ -7,6 +7,11 @@ temperature, relative humidity and precipitation, plus the precipitation totals 
 days before it -- enough to compute any pre-match window later without asking again, and a
 few hundred bytes per day rather than the hourly archive of every venue's every year.
 
+Readings are asked for in UTC and placed on the venue's local clock here, per hour, from
+the IANA zone the curated table holds. The service's own ``timezone=auto`` stamps a whole
+range with the offset the zone is on at the moment of the call, which puts every day on the
+other side of a DST transition one hour out (DATA-04).
+
 The cache is append-only JSON Lines, one line per (venue, date), flushed after every call
 so an interrupted run loses at most the cluster in flight. A day the archive has no
 readings for is written as a miss with its reason: that is an answer, and a restore must not
@@ -22,7 +27,9 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from datetime import time as clock_time
 from typing import Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -32,15 +39,19 @@ logger = logging.getLogger(__name__)
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 HOURLY_VARIABLES = ("temperature_2m", "relative_humidity_2m", "precipitation")
-DAILY_VARIABLES = ("precipitation_sum",)
 SOURCE = "open-meteo-era5"
 SOURCE_LICENSE = "CC-BY-4.0"
 #: Days of precipitation history kept before each match day (the rain family's window).
 PRIOR_DAYS = 7
 #: Two match days at one venue closer than this are fetched in one call.
 CLUSTER_GAP_DAYS = 45
-#: The archive trails the present; days younger than this are not asked for yet.
-ARCHIVE_LAG_DAYS = 7
+#: The archive trails the present; days younger than this are not asked for yet. One day
+#: more than the margin the service needs, because a call is widened by a day at each end
+#: so that a local day's hours are covered whatever the venue's offset from UTC (DATA-04).
+ARCHIVE_LAG_DAYS = 8
+#: A call covers this many days either side of the days it is for, so that every local
+#: hour of the first and last day has a UTC hour in the response.
+UTC_MARGIN_DAYS = 1
 #: Pacing: the published limit is 600 calls a minute; a tenth of that is plenty.
 PAUSE_SECONDS = 0.3
 RETRY_PAUSES = (5.0, 30.0, 120.0)
@@ -165,13 +176,10 @@ class WeatherCache:
 
 @dataclass
 class ArchiveResponse:
-    """The parts of one archive call the reduction reads."""
+    """The parts of one archive call the reduction reads: hourly readings stamped in UTC."""
 
-    timezone: str
-    hourly_time: List[str]  # local ISO minutes, "2015-03-01T00:00"
+    hourly_time: List[str]  # UTC ISO minutes, "2015-03-01T00:00"
     hourly: Dict[str, List[Optional[float]]] = field(default_factory=dict)
-    daily_time: List[str] = field(default_factory=list)
-    daily: Dict[str, List[Optional[float]]] = field(default_factory=dict)
 
 
 class ArchiveClient(Protocol):
@@ -194,8 +202,11 @@ class OpenMeteoArchive:
             "start_date": start.isoformat(),
             "end_date": end.isoformat(),
             "hourly": ",".join(HOURLY_VARIABLES),
-            "daily": ",".join(DAILY_VARIABLES),
-            "timezone": "auto",
+            # UTC, never "auto": the service stamps a whole range with the offset the zone
+            # happens to be on *at the moment of the call*, so an "auto" response labels a
+            # January day in Sydney with the January-in-September offset. The local hours
+            # are built here instead, per hour, from the venue's IANA zone (DATA-04).
+            "timezone": "UTC",
         }
         reason = ""
         hourly_waits = 0
@@ -231,11 +242,8 @@ class OpenMeteoArchive:
 
 def _parse(payload: dict) -> ArchiveResponse:
     return ArchiveResponse(
-        timezone=payload.get("timezone", ""),
         hourly_time=list(payload.get("hourly", {}).get("time", [])),
         hourly={k: list(v) for k, v in payload.get("hourly", {}).items() if k != "time"},
-        daily_time=list(payload.get("daily", {}).get("time", [])),
-        daily={k: list(v) for k, v in payload.get("daily", {}).items() if k != "time"},
     )
 
 
@@ -248,7 +256,9 @@ def _error_reason(response: httpx.Response) -> str:
 
 def clusters(days: Sequence[date], gap_days: int = CLUSTER_GAP_DAYS) -> List[List[date]]:
     """Sorted days grouped so that consecutive members are at most ``gap_days`` apart: one
-    archive call per group, spanning it and its ``PRIOR_DAYS`` lead."""
+    archive call per group, spanning it, its ``PRIOR_DAYS`` lead and a day's margin at
+    each end. A group may span a season; the local hours are built per hour from the
+    venue's zone, so a DST transition inside the span costs nothing (DATA-04)."""
     out: List[List[date]] = []
     for day in sorted(set(days)):
         if out and (day - out[-1][-1]).days <= gap_days:
@@ -258,32 +268,66 @@ def clusters(days: Sequence[date], gap_days: int = CLUSTER_GAP_DAYS) -> List[Lis
     return out
 
 
-def reduce_days(venue_key: str, response: ArchiveResponse, days: Sequence[date], fetched_at: str) -> List[Entry]:
-    """The entries for ``days`` out of one response: the day's 24 local hours per variable
-    and the prior days' precipitation totals; a day with no readings is a miss."""
-    by_hour: Dict[str, int] = {t: i for i, t in enumerate(response.hourly_time)}
-    by_day: Dict[str, int] = {t: i for i, t in enumerate(response.daily_time)}
+def local_hour_keys(day: date, zone: str) -> List[str]:
+    """The UTC hour labels of a local day's 24 clock hours, 00:00 to 23:00 in ``zone``.
+
+    The offset is resolved per hour from the IANA zone, so a day on either side of a DST
+    transition lands on the right UTC hours (DATA-04). ERA5 is an hourly grid, so a zone
+    whose offset is not a whole number of hours (Asia/Kolkata's +5:30) is floored to the
+    whole hour, which is what the service itself does for its local grid.
+    """
+    info = ZoneInfo(zone)
+    keys = []
+    for hour in range(24):
+        local = datetime.combine(day, clock_time(hour), tzinfo=info)
+        whole_hours = local.utcoffset() // timedelta(hours=1)
+        utc = datetime.combine(day, clock_time(hour)) - timedelta(hours=whole_hours)
+        keys.append(f"{utc.date().isoformat()}T{utc.hour:02d}:00")
+    return keys
+
+
+class _HourlyReadings:
+    """One response's hourly series, read by UTC hour label."""
+
+    def __init__(self, response: ArchiveResponse) -> None:
+        self._index = {label: i for i, label in enumerate(response.hourly_time)}
+        self._series = response.hourly
+
+    def values(self, variable: str, keys: Sequence[str]) -> List[Optional[float]]:
+        values = self._series.get(variable, [])
+        out: List[Optional[float]] = []
+        for key in keys:
+            i = self._index.get(key)
+            out.append(None if i is None or i >= len(values) else values[i])
+        return out
+
+
+def reduce_days(
+    venue_key: str, response: ArchiveResponse, days: Sequence[date], fetched_at: str, zone: str
+) -> List[Entry]:
+    """The entries for ``days`` out of one response: each day's 24 local hours in ``zone``
+    per variable and the local daily precipitation totals of the week before; a day the
+    archive has no readings for is a miss."""
+    readings = _HourlyReadings(response)
     out: List[Entry] = []
     for day in days:
-        prefix = day.isoformat()
-        indexes = [by_hour.get(f"{prefix}T{hour:02d}:00") for hour in range(24)]
-        series = {}
-        for variable in HOURLY_VARIABLES:
-            values = response.hourly.get(variable, [])
-            series[variable] = [None if i is None or i >= len(values) else values[i] for i in indexes]
+        keys = local_hour_keys(day, zone)
+        series = {variable: readings.values(variable, keys) for variable in HOURLY_VARIABLES}
         if all(v is None for v in series["temperature_2m"]):
             out.append(Miss(venue_key, day, "no hourly readings in the archive", fetched_at))
             continue
         prior = []
         for back in range(PRIOR_DAYS, 0, -1):
-            i = by_day.get((day - timedelta(days=back)).isoformat())
-            sums = response.daily.get("precipitation_sum", [])
-            prior.append(None if i is None or i >= len(sums) else sums[i])
+            hours = readings.values("precipitation", local_hour_keys(day - timedelta(days=back), zone))
+            present = [v for v in hours if v is not None]
+            # The local day's own total, summed here rather than taken from the service's
+            # daily block, which under a UTC request would be a UTC day (DATA-04).
+            prior.append(float(sum(present)) if present else None)
         out.append(
             DayWeather(
                 venue_key=venue_key,
                 day=day,
-                timezone=response.timezone,
+                timezone=zone,
                 temperature_c=series["temperature_2m"],
                 relative_humidity=series["relative_humidity_2m"],
                 precipitation_mm=series["precipitation"],
@@ -312,7 +356,9 @@ def backfill(
         wanted = [d for d in days_by_venue[key] if cache.get(key, d) is None]
         if not wanted:
             continue
-        if location is None or not location.mapped:
+        # A row with no IANA zone cannot be reduced to local hours, so it counts as
+        # unmapped rather than being fetched into a day whose hours mean nothing.
+        if location is None or not location.mapped or not location.timezone:
             counts["unmapped_days"] += len(wanted)
             continue
         recent = [d for d in wanted if d > horizon]
@@ -324,9 +370,12 @@ def backfill(
         for cluster in clusters(wanted):
             fetched_at = datetime.now(timezone.utc).date().isoformat()
             response = client.fetch(
-                location.latitude, location.longitude, cluster[0] - timedelta(days=PRIOR_DAYS), cluster[-1]
+                location.latitude,
+                location.longitude,
+                cluster[0] - timedelta(days=PRIOR_DAYS + UTC_MARGIN_DAYS),
+                cluster[-1] + timedelta(days=UTC_MARGIN_DAYS),
             )
-            entries = reduce_days(key, response, cluster, fetched_at)
+            entries = reduce_days(key, response, cluster, fetched_at, location.timezone)
             cache.append(entries)
             counts["calls"] += 1
             counts["days_fetched"] += sum(1 for e in entries if isinstance(e, DayWeather))

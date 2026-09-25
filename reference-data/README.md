@@ -122,8 +122,8 @@ seven days before it, oldest first. Multi-day matches are keyed by their first d
 |---|---|
 | **Source** | Open-Meteo historical weather API (`https://archive-api.open-meteo.com/v1/archive`), which serves the **ERA5** reanalysis: Hersbach, H. et al. (2023): *ERA5 hourly data on single levels from 1940 to present.* Copernicus Climate Change Service (C3S) Climate Data Store (CDS), DOI [10.24381/cds.adbb2d47](https://doi.org/10.24381/cds.adbb2d47) |
 | **Licence** | **CC BY 4.0** — Open-Meteo's terms: *"The data obtained through the API is provided under the terms of the CC-BY 4.0 licence"*, for **non-commercial use** of the free API; the ERA5 data is Copernicus's under its CC-BY licence. Recorded per stored row as `venue_weather.source_license = CC-BY-4.0` |
-| **Captured** | **2026-09-05**, by X-2's backfill (`make venue-weather`), 4,638 archive calls (one per cluster of match days at a venue, days within 45 days fetched together) over every venue's match days, across three runs — the service's hourly quota is weighted by the data a call returns, and the client now waits it out; **2026-09-20**, 182 further calls after DATA-01 re-placed 22 venues: their 602 cached days, fetched at another continent's coordinates, were dropped and fetched again at the corrected ones, together with the match days the archive had gained since |
-| **Size** | **19,653 venue-days, 0 misses**, covering **22,905 of the archive's 22,905 matches (100 %)** as of 2026-09-20. 8.8 MB — the whole local day is kept rather than only the hours a session rule reads today (which would save ~1.5 MB), because the whole day is what lets a window be recomputed if a start-time rule is corrected later |
+| **Captured** | **2026-09-05**, by X-2's backfill (`make venue-weather`), 4,638 archive calls (one per cluster of match days at a venue, days within 45 days fetched together) over every venue's match days, across three runs — the service's hourly quota is weighted by the data a call returns, and the client now waits it out; **2026-09-20**, 182 further calls after DATA-01 re-placed 22 venues: their 602 cached days, fetched at another continent's coordinates, were dropped and fetched again at the corrected ones, together with the match days the archive had gained since; **2026-09-25**, 881 calls under DATA-04 and DATA-02: the 2,523 days whose hours were an hour out (`timezone=auto` stamps a whole range with the offset the zone is on *at the moment of the call*) and the 226 days of the 7 venues that moved off a country centroid, dropped and fetched again — the other 16,904 lines are untouched, and sixteen unaffected days re-fetched with the corrected client came back identical to them value for value |
+| **Size** | **19,653 venue-days, 0 misses**, covering **22,905 of the archive's 22,905 matches (100 %)** as of 2026-09-25. 8.8 MB — the whole local day is kept rather than only the hours a session rule reads today (which would save ~1.5 MB), because the whole day is what lets a window be recomputed if a start-time rule is corrected later |
 | **Written by** | `ml-service/ml/weather/archive.py` (`WeatherCache`), append-only, flushed after every call |
 
 **Attribution.** Weather data by [Open-Meteo.com](https://open-meteo.com/), CC BY 4.0;
@@ -140,6 +140,16 @@ report, which is the signal to run `make venue-weather` once the archive has cau
 `ml-service/ml/weather/sessions.py` from competition and format norms, and recorded as a
 rule id; the file holds the whole local day so any window can be recomputed without
 asking again if a rule is corrected.
+
+**The hours are local, built here rather than asked for.** The call asks Open-Meteo for
+**UTC** and `ml/weather/archive.py` places each hour on the venue's clock from the IANA zone
+in `venue-geocoding.csv`, resolving the offset per hour. The service's own `timezone=auto`
+returns a single `utc_offset_seconds` for the whole range — the offset the zone is on *at the
+moment of the call*, not at the dates asked for — which is what left 2,523 of these days an
+hour out until DATA-04 (`docs/AUDIT_FINDINGS.md` § 9). A zone whose offset is not a whole
+number of hours (`Asia/Kolkata`'s +5:30) is floored to the whole hour ERA5 is gridded on,
+which is what the service does for its own local grid. `p7` is each prior local day's own
+hourly total, summed here for the same reason.
 
 ## Refreshing these
 
