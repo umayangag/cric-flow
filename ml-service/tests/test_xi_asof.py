@@ -21,7 +21,7 @@ from ml.xi import runs
 from ml.xi import store as store_module
 from ml.xi.asof import PARITY_TOLERANCE, ROUND_TRIP_RUN_ID, AsOfRatings, AsOfServer, round_trip_store, serving_parity
 from ml.xi.builder import build
-from ml.xi.ratings import CONTEXT_ARRAY_NAMES, RatingState
+from ml.xi.ratings import CONTEXT_ARRAY_NAMES, STATE_FLAG_NAMES, RatingState
 from ml.xi.runs import RunArtifactsInvalid
 from ml.xi.sources import Deliveries
 from ml.xi.stakes import STAGE_FINAL, MatchStakes
@@ -113,6 +113,32 @@ def test_as_of_server_rebuilds_when_a_query_goes_backwards() -> None:
     assert server.state_as_of(date(2024, 1, 3)).matches_seen == 2
     assert server.state_as_of(date(2024, 1, 2)).matches_seen == 1
     assert len(builds) == 2
+
+
+def test_the_as_of_pass_is_built_with_every_registered_state_flag() -> None:
+    """SERVE-07. ``AsOfRatings`` builds a fresh ``RatingState``; a flag it is not handed
+    reads off, so the pass runs a different arm from the run it is serving. It takes the
+    whole of ``RatingState.flags()``, so registering a new flag carries it here rather
+    than leaving the next latent divergence for the next audit."""
+    all_on = dict.fromkeys(STATE_FLAG_NAMES, True)
+
+    asof = AsOfRatings(ListSource(_matches([0, 1])), all_on)
+
+    assert asof.state.flags() == all_on
+
+
+def test_the_as_of_server_hands_every_registered_state_flag_to_its_pass() -> None:
+    """The same, through the object the serving path actually holds -- including the pass
+    it rebuilds when a request goes backwards, which is a second place the flags have to
+    reach."""
+    all_on = dict.fromkeys(STATE_FLAG_NAMES, True)
+    server = AsOfServer(lambda: ListSource(_matches([0, 1, 2])), state_flags=all_on)
+
+    forwards = server.state_as_of(date(2024, 1, 3))
+    backwards = server.state_as_of(date(2024, 1, 2))
+
+    assert forwards.flags() == all_on
+    assert backwards.flags() == all_on, "the rebuilt pass keeps them too"
 
 
 def test_serving_parity_passes_on_an_honest_frame() -> None:

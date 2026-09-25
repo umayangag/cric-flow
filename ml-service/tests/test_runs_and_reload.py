@@ -44,8 +44,8 @@ class _ConstantModel:
         return np.column_stack([np.full(len(rows), 0.4), np.full(len(rows), 0.6)])
 
 
-def _state(players: int = 3, last_date: date | None = None, gender_split_context: bool = False) -> RatingState:
-    state = RatingState(gender_split_context=gender_split_context)
+def _state(players: int = 3, last_date: date | None = None, state_flags: dict[str, bool] | None = None) -> RatingState:
+    state = RatingState(**(state_flags or {}))
     for i in range(players):
         state.players.slot(f"player{i}")
     state.matches_seen = players
@@ -61,7 +61,7 @@ def _write_run(
     cutoff: date | None = None,
     manifest_ratings_through: str | None = None,
     unusable_reasons: dict[str, str] | None = None,
-    gender_split_context: bool = False,
+    state_flags: dict[str, bool] | None = None,
 ) -> str:
     """A complete, loadable run: ratings, one format's models, and a manifest.
 
@@ -70,10 +70,11 @@ def _write_run(
     run's data was built to -- H-11's quantity since SERVE-03 -- and defaults to the
     state's own date, which is the pair a retrain run at the archive's own date writes.
     ``unusable_reasons`` writes the run as one its retrain judged not usable (EVAL-04);
-    ``gender_split_context`` writes one built with E7's split on (FEAT-13)."""
+    ``state_flags`` are the rating state's own arms (``RatingState.flags``): E7's split
+    (FEAT-13) and X-1b's age-aware cold start (SERVE-07)."""
     directory = runs.run_dir(str(root), run_id)
     os.makedirs(directory, exist_ok=True)
-    state = _state(last_date=last_date, gender_split_context=gender_split_context)
+    state = _state(last_date=last_date, state_flags=state_flags)
     save_ratings(state, directory)
     joblib.dump(
         FormatModels(
@@ -425,7 +426,7 @@ def test_a_run_built_with_the_gender_split_on_is_refused_at_reload_naming_why(tm
     read a per-gender baseline would score a women's fixture against the men's. The
     loader refuses it by name, the way D-6 refuses any run this code cannot serve, and
     the run that was serving -- here, nothing -- is left as it was."""
-    _write_run(tmp_path, gender_split_context=True)
+    _write_run(tmp_path, state_flags={"gender_split_context": True})
     registry = xi_service.XiRegistry()
 
     status = registry.reload(str(tmp_path))
@@ -620,6 +621,27 @@ def test_a_backtest_naming_a_date_the_as_of_pass_serves_is_not_refused(tmp_path,
     store = registry.store_as_of("T20", ratings_through - timedelta(days=1))
 
     assert store is not registry.store("T20"), "the as-of pass answered, not the loaded state"
+
+
+def test_the_as_of_pass_runs_every_arm_the_loaded_run_was_built_with(tmp_path, monkeypatch):
+    """SERVE-07. A run built with X-1b's age-aware cold start on must be served as-of with
+    it on: the as-of pass builds a fresh ``RatingState``, and a flag it is not handed is
+    off, so a live request would read the age-band debut prior while a backtest read the
+    neutral vector -- one artifact answering two different models, with nothing saying so.
+    Every flag the state carries is threaded, not the ones the call site remembers. (E7's
+    split is not used here because a run built with it is refused before it can be served,
+    FEAT-13; the age-aware cold start is the arm that would reach the routes.)"""
+    monkeypatch.setenv("XI_RATINGS_MAX_AGE_DAYS", "14")
+    ratings_through = date.today() - timedelta(days=2)
+    _write_run(tmp_path, last_date=ratings_through, state_flags={"age_aware_cold_start": True})
+    registry = xi_service.XiRegistry()
+    registry.reload(str(tmp_path))
+    registry.as_of_source_factory = lambda: ListSource([])
+
+    store = registry.store_as_of("T20", ratings_through - timedelta(days=1))
+
+    assert store.state.flags() == registry.store("T20").state.flags()
+    assert store.state.age_aware_cold_start is True
 
 
 def test_a_backtest_dated_past_the_loaded_state_is_refused_when_that_state_is_stale(tmp_path, monkeypatch):

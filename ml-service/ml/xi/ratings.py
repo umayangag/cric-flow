@@ -19,7 +19,7 @@ from collections import defaultdict
 from copy import copy as shallow_copy
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -167,6 +167,16 @@ STATE_TABLE_NAMES = (
     "venue_countries",
     "team_countries",
 )
+
+#: The behaviour switches a rating state carries: the experiment arms that change what the
+#: as-of vectors mean rather than what data they were fed. Every one of them is part of the
+#: feature definition, is written into the rating artifact, and has to be threaded wherever
+#: a state is rebuilt -- the as-of serving path above all, because a live request and an
+#: ``as_of`` request that disagree on a flag answer two different models from one artifact
+#: (SERVE-07). Register a new flag here and ``RatingState.flags`` carries it to the
+#: artifact, to the snapshot and to the serving pass; ``test_xi_ratings`` fails if a
+#: constructor switch is added and not registered.
+STATE_FLAG_NAMES: Tuple[str, ...] = ("gender_split_context", "age_aware_cold_start")
 
 #: The tables whose values are mutated in place by ``update`` -- a result appended to a
 #: form list, a venue's bat-first pair incremented, a ground's scoring sums advanced, a
@@ -327,6 +337,15 @@ class RatingState:
         """
         self._ensure(len(self.players) + 1)
 
+    def flags(self) -> Dict[str, bool]:
+        """Every behaviour switch this state was built with, by name (``STATE_FLAG_NAMES``).
+
+        The one way to ask a state what arms it is running, so the artifact writer, the
+        snapshot and the as-of serving pass all rebuild a state from one description
+        instead of each naming the flags it happens to know about (SERVE-07).
+        """
+        return {name: bool(getattr(self, name)) for name in STATE_FLAG_NAMES}
+
     def snapshot(self) -> "RatingState":
         """An independent copy of this state: what a reader is handed while the pass that
         produced it goes on advancing (SERVE-01).
@@ -344,10 +363,7 @@ class RatingState:
         state, against an as-of sweep that folds thousands of matches -- which is why
         ``XiRegistry`` keeps one snapshot per as-of date rather than one per request.
         """
-        copy = RatingState(
-            gender_split_context=self.gender_split_context,
-            age_aware_cold_start=self.age_aware_cold_start,
-        )
+        copy = RatingState(**self.flags())
         copy.players = PlayerIndex(key_to_slot=dict(self.players.key_to_slot), keys=list(self.players.keys))
         for name in STATE_ARRAY_NAMES:
             setattr(copy, name, np.copy(getattr(self, name)))
