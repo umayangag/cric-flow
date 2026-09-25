@@ -175,25 +175,9 @@ Trace used: `Delivery` (`internal/cricsheet/cricsheet.go:159-166`) → aggregate
 
 Context: no weather, age or retirement column reaches a served model (`contract.py:158, 173-182`; `predict_handlers.go:32-35, 88` refuses a `weather` field). These findings limit the recorded experiment verdicts (X-2, X-1b) and the tracked reference data, not live predictions — until someone wires a family in.
 
-### DATA-02 — Venue-key normalisation does not merge spellings; 20 rows are country centroids  **Medium**
-
-`ml/weather/venues.py:209-213` folds case/accents/punctuation only. 896 spellings → 892 keys. `Kensington Oval, Bridgetown` (Barbados centroid) vs `…, Barbados` (Bridgetown); `Queen's Park Oval` likewise; rows with `admin1 == ""` and place == country cover 489 venue-days. **Fix.** Key by the first comma-part when trailing parts are a known city/country; reject a candidate with empty `admin1` when the query was a country name. Coordinate with IMPORT-08 so the DB and the CSV share one venue key. **Do not implement the first-comma-part rule as written (IMPORT-08, PR #334).** `County Ground` is nine different grounds in this archive -- bare, Bristol, Chelmsford, Derby, Hove, New Road, New Road/Worcester, Northampton, Taunton -- and Bristol and Derby are known cities, so that rule merges nine unrelated grounds into one. IMPORT-08 landed the conservative fold (`venues.NormalizeName`, the CSV's own `venue_key`) as the shared key: 896 rows to 892, the four `Kensington Oval` spellings left apart for this finding, which needs coordinates rather than a string rule. Whatever DATA-02 lands must keep those nine apart and must be applied to `venue.normalized_name` and the CSV together, since the two are now the same key.
-
-### DATA-03 — Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured  **Medium**
-
-`venues.py:203` `("zimbabwe", ("ZW",))` applied to every fixture via `_votes` (`:316-320`). Verified `countries_voted`: `Tony Ireland Stadium, Townsville` → `ZW AU`; `Goodyear Park` → `ZW ZA`; `Niaz Stadium, Hyderabad` → `ZW PK`; `Bready` → `ZW IE GB`. Needles `"friends"`, `"marsh"`, `"vitality"`, `"4-day"` (`:148-189`) are equally unanchored. **Fix.** Drop `"zimbabwe"`; anchor league needles to full event names; weight competition votes below team votes.
-
-### DATA-04 — ERA5 hours indexed by local-time string with one fixed offset across DST  **Medium**
-
-`ml/weather/archive.py:198` requests `timezone=auto`; `:264-273` looks up `f"{day}T{hour:02d}:00"` for 24 hours and ignores `utc_offset_seconds`; `:249-258` chains days ≤45 apart into one call (an English season is one March–October request; 5,566 of 19,561 cached days are `Europe/London`). All 19,561 rows in `era5-venue-days.jsonl` have exactly 24 slots, including the 9 rows on DST-transition dates — so every day on the far side of a transition inside a cluster is shifted by one hour. **Fix.** Request `timezone=UTC` and convert per hour with `zoneinfo`; cap cluster span.
-
 ### DATA-05 — `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start  **Medium (leak in the X-2 rain family)**
 
 `ml/weather/features.py:64-67` adds `precipitation_mm[h] for h in range(0, start)` where `start` is a schedule *norm* from `sessions.py:88-116` (IPL 19, BBL 19, GB weekday 18). Any match that began earlier includes rain that fell during play. Humidity/temperature averages (`:55-57`) have the same exposure. **Fix.** End the window a fixed margin before the *earliest* plausible start for the rule, or use only the previous day's total; evaluate the family only on rules with a documented single start hour.
-
-### DATA-06 — `WeatherCache` drops any unparsable line silently; a permanent `Miss` from one bad 200  **Low-Medium**
-
-`archive.py:134-139` swallows `(ValueError, KeyError)` per line with no log; `:274-275` writes a `Miss` whenever a day's temperatures are all `None`, and the README makes misses permanent. `misses = 0` today. **Fix.** Log and count skipped lines; fail unless the skipped line is the last; only record a `Miss` when neighbouring days have data.
 
 ---
 
@@ -210,6 +194,72 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### DATA-02 — Venue-key normalisation does not merge spellings; 20 rows are country centroids  **Medium** — PR #345
+
+`ml/weather/venues.py:209-213` folds case/accents/punctuation only. 896 spellings → 892 keys. `Kensington Oval, Bridgetown` (Barbados centroid) vs `…, Barbados` (Bridgetown); `Queen's Park Oval` likewise; rows with `admin1 == ""` and place == country cover 489 venue-days. **Fix.** Key by the first comma-part when trailing parts are a known city/country; reject a candidate with empty `admin1` when the query was a country name. Coordinate with IMPORT-08 so the DB and the CSV share one venue key.
+
+**Half the spec is a trap and was not implemented; the other half was, and is what this was really about.** The first-comma-part rule was refused for the reason IMPORT-08 (#334) already recorded: `County Ground` is **nine different grounds** in this archive — bare, Bristol, Chelmsford, Derby, Hove, New Road, New Road/Worcester, Northampton, Taunton — and Bristol and Derby are real cities, so the rule satisfies its own guard and merges nine unrelated grounds into one. The key is therefore unchanged: still the conservative fold, still byte-identical to `venues.NormalizeName` / `venue.normalized_name` on the Go side, so no migration and no re-import. `test_every_spelling_of_one_ground_is_placed_at_one_set_of_coordinates` asserts the nine stay nine.
+
+**The counts in the finding do not hold.** Re-derived from the file rather than trusted: 28 mapped rows had an empty `admin1`, not 20, and of those **11** were literally the country's own point, covering **225 venue-days / 265 matches**, not 489. The finding's own numbers were a third high.
+
+**What was fixed is the real defect underneath it: one ground placed in two different places.** `locate` took the first query with a supported candidate, and the first query is the city Cricsheet names — which for `Kensington Oval, Bridgetown` is "Barbados". The geocoder answers a country name with the country, whose coordinates are its centroid, 10 km from the ground and 10 km from where the *other three* spellings of the same ground sit. `geocoding.is_country_centroid` now recognises that answer (empty `admin1` and the place's name is the query), `locate` **holds** it and asks the venue name's own parts, and replaces it only with a place **in the same country**. The same-country clause is not decoration: without it the fall-through put `Lords, St David's Cricket Club Ground` (Bermuda) in La Verne, California, `College Field` (Guernsey) in Pennsylvania and `Grainville, St Saviour, Jersey` in Normandy — all three measured against the live geocoder before the rule was tightened.
+
+**Seven rows moved**, each onto the city its ground is in, each in the same country and the same IANA zone as before: `Antigua Recreation Ground, St John's` → St John's, `Brian Lara Stadium, Tarouba` → Tarouba, `Kensington Oval, Bridgetown` → Bridgetown, `Mission Road Ground, Mong Kok` → Mong Kok, `Queen's Park Oval, Port of Spain` → Port of Spain, `Sir Vivian Richards Stadium, North Sound` → North Sound, `Windsor Park, Roseau` → Roseau. The four Kensington Oval spellings and the four Queen's Park Oval spellings now agree on one set of coordinates each — they remain four rows, which is the documented limit: merging them needs coordinates or a person, not a longer delimiter rule. Their **226 cached venue-days were dropped and fetched again** at the corrected coordinates, in the same pass as DATA-04's.
+
+**21 rows still have an empty `admin1`**, 9 of them the country's own point, and they stay: Singapore and Gibraltar are city-states whose own name is the best answer there is, and Jersey, Guernsey, Bermuda, Antigua, Grenada and Rwanda have no place inside them that the geocoder returns for these grounds. `reference-data/README.md` says so on the row count rather than claiming a city-level placement it does not have.
+
+Not retrain-flagged: no served model reads a weather column (`contract.py:158, 173-182`); the four X-2 families are recorded nulls.
+
+Pinned by `test_locate_holds_a_country_centroid_and_takes_a_place_in_the_same_country`, `test_locate_keeps_a_country_centroid_when_the_venue_name_answers_another_country`, `test_is_country_centroid_only_when_the_query_was_the_country_name` and `test_every_spelling_of_one_ground_is_placed_at_one_set_of_coordinates` (the last over the committed table: one placement per ground, nine County Grounds). All four fail on `main`.
+
+### DATA-03 — Competition needle `"zimbabwe"` votes ZW for every venue Zimbabwe toured  **Medium** — PR #345
+
+`venues.py:203` `("zimbabwe", ("ZW",))` applied to every fixture via `_votes` (`:316-320`). Verified `countries_voted`: `Tony Ireland Stadium, Townsville` → `ZW AU`; `Goodyear Park` → `ZW ZA`; `Niaz Stadium, Hyderabad` → `ZW PK`; `Bready` → `ZW IE GB`. Needles `"friends"`, `"marsh"`, `"vitality"`, `"4-day"` (`:148-189`) are equally unanchored. **Fix.** Drop `"zimbabwe"`; anchor league needles to full event names; weight competition votes below team votes.
+
+**The headline holds exactly; the list of other unanchored needles does not, and the third clause of the fix is wrong.** Every needle was run against all 22,905 event names in the archive. `"zimbabwe"` matches **0 domestic fixtures and 443 international ones** — it is pure noise and was dropped. `"twenty20 cup"` is the same shape and the finding missed it: it matches no English event in this archive at all, only the **ACC Twenty20 Cup** (10 fixtures), voting GB for an Asian Cricket Council tournament; dropped too. The four needles the finding names are *not* defective: `"friends"` and `"4-day"` match nothing, `"marsh"` matches 69 domestic fixtures and 0 international, `"vitality"` 1,194 and 0.
+
+**"Weight competition votes below team votes" was measured and refused.** The natural implementation — cast a competition vote only for a domestic fixture, since an international fixture's teams already say where it is — was built and run over the archive. It fixes nothing the needle drop does not, and it *breaks* three correct placements: `Botswana Cricket Association Oval 2, Gaborone` (BW → MZ top vote), `Integrated Polytechnic Regional Centre` (RW → UG) and `Al Dhaid Cricket Village` (GB → KW), because at an associate tournament the competition is better evidence of the host than the sides are. Not implemented; a structural guard replaces it — `test_no_competition_needle_is_an_international_side_the_archive_names` fails if a needle is ever again also a team name, which is the property `"zimbabwe"` violated.
+
+**Matching is now whole-phrase** (`(?<!\w)needle(?!\w)`), which also retires the `"csa "` / `"ecb "` trailing-space hack. Verified over every event name: no domestic vote is lost by the change — the only fixtures whose vote moves are the 443 Zimbabwe tours and the 10 ACC ones, 453 in all across 72 distinct event names.
+
+**81 of the 892 rows' `countries_voted` changed; no placement did.** Five non-hand rows' computed `note` changed — `Goodyear Park`, `Niaz Stadium, Hyderabad`, `Sedgars Park` and `Tony Ireland Stadium, Townsville` stop being minority placements and become top-vote ones, and `Takashinga Sports Club, Highfield, Harare` honestly becomes a minority placement (`US 6 to 4`) once the event name stops voting for its own country. Six hand-placed rows' vote counts moved; their notes are a person's and stay. The curated table's breakdown moves **670 → 673 top-vote, 62 → 59 minority-vote**, updated in `reference-data/README.md` and in `test_curation_summary_matches_the_documented_counts`. No coordinates moved, so nothing was re-geocoded and no weather day was re-fetched for this finding.
+
+Not retrain-flagged: no served model reads a weather column.
+
+Pinned by `test_a_competition_needle_never_matches_a_country_a_tour_is_named_after` (seven parametrised events including the two dropped needles and the two de-padded ones), `test_no_competition_needle_is_an_international_side_the_archive_names` and `test_a_tour_votes_only_for_the_sides_that_played_it` (Townsville votes `ZW:1 AU:1`, not `ZW:2 AU:1`). All fail on `main`.
+
+### DATA-04 — ERA5 hours indexed by local-time string with one fixed offset across DST  **Medium** — PR #345
+
+`ml/weather/archive.py:198` requests `timezone=auto`; `:264-273` looks up `f"{day}T{hour:02d}:00"` for 24 hours and ignores `utc_offset_seconds`; `:249-258` chains days ≤45 apart into one call (an English season is one March–October request; 5,566 of 19,561 cached days are `Europe/London`). All 19,561 rows in `era5-venue-days.jsonl` have exactly 24 slots, including the 9 rows on DST-transition dates — so every day on the far side of a transition inside a cluster is shifted by one hour. **Fix.** Request `timezone=UTC` and convert per hour with `zoneinfo`; cap cluster span.
+
+**The defect is real and larger than the entry says; the mechanism is not the one the entry names.** Measured against the live service: with `timezone=auto`, Open-Meteo stamps the whole requested range with the offset the zone is on **at the moment of the call**, not at the dates requested. A January 2015 request for London comes back `utc_offset_seconds: 3600` (BST) and one for Sydney `36000` (AEST). So the shift is not confined to clusters that straddle a transition — it hits every cached day whose true offset differs from its zone's offset on the day the row was fetched (2026-09-05 or 2026-09-19).
+
+**2,523 of the 19,653 cached days are actually wrong (12.8 %), not the 9 transition-date rows.** And barely any of them are English: the English season runs inside BST, so only **2 of the 5,567** `Europe/London` rows are shifted — the entry's headline number points at the one zone that is almost entirely fine. The damage is southern-hemisphere summer cricket fetched in a southern-hemisphere winter: `Pacific/Auckland` 1,090 of 1,107, `Australia/Sydney` 470 of 482, `Australia/Melbourne` 382 of 393, `Australia/Adelaide` 261 of 265, `Australia/Hobart` 224 of 224. 2,483 days are an hour late, 40 an hour early.
+
+**The fix.** The call asks `timezone=UTC` and `archive.local_hour_keys` builds each local day's 24 clock hours from the venue's IANA zone with `zoneinfo`, resolving the offset **per hour**, so a cluster may span a season at no cost. A zone whose offset is not a whole number of hours (`Asia/Kolkata`'s +5:30) is floored to the whole hour, which is exactly what the service does for its own local grid — verified against a paired `auto`/`UTC` request for Mumbai, where local 05:00 is UTC 00:00. Each call is widened by a day at each end so a local day's hours always have a UTC hour to read (`UTC_MARGIN_DAYS`), and `ARCHIVE_LAG_DAYS` goes 7 → 8 to keep the same margin against the archive's own lag. The `daily=precipitation_sum` block is no longer requested: under a UTC request it would be a UTC day, so `p7` is summed from the local hourly precipitation instead. A mapped venue with no IANA zone now counts as unmapped rather than being fetched into a day whose hours mean nothing.
+
+**Cluster span is deliberately not capped.** The cap was the entry's workaround for the fixed-offset bug; converting per hour removes the need, and the service's hourly quota is weighted by the data a call returns, so splitting one call into four would cost four times the calls for the same data.
+
+**Parity before re-fetching, then 2,749 days re-fetched.** Sixteen days the defect does not touch — across `Asia/Kolkata` (the half-hour zone), `Asia/Dubai`, `Africa/Johannesburg` and `America/Barbados` — were re-fetched with the corrected client and compared value for value against the committed lines: **16 of 16 identical on `t`, `rh`, `p` and `p7`**, which is what makes a targeted re-fetch legitimate rather than a full re-acquisition. The 2,523 shifted days and DATA-02's 226 moved-venue days were then dropped and fetched again — REFETCH_CALLS archive calls, 0 misses — and their lines replaced in place, so the committed file's remaining 16,904 lines are byte-identical to before. `make restore-venue-weather` reproduces the state offline with no network call.
+
+**X-2's recorded numbers.** The weather families are recorded nulls and no served model reads them (`contract.py:158, 173-182`), so nothing in the product changes. But 12.8 % of the days X-2's gate (a) read were an hour out, so the recorded gate figures were computed on partly wrong inputs and are not reproducible from the corrected file. They are left as recorded, marked in `docs/EXTERNAL_DATA_PLAN.md` as measured on the pre-correction data; re-running gate (a) is a `make evaluate`-class job and is not done here.
+
+Not retrain-flagged in the model sense — no feature a model reads changes — but every X-2 weather number on disk was computed from the uncorrected days.
+
+Pinned by `test_local_hour_keys_follow_the_zone_across_a_daylight_saving_transition` (Auckland's January midnight is 11:00 UTC the day before, its June midnight 12:00; Kolkata floors to +5), `test_reduce_days_reads_each_day_at_its_own_offset_within_one_call` (both days out of one response, each on its own offset), `test_open_meteo_archive_asks_in_utc_and_parses_a_response` and `test_backfill_skips_a_mapped_venue_with_no_zone_to_read_its_hours_on`. All fail on `main`.
+
+### DATA-06 — `WeatherCache` drops any unparsable line silently; a permanent `Miss` from one bad 200  **Low-Medium** — PR #345
+
+`archive.py:134-139` swallows `(ValueError, KeyError)` per line with no log; `:274-275` writes a `Miss` whenever a day's temperatures are all `None`, and the README makes misses permanent. `misses = 0` today. **Fix.** Log and count skipped lines; fail unless the skipped line is the last; only record a `Miss` when neighbouring days have data.
+
+**Both claims hold, and no silent drop has actually happened.** All 19,653 committed lines parse, there are no duplicate `(venue, date)` keys and `misses = 0`, so the defect is latent, not realised — which is the moment to close it.
+
+**Implemented as specified.** `WeatherCache._load` now counts what it skipped (`skipped_lines`), logs the line number and reason at WARNING, and tolerates an unparsable line **only as the last** — a torn final line is what an interrupted append leaves; one anywhere else means the file was corrupted after it was written, and dropping it silently would turn the days it held into gaps a later run re-asks at whatever coordinates the table then holds. `reduce_days` records a `Miss` only when the same response answered for a neighbouring day; a response with no readings for the day or either neighbour raises, naming the venue and date, rather than writing a permanent miss out of a bad 200.
+
+Not retrain-flagged: no served model reads a weather column.
+
+Pinned by `test_cache_refuses_an_unparsable_line_that_is_not_the_last`, `test_reduce_days_refuses_a_permanent_miss_when_the_call_answered_nothing` and the `skipped_lines == 1` assertion in `test_cache_round_trips_hits_and_misses_and_skips_a_torn_line`. All fail on `main`.
 
 ### OPS-03 — Frontend keeps the admin key in `localStorage` and attaches it by port heuristic  **Low** — PR #344
 

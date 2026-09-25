@@ -134,9 +134,11 @@ TEAM_COUNTRIES: Dict[str, Tuple[str, ...]] = {
     "west indies": WEST_INDIES,
 }
 
-# Domestic competitions -> the country they are played in, by a substring of Cricsheet's
-# event name. The same table serves the session-window rules, which is why both live on
-# one list of names rather than two.
+# Domestic competitions -> the country they are played in, by a phrase of Cricsheet's event
+# name matched at word boundaries, first entry wins. A needle names a *competition* and
+# never a country or an international side: "zimbabwe" used to be here and matched none of
+# Zimbabwe's domestic cricket and all 443 of its tours ("Zimbabwe tour of Australia" voted
+# ZW for Townsville), and "twenty20 cup" matched only the ACC's, never England's (DATA-03).
 COMPETITION_COUNTRIES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("indian premier league", ("IN",)),
     ("syed mushtaq ali", ("IN",)),
@@ -153,10 +155,9 @@ COMPETITION_COUNTRIES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("charlotte edwards", ("GB",)),
     ("rachael heyhoe", ("GB",)),
     ("bob willis", ("GB",)),
-    ("ecb ", ("GB",)),
+    ("ecb", ("GB",)),
     ("metro bank", ("GB",)),
     ("friends", ("GB",)),
-    ("twenty20 cup", ("GB",)),
     ("pro40", ("GB",)),
     ("cricket super league", ("GB",)),
     ("kia super league", ("GB",)),
@@ -180,7 +181,7 @@ COMPETITION_COUNTRIES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("ford trophy", ("NZ",)),
     ("hallyburton", ("NZ",)),
     ("new zealand cricket", ("NZ",)),
-    ("csa ", ("ZA",)),
+    ("csa", ("ZA",)),
     ("ram slam", ("ZA",)),
     ("mzansi", ("ZA",)),
     ("sa20", ("ZA",)),
@@ -200,10 +201,16 @@ COMPETITION_COUNTRIES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("kwibuka", ("RW",)),
     ("kalahari", ("BW",)),
     ("global t20 canada", ("CA",)),
-    ("zimbabwe", ("ZW",)),
 )
 
 _NON_KEY = re.compile(r"[^a-z0-9]+")
+
+#: Each needle as a whole-phrase pattern: "ecb" must not match inside "Recbury", and the
+#: lookarounds do that without the trailing space the table used to carry (DATA-03).
+_COMPETITION_PATTERNS: Tuple[Tuple["re.Pattern[str]", Tuple[str, ...]], ...] = tuple(
+    (re.compile(rf"(?<!\w){re.escape(needle)}(?!\w)", re.IGNORECASE), countries)
+    for needle, countries in COMPETITION_COUNTRIES
+)
 
 
 def venue_key(name: str) -> str:
@@ -257,9 +264,11 @@ class VenueFacts:
 
 
 def competition_countries(competition: str) -> Tuple[str, ...]:
-    lowered = competition.casefold()
-    for needle, countries in COMPETITION_COUNTRIES:
-        if needle in lowered:
+    """The country a Cricsheet event name is played in, by the first needle that matches it
+    as a whole phrase. Nothing when no competition is recognised: silence is a weaker
+    placement than a vote, and a wrong vote is worse than either (DATA-03)."""
+    for pattern, countries in _COMPETITION_PATTERNS:
+        if pattern.search(competition):
             return countries
     return ()
 

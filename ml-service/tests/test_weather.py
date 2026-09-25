@@ -106,6 +106,53 @@ def test_team_and_competition_countries_are_looked_up_case_insensitively() -> No
     assert venues.competition_countries("Unheard Of Cup") == ()
 
 
+@pytest.mark.parametrize(
+    "event, expected",
+    [
+        ("Zimbabwe tour of Australia", ()),  # a tour is not a competition anyone is at home in
+        ("Zimbabwe in Bangladesh ODI Series", ()),
+        ("ACC Twenty20 Cup", ()),  # the Asian Cricket Council's, never England's
+        ("CSA T20 Challenge", ("ZA",)),  # matched whole, without the table's old trailing space
+        ("ECB Women's One-Day Cup", ("GB",)),
+        ("Vitality Blast Women", ("GB",)),
+        ("The Marsh Cup", ("AU",)),
+    ],
+)
+def test_a_competition_needle_never_matches_a_country_a_tour_is_named_after(event, expected) -> None:
+    """DATA-03: "zimbabwe" was a needle, so every one of the 443 fixtures whose event name
+    carries the country voted ZW for wherever it was played -- Townsville, Bloemfontein,
+    Hyderabad. A needle names a competition, matched as a whole phrase, or nothing."""
+    assert venues.competition_countries(event) == expected
+
+
+def test_no_competition_needle_is_an_international_side_the_archive_names() -> None:
+    """The structural guard behind DATA-03: a needle that is also a team name votes for
+    that team's country on every tour it plays, home or away."""
+    needles = {needle for needle, _ in venues.COMPETITION_COUNTRIES}
+
+    assert needles & set(venues.TEAM_COUNTRIES) == set()
+
+
+def test_a_tour_votes_only_for_the_sides_that_played_it(tmp_path) -> None:
+    """DATA-03's verified case: Zimbabwe's tour of Australia at Townsville used to vote ZW
+    twice -- once for the side, once for the event name -- and out-vote the host."""
+    directory = tmp_path / CRICSHEET_DIR
+    directory.mkdir()
+    _write_match(
+        directory,
+        "1",
+        team_type="international",
+        teams=["Zimbabwe", "Australia"],
+        venue="Tony Ireland Stadium, Townsville",
+        city="Townsville",
+        event={"name": "Zimbabwe tour of Australia"},
+    )
+
+    _, facts = venues.read_archive(str(directory))
+
+    assert dict(facts["tony ireland stadium townsville"].country_votes) == {"ZW": 1, "AU": 1}
+
+
 # --- geocoding --------------------------------------------------------------------------
 
 
@@ -296,7 +343,7 @@ def test_curation_summary_matches_the_documented_counts() -> None:
     summary = geocoding.curation_summary(locations)
 
     assert summary == geocoding.CurationSummary(
-        total=892, top_vote=670, minority_vote=62, unvoted=44, no_votes=4, hand_curated=112
+        total=892, top_vote=673, minority_vote=59, unvoted=44, no_votes=4, hand_curated=112
     )
 
 
@@ -315,6 +362,77 @@ def test_locate_uses_the_city_hint_then_the_venue_parts_then_records_unmappable(
     nowhere = geocoding.locate(venues.VenueFacts(venue="Holkar Stadium"), _FakeGeocoder({}))
     assert nowhere.status == geocoding.STATUS_UNMAPPABLE and not nowhere.mapped
     assert nowhere.note == geocoding.NOTE_NO_PLACE
+
+
+def test_locate_holds_a_country_centroid_and_takes_a_place_in_the_same_country() -> None:
+    """DATA-02: Cricsheet names "Barbados" as the city beside the Kensington Oval, so the
+    geocoder answered with the country and the row sat at its centroid -- 10 km from the
+    ground, and from where the other three spellings of the same ground were placed. The
+    centroid is held, the venue name's own parts are asked, and Bridgetown replaces it."""
+    facts = venues.VenueFacts(venue="Kensington Oval, Bridgetown")
+    facts.cities["Barbados"] += 57
+    facts.country_votes["BB"] += 57
+    client = _FakeGeocoder(
+        {
+            "Barbados": [_candidate("Barbados", "BB", 287_000)],
+            "Bridgetown": [_candidate("Bridgetown", "BB", 98_000, admin1="Saint Michael")],
+        }
+    )
+
+    located = geocoding.locate(facts, client)
+
+    assert located.query == "Bridgetown" and located.place == "Bridgetown"
+    assert located.admin1 == "Saint Michael" and located.note == ""
+    assert client.queries == ["Barbados", "Bridgetown"]
+
+
+def test_locate_keeps_a_country_centroid_when_the_venue_name_answers_another_country() -> None:
+    """The other half of DATA-02: "Lords, St David's Cricket Club Ground" is in Bermuda,
+    and its own name answers La Verne, California. A place replaces the centroid only when
+    it is in the same country, so the centroid stays."""
+    facts = venues.VenueFacts(venue="Lords, St David's Cricket Club Ground")
+    facts.cities["Bermuda"] += 4
+    client = _FakeGeocoder(
+        {
+            "Bermuda": [_candidate("Bermuda", "BM", 64_000)],
+            "Lords": [_candidate("La Verne", "US", 31_000, admin1="California")],
+        }
+    )
+
+    located = geocoding.locate(facts, client)
+
+    assert located.place == "Bermuda" and located.country_code == "BM"
+    assert "Lords" in client.queries
+
+
+def test_is_country_centroid_only_when_the_query_was_the_country_name() -> None:
+    """A place inside a country is never a centroid, and neither is a country whose name
+    the query did not ask for -- which is how "Rwandarugali" stops out-ranking "Rwanda"."""
+    barbados = _candidate("Barbados", "BB", 287_000)
+    bridgetown = _candidate("Bridgetown", "BB", 98_000, admin1="Saint Michael")
+
+    assert geocoding.is_country_centroid(barbados, "Barbados") is True
+    assert geocoding.is_country_centroid(barbados, "Bridgetown") is False
+    assert geocoding.is_country_centroid(bridgetown, "Bridgetown") is False
+
+
+def test_every_spelling_of_one_ground_is_placed_at_one_set_of_coordinates() -> None:
+    """DATA-02, on the committed table: the key deliberately does not merge spellings --
+    "County Ground" is nine different grounds in this archive, and a rule that folded the
+    first comma-part would make them one. What it must not do is place one ground in two
+    places, which is what a country centroid did to the Kensington Oval and the Queen's
+    Park Oval."""
+    locations = geocoding.read_locations(CURATED_TABLE)
+
+    for prefix in ("kensington oval", "queen s park oval"):
+        placements = {
+            (round(loc.latitude, 4), round(loc.longitude, 4))
+            for key, loc in locations.items()
+            if key == prefix or key.startswith(prefix + " ")
+        }
+        assert len(placements) == 1, f"{prefix}: {placements}"
+    county = {key for key in locations if key == "county ground" or key.startswith("county ground ")}
+    assert len(county) == 9
 
 
 def test_locate_notes_a_country_the_archive_did_not_vote_for() -> None:
@@ -516,33 +634,82 @@ def test_clusters_groups_days_within_the_gap() -> None:
     assert archive.clusters(days, gap_days=45) == [[date(2024, 1, 1), date(2024, 1, 20)], [date(2024, 6, 1)]]
 
 
-def _response(days, missing_day=None) -> archive.ArchiveResponse:
+def _response(days, missing_day=None, zone="Asia/Kolkata") -> archive.ArchiveResponse:
+    """One call's answer, stamped in UTC as the corrected client asks for it: the cluster,
+    its prior week and a day's margin at each end, each hour's temperature its own index so
+    a reading can be traced back to the UTC hour it came from."""
     from datetime import timedelta
 
-    first = min(days) - timedelta(days=archive.PRIOR_DAYS)
-    span = [(first + timedelta(days=i)) for i in range((max(days) - first).days + 1)]
+    first = min(days) - timedelta(days=archive.PRIOR_DAYS + archive.UTC_MARGIN_DAYS)
+    last = max(days) + timedelta(days=archive.UTC_MARGIN_DAYS)
+    span = [(first + timedelta(days=i)) for i in range((last - first).days + 1)]
     hourly_time = [f"{d.isoformat()}T{h:02d}:00" for d in span for h in range(24)]
-    temperature = [None if (missing_day and t.startswith(missing_day.isoformat())) else 20.0 for t in hourly_time]
+    blank = set(archive.local_hour_keys(missing_day, zone)) if missing_day else set()
+    temperature = [None if t in blank else float(i) for i, t in enumerate(hourly_time)]
     return archive.ArchiveResponse(
-        timezone="Asia/Kolkata",
         hourly_time=hourly_time,
         hourly={
             "temperature_2m": temperature,
             "relative_humidity_2m": [60.0] * len(hourly_time),
             "precipitation": [0.1] * len(hourly_time),
         },
-        daily_time=[d.isoformat() for d in span],
-        daily={"precipitation_sum": [float(i) for i in range(len(span))]},
     )
 
 
 def test_reduce_days_keeps_the_day_hours_and_the_prior_week_and_records_a_miss() -> None:
+    """The day's 24 local hours in the venue's zone, the local daily rain totals of the
+    week before, and a miss for a day the archive answered nothing for."""
     days = [date(2024, 3, 30), date(2024, 3, 31)]
-    entries = archive.reduce_days("v", _response(days, missing_day=date(2024, 3, 31)), days, "t0")
+
+    entries = archive.reduce_days("v", _response(days, missing_day=date(2024, 3, 31)), days, "t0", "Asia/Kolkata")
+
     hit, miss = entries
     assert isinstance(hit, archive.DayWeather) and len(hit.temperature_c) == 24
-    assert hit.prior_precipitation_mm == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    assert hit.timezone == "Asia/Kolkata"
+    assert hit.prior_precipitation_mm == [pytest.approx(2.4)] * 7
     assert isinstance(miss, archive.Miss) and miss.reason == "no hourly readings in the archive"
+
+
+def test_local_hour_keys_follow_the_zone_across_a_daylight_saving_transition() -> None:
+    """DATA-04: New Zealand's clocks go back on 7 April 2024, so a January match day's
+    midnight is 11:00 UTC the day before and a June one's is 12:00 -- the offset the zone
+    was on *that day*, not the one it is on when the call is made."""
+    summer = archive.local_hour_keys(date(2024, 1, 10), "Pacific/Auckland")
+    winter = archive.local_hour_keys(date(2024, 6, 10), "Pacific/Auckland")
+
+    assert summer[0] == "2024-01-09T11:00" and summer[23] == "2024-01-10T10:00"
+    assert winter[0] == "2024-06-09T12:00" and winter[23] == "2024-06-10T11:00"
+    # Asia/Kolkata's +5:30 is floored to the whole hour ERA5 is gridded on.
+    assert archive.local_hour_keys(date(2024, 3, 30), "Asia/Kolkata")[0] == "2024-03-29T19:00"
+
+
+def test_reduce_days_reads_each_day_at_its_own_offset_within_one_call() -> None:
+    """DATA-04's failure, pinned: one call covering both sides of a DST transition used to
+    stamp every day with a single offset, so the January day was an hour out. Each day is
+    placed on its own offset here, and the hours it holds are the UTC hours that offset
+    names -- a January midnight from 11:00 UTC, a June one from 12:00."""
+    days = [date(2024, 1, 10), date(2024, 6, 10)]
+
+    summer, winter = archive.reduce_days("v", _response(days), days, "t0", "Pacific/Auckland")
+
+    def utc_index(label: str) -> float:
+        return float(_response(days).hourly_time.index(label))
+
+    assert summer.temperature_c[0] == utc_index("2024-01-09T11:00")
+    assert winter.temperature_c[0] == utc_index("2024-06-09T12:00")
+    assert winter.temperature_c[0] - summer.temperature_c[0] != 24 * (date(2024, 6, 10) - date(2024, 1, 10)).days
+
+
+def test_reduce_days_refuses_a_permanent_miss_when_the_call_answered_nothing() -> None:
+    """DATA-06: a day the archive has no readings for is a miss only when the response
+    answered for a neighbour. A response empty throughout is a bad 200, and recording it
+    would make a permanent miss a restore never re-asks."""
+    days = [date(2024, 3, 30)]
+    empty = _response(days)
+    empty.hourly["temperature_2m"] = [None] * len(empty.hourly_time)
+
+    with pytest.raises(ValueError, match="refusing to record a permanent miss"):
+        archive.reduce_days("v", empty, days, "t0", "Asia/Kolkata")
 
 
 def test_cache_round_trips_hits_and_misses_and_skips_a_torn_line(tmp_path, window_day) -> None:
@@ -553,10 +720,26 @@ def test_cache_round_trips_hits_and_misses_and_skips_a_torn_line(tmp_path, windo
         fh.write('{"venue": "torn"')
     reopened = archive.WeatherCache(path)
     assert len(reopened) == 2 and reopened.counts() == {"days": 1, "misses": 1}
+    assert reopened.skipped_lines == 1
     day = reopened.get(window_day.venue_key, window_day.day)
     assert day.relative_humidity[0] == 50 and day.temperature_c[23] == pytest.approx(43.0)
     assert isinstance(reopened.get("v", date(2024, 1, 1)), archive.Miss)
     assert reopened.get("v", date(2024, 1, 2)) is None
+
+
+def test_cache_refuses_an_unparsable_line_that_is_not_the_last(tmp_path, window_day, caplog) -> None:
+    """DATA-06: a torn final line costs one cluster and is logged; a bad line anywhere else
+    means the file was corrupted after it was written, and dropping it silently would turn
+    the days it held into gaps a later run re-asks at whatever coordinates it then holds."""
+    path = str(tmp_path / "cache.jsonl")
+    cache = archive.WeatherCache(path)
+    cache.append([window_day])
+    with open(path, "a") as fh:
+        fh.write('{"venue": "torn"\n')
+        fh.write(json.dumps(archive.Miss("v", date(2024, 1, 1), "why").to_line()) + "\n")
+
+    with pytest.raises(ValueError, match="line 2 could not be read"):
+        archive.WeatherCache(path)
 
 
 class _FakeArchive:
@@ -567,14 +750,16 @@ class _FakeArchive:
         self.calls.append((start, end))
         from datetime import timedelta
 
-        days = [start + timedelta(days=archive.PRIOR_DAYS), end]
+        days = [start + timedelta(days=archive.PRIOR_DAYS + archive.UTC_MARGIN_DAYS), end - timedelta(days=1)]
         return _response(days)
 
 
 def test_backfill_fetches_one_call_per_cluster_and_skips_unmapped_and_recent_days(tmp_path) -> None:
     cache = archive.WeatherCache(str(tmp_path / "c.jsonl"))
     locations = {
-        "v": geocoding.VenueLocation("V", "v", geocoding.STATUS_MAPPED, latitude=1.0, longitude=2.0),
+        "v": geocoding.VenueLocation(
+            "V", "v", geocoding.STATUS_MAPPED, latitude=1.0, longitude=2.0, timezone="Asia/Kolkata"
+        ),
         "u": geocoding.VenueLocation("U", "u", geocoding.STATUS_UNMAPPABLE),
     }
     days = {
@@ -585,8 +770,20 @@ def test_backfill_fetches_one_call_per_cluster_and_skips_unmapped_and_recent_day
     client = _FakeArchive()
     counts = archive.backfill(locations, days, cache, client, today=date(2024, 9, 5))
     assert counts == {"venues": 1, "calls": 1, "days_fetched": 2, "misses": 0, "too_recent": 1, "unmapped_days": 2}
-    assert client.calls == [(date(2024, 3, 23), date(2024, 3, 31))]
+    assert client.calls == [(date(2024, 3, 22), date(2024, 4, 1))]
     assert archive.backfill(locations, days, cache, client, today=date(2024, 9, 5))["calls"] == 0
+
+
+def test_backfill_skips_a_mapped_venue_with_no_zone_to_read_its_hours_on() -> None:
+    """Coordinates without an IANA zone cannot be reduced to local hours, so the days count
+    as unmapped rather than being fetched into a day whose hours mean nothing (DATA-04)."""
+    locations = {"v": geocoding.VenueLocation("V", "v", geocoding.STATUS_MAPPED, latitude=1.0, longitude=2.0)}
+    cache = archive.WeatherCache("")
+    client = _FakeArchive()
+
+    counts = archive.backfill(locations, {"v": [date(2024, 3, 30)]}, cache, client, today=date(2024, 9, 5))
+
+    assert counts["unmapped_days"] == 1 and counts["calls"] == 0 and client.calls == []
 
 
 def _archive_transport(statuses):
@@ -602,61 +799,45 @@ def _archive_transport(statuses):
     return httpx.MockTransport(handler), calls
 
 
-def test_open_meteo_archive_parses_a_response(monkeypatch) -> None:
+def test_open_meteo_archive_asks_in_utc_and_parses_a_response(monkeypatch) -> None:
+    """DATA-04: the call asks for UTC, never the service's own "auto", whose offset is the
+    one the zone happens to be on at the moment of the call."""
     monkeypatch.setattr(archive.time, "sleep", lambda s: None)
-    body = {
-        "timezone": "Asia/Kolkata",
-        "hourly": {"time": ["2024-03-30T00:00"], "temperature_2m": [21.0]},
-        "daily": {"time": ["2024-03-30"], "precipitation_sum": [0.0]},
-    }
+    body = {"hourly": {"time": ["2024-03-30T00:00"], "temperature_2m": [21.0]}}
     transport, calls = _archive_transport([(200, body)])
+
     client = archive.OpenMeteoArchive(httpx.Client(transport=transport))
     response = client.fetch(1.0, 2.0, date(2024, 3, 23), date(2024, 3, 30))
-    assert response.timezone == "Asia/Kolkata" and response.hourly["temperature_2m"] == [21.0]
-    assert calls[0].url.params["timezone"] == "auto" and client.calls == 1
+
+    assert response.hourly_time == ["2024-03-30T00:00"] and response.hourly["temperature_2m"] == [21.0]
+    assert calls[0].url.params["timezone"] == "UTC" and client.calls == 1
+    assert "daily" not in calls[0].url.params
 
 
 def test_open_meteo_archive_retries_transient_errors_and_raises_on_the_daily_limit(monkeypatch) -> None:
     monkeypatch.setattr(archive.time, "sleep", lambda s: None)
-    transport, _ = _archive_transport(
-        [(503, {"reason": "busy"}), (200, {"timezone": "UTC", "hourly": {"time": []}, "daily": {"time": []}})]
-    )
-    assert (
-        archive.OpenMeteoArchive(httpx.Client(transport=transport))
-        .fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
-        .timezone
-        == "UTC"
-    )
+    ok = {"hourly": {"time": ["2024-01-01T00:00"], "temperature_2m": [1.0]}}
+    transport, _ = _archive_transport([(503, {"reason": "busy"}), (200, ok)])
+    assert archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(
+        1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2)
+    ).hourly_time == ["2024-01-01T00:00"]
     transport, _ = _archive_transport([(429, {"reason": "Daily API request limit exceeded"})])
     with pytest.raises(archive.DailyLimitReached):
         archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
-    transport, calls = _archive_transport(
-        [(200, None), (200, {"timezone": "UTC", "hourly": {"time": []}, "daily": {"time": []}})]
-    )
-    assert (
-        archive.OpenMeteoArchive(httpx.Client(transport=transport))
-        .fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
-        .timezone
-        == "UTC"
-    )
+    transport, calls = _archive_transport([(200, None), (200, ok)])
+    assert archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(
+        1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2)
+    ).hourly_time == ["2024-01-01T00:00"]
     assert len(calls) == 2
     transport, _ = _archive_transport([(200, None)] * 4)
     with pytest.raises(RuntimeError, match="after 4 attempts"):
         archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
     slept = []
     monkeypatch.setattr(archive.time, "sleep", lambda s: slept.append(s))
-    transport, calls = _archive_transport(
-        [
-            (429, {"reason": "Hourly API request limit exceeded"}),
-            (200, {"timezone": "UTC", "hourly": {"time": []}, "daily": {"time": []}}),
-        ]
-    )
-    assert (
-        archive.OpenMeteoArchive(httpx.Client(transport=transport))
-        .fetch(1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2))
-        .timezone
-        == "UTC"
-    )
+    transport, calls = _archive_transport([(429, {"reason": "Hourly API request limit exceeded"}), (200, ok)])
+    assert archive.OpenMeteoArchive(httpx.Client(transport=transport)).fetch(
+        1.0, 2.0, date(2024, 1, 1), date(2024, 1, 2)
+    ).hourly_time == ["2024-01-01T00:00"]
     assert len(calls) == 2 and archive.HOURLY_LIMIT_PAUSE_SECONDS in slept
     transport, _ = _archive_transport([(400, {"reason": "bad"})])
     with pytest.raises(httpx.HTTPStatusError):

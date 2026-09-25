@@ -206,6 +206,20 @@ def support_note(country_code: str, votes: Mapping[str, int]) -> str:
     return f"{NOTE_MINORITY_PREFIX}{code} {best} to {votes[country_code]})"
 
 
+def is_country_centroid(candidate: Candidate, query: str) -> bool:
+    """Whether the geocoder answered a country name with the country itself.
+
+    Open-Meteo leaves ``admin1`` empty for a country or a dependent territory, and the
+    coordinates it returns for one are that territory's centroid -- 13.16, -59.55 for
+    ``Barbados``, which is 10 km of sea and cane from the Kensington Oval in Bridgetown.
+    Asking about a place *inside* the country is what the venue name's own parts are for,
+    so such an answer is held rather than taken (DATA-02). A city-state's own name is the
+    best answer there is (``Singapore``), and it is held the same way: nothing better turns
+    up and the centroid is what the row keeps.
+    """
+    return not candidate.admin1 and candidate.name.casefold() == query.strip().casefold()
+
+
 def choose(candidates: Sequence[Candidate], votes: Mapping[str, int]) -> Optional[Candidate]:
     """The most populous candidate in the best-supported country -- the top vote, then a
     country the top vote does not out-vote beyond chance, then a country nobody voted for.
@@ -235,12 +249,39 @@ def _conflict_note(conflicts: Sequence[Candidate], votes: Mapping[str, int]) -> 
     return f"every candidate conflicts with the archive's top vote ({code} {best}): {places}"
 
 
+def _mapped_row(facts: VenueFacts, query: str, chosen: Candidate, votes: Mapping[str, int]) -> VenueLocation:
+    return VenueLocation(
+        venue=facts.venue,
+        venue_key=facts.key,
+        status=STATUS_MAPPED,
+        query=query,
+        place=chosen.name,
+        admin1=chosen.admin1,
+        country_code=chosen.country_code,
+        country=chosen.country,
+        latitude=chosen.latitude,
+        longitude=chosen.longitude,
+        timezone=chosen.timezone,
+        countries_voted=format_votes(votes),
+        note=support_note(chosen.country_code, votes),
+    )
+
+
 def locate(facts: VenueFacts, client: GeocodingClient) -> VenueLocation:
-    """One venue's row: the first query with a supported candidate decides. When every query
-    found only conflicting places the row is unmappable and its note names them."""
+    """One venue's row: the first query with a supported place inside a country decides.
+
+    A query that answers with the country itself -- ``Barbados``, for a ground whose city
+    Cricsheet names as Barbados -- is a centroid, not a placement, so the later queries
+    (the venue name's own parts) are asked too. Only a place *in the same country* replaces
+    it: "Bridgetown" does, and the Californian "Lords" that answers a Bermudian ground's
+    name does not, which is why the centroid is kept rather than improved upon there
+    (DATA-02). When every query found only conflicting places the row is unmappable and
+    its note names them.
+    """
     votes: Dict[str, int] = dict(facts.country_votes)
     tried: List[str] = []
     conflicts: List[Candidate] = []
+    centroid: Optional[Tuple[str, Candidate]] = None
     for query in _queries(facts):
         tried.append(query)
         candidates = client.search(query)
@@ -248,21 +289,14 @@ def locate(facts: VenueFacts, client: GeocodingClient) -> VenueLocation:
         if chosen is None:
             conflicts.extend(c for c in candidates if support(c.country_code, votes) == SUPPORT_CONFLICT)
             continue
-        return VenueLocation(
-            venue=facts.venue,
-            venue_key=facts.key,
-            status=STATUS_MAPPED,
-            query=query,
-            place=chosen.name,
-            admin1=chosen.admin1,
-            country_code=chosen.country_code,
-            country=chosen.country,
-            latitude=chosen.latitude,
-            longitude=chosen.longitude,
-            timezone=chosen.timezone,
-            countries_voted=format_votes(votes),
-            note=support_note(chosen.country_code, votes),
-        )
+        if is_country_centroid(chosen, query):
+            centroid = centroid or (query, chosen)
+            continue
+        if centroid is not None and chosen.country_code != centroid[1].country_code:
+            continue
+        return _mapped_row(facts, query, chosen, votes)
+    if centroid is not None:
+        return _mapped_row(facts, centroid[0], centroid[1], votes)
     return VenueLocation(
         venue=facts.venue,
         venue_key=facts.key,
