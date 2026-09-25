@@ -561,7 +561,7 @@ GATES: Tuple[Gate, ...] = (
     Gate(
         id="X-2-humidity-temperature",
         name="Pre-match humidity and temperature",
-        varies="whether the display model and the performance model read the pre-match humidity and temperature (wx_pre_humidity, wx_pre_temp_c, the mean of the three ERA5 hours before the inferred start) with wx_known beyond the "
+        varies="whether the display model and the performance model read the pre-match humidity and temperature (wx_pre_humidity, wx_pre_temp_c, the mean of the three ERA5 hours before 08:00 local -- the hour before the earliest start any session rule assigns, so no actual start can have put play inside the window; DATA-05) with wx_known beyond the "
         "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
@@ -585,7 +585,7 @@ GATES: Tuple[Gate, ...] = (
     Gate(
         id="X-2-dew",
         name="Dew-likelihood proxy",
-        varies="whether the display model and the performance model read the dew proxy (wx_dew_proxy: the night flag times the pre-match relative humidity) with wx_known beyond the "
+        varies="whether the display model and the performance model read the dew proxy (wx_dew_proxy: the night flag times the pre-play relative humidity, the 05-08h mean) with wx_known beyond the "
         "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "
@@ -609,7 +609,7 @@ GATES: Tuple[Gate, ...] = (
     Gate(
         id="X-2-rain",
         name="Rain that has fallen before the match",
-        varies="whether the display model and the performance model read the rain already fallen (wx_rain_prior_day_mm: the day before plus the match day's hours before the start; wx_rain_prior_week_mm: the seven days before) with wx_known beyond the "
+        varies="whether the display model and the performance model read the rain already fallen (wx_rain_prior_day_mm: the day before plus the match day's hours before 08:00 local, the hour before the earliest start any session rule assigns -- DATA-05; wx_rain_prior_week_mm: the seven days before) with wx_known beyond the "
         "columns each reads today -- one display fit per arm per fold, one performance fit per arm per fold",
         fixed="the rows (one frame; the weather columns joined by (venue, match day) onto every win row and player "
         "row from the cached ERA5 days, the session window inferred by the documented rules), the eleven quarterly "

@@ -847,15 +847,77 @@ def test_open_meteo_archive_retries_transient_errors_and_raises_on_the_daily_lim
 # --- features ---------------------------------------------------------------------------
 
 
-def test_feature_row_reads_only_the_hours_before_the_start(window_day) -> None:
-    """A 19:00 night start reads 16-18h; rain is yesterday plus today's hours before 19."""
+def test_feature_row_reads_the_morning_before_play_can_start(window_day) -> None:
+    """Whatever the inferred start, the same-day windows end at 08:00: humidity and
+    temperature are the 05-07h means, rain is yesterday plus the match day's hours 0-7."""
     row = features.feature_row(sessions.SessionWindow(19, True, "r"), window_day)
     assert row[features.KNOWN_COL] == 1.0 and row[features.NIGHT_COL] == 1.0
-    assert row["wx_pre_temp_c"] == pytest.approx(37.0)
-    assert row["wx_pre_humidity"] == pytest.approx(67.0)
-    assert row["wx_dew_proxy"] == pytest.approx(0.67)
-    assert row["wx_rain_prior_day_mm"] == pytest.approx(4.0 + 19 * 0.5)
+    assert row["wx_pre_temp_c"] == pytest.approx(26.0)
+    assert row["wx_pre_humidity"] == pytest.approx(56.0)
+    assert row["wx_dew_proxy"] == pytest.approx(0.56)
+    assert row["wx_rain_prior_day_mm"] == pytest.approx(4.0 + 8 * 0.5)
     assert row["wx_rain_prior_week_mm"] == pytest.approx(7.0)
+    assert features.feature_row(sessions.SessionWindow(10, False, "r"), window_day)["wx_pre_temp_c"] == pytest.approx(
+        26.0
+    )
+
+
+def test_feature_row_reads_no_hour_an_earlier_actual_start_could_have_put_in_play(window_day) -> None:
+    """DATA-05: an IPL match placed at the 19:00 single norm that in fact began at the
+    double-header's 15:30. Rain at 15-18h fell during play and humidity at 16-18h was
+    read during play; neither reaches a column. Only the morning's rain does."""
+    window_day.precipitation_mm = [0.0] * 24
+    for hour in range(15, 19):
+        window_day.precipitation_mm[hour] = 6.0
+    window_day.precipitation_mm[3] = 0.5
+    window_day.relative_humidity = [60.0] * 24
+    for hour in range(16, 19):
+        window_day.relative_humidity[hour] = 100.0
+
+    row = features.feature_row(sessions.SessionWindow(19, True, "t20_league:indian premier league:single"), window_day)
+
+    assert row["wx_rain_prior_day_mm"] == pytest.approx(4.0 + 0.5)
+    assert row["wx_pre_humidity"] == pytest.approx(60.0)
+    assert row["wx_dew_proxy"] == pytest.approx(0.60)
+    assert row["wx_pre_temp_c"] == pytest.approx(26.0)
+
+
+def _every_inferable_window():
+    countries = sorted(
+        set(sessions.ODI_START_BY_COUNTRY)
+        | set(sessions.ONE_DAY_DOMESTIC_START_BY_COUNTRY)
+        | set(sessions.FIRST_CLASS_START_BY_COUNTRY)
+        | set(sessions.T20I_START_BY_COUNTRY)
+        | set(sessions.T20_DOMESTIC_NIGHT_COUNTRIES)
+        | {"", "US", "NP"}
+    )
+    competitions = [needle for needle, _ in sessions.T20_LEAGUE_NORMS] + ["ICC Men's T20 World Cup", "Plain Cup"]
+    ranks = [(0, 1, 0), (0, 2, 0), (1, 2, 1), (2, 3, 2)]
+    for match_type in ("Test", "MDM", "ODI", "ODM", "T20", "IT20", "XYZ"):
+        for gender in ("male", "female"):
+            for international in (False, True):
+                for day in (date(2024, 3, 29), date(2024, 3, 30)):  # a Friday, a Saturday
+                    for competition in competitions:
+                        fixture = _fixture(
+                            match_type=match_type,
+                            gender=gender,
+                            international=international,
+                            date=day,
+                            competition=competition,
+                        )
+                        for country in countries:
+                            for rank_on_day, matches_on_day, rank_at_venue in ranks:
+                                yield sessions.infer(fixture, country, rank_on_day, matches_on_day, rank_at_venue)
+
+
+def test_pre_play_window_ends_before_any_rule_can_place_a_start() -> None:
+    """DATA-05: the same-day windows end one hour before the earliest hour any rule table
+    holds, and no window infer() can produce starts before that hour -- so the windows
+    cannot contain an hour of play under any rule."""
+    assert sessions.EARLIEST_START_HOUR == 9
+    assert features.PRE_PLAY_END_HOUR == 8
+    assert min(window.start_hour for window in _every_inferable_window()) >= sessions.EARLIEST_START_HOUR
+    assert min(window.start_hour for window in _every_inferable_window()) > features.PRE_PLAY_END_HOUR
 
 
 def test_feature_row_is_the_unknown_category_without_readings(window_day) -> None:
