@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import statistics
 from contextlib import contextmanager
 from typing import Iterator, List, Tuple
 
@@ -77,6 +78,29 @@ def test_stats_ignores_missing_folds() -> None:
 
 def test_stats_is_none_when_no_fold_produced_the_number() -> None:
     assert folds.summarise_over_folds([None, None]) is None
+
+
+def test_stats_spread_is_the_sample_standard_deviation() -> None:
+    """EVAL-15: eleven folds are a sample, not the whole population -- ``ddof=0`` (the
+    numpy default) understates the spread every gate's noise floor reads by ~5 %.
+    ``statistics.stdev`` (``ddof=1``) is the correct sample sd; ``pstdev`` (``ddof=0``) is
+    what main wrongly reports."""
+    values = [0.60, 0.63, 0.71, 0.58, 0.66, 0.69, 0.62, 0.74, 0.57, 0.68, 0.65]
+
+    stats = folds.summarise_over_folds(values)
+
+    assert stats["sd"] == pytest.approx(statistics.stdev(values))
+    assert stats["sd"] != pytest.approx(statistics.pstdev(values))
+
+
+def test_stats_spread_is_zero_not_nan_for_a_single_fold() -> None:
+    """A lone fold has no sample variance (``ddof=1`` needs n > 1); this must not turn a
+    report field into NaN, so a single present fold keeps the population-sd convention
+    (0.0), consistent with the mean being that fold's own value."""
+    stats = folds.summarise_over_folds([0.7, None, None])
+
+    assert stats["n_folds"] == 1
+    assert stats["sd"] == 0.0
 
 
 def test_the_fold_path_is_handed_no_holdout_row(monkeypatch) -> None:
