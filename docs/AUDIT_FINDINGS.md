@@ -1703,6 +1703,10 @@ No rebuild was needed: the images running were built at 19:14 UTC from `8076bc45
 
 **The old run is refused by name, and the refusal does not unseat the new one.** `make reload RUN=20260920T175255Z-71339c52` → HTTP error, `{"code":"RUN_ARTIFACTS_INVALID","message":"run 20260920T175255Z-71339c52: the rating artifact is missing 2 table(s) this code reads (venue_countries, team_countries); it was written by an older pass and cannot be served. Retrain.","hint":"20260925T193353Z-a021a5c1 is still serving; run the retrain step to produce a run this code wrote, then reload"}`; `/health` still `a021a5c1`, `current_run.json` untouched. `/artifacts/status` lists thirteen run directories: the new one; `71339c52` and the orphan `cb30121b` with readable manifests (the listing is manifest-level and does not open the artifact — they are refused at load, as the reload just showed, not in the listing); and the ten older ones refused by name as in batch 3, five for no `dataset_digest` and five for no `ratings_through`.
 
+#### Step 6 — `make serving-parity` (EVAL-10): **1.39e-16, passed**
+
+The run `current` names (`a021a5c1`), loaded through `XiStore.load` the way `reload` loads it, against a fresh pass over the database: **50 matches, 1,100 player rows, 50 served probabilities, 50 from the loaded artifact, 1,100 performance predictions, 49 simulations, max diff 1.39e-16, passed**, exit 0. Wall clock **7 min 24 s** (19:44:04–19:51:28 UTC; rating pass 3 min 45 s, the second pass and comparisons 3 min 38 s) against batch 3's 7 min 4 s. The 1.39e-16 is one ULP on a different set of last-50 matches than batch 3's 1.11e-16 — the `team_h2h` asymmetry EVAL-10 explained — eight orders of magnitude under the 1e-9 tolerance. The pass's digest equalled the run's, so the check was not refused as "trained on other cricket"; a run built from the archive would have been, and after step 3's defect A it would also have been a different T20 and T20I model.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
