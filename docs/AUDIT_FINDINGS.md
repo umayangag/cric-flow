@@ -1547,6 +1547,54 @@ Five things it is *not* accepted clean of, none fixed here: (1) `runs_scored`, a
 
 Closing count triple, 19:53 UTC: **22905 | 13662 | 0020_match_player_replacement.sql** — the database this pass began with.
 
+### Batch 4 — the re-import, retrain and harness record
+
+Twenty-eight PRs, **#326 through #353** (EVAL-11 · SERVE-03/04 · SERVE-05 · SERVE-06 · GO-05/06 · GO-07 · GO-08/09 · IMPORT-07 · IMPORT-08 · IMPORT-09 · IMPORT-10 · IMPORT-11 · IMPORT-12/13 · IMPORT-14–18 · GO-10–16 · SERVE-09/11/13 · SERVE-10/12 · CI-01 · EVAL-15, DATA-07–09, OPS-03 · DATA-02/03/04/06 · DATA-05 · OPS-01/02 · FEAT-05/06 · FEAT-07/09/10/11/12/13 · EVAL-13/14 · EVAL-16/SERVE-07 · IMPORT-13 (declined) · B-23), the last batch of the 90-finding audit. Retrain-flagged among them: IMPORT-08 (the venue fold), IMPORT-09 (the format taxonomy), IMPORT-12 (every delivery bowled is a row), FEAT-05 and FEAT-06 (home advantage, the toss, cross-format shrinkage), FEAT-07, FEAT-09, FEAT-10, FEAT-12, EVAL-13, EVAL-16, and — by way of D-6 — SERVE-12 and FEAT-05, which changed the rating artifact's shape so that the served run `20260920T175255Z-71339c52` is refused and there was **no loadable run** when this pass began. Per § 1 rule 6 of `docs/AUDIT_FIX_RUNBOOK.md` the batch was landed first and the pipeline run **once** at the end, on main at `8076bc45`. This is that record, in the same order as batches 1–3: migrate → re-import → `make xi-parity` → `make retrain` → `make reload` → `make serving-parity` → `make evaluate`. Eleven predictions were recorded by fixers before the run and each is tested against the numbers below; one of them — FEAT-05's — is the only prediction in the audit that forecast a gain.
+
+#### Step 1 — migrate: 0025 was already applied, by go-api, nineteen seconds before the images finished building
+
+The migration level was verified against the database, not quoted. When this pass began: `select (select count(*) from match), (select count(*) from player_biography), (select count(*) from venue), (select max(version) from schema_migrations)` → **22905 | 13662 | 892 | `0025_venue_name_unique_dropped.sql`**, 25 rows in `schema_migrations`. The brief said 0025 was *not* applied. It had been, and the trail says by whom: the stack's two application images were rebuilt at **19:14:12 and 19:14:17 UTC** today (`GIT_SHA=8076bc45…`, main's head), both containers were recreated at 19:14, and `cric-go-api`'s start-up log reads `migrations: scanned directory files_total 25 … migrations: applied version 0025_venue_name_unique_dropped.sql … applied 1, skipped 24, seen 25` at **19:14:21.117 UTC** — the `applied_at` the database records to the millisecond. That is `cmd/api/main.go:69` doing what the handoff note warns it does; nothing in this pass ran a migration, and `make migrate` was not needed. The migrations before it tell the same story: 0021–0023 carry `applied_at` 2026-09-24 18:22:26 and 0024 2026-09-25 16:19:29, each a stack restart. `venue` now carries only `venue_pkey` and `ux_venue_normalized_name`; `venue_venue_name_key` is gone, which is what B-23 (#353) needed before a re-import could touch a folded ground.
+
+Three facts about the data on the way in, each of which sets up a prediction. **`match_end_date` was NULL on all 22,905 rows and `competition_level` was NULL on all 22,905 rows** — both columns existed (0024, 0022) and the last import predated the code that fills them (IMPORT-09 #335, FEAT-09 #349), so the re-import was genuinely owed. **IMPORT-08's venue fold was already in the archive**: migration `0021_venue_identity.sql` did the 896 → 892 merge and the 137 repoints on 2026-09-24, so `venue` read 892 before this pass and `count(distinct venue_id)` over `match` read 892 — the re-import could not move a venue id and, below, did not. And the ML service was **not serving**: `/health` → `loaded: false, run_id: null`, error `run 20260920T175255Z-71339c52: the rating artifact is missing 2 table(s) this code reads (venue_countries, team_countries); it was written by an older pass and cannot be served. Retrain.` The brief expected the refusal to be D-6 on SERVE-12's 33rd rating array (`ctx_bowler_extras`); the loader checks the tables FEAT-05 added before it counts arrays, so the reason it names first is FEAT-05's. Either way the run is refused by name and the retrain is what restores serving.
+
+#### Step 2 — the whole-archive re-import: one ball, 3,888 formats, 22,905 end dates, and not a venue
+
+`make cricsheet-import` over all **22,905** files, fail-fast on, concurrency 12, run from this worktree with `data/` and `output/` linked to the main checkout. Wall clock **2 min 54 s** (19:19:21–19:22:15 UTC, launch to `cricsheet-importer finished successfully`). **Zero errors**; **28 warnings**, the same three kinds with the same counts as batches 2 and 3 — 25 × "file name is not a Cricsheet match id, deriving one", 2 × "player named on both teams, omitted from both squads", 1 × "replacement not in the side's info.players, side kept as listed" — and 110 `super_over_innings` notes. B-23 (#353) was fixed so that this rewrite could not trip on the old `venue_venue_name_key`; it did not, and the importer's own start-up scan reported `files_total 25` and nothing to apply.
+
+| | before | after |
+|---|---|---|
+| `match` / `player_biography` / `venue` / migration | 22905 / 13662 / 892 / `0025_venue_name_unique_dropped.sql` | **22905 / 13662 / 892 / `0025_venue_name_unique_dropped.sql`** |
+
+| table | before | after | delta |
+|---|---:|---:|---:|
+| `match` | 22,905 | 22,905 | 0 |
+| `ball_event` | 11,578,345 | **11,578,346** | **+1** |
+| `ball_event_wicket` | 353,571 | 353,571 | 0 |
+| `match_inning` | 50,465 | 50,465 | 0 |
+| `batting_data` | 434,001 | 434,001 | 0 |
+| `bowling_data` | 299,460 | 299,460 | 0 |
+| `fielding_data` | 176,576 | 176,576 | 0 |
+| `match_player` | 505,287 | 505,287 | 0 |
+| `match_player` where `is_replacement` | 1,362 | 1,362 | 0 |
+| `player` | 13,694 | 13,694 | 0 |
+| `player_biography` | 13,662 | 13,662 | 0 |
+| `venue` | 892 | 892 | 0 |
+| `match` with non-null `result` | 1,723 | 1,723 | 0 |
+| `match` with non-null `match_end_date` | **0** | **22,905** | **+22,905** |
+| `match` with non-null `competition_level` | **0** | **22,905** | **+22,905** |
+| `sum(batting_data.balls)` | 11,376,015 | 11,376,015 | 0 |
+| `sum(match_inning.runs_scored)` | 9,345,815 | 9,345,815 | 0 |
+
+**The one new `ball_event` row is IMPORT-12's (#338), and it is the ball the last three batches recorded as missing.** Match **514034**, innings 4: one delivery, `over 0 ball 1`, `is_legal false`, `runs_batter 1, runs_extras 1, runs_total 2, extras_kind no_ball` — the single no-ball off which the chase was won, which `ball_event_emit.go`'s old `if totalLegal == 0 { continue }` dropped. `match_inning` already carried the innings as 2 runs off 0 legal balls; now `ball_event` does too (837 / 445 / 649 / 1 rows over the four innings). Whether that closes `runs_scored` from 9,345,813 to 9,345,815 in the rating pass is step 3's question.
+
+**Every row's `match_end_date` is set** (FEAT-09, #349), and it is a real date rather than a copy of the start: 3,171 matches end after the day they begin — **every one of the 3,125 Tests** (longest span 5 days), 26 ODIs (spans of up to 2 days), 8 T20s and 12 T20Is (1 day each) — and none ends before it starts. Those 3,171 are the matches whose rows folded at the close of their *start* date before FEAT-09.
+
+**3,888 matches move T20 → T20I, exactly IMPORT-09's number** (#335): 2,416 men's and 1,472 women's, by `format_id` on the same 22,905 `match_id`s (no id added, none removed, no `match_date` or `original_match_type` changed). T20 **12,406 → 8,518**, T20I **2,132 → 6,020**; TEST 3,125 and ODI 5,242 do not move. `competition_level` now reads `international` on 10,629 rows (T20I 6,020 · ODI 3,674 · TEST 935) and `club` on 12,276 (T20 8,518 · ODI 1,568 · TEST 2,190); the 1,520 ICC T20 World Cup matches (999 men's, 521 women's) are all T20I. The training-row consequence — T20I `n_train` 2,073 → ~5,900 — is read in step 4.
+
+**Not one match changed venue id, and that is the correct result rather than a missed prediction.** IMPORT-08's 137 repoints were made by migration 0021 on 2026-09-24 (step 1), and the four folded grounds read the counts the fix recorded — `Dr. Y.S. Rajasekhara Reddy ACA-VDCA Cricket Stadium` 48, `Gahanga International Cricket Stadium. Rwanda` 192, `M Chinnaswamy Stadium` 111, `R Premadasa Stadium` 90 — before and after. What the re-import *did* change on `venue` is `city`: 829 of 892 rows gained one (63 still blank; `country` is empty on all 892 and belongs to the geocoding CSV, not the importer). One small thing noticed and not fixed: those 829 updates left `venue.updated_at` at its old value (max 2026-09-02 13:59 UTC) — the city write does not bump the timestamp, so `updated_at` cannot be used to find rows the importer touched.
+
+The three synthetic `player` rows with ids 1–3 are still there, as in every batch; the importer deletes nothing it does not name.
+
 ### EVAL-03 — Served performance model never trains on the last 92 days  **High · retrain**
 
 `performance.py:542-556`:
