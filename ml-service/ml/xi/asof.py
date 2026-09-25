@@ -34,7 +34,7 @@ import math
 import os
 import sys
 from datetime import date, datetime, timezone
-from typing import Callable, Dict, Iterator, List, Optional, Sequence
+from typing import Callable, Dict, Iterator, List, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -65,13 +65,18 @@ class AsOfRatings:
     (``RatingState.fold_finished``, FEAT-09): one that started before ``d`` and was still
     on is held back, exactly as the training pass held it back from the rows it built on
     those days.
+
+    ``state_flags`` is the whole of ``RatingState.flags()`` from the run being served, not
+    a chosen few: the pass has to rebuild the state the artifact was trained with, and a
+    flag left out here is answered off while the live path answers it on, so one artifact
+    gives a live request and an ``as_of`` request two different models (SERVE-07).
     """
 
-    def __init__(self, source: MatchSource, gender_split_context: bool = False):
+    def __init__(self, source: MatchSource, state_flags: Optional[Mapping[str, bool]] = None):
         self.state = RatingState(
-            gender_split_context=gender_split_context,
             birth_dates=source.birth_dates(),
             venue_countries=source.venue_countries(),
+            **dict(state_flags or {}),
         )
         self._matches: Iterator[MatchRecord] = source.iter_matches()
         self._next: Optional[MatchRecord] = next(self._matches, None)
@@ -109,19 +114,19 @@ class AsOfServer:
     because it is the caller ordering work badly, not this class.
     """
 
-    def __init__(self, source_factory: Callable[[], MatchSource], gender_split_context: bool = False):
+    def __init__(self, source_factory: Callable[[], MatchSource], state_flags: Optional[Mapping[str, bool]] = None):
         self._source_factory = source_factory
-        self._gender_split_context = gender_split_context
+        self._state_flags = dict(state_flags or {})
         self._asof: Optional[AsOfRatings] = None
 
     def state_as_of(self, as_of: date) -> RatingState:
         if self._asof is None:
-            self._asof = AsOfRatings(self._source_factory(), self._gender_split_context)
+            self._asof = AsOfRatings(self._source_factory(), self._state_flags)
         try:
             return self._asof.state_as_of(as_of)
         except ValueError:
             logger.warning("as-of request for %s is behind the running pass; rebuilding from scratch", as_of)
-            self._asof = AsOfRatings(self._source_factory(), self._gender_split_context)
+            self._asof = AsOfRatings(self._source_factory(), self._state_flags)
             return self._asof.state_as_of(as_of)
 
 
@@ -149,7 +154,7 @@ def serving_parity(
     frame: pd.DataFrame,
     player_frame: pd.DataFrame,
     last_n: int = 50,
-    gender_split_context: bool = False,
+    state_flags: Optional[Mapping[str, bool]] = None,
     store: Optional[XiStore] = None,
 ) -> Dict:
     """Rebuild the last ``last_n`` matches from the as-of serving path and compare what is
@@ -161,6 +166,9 @@ def serving_parity(
     row assembly is shared (``ml.xi.rows``) so the two cannot
     even in principle spell a column differently (the D-4 defect class). That is the row
     comparison, and on its own it compares ``rows.py`` with ``rows.py`` (EVAL-10).
+
+    ``state_flags`` must be the served state's own ``flags()``, so the fresh pass runs the
+    arms the artifact was built with; get it wrong and this check compares two models.
 
     ``store`` is what makes the check reach the artifact. It must have come through
     ``XiStore.load`` -- ``round_trip_store`` for models still in memory -- so a run this
@@ -217,9 +225,7 @@ def serving_parity(
     served_fixtures: List[MatchRecord] = []
 
     matches_for_lookup, matches_for_state = itertools.tee(source.iter_matches())
-    asof = AsOfRatings(
-        _IteratorSource(matches_for_state, source.birth_dates(), source.venue_countries()), gender_split_context
-    )
+    asof = AsOfRatings(_IteratorSource(matches_for_state, source.birth_dates(), source.venue_countries()), state_flags)
     for match in matches_for_lookup:
         # Advance on every match so the two tee'd iterators stay at most a day apart.
         state = asof.state_as_of(match.match_date)
@@ -533,7 +539,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result.frame,
         result.player_frame,
         last_n=args.last_n,
-        gender_split_context=store.state.gender_split_context,
+        state_flags=store.state.flags(),
         store=store,
     )
     for mismatch in report["mismatches"]:

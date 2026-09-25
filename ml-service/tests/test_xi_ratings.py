@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 from datetime import date, timedelta
 from typing import List
@@ -13,6 +14,7 @@ from ml.xi import contract as C
 from ml.xi.builder import build
 from ml.xi.ratings import (
     STATE_ARRAY_NAMES,
+    STATE_FLAG_NAMES,
     STATE_TABLE_NAMES,
     RatingState,
     aggregate_side,
@@ -91,6 +93,31 @@ def test_every_accumulator_the_pass_keeps_is_named_in_the_state_field_lists() ->
 
     assert arrays == set(STATE_ARRAY_NAMES)
     assert tables == set(STATE_TABLE_NAMES)
+
+
+def test_every_switch_the_state_carries_is_named_in_the_state_flag_list() -> None:
+    """SERVE-07's guard, and the reason the next flag does not repeat it. A switch on the
+    state that is not registered is not written to the artifact, not carried by a snapshot
+    and not threaded into the as-of serving pass, so live and ``as_of`` requests answer
+    two different models from one run. Adding a switch and not registering it fails here,
+    where the omission is cheap, rather than silently in serving."""
+    state = RatingState()
+
+    switches = {name for name, value in vars(state).items() if isinstance(value, bool)}
+    constructor_keywords = set(inspect.signature(RatingState.__init__).parameters)
+
+    assert switches == set(STATE_FLAG_NAMES)
+    assert set(STATE_FLAG_NAMES) <= constructor_keywords, "a flag has to be settable to be threaded"
+    assert state.flags() == dict.fromkeys(STATE_FLAG_NAMES, False)
+
+
+def test_flags_round_trip_through_the_constructor() -> None:
+    """``flags()`` is the description a state is rebuilt from -- by the artifact loader, by
+    ``snapshot`` and by the as-of pass -- so it has to name the constructor's own keywords."""
+    on = RatingState(**dict.fromkeys(STATE_FLAG_NAMES, True))
+
+    assert on.flags() == dict.fromkeys(STATE_FLAG_NAMES, True)
+    assert on.snapshot().flags() == on.flags()
 
 
 def test_a_snapshot_keeps_the_ratings_it_was_taken_from() -> None:

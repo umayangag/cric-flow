@@ -539,9 +539,11 @@ def evaluate(
     # match's date: one advancing pass over the source, before any fold is scored.
     pairs = natural_experiment.build_pairs(result.frame, result.player_frame)
     logger.info("E5: reading %d previous elevens from the as-of serving path", len(pairs))
-    previous_elevens = natural_experiment.score_previous_elevens(
-        pairs, parity_source_factory(), gender_split_context=gender_split_context
-    )
+    # The pass this harness just ran is the authority on which arms are on, so every as-of
+    # pass beside it is given that state's own flags rather than the ones this signature
+    # happens to take (SERVE-07).
+    state_flags = result.state.flags()
+    previous_elevens = natural_experiment.score_previous_elevens(pairs, parity_source_factory(), state_flags)
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": type(source).__name__,
@@ -583,7 +585,7 @@ def evaluate(
             result.frame,
             result.player_frame,
             last_n=PARITY_LAST_N,
-            gender_split_context=gender_split_context,
+            state_flags=state_flags,
             store=store,
         )
     # H-23: the report carries every gate's varied / fixed / decides triple, and is checked

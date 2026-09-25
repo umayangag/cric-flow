@@ -35,7 +35,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -150,7 +150,7 @@ def build_pairs(frame: pd.DataFrame, player_frame: pd.DataFrame) -> List[LineupP
 
 
 def score_previous_elevens(
-    pairs: Sequence[LineupPair], source: MatchSource, gender_split_context: bool = False
+    pairs: Sequence[LineupPair], source: MatchSource, state_flags: Optional[Mapping[str, bool]] = None
 ) -> Dict[str, Any]:
     """Fill each pair's ``before_side``: match k's eleven read from the as-of serving
     state at match k+1's date -- one advancing pass over the source, in date order (the
@@ -158,7 +158,7 @@ def score_previous_elevens(
     read from the same state and compared with the frame's row as a parity check on the
     pairing itself: a wrong side, or a state that drifted from the training pass, shows
     up here as a nonzero difference."""
-    asof = AsOfRatings(source, gender_split_context=gender_split_context)
+    asof = AsOfRatings(source, state_flags)
     max_difference = 0.0
     scored = 0
     for pair in sorted(pairs, key=lambda p: (p.after_date, str(p.after_match_id))):

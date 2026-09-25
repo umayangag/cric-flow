@@ -23,6 +23,7 @@ from ml.xi.performance import PerformanceModels
 from ml.xi.ratings import (
     PLAYER_ARRAY_NAMES,
     STATE_ARRAY_NAMES,
+    STATE_FLAG_NAMES,
     STATE_TABLE_NAMES,
     RatingState,
     aggregate_side,
@@ -70,8 +71,9 @@ class FormatModels:
 def _state_to_payload(state: RatingState) -> Dict:
     return {
         "keys": list(state.players.keys),
-        "gender_split_context": state.gender_split_context,
-        "age_aware_cold_start": state.age_aware_cold_start,
+        # Every registered flag, so a new arm reaches the artifact by being registered
+        # rather than by someone remembering to add a line here (SERVE-07).
+        **state.flags(),
         "arrays": {name: getattr(state, name) for name in STATE_ARRAY_NAMES},
         **{name: dict(getattr(state, name)) for name in STATE_TABLE_NAMES},
         "matches_seen": state.matches_seen,
@@ -176,10 +178,9 @@ def _check_ratings_through(manifest, state: RatingState) -> None:
 
 def _state_from_payload(payload: Dict, run_id: str = "unnamed") -> RatingState:
     _check_payload_shape(payload, run_id)
-    state = RatingState(
-        gender_split_context=bool(payload.get("gender_split_context", False)),
-        age_aware_cold_start=bool(payload.get("age_aware_cold_start", False)),
-    )
+    # A payload written before a flag existed does not carry it; off is what that run was
+    # built with, which is what ``RatingState`` defaults to.
+    state = RatingState(**{name: bool(payload.get(name, False)) for name in STATE_FLAG_NAMES})
     for k in payload["keys"]:
         state.players.slot(k)
     for name, arr in payload["arrays"].items():

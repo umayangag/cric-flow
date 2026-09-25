@@ -27,7 +27,7 @@ from ml.xi.optimizer import (
     select_xi_by_ratings,
     selection_reasons,
 )
-from ml.xi.ratings import RatingState
+from ml.xi.ratings import STATE_FLAG_NAMES, RatingState
 from ml.xi.retrain import retrain
 from ml.xi.roles import ROLE_BOWLING_OPTION, ROLE_KEEPER, SELECTION_ROLES
 from ml.xi.sources import CricsheetJsonSource, Deliveries, MatchRecord, detect_format, parse_cricsheet_file
@@ -153,13 +153,15 @@ def test_store_round_trip_preserves_state(tmp_path) -> None:
     assert dict(loaded.competition_scoring) == dict(state.competition_scoring)
 
 
-def test_store_round_trip_preserves_the_gender_split_flag(tmp_path) -> None:
-    """The E7 flag is part of the feature definition, so an artifact must carry it."""
+def test_store_round_trip_preserves_every_registered_state_flag(tmp_path) -> None:
+    """Every flag is part of the feature definition, so an artifact must carry all of
+    them -- the E7 split and X-1b's age-aware cold start alike. The artifact writes
+    ``RatingState.flags()`` whole, so registering a new flag carries it here (SERVE-07)."""
     matches, _, _ = _synthetic_history(n_matches=5)
-    state = build(_ListSource(matches), gender_split_context=True).state
+    state = build(_ListSource(matches), gender_split_context=True, age_aware_cold_start=True).state
     save_ratings(state, str(tmp_path))
 
-    assert load_ratings(str(tmp_path)).gender_split_context is True
+    assert load_ratings(str(tmp_path)).flags() == dict.fromkeys(STATE_FLAG_NAMES, True)
 
 
 class _RecordingPool:

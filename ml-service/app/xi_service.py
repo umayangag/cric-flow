@@ -350,9 +350,9 @@ class XiRegistry:
             logger.info("xi.as_of.served", as_of=str(as_of), snapshot="cached")
             return self._as_of_snapshot[1]
         if self._as_of_server is None:
-            self._as_of_server = AsOfServer(
-                self.as_of_source_factory, gender_split_context=store.state.gender_split_context
-            )
+            # Every flag the loaded state carries, not the ones this call site remembers:
+            # a live request and an as-of request must answer the same model (SERVE-07).
+            self._as_of_server = AsOfServer(self.as_of_source_factory, state_flags=store.state.flags())
         state = self._as_of_server.state_as_of(as_of).snapshot()
         as_of_store = store.with_state(state)
         self._as_of_snapshot = (as_of, as_of_store)

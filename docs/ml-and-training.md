@@ -929,7 +929,10 @@ matches is 0, so the inclusive coverage of a calibrated interval legitimately ex
 nominal while the strict one falls short; nominal sits between them, and H-5's check is per
 end (`perf_calibration.coverage_off_nominal`). The career-mean, career-quantile and
 rating-expectation baselines are scored on the same unconditional population
-(`ml/xi/perf_baselines.py`), and a labelled diagnostic — the ranking among the players who
+(`ml/xi/perf_baselines.py`) and read the same history: every career statistic is taken at
+**day close**, the rule the rating pass folds matches by, so a player's second match of a
+day is predicted from what his first match of that day saw rather than from the first
+match itself (EVAL-16). A labelled diagnostic — the ranking among the players who
 did bat / bowl — sits beside the headline because tie-averaging on the unconditional
 population rewards a predictor that gives every non-bowler one identical value.
 

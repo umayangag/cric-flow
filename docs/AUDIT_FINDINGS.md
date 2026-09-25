@@ -95,17 +95,9 @@ The orchestration prompt that drives this list is in `docs/AUDIT_FIX_RUNBOOK.md`
 
 Pinned `scikit-learn==1.5.2` (`ml-service/requirements.txt:65`). EVAL-01/02 depend on that version's `HistGradientBoosting*` behaviour.
 
-### EVAL-16 — Career baselines ignore day-close; models saved for formats with 50 rows  **Low**
-
-`perf_baselines.py:40-50` (`shift(1).expanding()` across same-day matches — the baseline sees a same-day earlier match the model does not); `train.py:223` floor of 50 rows. **Fix.** Group the shift by (player, format, date); raise the floor to ~500.
-
 ---
 
 ## 4. Simulator, optimizer and serving (`ml-service/ml/xi/`, `ml-service/app/`)
-
-### SERVE-07 — `AsOfRatings` is built without `age_aware_cold_start`  **Medium (latent)**
-
-`asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
 
 ---
 
@@ -138,6 +130,42 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 ---
 
 ## 9. Fixed
+
+### EVAL-16 — Career baselines ignore day-close; models saved for formats with 50 rows  **Low** — PR #351
+
+`perf_baselines.py:40-50` (`shift(1).expanding()` across same-day matches — the baseline sees a same-day earlier match the model does not); `train.py:223` floor of 50 rows. **Fix.** Group the shift by (player, format, date); raise the floor to ~500.
+
+**The leak is exactly as described, and the comment above it said so.** `add_baseline_predictors` carried "like the reference experiment these do not re-apply day-close batching, because they are baseline predictors, not features" — a deliberate choice, and the wrong one. The rating pass folds a whole date at once (`builder.build`, FEAT-09), so the features a model reads for a player's second match of a day have not seen his first; the baseline had. The model was being asked to beat a predictor holding information it did not have.
+
+**Sized on the archive (`cricket_data`, 22,905 matches).** 5,927 of 469,743 player-match rows have a same-day earlier row for the same player in the same format — **1.26%**, and never more than two matches a player a day. It is entirely a short-format phenomenon: **T20 5,664 (2.11% of its 267,871 rows), T20I 263 (0.58% of 45,618), ODI 0, TEST 0**. So not "a handful of double-headers" — a T20 franchise player turning out twice in a day is a regular occurrence — but a thin slice all the same. On those rows `career_mean_runs` moves by a mean of **1.34 runs** (T20; median 0.49, p90 3.20, max 39.5) and **3.50** (T20I; median 0.93), against a format mean of 11.9 runs. 770 of the 5,927 (642 T20, 128 T20I) are a player's *second* career row in the format and become NaN, which the harness fills with the training window's figure — the right answer for a player the state knows nothing about. **The direction is the leak's:** on the affected rows the leaky baseline scored MAE 9.908 against the day-closed 10.063, so it was reading the future for about 0.16 runs of advantage. Over the whole population the baseline's MAE moves from 10.5273 to 10.5300 — **0.003%**, which is what "Low" means here. (Reconstructed in SQL from `match_player` and `ball_event` rather than from a rating pass, so the counts are exact and the run totals are within the builder's own scope filters.)
+
+**Fixed structurally, not by re-deriving each statistic.** `shift(1).expanding()` still gives each row a statistic strictly as-of itself; `_at_day_close` then re-reads every career column at the first row of its `(player, format, date)` group, so every row of a date carries what the day's opening match carried. One positional lookup serves the mean, all three quantiles and `prior_appearances`, for every target, and it cannot drift from the point baseline because it is the same operation.
+
+**Not retrain-flagged.** `career_mean_*`, `career_q*_*` and `prior_appearances` are baselines, and none of them appears in `contract.performance_feature_cols` — the model reads none of them. No fitted artifact changes; what moves is the comparison number in `xi_win_report.json` (`formats[].performance.targets[].career_mean`) and in the L4 harness, by the fraction above.
+
+**The 50 → 500 floor is not implemented, and is a recommendation.** *The spec's second half is stale and mis-aimed.* `train.py:223` at `e91c207f` is `train_format`'s `if len(tr) < 50` — the **win** models' floor, not the performance model's; the performance model's floor is `perf_harness.MIN_TRAIN_ROWS`, which was already **1,000** at the audit commit and still is, i.e. already double what the finding asks for. The remaining question is therefore only the win-model floor, and raising it is a change to what the product serves rather than a bug fix, so it was measured and left to the human.
+
+*What it would remove: nothing today.* Decided win rows per format in `cricket_data` are **T20 12,130, ODI 4,995, TEST 2,095, T20I 2,073** — the thinnest is 4× the proposed floor, and IMPORT-09's re-import moves T20I to ~5,900 and T20 to ~8,300, so batch 4 does not bring anything near it either. The guard has never fired and cannot fire at a production cutoff. *What it would remove in principle:* a retrain at an early `CUTOFF`. A format reaches 500 decided rows at ODI 2007-11-15, T20 2013-03-12, T20I 2015-03-22, TEST 2015-06-07, so `make retrain CUTOFF=2014-01-01` would today write four formats and afterwards write two, skipping TEST and T20I silently but for a warning line. That is the only behaviour the change has. *Two nearby numbers are different constants and neither is this one:* EVAL-08's "T20I's thinnest calibration fold at 330 rows against a 200 minimum" is `perf_harness.MIN_EVAL_ROWS`, and `evaluate.py`'s own `MIN_TRAIN_ROWS = 50` / `MIN_EVAL_ROWS = 20` are the L4 harness's per-fold floors, untouched here.
+
+*Recommendation.* Raise it — 50 rows cannot support a 38-column boosted model, and `run_usability`'s base-rate clause only catches a thin model that also fails to rank, which a 50-row model need not. But raise it deliberately, in a change that also (a) says in the run report that a format was skipped for thinness rather than only logging it, and (b) states that early-cutoff research runs lose two formats. Nothing real is lost at any cutoff the pipeline uses; that is a product decision to take, not one to take by hand inside a Low-severity fix.
+
+**Tests** (three of four fail on `main`) in `test_xi_perf_baselines.py`: `test_career_mean_closes_the_day_so_the_second_match_of_a_date_does_not_see_the_first` (main reads 15.0 where the day close gives 10.0), `test_career_quantiles_close_the_day_too` (the same for `career_q50`), `test_the_day_close_leaves_a_debutant_with_no_history_at_all` (main gives a debutant's second match of his first day a career mean of 10.0 instead of NaN), and `test_the_day_close_does_not_pool_two_players_who_played_the_same_day`, which passes both sides and guards the correction from over-reaching.
+
+### SERVE-07 — `AsOfRatings` is built without `age_aware_cold_start`  **Medium (latent)** — PR #351
+
+`asof.py:50`; `xi_service.py:266-268` forward only `gender_split_context`. If `C.AGE_AWARE_COLD_START` (`contract.py:182`) is flipped on, live requests read the age-band prior while `as_of` requests read the neutral vector. **Fix.** Thread every state flag from the loaded store into `AsOfServer`.
+
+**The claim holds, and there was a second site the spec did not name.** `XiRegistry._as_of_store` built its `AsOfServer` with `gender_split_context` alone, so the fresh `RatingState` the as-of pass advances took the constructor's default for every other arm. `asof.main` had the same split from the other side: it rebuilt the *training* pass with both flags (`build(..., age_aware_cold_start=store.state.age_aware_cold_start)`) and then handed `serving_parity` only one, so `make serving-parity` compared a fresh pass with the arm on against an as-of pass with it off. With `AGE_AWARE_COLD_START` False nothing on disk is wrong, which is what "latent" means; flip it and one artifact answers a live request and an `as_of` request with two different debutant profiles, and nothing says so.
+
+**Fixed so the next flag is not the next SERVE-07.** Naming `age_aware_cold_start` in five more places would have closed this instance and left the class open. `RatingState` now registers its switches in `STATE_FLAG_NAMES` and answers `flags()`, and every place that rebuilds a state takes that mapping whole rather than the names it happens to know: `_state_to_payload` / `_state_from_payload` (the rating artifact), `RatingState.snapshot`, `AsOfRatings`, `AsOfServer`, `serving_parity`, `natural_experiment.score_previous_elevens`, `evaluate` (which passes `result.state.flags()`, the pass's own answer, in place of its argument) and `XiRegistry`. Registering a flag carries it to the artifact, the snapshot and both as-of passes with no further edit.
+
+**The guard, and the proof it generalises.** `test_every_switch_the_state_carries_is_named_in_the_state_flag_list` walks a fresh state's boolean attributes and fails when a switch is added to `RatingState` and not registered. Demonstrated: adding a third flag `a_new_experiment_arm` to the constructor fails that test with `Extra items in the left set: 'a_new_experiment_arm'`; registering it in `STATE_FLAG_NAMES` and changing nothing else makes the as-of and store tests pass with the new flag threaded end to end. The store and as-of tests assert over `dict.fromkeys(STATE_FLAG_NAMES, True)` rather than over two names, so a registered flag is checked through the artifact, through `AsOfRatings` and through the pass `AsOfServer` rebuilds when a request goes backwards.
+
+**Pinned on `main`** by `test_the_as_of_pass_runs_every_arm_the_loaded_run_was_built_with` (`test_runs_and_reload.py`): a run whose rating state carries `age_aware_cold_start` serves it live and reads `False` as-of (`assert False is True`). E7's split cannot be used for this scenario because FEAT-13 refuses such a run before it can be served; the age-aware cold start is the arm that would actually reach the routes.
+
+**Not retrain-flagged**: no feature or label definition changes, and with the flag off every state built is the state built before. **`make serving-parity` still passes its unit-level equivalents** (`test_xi_asof.py`, 40 cases including the round-tripped-store parity) but could not be run against the served artifact, because ml-service is not serving — D-6 correctly refuses the old run after SERVE-12's 33rd rating array, and batch 4 restores it.
+
+**Interaction with the two queued cold-start items: none, and both become easier.** `XiStore.side_vectors` reading at `state.last_date` (EVAL-10's note above) and `_apply_debut_prior` overwriting a cross-format debutant's pooled rate (FEAT-05/06) are both downstream of `age_aware_cold_start` being *on*; this change only makes the as-of path agree with the live path about whether it is on. Neither item's code is touched, and whoever takes them now has one place to ask a state what arms it is running.
 
 ### EVAL-13 — No recency weighting, one global `C`, collinear objective inputs  **Low · retrain** — PR #350
 
