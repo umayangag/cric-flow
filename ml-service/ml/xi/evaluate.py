@@ -92,7 +92,7 @@ from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
 from ml.xi.store import FormatModels
-from ml.xi.train import _score_marginalised, _xy, fit_display_model_as_shipped, make_objective_model
+from ml.xi.train import _score_marginalised, fit_display_model_as_shipped, fit_objective_as_shipped
 
 logger = logging.getLogger(__name__)
 
@@ -241,12 +241,14 @@ def _evaluate_win_window(
     if len(evaluation) < MIN_EVAL_ROWS or evaluation[C.TARGET_COL].nunique() < 2:
         skip["skipped_reason"] = "evaluation window too small or single-class"
         return skip, None, None
-    x_objective, y_train = _xy(train, C.XI_FEATURE_COLS)
-    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_objective, y_train)
-    # The grid runs here as it runs in a retrain, on this window's training rows, so the
-    # display model scored is the one a run at this cutoff would ship (EVAL-06); the
-    # window records the pick beside its numbers, under the manifest's key.
-    display, hyperparameters = fit_display_model_as_shipped(train)
+    y_train = train[C.TARGET_COL].to_numpy(dtype=float)
+    # Both grids run here as they run in a retrain, on this window's training rows, so the
+    # models scored are the ones a run at this cutoff would ship (EVAL-06, and EVAL-13 for
+    # the objective's); the window records each pick beside its numbers, under the
+    # manifest's key.
+    objective, objective_record = fit_objective_as_shipped(train)
+    display, display_record = fit_display_model_as_shipped(train)
+    hyperparameters = {"objective": objective_record, "display": display_record}
     objective_scores = _score_marginalised(objective, evaluation, C.XI_FEATURE_COLS)
     display_scores = _score_marginalised(display, evaluation, C.DISPLAY_FEATURE_COLS)
     y_eval = evaluation[C.TARGET_COL].to_numpy(dtype=float)

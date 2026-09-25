@@ -131,12 +131,12 @@ def test_serving_parity_fails_on_a_corrupted_frame() -> None:
     matches = _matches([0, 1, 2, 3, 4])
     result = build(ListSource(matches))
     corrupted = result.frame.copy()
-    corrupted.loc[corrupted.match_id == "m4", "d_pelo_mean"] += 5.0
+    corrupted.loc[corrupted.match_id == "m4", "t1_pelo_mean"] += 5.0
 
     report = serving_parity(ListSource(matches), corrupted, result.player_frame, last_n=3)
 
     assert not report["passed"]
-    assert any("d_pelo_mean" in m for m in report["mismatches"])
+    assert any("t1_pelo_mean" in m for m in report["mismatches"])
 
 
 def test_serving_parity_passes_on_a_decided_match_with_no_deliveries() -> None:

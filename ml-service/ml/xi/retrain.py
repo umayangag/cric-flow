@@ -115,7 +115,8 @@ def format_notes(summary: Dict) -> Dict[str, str]:
 
 
 def chosen_hyperparameters(summary: Dict) -> Dict[str, Dict]:
-    """What the grid picked per format, and why (§9.3)."""
+    """What each win model's grid picked per format, and why (§9.3; ``objective`` and
+    ``display`` under the format code)."""
     return {
         report["format_code"]: report["hyperparameters"]
         for report in summary.get("formats", [])

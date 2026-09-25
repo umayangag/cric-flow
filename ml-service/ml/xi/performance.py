@@ -21,7 +21,13 @@ aggregates, venue context, the Elo edge, the kept fixture-context families (A-1:
 ground's and the competition's as-of scoring level), the player's age at the match date if
 gate X-1b kept it, and the innings (bat first / chase). The innings
 is the toss, not the result; it is marginalised at prediction -- predict under both and
-average -- unless the caller knows it (the same knob the win model has).
+serve the mixture of the two (``_marginalise``: the involvement probabilities averaged, a
+quantile target's distribution mixed through the reconstruction the simulator draws from
+and inverted at the served levels, a count target's two zero-inflated Poissons mixed
+exactly) -- unless the caller knows it (the same knob the win model has). Averaging the
+quantiles level by level, or the Poisson parameters one by one, was EVAL-14: the former is
+the quantile of no distribution and narrows the 10-90 interval whenever the two innings
+differ, the latter's mean was ``avg(p) * avg(rate)`` rather than ``avg(p * rate)``.
 
 Each booster's iteration count is chosen on the most recent tenth of the training rows
 by date, cut at a match boundary, by the booster's own loss there (EVAL-09) -- then it is
@@ -250,24 +256,60 @@ def mixture_quantiles(
     return out
 
 
-def count_distribution(zero_inflation: np.ndarray, rate: np.ndarray) -> Dict[str, np.ndarray]:
-    """A zero-inflated Poisson: with probability ``zero_inflation`` the count is 0, else
-    Poisson(rate). ``zero_inflation`` is 0 for the direct structure."""
+#: A quantile set is one (zero_inflation, rate) pair per row: with probability
+#: ``zero_inflation`` the count is 0, else Poisson(rate); ``zero_inflation`` is 0 for the
+#: direct structure.
+CountComponent = Tuple[np.ndarray, np.ndarray]
+
+
+def count_distribution(components: Sequence[CountComponent]) -> Dict[str, np.ndarray]:
+    """The equal-weight mixture of the zero-inflated Poissons in ``components`` -- one for
+    a known innings, two for the toss marginalised. Mean, P(0), P(1) and P(2+) are the
+    means of the components'; the quantiles invert the mean of the components' CDFs on
+    the integers (the smallest count at which it reaches the level)."""
+    zero_inflation = np.stack([z for z, _ in components])  # (m, n)
+    rate = np.stack([r for _, r in components])
     p = 1.0 - zero_inflation
     e = np.exp(-rate)
-    p0 = zero_inflation + p * e
-    p1 = p * rate * e
-    quantiles = np.empty((len(rate), len(QUANTILE_LEVELS)))
-    for i, tau in enumerate(QUANTILE_LEVELS):
-        conditional_level = np.clip((tau - zero_inflation) / np.maximum(p, 1e-9), 1e-12, 1.0 - 1e-12)
-        quantiles[:, i] = np.where(tau <= zero_inflation, 0.0, poisson.ppf(conditional_level, rate))
+    p0 = np.mean(zero_inflation + p * e, axis=0)
+    p1 = np.mean(p * rate * e, axis=0)
+    support = np.arange(int(poisson.ppf(1.0 - 1e-9, rate.max())) + 2)
+    cdf = np.mean(
+        [z[:, np.newaxis] + (1.0 - z)[:, np.newaxis] * poisson.cdf(support, r[:, np.newaxis]) for z, r in components],
+        axis=0,
+    )  # (n, len(support))
+    quantiles = np.column_stack([np.argmax(cdf >= tau, axis=1) for tau in QUANTILE_LEVELS]).astype(float)
     return {
-        "mean": p * rate,
+        "mean": np.mean(p * rate, axis=0),
         "p0": p0,
         "p1": p1,
         "p2plus": np.clip(1.0 - p0 - p1, 0.0, 1.0),
         "quantiles": quantiles,
     }
+
+
+#: Bisection steps when inverting a mixture CDF: the bracket is the components' own
+#: quantiles at the level, so 60 halvings resolve any served scale to well under 1e-12.
+MIXTURE_BISECTION_STEPS = 60
+
+
+def mixture_of_quantile_sets(components: Sequence[np.ndarray], levels: Sequence[float] = QUANTILE_LEVELS) -> np.ndarray:
+    """Quantiles at ``levels`` of the equal-weight mixture of the distributions each (n, k)
+    quantile set describes, under the one reconstruction this system gives three quantiles
+    (``simulator.quantile_function``, whose inverse ``simulator.cumulative_probability``
+    is): the mixture's CDF is the mean of the components' and is inverted by bisection
+    between the components' own quantiles at each level, which bracket the mixture's. With
+    one component it returns that component exactly."""
+    stacked = np.stack(components)  # (m, n, k)
+    low, high = stacked.min(axis=0), stacked.max(axis=0)
+    wanted = np.asarray(levels)[np.newaxis, :]
+    for _ in range(MIXTURE_BISECTION_STEPS):
+        mid = 0.5 * (low + high)
+        # ``cumulative_probability`` reads values as (levels, rows) against (rows, 3).
+        cdf = np.mean([simulator.cumulative_probability(q, mid.T).T for q in components], axis=0)
+        below = cdf < wanted
+        low, high = np.where(below, mid, low), np.where(below, high, mid)
+    return high
 
 
 # --- fitting --------------------------------------------------------------------------
@@ -489,20 +531,25 @@ def _predict_member(member: SeedMember, x: np.ndarray, spec: FitSpec) -> Dict[st
         else:
             rate = np.maximum(member.count_rate[t.name].predict(x), 1e-9)
             zero_inflation = np.zeros(n) if structure[t.name] == "direct" else 1.0 - p[t.involvement]
-            out[t.name] = {"zero_inflation": zero_inflation, "rate": rate}
+            out[t.name] = {"components": [(zero_inflation, rate)]}
     return out
 
 
-def _average(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Element-wise mean of member (or orientation) predictions; quantiles are averaged
-    level by level, count parameters parameter by parameter."""
-    first = predictions[0]
+def _marginalise(orientations: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """The forecast over the innings each entry of ``orientations`` was predicted under, at
+    equal weight: an involvement probability is the mean (a mixture of Bernoullis is a
+    Bernoulli at the mean); a quantile target is the mixture of the orientations'
+    distributions, inverted at the served levels; a count target keeps every orientation's
+    (zero inflation, rate) pair for ``count_distribution`` to mix exactly. One orientation
+    passes through unchanged."""
     out: Dict[str, Any] = {}
-    for key, value in first.items():
-        if isinstance(value, dict):
-            out[key] = {k: np.mean([p[key][k] for p in predictions], axis=0) for k in value}
+    for key, value in orientations[0].items():
+        if not isinstance(value, dict):
+            out[key] = np.mean([o[key] for o in orientations], axis=0)
+        elif "quantiles" in value:
+            out[key] = {"quantiles": mixture_of_quantile_sets([o[key]["quantiles"] for o in orientations])}
         else:
-            out[key] = np.mean([p[key] for p in predictions], axis=0)
+            out[key] = {"components": [component for o in orientations for component in o[key]["components"]]}
     return out
 
 
@@ -519,9 +566,17 @@ class PerformanceModels:
     # and, when the spec asks for it, the shared match factor from the calibration fold.
     simulation: Optional[simulator.SimulatorCalibration] = None
 
+    @property
+    def member(self) -> SeedMember:
+        """The one fit this model serves (EVAL-09). ``members`` keeps the artifact's list
+        shape; a list of any other length is an artifact this code cannot serve, and says
+        so rather than averaging fits it no longer has a rule for (EVAL-14)."""
+        if len(self.members) != 1:
+            raise ValueError(f"{self.format_code}: {len(self.members)} performance members in the artifact, expected 1")
+        return self.members[0]
+
     def _predict_oriented_raw(self, rows: pd.DataFrame, bats_first: Optional[bool]) -> Dict[str, Any]:
-        x = design_matrix(rows, self.spec.feature_cols, bats_first)
-        return _average([_predict_member(m, x, self.spec) for m in self.members])
+        return _predict_member(self.member, design_matrix(rows, self.spec.feature_cols, bats_first), self.spec)
 
     def _finalize(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         out: Dict[str, Any] = {key: raw[key] for key in ("p_bats", "p_bowls") if key in raw}
@@ -531,23 +586,24 @@ class PerformanceModels:
                 recalibration = self.calibration.get(t.name)
                 out[t.name] = {"quantiles": recalibration.apply(quantiles) if recalibration else quantiles}
             else:
-                out[t.name] = count_distribution(raw[t.name]["zero_inflation"], raw[t.name]["rate"])
+                out[t.name] = count_distribution(raw[t.name]["components"])
         return out
 
     def predict_oriented(self, rows: pd.DataFrame, bats_first: Optional[bool]) -> Dict[str, Any]:
         """Predictions under a known innings: ``True`` / ``False`` for every row, or
         ``None`` for each row's own ``side`` (scoring played matches with the toss known)."""
-        return self._finalize(self._predict_oriented_raw(rows, bats_first))
+        return self._finalize(_marginalise([self._predict_oriented_raw(rows, bats_first)]))
 
     def predict_marginalised(self, rows: pd.DataFrame) -> Dict[str, Any]:
-        """Predictions before the toss: the average of batting first and chasing."""
+        """Predictions before the toss: the equal-weight mixture of batting first and
+        chasing, target by target (``_marginalise``)."""
         both = [self._predict_oriented_raw(rows, True), self._predict_oriented_raw(rows, False)]
-        return self._finalize(_average(both))
+        return self._finalize(_marginalise(both))
 
     @property
     def iterations(self) -> Dict[str, int]:
         """Per booster, the iterations the served model ran."""
-        return dict(self.members[0].iterations)
+        return dict(self.member.iterations)
 
 
 def _temporal_calibration_split(rows: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:

@@ -61,7 +61,10 @@ class SignedLogisticRegression(BaseEstimator, ClassifierMixin):
         #: own lbfgs solver, which this fit reproduces when every sign is free.
         self.tol = tol
 
-    def fit(self, X, y) -> "SignedLogisticRegression":
+    def fit(self, X, y, sample_weight=None) -> "SignedLogisticRegression":
+        """``sample_weight`` scales each row's log-loss, as sklearn's does: the penalised
+        objective is ``0.5 * ||w||^2 + C * sum(weight_i * log-loss_i)``, so a row at weight
+        zero is absent from the fit and the weights are not renormalised."""
         x = np.asarray(X, dtype=float)
         target = np.asarray(y, dtype=float)
         n_columns = x.shape[1]
@@ -69,6 +72,9 @@ class SignedLogisticRegression(BaseEstimator, ClassifierMixin):
             raise ValueError(f"{len(self.signs)} signs for {n_columns} columns")
         if not set(np.unique(target)) <= set(_CLASSES):
             raise ValueError("y must be 0 / 1")
+        row_weight = np.ones(len(target)) if sample_weight is None else np.asarray(sample_weight, dtype=float)
+        if row_weight.shape != target.shape or (row_weight < 0.0).any():
+            raise ValueError("sample_weight must be one non-negative weight per row")
         bounds = coefficient_bounds(self.signs) + [(None, None)]  # the intercept is last, and free
 
         def penalised_loss_and_gradient(theta: np.ndarray) -> Tuple[float, np.ndarray]:
@@ -76,8 +82,8 @@ class SignedLogisticRegression(BaseEstimator, ClassifierMixin):
             z = x @ weights + intercept
             # log(1 + exp(-s z)) with s = +1 for y = 1, -1 for y = 0, kept stable by logaddexp.
             signed = np.where(target > 0.5, -z, z)
-            loss = 0.5 * float(weights @ weights) + self.C * float(np.logaddexp(0.0, signed).sum())
-            residual = expit(z) - target
+            loss = 0.5 * float(weights @ weights) + self.C * float(row_weight @ np.logaddexp(0.0, signed))
+            residual = row_weight * (expit(z) - target)
             gradient = np.empty_like(theta)
             gradient[:-1] = weights + self.C * (x.T @ residual)
             gradient[-1] = self.C * residual.sum()

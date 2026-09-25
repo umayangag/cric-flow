@@ -13,7 +13,10 @@ Per format two models are fitted on rows before the cutoff and scored on rows at
                 hill-climb over XIs sees is additive *and* monotone by construction -- a
                 one-player upgrade never lowers the score in either batting order. Before
                 FEAT-14 the fit was unconstrained and the T20I objective carried a negative
-                own-side weight on ``pelo_mean``. This is what the optimiser maximises.
+                own-side weight on ``pelo_mean``. Its regularisation and the recency weight
+                on its rows are chosen per format from ``OBJECTIVE_GRID`` on the inner
+                temporal split (EVAL-13), the way the display model's settings are. This is
+                what the optimiser maximises.
 * display    -- monotone-constrained gradient boosting on XI + team-context columns.
                 Higher AUC; used for the probability shown to users.
 
@@ -34,7 +37,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -54,21 +57,56 @@ logger = logging.getLogger(__name__)
 
 REPORT_NAME = "xi_win_report.json"
 
-#: The objective's inverse regularisation strength, unchanged since the model was first
-#: fitted; the bounds are the only thing FEAT-14 added to the fit.
-OBJECTIVE_C = 0.3
+# The objective's grid (EVAL-13): sklearn's inverse L2 strength ``C``, and the half-life in
+# years of an exponential recency weight on the training rows (``None`` weighs every row
+# alike). Before it one ``C`` served 1.9k-row TEST and 10k-row T20 -- the penalty is per
+# fit, not per row, so the same value regularised TEST five times harder -- and a row from
+# 2005 weighed what a row from 2026 did. The first of each axis is the incumbent, what the
+# objective has always been fitted with, and ``OBJECTIVE_GRID`` puts that pair first
+# because ``_choose_on_inner_split`` keeps grid point 0 unless a candidate beats it by
+# more than ``GRID_MARGIN``. Neither axis is evidenced beyond the inner split: the choice
+# is recorded per run and per harness window, and the walk-forward number scores the
+# recipe with the grid in it.
+OBJECTIVE_C_GRID: Tuple[float, ...] = (0.3, 0.1, 1.0)
+OBJECTIVE_HALF_LIFE_YEARS_GRID: Tuple[Optional[float], ...] = (None, 8.0, 4.0)
+OBJECTIVE_GRID: Tuple[Dict[str, Optional[float]], ...] = tuple(
+    {"C": c, "half_life_years": half_life} for half_life in OBJECTIVE_HALF_LIFE_YEARS_GRID for c in OBJECTIVE_C_GRID
+)
 #: The solver's iteration ceiling. High enough that the bounded fit converges rather than
 #: being stopped, so it is a guard and not a hyperparameter.
 OBJECTIVE_MAX_ITER = 3000
+DAYS_PER_YEAR = 365.25
 
 
-def make_objective_model(columns: List[str]) -> object:
+def make_objective_model(columns: List[str], params: Optional[Dict[str, Optional[float]]] = None) -> object:
     """The selection objective: standardised inputs, then a logistic regression whose
-    coefficients are bounded by the contract's sign for each column (FEAT-14)."""
+    coefficients are bounded by the contract's sign for each column (FEAT-14), at the grid
+    point ``params`` -- the incumbent when none is given."""
+    settings = OBJECTIVE_GRID[0] if params is None else params
     return make_pipeline(
         StandardScaler(),
-        SignedLogisticRegression(signs=C.monotone_directions(columns), C=OBJECTIVE_C, max_iter=OBJECTIVE_MAX_ITER),
+        SignedLogisticRegression(
+            signs=C.monotone_directions(columns), C=float(settings["C"]), max_iter=OBJECTIVE_MAX_ITER
+        ),
     )
+
+
+def recency_weights(match_dates: pd.Series, half_life_years: Optional[float]) -> np.ndarray:
+    """One weight per row, ``0.5 ** (age / half-life)`` with the age measured back from the
+    latest date in ``match_dates`` so the newest row always weighs 1; all ones without a
+    half-life."""
+    if half_life_years is None:
+        return np.ones(len(match_dates))
+    age_days = (match_dates.max() - match_dates).dt.total_seconds().to_numpy(dtype=float) / 86400.0
+    return np.power(0.5, age_days / (float(half_life_years) * DAYS_PER_YEAR))
+
+
+def fit_objective(train: pd.DataFrame, params: Dict[str, Optional[float]]) -> object:
+    """The objective fitted on ``train`` at one grid point: ``C`` in the estimator, the
+    half-life as a weight per row."""
+    x, y = _xy(train, C.XI_FEATURE_COLS)
+    weights = recency_weights(train.match_date, params["half_life_years"])
+    return make_objective_model(C.XI_FEATURE_COLS, params).fit(x, y, signedlogisticregression__sample_weight=weights)
 
 
 def own_side_sensitivities(objective, columns: List[str]) -> Dict[str, Tuple[float, float]]:
@@ -103,10 +141,10 @@ DISPLAY_GRID: Tuple[Dict[str, float], ...] = (
 )
 
 # A candidate has to beat the incumbent by more than this on the inner validation split
-# before it displaces it. H-14's rule, applied to a choice rather than a report:
-# differences under the noise floor are not evidence, and a grid that reshuffles the
-# model on 0.001 of AUC every release is a source of drift, not of quality.
-DISPLAY_GRID_MARGIN = 0.002
+# before it displaces it -- for both grids. H-14's rule, applied to a choice rather than
+# a report: differences under the noise floor are not evidence, and a grid that reshuffles
+# the model on 0.001 of AUC every release is a source of drift, not of quality.
+GRID_MARGIN = 0.002
 
 # The last fraction of the training rows, by date, that the grid is scored on. It is
 # inside the training window and strictly before the holdout, so choosing a
@@ -151,11 +189,10 @@ def win_model_params() -> Dict[str, object]:
     was picked and nothing about the model it was picked for.
     """
     return {
-        "objective_C": OBJECTIVE_C,
         "objective_max_iter": OBJECTIVE_MAX_ITER,
         "display_fixed": dict(DISPLAY_FIXED_PARAMS),
-        "display_grid_margin": DISPLAY_GRID_MARGIN,
-        "display_grid_validation_fraction": GRID_VALIDATION_FRACTION,
+        "grid_margin": GRID_MARGIN,
+        "grid_validation_fraction": GRID_VALIDATION_FRACTION,
         "display_context_monotone": C.DISPLAY_CONTEXT_MONOTONE_KEPT,
     }
 
@@ -177,42 +214,77 @@ def make_display_model(
     )
 
 
-def choose_display_params(train: pd.DataFrame) -> Dict:
-    """Pick the display model's hyperparameters from ``DISPLAY_GRID``, inside the
-    training rows.
+def _choose_on_inner_split(
+    train: pd.DataFrame,
+    grid: Sequence[Dict],
+    score_candidate: Callable[[Dict, pd.DataFrame, pd.DataFrame], float],
+) -> Dict:
+    """Pick one point of ``grid`` inside the training rows: each candidate is fitted on the
+    first ``1 - GRID_VALIDATION_FRACTION`` of them by date and scored on the rest.
 
     The split is temporal, not random: the rows a model is chosen on have to come after
     the rows it was fitted on, or the choice is made under a leak the serving path never
-    enjoys. The incumbent (grid point 0) keeps its place unless a candidate beats it by
-    more than ``DISPLAY_GRID_MARGIN``, so an unresolvable difference leaves the model
-    where it is instead of moving it.
+    enjoys; and it is inside the training window, strictly before the holdout, so a
+    choice cannot see the rows the run is scored on (H-19). The incumbent (grid point 0)
+    keeps its place unless a candidate beats it by more than ``GRID_MARGIN``, so an
+    unresolvable difference leaves the model where it is instead of moving it.
 
-    Returns the chosen params and the scores, which go into the run manifest -- "which
-    hyperparameters, and on what evidence" is exactly what the deleted tuning stack
-    recorded in a database table nobody could join back to an artifact.
+    Returns the chosen params, the reason and every candidate's score, which go into the
+    run manifest -- "which hyperparameters, and on what evidence" is exactly what the
+    deleted tuning stack recorded in a database table nobody could join back to an
+    artifact.
     """
     ordered = train.sort_values("match_date")
     split = int(len(ordered) * (1.0 - GRID_VALIDATION_FRACTION))
     inner_train, inner_valid = ordered.iloc[:split], ordered.iloc[split:]
-    incumbent = dict(DISPLAY_GRID[0])
+    incumbent = dict(grid[0])
     if len(inner_train) < 50 or len(inner_valid) < 20 or inner_valid[C.TARGET_COL].nunique() < 2:
         return {"params": incumbent, "reason": "too few rows to choose on", "scores": []}
-
-    x_tr, y_tr = _xy(inner_train, C.DISPLAY_FEATURE_COLS)
-    x_va, y_va = _xy(inner_valid, C.DISPLAY_FEATURE_COLS)
-    scores = []
-    for candidate in DISPLAY_GRID:
-        model = make_display_model(C.DISPLAY_FEATURE_COLS, candidate).fit(x_tr, y_tr)
-        scores.append({"params": dict(candidate), "auc": float(roc_auc_score(y_va, model.predict_proba(x_va)[:, 1]))})
+    scores = [
+        {"params": dict(candidate), "auc": float(score_candidate(candidate, inner_train, inner_valid))}
+        for candidate in grid
+    ]
     baseline = scores[0]["auc"]
     best = max(scores[1:], key=lambda s: s["auc"], default=None)
-    if best is not None and best["auc"] > baseline + DISPLAY_GRID_MARGIN:
+    if best is not None and best["auc"] > baseline + GRID_MARGIN:
         return {"params": best["params"], "reason": "beat the incumbent on the inner split", "scores": scores}
     return {
         "params": incumbent,
-        "reason": f"no candidate beat the incumbent by more than {DISPLAY_GRID_MARGIN}",
+        "reason": f"no candidate beat the incumbent by more than {GRID_MARGIN}",
         "scores": scores,
     }
+
+
+def choose_display_params(train: pd.DataFrame) -> Dict:
+    """The display model's hyperparameters from ``DISPLAY_GRID``, chosen on the inner
+    temporal split by the candidate's toss-aware AUC."""
+
+    def score(candidate: Dict, inner_train: pd.DataFrame, inner_valid: pd.DataFrame) -> float:
+        x_tr, y_tr = _xy(inner_train, C.DISPLAY_FEATURE_COLS)
+        x_va, y_va = _xy(inner_valid, C.DISPLAY_FEATURE_COLS)
+        model = make_display_model(C.DISPLAY_FEATURE_COLS, candidate).fit(x_tr, y_tr)
+        return roc_auc_score(y_va, model.predict_proba(x_va)[:, 1])
+
+    return _choose_on_inner_split(train, DISPLAY_GRID, score)
+
+
+def choose_objective_params(train: pd.DataFrame) -> Dict:
+    """The objective's ``C`` and recency half-life from ``OBJECTIVE_GRID``, chosen on the
+    inner temporal split by the candidate's marginalised AUC -- the reading the optimiser
+    and ``/xi/predict-win`` use, since neither knows the toss (EVAL-05)."""
+
+    def score(candidate: Dict, inner_train: pd.DataFrame, inner_valid: pd.DataFrame) -> float:
+        return _score_marginalised(fit_objective(inner_train, candidate), inner_valid, C.XI_FEATURE_COLS)["auc"]
+
+    return _choose_on_inner_split(train, OBJECTIVE_GRID, score)
+
+
+def fit_objective_as_shipped(train: pd.DataFrame) -> Tuple[object, Dict]:
+    """The objective the recipe produces from these training rows: the grid's pick, fitted
+    on all of them, with the record of the choice -- the objective's counterpart of
+    ``fit_display_model_as_shipped``, and both writers use it for the same reason."""
+    grid = choose_objective_params(train)
+    return fit_objective(train, grid["params"]), grid
 
 
 def fit_display_model_as_shipped(train: pd.DataFrame) -> Tuple[object, Dict]:
@@ -340,9 +412,12 @@ def train_format(
     if len(tr) < 50 or tr[C.TARGET_COL].nunique() < 2:
         report["skipped_reason"] = "insufficient training rows"
         return None, report
-    x_obj_tr, y_tr = _xy(tr, C.XI_FEATURE_COLS)
-    objective = make_objective_model(C.XI_FEATURE_COLS).fit(x_obj_tr, y_tr)
-    display, report["hyperparameters"] = fit_display_model_as_shipped(tr)
+    y_tr = tr[C.TARGET_COL].to_numpy(dtype=float)
+    objective, objective_record = fit_objective_as_shipped(tr)
+    display, display_record = fit_display_model_as_shipped(tr)
+    # One record per model, each the shape its grid writes: pick, reason, every candidate's
+    # inner-split score, and for the display model the iterations it ran.
+    report["hyperparameters"] = {"objective": objective_record, "display": display_record}
     if len(te) >= 20 and te[C.TARGET_COL].nunique() == 2:
         x_obj_te, y_te = _xy(te, C.XI_FEATURE_COLS)
         x_dis_te, _ = _xy(te, C.DISPLAY_FEATURE_COLS)

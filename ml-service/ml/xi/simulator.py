@@ -706,6 +706,29 @@ def quantile_function(quantiles: np.ndarray, level: np.ndarray) -> np.ndarray:
     return np.where(level > QUANTILE_KNOTS[-1], tail, body)
 
 
+def cumulative_probability(quantiles: np.ndarray, value: np.ndarray) -> np.ndarray:
+    """The inverse of ``quantile_function``: P(X <= value) under the reconstructed
+    distributions, for ``value`` (n, k) against ``quantiles`` (k, 3). Linear between the
+    knots and the exponential tail above q90, read as the right-continuous inverse: two
+    fitted quantiles that coincide are an atom, and a value at or past it reads the higher
+    level. What ``performance`` mixes the two toss orientations through (EVAL-14)."""
+    knots = np.concatenate([np.zeros((len(quantiles), 1)), quantiles], axis=1)  # (k, 4)
+    value = np.asarray(value, dtype=float)
+    k_index = np.broadcast_to(np.arange(knots.shape[0]), value.shape)
+    level = np.zeros(value.shape)
+    for lower in range(len(QUANTILE_KNOTS) - 1):
+        low, high = knots[k_index, lower], knots[k_index, lower + 1]
+        span = np.where(high > low, high - low, 1.0)
+        weight = np.where(high > low, (value - low) / span, 0.0)
+        segment = QUANTILE_KNOTS[lower] + weight * (QUANTILE_KNOTS[lower + 1] - QUANTILE_KNOTS[lower])
+        level = np.where((value >= low) & (value < high), segment, level)
+    top = knots[k_index, -1]
+    scale = np.broadcast_to((quantiles[:, 2] - quantiles[:, 1]) / TAIL_LOG, value.shape)
+    tail = np.where(scale > 0.0, 1.0 - 0.1 * np.exp(-(value - top) / np.where(scale > 0.0, scale, 1.0)), 1.0)
+    level = np.where(value >= top, tail, level)
+    return np.where(value < 0.0, 0.0, level)
+
+
 def _conditional_level(p_involved: np.ndarray, u: np.ndarray) -> np.ndarray:
     """The unconditional level of a draw made *given involvement*: the upper ``p`` part."""
     return 1.0 - p_involved + p_involved * u

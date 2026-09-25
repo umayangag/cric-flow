@@ -107,24 +107,44 @@ different run.
 
 **Glossary keys** (L-1, `ml/xi/glossary.py`): none — the chosen values are inputs, and `hyperparameters` is declared a non-metric so the completeness gate does not ask anyone to explain a learning rate.
 
-There is one search, it is three points wide, and it runs inside `retrain` — and inside every
-window the harness scores, because the grid is part of the recipe and the harness measures
-the recipe (EVAL-06, below).
+There are two searches, one per win model, and both run inside `retrain` — and inside every
+window the harness scores, because a grid is part of the recipe and the harness measures
+the recipe (EVAL-06, below). Both choose on the same inner temporal split under the same
+rule (`train._choose_on_inner_split`): the incumbent keeps its place unless a candidate
+beats it by more than `GRID_MARGIN`.
 
 `ml.xi.train.DISPLAY_GRID` holds three settings for the display model (depth, learning rate,
 iterations). Each is fitted on the first 80 % of the training rows *by date* and scored on the
 last 20 % — inside the training window, strictly before the holdout, so choosing a
 hyperparameter cannot see the rows the run is scored on (H-19). The incumbent (the setting the
 display model has always been fitted with) keeps its place unless a candidate beats it by more
-than `DISPLAY_GRID_MARGIN` = 0.002 AUC: differences under the noise floor are not evidence
+than `GRID_MARGIN` = 0.002 AUC: differences under the noise floor are not evidence
 (H-14), and a grid that reshuffles the model on 0.001 every release is a source of drift.
+
+`ml.xi.train.OBJECTIVE_GRID` holds nine settings for the objective (EVAL-13): sklearn's
+inverse L2 strength `C` ∈ {0.3, 0.1, 1.0} by an exponential recency half-life on the training
+rows ∈ {none, 8 years, 4 years} — the weight on a row is `0.5 ** (age / half-life)` back from
+the newest training row, and it reaches the fit as a `sample_weight` on the sign-bounded
+estimator. The incumbent is `C = 0.3` with no weighting, what the objective has always been
+fitted with. Candidates are scored by the *marginalised* AUC on the inner split, the reading
+the optimiser and `/xi/predict-win` use (EVAL-05). Before this one `C` served every format —
+the penalty is per fit, not per row, so 1.9k-row TEST was regularised five times harder than
+10k-row T20 — and a row from 2005 weighed what a row from 2026 did. The grid plus the shipped
+fit costs 0.1 s per format at both sizes, which is why the choice is made inside `retrain`
+rather than recorded unevidenced as FEAT-12's decay constants were (there a candidate is a
+full rating pass). The candidate sets themselves are judgment — the half-lives put a 2005 row
+at 0.18 and 0.03 of a 2026 row — and the inner split's validation set is ~380 rows in TEST,
+where the margin sits under the noise (the observation recorded under EVAL-06 for the display
+grid now covers both grids under `GRID_MARGIN`); the walk-forward harness is what scores the
+recipe with the grid in it.
 
 **The harness fits the model the grid would ship (EVAL-06).** `train_format` and the
 harness's `_evaluate_win_window` fit the display model through one function,
-`fit_display_model_as_shipped`: run the grid on the window's training rows, fit the pick on all
-of them, record the choice. Each walk-forward fold and the locked window therefore carry a
-`hyperparameters` record — pick, reason, every candidate's inner-split score, `n_iter` — under
-the same key the run manifest uses, and the walk-forward `display_auc` describes the model a
+`fit_display_model_as_shipped` (and the objective through `fit_objective_as_shipped`): run
+the grid on the window's training rows, fit the pick on all of them, record the choice. Each
+walk-forward fold and the locked window therefore carry a `hyperparameters` record — per model,
+`objective` and `display`: pick, reason, every candidate's inner-split score, and the display
+model's `n_iter` — under the same key the run manifest uses, and the walk-forward `display_auc` describes the model a
 retrain at that cutoff would have served. Before this the harness fitted grid point 0
 regardless, so a format whose retrain had picked another point had walk-forward evidence for
 a model it never served — and that was not hypothetical: TEST picked point 1 in five of the
@@ -238,10 +258,11 @@ them answered it wrongly and four were not there.
   (FEAT-04, IMPORT-05/06), so which one a run read is part of building it again.
 - **`library_versions`** — python plus scikit-learn, numpy, scipy, pandas and joblib. Pinning
   the commit without these does not reproduce a fit.
-- **`model_params`** — the win models' constants the grid never varies: the objective's `C`
-  and iteration ceiling, the display model's `l2_regularization`, `min_samples_leaf`,
-  `early_stopping` and `random_state`, the grid's margin and validation fraction. The grid's
-  *choice* stays in `hyperparameters` and is not restated here.
+- **`model_params`** — the win models' constants neither grid varies: the objective's
+  iteration ceiling (its `C` is a grid choice since EVAL-13), the display model's
+  `l2_regularization`, `min_samples_leaf`, `early_stopping` and `random_state`, the grids'
+  shared margin and validation fraction. A grid's *choice* stays in `hyperparameters`, under
+  the format code and then `objective` / `display`, and is not restated here.
 - **`performance_spec`** — the performance model's `FitSpec` per format, quoted from the run's
   own report so the two cannot fall out of step.
 
@@ -337,6 +358,9 @@ happened six times:
   fitted on the old list is refused.
 - **FEAT-14** — the same two columns left `XI_FEATURE_COLS`, and the objective became a
   sign-bounded fit; a win artifact whose `objective_cols` still carry them is refused.
+- **EVAL-13** — the eleven `d_*` columns of the stems read as a raw pair left
+  `XI_FEATURE_COLS` (and so `DISPLAY_FEATURE_COLS`); a win artifact fitted on the 40-column
+  list is refused.
 - **P2-2 (#280)** — the manifest gained the required `ratings_through`; a manifest without it
   is refused.
 - **EVAL-12** — the manifest gained the required `dataset_digest`; a manifest without it is
@@ -501,9 +525,15 @@ in his *other* formats, not zero, so a T20I regular's IPL debut reads as himself
 with no history elsewhere reads exactly the plain rate. Involvement and Elo are not pooled.
 
 **Two models per format.** `objective` — logistic regression on the XI columns, fitted under
-the contract's signs (`ml/xi/signed_logistic.py`: the same L2 log-loss as sklearn's `C=0.3`,
-solved by L-BFGS-B with each coefficient bounded by its column's `monotone_directions`
-entry). Additive *and* monotone by construction: a `+1` stem's own-side sensitivity is
+the contract's signs (`ml/xi/signed_logistic.py`: the same L2 log-loss as sklearn's
+`LogisticRegression(C)`, solved by L-BFGS-B with each coefficient bounded by its column's
+`monotone_directions` entry; `C` and an exponential recency weight on the rows are chosen per
+format from `OBJECTIVE_GRID` on the inner split, § Hyperparameters). It reads 29 columns: the
+differential of the seven stems the contract reads relatively, and both sides' raw values of
+the eleven it reads as a pair — never a stem both ways, since `d_x = t1_x − t2_x` exactly and
+the triple was one linear dependence per stem (EVAL-13: 40 columns of rank 29, with the L2
+penalty rather than the rows deciding the split of a stem's weight across the three). The
+display model reads the same 29 plus the team context and the toss. Additive *and* monotone by construction: a `+1` stem's own-side sensitivity is
 non-negative in both batting orders, so a one-player upgrade never lowers p and the
 harness's swap probe reads exactly 0 in every format. This is what `/xi/optimize` maximises.
 Until FEAT-14 the fit was unconstrained and its monotonicity was only empirical — the T20I
@@ -830,8 +860,17 @@ ground's and the competition's as-of scoring level, above), the age columns gate
 (none — `AGE_FEATURES_KEPT` is False; the age at the match date, above), and
 the innings (bat first / chase). The
 innings is the toss, not the result: at prediction it is **marginalised** — predicted under
-both and averaged — unless the caller passes `team1_bats_first`, the same knob
-`/xi/predict-win` has. Nothing the model reads is a function of the match's own result
+both and the two forecasts *mixed* (`performance._marginalise`, EVAL-14): P(bats) and
+P(bowls) are averaged, a quantile target is served the quantiles of the equal-weight mixture
+of the two innings' distributions — each reconstructed the one way this system reads three
+quantiles, `simulator.quantile_function`, and inverted through its inverse
+`simulator.cumulative_probability` by bisection — and a count target the mixture of its two
+zero-inflated Poissons exactly (`count_distribution` takes the components). Until EVAL-14 the
+quantiles were averaged level by level and the Poisson's zero inflation and rate parameter by
+parameter: the former is the quantile of no distribution and narrows the 10–90 interval
+whenever the two innings differ (H-22 reads that width beside coverage), the latter's mean
+was `avg(p)·avg(rate)` rather than `avg(p·rate)`. The mixture is served unless the caller
+passes `team1_bats_first`, the same knob `/xi/predict-win` has. Nothing the model reads is a function of the match's own result
 (`contract.performance_feature_cols` excludes every target column; a unit test asserts it).
 
 **Fitting.** `HistGradientBoostingRegressor` with quantile and Poisson losses and a

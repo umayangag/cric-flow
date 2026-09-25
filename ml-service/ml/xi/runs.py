@@ -140,9 +140,10 @@ class RunManifest:
     The provenance half -- ``git_sha``, ``source``, ``dataset_digest``,
     ``library_versions``, ``model_params``, ``performance_spec`` -- is what EVAL-12 added,
     and it answers one question the rest cannot: could this run be built again? The
-    ``hyperparameters`` block is the display grid's *choice* (EVAL-06) and stays the only
-    record of it; ``model_params`` carries the constants the grid never varies, which lived
-    only as literals in ``ml.xi.train``.
+    ``hyperparameters`` block is, per format, each win model's grid *choice* -- the
+    display model's (EVAL-06) and the objective's ``C`` and recency half-life (EVAL-13) --
+    and stays the only record of it; ``model_params`` carries the constants neither grid
+    varies, which lived only as literals in ``ml.xi.train``.
     """
 
     run_id: str

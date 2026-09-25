@@ -34,7 +34,7 @@ def synthetic_build():
 
 
 def test_swap_monotonicity_is_clean_for_a_monotone_objective(synthetic_build) -> None:
-    model = _LinearModel({"d_pelo_mean": 0.01, "d_imp_bat_sum": 0.5})
+    model = _LinearModel({"t1_pelo_mean": 0.01, "t1_imp_bat_sum": 0.5})
 
     report = sm.swap_monotonicity(model, C.XI_FEATURE_COLS, synthetic_build.player_frame, "T20", max_matches=10)
 
@@ -44,7 +44,7 @@ def test_swap_monotonicity_is_clean_for_a_monotone_objective(synthetic_build) ->
 
 
 def test_swap_monotonicity_catches_an_anti_monotone_objective(synthetic_build) -> None:
-    model = _LinearModel({"d_pelo_mean": -0.01, "d_imp_bat_sum": -0.5})
+    model = _LinearModel({"t1_pelo_mean": -0.01, "t1_imp_bat_sum": -0.5})
 
     report = sm.swap_monotonicity(model, C.XI_FEATURE_COLS, synthetic_build.player_frame, "T20", max_matches=10)
 
@@ -61,7 +61,7 @@ def test_swap_monotonicity_reports_the_probe_per_axis(synthetic_build) -> None:
     """FEAT-14: a wrong sign on the Elo axis must show on its own, not only when the rate
     terms fail to cover it. A surface that likes batting impact and dislikes Elo violates
     on every Elo-only upgrade and on no rates-only one."""
-    model = _LinearModel({"d_pelo_mean": -0.01, "d_imp_bat_sum": 0.5})
+    model = _LinearModel({"t1_pelo_mean": -0.01, "t1_imp_bat_sum": 0.5})
 
     report = sm.swap_monotonicity(model, C.XI_FEATURE_COLS, synthetic_build.player_frame, "T20", max_matches=10)
 
@@ -73,7 +73,7 @@ def test_swap_monotonicity_reports_the_probe_per_axis(synthetic_build) -> None:
 
 def test_display_swap_monotonicity_is_clean_for_a_monotone_display_surface(synthetic_build) -> None:
     """B-7: a display surface that likes a better batting eleven never contradicts itself."""
-    model = _display_model({"d_imp_bat_sum": 0.5, "team_elo_diff": 0.01})
+    model = _display_model({"t1_imp_bat_sum": 0.5, "team_elo_diff": 0.01})
 
     report = sm.display_swap_monotonicity(
         model, C.DISPLAY_FEATURE_COLS, synthetic_build.frame, synthetic_build.player_frame, "T20", max_matches=10
@@ -91,7 +91,7 @@ def test_display_swap_monotonicity_catches_a_surface_that_falls_on_an_upgrade(sy
     expected balls faced changes no batting impact at all, and an unmoved probability is
     not a violation.
     """
-    model = _display_model({"d_imp_bat_sum": -0.5, "d_pelo_mean": -0.01})
+    model = _display_model({"t1_imp_bat_sum": -0.5, "t1_pelo_mean": -0.01})
 
     report = sm.display_swap_monotonicity(
         model, C.DISPLAY_FEATURE_COLS, synthetic_build.frame, synthetic_build.player_frame, "T20", max_matches=10
@@ -133,7 +133,7 @@ def test_display_swap_monotonicity_skips_a_match_with_no_player_rows(synthetic_b
     frame = synthetic_build.frame
     kept = set(frame.match_id.tolist()[1:])
     players = synthetic_build.player_frame
-    model = _display_model({"d_imp_bat_sum": 0.5})
+    model = _display_model({"t1_imp_bat_sum": 0.5})
 
     report = sm.display_swap_monotonicity(
         model, C.DISPLAY_FEATURE_COLS, frame, players[players.match_id.isin(kept)], "T20", max_matches=10
@@ -143,7 +143,7 @@ def test_display_swap_monotonicity_skips_a_match_with_no_player_rows(synthetic_b
 
 
 def test_specific_vs_typical_reports_the_delta(synthetic_build) -> None:
-    model = _LinearModel({"d_pelo_mean": 0.01, "d_imp_bat_sum": 0.5})
+    model = _LinearModel({"t1_pelo_mean": 0.01, "t1_imp_bat_sum": 0.5})
     frame = synthetic_build.frame
 
     report = sm.specific_vs_typical(
@@ -177,7 +177,7 @@ def _canary_frame() -> pd.DataFrame:
                     "format_code": fmt,
                     C.TARGET_COL: y,
                     # The leak: reads the answer in T20, pure noise in TEST -- the S-3c shape.
-                    "d_pelo_mean": (y * 2 - 1) if leaky else float(rng.randn()),
+                    "d_pelo_top3": (y * 2 - 1) if leaky else float(rng.randn()),
                 }
             )
             rows.append(row)
@@ -189,6 +189,6 @@ def test_leak_canary_flags_a_column_that_collapses_in_test_format() -> None:
 
     report = sm.leak_canary(frame, pd.Timestamp("2024-01-01"), pd.Timestamp("2025-01-01"))
 
-    assert report["best_single_column"]["T20"]["column"] == "d_pelo_mean"
+    assert report["best_single_column"]["T20"]["column"] == "d_pelo_top3"
     suspects = report["test_control_suspects"]
-    assert any(s["column"] == "d_pelo_mean" and s["format"] == "T20" for s in suspects)
+    assert any(s["column"] == "d_pelo_top3" and s["format"] == "T20" for s in suspects)

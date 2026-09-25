@@ -231,7 +231,8 @@ def test_registry_status_after_load(registry, artifacts_dir) -> None:
     # H-16: the status names the run and what its manifest recorded.
     assert status.run_id
     assert status.manifest["formats"] == ["T20I"]
-    assert status.manifest["hyperparameters"]["T20I"]["params"]
+    assert status.manifest["hyperparameters"]["T20I"]["display"]["params"]
+    assert status.manifest["hyperparameters"]["T20I"]["objective"]["params"]
     with pytest.raises(xi_service.XiUnavailable, match="ODI"):
         registry.store("ODI")
 
