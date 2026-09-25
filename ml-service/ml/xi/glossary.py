@@ -312,8 +312,8 @@ METRICS: Tuple[Metric, ...] = (
         explanation=(
             "How many players still available on this list are keepers, how many are bowling options, and how "
             "many are neither. The two roles are the objective's own constraint predicates read off the served "
-            "as-of vectors (ml.xi.roles): a keeper is a player who kept in more than half of his side's recent "
-            "matches in which the keeper was seen -- a stumping is what names him -- "
+            "as-of vectors (ml.xi.roles): a keeper is a player seen keeping within his side's last two matches "
+            "that named a keeper -- a stumping is what names him -- "
             "and a bowling option is one whose expected balls bowled clear the format's threshold. A player who "
             "answers neither is listed as a batter *by elimination* -- the system has measured no other role "
             "vocabulary -- and a player the served state has never seen is counted as unknown, with no role "
@@ -986,9 +986,9 @@ METRICS: Tuple[Metric, ...] = (
         name="Role in the eleven",
         explanation=(
             "Which requirement of the selection this player answers, read off the same as-of vectors "
-            "the objective reads. 'Keeper' means that of his side's recent matches in which the keeper was "
-            "seen (a stumping names him) more than half saw him keeping, which is the share the keeper "
-            "constraint counts and the objective's has_keeper feature reads; "
+            "the objective reads. 'Keeper' means he was seen keeping (a stumping names him) within his "
+            "side's last two matches that named a keeper, which is the weight the keeper constraint "
+            "counts and the objective's has_keeper feature reads; "
             "'bowling option' means his expected balls bowled clear the format's threshold, which is "
             "what the minimum-bowlers constraint counts and the n_bowlers feature reads. A player can "
             "answer both, or neither and be picked on his rating alone."

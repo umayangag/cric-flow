@@ -462,7 +462,7 @@ bowler-credited wickets above expectation; forgotten at 0.9 per match, shrunk wi
 prior), expected involvement (`exp_balls_faced` / `exp_balls_bowled`: balls faced / bowled per
 **XI appearance** — every match the player was named for, batted or bowled in or not, the
 balls and the appearances forgotten on one clock; a tailender who batted once in ten reads a
-tenth of that innings, not the innings), experience, a keeper share and a player Elo. A
+tenth of that innings, not the innings), experience, a keeper weight and a player Elo. A
 player is a **bowling option** — the one predicate behind `n_bowlers`, `n_allrounders`, the
 roles a surface prints and the optimiser's bowling-cover constraint — when his expected
 balls bowled per appearance clear `contract.MIN_BOWLING_BALLS` (3 / 4 / 19 / 40 in T20 /
@@ -723,7 +723,7 @@ the planner's. Nothing noticed until a feature read delivery order. Deliveries a
 in `(innings, over, ball)` order, the source's own. Comparing the two sources' performance
 reports then found a sixth: the database source read fielders from `ball_event.fielder_ids`,
 which the importer leaves NULL, so it credited no catches and knew no keeper (the keeper
-share comes from stumpings) — the optimiser's `require_keeper` could not be met from the database. It
+weight comes from stumpings) — the optimiser's `require_keeper` could not be met from the database. It
 reads `fielding_event` now, and the importer no longer credits the bowler with a catch taken
 by an unnamed substitute (452 rows), replacing a match's fielding events on re-import. The
 plan's §10.4 has the account.

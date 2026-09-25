@@ -783,7 +783,10 @@ def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> N
     assert recs[0].outcome is None and recs[0].result == "no result"
     result = build(CricsheetJsonSource(str(tmp_path), _INTL))
     assert result.n_undecided == 1 and len(result.frame) == 1
-    assert result.state.side_vectors("ODI", ["id_Y0"])["keeper"][0] == 1.0, "the stumping marks the keeper"
+    keeper_weight = result.state.side_vectors("ODI", ["id_Y0"])["keeper"][0]
+    assert keeper_weight == pytest.approx(1.5) and C.is_keeper(keeper_weight), (
+        "a stumping in each match marks the keeper"
+    )
     assert os.path.exists(tmp_path)
 
 

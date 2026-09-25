@@ -406,8 +406,8 @@ def _innings_with_a_stumping_by(keeper: str, striker: str, bowler: str) -> Deliv
     return d
 
 
-def _keeper_shares_after(innings: List[Deliveries], keys: List[str]) -> List[float]:
-    """Each key's ``keeper`` share after one match per innings given, side B fielding."""
+def _keeper_weights_after(innings: List[Deliveries], keys: List[str]) -> List[float]:
+    """Each key's ``keeper`` weight after one match per innings given, side B fielding."""
     t1, t2 = _xi("a"), _xi("b")
     state = RatingState()
     for day, d in enumerate(innings):
@@ -417,43 +417,55 @@ def _keeper_shares_after(innings: List[Deliveries], keys: List[str]) -> List[flo
 
 def test_a_stumping_names_the_keeper_and_says_his_ten_teammates_did_not_keep() -> None:
     """FEAT-10: the match that credits b0 with a stumping says who kept for side B -- him,
-    and so not b1 -- and the keeper share reads exactly that."""
+    and so not b1 -- and the keeper weight reads exactly that."""
     b = _xi("b")
 
-    shares = _keeper_shares_after([_innings_with_a_stumping_by(b[0], "a0", b[5])], [b[0], b[1]])
+    weights = _keeper_weights_after([_innings_with_a_stumping_by(b[0], "a0", b[5])], [b[0], b[1]])
 
-    assert shares == [1.0, 0.0]
-    assert C.is_keeper(shares[0]) and not C.is_keeper(shares[1])
+    assert weights == [1.0, 0.0]
+    assert C.is_keeper(weights[0]) and not C.is_keeper(weights[1])
 
 
 def test_a_former_keeper_stops_reading_as_one_once_his_sides_stumpings_go_to_someone_else() -> None:
-    """FEAT-10: b0 stumps once, then b1 stumps in the next two matches. Of the three
-    matches that named side B's keeper, decayed, b0 kept in 0.81 of 2.71 and b1 in 1.9 --
-    b1 is the keeper now and b0 is not. Until FEAT-10 one stumping was a permanent flag."""
+    """FEAT-10: b0 stumps once, then b1 stumps in each of the next two matches. b0's weight
+    has halved twice to 0.25, on the bar and not over it -- his last stumping is no longer
+    within his side's last two matches that named a keeper -- while b1 reads 1.5. Until
+    FEAT-10 one stumping was a permanent flag."""
     b = _xi("b")
-    innings = [
-        _innings_with_a_stumping_by(b[0], "a0", b[5]),
-        _innings_with_a_stumping_by(b[1], "a0", b[5]),
-        _innings_with_a_stumping_by(b[1], "a0", b[5]),
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5])] + [
+        _innings_with_a_stumping_by(b[1], "a0", b[5]) for _ in range(2)
     ]
 
-    former, current = _keeper_shares_after(innings, [b[0], b[1]])
+    former, current = _keeper_weights_after(innings, [b[0], b[1]])
 
-    assert former == pytest.approx(0.81 / 2.71) and current == pytest.approx(1.9 / 2.71)
+    assert former == pytest.approx(0.25) and current == pytest.approx(1.5)
     assert not C.is_keeper(former) and C.is_keeper(current)
+
+
+def test_a_new_keeper_reads_as_one_from_his_first_stumping_and_a_stand_in_does_not_unseat_the_old() -> None:
+    """The bar admits a keeper the match he is first seen: after b1's first stumping he is
+    a keeper at once, and b0 -- whose last stumping is the match before -- still is: one
+    match in which someone else stumped is a stand-in, not a handover."""
+    b = _xi("b")
+    innings = [_innings_with_a_stumping_by(b[0], "a0", b[5]), _innings_with_a_stumping_by(b[1], "a0", b[5])]
+
+    former, current = _keeper_weights_after(innings, [b[0], b[1]])
+
+    assert former == pytest.approx(0.5) and current == 1.0
+    assert C.is_keeper(former) and C.is_keeper(current)
 
 
 def test_a_keeper_keeps_reading_as_one_through_matches_with_no_stumping() -> None:
     """A match in which his side records no stumping says nothing about who kept, so it
-    moves nobody's share: the side's keeper is not forgotten for a dry run."""
+    moves nobody's weight: the side's keeper is not forgotten for a dry run."""
     b = _xi("b")
     innings = [_innings_with_a_stumping_by(b[0], "a0", b[5])] + [
         _deliveries(["a0"] * 6, [b[5]] * 6, [1] * 6, [0] * 6) for _ in range(4)
     ]
 
-    (share,) = _keeper_shares_after(innings, [b[0]])
+    (weight,) = _keeper_weights_after(innings, [b[0]])
 
-    assert share == 1.0 and C.is_keeper(share)
+    assert weight == 1.0 and C.is_keeper(weight)
 
 
 def test_aggregate_side_role_coverage_and_monotone_direction() -> None:

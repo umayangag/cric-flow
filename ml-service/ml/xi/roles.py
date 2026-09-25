@@ -43,11 +43,11 @@ SELECTION_ROLES: Tuple[str, ...] = (ROLE_KEEPER, ROLE_BOWLING_OPTION)
 def is_keeper(keeper_vector_value) -> bool:
     """Whether the served state says this player is his side's keeper.
 
-    The ``keeper`` vector (``contract.PLAYER_VECTOR_KEYS``) is the decayed share of the
-    recent matches in which his side's keeper was seen -- a stumping names him -- that it
-    was this player, and ``contract.is_keeper`` is the bar on it: a keeper is a player who
-    has been keeping, not a player some name set was marked against. The database's
-    ``player.is_wicket_keeper`` is that other thing and is not this.
+    The ``keeper`` vector (``contract.PLAYER_VECTOR_KEYS``) is how recently he was seen
+    keeping -- a stumping names him, and the weight decays with every later match in which
+    his side's keeper was seen -- and ``contract.is_keeper`` is the bar on it: a keeper is
+    a player who has been keeping lately, not a player some name set was marked against.
+    The database's ``player.is_wicket_keeper`` is that other thing and is not this.
     """
     return bool(C.is_keeper(keeper_vector_value))
 

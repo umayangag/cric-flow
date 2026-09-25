@@ -120,7 +120,6 @@ PLAYER_ARRAY_NAMES = (
     "career",
     "career_all",
     "kept",
-    "keeper_seen",
     "pelo",
     "bat_pos_sum",
     "bat_pos_n",
@@ -221,10 +220,10 @@ class RatingState:
         self.bowl_rse, self.bowl_balls, self.bowl_wae = z(), z(), z()
         self.career = z()
         self.career_all = np.zeros(n)
-        # the keeper ledgers (FEAT-10): per player, the decayed count of matches he was seen
-        # keeping in, and of matches his side's keeper was seen in at all -- one clock,
+        # the keeper ledger (FEAT-10): per player, 1.0 for each match he was seen keeping in,
+        # decayed on every later match in which his side's keeper was seen -- one clock,
         # every format, advanced only by a match that named the side's keeper
-        self.kept, self.keeper_seen = np.zeros(n), np.zeros(n)
+        self.kept = np.zeros(n)
         self.pelo = np.full((_N_FMT, n), C.ELO_INITIAL)
         # expected batting slot: decayed sum of positions batted, decayed count of innings
         # batted, decayed count of XI appearances
@@ -295,7 +294,6 @@ class RatingState:
             setattr(self, name, _grow(getattr(self, name), n, 0.0))
         self.career_all = _grow(self.career_all, n, 0.0)
         self.kept = _grow(self.kept, n, 0.0)
-        self.keeper_seen = _grow(self.keeper_seen, n, 0.0)
         self.pelo = _grow(self.pelo, n, C.ELO_INITIAL)
 
     def _slots(self, keys: Sequence[str]) -> np.ndarray:
@@ -407,7 +405,7 @@ class RatingState:
             "career": self.career[f, s].copy(),
             "career_all": self.career_all[s].copy(),
             "pelo": self.pelo[f, s].copy(),
-            "keeper": keeper_share(self.kept[s], self.keeper_seen[s]),
+            "keeper": self.kept[s].copy(),
             "exp_bat_position": (self.bat_pos_sum[f, s] + C.BAT_POSITION_PRIOR * C.BAT_POSITION_PRIOR_INNINGS)
             / (self.bat_pos_n[f, s] + C.BAT_POSITION_PRIOR_INNINGS),
             "bat_innings_share": per_xi_appearance(self.bat_pos_n[f, s], appearances),
@@ -693,20 +691,23 @@ class RatingState:
         np.add.at(self.ctx_wickets[g, f], over, d.wicket)
 
     def _update_keepers(self, match: MatchRecord, d: Deliveries) -> None:
-        """Advance the keeper ledgers for each side whose keeper this match named (FEAT-10).
+        """Advance the keeper ledger for each side whose keeper this match named (FEAT-10).
 
         A stumping names the keeper; nothing else in the archive does -- Cricsheet marks no
         fielder as the keeper on a catch, so the "catches as keeper" the finding asked for
         cannot be read. A match therefore says who kept for a side only when that side was
         credited a stumping, and then it says it about all eleven: the stumper kept, the
-        other ten did not. Such a side's members are decayed once and the match landed on
-        both ledgers; a side that recorded none says nothing and moves nobody's share.
+        other ten did not. Such a side's members are decayed once and the stumper lands a
+        full match on his weight; a side that recorded none says nothing and moves nobody.
         Until FEAT-10 one stumping set a global, permanent flag: 92 of the archive's 1,060
         stumpers had it through 31 or more later appearances without another, a run no
-        keeper has at the format rates of 0.30-0.40 stumping matches per match.
+        keeper has at the format rates of 0.30-0.40 stumping matches per match. The clock
+        is the side's identified matches and not the player's appearances, so a keeper is
+        not forgotten for a run of matches in which nobody was stumped; its rate and the
+        bar on the weight are set beside it in the contract.
 
         One ledger for every format, not one per format: who keeps is a fact about the
-        player, and a per-format share would read 0 for a real keeper in the format his
+        player, and a per-format ledger would read 0 for a real keeper in the format his
         side has yet to record a stumping in -- which is the defect's third clause.
         """
         sides = (match.team1_players, match.team2_players)
@@ -719,10 +720,7 @@ class RatingState:
         for side_index, members in enumerate(sides):
             if not stumpers[side_index]:
                 continue
-            slots = self._slots(list(members))
-            self.kept[slots] *= C.DECAY_PER_MATCH
-            self.keeper_seen[slots] *= C.DECAY_PER_MATCH
-            self.keeper_seen[slots] += 1.0
+            self.kept[self._slots(list(members))] *= C.KEEPER_DECAY_PER_IDENTIFIED_MATCH
             self.kept[self._slots(sorted(stumpers[side_index]))] += 1.0
 
     def _update_simulation_context(self, f: int, g: int, d: Deliveries) -> None:
@@ -835,13 +833,6 @@ class RatingState:
         balls[f][:, uniq] *= C.DECAY_PER_MATCH
         np.add.at(total[f], (phase, who), value)
         np.add.at(balls[f], (phase, who), 1.0)
-
-
-def keeper_share(kept: np.ndarray, keeper_seen: np.ndarray) -> np.ndarray:
-    """The ``keeper`` vector (FEAT-10): of the recent matches in which the player's side had
-    its keeper named, the decayed share in which it was him; 0.0 for a player whose side has
-    never had one named while he was in it."""
-    return np.divide(kept, keeper_seen, out=np.zeros_like(kept, dtype=float), where=keeper_seen > 0)
 
 
 def batter_dismissals(d: Deliveries, slots_of) -> tuple:

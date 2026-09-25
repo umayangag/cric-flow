@@ -68,18 +68,28 @@ MAX_OVER_INDEX = 100  # context baselines are indexed by over number, capped her
 MIN_BOWLING_BALLS: Dict[str, int] = {"T20": 3, "T20I": 4, "ODI": 19, "TEST": 40}
 
 
-#: The keeper predicate's bar on the ``keeper`` share: he is the side's keeper when, of the
-#: recent matches in which the side's keeper was seen, more than half saw him. A player
-#: whose one stumping is followed by his teammate's two reads 0.30 and is not; the side's
-#: keeper through a run of matches with no stumping keeps reading 1.0, because such a match
-#: says nothing about who kept and moves nobody's share (FEAT-10).
-KEEPER_MIN_SHARE = 0.5
+#: The keeper ledger's clock and bar (FEAT-10). A stumping lands 1.0 on the stumper; every
+#: later match in which his side's keeper was seen halves it; ``is_keeper`` is weight over
+#: 0.25, so a player is a keeper while his last stumping is within his side's last *two*
+#: matches that named a keeper (1.0, then 0.5, then 0.25 and out): a single match in which
+#: a stand-in stumped does not unseat him, a handover completes in two, and a one-off
+#: stumper is dropped in two. Set on the archive's 42,586 played elevens, where every
+#: eleven has exactly one keeper: the old permanent flag left 4,667 elevens (11.0 %) with
+#: no keeper over the bar and 15,503 with two; a decayed *share* of the side's identified
+#: matches left 9,800 (23.0 %) and 4,263, because a keeper carries for years the matches
+#: in which a predecessor was seen; this rule leaves 6,354 (14.9 %) and 8,070, and flags
+#: 12 of the 92 players whose last stumping is 31+ appearances behind them where the old
+#: flag kept all 92. Three (last three) reads 5,911 and 9,393; one reads 7,193 and 6,014:
+#: no sharp optimum, and two is where the elevens lost per two-keeper eleven saved stop
+#: falling.
+KEEPER_DECAY_PER_IDENTIFIED_MATCH = 0.5
+KEEPER_MIN_WEIGHT = 0.25
 
 
-def is_keeper(keeper_share):
-    """Whether a player's ``keeper`` share makes him his side's keeper. Works on scalars
-    and arrays; the single definition the ``has_keeper`` feature and the constraint share."""
-    return keeper_share > KEEPER_MIN_SHARE
+def is_keeper(keeper_weight):
+    """Whether a player's ``keeper`` weight makes him a keeper. Works on scalars and arrays;
+    the single definition the ``has_keeper`` feature and the constraint share."""
+    return keeper_weight > KEEPER_MIN_WEIGHT
 
 
 def is_bowling_option(expected_balls_bowled, format_code: str):
@@ -121,10 +131,12 @@ PLAYER_VECTOR_KEYS: List[str] = [
     "career",  # matches in this format before this match
     "career_all",  # matches in any format before this match
     "pelo",  # player Elo in this format
-    # Of the recent matches in which his side's keeper was identified -- a stumping names
-    # him; nothing else in the archive does -- the decayed share in which it was this
-    # player. 1.0 for the side's keeper, 0.0 for his ten teammates in those matches, and
-    # falling for a former keeper as his side's stumpings go to someone else (FEAT-10).
+    # How recently the player was seen keeping (FEAT-10): 1.0 for each match he was
+    # credited a stumping in -- the one thing in the archive that names the keeper --
+    # halved (``KEEPER_DECAY_PER_IDENTIFIED_MATCH``) for every later match in which his
+    # side's keeper was seen. 0.0 for a player never seen keeping; falling for a former
+    # keeper as his side's stumpings go to someone else; unmoved by a match that named
+    # nobody.
     "keeper",
 ]
 
