@@ -179,17 +179,35 @@ Context: no weather, age or retirement column reaches a served model (`contract.
 
 ## 8. Ops, CI, security
 
-### OPS-01 — Reference data, configs, scripts and contracts trigger no CI  **Medium**
-
-`.github/workflows/ml-service-ci.yml:8-20`, `go-app-ci.yml:8-24` trigger on `ml-service/**`, `go-app/**`, `Makefile`, workflow files only. A hand edit to `venue-geocoding.csv` (the documented curation flow), a broken `player_biography_overrides.json`, or a stale `contracts/system-map.json` merges green. **Fix.** Add those paths; add a test that parses both CSV/JSONL files and asserts unique keys, country ∈ top votes or hand-curated, lat/lon inside the country, 24-slot arrays.
-
-### OPS-02 — Default admin key and open ports in three places; watcher holds the Docker socket  **Medium**
-
-`docker-compose.yml:43` `API_KEY: ${API_KEY:-dev-local-key}`, `:100` `ADMIN_API_KEY` same fallback; root `Makefile:88`, `ml-service/Makefile:83`, `scripts/cadence.sh:37` default to it; Postgres `:10` `"5432:5432"` and both APIs (`:68`, `:106`) bind all interfaces with `POSTGRES_PASSWORD` defaulting to `postgres`; the watcher (`:130`) mounts `/var/run/docker.sock`. `go-app/internal/server/auth.go:21-23` already fails closed when `API_KEY` is unset — the compose fallback defeats that. **Fix.** Drop the `:-dev-local-key` fallbacks; bind Postgres to `127.0.0.1`; read-only socket proxy for the watcher.
-
 ---
 
 ## 9. Fixed
+
+### OPS-01 — Reference data, configs, scripts and contracts trigger no CI  **Medium** — PR #347
+
+`.github/workflows/ml-service-ci.yml:8-20`, `go-app-ci.yml:8-24` trigger on `ml-service/**`, `go-app/**`, `Makefile`, workflow files only. A hand edit to `venue-geocoding.csv` (the documented curation flow), a broken `player_biography_overrides.json`, or a stale `contracts/system-map.json` merges green. **Fix.** Add those paths; add a test that parses both CSV/JSONL files and asserts unique keys, country ∈ top votes or hand-curated, lat/lon inside the country, 24-slot arrays.
+
+**The spec holds for three of the four paths, and not for `contracts/**`.** `reference-data/**` and `configs/**` triggered no workflow at all, and `scripts/**` triggered one only through the single entry `scripts/py-reachability.py` — so DATA-01 … DATA-06, which re-placed 22 venues, re-fetched 2,749 ERA5 days and rewrote both reference-data files across six merged PRs, started neither component's job. `contracts/**` is already a trigger of `docs-consistency.yml`, which runs `scripts/check-system-map.py`; a stale `system-map.json` does not merge green. That workflow's own header claimed it reads `configs/`, which neither generator does; the comment is corrected.
+
+**Fix.** Both component workflows trigger on `reference-data/**` and `configs/**`; ml-service also on `scripts/**` (replacing the narrower single-file entry) and on `docker-compose.yml`, which `tests/test_stack_security.py` reads. No existing trigger or job is narrowed.
+
+A path filter is worth nothing unless something parses the files, so three tests now do. `ml-service/tests/test_reference_data.py` holds the venue table to its own fold, unique keys and spellings, an IANA zone, and a point inside a bounding box for the country the row names; it holds every cached ERA5 day to one row per `(venue, date)`, 24 hourly slots per variable, 7 prior-day totals, a venue the table holds and the zone the table gives it — and to the invariant that bites on DATA-04's failure mode directly: two cached days one day apart describe six of the same prior local days, so where the two windows overlap they must agree entry for entry. Ten corrupted fixtures prove each check bites. Beside them sits a physical check independent of the code that wrote the file: pooled over all 19,653 days the warmest local slot is an afternoon hour and the coldest is around dawn — measured, **peak 14:00, trough 05:00**. `go-app/internal/venues/reference_data_test.go` holds the CSV's Python-computed `venue_key` column to Go's `venues.NormalizeName` for all 892 rows, so the pairing IMPORT-08 relies on cannot drift silently; `internal/biography` now parses the committed `configs/player_biography_overrides.json`, the one config of the three that had no committed-file test.
+
+**What the new tests find on the currently committed data: nothing wrong.** All 892 venue rows and all 19,653 cached days pass, including the prior-day overlap invariant over 3,172 adjacent pairs. DATA-01 … DATA-06 left the files sound; what was missing was the check, not the correction.
+
+### OPS-02 — Default admin key and open ports in three places; watcher holds the Docker socket  **Medium** — PR #347
+
+`docker-compose.yml:43` `API_KEY: ${API_KEY:-dev-local-key}`, `:100` `ADMIN_API_KEY` same fallback; root `Makefile:88`, `ml-service/Makefile:83`, `scripts/cadence.sh:37` default to it; Postgres `:10` `"5432:5432"` and both APIs (`:68`, `:106`) bind all interfaces with `POSTGRES_PASSWORD` defaulting to `postgres`; the watcher (`:130`) mounts `/var/run/docker.sock`. `go-app/internal/server/auth.go:21-23` already fails closed when `API_KEY` is unset — the compose fallback defeats that. **Fix.** Drop the `:-dev-local-key` fallbacks; bind Postgres to `127.0.0.1`; read-only socket proxy for the watcher.
+
+**The spec holds; the line numbers have moved (`:43`, `:106`, `:140`) and one thing it does not say changes the fix.** `authMiddleware` is already fail-secure: with `API_KEY` unset it logs a security alert and answers 503 to everything. The compose default was the only reason that never fired. But the ML service is not fail-secure — `app/main.py`'s `_verify_admin_api_key` returns early when `ADMIN_API_KEY` is empty — so simply dropping *its* fallback would have turned a known-key door into a no-key one, on an `/admin/*` surface that has `ENABLE_HOT_RELOAD=1` by default.
+
+**Fix.** Both `dev-local-key` fallbacks are gone; compose uses the required `${API_KEY:?…}` form, so `docker compose` refuses to render and names the line to fill in rather than starting half-protected, and `ADMIN_API_KEY` falls back to that same required `API_KEY` so it is never empty. The root Makefile, `ml-service/Makefile`, `scripts/cadence.sh` and `scripts/probes/p1_2_play_mode.py` no longer default to the retired key; `make reload` and `make cadence` gate on `require-api-key`, which reads `.env` — the file compose reads — and fails with the instruction rather than with a 401. Postgres, go-api and ml-service publish to `${BIND_HOST:-127.0.0.1}`; nothing inside the stack is affected, since containers reach each other by name over the compose network. `POSTGRES_PASSWORD` keeps its `postgres` default: with the port on loopback the exposure is local-only, and `.env.example` says so beside `BIND_HOST`.
+
+**The Docker socket: a read-only proxy, not a documented risk.** Every call `scripts/watch-containers.sh` makes is a GET — `docker events`, `docker inspect`, `docker logs` — so the watcher goes through a `tecnativa/docker-socket-proxy` service with `CONTAINERS=1`, `EVENTS=1`, `POST=0` and holds no socket of its own. Mounting the socket `:ro` would have been theatre: it stops writes to the socket file, not API calls. Verified against the running daemon before committing — inspect, logs and the event stream work through the proxy; `docker run` and `docker kill` both return 403 Forbidden.
+
+**What a developer must now do that they did not before:** set `API_KEY` once, in `.env`. Without it `docker compose` — so `make dev-up` and `make dev-down` — stops with `required variable API_KEY is missing a value: set API_KEY in .env or the environment; there is no default (see .env.example)`. README's Quick start, `.env.example`, `ml-service/.env.example` and `docs/quality-and-debugging.md` carry it. `ml-service/tests/test_stack_security.py` pins all of it; its seven tests fail on `main`.
+
+**Left open, reported not fixed.** The ML service's own admin surface still fails *open* when `ADMIN_API_KEY` is empty, which is only safe because compose can no longer leave it empty. Making `_verify_admin_api_key` refuse instead touches six test files and is its own change.
 
 ### DATA-05 — `wx_rain_prior_day_mm` sums match-day rain up to the *inferred* start  **Medium (leak in the X-2 rain family)** — PR #346
 

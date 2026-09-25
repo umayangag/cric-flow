@@ -1,6 +1,8 @@
 package biography_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -142,4 +144,24 @@ func TestApply_TakesEveryStatedField(t *testing.T) {
 	require.NotNil(t, corrected.CareerEndDate)
 	assert.Equal(t, "2019-06-01", corrected.CareerEndDate.Format(time.DateOnly))
 	require.NotNil(t, corrected.DeathDate)
+}
+
+// TestTheCommittedOverridesParse puts the committed file itself under test. The overrides
+// are hand-entered, so a typo in a controlled-vocabulary value, a duplicated Cricsheet id
+// or a row without provenance is exactly the defect this file exists to prevent, and it
+// would otherwise only surface during a backfill run that nothing in CI performs.
+func TestTheCommittedOverridesParse(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join("..", "..", "..", "configs", "player_biography_overrides.json")
+	file, err := os.Open(filepath.Clean(path))
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, file.Close()) })
+
+	overrides, err := biography.ParseOverrides(file)
+
+	require.NoError(t, err)
+	for id := range overrides {
+		assert.NotEmpty(t, overrides[id].Note, "override %s records where the fact came from", id)
+	}
 }

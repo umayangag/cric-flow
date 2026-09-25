@@ -1,4 +1,14 @@
 # Single CI workflow: format/lint check + tests in one job to minimize runners and setup.
+#
+# The trigger covers more than ml-service/ because the suite reads more than ml-service/
+# (OPS-01). `reference-data/**` and `configs/**` are committed data a person edits by hand
+# -- that is the documented curation flow -- and tests/test_reference_data.py,
+# tests/test_weather.py and tests/test_xi_wicket_kinds.py parse the committed files
+# themselves. Without those paths a hand edit that broke a row merged green and surfaced at
+# the next backfill. `scripts/**` replaces the single py-reachability.py entry for the same
+# reason: the Python under scripts/ is in the reachability graph this job checks.
+# `docker-compose.yml` is here because tests/test_stack_security.py reads it (OPS-02): the
+# stack's admin key, its port bindings and the watcher's Docker access are asserted there.
 name: ML Service CI
 
 concurrency:
@@ -10,7 +20,10 @@ on:
     branches: [ main ]
     paths:
       - 'ml-service/**'
-      - 'scripts/py-reachability.py'
+      - 'reference-data/**'
+      - 'configs/**'
+      - 'scripts/**'
+      - 'docker-compose.yml'
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'
@@ -18,7 +31,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ml-service/**'
-      - 'scripts/py-reachability.py'
+      - 'reference-data/**'
+      - 'configs/**'
+      - 'scripts/**'
+      - 'docker-compose.yml'
       - '.github/workflows/ml-service-ci.yml'
       - 'Makefile'
       - 'ml-service/requirements.txt'

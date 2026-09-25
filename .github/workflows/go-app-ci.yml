@@ -1,4 +1,11 @@
 # Single CI workflow: lint + tests in one job to minimize runners and setup.
+#
+# The trigger covers more than go-app/ because the suite reads more than go-app/ (OPS-01).
+# `configs/**` holds the team lineage, the wicket-kind vocabulary and the biography
+# overrides -- all read by the importer, all parsed here against the committed file -- and
+# `reference-data/**` holds venue-geocoding.csv, whose `venue_key` column internal/venues
+# holds to NormalizeName (IMPORT-08). Both are data a person edits by hand, so without
+# these paths a broken row merged green.
 name: Go App CI
 
 concurrency:
@@ -10,6 +17,8 @@ on:
     branches: [ main ]
     paths:
       - 'go-app/**'
+      - 'configs/**'
+      - 'reference-data/**'
       - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'
@@ -18,6 +27,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'go-app/**'
+      - 'configs/**'
+      - 'reference-data/**'
       - '.github/workflows/go-app-ci.yml'
       - 'go.mod'
       - 'go.sum'

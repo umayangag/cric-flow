@@ -93,10 +93,15 @@ venue-weather: venv
 
 # Point `current` at a run and load it into the running service (the `reload` step).
 # RUN names one; with none, the newest run on disk -- the one a retrain just built.
-API_KEY ?= dev-local-key
+#
+# No default key (OPS-02): it must be the ADMIN_API_KEY the service was started with, and
+# a default here was a shared secret every checkout knows. The root Makefile passes it
+# down; called directly, set it on the command line or in the environment.
+API_KEY ?=
 ML_URL ?= http://localhost:8000
 RUN ?=
 reload:
+	@test -n "$(API_KEY)" || { echo "API_KEY is required and has no default: make reload API_KEY=<the key the service was started with>" && exit 1; }
 	curl -fsS -X POST -H "X-API-Key: $(API_KEY)" "$(ML_URL)/admin/reload$(if $(RUN),?run=$(RUN),)" | tee /dev/stderr >/dev/null
 
 # Format Python code with ruff (format + lint fix)

@@ -12,8 +12,10 @@
 #                         and the code's own enumerations are checked against the map.
 #
 # The check does not belong in a per-component workflow: it reads from go-app, ml-service and
-# configs/ at once, so a path filter scoped to one component would miss changes made in
-# another. Hence its own job.
+# frontend at once, so a path filter scoped to one component would miss changes made in
+# another. Hence its own job. (It does not read configs/, which this comment used to claim;
+# configs/ is parsed by the go-app and ml-service suites, and OPS-01 added it to their
+# triggers.)
 name: Docs consistency
 
 on:

@@ -471,7 +471,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="http://127.0.0.1:8080", help="go-app base URL")
     parser.add_argument("--ml", default="http://127.0.0.1:8000", help="ml-service base URL")
-    parser.add_argument("--api-key", default=os.environ.get("API_KEY", "dev-local-key"))
+    # No default key (OPS-02): it is the one the stack was started with, or nothing.
+    parser.add_argument("--api-key", default=os.environ.get("API_KEY", ""), required=not os.environ.get("API_KEY"))
     parser.add_argument("--models-dir", default=os.environ.get("MODELS_DIR", "output/ml-service"))
     parser.add_argument("--repeats", type=int, default=30, help="timed re-scores per format")
     parser.add_argument("--json", default="", help="write the raw measurements here")
