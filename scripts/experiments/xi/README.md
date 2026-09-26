@@ -144,3 +144,20 @@ data rather than to the estimator. Six recorded nulls; nothing has shipped:
     python scripts/experiments/xi/b11_innings_dispersion.py --frames output/ml-service/b11c/frames.pkl --cricsheet-dir data/go-app/cricsheet --format T20 --out output/ml-service/b11c/b11c_T20.json
     python scripts/experiments/xi/b11_innings_dispersion.py --frames output/ml-service/b11c/frames.pkl --cricsheet-dir data/go-app/cricsheet --format T20 --slope-check --out output/ml-service/b11c/slope_check_T20.json
     python scripts/experiments/xi/b11_innings_dispersion.py --decide output/ml-service/b11c/b11c_T20.json output/ml-service/b11c/b11c_ODI.json
+
+`t20_composition.py` settles the question batch 4's harness record left open
+(`docs/AUDIT_FINDINGS.md` § 9, batch 4): whether T20's objective AUC falling 0.6966 → 0.5792
+after IMPORT-09 moved 3,888 international T20s into T20I was the population or the model. It
+builds the win-row frame under two codes (batch 3's `926a924d`, extracted from history and
+named by `--code-root`, and the current one) over two taxonomies (`archive`, and `batch3` —
+the pre-IMPORT-09 rule re-applied at the source so the rating state pools as it did then),
+scores batch 3's and batch 4's recipes as parameters under the current code on the harness's
+own windows with the evaluation rows split by `competition_level`, with EVAL-13's column and
+grid arms in between; `levels` is the per-format AUC by competition level, pooled and
+level-only, and `decide` prints every table and the paired-over-folds deltas:
+
+    python scripts/experiments/xi/t20_composition.py --env-file .env build --taxonomy archive --out output/ml-service/exp-t20-composition/b4_archive.pkl
+    python scripts/experiments/xi/t20_composition.py --code-root <checkout of 926a924d>/ml-service --env-file .env build --taxonomy batch3 --out output/ml-service/exp-t20-composition/b3_batch3.pkl
+    python scripts/experiments/xi/t20_composition.py score --frames b4code_new=output/ml-service/exp-t20-composition/b4_archive.pkl --formats T20 T20I --out output/ml-service/exp-t20-composition/score_b4code_new.json
+    python scripts/experiments/xi/t20_composition.py levels --frames output/ml-service/exp-t20-composition/b4_archive.pkl --out output/ml-service/exp-t20-composition/levels_archive.json
+    python scripts/experiments/xi/t20_composition.py decide --score output/ml-service/exp-t20-composition/score_*.json --levels output/ml-service/exp-t20-composition/levels_archive.json
