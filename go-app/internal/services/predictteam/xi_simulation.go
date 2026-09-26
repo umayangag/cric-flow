@@ -24,6 +24,9 @@ type XISimulationRequest struct {
 	VenueID         int64
 	// Team1BatsFirst is nil before the toss, when both batting orders are drawn.
 	Team1BatsFirst *bool
+	// CompetitionLevel is the fixture's level where the sides' history says it; empty
+	// sends none. Only the display probability beside the draws reads it.
+	CompetitionLevel string
 	// AsOf asks for ratings as they stood strictly before this date (backtests); zero
 	// means the serving state through today.
 	AsOf time.Time
@@ -72,8 +75,11 @@ type XISimulatedSide struct {
 
 // XISimulationResult is the Go-side response from POST /simulate.
 type XISimulationResult struct {
-	Samples                      int
-	TossMarginalised             bool
+	Samples          int
+	TossMarginalised bool
+	// CompetitionLevelMarginalised says whether the display probability beside the draws
+	// averaged both levels (none sent) or read the one it was given; checked, not trusted.
+	CompetitionLevelMarginalised bool
 	SharedFactor                 bool
 	Team1                        XISimulatedSide
 	Team2                        XISimulatedSide
@@ -152,16 +158,17 @@ func applyXISimulation(
 	result *Result,
 ) error {
 	sim, err := simulator.SimulateMatchXI(ctx, XISimulationRequest{
-		Format:          fix.format,
-		Team1PlayerKeys: xi1,
-		Team2PlayerKeys: xi2,
-		Team1ID:         fix.team1.ClubID,
-		Team2ID:         fix.team2.ClubID,
-		VenueID:         fix.venue.VenueID,
-		Team1BatsFirst:  fix.team1BatsFirst,
-		AsOf:            fix.asOf,
-		MatchDate:       fix.matchDate,
-		Gender:          fix.gender,
+		Format:           fix.format,
+		Team1PlayerKeys:  xi1,
+		Team2PlayerKeys:  xi2,
+		Team1ID:          fix.team1.ClubID,
+		Team2ID:          fix.team2.ClubID,
+		VenueID:          fix.venue.VenueID,
+		Team1BatsFirst:   fix.team1BatsFirst,
+		CompetitionLevel: fix.competitionLevel.Level,
+		AsOf:             fix.asOf,
+		MatchDate:        fix.matchDate,
+		Gender:           fix.gender,
 	})
 	if err != nil {
 		return fmt.Errorf("simulate match: %w", err)
@@ -171,6 +178,10 @@ func applyXISimulation(
 	}
 	if err := refuseTossMismatch(
 		"simulate match", fix.team1BatsFirst, sim.TossMarginalised, "toss_marginalised"); err != nil {
+		return err
+	}
+	if err := refuseCompetitionLevelMismatch(
+		"simulate match", fix.competitionLevel, sim.CompetitionLevelMarginalised); err != nil {
 		return err
 	}
 	// The headline is E2's choice, made on the folds and served as a constant. An

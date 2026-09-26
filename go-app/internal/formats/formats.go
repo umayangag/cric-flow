@@ -24,6 +24,14 @@ const (
 	CompetitionClub          = "club"
 )
 
+// CompetitionLevels returns both levels, for the surfaces that have to spell them (H-24):
+// the level crosses the go-app <-> ml-service boundary on a prediction request, where the
+// display model reads it, so it is declared in contracts/ops-console.contract.json and
+// asserted from both sides.
+func CompetitionLevels() []string {
+	return []string{CompetitionInternational, CompetitionClub}
+}
+
 // ParseCompetitionLevel validates a Cricsheet `info.team_type` and returns it trimmed and
 // lower-cased. Every file in the archive carries one of the two values, so a file that
 // carries neither is refused rather than guessed at: the T20 / T20I split depends on it,

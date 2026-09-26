@@ -96,6 +96,13 @@ type contractDoc struct {
 	// value, so a reading the UI cannot spell would be a probability on screen with no
 	// statement of which of the two it is.
 	TossReadings []string `json:"toss_readings"`
+	// CompetitionLevels are Cricsheet's two words for a fixture's level, which cross the
+	// boundary on a prediction request since the display model reads the level as context
+	// (batch 5); ml-service refuses any other word. CompetitionLevelReadings is how the
+	// level a prediction's display probability was read at was known -- off the sides'
+	// history, or averaged over both -- which the Lab labels the answer from (§8.7).
+	CompetitionLevels        []string `json:"competition_levels"`
+	CompetitionLevelReadings []string `json:"competition_level_readings"`
 	// SelectionObjectives is how an eleven was arrived at (H-24, P2-3). It became a
 	// declared vocabulary with the prediction record: go-app stores it as a column and
 	// puts it on the record's listing, and it is the one value that separates an eleven
@@ -215,26 +222,28 @@ func buildContract() contractDoc {
 			Hint:    CutoffHint,
 			Example: CutoffExample,
 		},
-		MLCalls:                contractMLCalls(),
-		FormatCodes:            formats.CanonicalCodes(),
-		TeamGenders:            TeamGenders(),
-		StopResponseField:      StopResponseField,
-		PoolSources:            availability.PoolSources(),
-		PoolExclusionReasons:   availability.ExclusionReasons(),
-		SelectionRoles:         predictteam.SelectionRoles(),
-		WinProbabilitySources:  predictteam.WinProbabilitySources(),
-		ForecastSources:        predictteam.ForecastSources(),
-		TossReadings:           predictteam.TossReadings(),
-		SelectionObjectives:    predictteam.SelectionObjectives(),
-		FreshnessStatuses:      freshness.Statuses(),
-		RetrainStatuses:        freshness.RetrainStatuses(),
-		PredictionStates:       trackrecord.States(),
-		SimulatorPopulations:   trackrecord.Populations(),
-		TrackRecordMetricKeys:  trackrecord.MetricKeys(),
-		AuctionPlayerStates:    auction.States(),
-		AuctionMetricKeys:      auction.MetricKeys(),
-		AuctionIntervalSources: auction.IntervalSources(),
-		RatingsStaleCode:       freshness.RatingsStaleCode,
+		MLCalls:                  contractMLCalls(),
+		FormatCodes:              formats.CanonicalCodes(),
+		TeamGenders:              TeamGenders(),
+		StopResponseField:        StopResponseField,
+		PoolSources:              availability.PoolSources(),
+		PoolExclusionReasons:     availability.ExclusionReasons(),
+		SelectionRoles:           predictteam.SelectionRoles(),
+		WinProbabilitySources:    predictteam.WinProbabilitySources(),
+		ForecastSources:          predictteam.ForecastSources(),
+		TossReadings:             predictteam.TossReadings(),
+		CompetitionLevels:        formats.CompetitionLevels(),
+		CompetitionLevelReadings: predictteam.CompetitionLevelReadings(),
+		SelectionObjectives:      predictteam.SelectionObjectives(),
+		FreshnessStatuses:        freshness.Statuses(),
+		RetrainStatuses:          freshness.RetrainStatuses(),
+		PredictionStates:         trackrecord.States(),
+		SimulatorPopulations:     trackrecord.Populations(),
+		TrackRecordMetricKeys:    trackrecord.MetricKeys(),
+		AuctionPlayerStates:      auction.States(),
+		AuctionMetricKeys:        auction.MetricKeys(),
+		AuctionIntervalSources:   auction.IntervalSources(),
+		RatingsStaleCode:         freshness.RatingsStaleCode,
 	}
 }
 

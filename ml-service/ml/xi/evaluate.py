@@ -93,7 +93,12 @@ from ml.xi.optimizer import OPTIMISED_SELECTION_FORMATS
 from ml.xi.performance import PerformanceModels
 from ml.xi.sources import MatchSource
 from ml.xi.store import FormatModels
-from ml.xi.train import _score_marginalised, fit_display_model_as_shipped, fit_objective_as_shipped
+from ml.xi.train import (
+    _score_marginalised,
+    competition_level_breakdown,
+    fit_display_model_as_shipped,
+    fit_objective_as_shipped,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +271,11 @@ def _evaluate_win_window(
             "display_auc_mean": display_scores["auc"],
             "display_brier_mean": display_scores["brier"],
             "base_rate_brier": base_rate_brier,
+            # The pooled numbers above, split by the level the source recorded: which side
+            # of a pooled format (ODI's internationals and domestic one-day rows, TEST's
+            # Tests and first-class rounds) a move came from. Informational; the rows per
+            # level are what display-regression compares run to run.
+            "by_competition_level": competition_level_breakdown(objective, display, evaluation, rows_key="n_eval"),
             "hyperparameters": hyperparameters,
         }
     )
@@ -347,10 +357,24 @@ def _summarize_folds(folds: List[Dict]) -> Dict:
             node = node.get(key)
         return node
 
+    levels = sorted({level for f in scored for level in f.get("by_competition_level", {})})
     summary = {
         "objective_auc": over_folds(lambda f: f["objective_auc"]),
         "objective_brier": over_folds(lambda f: f["objective_brier"]),
         "display_auc": over_folds(lambda f: f["display_auc_mean"]),
+        # The two AUCs per competition level, over the folds that could score the level
+        # (a fold with fewer than twenty rows of it, or one class, reports its count alone).
+        "by_competition_level": {
+            level: {
+                "objective_auc": over_folds(
+                    lambda f, level=level: nested(f, "by_competition_level", level, "objective_auc")
+                ),
+                "display_auc": over_folds(
+                    lambda f, level=level: nested(f, "by_competition_level", level, "display_auc")
+                ),
+            }
+            for level in levels
+        },
         "base_rate_brier": over_folds(lambda f: f["base_rate_brier"]),
         "swap_violation_share": over_folds(lambda f: nested(f, "swap_monotonicity", "violation_share")),
         # H-4's probe per axis (FEAT-14), beside the combined share it is a gate on.

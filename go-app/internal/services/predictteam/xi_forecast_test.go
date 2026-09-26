@@ -69,6 +69,7 @@ func simulationResult(headlineSource string) *XISimulationResult {
 	return &XISimulationResult{
 		Samples:                      2000,
 		TossMarginalised:             true,
+		CompetitionLevelMarginalised: true,
 		Team1:                        simulatedSide("a1", 170),
 		Team2:                        simulatedSide("b1", 160),
 		SimulatedTeam1WinProbability: 0.58,

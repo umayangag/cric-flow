@@ -231,6 +231,9 @@ type Result struct {
 	WinProbability WinProbabilitySummary `json:"win_probability"`
 	// Toss says which batting order the numbers assume, and whether a named one was used.
 	Toss TossSummary `json:"toss"`
+	// CompetitionLevel says which level the displayed probability was read at -- read off
+	// the two sides' history -- or that it was averaged over both, and why.
+	CompetitionLevel CompetitionLevelSummary `json:"competition_level"`
 	// Venue says which venue every model read, or that none was named. A venue the caller
 	// named and this database does not hold is refused rather than reported here (GO-08).
 	Venue     VenueSummary `json:"venue"`
@@ -303,6 +306,9 @@ type fixture struct {
 	gender string
 	// team1BatsFirst is the toss as the caller gave it; nil is unknown.
 	team1BatsFirst *bool
+	// competitionLevel is the fixture's level as read off the two sides' history, or the
+	// statement that none could be (competition_level.go); reported on the wire.
+	competitionLevel CompetitionLevelSummary
 	// pinned holds both elevens where the caller built them (Play mode); isPinned says
 	// whether they did.
 	pinned   pinnedXI
@@ -333,6 +339,7 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 		Team2:            newSelectedPlayers(selection.Team2Keys, fix.pool2, selection.Team2Answers),
 		Selection:        selection.Summary,
 		Venue:            fix.venue,
+		CompetitionLevel: fix.competitionLevel,
 		Team1PoolSummary: fix.summary1,
 		Team2PoolSummary: fix.summary2,
 	}
@@ -343,6 +350,10 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 	}
 	if err := refuseTossMismatch(
 		"win probability", fix.team1BatsFirst, win.TossMarginalised, "toss_marginalised"); err != nil {
+		return nil, err
+	}
+	if err := refuseCompetitionLevelMismatch(
+		"win probability", fix.competitionLevel, win.CompetitionLevelMarginalised); err != nil {
 		return nil, err
 	}
 	if err := result.Adopt(win.Served); err != nil {
@@ -380,14 +391,15 @@ func PredictTeams(ctx context.Context, input Input, service XIService) (*Result,
 // it (GO-07).
 func newWinRequest(fix fixture, selection xiSelection) XIWinRequest {
 	req := XIWinRequest{
-		Format:          fix.format,
-		Team1PlayerKeys: selection.Team1Keys,
-		Team2PlayerKeys: selection.Team2Keys,
-		Team1ID:         fix.team1.ClubID,
-		Team2ID:         fix.team2.ClubID,
-		VenueID:         fix.venue.VenueID,
-		Team1BatsFirst:  fix.team1BatsFirst,
-		AsOf:            fix.asOf,
+		Format:           fix.format,
+		Team1PlayerKeys:  selection.Team1Keys,
+		Team2PlayerKeys:  selection.Team2Keys,
+		Team1ID:          fix.team1.ClubID,
+		Team2ID:          fix.team2.ClubID,
+		VenueID:          fix.venue.VenueID,
+		Team1BatsFirst:   fix.team1BatsFirst,
+		CompetitionLevel: fix.competitionLevel.Level,
+		AsOf:             fix.asOf,
 	}
 	// A pinned eleven is checked against the constraints on the call that scores it, so
 	// the check describes the same eleven the probability beside it describes.
@@ -447,6 +459,10 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	if err != nil {
 		return fixture{}, err
 	}
+	competitionLevel, err := resolveCompetitionLevel(ctx, team1, team2, productionCompetitionLevelLookup)
+	if err != nil {
+		return fixture{}, err
+	}
 
 	constraints := resolveConstraints(input)
 
@@ -503,21 +519,22 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	}
 
 	fix := fixture{
-		format:         format,
-		team1:          team1,
-		team2:          team2,
-		venue:          venue,
-		pool1:          pool1,
-		pool2:          pool2,
-		summary1:       summary1,
-		summary2:       summary2,
-		constraints:    constraints,
-		mustInclude1:   mustInclude1,
-		mustInclude2:   mustInclude2,
-		asOf:           input.AsOf,
-		matchDate:      input.MatchDate,
-		gender:         servedGender(team1.Gender),
-		team1BatsFirst: input.Team1BatsFirst,
+		format:           format,
+		team1:            team1,
+		team2:            team2,
+		venue:            venue,
+		pool1:            pool1,
+		pool2:            pool2,
+		summary1:         summary1,
+		summary2:         summary2,
+		constraints:      constraints,
+		mustInclude1:     mustInclude1,
+		mustInclude2:     mustInclude2,
+		asOf:             input.AsOf,
+		matchDate:        input.MatchDate,
+		gender:           servedGender(team1.Gender),
+		team1BatsFirst:   input.Team1BatsFirst,
+		competitionLevel: competitionLevel,
 	}
 	if err := applyPinnedXIs(&fix, input); err != nil {
 		return fixture{}, err

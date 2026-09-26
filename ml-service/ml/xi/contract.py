@@ -11,6 +11,9 @@ Two families, kept apart on purpose:
 * ``TOSS_COLS`` -- who won the toss, a fact of the fixture rather than of either side's
   state (FEAT-05). Display-only for the same reason, and marginalised at serving because
   no request carries it.
+* ``COMPETITION_LEVEL_COLS`` -- whether the fixture is between national sides, the other
+  fact of the fixture (Cricsheet's ``team_type``). Display-only for the same reason; read
+  at the level a serving request names and averaged over both where it names none.
 """
 
 from __future__ import annotations
@@ -389,6 +392,41 @@ TOSS_COL = "toss_won_by_team1"
 TOSS_COLS: List[str] = [TOSS_COL]
 TOSS_UNKNOWN = 0.5
 
+# The competition level: Cricsheet's ``info.team_type`` on the archive path and
+# ``match.competition_level`` (migration 0022) on Postgres -- ``international`` when both
+# sides are national teams, ``club`` otherwise. It is the T20 / T20I rule (IMPORT-09) and
+# what the display-regression gate counts a format's rows by. The two words cross the
+# go-app boundary on a serving request and are declared in contracts/ops-console.contract.json
+# and asserted from both sides (H-24), like the genders above.
+COMPETITION_INTERNATIONAL = "international"
+COMPETITION_CLUB = "club"
+COMPETITION_LEVELS: List[str] = [COMPETITION_INTERNATIONAL, COMPETITION_CLUB]
+
+# The level as a win-row column: 1.0 international, 0.0 club, and 0.5 -- its own category,
+# the shape the toss uses -- where the source recorded none. Display-only, for the toss's
+# reason: it is a fact of the fixture, not a function of the two elevens, so the objective
+# must not read it (H-17's line keeps its meaning and ``objective_auc`` means one thing,
+# EVAL-05). Pooled formats are where it earns its place: ODI holds 1,483 domestic one-day
+# rows beside 3,512 internationals and TEST 1,342 first-class rounds beside 753 Tests, the
+# two levels discriminate differently on the display model (#356: pooling is worth 0.028 of
+# display AUC to the domestic ODI rows, a level-only fit +0.010 to the internationals), and
+# the column lets one pooled fit read the level instead of splitting the rows. Unlike the
+# toss it does not change under ``train.swap_orientation``: exchanging the batting order
+# leaves the fixture's level where it is. A serving request may name the level; one that
+# does not is averaged over both answers and says so on the wire (§8.7).
+COMPETITION_LEVEL_COL = "competition_is_international"
+COMPETITION_LEVEL_COLS: List[str] = [COMPETITION_LEVEL_COL]
+COMPETITION_LEVEL_UNKNOWN = 0.5
+COMPETITION_LEVEL_VALUES: Dict[str, float] = {COMPETITION_INTERNATIONAL: 1.0, COMPETITION_CLUB: 0.0}
+
+
+def competition_level_value(competition_level: str) -> float:
+    """The level as the win row reads it: one of the two declared words, or the unrecorded
+    category for anything else (a database migrated but not re-imported, a synthetic
+    source, a record built for the serving path with no level named)."""
+    return COMPETITION_LEVEL_VALUES.get(competition_level, COMPETITION_LEVEL_UNKNOWN)
+
+
 # Sign of each team-context column's effect on P(team1 wins), for the four whose direction
 # is knowable rather than merely plausible: a stronger, better-formed side more familiar
 # with the ground, or at home, does not win less often, and all four are negated by
@@ -421,12 +459,16 @@ STAKES_COLS: List[str] = ["stakes_knockout", "stakes_stage_known"]
 #: Gate X-3, use 2: whether the display model reads ``STAKES_COLS``.
 STAKES_FEATURES_KEPT = False
 
-# The display model reads every XI column the objective reads, plus the team context and
-# the toss the objective must not see (it cannot distinguish two elevens). The two lists
-# differ in nothing else since FEAT-14: B-7's ``t1_pelo_std`` / ``t2_pelo_std`` exclusion
-# is now the contract for both models (see ``_SIDE_STEMS``).
+# The display model reads every XI column the objective reads, plus the team context, the
+# toss and the competition level the objective must not see (none of them can distinguish
+# two elevens). The two lists differ in nothing else since FEAT-14: B-7's ``t1_pelo_std`` /
+# ``t2_pelo_std`` exclusion is now the contract for both models (see ``_SIDE_STEMS``).
 DISPLAY_FEATURE_COLS: List[str] = (
-    list(XI_FEATURE_COLS) + TEAM_CONTEXT_COLS + TOSS_COLS + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
+    list(XI_FEATURE_COLS)
+    + TEAM_CONTEXT_COLS
+    + TOSS_COLS
+    + COMPETITION_LEVEL_COLS
+    + (list(STAKES_COLS) if STAKES_FEATURES_KEPT else [])
 )
 
 TARGET_COL = "team1_wins"
