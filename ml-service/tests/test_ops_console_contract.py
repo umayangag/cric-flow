@@ -157,6 +157,18 @@ def test_the_context_group_split_keys_on_a_gender_the_contract_publishes() -> No
     assert state._ctx_group(C.GENDER_MALE) == 0
 
 
+# --- the competition-level vocabulary -----------------------------------------------
+
+
+def test_both_services_match_on_the_same_competition_levels(contract) -> None:
+    """go-app reads a fixture's level off the two sides' history and sends it on a
+    prediction request; this service reads it into the display model's level column and
+    refuses any other word. A level spelled differently on one side is a 422 on every
+    fixture between two national sides, or a display read at the wrong level."""
+    assert set(contract["competition_levels"]) == set(C.COMPETITION_LEVELS)
+    assert set(contract["competition_levels"]) == set(C.COMPETITION_LEVEL_VALUES)
+
+
 # --- the selection-role vocabulary (P1-3) -------------------------------------------
 
 

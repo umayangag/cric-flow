@@ -459,7 +459,8 @@ func resolveFixture(ctx context.Context, input Input) (fixture, error) {
 	if err != nil {
 		return fixture{}, err
 	}
-	competitionLevel, err := resolveCompetitionLevel(ctx, team1, team2, productionCompetitionLevelLookup)
+	// The level is read as-of the fixture's own day, like the pool's window (H-21).
+	competitionLevel, err := resolveCompetitionLevel(ctx, team1, team2, cutoff, productionCompetitionLevelLookup)
 	if err != nil {
 		return fixture{}, err
 	}

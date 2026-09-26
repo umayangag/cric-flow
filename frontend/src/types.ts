@@ -182,6 +182,33 @@ export type PredictTossSummary = {
   note?: string;
 };
 
+/**
+ * A fixture's competition level, exactly as the wire spells it: Cricsheet's `team_type`,
+ * `international` between national sides and `club` otherwise (H-24). Declared in
+ * contracts/ops-console.contract.json and asserted against it by opsContract.test.ts.
+ */
+export const COMPETITION_LEVELS = ['international', 'club'] as const;
+export type CompetitionLevel = (typeof COMPETITION_LEVELS)[number];
+
+/**
+ * How the level the displayed probability was read at was known (H-24, §8.7): off both
+ * sides' recorded history (`sides_history`), or averaged over both levels because a side
+ * has no single level on record or the two disagree (`marginalised`).
+ */
+export const COMPETITION_LEVEL_READINGS = ['sides_history', 'marginalised'] as const;
+export type CompetitionLevelReading = (typeof COMPETITION_LEVEL_READINGS)[number];
+
+/**
+ * Which competition level the displayed probability was read at, and how it was known.
+ * `level` is absent on a marginalised answer, where `note` says why no single level could
+ * be read. The display model reads the level as context; the eleven is selected without it.
+ */
+export type PredictCompetitionLevelSummary = {
+  level?: CompetitionLevel;
+  reading: CompetitionLevelReading;
+  note?: string;
+};
+
 /** The simulated match. Absent for a format with no innings length. */
 export type PredictScorecard = {
   samples: number;
@@ -404,6 +431,8 @@ export type PredictTeamSelectionResponse = PredictServedRatings & {
   win_probability: PredictWinProbability;
   /** Which batting order the numbers were produced under, and whether a named one was used. */
   toss: PredictTossSummary;
+  /** Which competition level the displayed probability was read at, and how it was known. */
+  competition_level: PredictCompetitionLevelSummary;
   /** Which venue every model read, or that none was named. */
   venue: PredictVenueSummary;
   scorecard?: PredictScorecard;

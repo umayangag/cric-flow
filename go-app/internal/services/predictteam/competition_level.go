@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/umayangag/cric-flow/go-app/internal/db"
 )
@@ -52,22 +53,25 @@ type CompetitionLevelSummary struct {
 	Note string `json:"note,omitempty"`
 }
 
-// CompetitionLevelLookup reads, for each club id, the one level every match the club has
-// played on record was at; a club that has played at both levels, or at none, is absent
-// from the map. It is a parameter so the resolution can be tested without a database, and
-// it is read-only by contract.
-type CompetitionLevelLookup func(ctx context.Context, clubIDs []int64) (map[int64]string, error)
+// CompetitionLevelLookup reads, for each club id, the one level every match the club
+// played before the fixture's day was at; a club that has played at both levels, or at
+// none, is absent from the map. As-of by the date bound (H-21): what a side's later
+// matches say about it is not knowable at this fixture's toss, so a backtest reads the
+// history as it stood. It is a parameter so the resolution can be tested without a
+// database, and it is read-only by contract.
+type CompetitionLevelLookup func(ctx context.Context, clubIDs []int64, before time.Time) (map[int64]string, error)
 
-// resolveCompetitionLevel reads the fixture's level off the two sides' history, keeping
-// the outcomes apart: both sides at one and the same level, a side with no single level,
-// two sides whose levels disagree, and a lookup failure -- which is returned as itself, so
-// a database fault can never be served as "level unknown".
+// resolveCompetitionLevel reads the fixture's level off the two sides' history before the
+// fixture's day, keeping the outcomes apart: both sides at one and the same level, a side
+// with no single level, two sides whose levels disagree, and a lookup failure -- which is
+// returned as itself, so a database fault can never be served as "level unknown".
 func resolveCompetitionLevel(
 	ctx context.Context,
 	team1, team2 db.TeamSide,
+	fixtureDay time.Time,
 	lookup CompetitionLevelLookup,
 ) (CompetitionLevelSummary, error) {
-	levels, err := lookup(ctx, []int64{team1.ClubID, team2.ClubID})
+	levels, err := lookup(ctx, []int64{team1.ClubID, team2.ClubID}, fixtureDay)
 	if err != nil {
 		slog.Error("predictteam.PredictTeams competition level lookup failed",
 			slog.Int64("team1_club_id", team1.ClubID), slog.Int64("team2_club_id", team2.ClubID), slog.Any("err", err))
@@ -81,7 +85,8 @@ func resolveCompetitionLevel(
 	}{{team1, known1}, {team2, known2}} {
 		if !side.known {
 			return marginalisedCompetitionLevel(fmt.Sprintf(
-				"%s has played at no single competition level on record", side.team.Label())), nil
+				"%s has played at no single competition level on record before %s",
+				side.team.Label(), fixtureDay.Format(time.DateOnly))), nil
 		}
 	}
 	if level1 != level2 {
@@ -117,7 +122,7 @@ func refuseCompetitionLevelMismatch(step string, summary CompetitionLevelSummary
 }
 
 // productionCompetitionLevelLookup is the lookup the served path uses: one read of the
-// levels each club's matches were played at, and nothing else.
-func productionCompetitionLevelLookup(ctx context.Context, clubIDs []int64) (map[int64]string, error) {
-	return db.CompetitionLevelsByClub(ctx, clubIDs)
+// levels each club's matches before the fixture's day were played at, and nothing else.
+func productionCompetitionLevelLookup(ctx context.Context, clubIDs []int64, before time.Time) (map[int64]string, error) {
+	return db.CompetitionLevelsByClub(ctx, clubIDs, before)
 }
