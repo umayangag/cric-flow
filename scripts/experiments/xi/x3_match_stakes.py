@@ -62,7 +62,6 @@ from ml.xi.evaluate import (  # noqa: E402
 from ml.xi.selection_metrics import display_swap_monotonicity  # noqa: E402
 from ml.xi.sources import CricsheetJsonSource  # noqa: E402
 from ml.xi.train import (  # noqa: E402
-    _international_teams_from_config,
     _score_marginalised,
     _xy,
     make_display_model,
@@ -337,7 +336,7 @@ def stakes_feature_verdict(control: Dict, arm: Dict) -> Dict[str, Any]:
 
 def coverage_report(cricsheet_dir: str) -> Dict[str, Any]:
     """The label-coverage figures, measured over the archive the rating pass reads."""
-    source = CricsheetJsonSource(cricsheet_dir, _international_teams_from_config())
+    source = CricsheetJsonSource(cricsheet_dir)
     started = time.perf_counter()
     records = list(source.iter_matches())
     derived = {str(r.match_id): r.stakes for r in records}
@@ -356,14 +355,14 @@ def coverage_report(cricsheet_dir: str) -> Dict[str, Any]:
 
 def run(frames_path: str, cricsheet_dir: str, pairs_cache: Optional[str], out: str) -> Dict[str, Any]:
     player_frame, match_frame = load_frames(None, frames_path)
-    source = CricsheetJsonSource(cricsheet_dir, _international_teams_from_config())
+    source = CricsheetJsonSource(cricsheet_dir)
     if pairs_cache and os.path.exists(pairs_cache):
         logger.info("pairs from cache %s", pairs_cache)
         pairs, stakes, parity = pd.read_pickle(pairs_cache)
     else:
         pairs = ne.build_pairs(match_frame, player_frame)
         parity = ne.score_previous_elevens(pairs, source)
-        archive = CricsheetJsonSource(cricsheet_dir, _international_teams_from_config())
+        archive = CricsheetJsonSource(cricsheet_dir)
         stakes = {str(record.match_id): record.stakes for record in archive.iter_matches()}
         if pairs_cache:
             pd.to_pickle((pairs, stakes, parity), pairs_cache)

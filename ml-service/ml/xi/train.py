@@ -568,17 +568,3 @@ def _log_performance(format_code: str, report: Dict) -> None:
             target,
             *values,
         )
-
-
-def _international_teams_from_config() -> List[str]:
-    """The go-app config's international team list, so offline runs use go-app's format taxonomy."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (
-        os.path.join(here, "..", "..", "..", "go-app", "config.json"),
-        os.environ.get("GO_APP_CONFIG", ""),
-    ):
-        if candidate and os.path.exists(candidate):
-            with open(candidate) as fh:
-                return list(json.load(fh).get("formats", {}).get("international_teams", []))
-    logger.warning("go-app config.json not found; T20 between international sides will not be classed as T20I")
-    return []

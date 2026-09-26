@@ -44,6 +44,7 @@ def _doc(players: Dict[str, List[str]], innings: List[dict]) -> dict:
         "info": {
             "dates": [date(2024, 3, 1).isoformat()],
             "match_type": "T20",
+            "team_type": "club",
             "teams": ["X", "Y"],
             "gender": "male",
             "venue": "Ground",
@@ -63,7 +64,7 @@ def _twelve_and_eleven() -> Dict[str, List[str]]:
 def _parse(tmp_path, doc: dict) -> MatchRecord:
     path = tmp_path / "1.json"
     path.write_text(json.dumps(doc))
-    record = parse_cricsheet_file(str(path), [])
+    record = parse_cricsheet_file(str(path))
     assert record is not None
     return record
 

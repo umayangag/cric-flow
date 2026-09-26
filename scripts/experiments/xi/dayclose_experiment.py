@@ -13,7 +13,6 @@ sys.path.insert(0, "/home/claude/xi/repo/ml-service")
 from ml.xi import contract as C
 from ml.xi.ratings import RatingState, aggregate_side, match_features
 from ml.xi.sources import CricsheetJsonSource
-INTL = ["Afghanistan","Australia","Bangladesh","England","India","Ireland","New Zealand","Pakistan","South Africa","Sri Lanka","West Indies","Zimbabwe"]
 CUTOFF = pd.Timestamp("2025-09-01")
 
 def build(day_close: bool):
@@ -21,7 +20,7 @@ def build(day_close: bool):
     def flush():
         for m in pending: state.update(m)
         pending.clear()
-    for m in CricsheetJsonSource("/home/claude/xi/raw", INTL).iter_matches():
+    for m in CricsheetJsonSource("/home/claude/xi/raw").iter_matches():
         if day_close and current is not None and m.match_date != current: flush()
         current = m.match_date
         if m.outcome is not None:

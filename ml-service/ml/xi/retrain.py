@@ -307,11 +307,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.cricsheet_dir:
         from ml.xi.sources import CricsheetJsonSource
-        from ml.xi.train import _international_teams_from_config
 
-        source = CricsheetJsonSource(
-            args.cricsheet_dir, _international_teams_from_config(), args.formats, birth_dates_path=args.birth_dates
-        )
+        source = CricsheetJsonSource(args.cricsheet_dir, args.formats, birth_dates_path=args.birth_dates)
     else:
         from ml.db import get_db_connection
         from ml.xi.sources import PostgresSource

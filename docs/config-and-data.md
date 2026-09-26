@@ -673,7 +673,12 @@ label names. Three columns on `match` keep the distinction recoverable (IMPORT-0
   twelve team names in `config.json`, which took the 3,888 T20s between other national
   sides — World Cup qualifiers, and the 87 World Cup matches the twelve played against
   them — for club cricket; the list is gone. A file with no `team_type` is refused rather
-  than guessed at. Nothing but the importer reads the column yet: it is what the pooling
+  than guessed at. The rating pass's archive path applies that same rule to the same
+  field and makes the same refusal (`ml/xi/sources.py::detect_format`); for one batch it
+  went on reading the deleted list, which placed 5,700 international T20s as club
+  cricket on that path and on no other, so `make xi-parity` now compares
+  `matches_read_by_format` and a taxonomy that drifts again is named rather than
+  inferred from what it did downstream. Nothing but the importer reads the column yet: it is what the pooling
   decision — does `TEST` mean Test cricket or first-class cricket? — is measured against,
   and once taken it is applied with an `UPDATE` of `format_id`, not a re-import.
 - **`match_type_number`** (`0022`) is the ICC's running number for an official Test, ODI

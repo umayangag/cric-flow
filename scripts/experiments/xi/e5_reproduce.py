@@ -47,10 +47,7 @@ DEVELOPMENT_END = "2025-09-01"
 def _source_factory(cricsheet_dir: str | None):
     if cricsheet_dir:
         from ml.xi.sources import CricsheetJsonSource
-        from ml.xi.train import _international_teams_from_config
-
-        teams = _international_teams_from_config()
-        return lambda: CricsheetJsonSource(cricsheet_dir, teams)
+        return lambda: CricsheetJsonSource(cricsheet_dir)
     from ml.db import get_db_connection
     from ml.xi.sources import PostgresSource
 

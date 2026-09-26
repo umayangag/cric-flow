@@ -87,7 +87,7 @@ def test_csv_reader_refuses_a_file_without_the_columns(tmp_path) -> None:
 
 
 def test_no_birth_dates_file_means_every_age_unknown(tmp_path) -> None:
-    source = CricsheetJsonSource(str(tmp_path), [], birth_dates_path=None)
+    source = CricsheetJsonSource(str(tmp_path), birth_dates_path=None)
 
     assert source.birth_dates() == {}
 

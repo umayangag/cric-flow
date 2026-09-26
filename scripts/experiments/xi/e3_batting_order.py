@@ -277,9 +277,7 @@ def load_frames(args) -> Tuple[pd.DataFrame, pd.DataFrame]:
         return pd.read_pickle(args.cache)
     if args.cricsheet_dir:
         from ml.xi.sources import CricsheetJsonSource
-        from ml.xi.train import _international_teams_from_config
-
-        source = CricsheetJsonSource(args.cricsheet_dir, _international_teams_from_config())
+        source = CricsheetJsonSource(args.cricsheet_dir)
     else:
         from ml.db import get_db_connection
         from ml.xi.sources import PostgresSource

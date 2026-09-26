@@ -486,12 +486,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.cricsheet_dir:
         from ml.xi.sources import CricsheetJsonSource
-        from ml.xi.train import _international_teams_from_config
-
-        international_teams = _international_teams_from_config()
 
         def source_factory() -> MatchSource:
-            return CricsheetJsonSource(args.cricsheet_dir, international_teams, birth_dates_path=args.birth_dates)
+            return CricsheetJsonSource(args.cricsheet_dir, birth_dates_path=args.birth_dates)
 
     else:
         from ml.db import get_db_connection

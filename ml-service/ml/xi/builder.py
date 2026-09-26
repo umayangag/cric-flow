@@ -172,6 +172,7 @@ def build(
     n_drawn_or_tied = 0
     n_decided_without_deliveries = 0
     n_seen = 0
+    matches_read_by_format = {code: 0 for code in C.FORMAT_CODES}
     team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
@@ -188,6 +189,7 @@ def build(
     current_date = None
     for i, match in enumerate(source.iter_matches()):
         n_seen += 1
+        matches_read_by_format[match.format_code] = matches_read_by_format.get(match.format_code, 0) + 1
         team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
@@ -231,6 +233,7 @@ def build(
         out_of_scope_matches=counts.out_of_scope,
         unusable_matches=counts.unusable,
         matches_read=counts.yielded,
+        matches_read_by_format=matches_read_by_format,
         undecided_matches=n_undecided,
         drawn_or_tied_matches=n_drawn_or_tied,
         decided_matches_without_deliveries=n_decided_without_deliveries,

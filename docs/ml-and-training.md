@@ -714,7 +714,12 @@ on every other count. `decided_matches_without_deliveries` (FEAT-03) is in it be
 two sources can genuinely differ here: the archive path drops a file with no innings as
 unusable, while the database offers a match with an innings row and no `ball_event` rows,
 and a database that lost one match's ball events agrees with the archive on every other
-count — the win row is built either way.
+count — the win row is built either way. `matches_read_by_format` is in it because a
+*taxonomy* can drift while every total holds: the archive path placed a `T20` by a list
+of international sides that had been deleted from `go-app/config.json`, and 5,700
+matches changed format with `matches_read`, the training-row count and the player keys
+all unmoved — the check saw two stakes counts and one player key and could not name the
+cause. Both paths now read Cricsheet's `info.team_type`, and the split is compared.
 
 ```bash
 make xi-parity                                    # defaults to data/go-app/cricsheet

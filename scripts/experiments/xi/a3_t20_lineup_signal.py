@@ -51,7 +51,7 @@ from ml.xi.evaluate import MIN_EVAL_ROWS, MIN_TRAIN_ROWS, SWAP_MAX_MATCHES, fold
 from ml.xi.ratings import aggregate_side  # noqa: E402
 from ml.xi.selection_metrics import _VIOLATION_EPS  # noqa: E402
 from ml.xi.sources import CricsheetJsonSource  # noqa: E402
-from ml.xi.train import _international_teams_from_config, make_objective_model  # noqa: E402
+from ml.xi.train import make_objective_model  # noqa: E402
 
 logger = logging.getLogger("a3_t20_lineup_signal")
 
@@ -267,7 +267,7 @@ def build_pair_vectors(
     advancing pass, as ``natural_experiment.score_previous_elevens`` does -- with the
     fielded eleven read from the same state and checked against the frame's vectors."""
     by_match = match_frame.set_index("match_id")
-    asof = AsOfRatings(CricsheetJsonSource(cricsheet_dir, _international_teams_from_config()))
+    asof = AsOfRatings(CricsheetJsonSource(cricsheet_dir))
     out: List[PairVectors] = []
     max_difference = 0.0
     started = time.perf_counter()

@@ -6,6 +6,10 @@ difference sat unnoticed because nobody ran the two side by side:
 
 * match identity was a hash of date and team names, so 618 files shared an id in 309 pairs
   and the database held 22,425 matches for 22,734 files;
+* the archive path went on placing a T20 by a list of international sides that had been
+  deleted from ``go-app/config.json``, so 5,700 international T20s were club T20 on that
+  path and on no other -- and every total agreed, because a match reclassified is still a
+  match read (``matches_read_by_format``);
 * the JSON path keyed 469 unnamed substitute fielders on the empty name, inventing a
   cricketer with a fielding record drawn from 365 matches;
 * the Postgres source hard-coded the match result to None while the archive path read it,
@@ -43,6 +47,7 @@ _COMPARED_COUNTS = (
     "offered_matches",
     "unusable_matches",
     "matches_read",
+    "matches_read_by_format",
     "undecided_matches",
     "drawn_or_tied_matches",
     "decided_matches_without_deliveries",
@@ -77,7 +82,7 @@ def compare(postgres: BuildResult, cricsheet: BuildResult) -> List[str]:
     pg, cs = postgres.quality.as_dict(), cricsheet.quality.as_dict()
     for name in _COMPARED_COUNTS:
         if pg[name] != cs[name]:
-            differences.append(f"{name}: postgres {pg[name]}, cricsheet {cs[name]}")
+            differences.append(f"{name}: postgres {_cell(pg[name])}, cricsheet {_cell(cs[name])}")
     if len(postgres.frame) != len(cricsheet.frame):
         differences.append(f"training rows: postgres {len(postgres.frame)}, cricsheet {len(cricsheet.frame)}")
 
@@ -109,13 +114,23 @@ def _sample(keys: Sequence[str], limit: int = 5) -> str:
 
 def counts_table(postgres: BuildResult, cricsheet: BuildResult) -> str:
     """Both passes' data-quality counts, side by side, for a human to read."""
-    rows: List[Tuple[str, object, object]] = [("count", "postgres", "cricsheet")]
+    rows: List[Tuple[str, str, str]] = [("count", "postgres", "cricsheet")]
     pg, cs = postgres.quality.as_dict(), cricsheet.quality.as_dict()
     for name in pg:
         if name != "source":
-            rows.append((name, pg[name], cs.get(name)))
-    width = max(len(str(r[0])) for r in rows)
-    return "\n".join(f"  {str(name):<{width}}  {str(a):>10}  {str(b):>10}" for name, a, b in rows)
+            rows.append((name, _cell(pg[name]), _cell(cs.get(name))))
+    name_width = max(len(row[0]) for row in rows)
+    value_width = max(10, *(len(row[1]) for row in rows), *(len(row[2]) for row in rows))
+    return "\n".join(f"  {name:<{name_width}}  {a:>{value_width}}  {b:>{value_width}}" for name, a, b in rows)
+
+
+def _cell(value: object) -> str:
+    """One count as the table prints it. A count broken down by key -- the per-format split --
+    is spelled out on its own row rather than as a Python dict, so the two columns line up
+    and the difference is readable where it is."""
+    if isinstance(value, dict):
+        return " ".join(f"{key}={value[key]}" for key in sorted(value))
+    return str(value)
 
 
 def build_both(
@@ -123,16 +138,11 @@ def build_both(
 ) -> Tuple[BuildResult, BuildResult]:
     from ml.db import get_db_connection
     from ml.xi.sources import CricsheetJsonSource, PostgresSource
-    from ml.xi.train import _international_teams_from_config
 
     logger.info("rating pass over postgres")
     postgres = build(PostgresSource(get_db_connection(), formats))
     logger.info("rating pass over %s", cricsheet_dir)
-    cricsheet = build(
-        CricsheetJsonSource(
-            cricsheet_dir, _international_teams_from_config(), formats, birth_dates_path=birth_dates_path
-        )
-    )
+    cricsheet = build(CricsheetJsonSource(cricsheet_dir, formats, birth_dates_path=birth_dates_path))
     return postgres, cricsheet
 
 
