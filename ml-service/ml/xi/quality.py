@@ -58,6 +58,18 @@ class DataQuality:
     out_of_scope_matches: int = 0
     unusable_matches: int = 0
     matches_read: int = 0
+
+    # The matches read split by format code, zero-filled over every canonical code so that
+    # two sources always carry the same keys. It is the only count that can see the format
+    # taxonomy, and it is here because for one batch nothing could: the archive path's
+    # ``detect_format`` read a list of international sides from ``go-app/config.json`` that
+    # IMPORT-09 had deleted, so 5,700 international T20s were club T20 on that path alone --
+    # and every total stayed identical, because a match reclassified is still a match read.
+    # ``make xi-parity`` saw only the downstream symptoms (two stakes counts, a handful of
+    # player keys) and could not name the cause. A fact about the cricket, compared across
+    # sources and not gated: it moves whenever the archive grows.
+    matches_read_by_format: Dict[str, int] = field(default_factory=dict)
+
     undecided_matches: int = 0
 
     # Of the undecided matches, the draws and the ties nobody broke: the ones form reads

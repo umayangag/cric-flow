@@ -148,7 +148,7 @@ def test_a_baseline_that_is_not_an_object_is_no_baseline(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _match(match_id: str, day: int, team1, team2, winner="A", result=None) -> MatchRecord:
+def _match(match_id: str, day: int, team1, team2, winner="A", result=None, format_code="T20") -> MatchRecord:
     z = np.zeros(1)
     deliveries = Deliveries(
         over=np.zeros(1, dtype=int),
@@ -167,7 +167,7 @@ def _match(match_id: str, day: int, team1, team2, winner="A", result=None) -> Ma
     return MatchRecord(
         match_id,
         date(2024, 1, 1) + timedelta(days=day),
-        "T20",
+        format_code,
         "A",
         "B",
         "V",
@@ -430,6 +430,32 @@ def test_parity_reports_a_match_whose_deliveries_only_one_source_holds() -> None
     assert differences == ["decided_matches_without_deliveries: postgres 1, cricsheet 0"]
 
 
+def test_parity_reports_a_format_only_one_source_places_as_international() -> None:
+    """Defect A's shape, and the reason ``matches_read_by_format`` exists: the archive path
+    placed 5,700 international T20s as club T20 for a whole batch, and the parity check --
+    twenty-three counts over the same cricket -- could not name it, because a match
+    reclassified is still a match read, still one player set, still one team pair. It saw
+    only what the misplacement did downstream, two stakes counts and a handful of player
+    keys, and a reviewer had to work backwards to the cause. Here the two sources are handed
+    the *same* three matches with nothing but the format different: every other count is
+    identical, and the check must still fail, naming the format split."""
+    from ml.xi.parity import compare
+
+    same_cricket = [("m0", 0), ("m1", 1), ("m2", 2)]
+    database = [_match(i, d, ["a1", "a2"], ["b1", "b2"], format_code="T20I") for i, d in same_cricket]
+    archive = [_match(i, d, ["a1", "a2"], ["b1", "b2"], format_code="T20") for i, d in same_cricket]
+    postgres = build(_CountingSource(database, SourceCounts(offered=3, yielded=3)))
+    cricsheet = build(_CountingSource(archive, SourceCounts(offered=3, yielded=3)))
+
+    differences = compare(postgres, cricsheet)
+
+    assert postgres.quality.matches_read == cricsheet.quality.matches_read == 3
+    assert postgres.quality.player_keys == cricsheet.quality.player_keys
+    assert differences == [
+        "matches_read_by_format: postgres ODI=0 T20=0 T20I=3 TEST=0, cricsheet ODI=0 T20=3 T20I=0 TEST=0"
+    ]
+
+
 def test_parity_reports_a_player_key_only_one_source_has(two_passes) -> None:
     """The #224 shape: the JSON path carried a fictional cricketer the database did not."""
     from ml.xi.parity import compare
@@ -581,6 +607,7 @@ def _doc(teams, gender: str, winner: str, day: int = 0) -> dict:
         "info": {
             "dates": [(_date(2024, 3, 1) + _timedelta(days=day)).isoformat()],
             "match_type": "T20",
+            "team_type": "club",
             "teams": teams,
             "gender": gender,
             "venue": "Ground",
@@ -614,7 +641,7 @@ def _parse(tmp_path, doc, lineage=None):
 
     path = tmp_path / "1.json"
     path.write_text(json.dumps(doc))
-    return parse_cricsheet_file(str(path), [], lineage)
+    return parse_cricsheet_file(str(path), lineage)
 
 
 def test_the_archive_keys_a_mens_and_a_womens_side_separately(tmp_path) -> None:

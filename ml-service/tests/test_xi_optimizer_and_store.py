@@ -638,14 +638,13 @@ def test_display_probability_accepts_missing_context(trained_store) -> None:
 # Cricsheet JSON source
 # ---------------------------------------------------------------------------
 
-_INTL = ["India", "Australia"]
 
-
-def _cricsheet_doc(match_type: str, teams, players, winner, day: int) -> dict:
+def _cricsheet_doc(match_type: str, teams, players, winner, day: int, team_type: str = "international") -> dict:
     return {
         "info": {
             "dates": [(date(2024, 3, 1) + timedelta(days=day)).isoformat()],
             "match_type": match_type,
+            "team_type": team_type,
             "teams": teams,
             "gender": "male",
             "venue": "Ground",
@@ -703,20 +702,54 @@ def _cricsheet_doc(match_type: str, teams, players, winner, day: int) -> dict:
 
 
 @pytest.mark.parametrize(
-    "match_type,teams,expected",
+    "match_type,competition_level,expected",
     [
-        ("Test", ["India", "Australia"], "TEST"),
-        ("MDM", ["X", "Y"], "TEST"),
-        ("ODI", ["X", "Y"], "ODI"),
-        ("ODM", ["X", "Y"], "ODI"),
-        ("IT20", ["X", "Y"], "T20I"),
-        ("T20", ["India", "Australia"], "T20I"),
-        ("T20", ["India", "Club"], "T20"),
-        ("Hundred", ["X", "Y"], ""),
+        ("Test", "international", "TEST"),
+        ("MDM", "club", "TEST"),
+        ("ODI", "international", "ODI"),
+        ("ODM", "club", "ODI"),
+        ("IT20", "international", "T20I"),
+        ("T20", "international", "T20I"),
+        ("T20", "club", "T20"),
+        ("Hundred", "club", ""),
     ],
 )
-def test_detect_format_mirrors_go_app(match_type, teams, expected) -> None:
-    assert detect_format(match_type, teams, _INTL) == expected
+def test_detect_format_mirrors_go_app(match_type, competition_level, expected) -> None:
+    assert detect_format(match_type, competition_level) == expected
+
+
+def test_the_archive_places_a_twenty_over_match_by_its_team_type(tmp_path) -> None:
+    """Cricsheet writes every twenty-over match as ``T20``, national sides included, so
+    ``info.team_type`` is the only thing in the file that separates a T20I from a franchise
+    game -- the rule ``go-app/internal/cricsheet.DetectFormat`` applies. Until this, the
+    archive path placed a T20 by a list of international sides in ``go-app/config.json``
+    that IMPORT-09 had deleted; the loader found the file, found no key, returned an empty
+    list and logged nothing, so 5,700 international T20s read as club cricket on this path
+    and on no other."""
+    players = {"India": [f"I{i}" for i in range(11)], "Australia": [f"A{i}" for i in range(11)]}
+    international = tmp_path / "international.json"
+    international.write_text(json.dumps(_cricsheet_doc("T20", ["India", "Australia"], players, "Australia", 0)))
+    club = tmp_path / "club.json"
+    club.write_text(
+        json.dumps(_cricsheet_doc("T20", ["India", "Australia"], players, "Australia", 1, team_type="club"))
+    )
+
+    assert parse_cricsheet_file(str(international)).format_code == "T20I"
+    assert parse_cricsheet_file(str(club)).format_code == "T20"
+
+
+def test_the_archive_refuses_a_file_that_names_no_team_type(tmp_path) -> None:
+    """The same refusal go-app makes (``formats.ParseCompetitionLevel``): the format of a
+    twenty-over match is not knowable without the level, and guessing it from team names is
+    what IMPORT-09 retired. Every one of the archive's 22,905 files carries one of the two
+    values, so a file that carries neither is a fact about the archive and not a match to
+    skip quietly."""
+    players = {"India": [f"I{i}" for i in range(11)], "Australia": [f"A{i}" for i in range(11)]}
+    path = tmp_path / "no-level.json"
+    path.write_text(json.dumps(_cricsheet_doc("T20", ["India", "Australia"], players, "Australia", 0, team_type="")))
+
+    with pytest.raises(ValueError, match="missing team_type"):
+        parse_cricsheet_file(str(path))
 
 
 def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
@@ -724,7 +757,7 @@ def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
     path = tmp_path / "1.json"
     path.write_text(json.dumps(_cricsheet_doc("T20", ["India", "Australia"], players, "Australia", 0)))
 
-    rec = parse_cricsheet_file(str(path), _INTL)
+    rec = parse_cricsheet_file(str(path))
 
     assert rec is not None
     assert rec.format_code == "T20I"
@@ -752,7 +785,7 @@ def test_parse_cricsheet_file_gives_a_super_over_tie_to_the_eliminator(tmp_path)
     path = tmp_path / "1.json"
     path.write_text(json.dumps(doc))
 
-    rec = parse_cricsheet_file(str(path), _INTL)
+    rec = parse_cricsheet_file(str(path))
 
     assert rec is not None
     assert rec.winner == "Australia|male" and rec.outcome == 0.0
@@ -766,7 +799,7 @@ def test_cricsheet_source_reads_the_last_day_a_match_was_played_on(tmp_path) -> 
     doc["info"]["dates"] = ["2024-03-01", "2024-03-02", "2024-03-03", "2024-03-04"]
     (tmp_path / "test.json").write_text(json.dumps(doc))
 
-    record = parse_cricsheet_file(str(tmp_path / "test.json"), _INTL)
+    record = parse_cricsheet_file(str(tmp_path / "test.json"))
 
     assert record.match_date == date(2024, 3, 1)
     assert record.match_end_date == date(2024, 3, 4) and record.last_day == date(2024, 3, 4)
@@ -779,11 +812,11 @@ def test_cricsheet_source_orders_by_date_and_skips_unusable_files(tmp_path) -> N
     (tmp_path / "c.json").write_text(json.dumps(_cricsheet_doc("Hundred", ["X", "Y"], players, "X", 2)))
     (tmp_path / "notes.txt").write_text("ignored")
 
-    recs = list(CricsheetJsonSource(str(tmp_path), _INTL).iter_matches())
+    recs = list(CricsheetJsonSource(str(tmp_path)).iter_matches())
 
     assert [r.match_id for r in recs] == ["a", "b"]
     assert recs[0].outcome is None and recs[0].result == "no result"
-    result = build(CricsheetJsonSource(str(tmp_path), _INTL))
+    result = build(CricsheetJsonSource(str(tmp_path)))
     assert result.n_undecided == 1 and len(result.frame) == 1
     keeper_weight = result.state.side_vectors("ODI", ["id_Y0"])["keeper"][0]
     assert keeper_weight == pytest.approx(1.5) and C.is_keeper(keeper_weight), (

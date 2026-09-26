@@ -48,13 +48,12 @@ sys.path.insert(0, "/home/claude/xi/repo/ml-service")
 from ml.xi import contract as C
 from ml.xi.builder import build
 from ml.xi.sources import CricsheetJsonSource
-INTL = ["Afghanistan","Australia","Bangladesh","England","India","Ireland","New Zealand","Pakistan","South Africa","Sri Lanka","West Indies","Zimbabwe"]
 print("\nH-b: rating hyperparameters (objective AUC, logit on XI cols; display AUC hgb)")
 grid = [(0.90, 60.0), (0.80, 60.0), (0.95, 60.0), (0.90, 20.0), (0.90, 150.0), (0.97, 60.0)]
 import ml.xi.ratings as R
 for decay, prior in grid:
     C.DECAY_PER_MATCH = decay; C.PRIOR_BALLS = prior
-    res = build(CricsheetJsonSource("/home/claude/xi/raw", INTL))
+    res = build(CricsheetJsonSource("/home/claude/xi/raw"))
     fr = res.frame
     out = []
     for fmt in ["T20", "ODI"]:

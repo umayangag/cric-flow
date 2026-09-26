@@ -25,7 +25,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from ml.xi import perf_baselines  # noqa: E402
 from ml.xi.builder import build  # noqa: E402
 from ml.xi.sources import CricsheetJsonSource  # noqa: E402
-from ml.xi.train import _international_teams_from_config  # noqa: E402
 
 logger = logging.getLogger("sim_frame_cache")
 
@@ -43,7 +42,7 @@ def load_frames(
         return loaded["frames"] if isinstance(loaded, dict) else loaded
     started = time.perf_counter()
     result = build(
-        CricsheetJsonSource(cricsheet_dir, _international_teams_from_config(), birth_dates_path=birth_dates),
+        CricsheetJsonSource(cricsheet_dir, birth_dates_path=birth_dates),
         progress=lambda i: logger.info("rating pass: %d matches", i),
         age_aware_cold_start=age_aware_cold_start,
     )

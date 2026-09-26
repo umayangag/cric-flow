@@ -52,9 +52,7 @@ def load_frame(cricsheet_dir: Optional[str], cache: Optional[str]) -> pd.DataFra
         return pd.read_pickle(cache)
     from ml.xi.builder import build
     from ml.xi.sources import CricsheetJsonSource
-    from ml.xi.train import _international_teams_from_config
-
-    result = build(CricsheetJsonSource(cricsheet_dir, _international_teams_from_config()))
+    result = build(CricsheetJsonSource(cricsheet_dir))
     frame = perf_baselines.add_baseline_predictors(result.player_frame)
     if cache:
         frame.to_pickle(cache)
