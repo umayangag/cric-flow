@@ -678,9 +678,14 @@ label names. Three columns on `match` keep the distinction recoverable (IMPORT-0
   went on reading the deleted list, which placed 5,700 international T20s as club
   cricket on that path and on no other, so `make xi-parity` now compares
   `matches_read_by_format` and a taxonomy that drifts again is named rather than
-  inferred from what it did downstream. Nothing but the importer reads the column yet: it is what the pooling
-  decision — does `TEST` mean Test cricket or first-class cricket? — is measured against,
-  and once taken it is applied with an `UPDATE` of `format_id`, not a re-import.
+  inferred from what it did downstream. The pooling decision — does `TEST` mean Test
+  cricket or first-class cricket? — was measured against it in #356 and taken: the pooling
+  stays, and the display model reads the level as a context column instead
+  (`competition_is_international`, `docs/ml-and-training.md` § XI-responsive win model);
+  `make xi-parity` compares `matches_read_by_level` as well, so a database migrated but not
+  re-imported — every level NULL — is named rather than fitted on silently. go-app reads a
+  fixture's level off the two sides' matches before the fixture's day on this column
+  (`db.CompetitionLevelsByClub`) and sends it with every prediction request.
 - **`match_type_number`** (`0022`) is the ICC's running number for an official Test, ODI
   or T20I, NULL for club matches and for the 320 `IT20` files, which are internationals
   played before their sides had T20I status.
