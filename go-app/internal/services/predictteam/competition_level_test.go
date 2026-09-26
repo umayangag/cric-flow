@@ -97,7 +97,13 @@ func TestResolveCompetitionLevel_ReadsTheLevelOffBothSidesHistoryOrSaysWhyNot(t 
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			summary, err := resolveCompetitionLevel(context.Background(), tc.team1, tc.team2, fixtureDay, levelsOf(table, nil))
+			summary, err := resolveCompetitionLevel(
+				context.Background(),
+				tc.team1,
+				tc.team2,
+				fixtureDay,
+				levelsOf(table, nil),
+			)
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantLevel, summary.Level)
@@ -173,8 +179,10 @@ func TestApplyXISimulation_SendsTheCompetitionLevelAndRefusesAnAnswerReadAtAnoth
 	}{
 		{name: "a level read is sent and answered at", level: read, marginalised: false},
 		{name: "no level is sent as none and averaged", level: unread, marginalised: true},
-		{name: "a level sent but averaged over is refused", level: read, marginalised: true,
-			wantErr: "competition level club was sent but ml-service reports competition_level_marginalised=true"},
+		{
+			name: "a level sent but averaged over is refused", level: read, marginalised: true,
+			wantErr: "competition level club was sent but ml-service reports competition_level_marginalised=true",
+		},
 	}
 
 	for i := range testCases {

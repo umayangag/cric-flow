@@ -31,7 +31,7 @@ const competitionLevelsByClubSQL = `
 		HAVING COUNT(*) = 1`
 
 // CompetitionLevelsByClub returns, per club id, the one competition level every match the
-// club played before the calendar day of “before“ was at. A club that has played at
+// club played before the calendar day of `before` was at. A club that has played at
 // both levels, or at none, is absent from the map. Read-only: the prediction path never
 // writes.
 func CompetitionLevelsByClub(ctx context.Context, clubIDs []int64, before time.Time) (map[int64]string, error) {

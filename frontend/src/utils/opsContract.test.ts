@@ -6,6 +6,8 @@ import { derivePipelineSteps, type PipelineStepId } from './pipelineSteps';
 import {
   AUCTION_METRIC_KEYS,
   AUCTION_PLAYER_STATES,
+  COMPETITION_LEVEL_READINGS,
+  COMPETITION_LEVELS,
   FORECAST_SOURCES,
   FRESHNESS_STATUSES,
   POOL_EXCLUSION_REASONS,
@@ -66,6 +68,9 @@ type Contract = {
   forecast_sources: string[];
   /** Which of the two readings a prediction's probabilities are (H-24, GO-07). */
   toss_readings: string[];
+  /** A fixture's competition level, and how the answer's level was known (H-24, §8.7). */
+  competition_levels: string[];
+  competition_level_readings: string[];
   /** How an eleven was arrived at, as the prediction record stores it (H-24, P2-3). */
   selection_objectives: string[];
   /** The one freshness vocabulary, and the code a refused prediction carries (H-24, P2-1). */
@@ -246,6 +251,21 @@ describe('ops console contract', () => {
    */
   it('spells the toss readings the way the backend does', () => {
     expect([...TOSS_READINGS].sort()).toEqual([...contract.toss_readings].sort());
+  });
+
+  /**
+   * The competition levels and their readings are the contract's too (H-24, §8.7).
+   *
+   * The display model reads the fixture's level as context; go-app reads it off both
+   * sides' history and names the reading on the answer. The Lab labels the card off that
+   * reading, so a level or a reading the UI cannot spell would be a probability read at a
+   * level the screen cannot state -- and an averaged answer would be an invisible default.
+   */
+  it('spells the competition levels and their readings the way the backend does', () => {
+    expect([...COMPETITION_LEVELS].sort()).toEqual([...contract.competition_levels].sort());
+    expect([...COMPETITION_LEVEL_READINGS].sort()).toEqual(
+      [...contract.competition_level_readings].sort(),
+    );
   });
 
   /**

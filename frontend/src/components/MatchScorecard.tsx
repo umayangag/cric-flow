@@ -5,6 +5,7 @@ import RatingsAsOf from './RatingsAsOf';
 import PredictionRecordNote from './PredictionRecordNote';
 import type {
   ForecastSource,
+  PredictCompetitionLevelSummary,
   PredictForecastSummary,
   PredictInningsTotal,
   PredictRecordBlock,
@@ -29,6 +30,8 @@ type Props = {
   selection: PredictSelectionSummary;
   /** Which batting order the numbers assume, straight off the wire (P1-1). */
   toss: PredictTossSummary;
+  /** Which competition level the displayed probability read, and how it was known (§8.7). */
+  competitionLevel: PredictCompetitionLevelSummary;
   /**
    * Which rating state every number here was computed from, off the same payload (P1-5).
    * Never read from a status poll: that describes whatever is loaded now, which may be a
@@ -55,6 +58,16 @@ type Props = {
 function tossLabel(toss: PredictTossSummary, team1: string, team2: string): string {
   if (toss.reading === 'marginalised') return 'toss unknown: both batting orders averaged';
   return `toss: ${toss.team1_bats_first ? team1 : team2} bats first`;
+}
+
+/**
+ * What the card says the competition level was, off the response's `reading` (§8.7): a
+ * level read from both sides' history, or an average over both levels where no single
+ * level could be read — a substitution the card names rather than hides.
+ */
+export function competitionLevelLabel(level: PredictCompetitionLevelSummary): string {
+  if (level.reading === 'marginalised') return 'level unknown: both competition levels averaged';
+  return `${level.level} fixture, from both sides' history`;
 }
 
 /**
@@ -161,6 +174,7 @@ const MatchScorecard: React.FC<Props> = ({
   forecast,
   selection,
   toss,
+  competitionLevel,
   served,
   record,
   team1,
@@ -212,6 +226,12 @@ const MatchScorecard: React.FC<Props> = ({
           />
         </Typography>
         <Chip size="small" variant="outlined" label={tossLabel(toss, team1, team2)} />
+        <Chip
+          size="small"
+          variant="outlined"
+          label={competitionLevelLabel(competitionLevel)}
+          data-testid="competition-level-reading"
+        />
         {scorecard && (
           <Chip
             size="small"
@@ -234,6 +254,17 @@ const MatchScorecard: React.FC<Props> = ({
       {toss.note && (
         <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
           {toss.note}
+        </Typography>
+      )}
+      {competitionLevel.note && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          component="div"
+          sx={{ mb: 1 }}
+          data-testid="competition-level-note"
+        >
+          {competitionLevel.note}
         </Typography>
       )}
       {scorecard ? (

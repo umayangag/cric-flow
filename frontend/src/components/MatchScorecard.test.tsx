@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import MatchScorecard from './MatchScorecard';
 import type {
+  PredictCompetitionLevelSummary,
   PredictForecastSummary,
   PredictScorecard,
   PredictSelectionSummary,
@@ -12,6 +13,12 @@ import type {
 
 /** The default toss: unknown, which is the simulator drawing both batting orders. */
 const unknownToss: PredictTossSummary = { team1_bats_first: null, reading: 'marginalised' };
+
+/** The level read off both sides' history, which is what two national sides get. */
+const internationalLevel: PredictCompetitionLevelSummary = {
+  level: 'international',
+  reading: 'sides_history',
+};
 
 /** The rating state the answer names: the run and the date its ratings run through (P1-5). */
 const served: PredictServedRatings = {
@@ -61,6 +68,7 @@ function renderCard(overrides: Overrides = {}) {
       forecast={simulated}
       selection={searched}
       toss={unknownToss}
+      competitionLevel={internationalLevel}
       served={served}
       record={{ stored: true, id: 'f0f8f1a4-0f0e-4a6b-9b6f-2c5d4a1e0004' }}
       team1="IND"
@@ -98,6 +106,36 @@ describe('MatchScorecard', () => {
     expect(screen.getByText('AUS innings:')).toBeInTheDocument();
     expect(screen.getByText('2,000 draws')).toBeInTheDocument();
     expect(screen.getByText('toss unknown: both batting orders averaged')).toBeInTheDocument();
+  });
+
+  // The competition level is a display-model input read off both sides' history, and the
+  // card says which level the number was read at (§8.7), off the response's own reading.
+  it('names the competition level the probability was read at', () => {
+    renderCard();
+
+    expect(screen.getByTestId('competition-level-reading')).toHaveTextContent(
+      "international fixture, from both sides' history",
+    );
+    expect(screen.queryByTestId('competition-level-note')).not.toBeInTheDocument();
+  });
+
+  // A fixture whose level could not be read -- a side never seen before, or one that has
+  // played at both levels -- is averaged over both, and the card says so and says why: an
+  // invisible default is the pattern the audit found nine times.
+  it('says when the level could not be read and the probability averaged both levels', () => {
+    renderCard({
+      competitionLevel: {
+        reading: 'marginalised',
+        note: 'Newland (men) has played at no single competition level on record before 2026-10-01; the displayed probability is averaged over both levels',
+      },
+    });
+
+    expect(screen.getByTestId('competition-level-reading')).toHaveTextContent(
+      'level unknown: both competition levels averaged',
+    );
+    expect(screen.getByTestId('competition-level-note')).toHaveTextContent(
+      /Newland \(men\) has played at no single competition level on record/,
+    );
   });
 
   // Every served prediction carries its date beside the headline, off its own payload

@@ -123,6 +123,10 @@ func refuseCompetitionLevelMismatch(step string, summary CompetitionLevelSummary
 
 // productionCompetitionLevelLookup is the lookup the served path uses: one read of the
 // levels each club's matches before the fixture's day were played at, and nothing else.
-func productionCompetitionLevelLookup(ctx context.Context, clubIDs []int64, before time.Time) (map[int64]string, error) {
+func productionCompetitionLevelLookup(
+	ctx context.Context,
+	clubIDs []int64,
+	before time.Time,
+) (map[int64]string, error) {
 	return db.CompetitionLevelsByClub(ctx, clubIDs, before)
 }

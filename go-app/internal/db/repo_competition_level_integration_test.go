@@ -24,20 +24,32 @@ func seedClubsAtTheirLevels(ctx context.Context, t *testing.T) {
 		(4, 'Barbados', 'female', NULL),
 		(5, 'Delhi Daredevils', 'male', 6),
 		(6, 'Delhi Capitals', 'male', NULL)`))
-	require.NoError(t, Exec(ctx, `INSERT INTO match (match_id, format_id, match_date, original_match_type, gender, competition_level) VALUES
+	require.NoError(
+		t,
+		Exec(
+			ctx,
+			`INSERT INTO match (match_id, format_id, match_date, original_match_type, gender, competition_level) VALUES
 		(1, 2, DATE '2024-01-01', 'ODI', 'male', 'international'),
 		(2, 3, DATE '2024-01-02', 'T20', 'male', 'club'),
 		(3, 3, DATE '2024-01-03', 'T20', 'female', 'club'),
 		(4, 3, DATE '2024-01-04', 'T20', 'female', 'international'),
 		(5, 3, DATE '2024-01-05', 'T20', 'male', NULL),
-		(6, 3, DATE '2024-02-01', 'T20', 'male', 'club')`))
-	require.NoError(t, Exec(ctx, `INSERT INTO match_inning (match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id) VALUES
+		(6, 3, DATE '2024-02-01', 'T20', 'male', 'club')`,
+		),
+	)
+	require.NoError(
+		t,
+		Exec(
+			ctx,
+			`INSERT INTO match_inning (match_id, inning_number, batting_team_opposition_id, bowling_team_opposition_id) VALUES
 		(1, 1, 1, 2), (1, 2, 2, 1),
 		(2, 1, 3, 5), (2, 2, 5, 3),
 		(3, 1, 4, 3),
 		(4, 1, 4, 1),
 		(5, 1, 3, 6),
-		(6, 1, 1, 6)`))
+		(6, 1, 1, 6)`,
+		),
+	)
 }
 
 func TestCompetitionLevelsByClub_ReadsOneLevelPerClubBeforeTheFixtureDay_Integration(t *testing.T) {

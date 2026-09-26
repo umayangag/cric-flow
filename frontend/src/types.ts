@@ -1261,6 +1261,15 @@ export type EvaluationFormatReport = {
       objective_auc?: FoldStat | null;
       objective_brier?: FoldStat | null;
       display_auc?: FoldStat | null;
+      /**
+       * Both AUCs per competition level (`international`, `club`, or `unrecorded`), over
+       * the folds that could score the level. Informational: which side of a pooled format
+       * a move came from.
+       */
+      by_competition_level?: Record<
+        string,
+        { objective_auc?: FoldStat | null; display_auc?: FoldStat | null }
+      >;
       base_rate_brier?: FoldStat | null;
       swap_violation_share?: FoldStat | null;
       /** B-7: the same probe on the display surface. Reported, never a gate. */
