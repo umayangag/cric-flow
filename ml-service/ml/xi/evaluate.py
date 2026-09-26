@@ -75,6 +75,7 @@ import pandas as pd
 
 from ml.xi import contract as C
 from ml.xi import (
+    display_regression,
     gates,
     glossary,
     market,
@@ -519,13 +520,55 @@ def _market_benchmark(source: MatchSource, frame: pd.DataFrame, market_odds_dir:
     return market.Benchmark(joined, load_counts, join_counts, directory)
 
 
+def read_previous_report(path: str) -> Optional[Dict]:
+    """The report a run is about to overwrite, for display-regression to read its previous
+    accepted numbers from; None when there is none or it cannot be read. Both are logged
+    and neither is a failure -- absent evidence decides nothing (the gate's node says so),
+    but an unreadable file is an error worth seeing, so it is logged as one."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            previous = json.load(fh)
+    except FileNotFoundError:
+        logger.info("display-regression: no previous report at %s; this run is the baseline", path)
+        return None
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error(
+            "display-regression: the previous report at %s is unreadable (%s); this run is the baseline", path, exc
+        )
+        return None
+    if not isinstance(previous, dict):
+        logger.error("display-regression: the previous report at %s is not a report; this run is the baseline", path)
+        return None
+    return previous
+
+
+def _display_regression_node(
+    format_code: str, node: Dict, frame: pd.DataFrame, generated_at: str, previous_report: Optional[Dict]
+) -> Dict:
+    """One format's display-regression verdict: this run's reference (its display summary,
+    its fold windows, and the decided development rows per competition level) against the
+    previous accepted run's, resolved from the report this one overwrites."""
+    current = display_regression.Reference(
+        generated_at=generated_at,
+        display_auc=node["walk_forward"]["summary"].get("display_auc"),
+        development_rows_by_level=display_regression.development_rows_by_level(
+            frame[frame.format_code == format_code], LOCKED_START
+        ),
+        windows=display_regression.windows(WALK_FORWARD_CUTOFFS, LOCKED_START),
+    )
+    return display_regression.decide(current, display_regression.baseline_for(previous_report, format_code))
+
+
 def evaluate(
     source: MatchSource,
     parity_source_factory: Callable[[], MatchSource],
     gender_split_context: bool = False,
     market_odds_dir: Optional[str] = None,
+    previous_report: Optional[Dict] = None,
 ) -> Dict:
-    """Run the harness over a source and return the report dict."""
+    """Run the harness over a source and return the report dict. ``previous_report`` is
+    the report this run overwrites, when there is one: display-regression reads the
+    previous accepted run's display AUC and row counts from it and nothing else does."""
     result = build(
         source,
         progress=lambda i: logger.info("rating pass: %d matches", i),
@@ -567,6 +610,12 @@ def evaluate(
         logger.info("evaluating %s", format_code)
         report["formats"][format_code], parity_models = evaluate_format(
             format_code, result.frame, player_frame, pairs, benchmark=benchmark
+        )
+        # display-regression: this run's display AUC against the previous accepted run's,
+        # judged only where the two scored the same population; the node carries the move,
+        # both references and the like-for-like working either way (§8.7).
+        report["formats"][format_code][display_regression.NODE] = _display_regression_node(
+            format_code, report["formats"][format_code], result.frame, report["generated_at"], previous_report
         )
         if parity_models.win is not None:
             win_models[format_code] = parity_models.win
@@ -706,14 +755,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from ml.config import default_artifacts_dir
 
         out_dir = default_artifacts_dir()
+    path = os.path.join(out_dir, REPORT_NAME)
+    # Read before the run, not before the write: the previous report is the one this run
+    # overwrites, and display-regression compares against it.
+    previous_report = read_previous_report(path)
     report = evaluate(
         source_factory(),
         source_factory,
         gender_split_context=args.gender_split_context,
         market_odds_dir=args.market_odds_dir,
+        previous_report=previous_report,
     )
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, REPORT_NAME)
     with open(path, "w") as fh:
         json.dump(report, fh, indent=2)
     logger.info("report written to %s", path)
@@ -753,6 +806,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.info(
             "%-5s selection (E5): %s", format_code, report["formats"][format_code]["selection_decision"]["reason"]
         )
+        regression = entry.get(display_regression.NODE)
+        if regression is not None:
+            logger.info("%-5s display-regression: %s -- %s", format_code, regression["verdict"], regression["reason"])
         _log_market_benchmark(format_code, report["market_benchmark"]["formats"][format_code])
     if not report["serving_parity"]["passed"]:
         logger.error("serving parity (H-8) FAILED: %s", report["serving_parity"]["mismatches"][:5])

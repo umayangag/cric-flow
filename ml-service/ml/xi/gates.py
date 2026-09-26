@@ -40,6 +40,13 @@ nothing served. The clauses encode what the prose already says and nothing more:
   carry, deliberately: it would be a new failure mode, not a clause the prose already
   states. H-22 compares against the previous release,
   which one report does not carry; H-2 and X-4 inform. They carry no threshold and say so.
+* display-regression is *relative*: it reads each format's walk-forward display AUC --
+  T20's included, the one surface the scoping gates never read -- against the previous
+  accepted harness report, and fails only a fall beyond one fold sd on the same fold
+  windows and the same per-level row counts. Batch 4's T20 fall of 3.24 sd was
+  composition (IMPORT-09 moved 3,888 internationals out of T20), and a population that
+  moved re-baselines with the move printed beside it rather than failing. The clause's
+  working is in ``ml.xi.display_regression``; H-17's absolute line is untouched.
 * A gate an experiment script runs (``report_path`` None) is evaluated by that script; its
   clause stays prose here.
 
@@ -64,6 +71,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from ml.xi import display_regression
 
 #: Prefix for a path read from the whole report rather than from one format's node.
 REPORT_SCOPE = "report:"
@@ -216,6 +225,15 @@ def _h8_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
     return None if value is True else "the as-of serving path and the training pass disagree"
 
 
+def _display_regression_failure(value: Any, node: Dict[str, Any]) -> Optional[str]:
+    # The verdict is decided in ``ml.xi.display_regression`` with the working beside it;
+    # only a fall on the same population fails, and the node's reason says which run it
+    # fell against and by how much. A re-baseline or an undecided run is not a failure.
+    if value != display_regression.VERDICT_FAIL:
+        return None
+    return str((node.get(display_regression.NODE) or {}).get("reason") or "the display AUC fell beyond one fold sd")
+
+
 GATES: Tuple[Gate, ...] = (
     Gate(
         id="H-17",
@@ -324,6 +342,31 @@ GATES: Tuple[Gate, ...] = (
         report_path=REPORT_SCOPE + "serving_parity.passed",
         consults_folds=False,
         threshold=Threshold(rule="passed is true", failure=_h8_failure),
+    ),
+    Gate(
+        id="display-regression",
+        name="Display AUC against the previous accepted run",
+        varies="the harness run: this run's display model against the previous accepted run's -- the last "
+        "report in the same directory whose gates all passed, or the baseline that report carried forward "
+        "when it did not -- each fitted and scored on its own walk-forward folds",
+        fixed="the walk-forward windows (the cutoffs and the locked start), the fold count, and the decided "
+        "development rows per competition level (Cricsheet's team_type: international or club), each within "
+        "5 % of the format's rows in the previous run; the objective, the scoping policy and H-17's absolute "
+        "0.65 line are not read",
+        decides="in every format, T20 included: the walk-forward mean display AUC may not fall under the "
+        "previous accepted run's by more than one fold sd (this run's sample sd over the folds, EVAL-15). Where "
+        "the windows moved, the fold count differs, or any level's row count moved by more than 5 % of the "
+        "format's rows, the populations differ: the move is printed and the run re-baselines rather than fails "
+        "(batch 4's T20 fall of 3.24 sd was IMPORT-09's taxonomy change, not the model). With no previous "
+        "accepted report, no display number on either side, or one fold with no spread, nothing is decided and "
+        "this run is the baseline. A rise never fails",
+        report_path=display_regression.NODE + ".verdict",
+        consults_folds=True,
+        threshold=Threshold(
+            rule="verdict is not 'fail': a fall beyond one fold sd on the same windows and the same per-level "
+            "rows fails; 'rebaselined' and 'undecided' say why they could not be judged and pass",
+            failure=_display_regression_failure,
+        ),
     ),
     Gate(
         id="E3",

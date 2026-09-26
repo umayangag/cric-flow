@@ -621,8 +621,42 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
         # result, toss winner, last day. Match 2 is a tie settled by a super over: a winner
         # with result 'tie'; match 3 records no toss; match 1 ran into a second day.
         "matches": [
-            (1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "Tri-series", 1, "", "", None, 10, date(2024, 1, 2)),
-            (2, date(2024, 1, 2), "T20I", "male", 5, 10, 20, None, "", None, "", "", None, 20, date(2024, 1, 2)),
+            (
+                1,
+                date(2024, 1, 1),
+                "T20I",
+                "male",
+                5,
+                10,
+                20,
+                20,
+                "Tri-series",
+                1,
+                "",
+                "",
+                None,
+                10,
+                date(2024, 1, 2),
+                "international",
+            ),
+            (
+                2,
+                date(2024, 1, 2),
+                "T20I",
+                "male",
+                5,
+                10,
+                20,
+                None,
+                "",
+                None,
+                "",
+                "",
+                None,
+                20,
+                date(2024, 1, 2),
+                "club",
+            ),
             (
                 3,
                 date(2024, 1, 3),
@@ -639,6 +673,7 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
                 "tie",
                 None,
                 date(2024, 1, 3),
+                None,  # a database migrated to 0022 but not re-imported: no level recorded
             ),
         ],
         # Player columns are keys, not ids: the query resolves player.external_id (P-1).
@@ -692,6 +727,10 @@ def test_postgres_source_maps_rows_and_skips_sides_without_squads() -> None:
     # The last day (FEAT-09) is the column beside the toss; the query reads it as the start
     # date where the database holds none, so a match on its one day reads its own date.
     assert first.match_end_date == date(2024, 1, 2) and first.last_day == date(2024, 1, 2)
+    # The competition level rides on the record (display-regression counts rows by it); a
+    # row the database recorded none for reads empty, never None.
+    assert first.competition_level == "international"
+    assert [m.competition_level for m in recs] == ["international", ""]
     assert recs[1].last_day == date(2024, 1, 3)
 
 
@@ -893,7 +932,26 @@ def test_the_postgres_path_charges_the_bowler_only_the_runs_he_conceded() -> Non
     no_ball_with_four_leg_byes = (1, 0, "a0000000", "b0000000", 0, 5, None, None, None, 0, 4, 0, 0)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10, date(2024, 1, 1))],
+        "matches": [
+            (
+                1,
+                date(2024, 1, 1),
+                "T20I",
+                "male",
+                5,
+                10,
+                20,
+                20,
+                "",
+                None,
+                "",
+                "",
+                None,
+                10,
+                date(2024, 1, 1),
+                "international",
+            )
+        ],
         "players": {1: squad},
         "balls": {1: [no_ball_with_four_leg_byes, plain_four]},
     }
@@ -1453,7 +1511,26 @@ def test_the_postgres_path_counts_a_no_ball_faced_and_a_wide_not() -> None:
     wide = (1, 0, "a0000000", "b0000000", 0, 1, None, None, None, 0, 0, 0, 1)
     plain_four = (1, 0, "a0000000", "b0000000", 4, 4, None, None, None, 0, 0, 0, 0)
     tables = {
-        "matches": [(1, date(2024, 1, 1), "T20I", "male", 5, 10, 20, 20, "", None, "", "", None, 10, date(2024, 1, 1))],
+        "matches": [
+            (
+                1,
+                date(2024, 1, 1),
+                "T20I",
+                "male",
+                5,
+                10,
+                20,
+                20,
+                "",
+                None,
+                "",
+                "",
+                None,
+                10,
+                date(2024, 1, 1),
+                "international",
+            )
+        ],
         "players": {1: squad},
         "balls": {1: [no_ball, wide, plain_four]},
     }

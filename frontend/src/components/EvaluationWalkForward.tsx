@@ -176,6 +176,17 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
           </TableBody>
         </Table>
       </TableContainer>
+      {report.display_regression && (
+        <Typography
+          variant="caption"
+          color={report.display_regression.verdict === 'fail' ? 'error' : 'text.secondary'}
+          data-verdict={report.display_regression.verdict}
+          sx={{ display: 'block', px: 2, py: 1 }}
+        >
+          Display AUC against the previous accepted run (display-regression):{' '}
+          {report.display_regression.verdict} — {report.display_regression.reason}
+        </Typography>
+      )}
       {report.locked.recalibrated_targets?.length ? (
         <Typography
           variant="caption"

@@ -1433,6 +1433,42 @@ named it — X-3-stakes, B-7-display-monotone and the X-2 families — say so in
 registry; each was decided, in practice, on the fold-level standard error of the paired
 difference, which is the floor every gate reads (H-14).
 
+**The display surface is gated relatively, not absolutely (`display-regression`,
+`ml/xi/display_regression.py`).** Batch 4's T20 display AUC fell 0.7294 → 0.5934, 3.24 fold
+sd, and no gate fired: T20 is scoped off optimised selection, so H-17's line never reads it.
+The fall was then shown to be composition, entirely — IMPORT-09 moved 3,888 international
+matches out of T20 into T20I, and batch 3's own model already scored 0.5747 on the club rows
+it had been reported at 0.6966 on — so an absolute floor would have fired on a non-defect.
+The gate is therefore *relative and guarded*. Per format, T20 included, it reads the
+walk-forward mean display AUC against **the previous accepted run** — the report `make
+evaluate` last wrote to the same directory when its `gates.passed` was true (the harness is
+the batch's acceptance test), or, when that report did not pass, the `baseline` it carried
+forward from the run it was itself judged against, so one failure does not erase the
+reference — and **fails only a fall beyond one fold sd** (this run's sample sd over the
+folds, EVAL-15) **on the same population**: the same fold windows, the same fold count, and
+no level's decided development-row count moved by more than 5 % of the format's rows
+(`competition_level`, Cricsheet's `team_type`, now carried on every win row as a meta
+column no model reads). The 5 % is sized to the effect the guard exists to absorb: the
+largest gap between two levels' display AUC on record is 0.21 (T20 club 0.60 against
+international 0.81), so moving 5 % of a format's rows between levels shifts the pooled
+number by about 0.01 to first order, a quarter of the smallest display fold sd on record;
+IMPORT-09 moved 31.5 % of T20's rows and 185 % of T20I's, the ordinary difference between
+two runs on the same windows is a handful of archive corrections, and a rotation of the
+windows (5–15 % of a format's rows) is caught by the windows check before any count is
+read. A population that moved **re-baselines**: the move is printed beside the reason and
+the run passes. With no previous accepted report, no display number on either side, or one
+fold with no spread, the verdict is **undecided** and this run becomes the baseline — absent
+evidence is not a failure. The node under each format (`display_regression`) carries the
+verdict, the reason with the numbers, the move in fold sd, this run's reference, the one it
+compared against, the per-level working, and the `baseline` a later run reads; the
+Evaluation tab prints the verdict under the walk-forward table, and `make evaluate` exits 1
+on a `fail` as it does on every standing gate. Retrodicted on the recorded batches: batch
+4's T20 re-baselines (−3.25 sd on the four-decimal record, with `international 3,825 → 0`
+named), the same fall on unchanged rows fails, and ODI / TEST's moves of 0.02–0.07 sd
+across batches 2 → 3 → 4 pass. H-17's absolute 0.65 line and every other gate are
+untouched. The first run after this lands compares against a report that carries no
+per-level counts and says so: it re-baselines with the move printed.
+
 **Metric glossary (L-1, `ml/xi/glossary.py`).** The same pattern for what the numbers *mean*:
 one entry per reported metric key — a plain-language name, an explanation, the reference band
 this system measured, and which direction is better. The report embeds the glossary,

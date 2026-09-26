@@ -193,6 +193,9 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
         "team1": match.team1,
         "team2": match.team2,
         "venue": match.venue,
+        # A meta column, not a feature: the harness counts a format's rows by it so a
+        # display-AUC move can be told from a population move (display-regression).
+        "competition_level": match.competition_level,
         C.TARGET_COL: match.outcome,
     }
     win_row.update(match_features(side1, side2))
