@@ -882,7 +882,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     levels.add_argument("--formats", nargs="+", default=["T20", "T20I", "ODI", "TEST"])
     levels.add_argument("--out", required=True)
     decide = sub.add_parser("decide")
-    decide.add_argument("--score", default=None)
+    decide.add_argument("--score", nargs="*", default=[], help="score reports; several are merged by frame tag")
     decide.add_argument("--levels", nargs="*", default=[])
     decide.add_argument("--formats", nargs="+", default=["T20"])
     return p.parse_args(argv)
@@ -900,11 +900,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     elif args.command == "levels":
         run_levels(args.frames, args.formats, args.out)
     else:
-        if args.score:
-            with open(args.score) as fh:
-                report = json.load(fh)
-            for fmt in args.formats:
-                decide_score(report, fmt)
+        merged: Dict[str, Any] = {"frames": {}}
+        for path in args.score:
+            with open(path) as fh:
+                merged["frames"].update(json.load(fh)["frames"])
+        for fmt in args.formats if merged["frames"] else []:
+            decide_score(merged, fmt)
         for path in args.levels:
             with open(path) as fh:
                 decide_levels(json.load(fh))
