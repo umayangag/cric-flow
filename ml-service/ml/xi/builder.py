@@ -11,6 +11,7 @@ import pandas as pd
 from ml.xi import contract as C
 from ml.xi import runs
 from ml.xi.biography import count_known
+from ml.xi.display_regression import UNRECORDED_LEVEL
 from ml.xi.quality import DataQuality
 from ml.xi.ratings import RatingState
 from ml.xi.rows import build_match_rows
@@ -183,6 +184,7 @@ def build(
     n_decided_without_deliveries = 0
     n_seen = 0
     matches_read_by_format = {code: 0 for code in C.FORMAT_CODES}
+    matches_read_by_level = {level: 0 for level in (*C.COMPETITION_LEVELS, UNRECORDED_LEVEL)}
     team_keys = set()
     namesake_sides = 0
     oversized_squads = 0
@@ -200,6 +202,8 @@ def build(
     for i, match in enumerate(source.iter_matches()):
         n_seen += 1
         matches_read_by_format[match.format_code] = matches_read_by_format.get(match.format_code, 0) + 1
+        level = match.competition_level if match.competition_level in C.COMPETITION_LEVELS else UNRECORDED_LEVEL
+        matches_read_by_level[level] += 1
         team_keys.update((match.team1, match.team2))
         namesake_sides += _namesake_sides(match)
         oversized_squads += _oversized_squads(match)
@@ -244,6 +248,7 @@ def build(
         unusable_matches=counts.unusable,
         matches_read=counts.yielded,
         matches_read_by_format=matches_read_by_format,
+        matches_read_by_level=matches_read_by_level,
         undecided_matches=n_undecided,
         drawn_or_tied_matches=n_drawn_or_tied,
         decided_matches_without_deliveries=n_decided_without_deliveries,

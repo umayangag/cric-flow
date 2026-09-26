@@ -176,6 +176,22 @@ const EvaluationWalkForward: React.FC<{ report: EvaluationFormatReport }> = ({ r
           </TableBody>
         </Table>
       </TableContainer>
+      {summary.by_competition_level && Object.keys(summary.by_competition_level).length > 0 && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block', px: 2, py: 1 }}
+          data-testid="display-auc-by-competition-level"
+        >
+          Mean over folds by competition level (objective / display AUC):{' '}
+          {Object.entries(summary.by_competition_level)
+            .map(
+              ([level, stats]) =>
+                `${level} ${formatStat(stats.objective_auc)} / ${formatStat(stats.display_auc)}`,
+            )
+            .join(' · ')}
+        </Typography>
+      )}
       {report.display_regression && (
         <Typography
           variant="caption"

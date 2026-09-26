@@ -19,7 +19,7 @@ from typing import Dict, Iterator, List, Mapping, Optional, Protocol, Sequence, 
 import numpy as np
 
 from ml.xi.biography import BirthDates, load_birth_dates_csv, load_birth_dates_postgres
-from ml.xi.contract import FORMAT_CODES
+from ml.xi.contract import COMPETITION_CLUB, COMPETITION_INTERNATIONAL, FORMAT_CODES
 from ml.xi.geography import VenueCountries, load_venue_countries_csv, load_venue_countries_postgres
 from ml.xi.lineage import TeamLineage
 from ml.xi.lineage import load as load_lineage
@@ -208,10 +208,12 @@ class MatchRecord:
     match_end_date: Optional[date] = None
     # Cricsheet's ``info.team_type`` -- ``international`` or ``club`` -- on both sources
     # (``match.competition_level``, migration 0022, on Postgres). It is what places a
-    # twenty-over match in T20I or T20 (IMPORT-09), and the harness counts the rows a
-    # format's folds read by it so a display-AUC move can be told from a population move
-    # (``ml.xi.display_regression``). No model reads it. Empty on a record built for the
-    # serving path, and on a database migrated but not yet re-imported.
+    # twenty-over match in T20I or T20 (IMPORT-09), the harness counts the rows a format's
+    # folds read by it so a display-AUC move can be told from a population move
+    # (``ml.xi.display_regression``), and the display model reads it as a context column
+    # (``contract.COMPETITION_LEVEL_COL``) -- never the objective. Empty on a database
+    # migrated but not yet re-imported, and on a record built for the serving path whose
+    # request named no level, both of which read the unrecorded category.
     competition_level: str = ""
 
     @property
@@ -317,12 +319,6 @@ class MatchSource(Protocol):
 # ---------------------------------------------------------------------------
 # Cricsheet JSON directory
 # ---------------------------------------------------------------------------
-
-
-#: Cricsheet's two values for ``info.team_type``, which is what separates a T20I from a
-#: franchise T20. Mirrors ``go-app/internal/formats``' CompetitionInternational / CompetitionClub.
-COMPETITION_INTERNATIONAL = "international"
-COMPETITION_CLUB = "club"
 
 
 def parse_competition_level(team_type: str) -> str:

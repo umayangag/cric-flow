@@ -166,6 +166,16 @@ def toss_columns(match: MatchRecord) -> Dict[str, float]:
     return {C.TOSS_COL: C.TOSS_UNKNOWN if won is None else won}
 
 
+def competition_level_columns(match: MatchRecord) -> Dict[str, float]:
+    """The competition level as a win-row column (``contract.COMPETITION_LEVEL_COLS``):
+    1.0 between national sides, 0.0 otherwise, and the unrecorded category where the
+    source recorded none. On the serving path the record carries the level the request
+    named; ``XiStore.display_probability`` averages over both answers when it named none,
+    the way it averages over the toss winner, and never reads the unrecorded value into a
+    model."""
+    return {C.COMPETITION_LEVEL_COL: C.competition_level_value(match.competition_level)}
+
+
 def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, List[Dict]]:
     """Both sides' aggregates as the win-feature row, and one feature row per XI player
     (``PLAYER_MATCH_META_COLS`` + ``PLAYER_MATCH_FEATURE_COLS``), from the state as of the
@@ -193,8 +203,10 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
         "team1": match.team1,
         "team2": match.team2,
         "venue": match.venue,
-        # A meta column, not a feature: the harness counts a format's rows by it so a
-        # display-AUC move can be told from a population move (display-regression).
+        # The level as a word is a meta column: the harness counts a format's rows by it
+        # so a display-AUC move can be told from a population move (display-regression)
+        # and reports AUC per level. The display model reads it as the numeric column
+        # ``competition_level_columns`` adds below.
         "competition_level": match.competition_level,
         C.TARGET_COL: match.outcome,
     }
@@ -204,6 +216,7 @@ def player_feature_rows(state: RatingState, match: MatchRecord) -> Tuple[Dict, L
     win_row.update(fixture_context)
     win_row.update(stakes_columns(match))
     win_row.update(toss_columns(match))
+    win_row.update(competition_level_columns(match))
 
     player_rows: List[Dict] = []
     sides = (

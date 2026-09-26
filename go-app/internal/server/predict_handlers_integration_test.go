@@ -152,7 +152,11 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 			// `innings_marginalised`, because that is what ml-service does: a fake that
 			// always claimed to have marginalised would be answering a shape the real
 			// service never sends, and go-app refuses the pair when they disagree (GO-07).
-			Team1BatsFirst   *bool `json:"team1_bats_first"`
+			Team1BatsFirst *bool `json:"team1_bats_first"`
+			// CompetitionLevel is echoed the same way through `competition_level_marginalised`:
+			// the real service averages the display over both levels exactly when none was
+			// sent, and go-app refuses the pair when they disagree.
+			CompetitionLevel string `json:"competition_level"`
 			Team1Constraints *struct {
 				MinBowlers    int      `json:"min_bowlers"`
 				RequireKeeper bool     `json:"require_keeper"`
@@ -190,8 +194,9 @@ func scriptedMLServiceRecording(t *testing.T, refusal *mlServiceError, asOf *asO
 					body.Team1Constraints.RequireKeeper)
 			}
 			_, _ = fmt.Fprintf(w,
-				`{"team1_win_probability": 0.6, "objective_probability": 0.55, "toss_marginalised": %t, %s %s}`,
-				marginalised, checks, stamp)
+				`{"team1_win_probability": 0.6, "objective_probability": 0.55, "toss_marginalised": %t,
+				"competition_level_marginalised": %t, %s %s}`,
+				marginalised, body.CompetitionLevel == "", checks, stamp)
 		case "/performance/predict":
 			lines := make([]string, 0, 22)
 			// Both elevens come back in one flat list, and each row says which side it is

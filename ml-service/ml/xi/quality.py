@@ -70,6 +70,15 @@ class DataQuality:
     # sources and not gated: it moves whenever the archive grows.
     matches_read_by_format: Dict[str, int] = field(default_factory=dict)
 
+    # The matches read split by competition level -- ``international``, ``club``, and
+    # ``unrecorded`` for a source that carries none -- zero-filled over all three so the two
+    # sources always carry the same keys. The display model reads the level as a context
+    # column, so a source that recorded it differently would fit a different model on the
+    # same cricket while every other count agreed; a database migrated but not re-imported
+    # reads every match ``unrecorded`` and differs from the archive here, and nowhere else
+    # a model reads. A fact about the cricket, compared across sources and not gated.
+    matches_read_by_level: Dict[str, int] = field(default_factory=dict)
+
     undecided_matches: int = 0
 
     # Of the undecided matches, the draws and the ties nobody broke: the ones form reads

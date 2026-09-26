@@ -709,6 +709,7 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         team2_name=None if req.team2_id is None else str(req.team2_id),
         venue=None if req.venue_id is None else str(req.venue_id),
         team1_bats_first=req.team1_bats_first,
+        competition_level=req.competition_level,
     )
     return XiWinResponse(
         team1_win_probability=display,
@@ -720,6 +721,9 @@ def predict_win(req: XiWinRequest, registry: XiRegistry = REGISTRY) -> XiWinResp
         # (FEAT-05 put both in the display model only). The toss *winner* is on no request
         # and is averaged over in both readings of the display.
         toss_marginalised=req.team1_bats_first is None,
+        # The same statement for the competition level, which the display model alone
+        # reads: a request that named none was averaged over both levels.
+        competition_level_marginalised=req.competition_level is None,
         team1_constraint_check=_constraint_check(store, req.format, t1, req.team1_constraints),
         team2_constraint_check=_constraint_check(store, req.format, t2, req.team2_constraints),
         served_ratings=_served_ratings(store),
@@ -888,6 +892,7 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
         team2_name=_optional_str(req.team2_id),
         venue=_optional_str(req.venue_id),
         team1_bats_first=req.team1_bats_first,
+        competition_level=req.competition_level,
     )
     simulated = summary["win"]["team1"] + 0.5 * summary["win"]["tie"]
     simulator_headline = simulator.SIMULATED_WIN_PROBABILITY_DISPLAYED.get(req.format, False)
@@ -908,6 +913,7 @@ def simulate(req: SimulateRequest, registry: XiRegistry = REGISTRY) -> SimulateR
         n_samples=req.n_samples,
         seed=req.seed,
         toss_marginalised=summary["toss_marginalised"],
+        competition_level_marginalised=req.competition_level is None,
         # The draws themselves only where the caller asked (P3-2): they are the same numbers
         # `total` summarises, handed over so a caller pooling several simulations quantifies
         # the pool instead of averaging three summaries into a range nothing drew.

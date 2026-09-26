@@ -511,15 +511,34 @@ used one were rated and aggregated as twelve while serving always aggregates ele
 his presence was post-start information in a pre-match row. A side's eleven vectors aggregate to `contract.SIDE_FEATURE_STEMS`: batting and
 bowling impact weighted by involvement, top-6 / top-5 sums, role coverage (bowling options,
 keeper, all-rounders, debutants), Elo summaries. Team-level context (team Elo, form,
-head-to-head, venue bat-first bias, venue familiarity, home advantage) and the toss are kept
-in separate column lists (`TEAM_CONTEXT_COLS`, `TOSS_COLS`) because they cannot distinguish
-two XIs. Home advantage (FEAT-05) is as-of on both sides: the ground's region comes from
+head-to-head, venue bat-first bias, venue familiarity, home advantage), the toss and the
+competition level are kept in separate column lists (`TEAM_CONTEXT_COLS`, `TOSS_COLS`,
+`COMPETITION_LEVEL_COLS`) because they cannot distinguish two XIs. Home advantage (FEAT-05) is as-of on both sides: the ground's region comes from
 `reference-data/venue-geocoding.csv` (the database's `venue.country` is NULL throughout) and
 a team's region is the strict mode of where it has played *before today*, kept in
 `RatingState.team_countries` — nothing about a team is read from a whole-archive table, so
 a side reads as at home only once its past says so (`ml/xi/geography.py`). The toss is who
 won it, as `toss_won_by_team1`; no request carries it, so the served display averages over
 both answers in every reading (`train.marginalised_probabilities` scores the same mean).
+The competition level is Cricsheet's `team_type` (`match.competition_level`, migration
+`0022`) as `competition_is_international`: 1.0 between national sides, 0.0 otherwise, and
+0.5 — its own category, the toss's shape — where the source recorded none. It is there for
+the pooled formats: ODI is 3,512 internationals beside 1,483 domestic one-day rows and TEST
+753 Tests beside 1,342 first-class rounds, and #356 measured the two levels discriminating
+differently on the display model (ODI 0.732 against 0.693, TEST 0.706 against 0.610) while
+splitting them would cost the domestic ODI rows 0.028 of display AUC — so the pooling stays
+and one fit reads the level instead. Unlike the toss it does not change under the
+batting-order swap: it is the fixture's, not a side's. Every archive row records its level,
+so the harness scores each row at it; a serving request may name the level
+(`competition_level` on `/xi/predict-win` and `/simulate`), and one that names none is
+averaged over both answers and says so (`competition_level_marginalised`, §8.7). go-app
+reads a fixture's level off the two sides' history *before the fixture's day* — 531 of the
+archive's 532 clubs have played at exactly one level, so for a fixture between two of them
+it is a fact of their record, read as-of like the home flag (H-21) — and names the reading
+on its answer (`competition_level.reading`: `sides_history`, or `marginalised` with the
+reason: a side with no single level on record, a side never seen, or two sides whose levels
+disagree). The objective never reads the level, the toss or the home flag: `XI_FEATURE_COLS`
+is the 29 columns EVAL-13 left, and a test pins it.
 Every shrunk player rate is hierarchical (FEAT-06): its prior mean is the player's own rate
 in his *other* formats, not zero, so a T20I regular's IPL debut reads as himself; a player
 with no history elsewhere reads exactly the plain rate. Involvement and Elo are not pooled.
@@ -602,6 +621,13 @@ discrimination.
 
 `xi_win_report.json` splits its holdout discrimination by gender, for information rather than as
 a gate: 20% of the dataset is women's cricket, and the men's subset dominates any aggregate.
+It splits it by competition level the same way (`by_competition_level`, keyed `international`,
+`club`, or `unrecorded` for a source that carries none), and the harness reports both AUCs
+per level on every fold and over the folds (`walk_forward.summary.by_competition_level`): the
+table the pooling decision was read off in #356, on every run, so a move in a pooled format
+can be placed on the side it came from. Informational, like the gender split — the 753 Test
+rows reach twenty in one quarterly window of eleven, so their per-fold entry is mostly the
+count alone.
 
 ### Data-quality gate (H-15)
 
@@ -1447,8 +1473,9 @@ forward from the run it was itself judged against, so one failure does not erase
 reference — and **fails only a fall beyond one fold sd** (this run's sample sd over the
 folds, EVAL-15) **on the same population**: the same fold windows, the same fold count, and
 no level's decided development-row count moved by more than 5 % of the format's rows
-(`competition_level`, Cricsheet's `team_type`, now carried on every win row as a meta
-column no model reads). The 5 % is sized to the effect the guard exists to absorb: the
+(`competition_level`, Cricsheet's `team_type`, carried on every win row as a meta column
+beside the numeric `competition_is_international` the display model reads since batch 5).
+The 5 % is sized to the effect the guard exists to absorb: the
 largest gap between two levels' display AUC on record is 0.21 (T20 club 0.60 against
 international 0.81), so moving 5 % of a format's rows between levels shifts the pooled
 number by about 0.01 to first order, a quarter of the smallest display fold sd on record;

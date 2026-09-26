@@ -629,3 +629,78 @@ func TestPredictMatchWinXI_ReportsWhichReadingItAnswered(t *testing.T) {
 		})
 	}
 }
+
+// The competition level is sent exactly when the sides' history gave one, on both calls
+// that read the display model, and each answer's `competition_level_marginalised` is
+// decoded rather than assumed -- it is the one field the mismatch check can read (§8.7).
+func TestCompetitionLevel_IsSentWhenReadAndTheReadingIsDecoded(t *testing.T) {
+	t.Parallel()
+	winResponse := `{"team1_win_probability":0.61,"objective_probability":0.58,
+	  "toss_marginalised":true,"competition_level_marginalised":%t,
+	  "team1_constraint_check":null,"team2_constraint_check":null,
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+	simulateResponse := `{"format":"T20","n_samples":2000,"seed":0,"toss_marginalised":true,
+	  "competition_level_marginalised":%t,"shared_factor":true,
+	  "team1":{"total":{"q10":130,"median":160,"q90":190,"mean":160.2,"sd":22.5,"scorecard":157.9},
+	           "extras_scorecard":8.4,"extras_spread_share":0.02,"wickets_lost":{"q10":3,"median":6,"q90":9},"players":[]},
+	  "team2":{"total":{"q10":120,"median":150,"q90":180,"mean":150.1,"sd":22.0,"scorecard":150.2},
+	           "extras_scorecard":7.1,"extras_spread_share":0.02,"wickets_lost":{"q10":3,"median":6,"q90":9},"players":[]},
+	  "win_probability":{"simulated":0.57,"p_tie":0.01,"display":0.6,"headline":0.6,"headline_source":"display"},
+	  "margin":{"p_bat_first_wins":0.5,"p_chaser_wins":0.49,"p_tie":0.01},
+	  "unknown_player_ids":[],
+	  "served_ratings":{"run_id":"20260906T083819Z-36689f80","ratings_through":"2026-09-02"}}`
+
+	testCases := []struct {
+		name         string
+		level        string
+		marginalised bool
+	}{
+		{name: "no level read: nothing sent, an averaged answer decoded", level: "", marginalised: true},
+		{name: "a level read: sent, and the level-aware answer decoded", level: "international", marginalised: false},
+	}
+
+	for i := range testCases {
+		tc := testCases[i]
+		t.Run("predict-win, "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, captured := xiCaptureServer(t, fmt.Sprintf(winResponse, tc.marginalised))
+
+			result, err := client.PredictMatchWinXI(context.Background(), predictteam.XIWinRequest{
+				Format:           "ODI",
+				Team1PlayerKeys:  []string{"a1"},
+				Team2PlayerKeys:  []string{"b1"},
+				CompetitionLevel: tc.level,
+			})
+
+			require.NoError(t, err)
+			assertCompetitionLevelOnTheWire(t, captured, tc.level)
+			assert.Equal(t, tc.marginalised, result.CompetitionLevelMarginalised)
+		})
+		t.Run("simulate, "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			client, captured := xiCaptureServer(t, fmt.Sprintf(simulateResponse, tc.marginalised))
+
+			result, err := client.SimulateMatchXI(context.Background(), predictteam.XISimulationRequest{
+				Format:           "ODI",
+				Team1PlayerKeys:  []string{"a1"},
+				Team2PlayerKeys:  []string{"b1"},
+				CompetitionLevel: tc.level,
+			})
+
+			require.NoError(t, err)
+			assertCompetitionLevelOnTheWire(t, captured, tc.level)
+			assert.Equal(t, tc.marginalised, result.CompetitionLevelMarginalised)
+		})
+	}
+}
+
+// assertCompetitionLevelOnTheWire checks the request carried `competition_level` exactly
+// when a level was read, and then with that word.
+func assertCompetitionLevelOnTheWire(t *testing.T, captured *map[string]any, level string) {
+	t.Helper()
+	value, sent := (*captured)["competition_level"]
+	assert.Equal(t, level != "", sent, "the level is sent exactly when one was read")
+	if level != "" {
+		assert.Equal(t, level, value)
+	}
+}

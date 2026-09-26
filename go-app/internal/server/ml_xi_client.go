@@ -108,6 +108,10 @@ type mlXIWinRequest struct {
 	// order in every format, so a caller who names one is answered at that order rather
 	// than over the average of both (GO-07); the response says which it answered.
 	Team1BatsFirst *bool `json:"team1_bats_first,omitempty"`
+	// CompetitionLevel is the fixture's level where the sides' history says it, one of
+	// formats.CompetitionLevels(); omitted where it could not be read, which ml-service
+	// answers by averaging the display over both levels and reports as such.
+	CompetitionLevel string `json:"competition_level,omitempty"`
 	// Team1Constraints and Team2Constraints ask ml-service to check the eleven it is
 	// scoring against these constraints instead of selecting under them (P1-2). Omitted
 	// on the searched path, where the optimiser applied them while it searched.
@@ -168,11 +172,12 @@ type mlXIWinResponse struct {
 	// ObjectiveProbability is the optimiser's value and is marginalised over the batting
 	// order whatever the request said — its model has no batting-order feature. It is
 	// decoded and not served: nothing on the surface shows it.
-	ObjectiveProbability float64              `json:"objective_probability"`
-	TossMarginalised     bool                 `json:"toss_marginalised"`
-	Team1ConstraintCheck *mlXIConstraintCheck `json:"team1_constraint_check"`
-	Team2ConstraintCheck *mlXIConstraintCheck `json:"team2_constraint_check"`
-	ServedRatings        mlServedRatings      `json:"served_ratings"`
+	ObjectiveProbability         float64              `json:"objective_probability"`
+	TossMarginalised             bool                 `json:"toss_marginalised"`
+	CompetitionLevelMarginalised bool                 `json:"competition_level_marginalised"`
+	Team1ConstraintCheck         *mlXIConstraintCheck `json:"team1_constraint_check"`
+	Team2ConstraintCheck         *mlXIConstraintCheck `json:"team2_constraint_check"`
+	ServedRatings                mlServedRatings      `json:"served_ratings"`
 }
 
 // OptimizeXI calls POST /xi/optimize: server-side selection over player ids against the
@@ -249,6 +254,7 @@ func (c *MLClient) PredictMatchWinXI(
 		Team2ID:          optionalID(req.Team2ID),
 		VenueID:          optionalID(req.VenueID),
 		Team1BatsFirst:   req.Team1BatsFirst,
+		CompetitionLevel: req.CompetitionLevel,
 		Team1Constraints: constraintPayload(req.Team1Constraints),
 		Team2Constraints: constraintPayload(req.Team2Constraints),
 		AsOf:             dateParam(req.AsOf),
@@ -261,11 +267,12 @@ func (c *MLClient) PredictMatchWinXI(
 		return nil, err
 	}
 	return &predictteam.XIWinResult{
-		Team1WinProbability: out.Team1WinProbability,
-		TossMarginalised:    out.TossMarginalised,
-		Team1Check:          out.Team1ConstraintCheck.check(),
-		Team2Check:          out.Team2ConstraintCheck.check(),
-		Served:              out.ServedRatings.served(),
+		Team1WinProbability:          out.Team1WinProbability,
+		TossMarginalised:             out.TossMarginalised,
+		CompetitionLevelMarginalised: out.CompetitionLevelMarginalised,
+		Team1Check:                   out.Team1ConstraintCheck.check(),
+		Team2Check:                   out.Team2ConstraintCheck.check(),
+		Served:                       out.ServedRatings.served(),
 	}, nil
 }
 
@@ -337,7 +344,10 @@ type mlSimulateRequest struct {
 	Team2ID        *int64   `json:"team2_id,omitempty"`
 	VenueID        *int64   `json:"venue_id,omitempty"`
 	Team1BatsFirst *bool    `json:"team1_bats_first,omitempty"`
-	AsOf           string   `json:"as_of,omitempty"`
+	// CompetitionLevel is read by the display probability beside the draws, never by the
+	// draws; omitted where the sides' history gave no single level.
+	CompetitionLevel string `json:"competition_level,omitempty"`
+	AsOf             string `json:"as_of,omitempty"`
 	// MatchDate (YYYY-MM-DD) is the day the fixture is played: what ml-service reads every
 	// date-dependent feature at (SERVE-04). Omitting it lets ml-service date the fixture
 	// itself, which it reports as such; this client always knows the date and sends it.
@@ -394,13 +404,14 @@ type mlSimulatedWinProbability struct {
 }
 
 type mlSimulateResponse struct {
-	NSamples         int                       `json:"n_samples"`
-	TossMarginalised bool                      `json:"toss_marginalised"`
-	SharedFactor     bool                      `json:"shared_factor"`
-	Team1            mlSimulatedSide           `json:"team1"`
-	Team2            mlSimulatedSide           `json:"team2"`
-	WinProbability   mlSimulatedWinProbability `json:"win_probability"`
-	ServedRatings    mlServedRatings           `json:"served_ratings"`
+	NSamples                     int                       `json:"n_samples"`
+	TossMarginalised             bool                      `json:"toss_marginalised"`
+	CompetitionLevelMarginalised bool                      `json:"competition_level_marginalised"`
+	SharedFactor                 bool                      `json:"shared_factor"`
+	Team1                        mlSimulatedSide           `json:"team1"`
+	Team2                        mlSimulatedSide           `json:"team2"`
+	WinProbability               mlSimulatedWinProbability `json:"win_probability"`
+	ServedRatings                mlServedRatings           `json:"served_ratings"`
 }
 
 // SimulateMatchXI calls POST /simulate: the match drawn from the performance model's
@@ -411,18 +422,19 @@ func (c *MLClient) SimulateMatchXI(
 	req predictteam.XISimulationRequest,
 ) (*predictteam.XISimulationResult, error) {
 	payload, err := json.Marshal(mlSimulateRequest{
-		Format:         req.Format,
-		Team1PlayerIDs: req.Team1PlayerKeys,
-		Team2PlayerIDs: req.Team2PlayerKeys,
-		Team1ID:        optionalID(req.Team1ID),
-		Team2ID:        optionalID(req.Team2ID),
-		VenueID:        optionalID(req.VenueID),
-		Team1BatsFirst: req.Team1BatsFirst,
-		AsOf:           dateParam(req.AsOf),
-		MatchDate:      dateParam(req.MatchDate),
-		Gender:         req.Gender,
-		NSamples:       req.Samples,
-		Seed:           req.Seed,
+		Format:           req.Format,
+		Team1PlayerIDs:   req.Team1PlayerKeys,
+		Team2PlayerIDs:   req.Team2PlayerKeys,
+		Team1ID:          optionalID(req.Team1ID),
+		Team2ID:          optionalID(req.Team2ID),
+		VenueID:          optionalID(req.VenueID),
+		Team1BatsFirst:   req.Team1BatsFirst,
+		CompetitionLevel: req.CompetitionLevel,
+		AsOf:             dateParam(req.AsOf),
+		MatchDate:        dateParam(req.MatchDate),
+		Gender:           req.Gender,
+		NSamples:         req.Samples,
+		Seed:             req.Seed,
 	})
 	if err != nil {
 		return nil, err
@@ -434,6 +446,7 @@ func (c *MLClient) SimulateMatchXI(
 	return &predictteam.XISimulationResult{
 		Samples:                      out.NSamples,
 		TossMarginalised:             out.TossMarginalised,
+		CompetitionLevelMarginalised: out.CompetitionLevelMarginalised,
 		SharedFactor:                 out.SharedFactor,
 		Team1:                        simulatedSide(out.Team1),
 		Team2:                        simulatedSide(out.Team2),

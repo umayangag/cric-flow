@@ -87,6 +87,10 @@ type XIWinResult struct {
 	// batting orders, false where it read the one it was given. It is checked against the
 	// toss that was asked for rather than trusted, for the reason /simulate's is (§8.7).
 	TossMarginalised bool
+	// CompetitionLevelMarginalised is the same statement for the fixture's level: true
+	// where ml-service averaged the display over both levels because none was sent, false
+	// where it read the one it was given. Checked against what was sent, like the toss.
+	CompetitionLevelMarginalised bool
 	// Team1Check and Team2Check are the constraint checks, present only where the
 	// request asked for them — that is, only where the caller pinned the elevens.
 	Team1Check *XIConstraintCheck
@@ -189,7 +193,11 @@ type XIWinRequest struct {
 	// side's aggregates are read for, not a property of the simulator — so it is sent
 	// whether or not this format has an innings length to simulate.
 	Team1BatsFirst *bool
-	AsOf           time.Time
+	// CompetitionLevel is the fixture's level where it could be read off the two sides'
+	// history (competition_level.go); empty sends none, and ml-service then averages the
+	// display over both levels and says so.
+	CompetitionLevel string
+	AsOf             time.Time
 	// Team1Constraints and Team2Constraints ask for a constraint check on the eleven
 	// being scored. Nil on the searched path, where the optimiser applied them already.
 	Team1Constraints *ConstraintCheckRequest

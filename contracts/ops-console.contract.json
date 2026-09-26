@@ -149,6 +149,14 @@
     "toss_aware",
     "marginalised"
   ],
+  "competition_levels": [
+    "international",
+    "club"
+  ],
+  "competition_level_readings": [
+    "sides_history",
+    "marginalised"
+  ],
   "selection_objectives": [
     "win",
     "ratings",

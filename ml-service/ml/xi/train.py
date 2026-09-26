@@ -49,6 +49,7 @@ from sklearn.preprocessing import StandardScaler
 from ml.xi import contract as C
 from ml.xi import perf_baselines, perf_harness, quality
 from ml.xi.builder import BuildResult
+from ml.xi.display_regression import UNRECORDED_LEVEL
 from ml.xi.performance import default_spec, fit_performance
 from ml.xi.signed_logistic import SignedLogisticRegression
 from ml.xi.store import FormatModels, save_models, save_performance, save_ratings
@@ -325,7 +326,8 @@ def swap_orientation(frame: pd.DataFrame) -> pd.DataFrame:
     """The same fixtures with the sides exchanged (team2 bats first). Used to score the
     serving path, which averages both batting orders because the toss is unknown. The
     toss winner is a fact of the fixture, so exchanging the batting order reads it as
-    1 - x: the side that won it now bats second."""
+    1 - x: the side that won it now bats second. The competition level is a fact of the
+    fixture too, and one the exchange leaves alone: it is not read as a side's."""
     out = frame.copy()
     for stem in C.SIDE_FEATURE_STEMS:
         out[f"t1_{stem}"], out[f"t2_{stem}"] = frame[f"t2_{stem}"], frame[f"t1_{stem}"]
@@ -346,15 +348,33 @@ def toss_variants(frame: pd.DataFrame, cols: List[str]) -> List[pd.DataFrame]:
     return [frame.assign(**{C.TOSS_COL: value}) for value in (1.0, 0.0)]
 
 
+def competition_level_variants(frame: pd.DataFrame, cols: List[str]) -> List[pd.DataFrame]:
+    """The frame read at each answer to "which level is this fixture", for the rows whose
+    source recorded none, when the model reads the level at all. A recorded row is read at
+    its own level in both variants -- the reading a request that names the level gets --
+    and an unrecorded one is averaged over both, as ``XiStore.display_probability`` averages
+    a request that names none; the unrecorded value itself is never read into the model,
+    on either path."""
+    if C.COMPETITION_LEVEL_COL not in cols:
+        return [frame]
+    unrecorded = frame[C.COMPETITION_LEVEL_COL] == C.COMPETITION_LEVEL_UNKNOWN
+    return [
+        frame.assign(**{C.COMPETITION_LEVEL_COL: frame[C.COMPETITION_LEVEL_COL].where(~unrecorded, value)})
+        for value in (C.COMPETITION_LEVEL_VALUES[level] for level in C.COMPETITION_LEVELS)
+    ]
+
+
 def marginalised_probabilities(model, te: pd.DataFrame, cols: List[str]) -> np.ndarray:
     """P(team1 wins) per row as the serving path computes it: both batting orders
     averaged and, for a model that reads the toss, both toss winners (FEAT-05) -- the
-    same four-way (or two-way) mean ``XiStore.display_probability`` takes."""
+    same four-way (or two-way) mean ``XiStore.display_probability`` takes -- and, for a
+    row with no recorded competition level, both levels."""
     probabilities = []
     for frame, swapped in ((te, False), (swap_orientation(te), True)):
-        for variant in toss_variants(frame, cols):
-            p = model.predict_proba(_xy(variant, cols)[0])[:, 1]
-            probabilities.append(1.0 - p if swapped else p)
+        for toss_variant in toss_variants(frame, cols):
+            for variant in competition_level_variants(toss_variant, cols):
+                p = model.predict_proba(_xy(variant, cols)[0])[:, 1]
+                probabilities.append(1.0 - p if swapped else p)
     return np.mean(probabilities, axis=0)
 
 
@@ -362,6 +382,25 @@ def _score_marginalised(model, te: pd.DataFrame, cols: List[str]) -> Dict[str, f
     y = te[C.TARGET_COL].to_numpy(dtype=float)
     p = marginalised_probabilities(model, te, cols)
     return {"auc": float(roc_auc_score(y, p)), "brier": float(brier_score_loss(y, p))}
+
+
+#: The smallest subset of holdout rows a breakdown scores: below it, and without both
+#: classes, an AUC is noise with a decimal point.
+MIN_BREAKDOWN_ROWS = 20
+
+
+def _breakdown_by(objective, display, te: pd.DataFrame, column: str, rows_key: str) -> Dict[str, Dict[str, float]]:
+    """Discrimination of both models on the rows of ``te`` grouped by ``column``: the row
+    count under ``rows_key`` for every group, and both AUCs for a group large enough to
+    score. Informational: no gate reads a breakdown."""
+    out: Dict[str, Dict[str, float]] = {}
+    for group, rows in te.groupby(column, sort=True):
+        entry: Dict[str, float] = {rows_key: int(len(rows))}
+        if len(rows) >= MIN_BREAKDOWN_ROWS and rows[C.TARGET_COL].nunique() == 2:
+            entry["objective_auc"] = _score_marginalised(objective, rows, C.XI_FEATURE_COLS)["auc"]
+            entry["display_auc"] = _score_marginalised(display, rows, C.DISPLAY_FEATURE_COLS)["auc"]
+        out[str(group)] = entry
+    return out
 
 
 def gender_breakdown(objective, display, te: pd.DataFrame) -> Dict[str, Dict[str, float]]:
@@ -374,14 +413,29 @@ def gender_breakdown(objective, display, te: pd.DataFrame) -> Dict[str, Dict[str
     as a gate: the women's holdouts are small enough that a difference under ~0.03 is not
     resolvable.
     """
-    out: Dict[str, Dict[str, float]] = {}
-    for gender, rows in te.groupby("gender", sort=True):
-        entry: Dict[str, float] = {"n_holdout": int(len(rows))}
-        if len(rows) >= 20 and rows[C.TARGET_COL].nunique() == 2:
-            entry["objective_auc"] = _score_marginalised(objective, rows, C.XI_FEATURE_COLS)["auc"]
-            entry["display_auc"] = _score_marginalised(display, rows, C.DISPLAY_FEATURE_COLS)["auc"]
-        out[str(gender)] = entry
-    return out
+    return _breakdown_by(objective, display, te, "gender", "n_holdout")
+
+
+def competition_level_breakdown(
+    objective, display, te: pd.DataFrame, rows_key: str = "n_holdout"
+) -> Dict[str, Dict[str, float]]:
+    """Discrimination split by the competition level the source recorded, keyed by the
+    level's word and ``UNRECORDED_LEVEL`` where it recorded none.
+
+    The pooled formats are two populations under one code -- ODI is 3,512 internationals
+    beside 1,483 domestic one-day rows, TEST 753 Tests beside 1,342 first-class rounds --
+    and #356 measured them discriminating differently on the display model (ODI 0.73
+    against 0.69, TEST 0.71 against 0.61). A pooled AUC cannot show which side a move
+    came from, and the decision to keep them pooled rather than split was taken on this
+    split, so it is reported wherever the pooled number is: the run manifest and every
+    harness fold. Informational, like the gender split -- the Test rows reach twenty in
+    one quarterly window of eleven, so their per-fold entry is mostly the count alone.
+    """
+    if "competition_level" in te.columns:
+        levels = te["competition_level"].fillna("").astype(str).replace("", UNRECORDED_LEVEL)
+    else:
+        levels = pd.Series(UNRECORDED_LEVEL, index=te.index, dtype="object")
+    return _breakdown_by(objective, display, te.assign(competition_level=levels), "competition_level", rows_key)
 
 
 def best_single_column(frame_te: pd.DataFrame, cols: Sequence[str]) -> Dict[str, float]:
@@ -439,6 +493,7 @@ def train_format(
                 "base_rate_brier": float(brier_score_loss(y_te, np.full(len(y_te), y_tr.mean()))),
                 "best_single_column": best_single_column(te, C.DISPLAY_FEATURE_COLS),
                 "by_gender": gender_breakdown(objective, display, te),
+                "by_competition_level": competition_level_breakdown(objective, display, te),
             }
         )
     else:

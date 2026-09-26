@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import joblib
 import numpy as np
@@ -326,6 +326,7 @@ class XiStore:
         team2_name: Optional[str] = None,
         venue: Optional[str] = None,
         team1_bats_first: Optional[bool] = None,
+        competition_level: Optional[str] = None,
     ) -> float:
         """P(team1 wins) from the display model.
 
@@ -341,17 +342,29 @@ class XiStore:
         weighted equally, as the two batting orders are: a deliberate simplification, since
         given a named order the side batting first won the toss only as often as sides
         choose to bat (42 % of the archive), and neither number is read here.
+
+        ``competition_level`` is the fixture's level where the caller knows it (one of
+        ``contract.COMPETITION_LEVELS``), and the column is then read at that answer -- the
+        reading the harness scores every archive row at, since every one records its level.
+        A caller that names none is averaged over both answers the same way as the toss,
+        never read at the unrecorded category the model was not fitted on; the route says
+        which reading it answered (§8.7).
         """
         m = self.models[format_code]
         side1 = aggregate_side(self.side_vectors(format_code, team1_keys), format_code)
         side2 = aggregate_side(self.side_vectors(format_code, team2_keys), format_code)
         toss_answers = (1.0, 0.0) if C.TOSS_COL in m.display_cols else (C.TOSS_UNKNOWN,)
+        level_answers = _competition_level_answers(m.display_cols, competition_level)
 
         def rows_for(first, second, first_name, second_name) -> np.ndarray:
             row = dict(zip(m.objective_cols, xi_feature_vector(first, second, m.objective_cols)))
             row.update(self._team_context(format_code, first_name, second_name, venue))
             return np.asarray(
-                [[{**row, C.TOSS_COL: toss}.get(c, 0.0) for c in m.display_cols] for toss in toss_answers],
+                [
+                    [{**row, C.TOSS_COL: toss, C.COMPETITION_LEVEL_COL: level}.get(c, 0.0) for c in m.display_cols]
+                    for toss in toss_answers
+                    for level in level_answers
+                ],
                 dtype=float,
             )
 
@@ -368,3 +381,16 @@ class XiStore:
 
     def _team_context(self, fmt: str, t1: Optional[str], t2: Optional[str], venue: Optional[str]) -> Dict[str, float]:
         return team_context_or_neutral(self.state, serving_match(fmt, [], [], t1, t2, venue, self.state.last_date))
+
+
+def _competition_level_answers(display_cols: Sequence[str], competition_level: Optional[str]) -> Tuple[float, ...]:
+    """The values the display model's level column is read at: the named level's, both
+    levels' when none was named, or the unrecorded value alone for an artifact whose
+    display columns do not carry the level (nothing then reads it)."""
+    if C.COMPETITION_LEVEL_COL not in display_cols:
+        return (C.COMPETITION_LEVEL_UNKNOWN,)
+    if competition_level is None:
+        return tuple(C.COMPETITION_LEVEL_VALUES[level] for level in C.COMPETITION_LEVELS)
+    if competition_level not in C.COMPETITION_LEVEL_VALUES:
+        raise ValueError(f"unknown competition level {competition_level!r}; expected one of {C.COMPETITION_LEVELS}")
+    return (C.COMPETITION_LEVEL_VALUES[competition_level],)

@@ -483,6 +483,42 @@ def test_predict_win_reports_which_reading_it_answered(registry, artifacts_dir) 
     assert marginal.objective_probability == pytest.approx(chases.objective_probability)
 
 
+def test_predict_win_reads_a_named_competition_level_and_says_when_it_averaged_over_none(
+    registry, artifacts_dir
+) -> None:
+    """The level is a fact of the fixture the display model reads as context. A request that
+    names it is read at it; one that names none is averaged over both levels and says so
+    (`competition_level_marginalised`, §8.7), the way the toss is. The objective reads no
+    level, so it is one number under all three requests."""
+    _, _, _, matches = artifacts_dir
+    last = matches[-1]
+    t1, t2 = list(last.team1_players), list(last.team2_players)
+
+    unnamed = xi_service.predict_win(XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2), registry)
+    international = xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, competition_level="international"),
+        registry,
+    )
+    club = xi_service.predict_win(
+        XiWinRequest(format="T20I", team1_player_ids=t1, team2_player_ids=t2, competition_level="club"), registry
+    )
+
+    assert unnamed.competition_level_marginalised is True
+    assert international.competition_level_marginalised is False and club.competition_level_marginalised is False
+    assert unnamed.team1_win_probability == pytest.approx(
+        0.5 * (international.team1_win_probability + club.team1_win_probability)
+    )
+    assert unnamed.objective_probability == pytest.approx(international.objective_probability)
+    assert unnamed.objective_probability == pytest.approx(club.objective_probability)
+
+
+def test_predict_win_refuses_a_competition_level_it_does_not_know() -> None:
+    """A level that is neither of the two declared words is the caller's mistake, named on
+    the field, never a probability read at a level nobody asked about."""
+    with pytest.raises(ValidationError, match="competition_level"):
+        XiWinRequest(format="T20I", team1_player_ids=xi("a"), team2_player_ids=xi("b"), competition_level="franchise")
+
+
 def test_predict_win_reports_no_constraint_check_when_none_was_asked_for(registry, artifacts_dir) -> None:
     """The optimised path sends no constraints, and gets no check back."""
     _, _, _, matches = artifacts_dir
@@ -1399,6 +1435,27 @@ def test_simulate_is_deterministic_for_a_seed_and_honours_a_known_toss(registry,
 
     assert first.team1.total == again.team1.total and first.win_probability == again.win_probability
     assert known.toss_marginalised is False
+
+
+def test_simulate_reads_a_named_competition_level_into_the_display_and_never_into_the_draws(
+    registry, artifacts_dir
+) -> None:
+    """The level reaches the display probability beside the draws and nothing else: the
+    same seed draws the same totals whether or not a level was named, and the response
+    says whether the display averaged over both levels (§8.7)."""
+    _, squad_a, squad_b, _ = artifacts_dir
+    base = dict(format="T20I", team1_player_ids=squad_a[:11], team2_player_ids=squad_b[:11], n_samples=200, seed=5)
+
+    unnamed = xi_service.simulate(SimulateRequest(**base), registry)
+    international = xi_service.simulate(SimulateRequest(**base, competition_level="international"), registry)
+    club = xi_service.simulate(SimulateRequest(**base, competition_level="club"), registry)
+
+    assert unnamed.competition_level_marginalised is True
+    assert international.competition_level_marginalised is False and club.competition_level_marginalised is False
+    assert unnamed.team1.total == international.team1.total == club.team1.total
+    assert unnamed.win_probability.display == pytest.approx(
+        0.5 * (international.win_probability.display + club.win_probability.display)
+    )
 
 
 def test_simulate_returns_the_totals_draws_only_when_they_are_asked_for(registry, artifacts_dir) -> None:

@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from ml.xi import contract as C
+from ml.xi import display_regression as dr
 from ml.xi import evaluate as ev
 from ml.xi import folds, gates, glossary
 from ml.xi.asof import ROUND_TRIP_RUN_ID
@@ -232,6 +233,27 @@ def test_harness_reports_walk_forward_with_spread(harness_report) -> None:
     assert 0.0 < summary["objective_auc"]["mean"] < 1.0
     assert summary["display_auc"]["sd"] >= 0.0
     assert summary["base_rate_brier"]["mean"] > 0.0
+
+
+def test_harness_reports_both_aucs_per_competition_level_on_every_fold_and_over_them(harness_report) -> None:
+    """The pooled AUCs split by the level the source recorded, on each fold and summarised
+    over the folds that could score the level, keyed by the level's word. The synthetic
+    history records no level, so every row is the unrecorded one here; on the archive the
+    keys are ``international`` and ``club``, which is the table #356 read the pooling
+    decision off."""
+    node = harness_report["formats"]["T20"]["walk_forward"]
+    folds = [fold for fold in node["folds"] if "objective_auc" in fold]
+
+    assert folds, "at least one fold scored"
+    for fold in folds:
+        assert list(fold["by_competition_level"]) == [dr.UNRECORDED_LEVEL]
+        assert fold["by_competition_level"][dr.UNRECORDED_LEVEL]["n_eval"] == fold["n_eval"]
+        assert fold["by_competition_level"][dr.UNRECORDED_LEVEL]["display_auc"] == pytest.approx(
+            fold["display_auc_mean"]
+        )
+    summary = node["summary"]["by_competition_level"][dr.UNRECORDED_LEVEL]
+    assert summary["display_auc"]["mean"] == pytest.approx(node["summary"]["display_auc"]["mean"])
+    assert summary["objective_auc"]["n_folds"] == len(folds)
 
 
 def test_harness_reports_no_spread_across_seeds(harness_report) -> None:

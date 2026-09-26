@@ -330,11 +330,19 @@ def _served_probabilities(store: XiStore, match: MatchRecord) -> Dict[str, float
     """The two numbers the routes answer with for the match's fixture, toss unknown, from
     the store's own row assembly: the display probability ``/xi/predict-win`` shows and
     the objective ``/xi/optimize`` maximises. The keys are the frame's player keys, which
-    are the registry ids go-app sends (``xi_service._keys`` is the identity)."""
+    are the registry ids go-app sends (``xi_service._keys`` is the identity). The level
+    is the one the source recorded, as a request from go-app names it; a match with none
+    recorded is served as a request naming none is, averaged over both."""
     fmt = match.format_code
     return {
         "display probability": store.display_probability(
-            fmt, match.team1_players, match.team2_players, match.team1, match.team2, match.venue
+            fmt,
+            match.team1_players,
+            match.team2_players,
+            match.team1,
+            match.team2,
+            match.venue,
+            competition_level=match.competition_level or None,
         ),
         "objective probability": store.objective_probability(
             fmt, store.side_vectors(fmt, match.team1_players), store.side_vectors(fmt, match.team2_players)

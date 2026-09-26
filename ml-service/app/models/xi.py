@@ -34,6 +34,12 @@ from ml.xi import contract as C
 # nothing on the response would say so. So it is refused at the boundary instead (§8.7).
 TEAM_SIZE = 11
 
+# The fixture's competition level as a request may name it: the two words Cricsheet writes
+# in ``team_type`` and go-app stores in ``match.competition_level``, spelled here as the
+# literals ``C.COMPETITION_LEVELS`` declares (a test pins the two equal) so an unknown word
+# is a 422 naming the field rather than a probability read at a level nobody asked about.
+CompetitionLevel = Literal["international", "club"]
+
 
 def _upper(v: Optional[str]) -> Optional[str]:
     return v if v is None or v == "" else v.strip().upper()
@@ -323,6 +329,12 @@ class XiWinRequest(BaseModel):
     team1_bats_first: Optional[bool] = Field(
         default=None, description="Known after the toss; omit before it to average both batting orders"
     )
+    competition_level: Optional[CompetitionLevel] = Field(
+        default=None,
+        description="The fixture's level -- 'international' between national sides, 'club' otherwise -- which "
+        "the display model reads as context. Omit where it is not known: the display is then averaged over both "
+        "levels, and the response says so (`competition_level_marginalised`)",
+    )
     team1_constraints: Optional[XiConstraints] = Field(
         default=None,
         description="Play mode (P1-2): check this eleven against these constraints instead of selecting "
@@ -395,6 +407,13 @@ class XiWinResponse(BaseModel):
         "0.04 on average in TEST, so a caller has to be able to tell which it holds without re-reading "
         "its own request (§8.7). Who won the toss is on no request and is averaged over in both readings; "
         "`objective_probability` is marginalised either way",
+    )
+    competition_level_marginalised: bool = Field(
+        ...,
+        description="True when the request named no `competition_level` and `team1_win_probability` was "
+        "averaged over both levels; false when the display model read the level it was given. A fixture's "
+        "level is a fact, so an answer that had to average over it is a substitution and says so (§8.7); "
+        "`objective_probability` never reads the level",
     )
     team1_constraint_check: Optional[XiConstraintCheck] = Field(
         default=None, description="Present only where the request carried team1_constraints"
@@ -710,6 +729,12 @@ class SimulateResponse(BaseModel):
     n_samples: int
     seed: int
     toss_marginalised: bool = Field(..., description="True when the toss was unknown and half the draws went each way")
+    competition_level_marginalised: bool = Field(
+        ...,
+        description="True when the request named no `competition_level` and `win_probability.display` was "
+        "averaged over both levels; false when the display model read the level it was given (§8.7). The "
+        "draws themselves never read the level",
+    )
     team1: SimulatedSide
     team2: SimulatedSide
     win_probability: SimulatedWinProbability

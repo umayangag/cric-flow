@@ -42,6 +42,16 @@ function formatReport(overrides: Partial<EvaluationFormatReport> = {}): Evaluati
       summary: {
         objective_auc: { mean: 0.72, sd: 0.01, n_folds: 7, gates_consulted: 29 },
         display_auc: { mean: 0.747, sd: 0.012, n_folds: 7 },
+        by_competition_level: {
+          club: {
+            objective_auc: { mean: 0.682, sd: 0.061, n_folds: 7 },
+            display_auc: { mean: 0.693, sd: 0.063, n_folds: 7 },
+          },
+          international: {
+            objective_auc: { mean: 0.682, sd: 0.092, n_folds: 7 },
+            display_auc: { mean: 0.732, sd: 0.089, n_folds: 7 },
+          },
+        },
         base_rate_brier: { mean: 0.25, sd: 0.002, n_folds: 7 },
         swap_violation_share: { mean: 0.003, sd: 0.001, n_folds: 7 },
         display_swap_violation_share: { mean: 0.048, sd: 0.006, n_folds: 7 },
@@ -268,6 +278,17 @@ describe('EvaluationReportTab', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/the per-level row counts moved materially/)).toBeInTheDocument();
+  });
+
+  // Both AUCs per competition level, under the walk-forward table: which side of a pooled
+  // format a move came from, the table the pooling decision was read off (#356).
+  it('prints both AUCs per competition level under the walk-forward table', async () => {
+    mockEvaluationReport.mockResolvedValue(report());
+    render(<EvaluationReportTab />);
+
+    const line = await screen.findByTestId('display-auc-by-competition-level');
+    expect(line).toHaveTextContent('club 0.682 ± 0.061 / 0.693 ± 0.063');
+    expect(line).toHaveTextContent('international 0.682 ± 0.092 / 0.732 ± 0.089');
   });
 
   it('renders a failed display-regression verdict as an error', async () => {

@@ -59,7 +59,7 @@ The shapes below are **generated** from the contracts themselves, so they cannot
 | Model | Level | Inputs | Outputs | Input source |
 |-------|-------|--------|---------|--------------|
 | **XI win — objective** | Match | 29 | 1 — `team1_wins` | `ml.xi.contract.XI_FEATURE_COLS` — every column is a function of the two elevens |
-| **XI win — display** | Match | 38 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns bar the Elo spread (B-7), plus team and venue context, home advantage and the toss |
+| **XI win — display** | Match | 39 | 1 — `team1_wins` | `ml.xi.contract.DISPLAY_FEATURE_COLS` — the XI columns bar the Elo spread (B-7), plus team and venue context, home advantage, the toss and the competition level |
 | **Performance (L2-B)** | Player | 29 | 5 — `runs`, `balls_faced`, `wickets`, `runs_conceded`, `catches` | as-of player-match rows from `ml.xi.rows` |
 
 One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (L2-C) trains nothing — it draws from the performance model.
@@ -67,7 +67,7 @@ One model of each kind per format: `T20`, `T20I`, `ODI`, `TEST`. The simulator (
 Input feature names, in order:
 
 - **XI win — objective** (29): `d_pelo_top3`, `d_pelo_min`, `d_exp_balls_bowled_top5`, `d_exp_balls_faced_sum`, `d_n_allrounders`, `d_exp_mean_matches`, `d_exp_mean_matches_all`, `t1_pelo_mean`, `t1_imp_bat_sum`, `t1_imp_bat_top6`, `t1_imp_bat_tail`, `t1_imp_bat_wk` … (+17 more, see `ml.xi.contract.XI_FEATURE_COLS`)
-- **XI win — display** (38): `d_pelo_top3`, `d_pelo_min`, `d_exp_balls_bowled_top5`, `d_exp_balls_faced_sum`, `d_n_allrounders`, `d_exp_mean_matches`, `d_exp_mean_matches_all`, `t1_pelo_mean`, `t1_imp_bat_sum`, `t1_imp_bat_top6`, `t1_imp_bat_tail`, `t1_imp_bat_wk` … (+26 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
+- **XI win — display** (39): `d_pelo_top3`, `d_pelo_min`, `d_exp_balls_bowled_top5`, `d_exp_balls_faced_sum`, `d_n_allrounders`, `d_exp_mean_matches`, `d_exp_mean_matches_all`, `t1_pelo_mean`, `t1_imp_bat_sum`, `t1_imp_bat_top6`, `t1_imp_bat_tail`, `t1_imp_bat_wk` … (+27 more, see `ml.xi.contract.DISPLAY_FEATURE_COLS`)
 
 <!-- END GENERATED: models -->
 

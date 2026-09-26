@@ -36,6 +36,7 @@ function answer(
     forecast: { source: 'simulator' },
     win_probability: { team1: 0.6, source: 'display', predicted_winner: 'India (men)' },
     toss: { team1_bats_first: null, reading: 'marginalised' },
+    competition_level: { level: 'international', reading: 'sides_history' },
     venue: { resolved: false, note: 'no venue was named' },
     scorecard: {
       samples: 2000,

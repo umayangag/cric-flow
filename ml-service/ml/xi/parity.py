@@ -48,6 +48,7 @@ _COMPARED_COUNTS = (
     "unusable_matches",
     "matches_read",
     "matches_read_by_format",
+    "matches_read_by_level",
     "undecided_matches",
     "drawn_or_tied_matches",
     "decided_matches_without_deliveries",
