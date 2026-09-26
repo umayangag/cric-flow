@@ -614,7 +614,7 @@ def paired(summary_a: Dict, key_a: str, summary_b: Dict, key_b: str, subset: str
         "mean_diff": float(diffs.mean()),
         "sd": sd,
         "se": sd / np.sqrt(len(diffs)),
-        "t": float(diffs.mean() / (sd / np.sqrt(len(diffs)))) if sd > 0 else float("inf"),
+        "t": float(diffs.mean() / (sd / np.sqrt(len(diffs)))) if sd > 0 else None,
         "n_folds": len(diffs),
         "folds_down": int((diffs < 0).sum()),
     }
@@ -623,6 +623,9 @@ def paired(summary_a: Dict, key_a: str, summary_b: Dict, key_b: str, subset: str
 def _print_paired(label: str, comparison: Optional[Dict[str, float]]) -> None:
     if comparison is None:
         print(f"| {label} | — | | | |")
+        return
+    if comparison["t"] is None:
+        print(f"| {label} | {comparison['mean_diff']:+.4f} | 0 | identical arms | 0/{comparison['n_folds']} |")
         return
     print(
         f"| {label} | {comparison['mean_diff']:+.4f} | {comparison['se']:.4f} | {comparison['t']:+.2f} "
