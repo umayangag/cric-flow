@@ -231,6 +231,20 @@ METRICS: Tuple[Metric, ...] = (
         scale=AUC_SCALE,
     ),
     Metric(
+        key="display_auc_move_in_fold_sd",
+        name="Display AUC move vs previous accepted run",
+        explanation=(
+            "This run's walk-forward mean display AUC minus the previous accepted harness run's, in units of "
+            "this run's fold sd (display-regression). Read beside the verdict: the move is judged only when the "
+            "two runs scored the same fold windows and the same per-level row counts; on a population that moved "
+            "it is printed and the run re-baselines. Batch 4's T20 read -3.24 on a taxonomy change, not a model "
+            "change."
+        ),
+        band="within one fold sd on the same population passes; under -1 fails; a rise never fails",
+        better=HIGHER,
+        scale=Scale(bad=-1.0, good=0.0),
+    ),
+    Metric(
         key="objective_brier",
         name="Objective Brier",
         explanation="The objective's probability, scored rather than ranked. " + BRIER_EXPLANATION + SERVED_READING,
@@ -1278,6 +1292,10 @@ NON_METRIC_KEYS: Dict[str, str] = {
     "and the season it accrues (H-19, A-4, EVAL-11)",
     "n_rows": "a row count",
     "n_player_rows": "a row count",
+    "development_rows_by_level": "a row count per competition level (Cricsheet's team_type): the decided "
+    "development rows a format's folds can read, which display-regression compares run to run",
+    "level_moves": "display-regression's like-for-like working: each level's row count in the previous accepted "
+    "run and in this one, and the change as a share of the previous run's rows for the format",
     "n_matches": "a match count",
     "n_samples": "how many draws the simulator took",
     "n_pairs": "a pair count",

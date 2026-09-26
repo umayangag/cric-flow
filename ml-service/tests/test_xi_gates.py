@@ -33,6 +33,10 @@ def _format_node(served: bool = False, objective_auc: Optional[float] = 0.70) ->
             }
         },
         "selection_decision": {"passes_derived_bar": True, "optimised_selection_served": served},
+        "display_regression": {
+            "verdict": "pass",
+            "reason": "display AUC 0.7108 against the previous accepted run's 0.7074: +0.04 fold sd",
+        },
     }
 
 
@@ -147,7 +151,7 @@ def test_script_reported_gates_have_no_report_path(gate_id: str) -> None:
 # --- EVAL-04: a standing gate's clause is code, and a report can fail it -------------
 
 
-@pytest.mark.parametrize("gate_id", ["H-17", "H-4", "specific-vs-typical", "E5", "E2", "H-8"])
+@pytest.mark.parametrize("gate_id", ["H-17", "H-4", "specific-vs-typical", "E5", "E2", "H-8", "display-regression"])
 def test_every_standing_gate_carries_its_clause_as_a_threshold(gate_id: str) -> None:
     """The gates the report prints every run evaluate their decides text, not only its path."""
     gate = gates.REGISTRY[gate_id]
@@ -311,6 +315,59 @@ def test_h8_fails_a_report_whose_parity_did_not_pass() -> None:
     problems = gates.check_report(report)
 
     assert problems == ["gate H-8: report fails its threshold: the as-of serving path and the training pass disagree"]
+
+
+def test_display_regression_fails_a_format_whose_verdict_is_fail_with_its_reason() -> None:
+    """The scenario the gate exists for: a display AUC fall beyond one fold sd on the same
+    population. Before this gate a 3.24 sd T20 fall reported ``gates.passed: true``."""
+    report = _report_with_every_gate()
+    report["formats"]["T20"]["display_regression"] = {
+        "verdict": "fail",
+        "reason": "display AUC 0.5934 against the previous accepted run's 0.7294 (2026-09-20): -3.24 fold sd "
+        "(sd 0.0419), a fall beyond one fold sd on the same windows and the same per-level rows: the model got "
+        "worse, not the population",
+    }
+
+    problems = gates.check_report(report)
+
+    assert problems == [
+        "gate display-regression: T20 fails its threshold: display AUC 0.5934 against the previous accepted run's "
+        "0.7294 (2026-09-20): -3.24 fold sd (sd 0.0419), a fall beyond one fold sd on the same windows and the "
+        "same per-level rows: the model got worse, not the population"
+    ]
+
+
+@pytest.mark.parametrize("verdict", ["pass", "rebaselined", "undecided"])
+def test_display_regression_does_not_fail_a_rebaselined_or_undecided_format(verdict: str) -> None:
+    """A population that moved, or no baseline to read, is said on the wire and is not a
+    failure: batch 4's T20 fall was IMPORT-09's taxonomy change and must re-baseline."""
+    report = _report_with_every_gate()
+    report["formats"]["T20"]["display_regression"] = {"verdict": verdict, "reason": "the per-level row counts moved"}
+
+    assert gates.check_report(report) == []
+
+
+def test_display_regression_reads_t20_which_the_scoping_gates_never_do() -> None:
+    """T20 is scoped off optimised selection, so H-17 does not read it; this gate is
+    unconditional on the serving policy and reads every format the folds scored."""
+    report = _report_with_every_gate()
+    for node in report["formats"].values():
+        node["display_regression"] = {"verdict": "fail", "reason": "fell"}
+
+    problems = gates.check_report(report)
+
+    assert [p.split(":")[1].strip() for p in problems] == ["T20 fails its threshold", "ODI fails its threshold"]
+
+
+def test_display_regression_is_registered_with_its_triple_and_path() -> None:
+    gate = gates.REGISTRY["display-regression"]
+
+    assert gate.report_path == "display_regression.verdict"
+    assert gate.consults_folds is True
+    assert "previous accepted" in gate.varies
+    assert "5 %" in gate.fixed and "H-17" in gate.fixed
+    assert "one fold sd" in gate.decides and "T20 included" in gate.decides
+    assert gate.threshold is not None and gate.threshold.rule.startswith("verdict is not 'fail'")
 
 
 def test_every_failing_clause_is_reported_not_only_the_first() -> None:

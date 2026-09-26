@@ -141,7 +141,17 @@ def _digest_lines(kind: str, *columns: pd.Series) -> List[str]:
     return joined.tolist()
 
 
-META_COLS: List[str] = ["match_id", "match_date", "format_code", "gender", "team1", "team2", "venue", C.TARGET_COL]
+META_COLS: List[str] = [
+    "match_id",
+    "match_date",
+    "format_code",
+    "gender",
+    "team1",
+    "team2",
+    "venue",
+    "competition_level",
+    C.TARGET_COL,
+]
 
 
 def build(

@@ -244,6 +244,52 @@ describe('EvaluationReportTab', () => {
     expect(screen.getByText('window rotated 2026-09-02, from 2025-09-01')).toBeInTheDocument();
   });
 
+  it('prints the display-regression verdict and its reason under the walk-forward table', async () => {
+    mockEvaluationReport.mockResolvedValue(
+      report({
+        formats: {
+          T20: formatReport({
+            display_regression: {
+              verdict: 'rebaselined',
+              reason:
+                'display AUC 0.5934 against the previous accepted run’s 0.7294 (2026-09-20): -3.24 fold sd (sd 0.0419), but the per-level row counts moved materially',
+              display_auc_move_in_fold_sd: -3.24,
+              compared_against: { generated_at: '2026-09-20T00:00:00+00:00' },
+            },
+          }),
+        },
+      }),
+    );
+    render(<EvaluationReportTab />);
+
+    expect(
+      await screen.findByText(
+        /Display AUC against the previous accepted run \(display-regression\): rebaselined/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/the per-level row counts moved materially/)).toBeInTheDocument();
+  });
+
+  it('renders a failed display-regression verdict as an error', async () => {
+    mockEvaluationReport.mockResolvedValue(
+      report({
+        formats: {
+          T20: formatReport({
+            display_regression: {
+              verdict: 'fail',
+              reason: 'a fall beyond one fold sd on the same rows',
+            },
+          }),
+        },
+      }),
+    );
+    render(<EvaluationReportTab />);
+
+    const line = await screen.findByText(/display-regression\): fail/);
+    expect(line).toHaveAttribute('data-verdict', 'fail');
+    expect(line).toHaveTextContent('a fall beyond one fold sd on the same rows');
+  });
+
   it('says when the report prints a metric the glossary does not explain', async () => {
     mockEvaluationReport.mockResolvedValue({
       ...report(),

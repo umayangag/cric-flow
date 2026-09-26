@@ -206,6 +206,13 @@ class MatchRecord:
     # match is folded into the state, so a Test's later days are not in the state of a
     # fixture played while it was still on. None is a match played on its one day.
     match_end_date: Optional[date] = None
+    # Cricsheet's ``info.team_type`` -- ``international`` or ``club`` -- on both sources
+    # (``match.competition_level``, migration 0022, on Postgres). It is what places a
+    # twenty-over match in T20I or T20 (IMPORT-09), and the harness counts the rows a
+    # format's folds read by it so a display-AUC move can be told from a population move
+    # (``ml.xi.display_regression``). No model reads it. Empty on a record built for the
+    # serving path, and on a database migrated but not yet re-imported.
+    competition_level: str = ""
 
     @property
     def last_day(self) -> date:
@@ -557,6 +564,7 @@ def parse_cricsheet_file(path: str, lineage: Optional[TeamLineage] = None) -> Op
         replacements=replacements,
         toss_winner=team_key(toss_winner, gender, lineage) if toss_winner else None,
         match_end_date=date.fromisoformat(info["dates"][-1]),
+        competition_level=competition_level,
     )
 
 
@@ -766,7 +774,8 @@ SELECT m.match_id, m.match_date, mf.code, m.gender, m.venue_id,
        COALESCE(m.event_stage, ''), COALESCE(m.event_group, ''),
        m.result,
        COALESCE(toss.canonical_id, toss.id),
-       COALESCE(m.match_end_date, m.match_date)
+       COALESCE(m.match_end_date, m.match_date),
+       COALESCE(m.competition_level, '')
 FROM match m
 JOIN match_format mf ON mf.id = m.format_id
 LEFT JOIN match_inning mi ON mi.match_id = m.match_id AND mi.inning_number = 1
@@ -957,6 +966,7 @@ class PostgresSource:
                 replacements=replacements,
                 toss_winner=None if row[13] is None else str(row[13]),
                 match_end_date=row[14],
+                competition_level=row[15] or "",
             )
 
     def _with_a_first_innings(self, matches: Sequence[Sequence]) -> List[Sequence]:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import statistics
 from contextlib import contextmanager
-from typing import Iterator, List, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import pandas as pd
 import pytest
@@ -490,7 +490,7 @@ def test_main_writes_the_report_and_fails_on_parity_or_gate_problems(
     monkeypatch.setattr(
         ev,
         "evaluate",
-        lambda source, factory, gender_split_context=False, market_odds_dir=None: _fake_report(
+        lambda source, factory, gender_split_context=False, market_odds_dir=None, previous_report=None: _fake_report(
             parity_passed, gates_passed
         ),
     )
@@ -502,3 +502,89 @@ def test_main_writes_the_report_and_fails_on_parity_or_gate_problems(
     written = json.loads((out / ev.REPORT_NAME).read_text())
     assert written["serving_parity"]["passed"] is parity_passed
     assert written["gates"]["passed"] is gates_passed
+
+
+def test_main_hands_the_report_it_overwrites_to_the_harness(tmp_path, monkeypatch) -> None:
+    """display-regression compares against the previous accepted run, which is the report
+    at the same path: ``main`` reads it before the run and hands it over; on the first
+    run there is nothing to hand over and nothing fails."""
+    received: List[Optional[dict]] = []
+
+    def fake_evaluate(source, factory, gender_split_context=False, market_odds_dir=None, previous_report=None):
+        received.append(previous_report)
+        return _fake_report()
+
+    monkeypatch.setattr(ev, "evaluate", fake_evaluate)
+    out = tmp_path / "report"
+
+    first = ev.main(["--cricsheet-dir", str(tmp_path), "--out", str(out)])
+    second = ev.main(["--cricsheet-dir", str(tmp_path), "--out", str(out)])
+
+    assert (first, second) == (0, 0)
+    assert received[0] is None
+    assert received[1] == _fake_report()
+
+
+def test_an_unreadable_previous_report_is_logged_and_read_as_none(tmp_path, caplog) -> None:
+    path = tmp_path / ev.REPORT_NAME
+    path.write_text("{not json")
+
+    with caplog.at_level("ERROR", logger="ml.xi.evaluate"):
+        previous = ev.read_previous_report(str(path))
+
+    assert previous is None
+    assert "unreadable" in caplog.text
+
+
+def test_harness_carries_a_display_regression_verdict_per_format(harness_report) -> None:
+    """The first run has no previous accepted report: undecided, with this run's own
+    reference -- its display summary, its windows and the decided development rows per
+    level -- carried as the baseline the next run reads."""
+    node = harness_report["formats"]["T20"]["display_regression"]
+    expected_rows = sum(fold["n_eval"] for fold in harness_report["formats"]["T20"]["walk_forward"]["folds"])
+
+    assert node["verdict"] == "undecided"
+    assert node["reason"].startswith("no previous accepted harness report")
+    assert node["compared_against"] is None and node["display_auc_move_in_fold_sd"] is None
+    assert node["current"]["windows"] == {"cutoffs": ["2023-03-01", "2023-04-01"], "locked_start": "2023-05-01"}
+    # A synthetic source records no level: every row counts under the named unrecorded key.
+    assert set(node["current"]["development_rows_by_level"]) == {"unrecorded"}
+    assert node["current"]["development_rows_by_level"]["unrecorded"] >= expected_rows
+    assert node["baseline"] == node["current"]
+    assert harness_report["formats"]["ODI"]["display_regression"]["verdict"] == "undecided"
+    assert gates.REGISTRY["display-regression"].report_path == "display_regression.verdict"
+
+
+def test_a_second_run_on_the_same_population_reads_the_first_as_its_baseline(harness_report) -> None:
+    """The report chain: the previous report passed its gates, so its own numbers are the
+    reference, and a run scoring the same rows to the same number passes at +0.00 sd."""
+    previous = json.loads(json.dumps(harness_report))
+    previous["gates"]["passed"] = True
+    node = harness_report["formats"]["T20"]
+
+    with _synthetic_timeline(["2023-03-01", "2023-04-01"], "2023-05-01"):
+        verdict = ev._display_regression_node(
+            "T20",
+            node,
+            _frame_with_levels(node["display_regression"]["current"]["development_rows_by_level"]),
+            "later",
+            previous,
+        )
+
+    assert verdict["verdict"] == "pass"
+    assert verdict["compared_against"]["generated_at"] == harness_report["generated_at"]
+    assert verdict["display_auc_move_in_fold_sd"] == pytest.approx(0.0)
+
+
+def _frame_with_levels(rows_by_level: Dict[str, int]) -> pd.DataFrame:
+    """A T20 frame whose development rows count exactly as ``rows_by_level`` says."""
+    records = [
+        {
+            "format_code": "T20",
+            "match_date": pd.Timestamp("2023-03-15"),
+            "competition_level": "" if level == "unrecorded" else level,
+        }
+        for level, count in rows_by_level.items()
+        for _ in range(count)
+    ]
+    return pd.DataFrame(records)

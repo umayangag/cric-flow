@@ -1253,6 +1253,22 @@ export type EvaluationFormatReport = {
   };
   e5_lineup_only?: EvaluationE5;
   selection_decision?: EvaluationSelectionDecision;
+  /** display-regression: this run's display AUC against the previous accepted run's. */
+  display_regression?: EvaluationDisplayRegression;
+};
+
+/**
+ * The display-regression gate's verdict for one format (ml.xi.display_regression): a
+ * walk-forward display AUC fall beyond one fold sd against the previous accepted harness
+ * run fails, but only on the same fold windows and the same per-level row counts; a
+ * population that moved re-baselines and says so, and with no previous accepted run
+ * nothing is decided. The reason carries the numbers; the browser renders it verbatim.
+ */
+export type EvaluationDisplayRegression = {
+  verdict: 'pass' | 'fail' | 'rebaselined' | 'undecided';
+  reason: string;
+  display_auc_move_in_fold_sd?: number | null;
+  compared_against?: { generated_at: string } | null;
 };
 
 /** One window of X-4's market benchmark: the three arms, and the gaps between them. */
