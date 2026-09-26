@@ -375,13 +375,13 @@ def training_subsets(format_frame: pd.DataFrame) -> List[str]:
     return ["all", "club"] if present >= set(LEVELS) else ["all"]
 
 
-def score_frame(payload: Dict[str, Any], format_code: str) -> Dict[str, Any]:
+def score_frame(payload: Dict[str, Any], format_code: str, skip_display: bool = False) -> Dict[str, Any]:
     from ml.xi.evaluate import MIN_EVAL_ROWS, MIN_TRAIN_ROWS
 
     frame = payload["frame"]
     format_frame = frame[frame.format_code == format_code]
     objective = objective_arms()
-    display = display_arms()
+    display = {} if skip_display else display_arms()
     out: Dict[str, Any] = {
         "taxonomy": payload["taxonomy"],
         "code_root": payload["code_root"],
@@ -479,11 +479,11 @@ def summarise(window_reports: List[Dict], pooled: Dict[str, Dict[str, List[np.nd
     return summary
 
 
-def run_score(frames: Dict[str, str], formats: Sequence[str], out: str) -> None:
+def run_score(frames: Dict[str, str], formats: Sequence[str], out: str, skip_display: bool = False) -> None:
     report: Dict[str, Any] = {"generated_at": pd.Timestamp.utcnow().isoformat(), "frames": {}}
     for tag, path in frames.items():
         payload = load_frame(path)
-        report["frames"][tag] = {fmt: score_frame(payload, fmt) for fmt in formats}
+        report["frames"][tag] = {fmt: score_frame(payload, fmt, skip_display) for fmt in formats}
     with open(out, "w") as fh:
         json.dump(report, fh, indent=1)
     logger.info("score report written to %s", out)
@@ -879,6 +879,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     score = sub.add_parser("score")
     score.add_argument("--frames", nargs="+", required=True, help="tag=path per frame pickle")
     score.add_argument("--formats", nargs="+", default=["T20"])
+    score.add_argument("--skip-display", action="store_true", help="objective arms only (a bisect over code versions)")
     score.add_argument("--out", required=True)
     levels = sub.add_parser("levels")
     levels.add_argument("--frames", required=True)
@@ -899,7 +900,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.command == "build":
         build_frame(args.taxonomy, args.code_root, args.out)
     elif args.command == "score":
-        run_score(_parse_frames(args.frames), args.formats, args.out)
+        run_score(_parse_frames(args.frames), args.formats, args.out, args.skip_display)
     elif args.command == "levels":
         run_levels(args.frames, args.formats, args.out)
     else:
