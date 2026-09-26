@@ -14,7 +14,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
+from typing import Dict, Iterator, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 
@@ -356,6 +356,39 @@ def detect_format(match_type: str, competition_level: str) -> str:
     return ""
 
 
+def person_ids_by_name(people: dict) -> Dict[str, str]:
+    """One file's ``info.registry.people`` re-keyed by trimmed name.
+
+    Mirrors ``cricsheet.Registry.PersonIDsByName`` in go-app, and exists for the reason that
+    one does: four registry keys in the current dataset carry a trailing space
+    (``"Lalchhuanliana "``) while some of the entries naming the same person do not, so an
+    exact-match lookup drops those onto the ``name:`` fallback and invents a cricketer who
+    does not exist. Normalising the registry once, here, is what lets every lookup below be
+    a plain trimmed-name lookup instead of each site deciding for itself whether to strip.
+
+    The raw keys are sorted first so that, were two of them ever to trim to one name, the
+    greater key would always win and two passes over the same file would resolve it the same
+    way (IMPORT-15). No file in the dataset does that today.
+    """
+    resolved: Dict[str, str] = {}
+    for raw_name in sorted(people):
+        name, identifier = str(raw_name).strip(), str(people[raw_name]).strip()
+        if not name or not identifier:
+            continue
+        resolved[name] = identifier
+    return resolved
+
+
+def player_key(name: str, registry: Mapping[str, str]) -> str:
+    """The key one named player is rated under: the file's identifier, else the name.
+
+    ``registry`` is a ``person_ids_by_name`` map, so the lookup is by trimmed name -- the
+    same rule ``matchIdentity.PlayerID`` applies in go-app.
+    """
+    trimmed = name.strip()
+    return registry.get(trimmed, "name:" + trimmed)
+
+
 def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
     """Player keys for the fielders credited on one delivery.
 
@@ -375,7 +408,7 @@ def _credited_fielder_keys(wickets: list, registry: dict) -> List[str]:
             name = fielder.get("name")
             if not name:
                 continue
-            keys.append(registry.get(name, "name:" + name))
+            keys.append(player_key(name, registry))
     return keys
 
 
@@ -416,8 +449,8 @@ def _deliveries_from_cricsheet(innings: list, registry: dict) -> Deliveries:
             for b in ov.get("deliveries", []):
                 over.append(ov["over"])
                 inn.append(inning_index)
-                bat.append(registry.get(b["batter"], "name:" + b["batter"]))
-                bowl.append(registry.get(b["bowler"], "name:" + b["bowler"]))
+                bat.append(player_key(b["batter"], registry))
+                bowl.append(player_key(b["bowler"], registry))
                 rb.append(b["runs"]["batter"])
                 rt.append(b["runs"]["total"])
                 # Cricsheet writes ``extras`` only on a delivery that has some, as an object
@@ -453,7 +486,7 @@ def _wickets_of(wickets: list, registry: dict) -> BallWickets:
     pairs: List[Tuple[str, str]] = []
     for w in wickets:
         name = (w.get("player_out") or "").strip()
-        pairs.append((w["kind"], registry.get(name, "name:" + name) if name else ""))
+        pairs.append((w["kind"], player_key(name, registry) if name else ""))
     return pairs
 
 
@@ -482,7 +515,7 @@ def parse_cricsheet_file(path: str, lineage: Optional[TeamLineage] = None) -> Op
     innings = data.get("innings") or []
     if not fmt or len(teams) != 2 or not innings or innings[0].get("team") not in teams:
         return None
-    registry = (info.get("registry") or {}).get("people") or {}
+    registry = person_ids_by_name((info.get("registry") or {}).get("people") or {})
     event = info.get("event") or {}
     team1 = innings[0]["team"]
     team2 = teams[1] if teams[0] == team1 else teams[0]
@@ -557,7 +590,7 @@ def replacement_keys(innings: list, registry: dict) -> List[Tuple[str, str]]:
                     came_in = (team, str(entry.get("in") or "").strip())
                     went_out = (team, str(entry.get("out") or "").strip())
                     if came_in[1] and came_in not in seen:
-                        pairs.append((team, registry.get(came_in[1], "name:" + came_in[1])))
+                        pairs.append((team, player_key(came_in[1], registry)))
                     seen.update((came_in, went_out))
     return pairs
 
@@ -621,8 +654,8 @@ def _squads(names1: Sequence[str], names2: Sequence[str], registry: dict) -> Tup
     Both matches lose one player from an eleven, which is the honest reading of a source
     that does not know.
     """
-    squad1 = [registry.get(n, "name:" + n) for n in names1]
-    squad2 = [registry.get(n, "name:" + n) for n in names2]
+    squad1 = [player_key(n, registry) for n in names1]
+    squad2 = [player_key(n, registry) for n in names2]
     contested = set(squad1) & set(squad2)
     if not contested:
         return squad1, squad2

@@ -752,6 +752,31 @@ def test_the_archive_refuses_a_file_that_names_no_team_type(tmp_path) -> None:
         parse_cricsheet_file(str(path))
 
 
+def test_a_registry_name_with_a_trailing_space_is_one_player_and_not_two(tmp_path) -> None:
+    """Four registry keys in the archive carry a trailing space (``"Lalchhuanliana "``) and
+    the squad entries naming that player carry it too, while three ``player_out`` entries do
+    not. The wicket path trimmed before it looked the name up and the squad path did not, so
+    the dismissal opened a ``name:`` slot for a cricketer who does not exist. go-app keys its
+    registry by trimmed name once per file (``Registry.PersonIDsByName``); normalising in the
+    one place is the same rule."""
+    players = {
+        "India": ["Lalchhuanliana ", *[f"I{i}" for i in range(1, 11)]],
+        "Australia": [f"A{i}" for i in range(11)],
+    }
+    doc = _cricsheet_doc("T20", ["India", "Australia"], players, "Australia", 0)
+    doc["info"]["registry"]["people"]["Lalchhuanliana "] = "id_lal"
+    # The dismissal names him without the space, as the four real files do.
+    doc["innings"][0]["overs"][0]["deliveries"][1]["wickets"][0]["player_out"] = "Lalchhuanliana"
+    path = tmp_path / "1.json"
+    path.write_text(json.dumps(doc))
+
+    rec = parse_cricsheet_file(str(path))
+
+    assert rec.team1_players[0] == "id_lal"
+    assert rec.deliveries.players_out[1] == ["id_lal"]
+    assert not [key for key in rec.team1_players if key.startswith("name:")]
+
+
 def test_parse_cricsheet_file_reads_squads_and_deliveries(tmp_path) -> None:
     players = {"India": [f"I{i}" for i in range(11)], "Australia": [f"A{i}" for i in range(11)]}
     path = tmp_path / "1.json"
